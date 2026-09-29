@@ -2,12 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogDraftCustomTextElement, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
+import { customTextDefinitionFindings } from "./custom-text-definition.js";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -265,6 +266,7 @@ export class CatalogAuthoringService {
           dataModelVersion: source.data_model_version,
           organizationId: session.organization.id, changeNote: body.changeNote,
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
+          customElementIds: (draft.canonical_definition.customElements ?? []).map((element) => element.id),
           specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
             .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
@@ -281,6 +283,17 @@ export class CatalogAuthoringService {
                 .map((value) => [value.code, value.localization]))]))
           }])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
+      for (const element of draft.canonical_definition.customElements ?? []) {
+        const inherited = await manager.query<Array<{ id: string }>>(`select id from forms.custom_element_definition where id=$1`, [element.id]);
+        if (inherited[0]) continue;
+        await manager.query(`insert into catalog.element_identity (id,namespace,canonical_key) values ($1,$2,$3)`,
+          [element.id, element.namespace, `${element.namespace}.${element.slug}`]);
+        await manager.query(`insert into forms.custom_element_definition
+          (id,organization_id,namespace,slug,title,base_datatype,identifying,definition)
+          values ($1,$2,$3,$4,$5,'string',$6,$7::jsonb)`,
+          [element.id, session.organization.id, element.namespace, element.slug, element.title,
+            element.identifying, JSON.stringify({ ...element, catalogReleaseId: releaseId })]);
+      }
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
       const editableValueSetOptionCount = draft.canonical_definition.codeLists
@@ -428,7 +441,16 @@ export class CatalogAuthoringService {
   private async cloneDefinition(manager: EntityManager, sourceReleaseId: string): Promise<CatalogDraftDefinition> {
     const elements = await this.sourceElements(manager, sourceReleaseId);
     const codeLists = await this.sourceCodeLists(manager, sourceReleaseId);
+    const customElements = await manager.query<Array<{ definition: CatalogDraftCustomTextElement }>>(`
+      select ced.definition from forms.custom_element_definition ced
+      join catalog.release cr on cr.id=$1
+      where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
+      order by ced.namespace, ced.slug`, [sourceReleaseId]);
     return { schemaVersion: 1, sourceReleaseId,
+      ...(customElements.length ? { customElements: customElements.map((row) => {
+        const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomTextElement & { catalogReleaseId?: string };
+        return definition;
+      }) } : {}),
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
       elements: elements.map((row) => ({
       elementId: row.element_id, label: row.name, description: row.description ?? "",
@@ -454,6 +476,8 @@ export class CatalogAuthoringService {
     const existingLists = Array.isArray(existing?.codeLists) ? new Map(existing.codeLists.map((list) => [list.listId, list])) : new Map();
     return { ...baseline,
       ...(existing.hiddenElementIds ? { hiddenElementIds: existing.hiddenElementIds } : {}),
+      ...(Array.isArray(existing.customElements) || baseline.customElements ?
+        { customElements: Array.isArray(existing.customElements) ? existing.customElements : baseline.customElements } : {}),
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
@@ -628,6 +652,37 @@ export class CatalogAuthoringService {
     }
     if (seenLists.size !== sourceLists.length)
       findings.push("The draft must retain every inline, agency-maintained, or recommended code list");
+    const custom = isRecord(definition) ? definition.customElements : undefined;
+    if (custom !== undefined && !Array.isArray(custom)) findings.push("customElements must be an array");
+    const customIds = new Set<string>();
+    const customKeys = new Set<string>();
+    const inherited = await manager.query<Array<{ id: string; namespace: string; slug: string; definition: CatalogDraftCustomTextElement }>>(`
+      select ced.id,ced.namespace,ced.slug,ced.definition from forms.custom_element_definition ced
+      join catalog.release cr on cr.id=$1
+      where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))`, [sourceReleaseId]);
+    for (const [index, candidate] of (Array.isArray(custom) ? custom : []).entries()) {
+      const item = candidate as CatalogDraftCustomTextElement;
+      const itemFindings = customTextDefinitionFindings(item);
+      findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
+      if (itemFindings.length) continue;
+      const key = `${item.namespace}.${item.slug}`;
+      if (customIds.has(item.id) || customKeys.has(key) || sourceById.has(key)) findings.push(`Duplicate custom identity ${key}`);
+      customIds.add(item.id); customKeys.add(key);
+      const old = inherited.find((row) => row.id === item.id);
+      if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
+        old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
+        old.definition.usage !== item.usage || old.definition.identifying !== item.identifying))
+        findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
+    }
+    for (const old of inherited) if (!customIds.has(old.id)) findings.push(`Published custom identity ${old.namespace}.${old.slug} must be retained`);
+    if (customIds.size) {
+      const collisions = await manager.query<Array<{ id: string; namespace: string; canonical_key: string }>>(`
+        select id,namespace,canonical_key from catalog.element_identity
+        where id=any($1::uuid[]) or canonical_key=any($2::text[])`, [[...customIds], [...customKeys]]);
+      for (const collision of collisions) if (!inherited.some((old) => old.id === collision.id &&
+        `${old.namespace}.${old.slug}` === collision.canonical_key))
+        findings.push(`Custom identity ${collision.canonical_key} is already published`);
+    }
     const digest = catalogDefinitionSha256(definition);
     return { valid: findings.length === 0, findings, warnings, definitionSha256: digest,
       projectionsVerified: findings.length === 0 && seen.size === source.length && seenLists.size === sourceLists.length };

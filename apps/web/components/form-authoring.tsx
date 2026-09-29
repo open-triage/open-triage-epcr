@@ -49,13 +49,17 @@ export function hasFormElement(definition: FormDraftDefinition, elementId: strin
 
 export function addFormElement(definition: FormDraftDefinition, sectionKey: string,
   element: FormCatalogElement): FormDraftDefinition {
-  if (hasFormElement(definition, element.elementId)) throw new Error(`${element.elementId} is already in the form.`);
+  const identity = element.customElementDefinitionId ? `custom:${element.customElementDefinitionId}` : `nemsis:${element.elementId}`;
+  if (definition.sections.some((section) => section.fields.some((field) => fieldIdentity(field) === identity)))
+    throw new Error(`${element.elementId} is already in the form.`);
   if (!definition.sections.some((section) => section.key === sectionKey)) throw new Error("Choose a section for the element.");
   const usedKeys = new Set(definition.sections.flatMap((section) => section.fields.map((field) => field.key)));
   let key = element.elementId;
   for (let suffix = 2; usedKeys.has(key); suffix += 1) key = `${element.elementId}-${suffix}`;
   return { ...definition, sections: definition.sections.map((section) => section.key === sectionKey
-    ? { ...section, fields: [...section.fields, { key, source: { kind: "nemsis", elementId: element.elementId } }] }
+    ? { ...section, fields: [...section.fields, { key, source: element.customElementDefinitionId
+      ? { kind: "custom" as const, elementDefinitionId: element.customElementDefinitionId }
+      : { kind: "nemsis" as const, elementId: element.elementId } }] }
     : section) };
 }
 
@@ -119,7 +123,8 @@ export function FormElementPicker({ definition, results, query, targetSection, c
     {!query.trim() && <p><AdminText messageKey="admin.searchTheCatalog" /></p>}
     {query.trim() && <ul className="form-picker-results" aria-label={t("admin.catalogElementSearch")}>
       {results.slice(0, resultLimit).map((element) => {
-        const duplicate = placed.has(`nemsis:${element.elementId}`);
+        const duplicate = placed.has(element.customElementDefinitionId
+          ? `custom:${element.customElementDefinitionId}` : `nemsis:${element.elementId}`);
         return <li key={element.elementId}>
           <div><strong>{element.elementId} — {element.name}</strong><small>{element.baseDatatype} · {element.groupPath.join(" / ")}</small></div>
           <button type="button" disabled={duplicate} aria-label={duplicate ? `${element.elementId} is already in the form` : `Add ${element.elementId}`}

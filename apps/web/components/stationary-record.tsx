@@ -18,6 +18,7 @@ import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { currentCatalogLanguage, resolveCatalogGroupText } from "../app/catalog-localization";
 import type { FormLanguage } from "../app/form-localization";
 import { resolveMessage } from "../app/localization";
+import { CustomTextFields } from "./custom-text-fields";
 
 function statusText(language: FormLanguage, errors: number, warnings: number): string {
   return `${resolveMessage(language, "mobile.errorCount", { count: errors }, errors)}, ${resolveMessage(language, "mobile.warningCount", { count: warnings }, warnings)}`;
@@ -25,13 +26,14 @@ function statusText(language: FormLanguage, errors: number, warnings: number): s
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
 export function StationaryRecord({ document, findings = [], sectionFindings = findings,
-  formDefinition, catalogFields = {}, catalogGroups, validation, language = currentCatalogLanguage(), onDocumentChange }: {
+  formDefinition, catalogFields = {}, customFields, catalogGroups, validation, language = currentCatalogLanguage(), onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   /** Includes encounter-review findings for section counts without duplicating inline field messages. */
   readonly sectionFindings?: ReadonlyArray<StationarySectionFinding>;
   readonly formDefinition?: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  readonly customFields?: ClinicalFormConfiguration["customFields"];
   readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   readonly validation?: ClinicalFormConfiguration["validation"];
   readonly language?: FormLanguage;
@@ -154,6 +156,8 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
             ]} findings={findings} catalogFields={catalogFields} catalogGroups={catalogGroups} language={language} onDocumentChange={onDocumentChange} />
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
               clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
+          {"fields" in section && <CustomTextFields document={document} fields={section.fields} definitions={customFields}
+            language={language} onDocumentChange={onDocumentChange} />}
         </section>;
       })}
     </div>

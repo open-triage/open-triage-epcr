@@ -216,9 +216,12 @@ export class FormPublicationService {
       where e.release_id = $1 and e.element_id = any($2::text[])
     `, [version.catalog_release_id, nemsisIds]);
     const custom = customIds.length ? await manager.query<CustomElementRow[]>(`
-      select id, organization_id, base_datatype, retired_at
-      from forms.custom_element_definition where id = any($1::uuid[])
-    `, [customIds]) : [];
+      select ced.id, ced.organization_id, ced.base_datatype, ced.retired_at
+      from forms.custom_element_definition ced join catalog.release cr on cr.id=$2
+      where ced.id = any($1::uuid[])
+        and (ced.definition->>'catalogReleaseId' is null or
+          ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb))))
+    `, [customIds, version.catalog_release_id]) : [];
     const groups = groupIds.length ? await manager.query<CustomGroupRow[]>(`
       select id, organization_id, temporal_kind, clinical_time_element_id
       from forms.custom_group_definition where id = any($1::uuid[])

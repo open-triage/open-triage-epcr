@@ -55,6 +55,6 @@ export function StationaryFormPreview({ draft, onReturn }: {
       </div>
     </header>
     <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
-      catalogFields={catalogFields} catalogGroups={draft.catalogGroups} language={language} onDocumentChange={setDocument} />
+      catalogFields={catalogFields} customFields={draft.customFields} catalogGroups={draft.catalogGroups} language={language} onDocumentChange={setDocument} />
   </section>;
 }

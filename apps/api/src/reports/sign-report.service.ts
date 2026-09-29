@@ -90,6 +90,7 @@ type OccurrenceRow = {
   base_datatype: string | null;
   min_occurs: number | null;
   max_occurs: number | null;
+  text_constraints: { minLength?: number; maxLength?: number; pattern?: string } | null;
 };
 
 type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
@@ -395,13 +396,15 @@ export class SignReportService {
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
       (ff.custom_element_definition_id is not null or m.element_id is not null) as clinically_stored,
       ff.catalog_element_identity_id, ff.custom_element_definition_id,
-      case when e.agency_required is true then 0 else e.min_occurs end as min_occurs,
+      case when e.agency_required is true then 0
+        when ced.definition->>'usage' in ('Mandatory','Required') then 1 else e.min_occurs end as min_occurs,
       e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
         and e.element_identity_id = ff.catalog_element_identity_id
       left join catalog.analytics_element_mapping m on m.release_id = e.release_id
         and m.element_id = e.element_id
+      left join forms.custom_element_definition ced on ced.id=ff.custom_element_definition_id
       where ff.form_version_id = $1 order by ff.stable_key`, [report.form_version_id, report.catalog_release_id]);
     const rules = await manager.query<RuleRow[]>(`select r.target_field_id, f.stable_key as target_key,
       r.rule_kind, r.expression
@@ -416,7 +419,7 @@ export class SignReportService {
         when 'datetime' then to_jsonb(o.value_datetime) when 'time' then to_jsonb(o.value_time)
         when 'duration' then to_jsonb(o.value_duration) else null end as scalar_value,
       o.code, o.code_system, o.absence_code, coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
-      e.min_occurs, e.max_occurs
+      e.min_occurs, e.max_occurs, ced.definition->'constraints' as text_constraints
       from clinical.element_occurrence o
       left join catalog.element_definition e on e.release_id = o.catalog_release_id and e.element_id = o.element_id
       left join forms.custom_element_definition ced on ced.id = o.element_identity_id
@@ -449,7 +452,7 @@ export class SignReportService {
       // reference, but it is supplied by the pinned configuration rather than
       // stored as clinician-authored element occurrences on the report.
       if (!field.clinically_stored) continue;
-      if (!report.validation_version_id && field.required && values.length === 0) {
+      if ((!report.validation_version_id || field.custom_element_definition_id) && field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));
       }
@@ -457,7 +460,7 @@ export class SignReportService {
         findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
           `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
-      if (!report.validation_version_id && field.min_occurs !== null && values.length < field.min_occurs) {
+      if ((!report.validation_version_id || field.custom_element_definition_id) && field.min_occurs !== null && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
           `Field ${field.stable_key} requires at least ${field.min_occurs} occurrence(s); found ${values.length}`));
       }
@@ -490,6 +493,14 @@ export class SignReportService {
           expectedKinds[occurrence.base_datatype] !== occurrence.value_kind) {
         findings.push(this.finding("catalog.datatype", `${path}.value`,
           `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
+      }
+      if (occurrence.value_kind === "text" && occurrence.text_constraints && typeof occurrence.scalar_value === "string") {
+        const limits = occurrence.text_constraints;
+        if (occurrence.scalar_value.length > 100000 || limits.minLength !== undefined && occurrence.scalar_value.length < limits.minLength ||
+            limits.maxLength !== undefined && occurrence.scalar_value.length > limits.maxLength ||
+            limits.pattern && !new RegExp(`^(?:${limits.pattern})$`).test(occurrence.scalar_value))
+          findings.push(this.finding("catalog.text-constraint", `${path}.value`,
+            `${occurrence.element_id} does not satisfy its published text constraints`));
       }
     }
     const codedOccurrences = occurrences.filter((occurrence) => occurrence.value_kind === "coded");

@@ -9,6 +9,7 @@ import { resolveCatalogElementText } from "./catalog-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
+import { CustomTextFields } from "../components/custom-text-fields";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./regional-format";
 import { clinicalInstantParts, useAgencyTimeZone } from "./agency-time-zone";
 import { TimePicker } from "../components/time-picker";
@@ -843,6 +844,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             sectionFindings={stationarySectionFindings}
             formDefinition={report?.clinicalForm?.definition}
             catalogFields={report?.clinicalForm?.catalogFields}
+            customFields={report?.clinicalForm?.customFields}
             catalogGroups={report?.clinicalForm?.catalogGroups}
             validation={report?.clinicalForm?.validation}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
@@ -861,6 +863,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         onOpenAudio={openAudio}
         onOpenEvent={openTimelineEvent}
       />}
+      {presentationMode === "mobile" && shell.view === "timeline" && report?.clinicalForm?.customFields &&
+        <section className="content-panel" aria-label={t("mobile.customFields")}>
+          {report.clinicalForm.definition.sections.map((section) => <CustomTextFields key={section.key}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+        </section>}
       {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label={t("mobile.encounterTimeline")} onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();

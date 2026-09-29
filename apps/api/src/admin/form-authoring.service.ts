@@ -123,17 +123,27 @@ export class FormAuthoringService {
     if (!drafts[0]) throw new NotFoundException(`Form draft ${id} was not found`);
     const rows = await this.dataSource.query<Array<{
       element_id: string; name: string; description: string; base_datatype: string; group_path: string[];
+      custom_element_definition_id?: string;
     }>>(`
-      select element_id,name,description,base_datatype,group_path
+      select element_id,name,description,base_datatype,group_path,
+        null::uuid as custom_element_definition_id
       from catalog.element_definition
       where release_id=$1 and element_id like 'e%.%'
         and element_id not in (select jsonb_array_elements_text(coalesce(
           (select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)))
         and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
-      order by section,group_path,element_id
-    `, [drafts[0].catalog_release_id, query]);
+      union all
+      select ced.namespace || '.' || ced.slug,ced.title,
+        coalesce(ced.definition->>'definition',''),ced.base_datatype,array[]::text[],ced.id
+      from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
+      where ced.organization_id=$3 and ced.retired_at is null
+        and ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
+        and ($2='' or position($2 in lower(ced.namespace || '.' || ced.slug || ' ' || ced.title || ' ' || coalesce(ced.definition->>'definition',''))) > 0)
+      order by element_id
+    `, [drafts[0].catalog_release_id, query, session.organization.id]);
     return { items: rows.map((row) => ({ elementId: row.element_id, name: row.name,
-      description: row.description, baseDatatype: row.base_datatype, groupPath: row.group_path })),
+      description: row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
+      ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}) })),
       nextOffset: null };
   }
 
@@ -308,8 +318,22 @@ export class FormAuthoringService {
     const oldById = new Map(rows.map((row) => [row.element_id, row]));
     const newById = new Map(targets.map((row) => [row.element_id, row]));
     const diagnostics: FormCloneDiagnostic[] = [];
+    const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+    const availableCustom = customIds.length ? await manager.query<Array<{ id: string }>>(`
+      select ced.id from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
+      where ced.id=any($2::uuid[]) and ced.retired_at is null
+        and (ced.definition->>'catalogReleaseId' is null or
+          ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb))))
+    `, [targetReleaseId, customIds]) : [];
+    const availableCustomIds = new Set(availableCustom.map(({ id }) => id));
     const sections = definition.sections.map((section, sectionIndex) => ({ ...section, fields: section.fields.filter((field, fieldIndex) => {
-      if (field.source.kind !== "nemsis") return true;
+      if (field.source.kind === "custom") {
+        if (availableCustomIds.has(field.source.elementDefinitionId)) return true;
+        diagnostics.push({ code: "missing-reference", path: `sections[${sectionIndex}].fields[${fieldIndex}].source.elementDefinitionId`,
+          message: `Custom element ${field.source.elementDefinitionId} is unavailable in the selected catalog` });
+        return false;
+      }
       if (!/^e[^.]+\./.test(field.source.elementId)) return false;
       const path = `sections[${sectionIndex}].fields[${fieldIndex}].source.elementId`;
       const before = oldById.get(field.source.elementId);
@@ -422,10 +446,14 @@ export class FormAuthoringService {
     const elementIds = [...new Set(definition.sections.flatMap((section) =>
       section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
     const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds, true);
+    const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+    const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<StationaryFormDraft["customFields"]>[string] }>>(`
+      select id,definition from forms.custom_element_definition where id=any($1::uuid[])`, [customIds]) : [];
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
       ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
-      definition, catalogFields,
+      definition, catalogFields, customFields: Object.fromEntries(custom.map((item) => [item.id, item.definition])),
       catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 
