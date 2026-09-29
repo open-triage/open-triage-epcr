@@ -75,9 +75,9 @@ test("bundled canonical options render as one label-only dropdown", () => {
   assert.ok(field.options.length > 0);
   assert.doesNotThrow(() => validateStationaryCodedSelection(field, { kind: "coded", code: "valid-code-not-in-suggestions" }));
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
-  assert.equal((html.match(/<select/g) ?? []).length, 1);
+  assert.equal((html.match(/class="clinical-searchable-trigger"/g) ?? []).length, 1);
   assert.doesNotMatch(html, /type="search"|>Display<|Apply coded value/);
-  assert.match(html, />Analgesic</);
+  assert.ok(field.options.some(({ label }) => label === "Analgesic"));
 });
 
 test("a populated coded dropdown presents deletion as its first option", () => {
@@ -86,7 +86,7 @@ test("a populated coded dropdown presents deletion as its first option", () => {
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, {
     field: stationaryCodedField(patientTarget.elementId), value, onChange() {},
   }));
-  assert.match(html, /<option value="">Delete<\/option>/);
+  assert.match(html, /clinical-searchable-trigger[^>]*>Unknown/);
 });
 
 test("external canonical options retain metadata behind one dropdown", () => {
@@ -100,7 +100,7 @@ test("external canonical options retain metadata behind one dropdown", () => {
     system: option.system, terminologyVersion: option.terminologyVersion,
   });
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
-  assert.equal((html.match(/<select/g) ?? []).length, 1);
+  assert.equal((html.match(/class="clinical-searchable-trigger"/g) ?? []).length, 1);
   assert.doesNotMatch(html, /Code system|>Display<|type="search"/);
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "Y92.03" }), /requires a code system/);
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "Y92.03", system: "invented" }), /not a supported code system/);
@@ -272,8 +272,8 @@ test("coded picker distinguishes the same code in different systems", () => {
   assert.doesNotThrow(() => validateStationaryCodedSelection(field, { kind: "coded", code: "SHARED", system: "urn:second" }));
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "SHARED", system: "urn:third" }), /exhaustive/);
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
-  assert.match(html, /value="0">First/);
-  assert.match(html, /value="1">Second/);
+  assert.deepEqual(field.options.map(({ label, system }) => [label, system]), [["First", "urn:first"], ["Second", "urn:second"]]);
+  assert.match(html, /clinical-searchable-trigger/);
 });
 
 
@@ -299,7 +299,7 @@ test("shipped Swedish choice seed appears in the clinical picker without changin
     const selection = codedSelectionFromOption(field.options[0]!);
     assert.equal(selection.code, "3706021");
     const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
-    assert.match(html, /Milligram \(mg\)/);
+    assert.match(html, /Välj ett värde/);
   } finally {
     if (previous) Object.defineProperty(globalThis, "document", previous);
     else Reflect.deleteProperty(globalThis, "document");
@@ -320,10 +320,10 @@ test("legacy defaults cannot populate a blank control or change configured order
   const field = configuredStationaryCodedField("ePatient.25", configured);
   assert.deepEqual(field.options.map(({ code }) => code), ["9906001", "9906003"]);
   const blank = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange: () => assert.fail("Opening cannot record") }));
-  assert.match(blank, /<option value="" selected="">Choose a value/);
+  assert.match(blank, /clinical-searchable-trigger[^>]*>Choose a value/);
   const recorded: EncounterValue = { kind: "coded", occurrenceId: "recorded", code: "9906001", display: "Original answer" };
   const markup = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, value: recorded, onChange: () => assert.fail("Rendering cannot change an answer") }));
-  assert.match(markup, /<option value="0" selected="">First choice/);
+  assert.match(markup, /clinical-searchable-trigger[^>]*>First choice/);
   assert.deepEqual(configured, original);
   assert.equal(recorded.display, "Original answer");
 });

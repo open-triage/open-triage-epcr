@@ -37,7 +37,7 @@ test("repeatable coded values share one canonical label dropdown picker", () => 
   }));
   assert.equal((html.match(/<fieldset/g) ?? []).length, 1);
   assert.equal((html.match(/<legend/g) ?? []).length, 1);
-  assert.equal((html.match(/<select/g) ?? []).length, values.length + 1);
+  assert.equal((html.match(/class="clinical-searchable-trigger"/g) ?? []).length, values.length + 1);
   assert.doesNotMatch(html, /type="search"|>Display<|Code system/);
 });
 

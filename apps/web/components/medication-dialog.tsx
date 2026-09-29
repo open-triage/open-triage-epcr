@@ -9,6 +9,7 @@ import { validateMedication, type MedicationDraft, type ReviewFinding, type Shel
 import { displayDecimal, useRegionalFormat } from "../app/regional-format";
 import { TimePicker } from "./time-picker";
 import { DialogValidationMessage } from "./dialog-validation-message";
+import { ClinicalSearchableSelect } from "./clinical-searchable-select";
 
 type Props = {
   readonly draft: MedicationDraft;
@@ -57,9 +58,9 @@ export function MedicationDialog({ language, draft, dispatch, dialogRef, definit
       case "dose":
         return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={displayDecimal(draft.dose, region)} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
       case "unit":
-        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.unit} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "unit", value: event.target.value })}><option value="">{medication.labels.select}</option>{medication.doseUnits.map((unit) => <option key={unit} value={unit}>{medication.doseUnitLabels?.[unit] ?? unit}</option>)}</select></label>{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><div className={frame(field.id)}><span>{field.label}</span><ClinicalSearchableSelect label={field.label} value={draft.unit} placeholder={medication.labels.select} options={medication.doseUnits.map((unit) => ({ key: unit, label: medication.doseUnitLabels?.[unit] ?? unit }))} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "unit", value })} /></div>{validation(field.id)}</div>;
       case "route":
-        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.route} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "route", value: event.target.value })}><option value="">{medication.labels.selectRoute}</option>{medication.routes.map((route) => <option key={route} value={route}>{medication.routeLabels?.[route] ?? route}</option>)}</select></label>{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><div className={frame(field.id)}><span>{field.label}</span><ClinicalSearchableSelect label={field.label} value={draft.route} placeholder={medication.labels.selectRoute} options={medication.routes.map((route) => ({ key: route, label: medication.routeLabels?.[route] ?? route }))} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "route", value })} /></div>{validation(field.id)}</div>;
       case "response":
         return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<textarea rows={3} placeholder={field.placeholder} value={draft.response} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "response", value: event.target.value })} /></label>{validation(field.id)}</div>;
     }

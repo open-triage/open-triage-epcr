@@ -53,7 +53,8 @@ test("mobile capture reconciles into a complete stationary record that alone can
 
   await page.getByRole("textbox", { name: "First Name", exact: true }).fill("STATIONARY");
   const sex = page.locator('[data-element-id="ePatient.25"]').first();
-  await sex.locator("select").nth(0).selectOption({ index: 1 });
+  await sex.locator(".clinical-searchable-trigger").first().click();
+  await page.locator(".clinical-searchable-popup [role='option']").first().click();
   await sex.locator(".null-value-trigger").click();
   await sex.getByRole("menuitem", { name: "Not Reporting" }).click();
   await sex.locator(".null-value-trigger").click();
