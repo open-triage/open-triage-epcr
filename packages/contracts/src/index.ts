@@ -866,7 +866,7 @@ export interface FormDraftField {
 
 export interface FormDraftDefinition {
   schemaVersion: 1;
-  sections: Array<{ key: string; fields: FormDraftField[] }>;
+  sections: Array<{ key: string; name?: string; fields: FormDraftField[] }>;
 }
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */

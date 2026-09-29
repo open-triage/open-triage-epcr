@@ -107,6 +107,9 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
     if (typeof section.key !== "string" || !section.key.trim()) findings.push(`${path}.key is required`);
     else if (sectionKeys.has(section.key)) findings.push(`${path}.key is duplicated`);
     else sectionKeys.add(section.key);
+    if (section.name !== undefined && (typeof section.name !== "string" || !section.name.trim() || section.name.length > 120)) {
+      findings.push(`${path}.name must contain between 1 and 120 characters`);
+    }
     if (section.presentation !== undefined) {
       findings.push(`${path}.presentation is unsupported; edit the catalog group name instead`);
     }

@@ -44,7 +44,7 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   }, [formDefinition, language]);
   const sections = previewSections ?? defaultSections;
   const sectionLabel = (section: (typeof sections)[number]) => "blocks" in section
-    ? stationaryDisplayLabel(resolveCatalogGroupText(catalogGroups, section.catalogGroupId, language, section.label))
+    ? section.visualName ?? stationaryDisplayLabel(resolveCatalogGroupText(catalogGroups, section.catalogGroupId, language, section.label))
     : resolveMessage(language, "stationary.section." + section.id);
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {

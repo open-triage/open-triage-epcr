@@ -105,7 +105,7 @@ test("admin drafts retain edits and filters across tabs and validation deletion 
   });
   await signInAsCombinedOwner(page, capabilities);
   await page.getByRole("button", { name: "Admin", exact: true }).click();
-  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await page.getByRole("button", { name: "Form editor", exact: true }).click();
   const editor = page.locator(".form-editor");
   await expect(editor.getByRole("group", { name: "Form draft actions" })).toBeVisible();
   await expect(editor.locator(".form-section-toggle[aria-expanded=true]")).toHaveCount(1);
@@ -120,7 +120,7 @@ test("admin drafts retain edits and filters across tabs and validation deletion 
   const initialFormLoads = formLoads;
   await page.getByRole("button", { name: "Dashboard", exact: true }).click();
   await expect(editor).toBeHidden();
-  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await page.getByRole("button", { name: "Form editor", exact: true }).click();
   await expect(editor.getByLabel("Find by identifier, name, or description")).toHaveValue("patient name");
   await expect(editor.getByRole("button", { name: "Save form draft", exact: true })).toBeEnabled();
   await expect(editor.locator(".form-section ol li").first()).toContainText("ePatient.15");
@@ -242,15 +242,15 @@ test("Forms readers, authors, and publishers receive only their permitted contro
   // freshly resolved Admin context must suppress mutation controls immediately.
   await signInAsCombinedOwner(page, ["admin-dashboard:read", "forms:read", "forms:write", "forms:publish"]);
   await page.getByRole("button", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await page.getByRole("button", { name: "Form editor", exact: true }).click();
   await expect(page.getByText("read-only access to this form definition")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save form draft" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete form draft" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish immutable form" })).toHaveCount(0);
   const previewPromise = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Preview Stationary form" }).click();
+  await page.getByRole("button", { name: "Preview form" }).click();
   const preview = await previewPromise;
-  await expect(preview.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible({ timeout: 15_000 });
+  await expect(preview.getByRole("heading", { name: "Draft form" })).toBeVisible({ timeout: 15_000 });
   await preview.close();
 
   await page.route("**/api/admin/form-drafts/draft-id", (route) => route.fulfill({ status: 409,
@@ -258,7 +258,7 @@ test("Forms readers, authors, and publishers receive only their permitted contro
   resolvedCapabilities = ["admin-dashboard:read", "forms:read", "forms:write"];
   await signInAsCombinedOwner(page, ["admin-dashboard:read", "forms:read", "forms:write"]);
   await page.getByRole("button", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await page.getByRole("button", { name: "Form editor", exact: true }).click();
   await expect(page.getByRole("button", { name: "Save form draft" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete form draft" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish immutable form" })).toHaveCount(0);
@@ -270,7 +270,7 @@ test("Forms readers, authors, and publishers receive only their permitted contro
   resolvedCapabilities = ["admin-dashboard:read", "forms:read", "forms:write", "forms:publish"];
   await signInAsCombinedOwner(page, ["admin-dashboard:read", "forms:read", "forms:write", "forms:publish"]);
   await page.getByRole("button", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await page.getByRole("button", { name: "Form editor", exact: true }).click();
   await expect(page.getByRole("button", { name: "Publish immutable form" })).toBeVisible();
 });
 
@@ -719,7 +719,7 @@ test("a forged browser capability cannot bypass direct Admin API authorization",
 
 test("owner edits and previews the unsaved form through Stationary without creating a clinical record", async ({ page }) => {
   const definition = { schemaVersion: 1, sections: [
-    { key: "patient", presentation: { title: "Patient preview" }, fields: [
+    { key: "patient", name: "Patient preview", fields: [
       { key: "last-name", source: { kind: "nemsis", elementId: "ePatient.02" }, required: true },
       { key: "age", source: { kind: "nemsis", elementId: "ePatient.15" } }
     ] },
@@ -727,6 +727,21 @@ test("owner edits and previews the unsaved form through Stationary without creat
   ] };
   const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "version-id",
     revision: 4, definitionSha256: "a".repeat(64), definition, diagnostics: [], updatedAt: new Date().toISOString() };
+  let savedDefinition = definition;
+  await page.route("**/api/admin/form-versions", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/admin/validation-versions", (route) => route.fulfill({ json: [{ id: "validation-id", displayName: "Rules", catalogReleaseId: "catalog-id", version: 1, status: "active" }] }));
+  await page.route("**/api/admin/form-drafts/draft-id", (route) => {
+    const body = route.request().postDataJSON();
+    savedDefinition = body.definition;
+    return route.fulfill({ json: { ...draft, definition: savedDefinition, displayName: body.displayName, revision: 5 } });
+  });
+  await page.route("**/api/admin/form-drafts/draft-id/publish", (route) => route.fulfill({ json: {
+    id: "published-id", formId: "form-id", catalogReleaseId: "catalog-id", displayName: "Arranged form", version: 4,
+    status: "published", structuralSummary: { sections: 2, fields: 3, rules: 0 }, definitionSha256: "a".repeat(64), publishedAt: new Date().toISOString()
+  } }));
+  await page.route("**/api/admin/form-versions/published-id/activate", (route) => route.fulfill({ json: {
+    organizationId: "organization-id", formVersionId: "published-id", formId: "form-id", catalogReleaseId: "catalog-id", activatedAt: new Date().toISOString()
+  } }));
   const clinicalMutations: string[] = [];
   page.on("request", (request) => {
     if (request.method() !== "GET" && /\/api\/(reports|calls\/[^/]+\/open)/.test(request.url())) clinicalMutations.push(request.url());
@@ -735,7 +750,7 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
     panels: ["dashboard", "catalog", "forms"],
-    capabilities: ["catalog:read", "catalog:write", "catalog:publish", "forms:read", "forms:write", "forms:publish"],
+    capabilities: ["catalog:read", "catalog:write", "catalog:publish", "forms:read", "forms:write", "forms:publish", "validation:publish"],
     activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } },
     dashboard,
@@ -748,7 +763,7 @@ test("owner edits and previews the unsaved form through Stationary without creat
   }) }));
   await signInAsCombinedOwner(page);
   await page.getByRole("button", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await page.getByRole("button", { name: "Form editor", exact: true }).click();
 
   const editor = page.locator(".form-editor");
   await editor.getByLabel("Find by identifier, name, or description").fill("patient");
@@ -766,21 +781,39 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await expect(editor.getByRole("button", { name: "Remove assessment" })).toHaveCount(0);
   await expect(editor.getByText("Unsaved changes. Removed assessment and 1 affected field.", { exact: true })).toBeVisible();
 
+  await editor.getByLabel("New section name").fill("Care");
+  await editor.getByRole("button", { name: "Create section", exact: true }).click();
+  await editor.getByLabel("Section name", { exact: true }).fill("Care given");
+  await editor.getByLabel("Go to section").selectOption("patient");
+  await editor.getByLabel("Move to section ePatient.01").selectOption({ label: "Care given" });
+  await expect(editor.getByText("Unsaved changes. Field moved. Data binding preserved.", { exact: true })).toBeVisible();
+
   const popupPromise = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Preview Stationary form" }).click();
+  await page.getByRole("button", { name: "Preview form" }).click();
   const preview = await popupPromise;
 
-  await expect(preview.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible();
+  await expect(preview.getByRole("heading", { name: "Draft form" })).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("navigation", { name: "Stationary record sections" }).getByText("Patient preview", { exact: true })).toBeVisible();
   await expect(preview.locator('[data-element-id="ePatient.02"]').first()).toBeVisible();
+  await preview.getByRole("navigation", { name: "Stationary record sections" }).getByText("Care given", { exact: true }).click();
   await expect(preview.locator('[data-element-id="ePatient.01"]').first()).toBeVisible();
   await preview.locator('[data-element-id="ePatient.02"] input').first().fill("Preview surname");
   await preview.getByRole("button", { name: "Return to form draft" }).click();
   await expect.poll(() => preview.isClosed()).toBe(true);
 
-  await expect(page.getByRole("button", { name: "Preview Stationary form" })).toBeVisible();
-  await expect(page.getByText("Opened Stationary form preview in a new window.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Preview form" })).toBeVisible();
+  await expect(page.getByText("Opened Form preview in a new window.")).toBeVisible();
   await expect(page.locator(".form-fields").getByText("ePatient.02", { exact: true })).toBeVisible();
+  await editor.getByLabel("Form version display name").fill("Arranged form");
+  await editor.getByRole("button", { name: "Save form draft" }).click();
+  await expect(editor.getByText("All changes saved", { exact: true })).toBeVisible();
+  expect(savedDefinition.sections.at(-1)).toMatchObject({ name: "Care given", fields: [{ source: { kind: "nemsis", elementId: "ePatient.01" } }] });
+  await editor.getByLabel("Publication note", { exact: true }).fill("Arrange care section");
+  await editor.getByRole("button", { name: "Publish immutable form" }).click();
+  await expect(page.getByRole("heading", { name: "Published Arranged form" })).toBeVisible();
+  await page.getByLabel("Activation note", { exact: true }).fill("Deploy arranged form");
+  await page.getByRole("button", { name: "Activate as agency default", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Agency default active", exact: true })).toBeDisabled();
   expect(clinicalMutations).toEqual([]);
 });
 

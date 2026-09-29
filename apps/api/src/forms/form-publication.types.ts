@@ -21,6 +21,7 @@ export interface CanonicalFormField {
 
 export interface CanonicalFormSection {
   key: string;
+  name?: string;
   fields: CanonicalFormField[];
 }
 

@@ -18,12 +18,12 @@ const session = {
 
 const definition = {
   schemaVersion: 1,
-  sections: [{ key: "patient", fields: [
+  sections: [{ key: "patient", name: "Patient details", fields: [
     { key: "compatible", source: { kind: "nemsis", elementId: "ePatient.01" } },
     { key: "missing", source: { kind: "nemsis", elementId: "ePatient.02" } },
     { key: "changed", source: { kind: "nemsis", elementId: "ePatient.03" } },
     { key: "disabled", source: { kind: "nemsis", elementId: "ePatient.04" } }
-  ] }]
+  ] }, { key: "empty", name: "Follow-up", fields: [] }]
 };
 
 function element(element_id, overrides = {}) {
@@ -78,6 +78,8 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
     "missing-reference", "incompatible-reference", "disabled-reference"
   ]);
   assert.deepEqual(definition, original, "the published source definition was not mutated");
+  assert.equal(draft.definition.sections[0].name, "Patient details");
+  assert.deepEqual(draft.definition.sections[1], { key: "empty", name: "Follow-up", fields: [] });
   assert.equal(draft.catalogReleaseId, catalogId);
   assert.equal(draft.clonedFromId, sourceFormId);
   const targetAuthorization = queries.find((sql) => sql.includes("select r.id from catalog.release"));
@@ -309,4 +311,28 @@ test("form definitions reject catalog-owned wording overrides", async () => {
   assert.throws(() => validateCanonicalFormDefinition(localized), /element catalog/);
   const legacy = { ...localized, sections: [{ ...configured.sections[0], presentation: { title: "Patient" } }] };
   assert.deepEqual(validateCanonicalFormDefinition(withoutLegacyFormWording(legacy)), valid);
+});
+
+test("saving and reopening an arranged form retains names, empty sections, and medication binding", async () => {
+  const arranged = { schemaVersion: 1, sections: [
+    { key: "care", name: "Care given", fields: [{ key: "medication", source: { kind: "nemsis", elementId: "eMedications.03" } }] },
+    { key: "later", name: "Later", fields: [] }
+  ] };
+  let row = { id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
+    revision: 1, canonical_definition: definition, definition_sha256: "a".repeat(64), updated_at: new Date() };
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("update forms.form_version")) {
+      row = { ...row, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3], revision: 2 };
+      return [row];
+    }
+    if (sql.includes("from forms.form_version")) return [row];
+    if (sql.includes("from catalog.element_definition")) return [element("eMedications.03")];
+    if (sql.includes("from catalog.value_set_element") || sql.includes("from catalog.group_definition") || sql.includes("configuration_event")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ ...manager, manager, transaction: async (_level, work) => work(manager) }, { requireCapability: async () => session });
+  const saved = await service.save("owner-session", draftId, { expectedRevision: 1, definition: arranged });
+  assert.deepEqual(saved.definition, arranged);
+  assert.deepEqual((await service.current("owner-session")).definition, arranged);
+  assert.equal(saved.revision, 2);
 });

@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { type ClinicianSession } from "@open-triage/contracts";
+import { type ClinicianSession, type FormDraftDefinition } from "@open-triage/contracts";
 import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, createValidationRule, deactivateAdminRole, deleteCatalogDraft, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, loadValidationRules, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, setValidationRuleEnabled, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
-import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
+import { createFormSection, renameFormSection, transferFormElement, addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
@@ -700,4 +700,23 @@ test("form search sends the searchable query without pagination", async (t) => {
     return Response.json({ items: [], nextOffset: null });
   };
   await searchFormCatalog("draft-id", "patient name");
+});
+
+
+test("visual sections retain identities and occurrence-bound fields across rename and movement", () => {
+  const field = { key: "medication", source: { kind: "nemsis" as const, elementId: "eMedications.03" }, required: true };
+  const original: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "eMedications", fields: [field, { key: "dose", source: { kind: "nemsis", elementId: "eMedications.05" } }] }] };
+  const created = createFormSection(original, "Treatment", "local-treatment");
+  const renamed = renameFormSection(created, "local-treatment", "Care given");
+  const moved = transferFormElement(renamed, "eMedications", "medication", "local-treatment");
+  assert.equal(moved.sections[1]!.key, "local-treatment");
+  assert.equal(formSectionLabel(moved.sections[1]!), "Care given");
+  assert.deepEqual(moved.sections[1]!.fields[0], field);
+  assert.equal(original.sections[0]!.fields.length, 2);
+  assert.equal(moved.sections[0]!.fields[0]!.key, "dose");
+  const preview = configuredStationaryPreviewSections(JSON.parse(JSON.stringify(moved)));
+  assert.equal(preview[1]!.label, "Care given");
+  assert.equal(preview[0]!.blocks[0]!.group.id, preview[1]!.blocks[0]!.group.id);
+  assert.ok(preview[1]!.blocks.some(({ group }) => group.id === "eMedications.MedicationGroup"));
+  assert.throws(() => transferFormElement(moved, "local-treatment", "medication", "missing"), /destination/);
 });
