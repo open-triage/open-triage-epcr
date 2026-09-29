@@ -300,7 +300,12 @@ export class CatalogAuthoringService {
       await this.project(manager, draft, releaseId);
       for (const element of draft.canonical_definition.customElements ?? []) {
         const inherited = await manager.query<Array<{ id: string }>>(`select id from forms.custom_element_definition where id=$1`, [element.id]);
-        if (inherited[0]) continue;
+        if (inherited[0]) {
+          if (element.retired) await manager.query(`update forms.custom_element_definition
+            set retired_at=coalesce(retired_at,now()) where id=$1 and organization_id=$2`,
+          [element.id, session.organization.id]);
+          continue;
+        }
         await manager.query(`insert into catalog.element_identity (id,namespace,canonical_key) values ($1,$2,$3)`,
           [element.id, element.namespace, `${element.namespace}.${element.slug}`]);
         await manager.query(`insert into forms.custom_element_definition
@@ -718,6 +723,7 @@ export class CatalogAuthoringService {
       customIds.add(item.id); customKeys.add(key);
       const old = inherited.find((row) => row.id === item.id);
       const prior = inheritedById.get(item.id) ?? old?.definition;
+      if (!old && item.retired) findings.push(`Custom element ${key} must be published before retirement`);
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         prior?.datatype !== item.datatype || prior?.recurrence !== item.recurrence ||
         prior?.usage !== item.usage || prior?.identifying !== item.identifying ||

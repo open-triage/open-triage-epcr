@@ -51,6 +51,8 @@ test("custom text validation rejects duplicate identity and incompatible publish
   const candidate = { ...definition, customElements: [custom] };
   assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
   assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, retired: true }] })).findings.join(" "), /published before retirement/);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
     customElements: [custom, { ...custom, id: "5b5cde30-2057-4e6d-919e-e2cbf712d72b" }] })).findings.join(" "), /Duplicate custom identity/);
   collisions = [{ id: custom.id, namespace: custom.namespace, canonical_key: `${custom.namespace}.${custom.slug}` }];
   assert.match((await service.validateDefinition(manager, "release-1", candidate)).findings.join(" "), /already published/);
