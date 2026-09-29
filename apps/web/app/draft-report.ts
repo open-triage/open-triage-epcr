@@ -74,6 +74,7 @@ export function dispatchCancellationNotice(cancellation: DispatchCancellation): 
 export interface DraftGroupMutation {
   readonly id: string;
   readonly groupId: string;
+  readonly customGroupDefinitionId?: string;
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
@@ -181,6 +182,7 @@ export function encounterDocumentToDraftMutations(
   document: EncounterDocument,
   persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
   customFields?: ClinicalFormConfiguration["customFields"],
+  customGroups?: ClinicalFormConfiguration["customGroups"],
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
   const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [`${group.id}:${instance.instanceId}`, instance] as const)));
   const groupTargetIds = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [
@@ -190,16 +192,19 @@ export function encounterDocumentToDraftMutations(
   const groups: DraftGroupMutation[] = [];
   const occurrences: DraftOccurrenceMutation[] = [];
   document.groups.forEach((group) => {
-    if (!getNemsisGroup(group.id)) return; // Custom fields require their pinned form-field identities.
+    const customGroup = Object.values(customGroups ?? {}).find((item) => `${item.namespace}.${item.slug}` === group.id);
+    if (!getNemsisGroup(group.id) && !customGroup) return;
     group.instances.forEach((instance, ordinal) => {
-      const parentGroupId = getNemsisGroup(group.id)?.parentId;
+      const parentGroupId = customGroup ? customGroup.correlatesTo ?? "PatientCareReportGroup" : getNemsisGroup(group.id)?.parentId;
       const parentCandidates = parentGroupId ? [...instances.entries()].filter(([key]) => key.startsWith(`${parentGroupId}:`)).map(([, candidate]) => candidate) : [];
-      const parent = parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
-        ?? parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`))
-        ?? parentCandidates[0];
+      const parent = customGroup ? parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
+        : parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
+          ?? parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`))
+          ?? parentCandidates[0];
+      if (customGroup && !parent) throw new Error(`Missing parent for custom group ${group.id}/${instance.instanceId}`);
       const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
-      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
+      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(customGroup ? { customGroupDefinitionId: customGroup.id } : {}), ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
         ...(hasDemoProvenance(instance.attributes) ? { correlationId: `${DEMO_GROUP_CORRELATION_PREFIX}${instance.instanceId}` } : {}) });
       instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
@@ -234,8 +239,9 @@ export function shellStateToDraftMutations(
   shell: ShellState,
   persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
   customFields?: ClinicalFormConfiguration["customFields"],
+  customGroups?: ClinicalFormConfiguration["customGroups"],
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted, customFields);
+  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted, customFields, customGroups);
 }
 
 /** Reduces a canonical document projection to only targets changed from its last accepted projection. */

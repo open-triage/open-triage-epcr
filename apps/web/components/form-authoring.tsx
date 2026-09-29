@@ -65,7 +65,8 @@ export function addFormElement(definition: FormDraftDefinition, sectionKey: stri
   for (let suffix = 2; usedKeys.has(key); suffix += 1) key = `${element.elementId}-${suffix}`;
   return { ...definition, sections: definition.sections.map((section) => section.key === sectionKey
     ? { ...section, fields: [...section.fields, { key, source: element.customElementDefinitionId
-      ? { kind: "custom" as const, elementDefinitionId: element.customElementDefinitionId }
+      ? { kind: "custom" as const, elementDefinitionId: element.customElementDefinitionId,
+        ...(element.customGroupDefinitionId ? { groupDefinitionId: element.customGroupDefinitionId } : {}) }
       : { kind: "nemsis" as const, elementId: element.elementId } }] }
     : section) };
 }

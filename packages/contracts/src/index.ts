@@ -702,6 +702,18 @@ export interface CatalogDraftDefinition {
   elements: CatalogDraftElement[];
   codeLists: CatalogDraftCodeList[];
   customElements?: CatalogDraftCustomElement[];
+  customGroups?: CatalogDraftCustomGroup[];
+}
+
+/** A flat grouping identity shared by related custom element definitions. */
+export interface CatalogDraftCustomGroup {
+  id: string;
+  namespace: string;
+  slug: string;
+  title: string;
+  recurrence: "single" | "multiple";
+  correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
+  localization?: { schemaVersion: 1; sv?: { label: string; reviewedSource: { label: string } } };
 }
 
 /** A scalar extension owned by one organization. A target binds values to a stable group instance. */
@@ -715,6 +727,8 @@ export interface CatalogDraftCustomTextElement {
   recurrence: "single" | "multiple";
   /** Supported NEMSIS 3.5.1 repeated group; omission places the field at report root. */
   correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
+  /** eCustomConfiguration.09 grouping identity; independent of visual form sections. */
+  groupDefinitionId?: string;
   usage: "Mandatory" | "Required" | "Recommended" | "Optional";
   constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number };
   identifying: boolean | null;
@@ -908,6 +922,7 @@ export interface FormDraftDefinition {
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
   customFields?: Record<string, CatalogDraftCustomElement>;
+  customGroups?: Record<string, CatalogDraftCustomGroup>;
   /** Group wording from the same immutable catalog as the fields. */
   catalogGroups?: Record<string, { name: string; localization?: {
     schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };
@@ -962,6 +977,7 @@ export interface StationaryFormDraft {
   /** Published catalog configuration used by the detached authoring preview. */
   catalogFields?: ClinicalFormConfiguration["catalogFields"];
   customFields?: ClinicalFormConfiguration["customFields"];
+  customGroups?: ClinicalFormConfiguration["customGroups"];
   catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   diagnostics: FormCloneDiagnostic[];
   /** Codes newly available in the target catalog, by stable form field key. They start disabled in choicePolicy. */
@@ -998,6 +1014,7 @@ export interface FormCatalogElement {
   baseDatatype: string;
   groupPath: string[];
   customElementDefinitionId?: string;
+  customGroupDefinitionId?: string;
 }
 
 export interface FormCatalogElementPage {

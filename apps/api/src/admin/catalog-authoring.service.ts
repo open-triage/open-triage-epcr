@@ -2,13 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogDraftCustomElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { customTextDefinitionFindings } from "./custom-text-definition.js";
+import { customGroupDefinitionFindings } from "./custom-group-definition.js";
 import { releaseCustomDefinitions } from "./custom-definition-version.js";
 
 type DraftRow = {
@@ -282,6 +283,7 @@ export class CatalogAuthoringService {
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
           customElementIds: (draft.canonical_definition.customElements ?? []).map((element) => element.id),
           customElementDefinitions: draft.canonical_definition.customElements ?? [],
+          customGroupDefinitions: draft.canonical_definition.customGroups ?? [],
           specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
             .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
@@ -314,6 +316,15 @@ export class CatalogAuthoringService {
           [element.id, session.organization.id, element.namespace, element.slug, element.title,
             element.datatype === "number" ? "decimal" : element.datatype === "other" ? "string" : element.datatype, element.identifying,
             JSON.stringify({ ...element, catalogReleaseId: releaseId })]);
+      }
+      for (const group of draft.canonical_definition.customGroups ?? []) {
+        const inherited = await manager.query<Array<{ id: string }>>(
+          "select id from forms.custom_group_definition where id=$1", [group.id]);
+        if (inherited[0]) continue;
+        await manager.query(`insert into forms.custom_group_definition
+          (id,organization_id,namespace,slug,temporal_kind,definition)
+          values ($1,$2,$3,$4,'non-temporal',$5::jsonb)`,
+          [group.id, session.organization.id, group.namespace, group.slug, JSON.stringify(group)]);
       }
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -469,7 +480,11 @@ export class CatalogAuthoringService {
       order by ced.namespace, ced.slug`, [sourceReleaseId]);
     const snapshot = legacyCustomElements.length ? await releaseCustomDefinitions(manager, sourceReleaseId) : null;
     const customElements = snapshot === null ? legacyCustomElements : snapshot.map((definition) => ({ definition }));
+    const customGroups = await manager.query<Array<{ definition: CatalogDraftCustomGroup }>>(`
+      select jsonb_array_elements(coalesce(provenance->'customGroupDefinitions','[]'::jsonb)) as definition
+      from catalog.release where id=$1`, [sourceReleaseId]);
     return { schemaVersion: 1, sourceReleaseId,
+      ...(customGroups.length ? { customGroups: customGroups.map((row) => row.definition) } : {}),
       ...(customElements.length ? { customElements: customElements.map((row) => {
         const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomElement & { catalogReleaseId?: string };
         return definition;
@@ -501,6 +516,8 @@ export class CatalogAuthoringService {
       ...(existing.hiddenElementIds ? { hiddenElementIds: existing.hiddenElementIds } : {}),
       ...(Array.isArray(existing.customElements) || baseline.customElements ?
         { customElements: Array.isArray(existing.customElements) ? existing.customElements : baseline.customElements } : {}),
+      ...(Array.isArray(existing.customGroups) || baseline.customGroups ?
+        { customGroups: Array.isArray(existing.customGroups) ? existing.customGroups : baseline.customGroups } : {}),
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
@@ -675,6 +692,33 @@ export class CatalogAuthoringService {
     }
     if (seenLists.size !== sourceLists.length)
       findings.push("The draft must retain every inline, agency-maintained, or recommended code list");
+    const groupCandidates = isRecord(definition) ? definition.customGroups : undefined;
+    if (groupCandidates !== undefined && !Array.isArray(groupCandidates)) findings.push("customGroups must be an array");
+    const groups = Array.isArray(groupCandidates) ? groupCandidates as CatalogDraftCustomGroup[] : [];
+    const groupIds = new Set<string>();
+    const groupKeys = new Set<string>();
+    const priorGroups = await manager.query<Array<{ definition: CatalogDraftCustomGroup }>>(`
+      select jsonb_array_elements(coalesce(provenance->'customGroupDefinitions','[]'::jsonb)) as definition
+      from catalog.release where id=$1`, [sourceReleaseId]);
+    const priorGroupById = new Map(priorGroups.map((row) => [row.definition.id, row.definition]));
+    for (const [index, group] of groups.entries()) {
+      findings.push(...customGroupDefinitionFindings(group).map((message) => `customGroups[${index}]: ${message}`));
+      const key = `${group.namespace}.${group.slug}`;
+      if (groupIds.has(group.id) || groupKeys.has(key)) findings.push(`Duplicate custom group ${key}`);
+      groupIds.add(group.id); groupKeys.add(key);
+      const prior = priorGroupById.get(group.id);
+      if (prior && (prior.namespace !== group.namespace || prior.slug !== group.slug ||
+        prior.recurrence !== group.recurrence || prior.correlatesTo !== group.correlatesTo))
+        findings.push(`Published custom group ${key} cannot change its identity, recurrence, or target`);
+      if (group.correlatesTo) {
+        const targets = await manager.query<Array<{ group_id: string }>>(`
+          select group_id from catalog.group_definition where release_id=$1 and group_id=$2 and repeating`,
+          [sourceReleaseId, group.correlatesTo]);
+        if (!targets[0]) findings.push(`Custom group ${key} has an unavailable correlation target`);
+      }
+    }
+    for (const row of priorGroups) if (!groupIds.has(row.definition.id))
+      findings.push(`Published custom group ${row.definition.namespace}.${row.definition.slug} must be retained`);
     const custom = isRecord(definition) ? definition.customElements : undefined;
     if (custom !== undefined && !Array.isArray(custom)) findings.push("customElements must be an array");
     const customIds = new Set<string>();
@@ -696,6 +740,12 @@ export class CatalogAuthoringService {
       const itemFindings = customTextDefinitionFindings(item);
       findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
       if (itemFindings.length) continue;
+      if (item.groupDefinitionId) {
+        const group = groups.find((candidate) => candidate.id === item.groupDefinitionId);
+        if (!group) findings.push(`Custom element ${item.namespace}.${item.slug} references an unknown custom group`);
+        else if (group.namespace !== item.namespace || group.correlatesTo !== item.correlatesTo)
+          findings.push(`Custom element ${item.namespace}.${item.slug} must match its group's namespace and target`);
+      }
       if (item.correlatesTo) {
         const targets = await manager.query<Array<{ group_id: string }>>(`
           select group_id from catalog.group_definition
@@ -732,7 +782,7 @@ export class CatalogAuthoringService {
       if (!old && item.retired) findings.push(`Custom element ${key} must be published before retirement`);
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         prior?.datatype !== item.datatype || prior?.recurrence !== item.recurrence ||
-        prior?.correlatesTo !== item.correlatesTo ||
+        prior?.correlatesTo !== item.correlatesTo || prior?.groupDefinitionId !== item.groupDefinitionId ||
         prior?.usage !== item.usage || prior?.identifying !== item.identifying ||
         !compatibleCustomMeaning(prior, item) ||
         (prior?.retired === true && item.retired !== true)))

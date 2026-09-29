@@ -5,7 +5,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition, withoutLegacyFormWording } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
-import { catalogFieldsConfiguration, catalogGroupsConfiguration } from "../forms/clinical-form-configuration.js";
+import { catalogFieldsConfiguration, catalogGroupsConfiguration, customGroupsConfiguration } from "../forms/clinical-form-configuration.js";
 import { customCodedPolicies, materializeLegacyChoicePolicies, validateFieldChoicePolicies } from "../forms/field-choice-policy.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
@@ -191,7 +191,8 @@ export class FormAuthoringService {
       const pinned = row.custom_element_definition_id ? byId.get(row.custom_element_definition_id) : undefined;
       return { elementId: row.element_id, name: pinned?.title ?? row.name,
         description: pinned?.definition ?? row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
-        ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}) };
+        ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}),
+        ...(pinned?.groupDefinitionId ? { customGroupDefinitionId: pinned.groupDefinitionId } : {}) };
     }),
       nextOffset: null };
   }
@@ -567,6 +568,7 @@ export class FormAuthoringService {
       ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
       definition, catalogFields, customFields: Object.fromEntries(custom.map((item) => [item.id, snapshotById.get(item.id) ?? item.definition])),
+      customGroups: await customGroupsConfiguration(manager, row.catalog_release_id),
       catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [],
       ...(sourceCatalogReleaseId && sourceCatalogReleaseId !== row.catalog_release_id
         ? { adoption: { sourceCatalogReleaseId, newChoicesByField } } : {}),

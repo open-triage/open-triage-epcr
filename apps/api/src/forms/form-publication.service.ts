@@ -239,7 +239,13 @@ export class FormPublicationService {
     const nemsisById = new Map(nemsis.map((row) => [row.element_id, row]));
     const customById = new Map(custom.map((row) => [row.id, row]));
     const customSnapshot = customIds.length ? await releaseCustomDefinitions(manager, version.catalog_release_id) : null;
+    const pinnedCustomById = new Map((customSnapshot ?? []).map((item) => [item.id, item]));
     const retiredIds = new Set((customSnapshot ?? []).filter((item) => item.retired).map((item) => item.id));
+    const pinnedGroups = await manager.query<Array<{ id: string }>>(`
+      select item->>'id' as id from catalog.release cr,
+      jsonb_array_elements(coalesce(cr.provenance->'customGroupDefinitions','[]'::jsonb)) item
+      where cr.id=$1`, [version.catalog_release_id]);
+    const pinnedGroupIds = new Set(pinnedGroups.map((row) => row.id));
     const groupById = new Map(groups.map((row) => [row.id, row]));
     const findings: string[] = [];
     const result = new Map<string, {
@@ -276,6 +282,12 @@ export class FormPublicationService {
         }
         if (field.source.groupDefinitionId && (!group || group.organization_id !== version.organization_id)) {
           findings.push(`field ${field.key} references an unknown custom group`);
+          continue;
+        }
+        const pinnedElement = pinnedCustomById.get(element.id) ?? element.definition;
+        if ((pinnedElement?.groupDefinitionId ?? undefined) !== field.source.groupDefinitionId ||
+          field.source.groupDefinitionId && !pinnedGroupIds.has(field.source.groupDefinitionId)) {
+          findings.push(`field ${field.key} grouping does not match its pinned custom definition`);
           continue;
         }
         if (element.base_datatype === "coded") {
