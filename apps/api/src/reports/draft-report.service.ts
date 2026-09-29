@@ -1238,7 +1238,7 @@ export class DraftReportService {
       this.validateDatatype(value, metadata, occurrence.elementId);
       if (metadata.text_constraints && value.kind === "text") {
         const constraints = metadata.text_constraints;
-        if (constraints.minLength !== undefined && value.value.length < constraints.minLength ||
+        if (value.value.length > 100000 || constraints.minLength !== undefined && value.value.length < constraints.minLength ||
             constraints.maxLength !== undefined && value.value.length > constraints.maxLength ||
             constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value.value))
           throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published text constraints`);

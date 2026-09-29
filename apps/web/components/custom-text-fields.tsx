@@ -38,8 +38,8 @@ export function customTextFindings(definition: CatalogDraftCustomTextElement, va
   return [
     ...(constraints.minLength !== undefined && value.length < constraints.minLength ? [swedish
       ? `Ange minst ${constraints.minLength} tecken.` : `Enter at least ${constraints.minLength} characters.`] : []),
-    ...(constraints.maxLength !== undefined && value.length > constraints.maxLength ? [swedish
-      ? `Ange högst ${constraints.maxLength} tecken.` : `Enter at most ${constraints.maxLength} characters.`] : []),
+    ...(value.length > (constraints.maxLength ?? 100000) ? [swedish
+      ? `Ange högst ${constraints.maxLength ?? 100000} tecken.` : `Enter at most ${constraints.maxLength ?? 100000} characters.`] : []),
     ...(constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value) ? [swedish
       ? "Värdet matchar inte katalogens mönster." : "Value does not match the catalog pattern."] : []),
   ];
@@ -64,10 +64,10 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
     return <div className="stationary-field-shell" data-element-id={customTextIdentity(definition)} key={field.key}>
       <label htmlFor={id}>{label}</label>
       <p id={`${id}-help`}>{help}</p>
-      <input id={id} type="text" value={value} aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`}
+      <textarea id={id} rows={3} value={value} aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`}
         aria-invalid={Boolean(findings.length)} required={field.required || ["Mandatory", "Required"].includes(definition.usage)}
-        minLength={definition.constraints.minLength} maxLength={definition.constraints.maxLength}
-        pattern={definition.constraints.pattern} onChange={(event) => onDocumentChange(setCustomTextValue(document, definition, event.target.value))} />
+        minLength={definition.constraints.minLength} maxLength={definition.constraints.maxLength ?? 100000}
+        onChange={(event) => onDocumentChange(setCustomTextValue(document, definition, event.target.value))} />
       {findings.length > 0 && <ul id={`${id}-errors`}>{findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}
     </div>;
   })}</div>;

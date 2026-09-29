@@ -496,7 +496,7 @@ export class SignReportService {
       }
       if (occurrence.value_kind === "text" && occurrence.text_constraints && typeof occurrence.scalar_value === "string") {
         const limits = occurrence.text_constraints;
-        if (limits.minLength !== undefined && occurrence.scalar_value.length < limits.minLength ||
+        if (occurrence.scalar_value.length > 100000 || limits.minLength !== undefined && occurrence.scalar_value.length < limits.minLength ||
             limits.maxLength !== undefined && occurrence.scalar_value.length > limits.maxLength ||
             limits.pattern && !new RegExp(`^(?:${limits.pattern})$`).test(occurrence.scalar_value))
           findings.push(this.finding("catalog.text-constraint", `${path}.value`,
