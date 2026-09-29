@@ -76,12 +76,14 @@ test("custom coded publication validates pinned NEMSIS mappings and distinct cod
     datatype: "coded", recurrence: "single", usage: "Optional", identifying: false,
     codeSystem: "https://example.org/ems/finding", choices: [{ code: "A", label: "Alert", nemsisCode: "P1" }],
     nemsisElement: "ePatient.01", permittedNotValues: ["7701003"], permittedPertinentNegatives: ["8801019"] };
+  let inherited = [];
   const manager = { query: async (sql) => {
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
     if (sql.includes("select distinct code_system from catalog.element_option")) return [{ code_system: "https://standard.example/codes" }];
     if (sql.includes("select distinct code from catalog.element_option")) return [{ code: "P1" }];
-    if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return [];
+    if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
+    if (sql.includes("customElementDefinitions")) return [{ definitions: [custom] }];
     if (sql.includes("from catalog.element_identity")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
@@ -92,6 +94,13 @@ test("custom coded publication validates pinned NEMSIS mappings and distinct cod
     customElements: [{ ...custom, codeSystem: "https://standard.example/codes" }] })).findings.join(" "), /reserved by the pinned standard catalog/);
   assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
     customElements: [{ ...custom, choices: [{ code: "A", label: "Alert", nemsisCode: "missing" }] }] })).findings.join(" "), /not a pinned catalog code/);
+  inherited = [{ id: custom.id, namespace: custom.namespace, slug: custom.slug, definition: custom }];
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, title: "Updated finding", choices: [
+      { code: "A", label: "Alerted", nemsisCode: "P1" }, { code: "B", label: "Calm" }
+    ] }] })).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, choices: [{ code: "A", label: "Alert", nemsisCode: "P2" }] }] })).findings.join(" "), /cannot change its meaning/);
 });
 
 test("catalog version inspection only loads a version visible to the organization", async () => {
