@@ -292,7 +292,7 @@ export class CatalogAuthoringService {
           (id,organization_id,namespace,slug,title,base_datatype,identifying,definition)
           values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
           [element.id, session.organization.id, element.namespace, element.slug, element.title,
-            element.datatype === "number" ? "decimal" : element.datatype, element.identifying,
+            element.datatype === "number" ? "decimal" : element.datatype === "other" ? "string" : element.datatype, element.identifying,
             JSON.stringify({ ...element, catalogReleaseId: releaseId })]);
       }
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,

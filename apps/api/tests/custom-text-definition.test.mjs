@@ -24,3 +24,10 @@ test("number, date/time, and boolean definitions allow only meaningful constrain
   assert.match(customTextDefinitionFindings({ ...valid, datatype: "number", constraints: { minimum: 10, maximum: 2 } }).join(" "), /minimum must not exceed maximum/);
   assert.match(customTextDefinitionFindings({ ...valid, datatype: "number", constraints: { minimum: Number.NaN } }).join(" "), /finite number/);
 });
+
+test("Binary and Other definitions keep NEMSIS result semantics", () => {
+  assert.deepEqual(customTextDefinitionFindings({ ...valid, datatype: "binary", constraints: {} }), []);
+  assert.match(customTextDefinitionFindings({ ...valid, datatype: "binary" }).join(" "), /Unsupported binary constraint/);
+  assert.deepEqual(customTextDefinitionFindings({ ...valid, datatype: "other" }), []);
+  assert.ok(customTextDefinitionFindings({ ...valid, datatype: "other", constraints: { maxLength: 100001 } }).length);
+});

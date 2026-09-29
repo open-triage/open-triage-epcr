@@ -711,7 +711,7 @@ export interface CatalogDraftCustomTextElement {
   slug: string;
   title: string;
   definition: string;
-  datatype: "string" | "number" | "dateTime" | "boolean";
+  datatype: "string" | "number" | "dateTime" | "boolean" | "binary" | "other";
   recurrence: "single";
   usage: "Mandatory" | "Required" | "Recommended" | "Optional";
   constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number };

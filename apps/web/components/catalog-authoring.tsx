@@ -123,7 +123,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
     const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
       title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype, recurrence: "single",
       usage: customText.usage, identifying: customText.identifying === "yes",
-      constraints: customText.datatype === "string" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
+      constraints: customText.datatype === "string" || customText.datatype === "other" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
         ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
         ...(customText.pattern ? { pattern: customText.pattern } : {}) } : customText.datatype === "number"
         ? { ...(customText.minimum ? { minimum: Number(customText.minimum) } : {}),
@@ -180,6 +180,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           <option value="number">{language === "sv" ? "Tal" : "Number"}</option>
           <option value="dateTime">{language === "sv" ? "Datum och tid" : "Date and time"}</option>
           <option value="boolean">{language === "sv" ? "Ja eller nej" : "Yes or no"}</option>
+          <option value="binary">{language === "sv" ? "Binär (fil, högst 75 000 byte)" : "Binary (file, at most 75,000 bytes)"}</option>
+          <option value="other">{language === "sv" ? "Annat (text)" : "Other (text)"}</option>
         </select></label>
         <label>{t("admin.customNamespace")} <input required value={customText.namespace} placeholder="org.example.ems"
           onChange={(event) => setCustomText({ ...customText, namespace: event.target.value })} /></label>
@@ -201,7 +203,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
           <option value="">{t("admin.customChooseClassification")}</option><option value="yes">{t("admin.customYes")}</option><option value="no">{t("admin.customNo")}</option>
         </select></label>
-        {customText.datatype === "string" && <><label>{t("admin.customMinimumLength")} <input type="number" min="0" value={customText.minLength}
+        {(customText.datatype === "string" || customText.datatype === "other") && <><label>{t("admin.customMinimumLength")} <input type="number" min="0" max="100000" value={customText.minLength}
           onChange={(event) => setCustomText({ ...customText, minLength: event.target.value })} /></label>
         <label>{t("admin.customMaximumLength")} <input type="number" min="0" value={customText.maxLength}
           onChange={(event) => setCustomText({ ...customText, maxLength: event.target.value })} /></label>

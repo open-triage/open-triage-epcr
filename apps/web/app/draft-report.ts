@@ -152,7 +152,8 @@ function draftValue(elementId: string, value: EncounterValue, customFields?: Cli
     : { kind: "absent", ...metadata };
   if (value.kind === "absent") return { kind: "absent", ...metadata };
   const custom = Object.values(customFields ?? {}).find((item) => `${item.namespace}.${item.slug}` === elementId);
-  const base = getNemsisDataElement(elementId)?.datatype.base ?? (custom?.datatype === "number" ? "decimal" : custom?.datatype) ?? "string";
+  const base = getNemsisDataElement(elementId)?.datatype.base ??
+    (custom?.datatype === "number" ? "decimal" : custom?.datatype === "other" ? "string" : custom?.datatype) ?? "string";
   if (base === "integer") {
     const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
     const numeric = Number(scalar);
