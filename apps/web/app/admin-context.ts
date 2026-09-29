@@ -58,9 +58,9 @@ export const publishStationaryFormDraft = (csrfToken: string, draft: StationaryF
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision,
       definitionSha256: draft.definitionSha256, displayName, changeNote })
   });
-export const activateStationaryForm = (csrfToken: string, formVersionId: string, validationVersionId: string, changeNote: string) =>
+export const activateStationaryForm = (csrfToken: string, formVersionId: string, validationVersionId: string, changeNote: string, removeImpactedRuleIds?: readonly string[]) =>
   catalogRequest<StationaryFormActivation>(`form-versions/${formVersionId}/activate`, csrfToken, {
-    method: "POST", body: JSON.stringify({ validationVersionId, changeNote })
+    method: "POST", body: JSON.stringify({ validationVersionId, changeNote, ...(removeImpactedRuleIds ? { removeImpactedRuleIds } : {}) })
   });
 
 export const searchFormCatalog = (id: string, query: string) =>

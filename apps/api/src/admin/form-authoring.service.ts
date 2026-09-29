@@ -224,7 +224,9 @@ export class FormAuthoringService {
       if (!targets[0]) throw new NotFoundException(`Published form version ${id} was not found`);
       if (!this.validations) throw new UnprocessableEntityException("Complete configuration activation is unavailable");
       const activation = await this.validations.activate(token, validationVersionId, {
-        formVersionId: id, catalogReleaseId: targets[0].catalog_release_id, changeNote
+        formVersionId: id, catalogReleaseId: targets[0].catalog_release_id, changeNote,
+        ...((input as Record<string, unknown>).removeImpactedRuleIds !== undefined
+          ? { removeImpactedRuleIds: (input as Record<string, unknown>).removeImpactedRuleIds } : {})
       });
       return { organizationId: activation.organizationId, formVersionId: id, formId: targets[0].form_id,
         catalogReleaseId: activation.catalogReleaseId, activatedAt: activation.activatedAt,

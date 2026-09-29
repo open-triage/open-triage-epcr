@@ -1,9 +1,10 @@
 import { resolveMessage, type AgencyLanguage } from "./localization";
 
-type ErrorBody = { code?: unknown; params?: unknown; message?: unknown; findings?: unknown };
+type ErrorBody = { code?: unknown; params?: unknown; message?: unknown; findings?: unknown; impactedRules?: unknown };
 
 export class PlatformRequestError extends Error {
-  constructor(readonly code: string, readonly status: number, message: string) { super(message); this.name = "PlatformRequestError"; }
+  constructor(readonly code: string, readonly status: number, message: string,
+    readonly impactedRules?: ReadonlyArray<{ id: string; name: string }>) { super(message); this.name = "PlatformRequestError"; }
 }
 
 function currentLanguage(): AgencyLanguage {
@@ -37,5 +38,8 @@ export async function platformRequestError(response: Response, language?: Agency
   let body: ErrorBody = {};
   try { body = await response.clone().json() as ErrorBody; } catch { /* Legacy or non-JSON error. */ }
   const code = typeof body.code === "string" ? body.code : `legacy.http${response.status}`;
-  return new PlatformRequestError(code, response.status, platformErrorMessage(body, response.status, language));
+  const impactedRules = code === "admin.formValidationRemovalRequired" && Array.isArray(body.impactedRules)
+    && body.impactedRules.every((rule) => rule && typeof rule.id === "string" && typeof rule.name === "string")
+    ? body.impactedRules as Array<{ id: string; name: string }> : undefined;
+  return new PlatformRequestError(code, response.status, platformErrorMessage(body, response.status, language), impactedRules);
 }

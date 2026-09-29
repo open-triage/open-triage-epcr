@@ -1136,5 +1136,11 @@
   "mobile.timeline.eTimes.16": "Datum och tid då ambulansuppdraget avslutades",
   "mobile.timeline.eTimes.17": "Datum och tid då enheten anlände till uppställningsplatsen",
   "mobile.dialog.cancel": "Avbryt",
-  "mobile.dialog.remove": "Ta bort"
+  "mobile.dialog.remove": "Ta bort",
+  "admin.formValidationRemovalHeading": "Ta bort berörda valideringsregler?",
+  "admin.formValidationRemovalExplanation": "Formuläret innehåller inte längre fält som reglerna nedan kräver. Om du godkänner publiceras en ny valideringsversion utan dessa regler och aktiveras med formuläret. Befintliga journaler och publicerade versioner behåller sina ursprungliga regler.",
+  "admin.removeRulesAndActivate": "Godkänn, ta bort regler och aktivera",
+  "admin.cancelActivation": "Avbryt aktivering",
+  "platform.error.admin.formValidationRemovalRequired": "Granska de {count} valideringsregler som påverkas av formuläret före aktivering.",
+  "platform.error.admin.formValidationReviewChanged": "Valideringsvalet har ändrats. Granska aktiveringen igen."
 }

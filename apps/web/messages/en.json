@@ -1138,5 +1138,11 @@
   "mobile.timeline.eTimes.16": "EMS Call Completed",
   "mobile.timeline.eTimes.17": "Unit Arrived at Staging Area",
   "mobile.dialog.cancel": "Cancel",
-  "mobile.dialog.remove": "Remove"
+  "mobile.dialog.remove": "Remove",
+  "admin.formValidationRemovalHeading": "Remove impacted validation rules?",
+  "admin.formValidationRemovalExplanation": "This form no longer supplies fields required by the rules below. Agreeing publishes a new validation version without these rules and activates it with this form. Existing reports and published versions keep their original rules.",
+  "admin.removeRulesAndActivate": "Agree, remove rules and activate",
+  "admin.cancelActivation": "Cancel activation",
+  "platform.error.admin.formValidationRemovalRequired": "Review the {count} validation rules affected by this form before activating it.",
+  "platform.error.admin.formValidationReviewChanged": "The validation selection changed. Review activation again."
 }

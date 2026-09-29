@@ -549,6 +549,7 @@ export class ValidationAuthoringService {
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     }
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${session.organization.id}`]);
       const rows = await manager.query<VersionRow[]>(
         "select * from validation.version where id=$1 and organization_id=$2 for update", [id, session.organization.id]);
       const row = rows[0];
@@ -608,7 +609,7 @@ export class ValidationAuthoringService {
         where vv.id=$1 and vv.organization_id=$2 and vv.status='published'
           and vv.catalog_release_id=cr.id
       `, [id, session.organization.id, formVersionId, catalogReleaseId]);
-      const version = targets[0];
+      let version = targets[0];
       if (!version) {
         throw new UnprocessableEntityException("Form, Catalog, and Validation must be published and bound to the same Catalog");
       }
@@ -635,7 +636,55 @@ export class ValidationAuthoringService {
       [formVersionId, catalogReleaseId, ruleElements]);
       const exposedIds = new Set(exposed.map(({ element_id }) => element_id));
       const missing = ruleElements.filter((elementId) => !exposedIds.has(elementId));
-      if (missing.length) throw new UnprocessableEntityException(`Selected Form or platform cannot supply referenced element${missing.length === 1 ? "" : "s"} ${missing.join(", ")}`);
+      if (missing.length) {
+        const missingIds = new Set(missing);
+        const affectedCompiled = version.compiled_bundle.rules.filter((rule) => rule.enabled
+          && rule.executionTargets.some((target) => target === "live" || target === "sign")
+          && [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])].some((element) => missingIds.has(element)));
+        // Publication deduplicates equivalent rules. Include every matching source rule in consent.
+        const sources = this.rowRules(version);
+        const affectedKeys = new Set(sources.filter((rule) => affectedCompiled.some(({ ruleId }) => ruleId === rule.id)).map(canonicalRule));
+        const impactedRules = sources.filter((rule) => affectedKeys.has(canonicalRule(rule)))
+          .map((rule) => ({ id: rule.id, name: rule.name }));
+        const approved = body.removeImpactedRuleIds;
+        const expected = impactedRules.map(({ id }) => id).sort();
+        if (!Array.isArray(approved) || approved.length !== expected.length
+          || approved.some((value) => typeof value !== "string")
+          || [...approved].sort().some((value, index) => value !== expected[index])) {
+          throw new UnprocessableEntityException({ code: "admin.formValidationRemovalRequired",
+            impactedRules, params: { count: impactedRules.length },
+            message: "Confirm removal of validation rules that the selected form cannot supply" });
+        }
+        await this.sessions.requireCapability(token, "validation:write", manager);
+        const removed = new Set(expected);
+        const retainedSources = sources.filter((rule) => !removed.has(rule.id));
+        const nextId = randomUUID();
+        const bundle: CompiledValidationBundle = { ...version.compiled_bundle, validationVersionId: nextId,
+          rules: version.compiled_bundle.rules.filter((rule) => !removed.has(rule.ruleId))
+            .map((rule) => ({ ...rule, validationVersionId: nextId })) };
+        const sourceSha256 = createHash("sha256").update(JSON.stringify(retainedSources)).digest("hex");
+        const compiledSha256 = compiledValidationBundleSha256(bundle);
+        const displayName = `${version.display_name.slice(0, 99)} (form compatibility)`;
+        const inserted = mutationRows<VersionRow>(await manager.query(`insert into validation.version
+          (id,organization_id,catalog_release_id,rule_id,cloned_from_id,version,status,display_name,
+           source_rule,source_sha256,compiled_bundle,compiled_sha256,change_note,created_by,published_by,published_at)
+          select $1,$2,$3,$4,$5,coalesce(max(version),0)+1,'published',$6,$7::jsonb,$8,$9::jsonb,$10,$11,$12,$12,now()
+          from validation.version where organization_id=$2 returning *`,
+        [nextId, session.organization.id, catalogReleaseId, version.rule_id, id, displayName,
+          JSON.stringify(retainedSources), sourceSha256, JSON.stringify(bundle), compiledSha256, changeNote, session.user.id]));
+        await manager.query(`insert into validation.change_event
+          (organization_id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
+           change_note,rule_changes,source_sha256,compiled_sha256)
+          values ($1,$2,'validation.publish',$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+        [session.organization.id, session.user.id, id, nextId, catalogReleaseId, changeNote,
+          JSON.stringify(ruleChanges(sources, retainedSources)), sourceSha256, compiledSha256]);
+        version = { ...version, ...inserted[0]!, compiled_bundle: bundle, compiled_sha256: compiledSha256,
+          source_rule: retainedSources, source_sha256: sourceSha256 };
+        id = nextId;
+      } else if (Array.isArray(body.removeImpactedRuleIds) && body.removeImpactedRuleIds.length) {
+        throw new ConflictException({ code: "admin.formValidationReviewChanged",
+          message: "Validation compatibility changed; review activation again" });
+      }
       const previous = await manager.query<Array<{
         form_version_id: string; catalog_release_id: string; validation_version_id: string;
         source_rule: ValidationRuleSource | ValidationRuleSource[];

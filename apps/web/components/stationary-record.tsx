@@ -40,8 +40,7 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   const defaultSections = useMemo(() => configuredStationarySections(), []);
   const previewSections = useMemo(() => {
     if (!formDefinition) return undefined;
-    const configured = configuredStationaryPreviewSections(formDefinition, language);
-    return configured.some((section) => section.blocks.length > 0) ? configured : undefined;
+    return configuredStationaryPreviewSections(formDefinition, language);
   }, [formDefinition, language]);
   const sections = previewSections ?? defaultSections;
   const sectionLabel = (section: (typeof sections)[number]) => "blocks" in section
