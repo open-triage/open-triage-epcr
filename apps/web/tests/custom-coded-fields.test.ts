@@ -5,6 +5,9 @@ import { customCodedValue, setCustomCodedValue } from "../components/custom-code
 import { syntheticEncounter } from "../app/standard-encounter";
 import { loadEncounterDocument } from "../app/encounter-document";
 import { encounterDocumentToDraftMutations } from "../app/draft-report";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { CustomCodedFields } from "../components/custom-coded-fields";
 
 const definition: CatalogDraftCustomCodedElement = {
   id: "d474249a-f946-4b96-8280-637782b2ef13", namespace: "org.example.ems", slug: "LocalFinding",
@@ -33,4 +36,18 @@ test("custom codes and exceptional attributes survive document and draft round t
   }
   const negative = setCustomCodedValue(reopened, definition, { kind: "pertinent-negative", occurrenceId: "local-choice", code: "8801019" });
   assert.equal(customCodedValue(loadEncounterDocument(negative), definition)?.kind, "pertinent-negative");
+});
+
+test("clinical picker shows the form's ordered codes and enabled exceptional values", () => {
+  const markup = renderToStaticMarkup(createElement(CustomCodedFields, {
+    document: syntheticEncounter.document,
+    fields: [{ key: "finding", source: { kind: "custom", elementDefinitionId: definition.id },
+      choicePolicy: [{ kind: "not-value", code: "7701003" },
+        { kind: "code", code: "A", codeSystem: definition.codeSystem }],
+      allowedAbsenceStates: ["7701003", "8801019"] }],
+    definitions: { [definition.id]: definition }, onDocumentChange() {},
+  }));
+  assert.ok(markup.indexOf("NOT 7701003") < markup.indexOf("Alert"));
+  assert.match(markup, /PN 8801019/);
+  assert.match(markup, /org.example.ems.LocalFinding/);
 });

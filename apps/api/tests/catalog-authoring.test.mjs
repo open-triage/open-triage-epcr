@@ -58,6 +58,30 @@ test("custom text validation rejects duplicate identity and incompatible publish
     customElements: [{ ...custom, identifying: true }] })).findings.join(" "), /cannot change its meaning/);
 });
 
+test("custom coded publication validates pinned NEMSIS mappings and distinct code systems", async () => {
+  const custom = { id: "d474249a-f946-4b96-8280-637782b2ef13", namespace: "org.example.ems",
+    slug: "LocalFinding", title: "Local finding", definition: "Agency observation code.",
+    datatype: "coded", recurrence: "single", usage: "Optional", identifying: false,
+    codeSystem: "https://example.org/ems/finding", choices: [{ code: "A", label: "Alert", nemsisCode: "P1" }],
+    nemsisElement: "ePatient.01", permittedNotValues: ["7701003"], permittedPertinentNegatives: ["8801019"] };
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("select distinct code_system from catalog.element_option")) return [{ code_system: "https://standard.example/codes" }];
+    if (sql.includes("select distinct code from catalog.element_option")) return [{ code: "P1" }];
+    if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return [];
+    if (sql.includes("from catalog.element_identity")) return [];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const service = new CatalogAuthoringService({ manager }, { requireCapability: async () => session });
+  const candidate = { ...definition, customElements: [custom] };
+  assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, codeSystem: "https://standard.example/codes" }] })).findings.join(" "), /reserved by the pinned standard catalog/);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, choices: [{ code: "A", label: "Alert", nemsisCode: "missing" }] }] })).findings.join(" "), /not a pinned catalog code/);
+});
+
 test("catalog version inspection only loads a version visible to the organization", async () => {
   const service = serviceWith({ query: async () => [] });
   service.versions = async () => [{ id: "release-1", displayName: "Sweden catalog", version: "1.0", status: "published" }];

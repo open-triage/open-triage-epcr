@@ -657,10 +657,12 @@ export class CatalogAuthoringService {
     if (custom !== undefined && !Array.isArray(custom)) findings.push("customElements must be an array");
     const customIds = new Set<string>();
     const customKeys = new Set<string>();
-    const reservedSystems = new Set((await manager.query<Array<{ code_system: string }>>(`
+    const codedItems = Array.isArray(custom) ? custom.filter((item): item is import("@open-triage/contracts").CatalogDraftCustomCodedElement =>
+      isRecord(item) && item.datatype === "coded") : [];
+    const reservedSystems = new Set((codedItems.length ? await manager.query<Array<{ code_system: string }>>(`
       select distinct code_system from catalog.element_option where release_id=$1 and code_system <> ''
       union select distinct code_system from catalog.value_set_option where release_id=$1 and code_system <> ''
-    `, [sourceReleaseId])).map((row) => row.code_system));
+    `, [sourceReleaseId]) : []).map((row) => row.code_system));
     const inherited = await manager.query<Array<{ id: string; namespace: string; slug: string; definition: CatalogDraftCustomElement }>>(`
       select ced.id,ced.namespace,ced.slug,ced.definition from forms.custom_element_definition ced
       join catalog.release cr on cr.id=$1
