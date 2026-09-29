@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
 import type {
   CanonicalFormDefinition,
   CanonicalFormField,
@@ -230,6 +231,8 @@ export class FormPublicationService {
     `, [groupIds]) : [];
     const nemsisById = new Map(nemsis.map((row) => [row.element_id, row]));
     const customById = new Map(custom.map((row) => [row.id, row]));
+    const customSnapshot = customIds.length ? await releaseCustomDefinitions(manager, version.catalog_release_id) : null;
+    const retiredIds = new Set((customSnapshot ?? []).filter((item) => item.retired).map((item) => item.id));
     const groupById = new Map(groups.map((row) => [row.id, row]));
     const findings: string[] = [];
     const result = new Map<string, {
@@ -260,7 +263,7 @@ export class FormPublicationService {
       } else {
         const element = customById.get(field.source.elementDefinitionId);
         const group = field.source.groupDefinitionId ? groupById.get(field.source.groupDefinitionId) : undefined;
-        if (!element || element.organization_id !== version.organization_id || element.retired_at) {
+        if (!element || element.organization_id !== version.organization_id || element.retired_at || retiredIds.has(element.id)) {
           findings.push(`field ${field.key} references an unknown or unavailable custom element`);
           continue;
         }

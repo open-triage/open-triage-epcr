@@ -9,6 +9,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { customTextDefinitionFindings } from "./custom-text-definition.js";
+import { releaseCustomDefinitions } from "./custom-definition-version.js";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -43,6 +44,19 @@ function stable(value: unknown): unknown {
 
 export function catalogDefinitionSha256(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+}
+
+function compatibleCustomMeaning(previous: CatalogDraftCustomElement | undefined, next: CatalogDraftCustomElement): boolean {
+  if (!previous || previous.datatype !== next.datatype) return false;
+  if (previous.datatype === "coded" && next.datatype === "coded") {
+    if (previous.codeSystem !== next.codeSystem || previous.nemsisElement !== next.nemsisElement) return false;
+    const currentCodes = new Map(next.choices.map((choice) => [choice.code, choice]));
+    return previous.choices.every((choice) => currentCodes.get(choice.code)?.nemsisCode === choice.nemsisCode) &&
+      previous.permittedNotValues.every((code) => next.permittedNotValues.includes(code)) &&
+      previous.permittedPertinentNegatives.every((code) => next.permittedPertinentNegatives.includes(code));
+  }
+  if (previous.datatype === "coded" || next.datatype === "coded") return false;
+  return catalogDefinitionSha256(previous.constraints) === catalogDefinitionSha256(next.constraints);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -267,6 +281,7 @@ export class CatalogAuthoringService {
           organizationId: session.organization.id, changeNote: body.changeNote,
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
           customElementIds: (draft.canonical_definition.customElements ?? []).map((element) => element.id),
+          customElementDefinitions: draft.canonical_definition.customElements ?? [],
           specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
             .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
@@ -285,7 +300,12 @@ export class CatalogAuthoringService {
       await this.project(manager, draft, releaseId);
       for (const element of draft.canonical_definition.customElements ?? []) {
         const inherited = await manager.query<Array<{ id: string }>>(`select id from forms.custom_element_definition where id=$1`, [element.id]);
-        if (inherited[0]) continue;
+        if (inherited[0]) {
+          if (element.retired) await manager.query(`update forms.custom_element_definition
+            set retired_at=coalesce(retired_at,now()) where id=$1 and organization_id=$2`,
+          [element.id, session.organization.id]);
+          continue;
+        }
         await manager.query(`insert into catalog.element_identity (id,namespace,canonical_key) values ($1,$2,$3)`,
           [element.id, element.namespace, `${element.namespace}.${element.slug}`]);
         await manager.query(`insert into forms.custom_element_definition
@@ -442,11 +462,13 @@ export class CatalogAuthoringService {
   private async cloneDefinition(manager: EntityManager, sourceReleaseId: string): Promise<CatalogDraftDefinition> {
     const elements = await this.sourceElements(manager, sourceReleaseId);
     const codeLists = await this.sourceCodeLists(manager, sourceReleaseId);
-    const customElements = await manager.query<Array<{ definition: CatalogDraftCustomElement }>>(`
+    const legacyCustomElements = await manager.query<Array<{ definition: CatalogDraftCustomElement }>>(`
       select ced.definition from forms.custom_element_definition ced
       join catalog.release cr on cr.id=$1
       where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
       order by ced.namespace, ced.slug`, [sourceReleaseId]);
+    const snapshot = legacyCustomElements.length ? await releaseCustomDefinitions(manager, sourceReleaseId) : null;
+    const customElements = snapshot === null ? legacyCustomElements : snapshot.map((definition) => ({ definition }));
     return { schemaVersion: 1, sourceReleaseId,
       ...(customElements.length ? { customElements: customElements.map((row) => {
         const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomElement & { catalogReleaseId?: string };
@@ -667,6 +689,8 @@ export class CatalogAuthoringService {
       select ced.id,ced.namespace,ced.slug,ced.definition from forms.custom_element_definition ced
       join catalog.release cr on cr.id=$1
       where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))`, [sourceReleaseId]);
+    const inheritedSnapshot = inherited.length ? await releaseCustomDefinitions(manager, sourceReleaseId) : null;
+    const inheritedById = new Map((inheritedSnapshot ?? inherited.map((row) => row.definition)).map((item) => [item.id, item]));
     for (const [index, candidate] of (Array.isArray(custom) ? custom : []).entries()) {
       const item = candidate as CatalogDraftCustomElement;
       const itemFindings = customTextDefinitionFindings(item);
@@ -698,17 +722,13 @@ export class CatalogAuthoringService {
       if (customIds.has(item.id) || customKeys.has(key) || sourceById.has(key)) findings.push(`Duplicate custom identity ${key}`);
       customIds.add(item.id); customKeys.add(key);
       const old = inherited.find((row) => row.id === item.id);
-      const oldConstraints = old?.definition.datatype !== "coded" ? old?.definition.constraints : undefined;
-      const itemConstraints = item.datatype !== "coded" ? item.constraints : undefined;
+      const prior = inheritedById.get(item.id) ?? old?.definition;
+      if (!old && item.retired) findings.push(`Custom element ${key} must be published before retirement`);
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
-        old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
-        old.definition.usage !== item.usage || old.definition.identifying !== item.identifying ||
-        (item.datatype !== "coded" && old.definition.datatype !== "coded" &&
-          ["minLength", "maxLength", "pattern", "minimum", "maximum"].some((key) =>
-            oldConstraints?.[key as keyof NonNullable<typeof oldConstraints>] !==
-              itemConstraints?.[key as keyof NonNullable<typeof itemConstraints>])) ||
-        (item.datatype === "coded" && old.definition.datatype === "coded" &&
-          (old.definition.codeSystem !== item.codeSystem || catalogDefinitionSha256(old.definition.choices) !== catalogDefinitionSha256(item.choices)))))
+        prior?.datatype !== item.datatype || prior?.recurrence !== item.recurrence ||
+        prior?.usage !== item.usage || prior?.identifying !== item.identifying ||
+        !compatibleCustomMeaning(prior, item) ||
+        (prior?.retired === true && item.retired !== true)))
         findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
     }
     for (const old of inherited) if (!customIds.has(old.id)) findings.push(`Published custom identity ${old.namespace}.${old.slug} must be retained`);

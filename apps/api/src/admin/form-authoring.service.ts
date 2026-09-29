@@ -9,6 +9,7 @@ import { catalogFieldsConfiguration, catalogGroupsConfiguration } from "../forms
 import { customCodedPolicies, materializeLegacyChoicePolicies, validateFieldChoicePolicies } from "../forms/field-choice-policy.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
+import { releaseCustomDefinitions } from "./custom-definition-version.js";
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
@@ -138,12 +139,22 @@ export class FormAuthoringService {
       from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
       where ced.organization_id=$3 and ced.retired_at is null
         and ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
-        and ($2='' or position($2 in lower(ced.namespace || '.' || ced.slug || ' ' || ced.title || ' ' || coalesce(ced.definition->>'definition',''))) > 0)
       order by element_id
     `, [drafts[0].catalog_release_id, query, session.organization.id]);
-    return { items: rows.map((row) => ({ elementId: row.element_id, name: row.name,
-      description: row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
-      ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}) })),
+    const snapshot = rows.some((row) => row.custom_element_definition_id) ?
+      await releaseCustomDefinitions(this.dataSource.manager, drafts[0].catalog_release_id) : null;
+    const byId = new Map((snapshot ?? []).map((item) => [item.id, item]));
+    return { items: rows.filter((row) => {
+      if (!row.custom_element_definition_id) return true;
+      const pinned = byId.get(row.custom_element_definition_id);
+      return pinned?.retired !== true && (!query ||
+        `${row.element_id} ${pinned?.title ?? row.name} ${pinned?.definition ?? row.description}`.toLowerCase().includes(query));
+    }).map((row) => {
+      const pinned = row.custom_element_definition_id ? byId.get(row.custom_element_definition_id) : undefined;
+      return { elementId: row.element_id, name: pinned?.title ?? row.name,
+        description: pinned?.definition ?? row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
+        ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}) };
+    }),
       nextOffset: null };
   }
 
@@ -328,6 +339,8 @@ export class FormAuthoringService {
           ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb))))
     `, [targetReleaseId, customIds]) : [];
     const availableCustomIds = new Set(availableCustom.map(({ id }) => id));
+    const customSnapshot = customIds.length ? await releaseCustomDefinitions(manager, targetReleaseId) : null;
+    for (const item of customSnapshot ?? []) if (item.retired) availableCustomIds.delete(item.id);
     const sections = definition.sections.map((section, sectionIndex) => ({ ...section, fields: section.fields.filter((field, fieldIndex) => {
       if (field.source.kind === "custom") {
         if (availableCustomIds.has(field.source.elementDefinitionId)) return true;
@@ -452,10 +465,12 @@ export class FormAuthoringService {
       field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
     const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<StationaryFormDraft["customFields"]>[string] }>>(`
       select id,definition from forms.custom_element_definition where id=any($1::uuid[])`, [customIds]) : [];
+    const snapshot = customIds.length ? await releaseCustomDefinitions(manager, row.catalog_release_id) : null;
+    const snapshotById = new Map((snapshot ?? []).map((item) => [item.id, item]));
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
       ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
-      definition, catalogFields, customFields: Object.fromEntries(custom.map((item) => [item.id, item.definition])),
+      definition, catalogFields, customFields: Object.fromEntries(custom.map((item) => [item.id, snapshotById.get(item.id) ?? item.definition])),
       catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 

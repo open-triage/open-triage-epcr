@@ -20,6 +20,7 @@ export function customTextDefinitionFindings(value: unknown): string[] {
     findings.push("This catalog supports standalone single-value NEMSIS custom datatype definitions");
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");
+  if (item.retired !== undefined && typeof item.retired !== "boolean") findings.push("Custom retirement state must be a boolean");
   if (item.datatype === "coded") return [...findings, ...customCodedDefinitionFindings(item as CatalogDraftCustomCodedElement)];
   const constraints = "constraints" in item ? item.constraints : undefined;
   if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) findings.push("Custom constraints are required");

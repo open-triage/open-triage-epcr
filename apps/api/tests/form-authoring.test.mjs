@@ -201,6 +201,32 @@ test("catalog search returns the full searchable clinical catalog and excludes d
   assert.match(calls[1].sql, /element_id like 'e%\.%'/);
 });
 
+test("new form picker uses revised wording and omits retired custom definitions", async () => {
+  const activeId = "da77b0fc-a701-41b0-a387-18b07662ed71";
+  const retiredId = "da77b0fc-a701-41b0-a387-18b07662ed72";
+  const service = new FormAuthoringService({ manager: { query: async (sql) => {
+    if (sql.includes("customElementDefinitions")) return [{ definitions: [
+      { id: activeId, title: "Revised note", definition: "Revised wording", retired: false },
+      { id: retiredId, title: "Old note", definition: "Old wording", retired: true }
+    ] }];
+    throw new Error(`Unexpected manager SQL: ${sql}`);
+  } }, query: async (sql) => {
+    if (sql.includes("select fv.catalog_release_id")) return [{ catalog_release_id: catalogId }];
+    if (sql.includes("from catalog.element_definition")) return [
+      { element_id: "org.example.ems.Note", name: "Original note", description: "Original wording",
+        base_datatype: "string", group_path: [], custom_element_definition_id: activeId },
+      { element_id: "org.example.ems.Old", name: "Old note", description: "Old wording",
+        base_datatype: "string", group_path: [], custom_element_definition_id: retiredId }
+    ];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } }, { requireCapability: async () => session });
+  const page = await service.searchCatalog("owner-session", draftId, { query: "" });
+  assert.deepEqual(page.items.map((item) => item.name), ["Revised note"]);
+  assert.equal(page.items[0].description, "Revised wording");
+  const searched = await service.searchCatalog("owner-session", draftId, { query: "revised wording" });
+  assert.deepEqual(searched.items.map((item) => item.customElementDefinitionId), [activeId]);
+});
+
 test("duplicate element placement fails API validation before persistence", async () => {
   let queried = false;
   const duplicate = { schemaVersion: 1, sections: [
