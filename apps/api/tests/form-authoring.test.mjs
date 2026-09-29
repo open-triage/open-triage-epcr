@@ -223,6 +223,8 @@ test("new form picker uses revised wording and omits retired custom definitions"
   const page = await service.searchCatalog("owner-session", draftId, { query: "" });
   assert.deepEqual(page.items.map((item) => item.name), ["Revised note"]);
   assert.equal(page.items[0].description, "Revised wording");
+  const searched = await service.searchCatalog("owner-session", draftId, { query: "revised wording" });
+  assert.deepEqual(searched.items.map((item) => item.customElementDefinitionId), [activeId]);
 });
 
 test("duplicate element placement fails API validation before persistence", async () => {

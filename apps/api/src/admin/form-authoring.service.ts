@@ -139,14 +139,17 @@ export class FormAuthoringService {
       from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
       where ced.organization_id=$3 and ced.retired_at is null
         and ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
-        and ($2='' or position($2 in lower(ced.namespace || '.' || ced.slug || ' ' || ced.title || ' ' || coalesce(ced.definition->>'definition',''))) > 0)
       order by element_id
     `, [drafts[0].catalog_release_id, query, session.organization.id]);
     const snapshot = rows.some((row) => row.custom_element_definition_id) ?
       await releaseCustomDefinitions(this.dataSource.manager, drafts[0].catalog_release_id) : null;
     const byId = new Map((snapshot ?? []).map((item) => [item.id, item]));
-    return { items: rows.filter((row) => !row.custom_element_definition_id ||
-      byId.get(row.custom_element_definition_id)?.retired !== true).map((row) => {
+    return { items: rows.filter((row) => {
+      if (!row.custom_element_definition_id) return true;
+      const pinned = byId.get(row.custom_element_definition_id);
+      return pinned?.retired !== true && (!query ||
+        `${row.element_id} ${pinned?.title ?? row.name} ${pinned?.definition ?? row.description}`.toLowerCase().includes(query));
+    }).map((row) => {
       const pinned = row.custom_element_definition_id ? byId.get(row.custom_element_definition_id) : undefined;
       return { elementId: row.element_id, name: pinned?.title ?? row.name,
         description: pinned?.definition ?? row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
