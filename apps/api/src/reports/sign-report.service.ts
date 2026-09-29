@@ -90,7 +90,7 @@ type OccurrenceRow = {
   base_datatype: string | null;
   min_occurs: number | null;
   max_occurs: number | null;
-  text_constraints: { minLength?: number; maxLength?: number; pattern?: string } | null;
+  text_constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
 };
 
 type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
@@ -501,6 +501,14 @@ export class SignReportService {
             limits.pattern && !new RegExp(`^(?:${limits.pattern})$`).test(occurrence.scalar_value))
           findings.push(this.finding("catalog.text-constraint", `${path}.value`,
             `${occurrence.element_id} does not satisfy its published text constraints`));
+      }
+      if (occurrence.value_kind === "numeric" && occurrence.text_constraints) {
+        const bounds = occurrence.text_constraints;
+        const numeric = Number(occurrence.scalar_value);
+        if (!Number.isFinite(numeric) || bounds.minimum !== undefined && numeric < bounds.minimum ||
+            bounds.maximum !== undefined && numeric > bounds.maximum)
+          findings.push(this.finding("catalog.numeric-bounds", `${path}.value`,
+            `${occurrence.element_id} does not satisfy its published numeric bounds`));
       }
     }
     const codedOccurrences = occurrences.filter((occurrence) => occurrence.value_kind === "coded");

@@ -290,9 +290,10 @@ export class CatalogAuthoringService {
           [element.id, element.namespace, `${element.namespace}.${element.slug}`]);
         await manager.query(`insert into forms.custom_element_definition
           (id,organization_id,namespace,slug,title,base_datatype,identifying,definition)
-          values ($1,$2,$3,$4,$5,'string',$6,$7::jsonb)`,
+          values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
           [element.id, session.organization.id, element.namespace, element.slug, element.title,
-            element.identifying, JSON.stringify({ ...element, catalogReleaseId: releaseId })]);
+            element.datatype === "number" ? "decimal" : element.datatype, element.identifying,
+            JSON.stringify({ ...element, catalogReleaseId: releaseId })]);
       }
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -671,7 +672,9 @@ export class CatalogAuthoringService {
       const old = inherited.find((row) => row.id === item.id);
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
-        old.definition.usage !== item.usage || old.definition.identifying !== item.identifying))
+        old.definition.usage !== item.usage || old.definition.identifying !== item.identifying ||
+        ["minLength", "maxLength", "pattern", "minimum", "maximum"].some((key) =>
+          old.definition.constraints?.[key as keyof typeof item.constraints] !== item.constraints?.[key as keyof typeof item.constraints])))
         findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
     }
     for (const old of inherited) if (!customIds.has(old.id)) findings.push(`Published custom identity ${old.namespace}.${old.slug} must be retained`);

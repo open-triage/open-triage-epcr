@@ -704,17 +704,17 @@ export interface CatalogDraftDefinition {
   customElements?: CatalogDraftCustomTextElement[];
 }
 
-/** A standalone, single-value text extension owned by one organization. */
+/** A standalone, single-value scalar extension owned by one organization. */
 export interface CatalogDraftCustomTextElement {
   id: string;
   namespace: string;
   slug: string;
   title: string;
   definition: string;
-  datatype: "string";
+  datatype: "string" | "number" | "dateTime" | "boolean";
   recurrence: "single";
   usage: "Mandatory" | "Required" | "Recommended" | "Optional";
-  constraints: { minLength?: number; maxLength?: number; pattern?: string };
+  constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number };
   identifying: boolean | null;
   localization?: CatalogDraftElement["localization"];
 }

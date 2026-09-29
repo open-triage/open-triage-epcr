@@ -147,7 +147,7 @@ export function useReportWorkspace({
     recoverConflictingQueue.current = false;
     conflictRecoveryAttempts.current = 0;
     persistedDraft.current = report?.document
-      ? encounterDocumentToDraftMutations(report.id, report.document)
+      ? encounterDocumentToDraftMutations(report.id, report.document, undefined, report.clinicalForm?.customFields)
       : { groups: [], occurrences: [] };
     queueMicrotask(() => setMediaPolicy(report?.mediaPolicy));
     const result = loadShellStateResult(
@@ -279,7 +279,7 @@ export function useReportWorkspace({
 
   useEffect(() => {
     if (!restored || completed.current || !report) return;
-    const projected = shellStateToDraftMutations(report.id, shellRef.current, persistedDraft.current);
+    const projected = shellStateToDraftMutations(report.id, shellRef.current, persistedDraft.current, report.clinicalForm?.customFields);
     const pendingChanges = queuedDraftChanges(window.localStorage, report.id);
     const optimisticDraft = pendingChanges.reduce(
       (baseline, queued) => applyDraftMutationDelta(baseline, queued.command),
@@ -379,7 +379,7 @@ export function useReportWorkspace({
         const local = shellRef.current.encounter.document;
         const pending = queuedDraftChanges(window.localStorage, report.id);
         const queued = pending[0];
-        const localDraft = encounterDocumentToDraftMutations(report.id, local);
+        const localDraft = encounterDocumentToDraftMutations(report.id, local, undefined, report.clinicalForm?.customFields);
         const optimisticDraft = pending.reduce(
           (baseline, change) => applyDraftMutationDelta(baseline, change.command),
           persistedDraft.current,
@@ -398,11 +398,11 @@ export function useReportWorkspace({
           occurrenceIds: new Set([...(queuedTargets?.occurrenceIds ?? []), ...(localTargets?.occurrenceIds ?? [])]),
         } : undefined;
         const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
-        const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document);
+        const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document, undefined, report.clinicalForm?.customFields);
         revision.current = response.resource.reportRevision;
         if (queued) {
           if (recoverConflictingQueue.current) {
-            const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged);
+            const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged, undefined, report.clinicalForm?.customFields);
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
             recoverConflictingQueue.current = false;

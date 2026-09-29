@@ -76,7 +76,7 @@ type ElementMetadata = {
   supports_not_values: boolean;
   supports_pertinent_negatives: boolean;
   max_occurs: number | null;
-  text_constraints?: { minLength?: number; maxLength?: number; pattern?: string } | null;
+  text_constraints?: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
 };
 
 type SingletonTargetStateRow = DraftTargetStateRow & {
@@ -156,7 +156,7 @@ function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftV
     : { kind: "absent" };
   if (value.kind === "absent") return { kind: "absent", ...metadata };
   if (typeof value.value === "boolean") return { kind: "boolean", value: value.value };
-  if (typeof value.value === "number") return Number.isInteger(value.value)
+  if (typeof value.value === "number") return baseDatatype === "integer"
     ? { kind: "integer", value: value.value } : { kind: "numeric", value: value.value };
   const scalarKind: Record<string, DraftValue["kind"]> = {
     string: "text", anyURI: "uri", integer: "integer", decimal: "numeric", boolean: "boolean",
@@ -1243,6 +1243,13 @@ export class DraftReportService {
             constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value.value))
           throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published text constraints`);
       }
+      if (metadata.text_constraints && value.kind === "numeric") {
+        const bounds = metadata.text_constraints;
+        const numeric = Number(value.value);
+        if (!Number.isFinite(numeric) || bounds.minimum !== undefined && numeric < bounds.minimum ||
+            bounds.maximum !== undefined && numeric > bounds.maximum)
+          throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published numeric bounds`);
+      }
       const columns = this.valueColumns(value);
       return {
         id: occurrence.id,
@@ -1429,6 +1436,16 @@ export class DraftReportService {
     if (!["coded", "null", "pertinent-negative", "absent"].includes(value.kind) && expected[metadata.base_datatype] !== value.kind) {
       throw new UnprocessableEntityException(`${elementId} requires ${metadata.base_datatype}, not ${value.kind}`);
     }
+    if (metadata.base_datatype === "decimal" && value.kind === "numeric" &&
+        (typeof value.value !== "number" && typeof value.value !== "string" ||
+         String(value.value).trim() === "" || !Number.isFinite(Number(value.value))))
+      throw new UnprocessableEntityException(`${elementId} requires a finite number`);
+    if (metadata.base_datatype === "boolean" && value.kind === "boolean" && typeof value.value !== "boolean")
+      throw new UnprocessableEntityException(`${elementId} requires true or false`);
+    if (metadata.base_datatype === "dateTime" && value.kind === "datetime" &&
+        (typeof value.value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value.value) ||
+         !Number.isFinite(Date.parse(value.value))))
+      throw new UnprocessableEntityException(`${elementId} requires an ISO date and time with a timezone`);
     if (value.kind === "null" || value.kind === "pertinent-negative") {
       const prefix = value.kind === "null" ? "not-value:" : "pertinent-negative:";
       if (!metadata.allowed_absence_states.includes(`${prefix}${value.absenceCode}`) &&

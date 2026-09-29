@@ -140,7 +140,7 @@ function draftTargetId(reportId: string, targetKind: "group" | "occurrence", ide
   return persistedDraftIdPattern.test(identity) ? identity : stableDraftId(reportId, `${targetKind}:${identity}`);
 }
 
-function draftValue(elementId: string, value: EncounterValue): DraftValue {
+function draftValue(elementId: string, value: EncounterValue, customFields?: ClinicalFormConfiguration["customFields"]): DraftValue {
   const metadata: Pick<DraftValue, "notValue" | "pertinentNegative"> = {
     ...(value.notValue ? { notValue: value.notValue } : {}),
     ...(value.pertinentNegative ? { pertinentNegative: value.pertinentNegative } : {}),
@@ -151,7 +151,8 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
     ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}), ...metadata }
     : { kind: "absent", ...metadata };
   if (value.kind === "absent") return { kind: "absent", ...metadata };
-  const base = getNemsisDataElement(elementId)?.datatype.base ?? "string";
+  const custom = Object.values(customFields ?? {}).find((item) => `${item.namespace}.${item.slug}` === elementId);
+  const base = getNemsisDataElement(elementId)?.datatype.base ?? (custom?.datatype === "number" ? "decimal" : custom?.datatype) ?? "string";
   if (base === "integer") {
     const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
     const numeric = Number(scalar);
@@ -178,6 +179,7 @@ export function encounterDocumentToDraftMutations(
   reportId: string,
   document: EncounterDocument,
   persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  customFields?: ClinicalFormConfiguration["customFields"],
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
   const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [`${group.id}:${instance.instanceId}`, instance] as const)));
   const groupTargetIds = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [
@@ -203,7 +205,7 @@ export function encounterDocumentToDraftMutations(
           id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
           ...(hasDemoProvenance(value.attributes) ? { provenanceKind: "demo", provenanceDetail: { generator: DEMO_PROVENANCE_VALUE } } : {}),
-          value: draftValue(element.id, value),
+          value: draftValue(element.id, value, customFields),
         });
       }));
     });
@@ -230,8 +232,9 @@ export function shellStateToDraftMutations(
   reportId: string,
   shell: ShellState,
   persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  customFields?: ClinicalFormConfiguration["customFields"],
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted);
+  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted, customFields);
 }
 
 /** Reduces a canonical document projection to only targets changed from its last accepted projection. */

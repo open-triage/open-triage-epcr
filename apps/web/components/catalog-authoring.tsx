@@ -47,7 +47,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [dirty, setDirty] = useState(false);
   const [customText, setCustomText] = useState({ namespace: "", slug: "", title: "", definition: "",
     swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
-    identifying: "", minLength: "", maxLength: "", pattern: "" });
+    identifying: "", datatype: "string" as CatalogDraftCustomTextElement["datatype"],
+    minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
   const showError = useCallback((reason: unknown) => { setError(adminError(reason, "admin.catalogOperationFailed")); }, [adminError]);
   useEffect(() => {
@@ -120,11 +121,13 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       setError(t("admin.customDuplicateIdentity")); return;
     }
     const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
-      title: customText.title.trim(), definition: customText.definition.trim(), datatype: "string", recurrence: "single",
+      title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype, recurrence: "single",
       usage: customText.usage, identifying: customText.identifying === "yes",
-      constraints: { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
+      constraints: customText.datatype === "string" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
         ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
-        ...(customText.pattern ? { pattern: customText.pattern } : {}) },
+        ...(customText.pattern ? { pattern: customText.pattern } : {}) } : customText.datatype === "number"
+        ? { ...(customText.minimum ? { minimum: Number(customText.minimum) } : {}),
+          ...(customText.maximum ? { maximum: Number(customText.maximum) } : {}) } : {},
       ...(customText.swedishTitle.trim() ? { localization: { schemaVersion: 1, sv: {
         label: customText.swedishTitle.trim(), description: customText.swedishDefinition.trim(),
         reviewedSource: { label: customText.title.trim(), description: customText.definition.trim() } } } } : {}) };
@@ -132,7 +135,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       customElements: [...(draft.definition.customElements ?? []), element] } });
     setDirty(true); setError(""); setStatus(t("admin.customAdded", { identity: `${namespace}.${slug}` }));
     setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
-      usage: "Optional", identifying: "", minLength: "", maxLength: "", pattern: "" });
+      usage: "Optional", identifying: "", datatype: "string", minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
   }
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
@@ -171,6 +174,13 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       </li>)}</ul>
       {canEdit && <fieldset disabled={busy}>
         <legend>{t("admin.createStandaloneText")}</legend>
+        <label>{language === "sv" ? "Datatyp" : "Data type"} <select value={customText.datatype} onChange={(event) => setCustomText({ ...customText,
+          datatype: event.target.value as CatalogDraftCustomTextElement["datatype"] })}>
+          <option value="string">{language === "sv" ? "Text" : "Text"}</option>
+          <option value="number">{language === "sv" ? "Tal" : "Number"}</option>
+          <option value="dateTime">{language === "sv" ? "Datum och tid" : "Date and time"}</option>
+          <option value="boolean">{language === "sv" ? "Ja eller nej" : "Yes or no"}</option>
+        </select></label>
         <label>{t("admin.customNamespace")} <input required value={customText.namespace} placeholder="org.example.ems"
           onChange={(event) => setCustomText({ ...customText, namespace: event.target.value })} /></label>
         <label>{t("admin.customIdentifier")} <input required value={customText.slug} placeholder="LocalNote"
@@ -191,12 +201,16 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
           <option value="">{t("admin.customChooseClassification")}</option><option value="yes">{t("admin.customYes")}</option><option value="no">{t("admin.customNo")}</option>
         </select></label>
-        <label>{t("admin.customMinimumLength")} <input type="number" min="0" value={customText.minLength}
+        {customText.datatype === "string" && <><label>{t("admin.customMinimumLength")} <input type="number" min="0" value={customText.minLength}
           onChange={(event) => setCustomText({ ...customText, minLength: event.target.value })} /></label>
         <label>{t("admin.customMaximumLength")} <input type="number" min="0" value={customText.maxLength}
           onChange={(event) => setCustomText({ ...customText, maxLength: event.target.value })} /></label>
         <label>{t("admin.customPattern")} <input value={customText.pattern}
-          onChange={(event) => setCustomText({ ...customText, pattern: event.target.value })} /></label>
+          onChange={(event) => setCustomText({ ...customText, pattern: event.target.value })} /></label></>}
+        {customText.datatype === "number" && <><label>{language === "sv" ? "Minsta värde" : "Minimum"} <input type="number" value={customText.minimum}
+          onChange={(event) => setCustomText({ ...customText, minimum: event.target.value })} /></label>
+          <label>{language === "sv" ? "Högsta värde" : "Maximum"} <input type="number" value={customText.maximum}
+          onChange={(event) => setCustomText({ ...customText, maximum: event.target.value })} /></label></>}
         <button type="button" onClick={addCustomText}>{t("admin.customAddText")}</button>
       </fieldset>}
     </section>
