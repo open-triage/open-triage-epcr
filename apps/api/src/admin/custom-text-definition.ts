@@ -15,13 +15,15 @@ export function customTextDefinitionFindings(value: unknown): string[] {
     findings.push("Custom identity exceeds the NEMSIS 255-character limit");
   if (typeof item.title !== "string" || item.title.trim().length < 2 || item.title.length > 100) findings.push("Custom title must contain 2–100 characters");
   if (typeof item.definition !== "string" || item.definition.trim().length < 2 || item.definition.length > 255) findings.push("Custom definition must contain 2–255 characters");
-  if (item.datatype !== "string" || item.recurrence !== "single") findings.push("This catalog supports standalone single-value text definitions");
+  if (!["string", "number", "dateTime", "boolean"].includes(String(item.datatype)) || item.recurrence !== "single") findings.push("This catalog supports standalone single-value text, number, date/time, and boolean definitions");
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");
   const constraints = item.constraints;
-  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) findings.push("Custom text constraints are required");
+  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) findings.push("Custom constraints are required");
   else {
-    if (Object.keys(constraints).some((key) => !["minLength", "maxLength", "pattern"].includes(key))) findings.push("Unsupported custom text constraint");
+    const allowed = item.datatype === "string" ? ["minLength", "maxLength", "pattern"]
+      : item.datatype === "number" ? ["minimum", "maximum"] : [];
+    if (Object.keys(constraints).some((key) => !allowed.includes(key))) findings.push(`Unsupported ${String(item.datatype)} constraint`);
     for (const key of ["minLength", "maxLength"] as const) if (constraints[key] !== undefined &&
       (!Number.isInteger(constraints[key]) || Number(constraints[key]) < 0)) findings.push(`${key} must be a non-negative integer`);
     if (constraints.minLength !== undefined && constraints.maxLength !== undefined && constraints.minLength > constraints.maxLength)
@@ -33,6 +35,10 @@ export function customTextDefinitionFindings(value: unknown): string[] {
       if (typeof constraints.pattern !== "string" || constraints.pattern.length > 255) findings.push("Pattern must be text of at most 255 characters");
       else try { new RegExp(constraints.pattern); } catch { findings.push("Pattern must be a valid regular expression"); }
     }
+    for (const key of ["minimum", "maximum"] as const) if (constraints[key] !== undefined &&
+      (typeof constraints[key] !== "number" || !Number.isFinite(constraints[key]))) findings.push(`${key} must be a finite number`);
+    if (constraints.minimum !== undefined && constraints.maximum !== undefined && constraints.minimum > constraints.maximum)
+      findings.push("minimum must not exceed maximum");
   }
   return findings;
 }
