@@ -383,8 +383,9 @@ export class SignReportService {
 
   private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
     const findings: SigningFinding[] = [];
-    const form = await manager.query<Array<{ status: string; catalog_release_id: string }>>(`
-      select status, catalog_release_id from forms.form_version where id = $1
+    const form = await manager.query<Array<{ status: string; catalog_release_id: string;
+      canonical_definition: import("@open-triage/contracts").FormDraftDefinition }>>(`
+      select status, catalog_release_id, canonical_definition from forms.form_version where id = $1
     `, [report.form_version_id]);
     if (!form[0] || form[0].status !== "published" || form[0].catalog_release_id !== report.catalog_release_id) {
       findings.push(this.finding("catalog.pinned-version", "$.formVersionId",
@@ -420,6 +421,24 @@ export class SignReportService {
       left join catalog.element_definition e on e.release_id = o.catalog_release_id and e.element_id = o.element_id
       left join forms.custom_element_definition ced on ced.id = o.element_identity_id
       where o.report_id = $1 and o.tombstoned_at is null order by o.element_id, o.ordinal, o.id`, [report.id]);
+
+    const choicePolicies = new Map(form[0].canonical_definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.source.kind === "nemsis" && field.choicePolicy !== undefined
+        ? [[field.source.elementId, field.choicePolicy] as const] : [])));
+    for (const occurrence of occurrences) {
+      const policy = choicePolicies.get(occurrence.element_id);
+      if (!policy) continue;
+      if (occurrence.value_kind === "coded" && !policy.some((choice) => choice.kind === "code" &&
+        choice.code === occurrence.code && choice.codeSystem === (occurrence.code_system ?? ""))) {
+        findings.push(this.finding("form.choice-disabled", `$.occurrences.${occurrence.id}.code`,
+          `Code ${occurrence.code} is not enabled for this form field`));
+      }
+      if (occurrence.value_kind === "null" && occurrence.absence_code &&
+        !policy.some((choice) => choice.kind === "not-value" && choice.code === occurrence.absence_code)) {
+        findings.push(this.finding("form.not-value-disabled", `$.occurrences.${occurrence.id}.absenceCode`,
+          `NOT value ${occurrence.absence_code} is not enabled for this form field`));
+      }
+    }
 
     const byField = new Map(fields.map((field) => [field.stable_key,
       occurrences.filter((item) => item.form_field_id === field.id ||
@@ -478,7 +497,7 @@ export class SignReportService {
       const codedValidation = await manager.query<CodedValidationRow[]>(`
         with incoming as (
           select * from jsonb_to_recordset($2::jsonb) as item(
-            id uuid, element_id text, code text, code_system text)
+            id uuid, element_id text, code text, code_system text, form_policy boolean)
         )
         select incoming.id,
           exists (
@@ -527,23 +546,24 @@ export class SignReportService {
                 where valid_element.release_id = vse.release_id
                   and valid_element.element_id = vse.element_id and option.code = incoming.code
                   and option.code_system = coalesce(incoming.code_system, '')
-                  and coalesce(configured.enabled, true)
+                  and (incoming.form_policy or coalesce(configured.enabled, true))
               )
           ) as exhaustive_value_set_ids
         from incoming
       `, [report.catalog_release_id, JSON.stringify(codedOccurrences.map((occurrence) => ({
         id: occurrence.id, element_id: occurrence.element_id,
         code: occurrence.code, code_system: occurrence.code_system,
+        form_policy: choicePolicies.has(occurrence.element_id),
       })))]);
       const validationById = new Map(codedValidation.map((row) => [row.id, row]));
       for (const occurrence of codedOccurrences) {
         const validation = validationById.get(occurrence.id);
         const path = `$.occurrences.${occurrence.id}.code`;
-        if (validation?.disabled_configured) {
+        if (validation?.disabled_configured && !choicePolicies.has(occurrence.element_id)) {
           findings.push(this.finding("catalog.value-set-disabled", path,
             `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
         }
-        if (validation?.disabled_inline) {
+        if (validation?.disabled_inline && !choicePolicies.has(occurrence.element_id)) {
           findings.push(this.finding("catalog.value-set-disabled", path,
             `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
         }

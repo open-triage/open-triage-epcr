@@ -116,7 +116,8 @@ test("signing does not require report occurrences for read-only configuration me
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from forms.form_version")) {
-      return [{ status: "published", catalog_release_id: "catalog-release" }];
+      return [{ status: "published", catalog_release_id: "catalog-release",
+        canonical_definition: { schemaVersion: 1, sections: [] } }];
     }
     if (normalized.includes("from forms.form_field")) {
       fieldQuery = normalized;
@@ -154,7 +155,8 @@ test("signing does not require report occurrences for read-only configuration me
 test("pinned Validation replaces legacy requiredness while Form visibility still protects hidden values", async () => {
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
-    if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release" }];
+    if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release",
+      canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (normalized.includes("from forms.form_field")) return [
       { id: "required-field", stable_key: "required", required: true, clinically_stored: true,
         catalog_element_identity_id: "required-identity", custom_element_definition_id: null,

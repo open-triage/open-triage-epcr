@@ -22,6 +22,26 @@ function fieldIdentity(field: FormDraftField): string {
   return field.source.kind === "nemsis" ? `nemsis:${field.source.elementId}` : `custom:${field.source.elementDefinitionId}`;
 }
 
+type Choice = NonNullable<FormDraftField["choicePolicy"]>[number];
+
+function availableChoices(field: FormDraftField, catalogFields?: ClinicalFormConfiguration["catalogFields"]): Choice[] {
+  const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
+  return [
+    ...(catalog?.codeChoices ?? []).map(({ code, codeSystem }) => ({ kind: "code" as const, code, codeSystem })),
+    ...(catalog?.exceptionalChoices ?? []).filter((choice) => choice.key.startsWith("not-value:"))
+      .map((choice) => ({ kind: "not-value" as const, code: choice.key.slice("not-value:".length) })),
+  ];
+}
+
+function choiceIdentity(choice: Choice): string {
+  return `${choice.kind}:${choice.kind === "code" ? choice.codeSystem : ""}:${choice.code}`;
+}
+
+export function updateFieldChoices(definition: FormDraftDefinition, fieldKey: string, choices: Choice[]): FormDraftDefinition {
+  return { ...definition, sections: definition.sections.map((section) => ({ ...section,
+    fields: section.fields.map((field) => field.key === fieldKey ? { ...field, choicePolicy: choices } : field) })) };
+}
+
 export function hasFormElement(definition: FormDraftDefinition, elementId: string): boolean {
   return definition.sections.some((section) => section.fields.some((field) =>
     field.source.kind === "nemsis" && field.source.elementId === elementId));
@@ -112,8 +132,9 @@ export function FormElementPicker({ definition, results, query, targetSection, c
   </fieldset>;
 }
 
-export function FormSectionElements({ definition, catalogGroups, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
+export function FormSectionElements({ definition, catalogFields, catalogGroups, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
   readonly definition: FormDraftDefinition;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"]; readonly language?: string;
   readonly busy?: boolean;
   readonly readOnly?: boolean;
@@ -166,9 +187,32 @@ export function FormSectionElements({ definition, catalogGroups, language = "en"
         {section.fields.map((field, index) => {
           const label = field.source.kind === "nemsis" ? field.source.elementId : field.key;
           const clinicalLabel = field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.name : t("admin.customElement");
+          const available = availableChoices(field, catalogFields);
+          const selected = field.choicePolicy ?? available;
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
             {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
+              {available.length > 0 && <details><summary>Enabled choices and order</summary>
+                <ol aria-label={`Choices for ${label}`}>{available.map((choice) => {
+                  const identity = choiceIdentity(choice);
+                  const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
+                  const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
+                  const choiceLabel = choice.kind === "code"
+                    ? catalog?.codeChoices?.find((candidate) => candidate.code === choice.code && candidate.codeSystem === choice.codeSystem)?.label
+                    : `NOT ${choice.code}`;
+                  return <li key={identity}><label><input type="checkbox" checked={position >= 0} disabled={busy}
+                    onChange={(event) => onChange(updateFieldChoices(definition, field.key,
+                      event.target.checked ? [...selected, choice] : selected.filter((candidate) => choiceIdentity(candidate) !== identity)),
+                    `Updated choices for ${label}.`)} />{choiceLabel ?? choice.code}</label>
+                    {position >= 0 && <><button type="button" disabled={busy || position === 0} aria-label={`Move ${choice.code} choice up`}
+                      onClick={() => { const next = [...selected]; [next[position - 1], next[position]] = [next[position]!, next[position - 1]!];
+                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choice.code} up.`); }}>↑</button>
+                    <button type="button" disabled={busy || position === selected.length - 1} aria-label={`Move ${choice.code} choice down`}
+                      onClick={() => { const next = [...selected]; [next[position], next[position + 1]] = [next[position + 1]!, next[position]!];
+                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choice.code} down.`); }}>↓</button></>}
+                  </li>;
+                })}</ol>
+              </details>}
               <label>{t("admin.moveToSection")}
                 <select aria-label={`${t("admin.moveToSection")} ${label}`} disabled={busy} value={section.key}
                   onChange={(event) => onChange(transferFormElement(definition, section.key, field.key, event.target.value), t("admin.fieldMoved"))}>

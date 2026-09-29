@@ -27,17 +27,28 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
   const [exceptionalOpen, setExceptionalOpen] = useState(false);
   const exceptionalKey = currentExceptionalKey(value);
   const exceptionalLabel = field.exceptionalChoices.find(({ key }) => key === exceptionalKey)?.label;
+  const ordered = field.choiceOrder?.flatMap((choice) => choice.kind === "code"
+    ? field.options.flatMap((option, index) => option.code === choice.code && (option.system ?? "") === choice.codeSystem
+      ? [{ key: `code:${index}`, label: option.label }] : [])
+    : exceptionalChoices.filter((option) => option.key === `not-value:${choice.code}`)
+      .map((option) => ({ key: option.key, label: option.label })))
+    ?? field.options.map((option, index) => ({ key: String(index), label: option.label }));
+  const currentKey = coded ? `${field.choiceOrder ? "code:" : ""}${field.options.findIndex((option) =>
+    option.code === coded.code && (option.system ?? "") === (coded.system ?? ""))}`
+    : field.choiceOrder && exceptionalKey.startsWith("not-value:") ? exceptionalKey : "";
 
   return <div className="stationary-coded-picker-row" data-occurrence-id={value?.occurrenceId}>
     <div className="stationary-coded-main-control">
-      <select aria-label={field.label} value={coded ? String(field.options.findIndex((option) =>
-        option.code === coded.code && (option.system ?? "") === (coded.system ?? ""))) : ""}
+      <select aria-label={field.label} value={currentKey}
         disabled={disabled} onChange={(event) => {
-        const option = field.options[Number(event.target.value)];
-        onChange(option ? codedSelectionFromOption(option) : undefined);
+        const selected = event.target.value;
+        const option = selected.startsWith("code:") ? field.options[Number(selected.slice(5))]
+          : /^\d+$/.test(selected) ? field.options[Number(selected)] : undefined;
+        onChange(option ? codedSelectionFromOption(option)
+          : selected.startsWith("not-value:") ? exceptionalSelection(field, selected) : undefined);
       }}>
         <option value="">{coded ? "Delete" : exceptionalLabel ?? "Choose a value"}</option>
-        {field.options.map((option, index) => <option key={`${option.system ?? ""}:${option.code}`} value={index}>{option.label}</option>)}
+        {ordered.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
       </select>
     </div>
     {field.exceptionalChoices.length > 0 && <div className="stationary-exceptional-picker">

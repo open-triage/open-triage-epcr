@@ -16,6 +16,7 @@ export interface CanonicalFormField {
     | { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
+  choicePolicy?: Array<{ kind: "code"; code: string; codeSystem: string } | { kind: "not-value"; code: string }>;
   rules?: CanonicalFormRule[];
 }
 

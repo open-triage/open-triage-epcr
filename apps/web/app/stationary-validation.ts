@@ -151,7 +151,9 @@ function scalarInput(value: Extract<EncounterValue, { kind: "scalar" }>): string
 function valueFindings(element: NemsisDataElement, groupInstanceId: string, value: EncounterValue,
   configured?: ClinicalFormConfiguration["catalogFields"][string]): StationaryValidationFinding[] {
   const target = { groupId: element.groupPath.at(-1)!, groupInstanceId, occurrenceId: value.occurrenceId, fieldId: element.id };
-  if (value.notValue && !element.permittedNotValues.some(({ code }) => code === value.notValue!.code)) {
+  if (value.notValue && (!element.permittedNotValues.some(({ code }) => code === value.notValue!.code) ||
+      (configured?.choiceOrder !== undefined && !configured.choiceOrder.some((choice) =>
+        choice.kind === "not-value" && choice.code === value.notValue!.code)))) {
     return [finding("value.nv", `${value.notValue.code} is not a permitted not-value for ${element.id}.`, target, element.name)];
   }
   if (value.pertinentNegative && !element.permittedPertinentNegatives.some(({ code }) => code === value.pertinentNegative!.code)) {
@@ -165,7 +167,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
     const resolved = resolveNemsisElementValues(element);
     if (resolved.kind === "scalar") return [finding("value.kind", `${element.id} requires a scalar value.`, target, element.name)];
     const configuredChoices = configured?.codeChoices;
-    if (resolved.exhaustive && configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
+    if ((resolved.exhaustive || configured?.choiceOrder !== undefined) && configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
       code === value.code && (!codeSystem || codeSystem === (value.system ?? "")))) {
       return [finding("value.code", `${value.code} is not permitted for ${element.id}.`, target, element.name)];
     }
@@ -180,7 +182,9 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
   }
   if (value.kind === "null") {
     if (!(configured?.nillable ?? element.nillable)) return [finding("value.null", `${element.id} does not permit a null value.`, target, element.name)];
-    return value.notValue && !element.permittedNotValues.some(({ code }) => code === value.notValue!.code)
+    return value.notValue && (!element.permittedNotValues.some(({ code }) => code === value.notValue!.code) ||
+      (configured?.choiceOrder !== undefined && !configured.choiceOrder.some((choice) =>
+        choice.kind === "not-value" && choice.code === value.notValue!.code)))
       ? [finding("value.nv", `${value.notValue.code} is not a permitted not-value for ${element.id}.`, target, element.name)] : [];
   }
   return (configured?.nillable ?? element.nillable) ? [] : [finding("value.absent", `${element.id} requires a value.`, target, element.name)];

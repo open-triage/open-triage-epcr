@@ -862,6 +862,8 @@ export interface FormDraftField {
     { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
+  /** Ordered choices enabled for this field. Omission preserves a legacy published form's catalog behavior. */
+  choicePolicy?: Array<{ kind: "code"; code: string; codeSystem: string } | { kind: "not-value"; code: string }>;
   rules?: FormDraftRule[];
 }
 
@@ -878,6 +880,8 @@ export interface ClinicalFormConfiguration {
   } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    /** Effective unified order for enabled codes and NOT values on a field. */
+    choiceOrder?: NonNullable<FormDraftField["choicePolicy"]>;
     name?: string;
     description?: string;
     localization?: CatalogDraftElement["localization"];

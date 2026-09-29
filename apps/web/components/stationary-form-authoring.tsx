@@ -275,7 +275,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       catalogGroups={draft.catalogGroups} language={language}
       onQueryChange={(value) => { setQuery(value); setResults([]); }}
       onSectionChange={setTargetSection} onAdd={add} /></fieldset>}
-    <FormSectionElements definition={draft.definition} catalogGroups={draft.catalogGroups} language={language}
+    <FormSectionElements definition={draft.definition} catalogFields={draft.catalogFields} catalogGroups={draft.catalogGroups} language={language}
       busy={busy} readOnly={!canWrite} onChange={change}
       {...(canWrite ? {
         onMoveSection: (from: number, to: number) => change(moveFormSection(draft.definition, from, to),
