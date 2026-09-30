@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type ClinicalSelectOption = { readonly key: string; readonly label: string; readonly disabled?: boolean };
 
 type Placement = { readonly left: number; readonly top: number; readonly width: number; readonly maxHeight: number };
 
-export function ClinicalSearchableSelect({ label, value, values, options, disabled = false, placeholder = "Choose a value", onChange }: {
+export function ClinicalSearchableSelect({ label, value, values, options, disabled = false, placeholder = "Choose a value", onChange, onOpenChange }: {
   readonly label: string;
   readonly value?: string;
   readonly values?: ReadonlyArray<string>;
@@ -15,6 +15,7 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
   readonly disabled?: boolean;
   readonly placeholder?: string;
   readonly onChange: (key: string) => void;
+  readonly onOpenChange?: (open: boolean) => void;
 }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -30,11 +31,12 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
   const selectedValues = values ? options.filter((option) => values.includes(option.key)) : [];
   const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
 
-  function close(restoreFocus = true) {
+  const close = useCallback((restoreFocus = true) => {
     setOpen(false);
+    onOpenChange?.(false);
     setQuery("");
     if (restoreFocus) trigger.current?.focus();
-  }
+  }, [onOpenChange]);
 
   function commit(key: string) {
     onChange(key);
@@ -84,7 +86,7 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
     }
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
-  }, [open, placement]);
+  }, [open, placement, close]);
 
   useEffect(() => {
     if (open && active >= 0) popup.current?.querySelector<HTMLElement>(`#${CSS.escape(`${id}-option-${active}`)}`)?.scrollIntoView({ block: "nearest" });
@@ -99,6 +101,7 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
         setActive(0);
         setQuery("");
         setOpen(true);
+        onOpenChange?.(true);
       }}>{values ? selectedValues.map((option) => option.label).join(", ") || placeholder : selected?.label ?? placeholder}</button>
     {open && placement && createPortal(<div ref={popup} className="clinical-searchable-popup" style={placement}
       onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); close(); } }}>

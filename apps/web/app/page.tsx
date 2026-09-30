@@ -122,6 +122,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
+  const [pinnedChecklistFinding, setPinnedChecklistFinding] = useState<StationaryValidationFinding | null>(null);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
@@ -223,6 +224,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       !("eventType" in finding) && finding.severity !== "information" &&
       Boolean(checklistFieldTarget(finding, encounter.document, report?.clinicalForm)))],
   [reviewFindings, configuredStationaryFindings, encounter.document, report?.clinicalForm]);
+  const displayMobileChecklistFindings = pinnedChecklistFinding && !mobileChecklistFindings.some(({ id }) => id === pinnedChecklistFinding.id)
+    ? [...mobileChecklistFindings, pinnedChecklistFinding] : mobileChecklistFindings;
+  const displayStationaryFindings = pinnedChecklistFinding && !configuredStationaryFindings.some(({ id }) => id === pinnedChecklistFinding.id)
+    ? [...configuredStationaryFindings, pinnedChecklistFinding] : configuredStationaryFindings;
   const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : mobileChecklistFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
@@ -556,6 +561,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       !checklistFieldTarget(finding, encounter.document, report.clinicalForm)) return null;
     return <ChecklistFieldEditor key={finding.id} finding={finding} document={encounter.document}
       form={report.clinicalForm} language={language} disabled={editingBlocked}
+      onMultiChoiceOpenChange={(open) => setPinnedChecklistFinding(open ? finding : null)}
       onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />;
   }
 
@@ -919,9 +925,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           </div>
           <p className="review-intro">{t("mobile.checksHelp")}</p>
           <NoteReadinessList language={language} blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
-          {!mobileChecklistFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.noFindings")}</p> : mobileChecklistFindings.length ? (
+          {!displayMobileChecklistFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.noFindings")}</p> : displayMobileChecklistFindings.length ? (
             <ul className="review-findings checklist-findings">
-              {mobileChecklistFindings.map((finding) => (
+              {displayMobileChecklistFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
                   <button type="button" onClick={(event) => editValidationFinding(finding, event.currentTarget)}>
                     <span className="finding-category">{finding.severity === "error" ? t("mobile.error") : t("mobile.warning")} · {finding.category}</span>
@@ -943,7 +949,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         <>
         <ReviewPanel
           language={language}
-          findings={configuredStationaryFindings}
+          findings={displayStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
           noteBlockers={noteBlockers}

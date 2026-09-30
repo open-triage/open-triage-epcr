@@ -87,11 +87,12 @@ export function StationaryCodedValueField({ field, value, disabled = false, onCh
 }
 
 /** One through-border picker that owns every occurrence of a repeatable coded element. */
-export function StationaryCodedOccurrencesField({ field, values, disabled = false, onChange }: {
+export function StationaryCodedOccurrencesField({ field, values, disabled = false, onChange, onOpenChange }: {
   readonly field: StationaryCodedField;
   readonly values: ReadonlyArray<EncounterValue>;
   readonly disabled?: boolean;
   readonly onChange: (value: EncounterValue | undefined, selection: StationaryCodedSelection | undefined) => void;
+  readonly onOpenChange?: (open: boolean) => void;
 }) {
   const id = useId();
   const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
@@ -110,7 +111,7 @@ export function StationaryCodedOccurrencesField({ field, values, disabled = fals
   const atLimit = field.maxOccurs !== null && values.length >= field.maxOccurs;
   return <fieldset className="stationary-field-control stationary-coded-field stationary-multiple-picker" aria-describedby={`${id}-help`} data-element-id={field.elementId}>
     <StationaryPickerLegend label={field.label} tooltipId={`${id}-help`} tooltip={<>{field.elementId}: {field.help}</>} />
-    <ClinicalSearchableSelect label={field.label} values={selectedKeys} disabled={disabled}
+    <ClinicalSearchableSelect label={field.label} values={selectedKeys} disabled={disabled} onOpenChange={onOpenChange}
       placeholder={swedish ? "Välj värden" : "Choose values"}
       options={ordered.map((option) => ({ ...option, disabled: !selectedKeys.includes(option.key) &&
         (atLimit || hasExceptional || (option.key.startsWith("not-value:") || option.key.startsWith("pertinent-negative:") || option.key === "null") && values.length > 0) }))}

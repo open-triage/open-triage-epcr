@@ -800,9 +800,14 @@ integrationTest("authorized Admin context resolves only the session organization
     title: "Local binary", datatype: "binary", constraints: {}, identifying: true };
   const otherElement = { ...customText, id: randomUUID(), slug: `Other${randomUUID().replaceAll("-", "")}`,
     title: "Other result", datatype: "other", constraints: { minLength: 2, maxLength: 100 } };
+  const customGroup = { id: randomUUID(), namespace: "org.integration.ems",
+    slug: `ResultGroup${randomUUID().replaceAll("-", "")}`, title: "Grouped result", recurrence: "multiple" };
+  const groupedText = { ...customText, id: randomUUID(), slug: `GroupedNote${randomUUID().replaceAll("-", "")}`,
+    title: "Grouped note", usage: "Optional", groupDefinitionId: customGroup.id };
   const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
     sourceLabel: "Locally managed choice", category: null, enabled: true };
-  const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText, binaryElement, otherElement], elements: draft.definition.elements.map((element) =>
+  const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText, binaryElement, otherElement, groupedText],
+    customGroups: [customGroup], elements: draft.definition.elements.map((element) =>
     element.elementId === changedElement.elementId ? { ...element, requirednessSeverity: "warning" } : element),
     codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
       values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
@@ -902,14 +907,16 @@ integrationTest("authorized Admin context resolves only the session organization
       { key: "private-note", source: { kind: "custom", elementDefinitionId: identifyingText.id } },
       { key: "local-binary", source: { kind: "custom", elementDefinitionId: binaryElement.id } },
       { key: "local-other", source: { kind: "custom", elementDefinitionId: otherElement.id } }] },
-    formDraft.definition.sections[0]] };
+    formDraft.definition.sections[0],
+    { key: "custom-results", name: "Custom results", fields: [{ key: "grouped-note",
+      source: { kind: "custom", elementDefinitionId: groupedText.id, groupDefinitionId: customGroup.id } }] }] };
   const formSaved = await forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: editedFormDefinition
   });
   assert.equal(formSaved.revision, formDraft.revision + 1);
-  assert.deepEqual(formSaved.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  assert.deepEqual(formSaved.definition.sections.map(({ key }) => key), ["situation", "dispatch", "custom-results"]);
   const persistedFormDraft = await forms.current(active.sessionToken);
-  assert.deepEqual(persistedFormDraft.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  assert.deepEqual(persistedFormDraft.definition.sections.map(({ key }) => key), ["situation", "dispatch", "custom-results"]);
   assert.equal(persistedFormDraft.definition.sections.some(({ key }) => key === "patient"), false);
   await assert.rejects(forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: formDraft.definition
@@ -928,6 +935,13 @@ integrationTest("authorized Admin context resolves only the session organization
   const projectedCustom = await client.query(`select custom_element_definition_id,analytical_repeatable
     from forms.form_field where form_version_id=$1 and stable_key='local-note'`, [customPublishedForm.id]);
   assert.deepEqual(projectedCustom.rows, [{ custom_element_definition_id: customText.id, analytical_repeatable: false }]);
+  const groupedField = (await client.query(`select id,custom_element_definition_id,custom_group_definition_id
+    from forms.form_field where form_version_id=$1 and stable_key='grouped-note'`, [customPublishedForm.id])).rows[0];
+  assert.deepEqual({ element: groupedField.custom_element_definition_id, group: groupedField.custom_group_definition_id },
+    { element: groupedText.id, group: customGroup.id });
+  assert.equal((await client.query(`select s.stable_key from forms.form_field f
+    join forms.form_section s on s.id=f.section_id
+    where f.form_version_id=$1 and f.stable_key='grouped-note'`, [customPublishedForm.id])).rows[0].stable_key, "custom-results");
   const reportId = randomUUID(); const incidentId = randomUUID(); const patientId = randomUUID();
   await client.query("insert into clinical.incident(id,organization_id) values ($1,$2)", [incidentId, organizationId]);
   await client.query(`insert into clinical.patient(id,organization_id,identity_state,pseudonymous_key)
@@ -943,6 +957,8 @@ integrationTest("authorized Admin context resolves only the session organization
   const clinician = new DraftReportService(transactionalDatabase, { requireCapability: async () =>
     ({ organization: { id: organizationId }, user: { id: owner.userId } }) });
   const groupId = randomUUID();
+  const customGroupInstanceId = randomUUID();
+  const groupedOccurrenceId = randomUUID();
   const fields = [customText, identifyingText, binaryElement, otherElement].map((item) => ({ id: randomUUID(),
     elementId: `${item.namespace}.${item.slug}`, groupInstanceId: groupId, ordinal: 0,
     value: item.datatype === "binary" ? { kind: "binary", value: "AAEC/w==" }
@@ -957,10 +973,37 @@ integrationTest("authorized Admin context resolves only the session organization
   }), /base64/);
   const documented = await clinician.save("session", reportId, {
     commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
-    groups: [{ id: groupId, groupId: "PatientCareReportGroup", ordinal: 0 }], occurrences: fields
+    groups: [{ id: groupId, groupId: "PatientCareReportGroup", ordinal: 0 },
+      { id: customGroupInstanceId, groupId: `${customGroup.namespace}.${customGroup.slug}`,
+        customGroupDefinitionId: customGroup.id, parentGroupInstanceId: groupId, ordinal: 0 }],
+    occurrences: [...fields, { id: groupedOccurrenceId, elementId: `${groupedText.namespace}.${groupedText.slug}`,
+      formFieldId: groupedField.id, groupInstanceId: customGroupInstanceId, ordinal: 0,
+      value: { kind: "text", value: "Pinned grouped response" } }]
   });
   assert.equal(documented.revision, 1);
+  const correctedGroupedValue = "Corrected grouped response";
+  const corrected = await clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: documented.revision, authorId: owner.userId,
+    occurrences: [{ id: groupedOccurrenceId, elementId: `${groupedText.namespace}.${groupedText.slug}`,
+      formFieldId: groupedField.id, groupInstanceId: customGroupInstanceId, ordinal: 0,
+      value: { kind: "text", value: correctedGroupedValue } }]
+  });
+  assert.equal(corrected.revision, 2);
   const reopened = await clinician.get("session", reportId);
+  assert.deepEqual(reopened.groups.filter(({ id }) => id === customGroupInstanceId)
+    .map(({ id, parentGroupInstanceId, groupId: key, customGroupDefinitionId, sourceKind }) =>
+      ({ id, parentGroupInstanceId, groupId: key, customGroupDefinitionId, sourceKind })), [{
+    id: customGroupInstanceId, parentGroupInstanceId: groupId,
+    groupId: `${customGroup.namespace}.${customGroup.slug}`, customGroupDefinitionId: customGroup.id,
+    sourceKind: "custom"
+  }]);
+  assert.deepEqual(reopened.occurrences.filter(({ id }) => id === groupedOccurrenceId)
+    .map(({ id, groupInstanceId, elementIdentityId, elementId, formFieldId, valueText }) =>
+      ({ id, groupInstanceId, elementIdentityId, elementId, formFieldId, valueText })), [{
+    id: groupedOccurrenceId, groupInstanceId: customGroupInstanceId, elementIdentityId: groupedText.id,
+    elementId: `${groupedText.namespace}.${groupedText.slug}`, formFieldId: groupedField.id,
+    valueText: correctedGroupedValue
+  }]);
   assert.ok(reopened.occurrences.some(({ elementId, valueBinary, identifying }) =>
     elementId === `${binaryElement.namespace}.${binaryElement.slug}` && valueBinary === "AAEC/w==" && identifying));
   assert.ok(reopened.occurrences.some(({ elementId, valueText }) =>
@@ -973,12 +1016,39 @@ integrationTest("authorized Admin context resolves only the session organization
       { elementId: `${customText.namespace}.${customText.slug}`, identifying: false, valueText: "Public response" }
     ]);
   const recoveredDocument = await encounterDocument(transactionalDatabase.manager, reportId);
+  assert.deepEqual(recoveredDocument.groups.find(({ id }) => id === `${customGroup.namespace}.${customGroup.slug}`)?.instances
+    .map(({ instanceId, parentInstanceId, elements }) => ({ instanceId, parentInstanceId,
+      elements: elements.map(({ id, values }) => ({ id, values: values.map(({ occurrenceId, kind, value }) =>
+        ({ occurrenceId, kind, value })) })) })), [{
+    instanceId: customGroupInstanceId, parentInstanceId: groupId,
+    elements: [{ id: `${groupedText.namespace}.${groupedText.slug}`,
+      values: [{ occurrenceId: groupedOccurrenceId, kind: "scalar", value: correctedGroupedValue }] }]
+  }]);
   assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
     .some(({ id, values }) => id === `${customText.namespace}.${customText.slug}` && values[0]?.kind === "scalar" && values[0].value === "Public response"));
   assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
     .some(({ id, values }) => id === `${binaryElement.namespace}.${binaryElement.slug}` && values[0]?.kind === "scalar" && values[0].value === "AAEC/w=="));
   assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
     .some(({ id, values }) => id === `${otherElement.namespace}.${otherElement.slug}` && values[0]?.kind === "scalar" && values[0].value === "Other response"));
+  const revisedFormDraft = await forms.clone(active.sessionToken, {
+    catalogReleaseId: published.id, sourceVersionId: customPublishedForm.id, displayName: "Form without grouped results"
+  });
+  const revisedForm = await forms.save(active.sessionToken, revisedFormDraft.id, {
+    expectedRevision: revisedFormDraft.revision,
+    definition: { ...revisedFormDraft.definition,
+      sections: revisedFormDraft.definition.sections.filter(({ key }) => key !== "custom-results") }
+  });
+  const publishedRevision = await forms.publish(active.sessionToken, revisedFormDraft.id, {
+    expectedRevision: revisedForm.revision, definitionSha256: revisedForm.definitionSha256,
+    displayName: "Form without grouped results", changeNote: "Historical report readability regression"
+  });
+  assert.notEqual(publishedRevision.id, customPublishedForm.id);
+  const historical = await clinician.get("session", reportId);
+  assert.equal(historical.formVersionId, customPublishedForm.id);
+  assert.equal(historical.occurrences.find(({ id }) => id === groupedOccurrenceId)?.valueText, correctedGroupedValue);
+  const historicalDocument = await encounterDocument(transactionalDatabase.manager, reportId);
+  assert.equal(historicalDocument.groups.find(({ id }) => id === `${customGroup.namespace}.${customGroup.slug}`)
+    ?.instances[0]?.elements[0]?.values[0]?.kind, "scalar");
   const analyticalColumns = await client.query(`select table_schema,column_name from information_schema.columns
     where table_name='epcr' and table_schema in ('analytics_private','analytics_pseudonymous')
       and column_name in ('additional_elements','additional_identifying_elements')`);
