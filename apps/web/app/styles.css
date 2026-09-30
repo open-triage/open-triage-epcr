@@ -711,6 +711,15 @@ input, select, textarea { touch-action: manipulation; }
 .stationary-icon-action.remove { border-color: #d5a09b; color: #b42318; font-size: var(--text-heading); font-weight: 800; line-height: 1; }
 .stationary-coded-picker-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .stationary-coded-main-control { min-width: 0; }
+.clinical-searchable-trigger { display: block; width: 100%; min-height: 48px; padding: 0 36px 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; text-align: left; cursor: pointer; }
+.clinical-searchable-trigger::after { content: "▾"; float: right; margin-right: -24px; }
+.clinical-searchable-popup { position: fixed; z-index: 100; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; border: 1px solid #87928a; border-radius: 6px; background: white; box-shadow: 0 8px 22px rgb(20 39 27 / 25%); }
+.clinical-searchable-popup input { box-sizing: border-box; flex: none; width: 100%; height: 48px; min-height: 48px; padding: 0 12px; border: 0; border-bottom: 1px solid #c8cec7; border-radius: 0; color: #1a1c1a; background: white; font: inherit; }
+.clinical-searchable-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.clinical-searchable-options [role="option"] { display: block; width: 100%; min-height: 48px; padding: 8px 12px; border: 0; border-radius: 0; color: #1a1c1a; background: white; font: inherit; text-align: left; cursor: pointer; }
+.clinical-searchable-options [role="option"].is-active, .clinical-searchable-options [role="option"]:hover { background: #edf6f0; }
+.clinical-searchable-options [role="option"]:focus-visible, .clinical-searchable-popup input:focus-visible { position: relative; outline: 3px solid #725f00; outline-offset: -3px; }
+.clinical-searchable-empty { padding: 12px; color: var(--muted); }
 .stationary-embedded-control { min-width: 0; }
 .stationary-multiple-picker { align-self: start; }
 .stationary-multiple-picker .stationary-occurrence-actions { align-self: start; }

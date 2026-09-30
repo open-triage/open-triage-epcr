@@ -10,6 +10,7 @@ import {
   type StationaryCodedSelection,
 } from "../app/stationary-coded-value";
 import { StationaryPickerLegend } from "./stationary-picker-label";
+import { ClinicalSearchableSelect } from "./clinical-searchable-select";
 
 function currentExceptionalKey(value: EncounterValue | undefined): string {
   if (value?.kind === "null") return value.notValue ? `not-value:${value.notValue.code}` : "null";
@@ -27,29 +28,30 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
   const [exceptionalOpen, setExceptionalOpen] = useState(false);
   const exceptionalKey = currentExceptionalKey(value);
   const exceptionalLabel = field.exceptionalChoices.find(({ key }) => key === exceptionalKey)?.label;
-  const ordered = field.choiceOrder?.flatMap((choice) => choice.kind === "code"
+  const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
+  const configured = field.choiceOrder?.flatMap((choice) => choice.kind === "code"
     ? field.options.flatMap((option, index) => option.code === choice.code && (option.system ?? "") === choice.codeSystem
       ? [{ key: `code:${index}`, label: option.label }] : [])
     : exceptionalChoices.filter((option) => option.key === `not-value:${choice.code}`)
       .map((option) => ({ key: option.key, label: option.label })))
     ?? field.options.map((option, index) => ({ key: String(index), label: option.label }));
+  const ordered = [...configured, ...exceptionalChoices.filter((choice) => !configured.some((item) => item.key === choice.key))];
   const currentKey = coded ? `${field.choiceOrder ? "code:" : ""}${field.options.findIndex((option) =>
     option.code === coded.code && (option.system ?? "") === (coded.system ?? ""))}`
-    : field.choiceOrder && exceptionalKey.startsWith("not-value:") ? exceptionalKey : "";
+    : exceptionalKey;
 
   return <div className="stationary-coded-picker-row" data-occurrence-id={value?.occurrenceId}>
     <div className="stationary-coded-main-control">
-      <select aria-label={field.label} value={currentKey}
-        disabled={disabled} onChange={(event) => {
-        const selected = event.target.value;
+      <ClinicalSearchableSelect label={field.label} value={currentKey} options={[
+        ...ordered,
+        ...(value ? [{ key: "", label: swedish ? "Ta bort" : "Delete" }] : []),
+      ]} placeholder={coded?.display ?? exceptionalLabel ?? (swedish ? "Välj ett värde" : "Choose a value")}
+        disabled={disabled} onChange={(selected) => {
         const option = selected.startsWith("code:") ? field.options[Number(selected.slice(5))]
           : /^\d+$/.test(selected) ? field.options[Number(selected)] : undefined;
         onChange(option ? codedSelectionFromOption(option)
-          : selected.startsWith("not-value:") ? exceptionalSelection(field, selected) : undefined);
-      }}>
-        <option value="">{coded ? "Delete" : exceptionalLabel ?? "Choose a value"}</option>
-        {ordered.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-      </select>
+          : selected.startsWith("not-value:") || selected.startsWith("pertinent-negative:") ? exceptionalSelection(field, selected) : undefined);
+      }} />
     </div>
     {field.exceptionalChoices.length > 0 && <div className="stationary-exceptional-picker">
       <button

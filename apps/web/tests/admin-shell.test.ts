@@ -523,7 +523,8 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.match(markup, /aria-label="Complete stationary NEMSIS record"/);
   assert.match(markup, /data-element-id="ePatient\.02"/);
   assert.match(markup, /Acute pain/);
-  assert.match(markup, /Agency custom choice/);
+  assert.match(markup, /clinical-searchable-trigger/);
+  assert.equal(draft.catalogFields["eSituation.11"].codeChoices[1]?.label, "Agency custom choice");
   assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
 });
 

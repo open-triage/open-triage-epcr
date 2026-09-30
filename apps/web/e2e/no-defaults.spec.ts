@@ -68,22 +68,80 @@ test("mobile procedure capture waits for deliberate selection and leaves attempt
   await expect(dialog.getByLabel("Attempts", { exact: true })).toHaveValue("");
   await dialog.getByLabel("Attempts", { exact: true }).fill("2");
   await expect(dialog.getByLabel("Attempts", { exact: true })).toHaveValue("2");
-  await expect(dialog.locator("select").first()).toHaveValue("");
+  await expect(dialog.getByRole("button", { name: "Success" })).toHaveText("Select…");
   await expect(dialog.getByRole("button", { name: /default/i })).toHaveCount(0);
 });
 
 test("stationary legacy default neither selects nor reorders choices and explicit answers survive view changes", async ({ page }) => {
   const presentation = page.getByRole("group", { name: "Documentation presentation" });
   await presentation.getByRole("button", { name: "Stationary", exact: true }).click();
-  const gender = page.locator('fieldset[data-element-id="ePatient.13"] select');
-  await expect(gender).toHaveValue("");
-  await expect(gender.locator("option")).toHaveText(["Choose a value", "Female", "Male"]);
+  const gender = page.locator('fieldset[data-element-id="ePatient.13"] .clinical-searchable-trigger');
+  await expect(gender).toHaveText("Choose a value");
   await gender.click();
+  await expect(page.locator(".clinical-searchable-popup [role='option']").first()).toHaveText("Female");
   await page.keyboard.press("Escape");
-  await expect(gender).toHaveValue("");
-  await gender.selectOption({ label: "Female" });
+  await expect(gender).toHaveText("Choose a value");
+  await gender.click();
+  await page.locator(".clinical-searchable-popup [role='option']").first().click();
   await presentation.getByRole("button", { name: "Mobile", exact: true }).click();
   await presentation.getByRole("button", { name: "Stationary", exact: true }).click();
-  await expect(gender).toHaveValue("0");
+  await expect(gender).toHaveText("Female");
   await expect(page.getByRole("button", { name: /apply.*default/i })).toHaveCount(0);
+});
+
+test("stationary searchable selector opens without writing and a second click at the same point selects the first configured value", async ({ page }) => {
+  await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
+  const gender = page.locator('fieldset[data-element-id="ePatient.13"] .clinical-searchable-trigger');
+  await gender.scrollIntoViewIfNeeded();
+  const rect = (await gender.boundingBox())!;
+  const x = rect.x + rect.width / 2;
+  const y = rect.y + rect.height / 2;
+  await page.mouse.click(x, y);
+  await expect(gender).toHaveText("Choose a value");
+  await expect(page.getByRole("combobox", { name: /Search Gender/ })).toBeFocused();
+  await page.mouse.click(x, y);
+  await expect(gender).toHaveText("Female");
+
+  await gender.click();
+  const search = page.getByRole("combobox", { name: /Search Gender/ });
+  await search.fill("Fem");
+  await expect(gender).toHaveText("Female");
+  await expect(page.locator(".clinical-searchable-popup [role='option']")).toHaveText(["Female"]);
+  await search.press("Escape");
+  await expect(gender).toHaveText("Female");
+  await expect(gender).toBeFocused();
+  await gender.click();
+  await page.getByRole("heading").first().click();
+  await expect(page.locator(".clinical-searchable-popup")).toHaveCount(0);
+  await expect(gender).toHaveText("Female");
+});
+
+test("mobile clinical selector uses the same opening position and keyboard interaction", async ({ page }) => {
+  await page.getByRole("button", { name: "Add procedure", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator('input[type="search"]').fill("ECG");
+  await dialog.locator(".catalog-results button").first().click();
+  const success = dialog.getByRole("button", { name: "Success" });
+  await success.scrollIntoViewIfNeeded();
+  const rect = (await success.boundingBox())!;
+  const x = rect.x + rect.width / 2;
+  const y = rect.y + rect.height / 2;
+  await page.mouse.click(x, y);
+  await expect(success).toHaveText("Select…");
+  await expect(page.getByRole("combobox", { name: /Search Success/ })).toBeFocused();
+  const first = await page.locator(".clinical-searchable-popup [role='option']").first().innerText();
+  await page.mouse.click(x, y);
+  await expect(success).toHaveText(first);
+
+  await success.click();
+  const search = page.getByRole("combobox", { name: /Search Success/ });
+  await search.fill("no matching clinical option");
+  await expect(page.locator(".clinical-searchable-empty")).toHaveText("No matching values");
+  await search.fill("");
+  await page.setViewportSize({ width: 360, height: 300 });
+  await expect(search).toBeInViewport();
+  await expect(page.locator(".clinical-searchable-popup [role='option']").first()).toBeInViewport();
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(success).not.toHaveText("Select…");
 });
