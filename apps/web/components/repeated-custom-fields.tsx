@@ -71,14 +71,16 @@ function codedChoice(definition: Extract<CatalogDraftCustomElement, { datatype: 
   return undefined;
 }
 
-export function RepeatedCustomFields({ document, fields, definitions = {}, language = "en", targetGroupId, targetInstanceId, onDocumentChange }: {
+export function RepeatedCustomFields({ document, fields, definitions = {}, language = "en", targetGroupId, targetInstanceId, onlyOccurrenceId, onDocumentChange, onMultiChoiceOpenChange }: {
   readonly document: EncounterDocument;
   readonly fields: ReadonlyArray<FormDraftField>;
   readonly definitions?: ClinicalFormConfiguration["customFields"];
   readonly language?: string;
   readonly targetGroupId?: string;
   readonly targetInstanceId?: string;
+  readonly onlyOccurrenceId?: string;
   readonly onDocumentChange: (document: EncounterDocument) => void;
+  readonly onMultiChoiceOpenChange?: (open: boolean) => void;
 }) {
   const [pending, setPending] = useState<Record<string, boolean>>({});
   return <div className="repeated-custom-fields">{fields.flatMap((field) => {
@@ -94,9 +96,9 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
       {customTargets(document, definition, targetGroupId).filter((instance) => !targetInstanceId || instance.instanceId === targetInstanceId).map((instance, targetIndex) => {
         const values = customValues(instance, definition);
         const pendingKey = `${field.key}:${instance.instanceId}`;
-        const displayed: ReadonlyArray<EncounterValue> = pending[pendingKey]
+        const displayed: ReadonlyArray<EncounterValue> = onlyOccurrenceId ? values.filter((value) => value.occurrenceId === onlyOccurrenceId) : pending[pendingKey]
           ? [...values, { kind: "absent", occurrenceId: `pending:${pendingKey}` }] : values;
-        if (definition.datatype === "coded" && definition.recurrence === "multiple") {
+        if (definition.datatype === "coded" && definition.recurrence === "multiple" && !onlyOccurrenceId) {
           const selected = values.map(codedKey);
           const exceptional = values.some((value) => value.kind !== "coded");
           const choices = [
@@ -109,7 +111,8 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
           ];
           return <div key={instance.instanceId} data-custom-target-id={instance.instanceId}>
             <h4>{targetLabel(instance, groupId, targetIndex, language)}</h4>
-            <ClinicalSearchableSelect label={label} values={selected} placeholder={language === "sv" ? "Välj värden" : "Choose values"}
+            <ClinicalSearchableSelect label={label} values={selected} onOpenChange={onMultiChoiceOpenChange}
+              placeholder={language === "sv" ? "Välj värden" : "Choose values"}
               options={choices.map((choice) => ({ ...choice, disabled: !selected.includes(choice.key) &&
                 (exceptional || values.length > 0 && !choice.key.startsWith("code:")) }))}
               onChange={(key) => {
@@ -171,7 +174,7 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
                 : language === "sv" ? "Ta bort värde" : "Remove value"}</button>
             </div>;
           })}
-          {!pending[pendingKey] && (definition.recurrence === "multiple" || values.length === 0) &&
+          {!onlyOccurrenceId && !pending[pendingKey] && (definition.recurrence === "multiple" || values.length === 0) &&
             <button type="button" onClick={() => setPending((current) => ({ ...current, [pendingKey]: true }))}>
               {language === "sv" ? "Lägg till värde" : "Add value"}</button>}
         </div>;

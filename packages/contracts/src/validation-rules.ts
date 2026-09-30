@@ -1078,7 +1078,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
         validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
         executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
           rule.references?.elementIds ?? []), primaryTarget: { elementId: match.element.id,
-          groupInstanceId: match.groupInstanceId, ...(match.element.values[0]?.occurrenceId ? { occurrenceId: match.element.values[0].occurrenceId } : {}) },
+          groupInstanceId: match.groupInstanceId, ...(match.element.values.length === 1 ? { occurrenceId: match.element.values[0]!.occurrenceId } : {}) },
         inputFingerprint: fingerprint(JSON.stringify([{ elementId: match.element.id, groupInstanceId: match.groupInstanceId,
           values: match.element.values }])) } satisfies ValidationFinding));
     }
@@ -1089,11 +1089,13 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     // Evaluation time is not a clinician-authored input. Including it here made
     // an acknowledged warning acquire a new identity on every refresh (and at
     // signing), even when the documented values had not changed.
+    const uniqueMatch = matches.length === 1 ? matches[0] : undefined;
+    const uniqueGroupInstanceId = uniqueMatch?.groupInstanceId ?? (matches.length === 0 ? scope.rootGroupInstanceId : undefined);
     return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
       executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
         rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
-        ...(matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId ? { groupInstanceId: matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId } : {}),
-        ...(matches[0]?.element.values[0]?.occurrenceId ? { occurrenceId: matches[0].element.values[0].occurrenceId } : {}) },
+        ...(uniqueGroupInstanceId ? { groupInstanceId: uniqueGroupInstanceId } : {}),
+        ...(uniqueMatch?.element.values.length === 1 ? { occurrenceId: uniqueMatch.element.values[0]!.occurrenceId } : {}) },
       inputFingerprint: fingerprint(JSON.stringify(relevantInputs)) } satisfies ValidationFinding];
     });
   });
