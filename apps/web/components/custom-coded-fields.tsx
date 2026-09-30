@@ -3,6 +3,7 @@
 import type { CatalogDraftCustomCodedElement, ClinicalFormConfiguration, EncounterDocument, EncounterValue, FormDraftField } from "@open-triage/contracts";
 import React from "react";
 import { customTextIdentity } from "./custom-text-fields";
+import { ClinicalSearchableSelect } from "./clinical-searchable-select";
 
 const GROUP_ID = "PatientCareReportGroup";
 
@@ -29,6 +30,22 @@ function selectedIdentity(value?: EncounterValue): string {
   return "";
 }
 
+export function customCodedChoices(field: FormDraftField, definition: CatalogDraftCustomCodedElement, language = "en") {
+  const choices = field.choicePolicy ? field.choicePolicy.flatMap((choice) => choice.kind === "code"
+    ? definition.choices.filter((candidate) => candidate.code === choice.code && choice.codeSystem === definition.codeSystem)
+      .map((candidate) => ({ key: `code:${definition.codeSystem}:${candidate.code}`, label: candidate.label, localization: candidate.localization }))
+    : definition.permittedNotValues.includes(choice.code) && field.allowedAbsenceStates?.includes(choice.code)
+      ? [{ key: `not-value:${choice.code}`, label: `NOT ${choice.code}`, localization: undefined }] : [])
+    : [...definition.choices.map((candidate) => ({ key: `code:${definition.codeSystem}:${candidate.code}`,
+      label: candidate.label, localization: candidate.localization })),
+      ...definition.permittedNotValues.filter((code) => field.allowedAbsenceStates?.includes(code))
+        .map((code) => ({ key: `not-value:${code}`, label: `NOT ${code}`, localization: undefined }))];
+  const negatives = definition.permittedPertinentNegatives.filter((code) => field.allowedAbsenceStates?.includes(code))
+    .map((code) => ({ key: `pertinent-negative:${code}`, label: `PN ${code}`, localization: undefined }));
+  return [...choices, ...negatives].map((choice) => ({ key: choice.key,
+    label: language === "sv" ? choice.localization?.sv?.label || choice.label : choice.label }));
+}
+
 export function CustomCodedFields({ document, fields, definitions = {}, language = "en", onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly fields: ReadonlyArray<FormDraftField>;
@@ -41,26 +58,17 @@ export function CustomCodedFields({ document, fields, definitions = {}, language
     const definition = definitions?.[field.source.elementDefinitionId];
     if (!definition || definition.datatype !== "coded" || definition.recurrence === "multiple" || definition.correlatesTo) return [];
     const value = customCodedValue(document, definition);
-    const choices = field.choicePolicy ? field.choicePolicy.flatMap((choice) => choice.kind === "code"
-      ? definition.choices.filter((candidate) => candidate.code === choice.code && choice.codeSystem === definition.codeSystem)
-        .map((candidate) => ({ key: `code:${definition.codeSystem}:${candidate.code}`, label: candidate.label, localization: candidate.localization }))
-      : definition.permittedNotValues.includes(choice.code) && field.allowedAbsenceStates?.includes(choice.code)
-        ? [{ key: `not-value:${choice.code}`, label: `NOT ${choice.code}`, localization: undefined }] : [])
-      : [...definition.choices.map((candidate) => ({ key: `code:${definition.codeSystem}:${candidate.code}`,
-        label: candidate.label, localization: candidate.localization })),
-        ...definition.permittedNotValues.filter((code) => field.allowedAbsenceStates?.includes(code))
-          .map((code) => ({ key: `not-value:${code}`, label: `NOT ${code}`, localization: undefined }))];
-    const negatives = definition.permittedPertinentNegatives.filter((code) => field.allowedAbsenceStates?.includes(code))
-      .map((code) => ({ key: `pertinent-negative:${code}`, label: `PN ${code}`, localization: undefined }));
     const label = language === "sv" ? definition.localization?.sv?.label || definition.title : definition.title;
     const help = language === "sv" ? definition.localization?.sv?.description || definition.definition : definition.definition;
     const id = `custom-coded-${field.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`;
     return <div className="stationary-field-shell" data-element-id={customTextIdentity(definition)} key={field.key}>
       <label htmlFor={id}>{label}</label><p id={`${id}-help`}>{help}</p>
-      <select id={id} value={selectedIdentity(value)} aria-describedby={`${id}-help`}
-        required={field.required || ["Mandatory", "Required"].includes(definition.usage)}
-        onChange={(event) => {
-          const key = event.target.value;
+      <div id={id} aria-describedby={`${id}-help`}>
+        <ClinicalSearchableSelect label={label} value={selectedIdentity(value)}
+          placeholder={language === "sv" ? "Välj ett värde" : "Choose a value"}
+          options={customCodedChoices(field, definition, language)
+            .concat(value ? [{ key: "", label: language === "sv" ? "Ta bort" : "Delete" }] : [])}
+          onChange={(key) => {
           const occurrenceId = value?.occurrenceId ?? crypto.randomUUID();
           const choice = definition.choices.find((candidate) => key === `code:${definition.codeSystem}:${candidate.code}`);
           const next: EncounterValue | undefined = choice ? { kind: "coded", occurrenceId, code: choice.code,
@@ -69,11 +77,8 @@ export function CustomCodedFields({ document, fields, definitions = {}, language
             : key.startsWith("pertinent-negative:")
               ? { kind: "pertinent-negative", occurrenceId, code: key.slice(19) } : undefined;
           onDocumentChange(setCustomCodedValue(document, definition, next));
-        }}>
-        <option value="">Choose a value</option>
-        {[...choices, ...negatives].map((choice) => <option key={choice.key} value={choice.key}>
-          {language === "sv" ? choice.localization?.sv?.label || choice.label : choice.label}</option>)}
-      </select>
+        }} />
+      </div>
     </div>;
   })}</div>;
 }

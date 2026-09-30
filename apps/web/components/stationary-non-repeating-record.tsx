@@ -10,7 +10,7 @@ import {
   type StationaryNonRepeatingField,
   type StationaryNonRepeatingGroup,
 } from "../app/stationary-non-repeating";
-import { scalarOccurrences, stationaryDateTimeDefault, type ScalarValidationFinding } from "../app/stationary-scalar";
+import { editScalarNotValue, scalarOccurrences, stationaryDateTimeDefault, type ScalarValidationFinding } from "../app/stationary-scalar";
 import { configuredStationaryCodedField } from "../app/stationary-coded-value";
 import { StationaryCodedOccurrencesField, StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryScalarControl } from "./stationary-scalar-control";
@@ -53,13 +53,14 @@ function ReadOnlyField({ field, instance, language }: { readonly field: Stationa
   );
 }
 
-function EditableScalarField({ document, group, field, instance, parentInstanceId, disabled, onDocumentChange }: {
+function EditableScalarField({ document, group, field, instance, parentInstanceId, disabled, catalogField, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly group: StationaryNonRepeatingGroup;
   readonly field: StationaryNonRepeatingField;
   readonly instance?: EncounterGroupInstance;
   readonly parentInstanceId?: string;
   readonly disabled: boolean;
+  readonly catalogField?: ClinicalFormConfiguration["catalogFields"][string];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
@@ -72,13 +73,17 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
     </div>;
   }
   const value = instance ? scalarOccurrences(document, group.id, instance.instanceId, field.id)[0] : undefined;
+  const current = instance?.elements.find(({ id }) => id === field.id)?.values[0];
+  const exceptionalChoices = field.catalog.permittedNotValues.filter(({ code }) =>
+    catalogField?.choiceOrder === undefined || catalogField.choiceOrder.some((choice) =>
+      choice.kind === "not-value" && choice.code === code));
   const commit = (input: string | boolean) => {
     if (disabled) return;
     const result = editNonRepeatingScalarValue(document, {
       groupId: group.id, elementId: field.id,
       ...(instance ? { groupInstanceId: instance.instanceId } : {}),
       ...(parentInstanceId ? { parentInstanceId } : {}),
-      ...(value ? { occurrenceId: value.occurrenceId } : {}),
+      ...(current ? { occurrenceId: current.occurrenceId } : {}),
     }, input);
     if (!result.ok) return setFindings(result.findings);
     setFindings([]);
@@ -86,7 +91,20 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
     onDocumentChange(result.document);
   };
   return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
-    <StationaryScalarControl presentation={field.scalar} value={value} inputValue={raw} findings={findings} disabled={disabled} onInput={(input) => {
+    <StationaryScalarControl presentation={field.scalar} value={value}
+      exceptionalValue={current?.kind === "null" ? current : undefined} exceptionalChoices={exceptionalChoices}
+      onExceptionalChange={(code) => {
+        if (disabled || !instance) return;
+        if (!code) {
+          const result = editNonRepeatingScalarValue(document, { groupId: group.id, elementId: field.id,
+            groupInstanceId: instance.instanceId, ...(current ? { occurrenceId: current.occurrenceId } : {}) }, "");
+          if (result.ok) onDocumentChange(result.document);
+          return;
+        }
+        onDocumentChange(editScalarNotValue(document, { groupId: group.id, groupInstanceId: instance.instanceId,
+          elementId: field.id, ...(current ? { occurrenceId: current.occurrenceId } : {}), code }));
+      }}
+      inputValue={raw} findings={findings} disabled={disabled} onInput={(input) => {
       setRaw(input);
       setFindings([]);
       if (field.scalar?.family === "datetime") commit(input);
@@ -207,7 +225,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
               {field.readOnly
                 ? <ReadOnlyField field={localizedField} instance={instance} language={language} />
                 : field.scalar
-                  ? <EditableScalarField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} onDocumentChange={onDocumentChange} />
+                  ? <EditableScalarField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />
                 : <EditableCodedField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />}
               <StationaryValidationMessages findings={fieldFindings} />
             </div>;

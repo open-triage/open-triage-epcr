@@ -1,6 +1,6 @@
 "use client";
 
-import type { ScalarEncounterValue } from "@open-triage/contracts";
+import type { EncounterValue, ScalarEncounterValue } from "@open-triage/contracts";
 import React, { useId, useSyncExternalStore } from "react";
 import type { ChangeEvent } from "react";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
@@ -20,9 +20,11 @@ const subscribeToClientClock = () => () => undefined;
 const clientClockReady = () => true;
 const serverClockReady = () => false;
 
-export function StationaryScalarControl({ presentation, value, inputValue, defaultDateTime, findings = [], disabled = false, initialFocus = false, embedded = false, onInput, onBlur }: {
+export function StationaryScalarControl({ presentation, value, exceptionalValue, exceptionalChoices = [], inputValue, defaultDateTime, findings = [], disabled = false, initialFocus = false, embedded = false, onInput, onBlur, onExceptionalChange }: {
   readonly presentation: ScalarControlPresentation;
   readonly value?: ScalarEncounterValue;
+  readonly exceptionalValue?: Extract<EncounterValue, { kind: "null" }>;
+  readonly exceptionalChoices?: ReadonlyArray<{ readonly code: string; readonly label: string }>;
   readonly inputValue?: string | boolean;
   readonly defaultDateTime?: string;
   readonly findings?: ReadonlyArray<ScalarValidationFinding>;
@@ -31,6 +33,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
   readonly embedded?: boolean;
   readonly onInput: (input: string | boolean) => void;
   readonly onBlur?: (input: string | boolean) => void;
+  readonly onExceptionalChange?: (code: string | undefined) => void;
 }) {
   const id = useId();
   const region = useRegionalFormat();
@@ -49,6 +52,13 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
     reader.addEventListener("load", () => onInput(String(reader.result).split(",", 2)[1] ?? ""));
     reader.readAsDataURL(file);
   };
+  const exceptionalControl = exceptionalChoices.length && onExceptionalChange ? <select
+    aria-label={`${presentation.label} unavailable value`} disabled={disabled}
+    value={exceptionalValue?.notValue?.code ?? ""}
+    onChange={(event) => onExceptionalChange(event.target.value || undefined)}>
+    <option value="">{typeof document !== "undefined" && document.documentElement.lang === "sv" ? "Inget NOT-värde" : "No NOT value"}</option>
+    {exceptionalChoices.map(({ code, label }) => <option value={code} key={code}>{label}</option>)}
+  </select> : exceptionalValue ? <output>{exceptionalValue.notValue?.display ?? exceptionalValue.notValue?.code}</output> : null;
   if (presentation.family === "datetime") {
     const candidate = inputValue ?? value?.value;
     // Server-render and first hydration use the source clock; after mount the
@@ -74,6 +84,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
           onInput(stationaryLocalDateTimeInput(date, time, zone, selectedInstant));
         }}
       />
+      {exceptionalControl}
       {findings.length > 0 && <small className="stationary-validation-message error" id={errorId} role="alert">{findings.map(({ message }) => message).join(" ")}</small>}
     </>;
     if (embedded) return <div className={`stationary-embedded-control stationary-datetime-control${findings.length ? " stationary-validation-state error" : ""}`} data-occurrence-id={value?.occurrenceId}>{control}</div>;
@@ -116,6 +127,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
           : onInput(presentation.family === "boolean" ? event.target.checked : event.target.value)}
         onBlur={(event) => commit(presentation.family === "boolean" ? event.target.checked : event.target.value)}
       />}
+      {exceptionalControl}
       {findings.length > 0 && <small className="stationary-validation-message error" id={errorId} role="alert">{findings.map(({ message }) => message).join(" ")}</small>}
     </>;
   if (embedded) return <div className={`stationary-embedded-control${findings.length ? " stationary-validation-state error" : ""}`} data-occurrence-id={value?.occurrenceId}>{control}</div>;
