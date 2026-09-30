@@ -19,7 +19,8 @@ test.beforeAll(async () => {
         groupDefinitionId:group.id,correlatesTo:group.correlatesTo,usage:'Optional',constraints:{maxLength:3},identifying:false};
       const grouped={key:'response',source:{kind:'custom',elementDefinitionId:field.id,groupDefinitionId:group.id}};
       const complication={key:'complication',source:{kind:'nemsis',elementId:'eMedications.08'}};
-      const form={definition:{schemaVersion:1,sections:[{key:'treatment',fields:[grouped,complication]}]},
+      const publishedForm={definition:{schemaVersion:1,sections:[{key:'treatment',fields:[complication]},
+        {key:'custom-results',name:'Custom results',fields:[grouped]}]},
         catalogFields:{},customFields:{[field.id]:field},customGroups:{[group.id]:group}};
       let base={...syntheticEncounter.document,groups:[...syntheticEncounter.document.groups.filter(g=>g.id!=='eMedications.MedicationGroup'),
         {id:'eMedications.MedicationGroup',instances:[{instanceId:'med-a',elements:[]},{instanceId:'med-b',elements:[]}]}]};
@@ -28,20 +29,23 @@ test.beforeAll(async () => {
       base=setCustomOccurrence(base,field,'group-a',{kind:'scalar',occurrenceId:'value-a',value:'LONG A'},undefined,'org.example.ems.MedicationResponse');
       base=setCustomOccurrence(base,field,'group-b',{kind:'scalar',occurrenceId:'value-b',value:'LONG B'},undefined,'org.example.ems.MedicationResponse');
       function Harness(){const [doc,setDoc]=useState(()=>JSON.parse(localStorage.getItem('checklist-document')||'null')||base);
-        const [view,setView]=useState('checklist'); const [section,setSection]=useState('treatment');
+        const [view,setView]=useState('checklist'); const [section,setSection]=useState('custom-results');
         const [pinned,setPinned]=useState(null);
         const update=next=>{setDoc(next);localStorage.setItem('checklist-document',JSON.stringify(next));};
+        const form={...publishedForm,definition:{...publishedForm.definition,sections:[publishedForm.definition.sections[0],
+          {...publishedForm.definition.sections[1],key:section}]}};
         const findings=validateStationaryRecord(doc,form,'2026-09-30T00:00:00Z').filter(f=>f.target.fieldId==='org.example.ems.ResponseNote'||f.target.fieldId==='eMedications.08');
         const shown=pinned&&!findings.some(f=>f.id===pinned.id)?[...findings,pinned]:findings;
         return <><button onClick={()=>setView(view==='checklist'?'stationary':'checklist')}>Switch view</button>
-          <button onClick={()=>setSection(section==='treatment'?'history':'treatment')}>Move section</button>
+          <button onClick={()=>setSection(section==='custom-results'?'history':'custom-results')}>Move section</button>
           <button onClick={()=>update(deserializeEncounterDocument(serializeEncounterDocument(doc)))}>Recover report</button>
           <section aria-label={view+' '+section}>{view==='stationary'?<CustomGroupFields document={doc} fields={[grouped]}
             definitions={{[field.id]:field}} groups={{[group.id]:group}} onDocumentChange={update}/>
             :shown.map(f=><article key={f.id} data-finding-id={f.id}><ChecklistFieldEditor finding={f} document={doc}
               form={form} language="en" disabled={false} onDocumentChange={update}
               onMultiChoiceOpenChange={open=>setPinned(open?f:null)}/></article>)}</section>
-          <output data-testid="document">{JSON.stringify(doc)}</output></>;}
+          <output data-testid="document">{JSON.stringify(doc)}</output>
+          <output data-testid="form-sections">{form.definition.sections.map(s=>s.key).join(',')}</output></>;}
       createRoot(document.getElementById('root')).render(<Harness/>);`
     } });
   script = result.outputFiles[0]!.text;
@@ -52,17 +56,36 @@ test("grouped occurrence correction keeps medication context and survives moveme
   await page.route("**/__checklist-repeat-harness", (route) => route.fulfill({ contentType: "text/html",
     body: '<html lang="en"><body><div id="root"></div><script src="/__checklist-repeat-script"></script></body></html>' }));
   await page.goto("/__checklist-repeat-harness");
+  await expect(page.getByTestId("form-sections")).toHaveText("treatment,custom-results");
+  const initialA = page.locator('article').filter({ has: page.locator('[data-custom-target-id="group-a"]') });
+  const initialB = page.locator('article').filter({ has: page.locator('[data-custom-target-id="group-b"]') });
+  const contextA = await initialA.locator(".checklist-target-context").textContent();
+  const contextB = await initialB.locator(".checklist-target-context").textContent();
+  expect(contextA).toContain("Medication");
+  expect(contextB).toContain("Medication");
+  expect(contextA).not.toBe(contextB);
+  await page.getByRole("button", { name: "Switch view" }).click();
+  const documentedA = page.locator('[data-custom-group-instance-id="group-a"] textarea');
+  const documentedB = page.locator('[data-custom-group-instance-id="group-b"] textarea');
+  await documentedA.fill("No");
+  await documentedB.fill("OK");
+  await documentedA.fill("LONG A");
+  await page.getByRole("button", { name: "Switch view" }).click();
   const a = page.locator('article').filter({ has: page.locator('[data-custom-target-id="group-a"]') });
   const b = page.locator('article').filter({ has: page.locator('[data-custom-target-id="group-b"]') });
   await expect(a.locator(".checklist-target-context")).toContainText("Medication");
-  await expect(b.locator(".checklist-target-context")).toContainText("Medication");
+  await expect(b).toHaveCount(0);
   await a.getByRole("textbox", { name: /Response note/ }).fill("Yes");
   await expect(a).toHaveCount(0);
-  await expect(b.getByRole("textbox", { name: /Response note/ })).toHaveValue("LONG B");
+  await expect(b).toHaveCount(0);
   const before = JSON.parse((await page.getByTestId("document").textContent())!);
+  const grouped = before.groups.find((entry: { id: string }) => entry.id === "org.example.ems.MedicationResponse");
+  expect(grouped.instances.map((entry: { parentInstanceId: string }) => entry.parentInstanceId)).toEqual(["med-a", "med-b"]);
   await page.getByRole("button", { name: "Move section" }).click();
+  await expect(page.getByTestId("form-sections")).toHaveText("treatment,history");
   await page.getByRole("button", { name: "Switch view" }).click();
   await expect(page.locator('[data-custom-group-instance-id="group-a"] textarea')).toHaveValue("Yes");
+  await expect(page.locator('[data-custom-group-instance-id="group-b"] textarea')).toHaveValue("OK");
   await page.getByRole("button", { name: "Recover report" }).click();
   await page.reload();
   expect(JSON.parse((await page.getByTestId("document").textContent())!)).toEqual(before);
