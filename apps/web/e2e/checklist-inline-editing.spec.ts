@@ -22,6 +22,24 @@ test("flagged scalar and choice fields edit in both checklists and persist in th
       codeChoices: [{ code: "9906001", codeSystem: "", label: "Female" },
         { code: "9906003", codeSystem: "", label: "Male" }] } },
   } });
+  let acceptedRevision = opened.report.revision;
+  const acceptedChanges: Array<{ occurrences?: Array<{ elementId: string; value?: { kind: string; value?: string; code?: string } }> }> = [];
+  await page.route(`**/api/reports/${reportId}/draft-changes`, (route) => {
+    acceptedChanges.push(route.request().postDataJSON());
+    acceptedRevision += 1;
+    return route.fulfill({ json: { id: reportId, status: "draft", revision: acceptedRevision } });
+  });
+  await page.route(`**/api/reports/${reportId}/active`, (route) => route.fulfill({ status: 304 }));
+  await page.route(`**/api/reports/${reportId}/protected-key-envelope`, (route) => route.fulfill({ status: 201, json: {
+    schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle,
+    recoveryDeadline: "2099-09-29T12:00:00Z", wrappingKeyVersion: 1,
+  } }));
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, (route) => route.fulfill({ json: {
+    schemaVersion: 1, recoveryDeadline: "2099-09-29T12:00:00Z",
+  } }));
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, (route) => route.fulfill({
+    json: route.request().postDataJSON(),
+  }));
   await page.route("**/demo-open-assignment.json", (route) => route.fulfill({ json: opened }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
@@ -64,4 +82,9 @@ test("flagged scalar and choice fields edit in both checklists and persist in th
   await expect(stationary.locator("li").filter({ hasText: "ePatient.13" })).toHaveCount(0);
   await page.getByRole("button", { name: "Return to record" }).click();
   await expect(page.locator('fieldset[data-element-id="ePatient.13"] .clinical-searchable-trigger').first()).toHaveText("Female");
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  expect(acceptedChanges.some((change) => change.occurrences?.some(({ elementId, value }) =>
+    elementId === "ePatient.02" && value?.kind === "text" && value.value === "Mira"))).toBe(true);
+  expect(acceptedChanges.some((change) => change.occurrences?.some(({ elementId, value }) =>
+    elementId === "ePatient.13" && value?.kind === "coded" && value.code === "9906001"))).toBe(true);
 });
