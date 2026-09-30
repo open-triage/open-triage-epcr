@@ -3,6 +3,7 @@
 import type { CatalogDraftCustomElement, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue, FormDraftField } from "@open-triage/contracts";
 import React, { useState } from "react";
 import { customTextFindings, customTextIdentity } from "./custom-text-fields";
+import { ClinicalSearchableSelect } from "./clinical-searchable-select";
 
 const ROOT = "PatientCareReportGroup";
 const targetNames: Record<string, { en: string; sv: string }> = {
@@ -33,6 +34,10 @@ export function setCustomOccurrence(document: EncounterDocument, definition: Cat
         if (value && !occurrenceId && definition.recurrence === "single" && previous.length) throw new Error("Custom field permits one value per target");
         const next = occurrenceId ? previous.flatMap((entry) => entry.occurrenceId === occurrenceId ? (value ? [value] : []) : [entry])
           : value ? [...previous, value] : previous;
+        if (definition.datatype === "coded" && next.length > 1 &&
+          (next.some((entry) => entry.kind !== "coded") || next.some((entry, index) => next.findIndex((other) =>
+            other.kind === "coded" && entry.kind === "coded" && other.code === entry.code && other.system === entry.system) !== index)))
+          throw new Error("Custom coded field cannot combine exceptional or duplicate choices");
         return [...instance.elements.filter((element) => element.id !== elementId), ...(next.length ? [{ id: elementId, values: next }] : [])];
       })(),
     }),
@@ -56,6 +61,14 @@ function codedKey(value: EncounterValue | undefined): string {
   if (value?.kind === "null" && value.notValue) return `not:${value.notValue.code}`;
   if (value?.kind === "pertinent-negative") return `pn:${value.code}`;
   return "";
+}
+
+function codedChoice(definition: Extract<CatalogDraftCustomElement, { datatype: "coded" }>, key: string, occurrenceId: string): EncounterValue | undefined {
+  const choice = definition.choices.find((candidate) => key === `code:${candidate.code}`);
+  if (choice) return { kind: "coded", occurrenceId, code: choice.code, system: definition.codeSystem, display: choice.label };
+  if (key.startsWith("not:")) return { kind: "null", occurrenceId, notValue: { code: key.slice(4) } };
+  if (key.startsWith("pn:")) return { kind: "pertinent-negative", occurrenceId, code: key.slice(3) };
+  return undefined;
 }
 
 export function RepeatedCustomFields({ document, fields, definitions = {}, language = "en", targetGroupId, targetInstanceId, onDocumentChange }: {
@@ -83,6 +96,32 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
         const pendingKey = `${field.key}:${instance.instanceId}`;
         const displayed: ReadonlyArray<EncounterValue> = pending[pendingKey]
           ? [...values, { kind: "absent", occurrenceId: `pending:${pendingKey}` }] : values;
+        if (definition.datatype === "coded" && definition.recurrence === "multiple") {
+          const selected = values.map(codedKey);
+          const exceptional = values.some((value) => value.kind !== "coded");
+          const choices = [
+            ...codedOptions(definition, field).map((choice) => ({ key: `code:${choice.code}`,
+              label: language === "sv" ? choice.localization?.sv?.label || choice.label : choice.label })),
+            ...definition.permittedNotValues.filter((code) => field.allowedAbsenceStates?.includes(code))
+              .map((code) => ({ key: `not:${code}`, label: `NOT ${code}` })),
+            ...definition.permittedPertinentNegatives.filter((code) => field.allowedAbsenceStates?.includes(code))
+              .map((code) => ({ key: `pn:${code}`, label: `PN ${code}` })),
+          ];
+          return <div key={instance.instanceId} data-custom-target-id={instance.instanceId}>
+            <h4>{targetLabel(instance, groupId, targetIndex, language)}</h4>
+            <ClinicalSearchableSelect label={label} values={selected} placeholder={language === "sv" ? "Välj värden" : "Choose values"}
+              options={choices.map((choice) => ({ ...choice, disabled: !selected.includes(choice.key) &&
+                (exceptional || values.length > 0 && !choice.key.startsWith("code:")) }))}
+              onChange={(key) => {
+                const existing = values.find((value) => codedKey(value) === key);
+                if (existing) { onDocumentChange(setCustomOccurrence(document, definition, instance.instanceId,
+                  undefined, existing.occurrenceId, targetGroupId)); return; }
+                if (exceptional || values.length > 0 && !key.startsWith("code:")) return;
+                const next = codedChoice(definition, key, crypto.randomUUID());
+                if (next) onDocumentChange(setCustomOccurrence(document, definition, instance.instanceId, next, undefined, targetGroupId));
+              }} />
+          </div>;
+        }
         return <div key={instance.instanceId} data-custom-target-id={instance.instanceId}>
           <h4>{targetLabel(instance, groupId, targetIndex, language)}</h4>
           {displayed.map((value, valueIndex) => {

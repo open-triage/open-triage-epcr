@@ -5,7 +5,6 @@ import type { EncounterValue } from "@open-triage/contracts";
 import {
   codedSelectionFromOption,
   exceptionalSelection,
-  repeatableExceptionalChoices,
   type StationaryCodedField,
   type StationaryCodedSelection,
 } from "../app/stationary-coded-value";
@@ -95,13 +94,33 @@ export function StationaryCodedOccurrencesField({ field, values, disabled = fals
   readonly onChange: (value: EncounterValue | undefined, selection: StationaryCodedSelection | undefined) => void;
 }) {
   const id = useId();
+  const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
+  const configured = field.choiceOrder?.flatMap((choice) => choice.kind === "code"
+    ? field.options.flatMap((option, index) => option.code === choice.code && (option.system ?? "") === choice.codeSystem
+      ? [{ key: `code:${index}`, label: option.label }] : [])
+    : field.exceptionalChoices.filter((option) => option.key === `not-value:${choice.code}`)
+      .map((option) => ({ key: option.key, label: option.label })))
+    ?? field.options.map((option, index) => ({ key: `code:${index}`, label: option.label }));
+  const ordered = [...configured, ...field.exceptionalChoices.filter((choice) => !configured.some((option) => option.key === choice.key))];
+  const keyFor = (value: EncounterValue): string => value.kind === "coded"
+    ? `code:${field.options.findIndex((option) => option.code === value.code && (option.system ?? "") === (value.system ?? ""))}`
+    : currentExceptionalKey(value);
+  const selectedKeys = values.map(keyFor);
+  const hasExceptional = values.some((value) => value.kind !== "coded");
+  const atLimit = field.maxOccurs !== null && values.length >= field.maxOccurs;
   return <fieldset className="stationary-field-control stationary-coded-field stationary-multiple-picker" aria-describedby={`${id}-help`} data-element-id={field.elementId}>
     <StationaryPickerLegend label={field.label} tooltipId={`${id}-help`} tooltip={<>{field.elementId}: {field.help}</>} />
-    {values.map((value) => <CodedPickerControl key={value.occurrenceId} field={field} value={value} disabled={disabled}
-      exceptionalChoices={repeatableExceptionalChoices(field, values, value)}
-      onChange={(selection) => onChange(value, selection)} />)}
-    <CodedPickerControl key={`new-${values.length}`} field={field} disabled={disabled} exceptionalChoices={repeatableExceptionalChoices(field, values)} onChange={(selection) => {
-      if (selection) onChange(undefined, selection);
-    }} />
+    <ClinicalSearchableSelect label={field.label} values={selectedKeys} disabled={disabled}
+      placeholder={swedish ? "Välj värden" : "Choose values"}
+      options={ordered.map((option) => ({ ...option, disabled: !selectedKeys.includes(option.key) &&
+        (atLimit || hasExceptional || (option.key.startsWith("not-value:") || option.key.startsWith("pertinent-negative:") || option.key === "null") && values.length > 0) }))}
+      onChange={(key) => {
+        const existing = values.find((value) => keyFor(value) === key);
+        if (existing) { onChange(existing, undefined); return; }
+        if (atLimit || hasExceptional || values.length > 0 && !key.startsWith("code:")) return;
+        const option = key.startsWith("code:") ? field.options[Number(key.slice(5))] : undefined;
+        const selection = option ? codedSelectionFromOption(option) : exceptionalSelection(field, key);
+        if (selection) onChange(undefined, selection);
+      }} />
   </fieldset>;
 }

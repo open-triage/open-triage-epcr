@@ -62,6 +62,21 @@ test("coded and exceptional values survive separate repeated targets", () => {
   assert.notEqual(choices[0]?.groupInstanceId, choices[1]?.groupInstanceId);
 });
 
+test("multiple custom coded choices persist but duplicate and exceptional combinations fail", () => {
+  const twoChoices = { ...coded, choices: [...coded.choices, { code: "B", label: "Unchanged" }] };
+  const first = setCustomOccurrence(document, twoChoices, firstId, { kind: "coded", occurrenceId: "one", code: "A", system: coded.codeSystem });
+  const second = setCustomOccurrence(first, twoChoices, firstId, { kind: "coded", occurrenceId: "two", code: "B", system: coded.codeSystem });
+  const values = customValues(target(second, firstId), twoChoices);
+  assert.deepEqual(values.map((value) => value.occurrenceId), ["one", "two"]);
+  const projected = encounterDocumentToDraftMutations(reportId, loadEncounterDocument(second), undefined, { [coded.id]: twoChoices });
+  assert.deepEqual(projected.occurrences.filter((item) => item.elementId === "org.example.ems.ResponseCode")
+    .map((item) => item.value?.kind), ["coded", "coded"]);
+  assert.throws(() => setCustomOccurrence(second, twoChoices, firstId,
+    { kind: "coded", occurrenceId: "duplicate", code: "A", system: coded.codeSystem }), /duplicate/);
+  assert.throws(() => setCustomOccurrence(second, twoChoices, firstId,
+    { kind: "null", occurrenceId: "not", notValue: { code: "7701003" } }), /exceptional/);
+});
+
 test("section placement does not change rendered target identities", () => {
   const withValue = setCustomOccurrence(document, text, secondId, { kind: "scalar", occurrenceId: "two", value: "Observed" });
   const field = { key: "response", source: { kind: "custom" as const, elementDefinitionId: text.id } };

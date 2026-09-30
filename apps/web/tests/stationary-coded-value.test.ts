@@ -185,6 +185,26 @@ test("adding repeatable coded values appends instead of replacing an existing oc
   assert.equal(after.at(-1)?.occurrenceId, "second-race");
 });
 
+test("repeatable coded choices persist separately and reject duplicate or exceptional combinations", () => {
+  const target = { groupId: "ePatientSection", instanceId: "synthetic-patient-1", elementId: "ePatient.14" } as const;
+  const field = stationaryCodedField(target.elementId);
+  const first = codedSelectionFromOption(field.options[0]!);
+  const second = codedSelectionFromOption(field.options[1]!);
+  const one = editStationaryCodedValue(structuredClone(synthetic) as EncounterDocument, target, first, () => "race-one");
+  const two = editStationaryCodedValue(one, target, second, () => "race-two");
+  const mutations = encounterDocumentToDraftMutations(reportId, two).occurrences.filter(({ elementId }) => elementId === target.elementId);
+  assert.deepEqual(two.groups.find(({ id }) => id === target.groupId)!.instances[0]!.elements
+    .find(({ id }) => id === target.elementId)!.values.map(({ occurrenceId }) => occurrenceId), ["race-one", "race-two"]);
+  assert.deepEqual(mutations.map(({ value }) => value?.kind), ["coded", "coded"]);
+  assert.throws(() => editStationaryCodedValue(two, target, first), /already has this choice/);
+  const exceptional = field.exceptionalChoices.find(({ key }) => key.startsWith("not-value:") || key.startsWith("pertinent-negative:"));
+  if (exceptional) assert.throws(() => editStationaryCodedValue(two, target, exceptionalSelection(field, exceptional.key)),
+    /cannot combine exceptional/);
+  const removed = editStationaryCodedValue(two, { ...target, occurrenceId: "race-one" }, undefined);
+  assert.deepEqual(removed.groups.find(({ id }) => id === target.groupId)!.instances[0]!.elements
+    .find(({ id }) => id === target.elementId)!.values.map(({ occurrenceId }) => occurrenceId), ["race-two"]);
+});
+
 test("coded metadata and exceptional variants survive the local-document and draft API representations", () => {
   const document = structuredClone(synthetic) as EncounterDocument;
   const external = stationaryCodedField(sceneTarget.elementId);
