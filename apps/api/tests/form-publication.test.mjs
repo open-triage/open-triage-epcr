@@ -7,6 +7,7 @@ import {
   validateCanonicalFormDefinition
 } from "../dist/forms/form-publication.validation.js";
 import { FormPublicationService } from "../dist/forms/form-publication.service.js";
+import { validateFieldCompletionRequirements } from "../dist/forms/field-choice-policy.js";
 
 const formVersionId = "42000000-0000-4000-8000-000000000001";
 const validPublishInput = {
@@ -19,6 +20,22 @@ test("canonical form hashes do not depend on object key order", () => {
   const left = { schemaVersion: 1, sections: [{ key: "one", fields: [] }] };
   const right = { sections: [{ fields: [], key: "one" }], schemaVersion: 1 };
   assert.equal(canonicalDefinitionSha256(left), canonicalDefinitionSha256(right));
+});
+
+test("completion requirements can strengthen one form without weakening catalog usage", () => {
+  const standard = { key: "standard", source: { kind: "nemsis", elementId: "ePatient.01" }, required: true };
+  const custom = { key: "custom", source: { kind: "custom", elementDefinitionId: "custom-id" }, required: true };
+  const definition = { schemaVersion: 1, sections: [{ key: "care", fields: [standard, custom] }] };
+  const catalog = { "ePatient.01": { agencyRequired: false, minOccurs: 0, codeChoices: [{ code: "A", codeSystem: "test" }] } };
+  const customFields = { "custom-id": { datatype: "coded", usage: "Optional", choices: [{ code: "B" }],
+    permittedNotValues: [], permittedPertinentNegatives: [] } };
+  assert.deepEqual(validateFieldCompletionRequirements(definition, catalog, customFields), []);
+  assert.deepEqual(validateFieldCompletionRequirements({ ...definition, sections: [{ key: "care", fields: [
+    { ...standard, required: false }, { ...custom, choicePolicy: [] }
+  ] }] }, { "ePatient.01": { ...catalog["ePatient.01"], minOccurs: 1 } }, customFields), [
+    "field standard cannot weaken the catalog completion requirement",
+    "field custom is required but has no enabled choices",
+  ]);
 });
 
 test("canonical form validation rejects malformed and dangling rules", () => {
@@ -65,7 +82,7 @@ test("a not-found error during publish keeps its original status instead of beco
 });
 
 test("publishing a complete Stationary form retains read-only NEMSIS metadata without analytics mappings", async () => {
-  const definition = { schemaVersion: 1, sections: [{ key: "DemographicGroup", fields: [{
+  const definition = { schemaVersion: 1, sections: [{ key: "DemographicGroup", name: "Agency details", fields: [{
     key: "dAgency.01", source: { kind: "nemsis", elementId: "dAgency.01" },
   }] }] };
   const digest = canonicalDefinitionSha256(definition);
@@ -78,6 +95,7 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
       organization_id: "32000000-0000-4000-8000-000000000001", catalog_release_id: "catalog-release",
     }];
     if (normalized.includes("from app_identity.app_user")) return [{ id: validPublishInput.publishedBy }];
+    if (normalized.includes("with wording as materialized")) return [];
     if (normalized.includes("from catalog.element_definition e")) {
       assert.match(normalized, /left join catalog\.analytics_element_mapping/);
       return [{ element_id: "dAgency.01", element_identity_id: "agency-identity",
@@ -92,6 +110,7 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
       return [{ sections: 1, fields: 1, rules: 0 }];
     }
     if (normalized.includes("select display_name from forms.form_version")) return [{ display_name: "Complete Stationary" }];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new FormPublicationService({ transaction: async (_isolation, work) => work(manager) });
@@ -101,6 +120,39 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
   });
 
   assert.equal(published.status, "published");
+  assert.equal(definition.sections[0].name, "Agency details");
+  assert.equal(canonicalDefinitionSha256(definition), digest);
   assert.equal(fieldWrites.length, 1);
   assert.equal(fieldWrites[0][10], false);
+});
+
+test("direct form publication rejects a custom field retired in its pinned catalog", async () => {
+  const id = "da77b0fc-a701-41b0-a387-18b07662ed71";
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition")) return [];
+    if (sql.includes("from forms.custom_element_definition")) return [{
+      id, organization_id: "org-1", base_datatype: "string", retired_at: null
+    }];
+    if (sql.includes("customElementDefinitions")) return [{ definitions: [{ id, retired: true }] }];
+    if (sql.includes("customGroupDefinitions")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormPublicationService({});
+  await assert.rejects(service.resolveMetadata(manager, {
+    organization_id: "org-1", catalog_release_id: "new-release"
+  }, { schemaVersion: 1, sections: [{ key: "notes", fields: [{ key: "note",
+    source: { kind: "custom", elementDefinitionId: id } }] }] }),
+  (error) => error.getStatus?.() === 422 &&
+    error.getResponse().findings.some((finding) => finding.includes("unavailable custom element")));
+});
+
+
+test("visual section names round-trip without changing field binding and reject invalid names", () => {
+  const definition = { schemaVersion: 1, sections: [{ key: "local-care", name: "Care given", fields: [
+    { key: "medication", source: { kind: "nemsis", elementId: "eMedications.03" } }
+  ] }, { key: "next", name: "Next steps", fields: [] }] };
+  assert.deepEqual(validateCanonicalFormDefinition(JSON.parse(JSON.stringify(definition))), definition);
+  for (const name of ["", "   ", "a".repeat(121), 42]) {
+    assert.throws(() => validateCanonicalFormDefinition({ ...definition, sections: [{ ...definition.sections[0], name }] }), /sections\[0\].name/);
+  }
 });

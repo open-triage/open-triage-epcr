@@ -3,6 +3,13 @@ import type { EncounterDefinition } from "./encounter-definition";
 import type { EncounterEvent } from "./standard-encounter";
 import { resolveMessage } from "./localization";
 
+export function enabledMobileOptions<T>(options: readonly T[], elementId: string,
+  codeOf: (option: T) => string, clinicalForm?: ClinicalFormConfiguration): T[] {
+  const configured = clinicalForm?.catalogFields[elementId]?.codeChoices;
+  if (!configured) return [...options];
+  return configured.flatMap((choice) => options.filter((option) => codeOf(option) === choice.code));
+}
+
 export function mobileDisplayDefinition(definition: EncounterDefinition, language: string,
   clinicalForm?: ClinicalFormConfiguration): EncounterDefinition {
   const text = (key: string, fallback: string) => {
@@ -20,12 +27,17 @@ export function mobileDisplayDefinition(definition: EncounterDefinition, languag
       fields: vitals.fields.map((field) => ({ ...field,
         label: text(`mobile.vital.field.${field.id}`, field.label),
         unit: text(`mobile.vital.unit.${field.id}`, field.unit),
-        absenceStates: field.absenceStates.map((state) => ({ ...state, label: language === "sv"
+        absenceStates: field.absenceStates.filter((state) => state.kind !== "NV" ||
+          !clinicalForm?.catalogFields[field.reference]?.choiceOrder ||
+          clinicalForm?.catalogFields[field.reference]?.choiceOrder?.some((choice) => choice.kind === "not-value" && choice.code === state.code))
+          .map((state) => ({ ...state, label: language === "sv"
           ? clinicalForm?.catalogFields[field.reference]?.exceptionalChoices?.find((item) => item.key === state.code || item.key === `${state.kind === "NV" ? "not-value" : "pertinent-negative"}:${state.code}`)?.localization?.sv?.label || state.label : state.label })) })),
       summary: vitals.summary.map((item) => ({ ...item, label: text(`mobile.vital.summary.${item.fields[0]}`, item.label) })) },
     procedure: { ...procedure, timeline: labels("mobile.procedure.timeline", procedure.timeline),
-      outcomeOptions: procedure.outcomeOptions.map((item) => ({ ...item, label: choice("eProcedures.08", item.code, item.label) })),
-      complicationOptions: procedure.complicationOptions.map((item) => ({ ...item, label: choice("eProcedures.07", item.code, item.label) })) },
+      outcomeOptions: enabledMobileOptions(procedure.outcomeOptions, "eProcedures.08", (item) => item.code, clinicalForm)
+        .map((item) => ({ ...item, label: choice("eProcedures.08", item.code, item.label) })),
+      complicationOptions: enabledMobileOptions(procedure.complicationOptions, "eProcedures.07", (item) => item.code, clinicalForm)
+        .map((item) => ({ ...item, label: choice("eProcedures.07", item.code, item.label) })) },
     medication: { ...medication, labels: labels("mobile.medication", medication.labels) },
     note: { ...note, labels: { ...note.labels, timelineTitle: text("mobile.textNote", note.labels.timelineTitle) } },
   } };

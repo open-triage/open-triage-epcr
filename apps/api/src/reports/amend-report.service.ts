@@ -11,6 +11,7 @@ import type { AmendReportCommand, AmendedReportResult, AmendmentChange } from ".
 import { AmendReportValidationError, validateAmendReportCommand } from "./amend-report.validation.js";
 import type { DraftOccurrenceMutation, DraftValue } from "./draft-report.types.js";
 import { commandSha256 } from "./draft-report.validation.js";
+import { customCodedValueFindings } from "./custom-coded-validation.js";
 
 type ReportRow = {
   id: string;
@@ -35,6 +36,8 @@ type ElementMetadata = {
   allowed_absence_states: string[];
   supports_not_values: boolean;
   supports_pertinent_negatives: boolean;
+  custom_definition?: import("@open-triage/contracts").CatalogDraftCustomElement | null;
+  form_choice_policy?: import("@open-triage/contracts").FormDraftField["choicePolicy"];
 };
 
 type StoredChange = {
@@ -225,6 +228,13 @@ export class AmendReportService {
       if (!groups[0]) throw new UnprocessableEntityException(`Group ${occurrence.groupInstanceId} is not in the signed report`);
     }
     const metadata = await this.elementMetadata(manager, report, occurrence);
+    if (metadata.custom_definition) {
+      const target = metadata.custom_definition.correlatesTo ?? "PatientCareReportGroup";
+      const group = await manager.query<Array<{ group_id: string }>>(
+        "select group_id from clinical.group_instance where id=$1 and report_id=$2 and tombstoned_at is null",
+        [occurrence.groupInstanceId ?? null, report.id]);
+      if (group[0]?.group_id !== target) throw new UnprocessableEntityException(`Custom element requires ${target} target`);
+    }
     await this.validateDatatype(manager, occurrence.value!, metadata, report, occurrence.elementId);
     const corrected: Record<string, unknown> = {
       id: occurrence.id,
@@ -285,11 +295,14 @@ export class AmendReportService {
     let metadata = standard[0];
     if (!metadata && occurrence.formFieldId) {
       const custom = await manager.query<ElementMetadata[]>(`select ced.id as element_identity_id, ced.base_datatype,
-          ff.analytical_repeatable, ced.identifying,
+          ff.analytical_repeatable, ced.identifying, ced.definition as custom_definition,
+          (select item->'choicePolicy' from jsonb_array_elements(fv.canonical_definition->'sections') section,
+            jsonb_array_elements(section->'fields') item where item->>'key'=ff.stable_key limit 1) as form_choice_policy,
           (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
           (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
           array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff join forms.custom_element_definition ced on ced.id = ff.custom_element_definition_id
+        join forms.form_version fv on fv.id=ff.form_version_id
         where ff.id = $1 and ff.form_version_id = $2 and ced.namespace || '.' || ced.slug = $3`,
       [occurrence.formFieldId, report.form_version_id, occurrence.elementId]);
       metadata = custom[0];
@@ -327,6 +340,11 @@ export class AmendReportService {
     report: ReportRow,
     elementId: string
   ): Promise<void> {
+    if (metadata.base_datatype === "coded" && metadata.custom_definition?.datatype === "coded") {
+      const findings = customCodedValueFindings(metadata.custom_definition, value,
+        metadata.form_choice_policy, metadata.allowed_absence_states.map((state) => state.replace(/^form:/, "")));
+      if (findings.length) throw new UnprocessableEntityException(findings.join("; "));
+    }
     const expected: Record<string, DraftValue["kind"]> = {
       string: "text", integer: "integer", decimal: "numeric", boolean: "boolean", date: "date",
       dateTime: "datetime", time: "time", duration: "duration", binary: "binary", anyURI: "uri"
@@ -422,6 +440,15 @@ export class AmendReportService {
           throw new UnprocessableEntityException(`${definition.element_id} permits at most ${definition.max_occurs} occurrence(s)`);
         }
       }
+    }
+    const customDefinitions = await manager.query<Array<{ element_id: string }>>(`
+      select ced.namespace || '.' || ced.slug as element_id
+      from forms.custom_element_definition ced
+      join forms.form_field ff on ff.custom_element_definition_id=ced.id
+      where ff.form_version_id=$1 and ced.definition->>'recurrence'='single'`, [report.form_version_id]);
+    for (const definition of customDefinitions) for (const [key, count] of counts) {
+      if (key.endsWith(`:${definition.element_id}`) && count > 1)
+        throw new UnprocessableEntityException(`${definition.element_id} permits one occurrence per target`);
     }
     const required = await manager.query<Array<{ stable_key: string; identity_id: string }>>(`select stable_key,
         coalesce(catalog_element_identity_id, custom_element_definition_id) as identity_id

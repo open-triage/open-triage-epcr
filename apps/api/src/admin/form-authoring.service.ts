@@ -1,13 +1,15 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AuthoringVersionOption, ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDraftCustomCodedElement, CatalogDraftCustomElement, ClinicalFormConfiguration, ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, FormDraftField, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition, withoutLegacyFormWording } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
-import { catalogFieldsConfiguration, catalogGroupsConfiguration } from "../forms/clinical-form-configuration.js";
+import { catalogFieldsConfiguration, catalogGroupsConfiguration, customGroupsConfiguration } from "../forms/clinical-form-configuration.js";
+import { customCodedPolicies, materializeLegacyChoicePolicies, validateFieldChoicePolicies, validateFieldCompletionRequirements } from "../forms/field-choice-policy.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
+import { releaseCustomDefinitions } from "./custom-definition-version.js";
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
@@ -20,6 +22,39 @@ type ElementRow = {
   element_id: string; element_identity_id: string; base_datatype: string; source_datatype: string;
   usage: string; definition: Record<string, unknown>; analytical_location: string | null; hidden?: boolean;
 };
+
+type Choice = NonNullable<FormDraftField["choicePolicy"]>[number];
+function choiceIdentity(choice: Choice): string {
+  return `${choice.kind}:${choice.kind === "code" ? choice.codeSystem : ""}:${choice.code}`;
+}
+function catalogChoices(catalog?: ClinicalFormConfiguration["catalogFields"][string]): Choice[] {
+  return [...(catalog?.codeChoices ?? []).map(({ code, codeSystem }) => ({ kind: "code" as const, code, codeSystem })),
+    ...(catalog?.exceptionalChoices ?? []).filter(({ key }) => key.startsWith("not-value:"))
+      .map(({ key }) => ({ kind: "not-value" as const, code: key.slice("not-value:".length) }))];
+}
+function customChoices(custom?: CatalogDraftCustomElement): Choice[] {
+  return custom?.datatype === "coded" ? [
+    ...custom.choices.map(({ code }) => ({ kind: "code" as const, code, codeSystem: custom.codeSystem })),
+    ...custom.permittedNotValues.map((code) => ({ kind: "not-value" as const, code }))] : [];
+}
+
+/** Compare catalog availability, independently for each field's existing policy. */
+export function formCatalogAdoptionChoices(definition: FormDraftDefinition,
+  sourceCatalog: ClinicalFormConfiguration["catalogFields"], targetCatalog: ClinicalFormConfiguration["catalogFields"],
+  sourceCustom: ReadonlyMap<string, CatalogDraftCustomElement> = new Map(),
+  targetCustom: ReadonlyMap<string, CatalogDraftCustomElement> = new Map()): Record<string, Choice[]> {
+  const result: Record<string, Choice[]> = {};
+  for (const field of definition.sections.flatMap((section) => section.fields)) {
+    const source = field.source.kind === "nemsis" ? catalogChoices(sourceCatalog[field.source.elementId])
+      : customChoices(sourceCustom.get(field.source.elementDefinitionId));
+    const target = field.source.kind === "nemsis" ? catalogChoices(targetCatalog[field.source.elementId])
+      : customChoices(targetCustom.get(field.source.elementDefinitionId));
+    const known = new Set(source.map(choiceIdentity));
+    const added = target.filter((choice) => !known.has(choiceIdentity(choice)));
+    if (added.length) result[field.key] = added;
+  }
+  return result;
+}
 
 @Injectable()
 export class FormAuthoringService {
@@ -92,8 +127,17 @@ export class FormAuthoringService {
           throw new ConflictException("A Stationary form draft is already pinned to another catalog");
         return this.result(manager, existing[0]);
       }
+      const sourceDefinition = this.definition(source[0].canonical_definition);
+      const sourceElementIds = [...new Set(sourceDefinition.sections.flatMap((section) => section.fields.flatMap((field) =>
+        field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+      const sourceCatalog = await catalogFieldsConfiguration(manager, source[0].catalog_release_id, sourceElementIds);
+      const hasCustom = sourceDefinition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"));
+      const sourceCustomSnapshot = hasCustom ? await releaseCustomDefinitions(manager, source[0].catalog_release_id) : null;
+      const sourceCustomPolicies = sourceCustomSnapshot === null ? await customCodedPolicies(manager, sourceDefinition)
+        : Object.fromEntries(sourceCustomSnapshot.filter((item): item is CatalogDraftCustomCodedElement =>
+          !item.retired && item.datatype === "coded").map((item) => [item.id, item]));
       const cloned = await this.compatibleClone(manager, source[0].catalog_release_id, catalogReleaseId,
-        this.definition(source[0].canonical_definition));
+        materializeLegacyChoicePolicies(sourceDefinition, sourceCatalog, sourceCustomPolicies));
       const digest = canonicalDefinitionSha256(cloned.definition);
       const inserted = mutationRows<VersionRow>(await manager.query(`
         insert into forms.form_version
@@ -104,7 +148,7 @@ export class FormAuthoringService {
       await this.auditDraftMutation(manager, session, "form.draft_create", inserted[0]!, {
         clonedFromId: source[0].id, diagnostics: cloned.diagnostics
       });
-      return this.result(manager, inserted[0]!, cloned.diagnostics);
+      return this.result(manager, inserted[0]!, cloned.diagnostics, source[0].catalog_release_id);
     });
   }
 
@@ -118,17 +162,38 @@ export class FormAuthoringService {
     if (!drafts[0]) throw new NotFoundException(`Form draft ${id} was not found`);
     const rows = await this.dataSource.query<Array<{
       element_id: string; name: string; description: string; base_datatype: string; group_path: string[];
+      custom_element_definition_id?: string;
     }>>(`
-      select element_id,name,description,base_datatype,group_path
+      select element_id,name,description,base_datatype,group_path,
+        null::uuid as custom_element_definition_id
       from catalog.element_definition
       where release_id=$1 and element_id like 'e%.%'
         and element_id not in (select jsonb_array_elements_text(coalesce(
           (select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)))
         and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
-      order by section,group_path,element_id
-    `, [drafts[0].catalog_release_id, query]);
-    return { items: rows.map((row) => ({ elementId: row.element_id, name: row.name,
-      description: row.description, baseDatatype: row.base_datatype, groupPath: row.group_path })),
+      union all
+      select ced.namespace || '.' || ced.slug,ced.title,
+        coalesce(ced.definition->>'definition',''),ced.base_datatype,array[]::text[],ced.id
+      from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
+      where ced.organization_id=$3 and ced.retired_at is null
+        and ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
+      order by element_id
+    `, [drafts[0].catalog_release_id, query, session.organization.id]);
+    const snapshot = rows.some((row) => row.custom_element_definition_id) ?
+      await releaseCustomDefinitions(this.dataSource.manager, drafts[0].catalog_release_id) : null;
+    const byId = new Map((snapshot ?? []).map((item) => [item.id, item]));
+    return { items: rows.filter((row) => {
+      if (!row.custom_element_definition_id) return true;
+      const pinned = byId.get(row.custom_element_definition_id);
+      return pinned?.retired !== true && (!query ||
+        `${row.element_id} ${pinned?.title ?? row.name} ${pinned?.definition ?? row.description}`.toLowerCase().includes(query));
+    }).map((row) => {
+      const pinned = row.custom_element_definition_id ? byId.get(row.custom_element_definition_id) : undefined;
+      return { elementId: row.element_id, name: pinned?.title ?? row.name,
+        description: pinned?.definition ?? row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
+        ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}),
+        ...(pinned?.groupDefinitionId ? { customGroupDefinitionId: pinned.groupDefinitionId } : {}) };
+    }),
       nextOffset: null };
   }
 
@@ -149,7 +214,21 @@ export class FormAuthoringService {
       if (checked.diagnostics.length) throw new UnprocessableEntityException({
         message: "Form validation failed", findings: checked.diagnostics
       });
-      const digest = canonicalDefinitionSha256(body.definition);
+      const choiceElementIds = [...new Set(body.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+        field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+      const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds);
+      const customSnapshot = body.definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
+        ? await releaseCustomDefinitions(manager, draft.catalog_release_id) : null;
+      const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, body.definition)
+        : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
+          .map((item) => [item.id, item]));
+      const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog, customPolicies);
+      const completionFindings = validateFieldCompletionRequirements(body.definition, choiceCatalog,
+        Object.fromEntries((customSnapshot ?? []).filter((item) => !item.retired).map((item) => [item.id, item])));
+      if (choiceFindings.length || completionFindings.length) throw new UnprocessableEntityException({
+        message: "Form validation failed", findings: [...choiceFindings, ...completionFindings] });
+      const definition = materializeLegacyChoicePolicies(body.definition, choiceCatalog, customPolicies);
+      const digest = canonicalDefinitionSha256(definition);
       const updated = await manager.query<VersionRow[]>(`
         with updated as (
           update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
@@ -157,7 +236,7 @@ export class FormAuthoringService {
           where id=$1 and revision=$2 and status='draft' returning *
         )
         select * from updated
-      `, [id, body.expectedRevision, JSON.stringify(body.definition), digest, body.displayName]);
+      `, [id, body.expectedRevision, JSON.stringify(definition), digest, body.displayName]);
       if (!updated[0]) throw new ConflictException("Form draft revision is stale or the form was published");
       await this.auditDraftMutation(manager, session, "form.draft_save", updated[0]!);
       return this.result(manager, updated[0]);
@@ -197,6 +276,15 @@ export class FormAuthoringService {
     if (!draft) throw new NotFoundException(`Form draft ${id} was not found`);
     if (draft.revision !== body.expectedRevision) throw new ConflictException({
       message: "Form draft revision is stale", expectedRevision: body.expectedRevision, actualRevision: draft.revision
+    });
+    const sources = draft.cloned_from_id ? await this.dataSource.query<Array<{ catalog_release_id: string }>>(`
+      select catalog_release_id from forms.form_version where id=$1 and status='published'
+    `, [draft.cloned_from_id]) : [];
+    const review = await this.compatibleClone(this.dataSource.manager,
+      sources[0]?.catalog_release_id ?? draft.catalog_release_id, draft.catalog_release_id,
+      this.definition(draft.canonical_definition));
+    if (review.diagnostics.length) throw new UnprocessableEntityException({
+      message: "Resolve catalog adoption before publishing", findings: review.diagnostics
     });
     const published = await this.publication.publish(id, {
       publishedBy: session.user.id, changeNote: body.changeNote,
@@ -297,29 +385,85 @@ export class FormAuthoringService {
     const oldById = new Map(rows.map((row) => [row.element_id, row]));
     const newById = new Map(targets.map((row) => [row.element_id, row]));
     const diagnostics: FormCloneDiagnostic[] = [];
-    const sections = definition.sections.map((section, sectionIndex) => ({ ...section, fields: section.fields.filter((field, fieldIndex) => {
-      if (field.source.kind !== "nemsis") return true;
-      if (!/^e[^.]+\./.test(field.source.elementId)) return false;
+    const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+    const availableCustom = customIds.length ? await manager.query<Array<{ id: string }>>(`
+      select ced.id from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
+      where ced.id=any($2::uuid[]) and ced.retired_at is null
+        and (ced.definition->>'catalogReleaseId' is null or
+          ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb))))
+    `, [targetReleaseId, customIds]) : [];
+    const customSnapshot = customIds.length ? await releaseCustomDefinitions(manager, targetReleaseId) : null;
+    const sourceCustomSnapshot = customIds.length ? await releaseCustomDefinitions(manager, sourceReleaseId) : null;
+    const targetCustomById = new Map((customSnapshot ?? []).map((item) => [item.id, item]));
+    const sourceCustomById = new Map((sourceCustomSnapshot ?? []).map((item) => [item.id, item]));
+    const availableCustomIds = customSnapshot === null
+      ? new Set(availableCustom.map(({ id }) => id))
+      : new Set(customSnapshot.filter((item) => !item.retired).map((item) => item.id));
+    for (const [sectionIndex, section] of definition.sections.entries()) for (const [fieldIndex, field] of section.fields.entries()) {
+      if (field.source.kind === "custom") {
+        const id = field.source.elementDefinitionId;
+        const target = targetCustomById.get(id);
+        const source = sourceCustomById.get(id);
+        if (!availableCustomIds.has(id)) diagnostics.push({ code: target?.retired ? "retired-reference" : "missing-reference",
+          path: `sections[${sectionIndex}].fields[${fieldIndex}].source.elementDefinitionId`,
+          message: `Custom element ${id} is ${target?.retired ? "retired" : "missing"} in the selected catalog; remove or replace this field` });
+        else if (source && target && (source.datatype !== target.datatype || source.identifying !== target.identifying))
+          diagnostics.push({ code: "incompatible-reference", path: `sections[${sectionIndex}].fields[${fieldIndex}].source.elementDefinitionId`,
+            message: `Custom element ${id} changed datatype or identifying classification; remove or replace this field` });
+        continue;
+      }
+      if (!/^e[^.]+\./.test(field.source.elementId)) continue;
       const path = `sections[${sectionIndex}].fields[${fieldIndex}].source.elementId`;
       const before = oldById.get(field.source.elementId);
       const after = newById.get(field.source.elementId);
-      if (after?.hidden) return false;
+      if (after?.hidden) {
+        diagnostics.push({ code: "disabled-reference", path, message: `${field.source.elementId} is hidden in the selected catalog; remove or replace this field` });
+        continue;
+      }
       if (!after) {
-        diagnostics.push({ code: "missing-reference", path, message: `${field.source.elementId} is missing from the selected catalog` });
-        return false;
+        diagnostics.push({ code: "missing-reference", path, message: `${field.source.elementId} is missing from the selected catalog; remove or replace this field` });
+        continue;
       }
       if (after.usage.toLowerCase() === "not used" || after.definition?.enabled === false) {
-        diagnostics.push({ code: "disabled-reference", path, message: `${field.source.elementId} is disabled in the selected catalog` });
-        return false;
+        diagnostics.push({ code: "disabled-reference", path, message: `${field.source.elementId} is disabled in the selected catalog; remove or replace this field` });
+        continue;
       }
       if (before && (before.element_identity_id !== after.element_identity_id || before.base_datatype !== after.base_datatype ||
         before.source_datatype !== after.source_datatype || before.analytical_location !== after.analytical_location)) {
-        diagnostics.push({ code: "incompatible-reference", path, message: `${field.source.elementId} changed identity, datatype, or storage semantics` });
-        return false;
+        diagnostics.push({ code: "incompatible-reference", path, message: `${field.source.elementId} changed identity, datatype, or storage semantics; remove or replace this field` });
       }
-      return true;
-    }) })).filter((section) => section.fields.length > 0);
-    return { definition: { ...definition, sections }, diagnostics };
+    }
+    const targetCatalog = await catalogFieldsConfiguration(manager, targetReleaseId, elementIds);
+    const sourceCatalog = sourceReleaseId === targetReleaseId ? targetCatalog
+      : await catalogFieldsConfiguration(manager, sourceReleaseId, elementIds);
+    const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, definition)
+      : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
+        .map((item) => [item.id, item]));
+    for (const [sectionIndex, section] of definition.sections.entries()) for (const [fieldIndex, field] of section.fields.entries()) {
+      if (field.choicePolicy === undefined) continue;
+      const sourceChoices = field.source.kind === "nemsis" ? catalogChoices(sourceCatalog[field.source.elementId])
+        : customChoices(sourceCustomById.get(field.source.elementDefinitionId));
+      const targetChoices = field.source.kind === "nemsis" ? catalogChoices(targetCatalog[field.source.elementId])
+        : customChoices(targetCustomById.get(field.source.elementDefinitionId));
+      const sourceIds = new Set(sourceChoices.map(choiceIdentity));
+      const targetIds = new Set(targetChoices.map(choiceIdentity));
+      const missing = field.choicePolicy.flatMap((choice, choiceIndex) => targetIds.has(choiceIdentity(choice)) ? [] : [{ choice, choiceIndex }]);
+      if (missing.length) {
+        for (const { choice, choiceIndex } of missing) {
+          const retired = sourceIds.has(choiceIdentity(choice));
+          diagnostics.push({ code: retired ? "retired-reference" : "missing-reference",
+            path: `sections[${sectionIndex}].fields[${fieldIndex}].choicePolicy[${choiceIndex}]`,
+            message: `${field.key} choice ${choice.kind}:${choice.code} is ${retired ? "retired or disabled" : "missing"} in the selected catalog; uncheck or replace it` });
+        }
+        continue;
+      }
+      const candidate = { schemaVersion: 1 as const, sections: [{ key: section.key, fields: [field] }] };
+      for (const message of validateFieldChoicePolicies(candidate, targetCatalog, customPolicies)) diagnostics.push({
+        code: "incompatible-reference", path: `sections[${sectionIndex}].fields[${fieldIndex}].choicePolicy`, message
+      });
+    }
+    return { definition, diagnostics };
   }
 
   private definition(input: unknown): FormDraftDefinition {
@@ -389,24 +533,49 @@ export class FormAuthoringService {
   }
 
   private async result(manager: Pick<EntityManager, "query">, row: VersionRow,
-    diagnostics?: FormCloneDiagnostic[]): Promise<StationaryFormDraft> {
+    diagnostics?: FormCloneDiagnostic[], sourceReleaseId?: string): Promise<StationaryFormDraft> {
     let findings = diagnostics;
+    let sourceCatalogReleaseId = sourceReleaseId;
     if (!findings && row.cloned_from_id) {
       const sources = await manager.query<Array<Pick<VersionRow, "catalog_release_id" | "canonical_definition">>>(`
         select catalog_release_id,canonical_definition from forms.form_version where id=$1
       `, [row.cloned_from_id]);
-      findings = sources[0] ? (await this.compatibleClone(manager, sources[0].catalog_release_id,
-        row.catalog_release_id, sources[0].canonical_definition)).diagnostics : [];
+      sourceCatalogReleaseId = sources[0]?.catalog_release_id;
+      findings = sourceCatalogReleaseId ? (await this.compatibleClone(manager, sourceCatalogReleaseId,
+        row.catalog_release_id, row.canonical_definition)).diagnostics : [];
+    }
+    if (row.cloned_from_id && !sourceCatalogReleaseId) {
+      const sources = await manager.query<Array<{ catalog_release_id: string }>>(`
+        select catalog_release_id from forms.form_version where id=$1
+      `, [row.cloned_from_id]);
+      sourceCatalogReleaseId = sources[0]?.catalog_release_id;
     }
     const definition = this.definition(row.canonical_definition);
     const elementIds = [...new Set(definition.sections.flatMap((section) =>
       section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
     const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds);
+    const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+    const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<StationaryFormDraft["customFields"]>[string] }>>(`
+      select id,definition from forms.custom_element_definition where id=any($1::uuid[])`, [customIds]) : [];
+    const snapshot = customIds.length ? await releaseCustomDefinitions(manager, row.catalog_release_id) : null;
+    const snapshotById = new Map((snapshot ?? []).map((item) => [item.id, item]));
+    let newChoicesByField: Record<string, Choice[]> = {};
+    if (sourceCatalogReleaseId && sourceCatalogReleaseId !== row.catalog_release_id) {
+      const sourceCatalog = await catalogFieldsConfiguration(manager, sourceCatalogReleaseId, elementIds);
+      const sourceSnapshot = customIds.length ? await releaseCustomDefinitions(manager, sourceCatalogReleaseId) : null;
+      const sourceById = new Map((sourceSnapshot ?? []).map((item) => [item.id, item]));
+      newChoicesByField = formCatalogAdoptionChoices(definition, sourceCatalog, catalogFields, sourceById, snapshotById);
+    }
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
       ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
-      definition, catalogFields,
-      catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
+      definition, catalogFields, customFields: Object.fromEntries(custom.map((item) => [item.id, snapshotById.get(item.id) ?? item.definition])),
+      customGroups: await customGroupsConfiguration(manager, row.catalog_release_id),
+      catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [],
+      ...(sourceCatalogReleaseId && sourceCatalogReleaseId !== row.catalog_release_id
+        ? { adoption: { sourceCatalogReleaseId, newChoicesByField } } : {}),
+      updatedAt: new Date(row.updated_at).toISOString() };
   }
 
   private authorize(token: string, capability: string): Promise<ClinicianSession> {

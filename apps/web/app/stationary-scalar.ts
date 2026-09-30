@@ -273,7 +273,8 @@ export function editScalarOccurrence(document: EncounterDocument, options: {
   const previous = existing[index];
   const previousRecord: Record<string, unknown> = previous ?? {};
   const { kind: _kind, occurrenceId: _occurrenceId, value: _value, lexical: _lexical, precision: _precision,
-    utcOffsetMinutes: _utcOffsetMinutes, attributes: _attributes, ...compatibleExtensions } = previousRecord;
+    utcOffsetMinutes: _utcOffsetMinutes, attributes: _attributes, notValue: _notValue,
+    pertinentNegative: _pertinentNegative, ...compatibleExtensions } = previousRecord;
   const next = {
     ...compatibleExtensions,
     ...scalarEncounterValue(element, options.input, occurrenceId, options.attributes ?? withoutDemoProvenance(previous?.attributes)),
@@ -281,6 +282,30 @@ export function editScalarOccurrence(document: EncounterDocument, options: {
   const values = [...existing];
   if (index < 0) values.push(next); else values[index] = next;
   return { ok: true, document: replaceElementValues(document, options.groupId, options.groupInstanceId, options.elementId, values, now), occurrenceId };
+}
+
+/** Writes a permitted NOT value for a single scalar through the same canonical occurrence path. */
+export function editScalarNotValue(document: EncounterDocument, options: {
+  readonly groupId: string; readonly groupInstanceId: string; readonly elementId: string;
+  readonly occurrenceId?: string; readonly code: string;
+}, createId: () => string = () => crypto.randomUUID(), now = new Date()): EncounterDocument {
+  const element = requireNemsisDataElement(options.elementId);
+  if (element.valueSource.kind !== "scalar" || element.groupPath.at(-1) !== options.groupId ||
+    !element.permittedNotValues.some(({ code }) => code === options.code)) {
+    throw new Error(`${options.code} is not a permitted scalar NOT value for ${options.elementId}`);
+  }
+  const values = [...elementValues(document, options.groupId, options.groupInstanceId, options.elementId)];
+  if (values.length > 1) throw new Error(`${options.elementId} has ambiguous occurrences`);
+  const index = options.occurrenceId ? values.findIndex(({ occurrenceId }) => occurrenceId === options.occurrenceId)
+    : values.length ? 0 : -1;
+  if (options.occurrenceId && index < 0) throw new Error(`${options.elementId} is missing occurrence ${options.occurrenceId}`);
+  const previous = index >= 0 ? values[index] : undefined;
+  const selected = element.permittedNotValues.find(({ code }) => code === options.code)!;
+  const next: EncounterValue = { kind: "null", occurrenceId: previous?.occurrenceId ?? createId(),
+    notValue: { code: selected.code, display: selected.label },
+    ...(withoutDemoProvenance(previous?.attributes) ? { attributes: withoutDemoProvenance(previous?.attributes) } : {}) };
+  if (index >= 0) values[index] = next; else values.push(next);
+  return replaceElementValues(document, options.groupId, options.groupInstanceId, options.elementId, values, now);
 }
 
 export function removeScalarOccurrence(document: EncounterDocument, groupId: string, groupInstanceId: string, elementId: string, occurrenceId: string, now = new Date()): ScalarEditResult {

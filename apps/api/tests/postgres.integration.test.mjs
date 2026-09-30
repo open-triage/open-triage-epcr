@@ -12,6 +12,9 @@ import { SYNTHETIC_DEMO_FIXTURE, compileValidationRule, compiledValidationBundle
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
+import { FormPublicationService } from "../dist/forms/form-publication.service.js";
+import { DraftReportService } from "../dist/reports/draft-report.service.js";
+import { encounterDocument } from "../dist/reports/encounter-document.persistence.js";
 import { routeDispatchAssignment } from "../dist/dispatch/dispatch-assignment.projection.js";
 import {
   DEMO_CLINICIAN_PASSWORD,
@@ -788,14 +791,28 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.ok(changedInlineList, "eAirway.03 should expose its inline enumeration by element identifier");
   const disabledValue = changedList.values[0];
   const disabledInlineValue = changedInlineList.values[0];
+  const customText = { id: randomUUID(), namespace: "org.integration.ems", slug: `Note${randomUUID().replaceAll("-", "")}`,
+    title: "Local note", definition: "A locally requested clinical note.", datatype: "string", recurrence: "single",
+    usage: "Required", constraints: { minLength: 2, maxLength: 100 }, identifying: false };
+  const identifyingText = { ...customText, id: randomUUID(), slug: `Private${randomUUID().replaceAll("-", "")}`,
+    title: "Private note", identifying: true };
+  const binaryElement = { ...customText, id: randomUUID(), slug: `Binary${randomUUID().replaceAll("-", "")}`,
+    title: "Local binary", datatype: "binary", constraints: {}, identifying: true };
+  const otherElement = { ...customText, id: randomUUID(), slug: `Other${randomUUID().replaceAll("-", "")}`,
+    title: "Other result", datatype: "other", constraints: { minLength: 2, maxLength: 100 } };
+  const customGroup = { id: randomUUID(), namespace: "org.integration.ems",
+    slug: `ResultGroup${randomUUID().replaceAll("-", "")}`, title: "Grouped result", recurrence: "multiple" };
+  const groupedText = { ...customText, id: randomUUID(), slug: `GroupedNote${randomUUID().replaceAll("-", "")}`,
+    title: "Grouped note", usage: "Optional", groupDefinitionId: customGroup.id };
   const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
     sourceLabel: "Locally managed choice", category: null, enabled: true };
-  const changedDefinition = { ...draft.definition, elements: draft.definition.elements.map((element) =>
+  const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText, binaryElement, otherElement, groupedText],
+    customGroups: [customGroup], elements: draft.definition.elements.map((element) =>
     element.elementId === changedElement.elementId ? { ...element, requirednessSeverity: "warning" } : element),
     codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
       values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
         ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value)],
-      defaultValue: { code: localValue.code, codeSystem: localValue.codeSystem } } : list.listId === changedInlineList.listId
+      defaultValue: null } : list.listId === changedInlineList.listId
       ? { ...list, values: list.values.map((value) => value.code === disabledInlineValue.code && value.codeSystem === disabledInlineValue.codeSystem
         ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value) } : list) };
   const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, displayName: "Integration catalog", definition: changedDefinition });
@@ -816,6 +833,9 @@ integrationTest("authorized Admin context resolves only the session organization
   );
   assert.equal(publishedDataModel.rows[0].version, "3.5.1");
   assert.equal(publishedDataModel.rows[0].display_name, "Integration catalog");
+  const publishedCustom = await client.query(`select ced.id,ced.identifying,ced.definition->>'usage' as usage
+    from forms.custom_element_definition ced where ced.id=$1`, [customText.id]);
+  assert.deepEqual(publishedCustom.rows, [{ id: customText.id, identifying: false, usage: "Required" }]);
   const requiredness = await client.query(`select
     (select agency_required from catalog.element_definition where release_id=$1 and element_id=$3) source_required,
     (select agency_required from catalog.element_definition where release_id=$2 and element_id=$3) published_required`,
@@ -843,7 +863,7 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.equal(sourceCode.rows[0].display, disabledValue.label);
   assert.equal(sourceCode.rows[0].enabled, true);
   assert.deepEqual(publishedCodes.rows, [
-    { code: localValue.code, display: localValue.label, enabled: true, sort_order: 0, is_default: true },
+    { code: localValue.code, display: localValue.label, enabled: true, sort_order: 0, is_default: false },
     { code: disabledValue.code, display: `${disabledValue.label} (agency label)`, enabled: false, sort_order: 1, is_default: false }
   ]);
   const publishedInlineCode = await client.query(`select o.display,c.enabled,c.sort_order
@@ -868,23 +888,35 @@ integrationTest("authorized Admin context resolves only the session organization
   const event = await client.query("select result, change_note from catalog.publication_event where release_id=$1", [published.id]);
   assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
 
-  const forms = new FormAuthoringService(transactionalDatabase, sessions);
+  const forms = new FormAuthoringService(transactionalDatabase, sessions,
+    new FormPublicationService(transactionalDatabase));
   const formDraft = await forms.clone(active.sessionToken, {
     catalogReleaseId: published.id, displayName: "Agency Stationary validation draft"
   });
   assert.equal(formDraft.catalogReleaseId, published.id);
   assert.equal(formDraft.clonedFromId, formVersionId);
-  assert.deepEqual(formDraft.definition, activeFormDefinition);
+  assert.deepEqual({ ...formDraft.definition, sections: formDraft.definition.sections.map((section) => ({ ...section,
+    fields: section.fields.map(({ choicePolicy: _choicePolicy, ...field }) => field) })) }, activeFormDefinition);
   assert.deepEqual(formDraft.diagnostics, []);
+  const customChoices = await forms.searchCatalog(active.sessionToken, formDraft.id,
+    { query: customText.slug.toLowerCase() });
+  assert.ok(customChoices.items.some((item) => item.customElementDefinitionId === customText.id));
   const editedFormDefinition = { ...formDraft.definition,
-    sections: [formDraft.definition.sections[2], formDraft.definition.sections[0]] };
+    sections: [{ ...formDraft.definition.sections[2], fields: [...formDraft.definition.sections[2].fields,
+      { key: "local-note", source: { kind: "custom", elementDefinitionId: customText.id } },
+      { key: "private-note", source: { kind: "custom", elementDefinitionId: identifyingText.id } },
+      { key: "local-binary", source: { kind: "custom", elementDefinitionId: binaryElement.id } },
+      { key: "local-other", source: { kind: "custom", elementDefinitionId: otherElement.id } }] },
+    formDraft.definition.sections[0],
+    { key: "custom-results", name: "Custom results", fields: [{ key: "grouped-note",
+      source: { kind: "custom", elementDefinitionId: groupedText.id, groupDefinitionId: customGroup.id } }] }] };
   const formSaved = await forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: editedFormDefinition
   });
   assert.equal(formSaved.revision, formDraft.revision + 1);
-  assert.deepEqual(formSaved.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  assert.deepEqual(formSaved.definition.sections.map(({ key }) => key), ["situation", "dispatch", "custom-results"]);
   const persistedFormDraft = await forms.current(active.sessionToken);
-  assert.deepEqual(persistedFormDraft.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  assert.deepEqual(persistedFormDraft.definition.sections.map(({ key }) => key), ["situation", "dispatch", "custom-results"]);
   assert.equal(persistedFormDraft.definition.sections.some(({ key }) => key === "patient"), false);
   await assert.rejects(forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: formDraft.definition
@@ -896,6 +928,134 @@ integrationTest("authorized Admin context resolves only the session organization
   });
   await assert.rejects(client.query("update forms.form_version set canonical_definition='{}' where id=$1", [formVersionId]),
     /immutable/);
+  const customPublishedForm = await forms.publish(active.sessionToken, formDraft.id, {
+    expectedRevision: formSaved.revision, definitionSha256: formSaved.definitionSha256,
+    displayName: "Agency Stationary validation draft", changeNote: "Add local note"
+  });
+  const projectedCustom = await client.query(`select custom_element_definition_id,analytical_repeatable
+    from forms.form_field where form_version_id=$1 and stable_key='local-note'`, [customPublishedForm.id]);
+  assert.deepEqual(projectedCustom.rows, [{ custom_element_definition_id: customText.id, analytical_repeatable: false }]);
+  const groupedField = (await client.query(`select id,custom_element_definition_id,custom_group_definition_id
+    from forms.form_field where form_version_id=$1 and stable_key='grouped-note'`, [customPublishedForm.id])).rows[0];
+  assert.deepEqual({ element: groupedField.custom_element_definition_id, group: groupedField.custom_group_definition_id },
+    { element: groupedText.id, group: customGroup.id });
+  assert.equal((await client.query(`select s.stable_key from forms.form_field f
+    join forms.form_section s on s.id=f.section_id
+    where f.form_version_id=$1 and f.stable_key='grouped-note'`, [customPublishedForm.id])).rows[0].stable_key, "custom-results");
+  const reportId = randomUUID(); const incidentId = randomUUID(); const patientId = randomUUID();
+  await client.query("insert into clinical.incident(id,organization_id) values ($1,$2)", [incidentId, organizationId]);
+  await client.query(`insert into clinical.patient(id,organization_id,identity_state,pseudonymous_key)
+    values ($1,$2,'unknown',$3)`, [patientId, organizationId, randomUUID().replaceAll("-", "").repeat(2)]);
+  const demographics = (await client.query(`select id from app_identity.agency_demographic_version
+    where organization_id=$1 and catalog_release_id=$2 order by version desc limit 1`, [organizationId, published.id])).rows[0];
+  await client.query(`insert into clinical.report
+    (id,organization_id,incident_id,patient_id,agency_demographic_version_id,form_version_id,
+     catalog_release_id,documenting_user_id,form_definition_sha256,catalog_artifact_sha256)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [reportId, organizationId, incidentId, patientId,
+    demographics.id, customPublishedForm.id, published.id, owner.userId, customPublishedForm.definitionSha256,
+    published.definitionSha256]);
+  const clinician = new DraftReportService(transactionalDatabase, { requireCapability: async () =>
+    ({ organization: { id: organizationId }, user: { id: owner.userId } }) });
+  const groupId = randomUUID();
+  const customGroupInstanceId = randomUUID();
+  const groupedOccurrenceId = randomUUID();
+  const fields = [customText, identifyingText, binaryElement, otherElement].map((item) => ({ id: randomUUID(),
+    elementId: `${item.namespace}.${item.slug}`, groupInstanceId: groupId, ordinal: 0,
+    value: item.datatype === "binary" ? { kind: "binary", value: "AAEC/w==" }
+      : { kind: "text", value: item.identifying ? "Private response" : item.datatype === "other" ? "Other response" : "Public response" } }));
+  await assert.rejects(clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
+    occurrences: [{ ...fields[0], value: { kind: "text", value: "x" } }]
+  }), /published text constraints/);
+  await assert.rejects(clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
+    occurrences: [{ ...fields[2], value: { kind: "binary", value: "AAEC/w=" } }]
+  }), /base64/);
+  const documented = await clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
+    groups: [{ id: groupId, groupId: "PatientCareReportGroup", ordinal: 0 },
+      { id: customGroupInstanceId, groupId: `${customGroup.namespace}.${customGroup.slug}`,
+        customGroupDefinitionId: customGroup.id, parentGroupInstanceId: groupId, ordinal: 0 }],
+    occurrences: [...fields, { id: groupedOccurrenceId, elementId: `${groupedText.namespace}.${groupedText.slug}`,
+      formFieldId: groupedField.id, groupInstanceId: customGroupInstanceId, ordinal: 0,
+      value: { kind: "text", value: "Pinned grouped response" } }]
+  });
+  assert.equal(documented.revision, 1);
+  const correctedGroupedValue = "Corrected grouped response";
+  const corrected = await clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: documented.revision, authorId: owner.userId,
+    occurrences: [{ id: groupedOccurrenceId, elementId: `${groupedText.namespace}.${groupedText.slug}`,
+      formFieldId: groupedField.id, groupInstanceId: customGroupInstanceId, ordinal: 0,
+      value: { kind: "text", value: correctedGroupedValue } }]
+  });
+  assert.equal(corrected.revision, 2);
+  const reopened = await clinician.get("session", reportId);
+  assert.deepEqual(reopened.groups.filter(({ id }) => id === customGroupInstanceId)
+    .map(({ id, parentGroupInstanceId, groupId: key, customGroupDefinitionId, sourceKind }) =>
+      ({ id, parentGroupInstanceId, groupId: key, customGroupDefinitionId, sourceKind })), [{
+    id: customGroupInstanceId, parentGroupInstanceId: groupId,
+    groupId: `${customGroup.namespace}.${customGroup.slug}`, customGroupDefinitionId: customGroup.id,
+    sourceKind: "custom"
+  }]);
+  assert.deepEqual(reopened.occurrences.filter(({ id }) => id === groupedOccurrenceId)
+    .map(({ id, groupInstanceId, elementIdentityId, elementId, formFieldId, valueText }) =>
+      ({ id, groupInstanceId, elementIdentityId, elementId, formFieldId, valueText })), [{
+    id: groupedOccurrenceId, groupInstanceId: customGroupInstanceId, elementIdentityId: groupedText.id,
+    elementId: `${groupedText.namespace}.${groupedText.slug}`, formFieldId: groupedField.id,
+    valueText: correctedGroupedValue
+  }]);
+  assert.ok(reopened.occurrences.some(({ elementId, valueBinary, identifying }) =>
+    elementId === `${binaryElement.namespace}.${binaryElement.slug}` && valueBinary === "AAEC/w==" && identifying));
+  assert.ok(reopened.occurrences.some(({ elementId, valueText }) =>
+    elementId === `${otherElement.namespace}.${otherElement.slug}` && valueText === "Other response"));
+  assert.deepEqual(reopened.occurrences.filter(({ elementId }) => elementId.startsWith("org.integration.ems."))
+    .filter(({ elementId }) => [customText, identifyingText].some((item) => elementId === `${item.namespace}.${item.slug}`))
+    .map(({ elementId, identifying, valueText }) => ({ elementId, identifying, valueText }))
+    .sort((a, b) => a.valueText.localeCompare(b.valueText)), [
+      { elementId: `${identifyingText.namespace}.${identifyingText.slug}`, identifying: true, valueText: "Private response" },
+      { elementId: `${customText.namespace}.${customText.slug}`, identifying: false, valueText: "Public response" }
+    ]);
+  const recoveredDocument = await encounterDocument(transactionalDatabase.manager, reportId);
+  assert.deepEqual(recoveredDocument.groups.find(({ id }) => id === `${customGroup.namespace}.${customGroup.slug}`)?.instances
+    .map(({ instanceId, parentInstanceId, elements }) => ({ instanceId, parentInstanceId,
+      elements: elements.map(({ id, values }) => ({ id, values: values.map(({ occurrenceId, kind, value }) =>
+        ({ occurrenceId, kind, value })) })) })), [{
+    instanceId: customGroupInstanceId, parentInstanceId: groupId,
+    elements: [{ id: `${groupedText.namespace}.${groupedText.slug}`,
+      values: [{ occurrenceId: groupedOccurrenceId, kind: "scalar", value: correctedGroupedValue }] }]
+  }]);
+  assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
+    .some(({ id, values }) => id === `${customText.namespace}.${customText.slug}` && values[0]?.kind === "scalar" && values[0].value === "Public response"));
+  assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
+    .some(({ id, values }) => id === `${binaryElement.namespace}.${binaryElement.slug}` && values[0]?.kind === "scalar" && values[0].value === "AAEC/w=="));
+  assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
+    .some(({ id, values }) => id === `${otherElement.namespace}.${otherElement.slug}` && values[0]?.kind === "scalar" && values[0].value === "Other response"));
+  const revisedFormDraft = await forms.clone(active.sessionToken, {
+    catalogReleaseId: published.id, sourceVersionId: customPublishedForm.id, displayName: "Form without grouped results"
+  });
+  const revisedForm = await forms.save(active.sessionToken, revisedFormDraft.id, {
+    expectedRevision: revisedFormDraft.revision,
+    definition: { ...revisedFormDraft.definition,
+      sections: revisedFormDraft.definition.sections.filter(({ key }) => key !== "custom-results") }
+  });
+  const publishedRevision = await forms.publish(active.sessionToken, revisedFormDraft.id, {
+    expectedRevision: revisedForm.revision, definitionSha256: revisedForm.definitionSha256,
+    displayName: "Form without grouped results", changeNote: "Historical report readability regression"
+  });
+  assert.notEqual(publishedRevision.id, customPublishedForm.id);
+  const historical = await clinician.get("session", reportId);
+  assert.equal(historical.formVersionId, customPublishedForm.id);
+  assert.equal(historical.occurrences.find(({ id }) => id === groupedOccurrenceId)?.valueText, correctedGroupedValue);
+  const historicalDocument = await encounterDocument(transactionalDatabase.manager, reportId);
+  assert.equal(historicalDocument.groups.find(({ id }) => id === `${customGroup.namespace}.${customGroup.slug}`)
+    ?.instances[0]?.elements[0]?.values[0]?.kind, "scalar");
+  const analyticalColumns = await client.query(`select table_schema,column_name from information_schema.columns
+    where table_name='epcr' and table_schema in ('analytics_private','analytics_pseudonymous')
+      and column_name in ('additional_elements','additional_identifying_elements')`);
+  assert.ok(analyticalColumns.rows.some(({ table_schema, column_name }) =>
+    table_schema === "analytics_private" && column_name === "additional_identifying_elements"));
+  assert.equal(analyticalColumns.rows.some(({ table_schema, column_name }) =>
+    table_schema === "analytics_pseudonymous" && column_name === "additional_identifying_elements"), false);
 });
 
 integrationTest("a catalog-bound Validation draft publishes immutably and activates against its compatible form", async (t) => {

@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { type ClinicianSession } from "@open-triage/contracts";
+import { type ClinicianSession, type FormDraftDefinition } from "@open-triage/contracts";
 import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, createValidationRule, deactivateAdminRole, deleteCatalogDraft, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, loadValidationRules, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, setValidationRuleEnabled, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
-import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
+import { createFormSection, renameFormSection, transferFormElement, addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
@@ -417,13 +417,14 @@ const codeList = { listId: "activity", name: "Patient Activity", classification:
     { code: "TWO", codeSystem: "LOCAL", label: "Second", sourceLabel: "Second", category: null, enabled: true }
   ] };
 
-test("code-list controls expose labeled editing, state, default, and keyboard-operable ordering", () => {
-  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor, { list: codeList, onChange: () => {} }));
+test("code-list controls expose labeled editing, state and keyboard-operable ordering without default controls", () => {
+  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor, {
+    list: { ...codeList, defaultValue: { code: "TWO", codeSystem: "LOCAL" } }, onChange: () => {} }));
   assert.match(markup, /<legend>Add value<\/legend>/);
   assert.match(markup, /aria-label="Move First up"/);
   assert.match(markup, /aria-label="Move Second down"/);
   assert.equal((markup.match(/Enabled<\/label>/g) ?? []).length, 2);
-  assert.equal((markup.match(/Default<\/label>/g) ?? []).length, 2);
+  assert.doesNotMatch(markup, /default|type="radio"/i);
 });
 
 test("accessible move controls reorder values without changing code identity", () => {
@@ -445,8 +446,8 @@ test("Catalog authority requires the complete read-write-publish prerequisite ch
 test("read-only code-list inspection exposes definitions without mutable controls", () => {
   const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
     { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
-  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 10);
-  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 6);
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 8);
+  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 5);
 });
 
 const formDefinition = { schemaVersion: 1 as const, sections: [
@@ -522,11 +523,12 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.match(markup, /aria-label="Complete stationary NEMSIS record"/);
   assert.match(markup, /data-element-id="ePatient\.02"/);
   assert.match(markup, /Acute pain/);
-  assert.match(markup, /Agency custom choice/);
+  assert.match(markup, /clinical-searchable-trigger/);
+  assert.equal(draft.catalogFields["eSituation.11"].codeChoices[1]?.label, "Agency custom choice");
   assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
 });
 
-test("preview validation is scoped to included fields and honors an explicit optional override", () => {
+test("preview validation preserves the catalog minimum despite an invalid optional override", () => {
   const document = createStationaryPreviewDocument();
   const groups = document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
     ...instance,
@@ -536,7 +538,7 @@ test("preview validation is scoped to included fields and honors an explicit opt
     revision: 4, definitionSha256: "a".repeat(64), definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
       { key: "age", source: { kind: "nemsis" as const, elementId: "ePatient.15" }, required: false }
     ] }] }, diagnostics: [], updatedAt: "2026-09-07T01:00:00.000Z" };
-  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), false);
+  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), true);
 });
 
 test("form saves send section order with the current revision and CSRF proof", async (t) => {
@@ -700,4 +702,23 @@ test("form search sends the searchable query without pagination", async (t) => {
     return Response.json({ items: [], nextOffset: null });
   };
   await searchFormCatalog("draft-id", "patient name");
+});
+
+
+test("visual sections retain identities and occurrence-bound fields across rename and movement", () => {
+  const field = { key: "medication", source: { kind: "nemsis" as const, elementId: "eMedications.03" }, required: true };
+  const original: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "eMedications", fields: [field, { key: "dose", source: { kind: "nemsis", elementId: "eMedications.05" } }] }] };
+  const created = createFormSection(original, "Treatment", "local-treatment");
+  const renamed = renameFormSection(created, "local-treatment", "Care given");
+  const moved = transferFormElement(renamed, "eMedications", "medication", "local-treatment");
+  assert.equal(moved.sections[1]!.key, "local-treatment");
+  assert.equal(formSectionLabel(moved.sections[1]!), "Care given");
+  assert.deepEqual(moved.sections[1]!.fields[0], field);
+  assert.equal(original.sections[0]!.fields.length, 2);
+  assert.equal(moved.sections[0]!.fields[0]!.key, "dose");
+  const preview = configuredStationaryPreviewSections(JSON.parse(JSON.stringify(moved)));
+  assert.equal(preview[1]!.label, "Care given");
+  assert.equal(preview[0]!.blocks[0]!.group.id, preview[1]!.blocks[0]!.group.id);
+  assert.ok(preview[1]!.blocks.some(({ group }) => group.id === "eMedications.MedicationGroup"));
+  assert.throws(() => transferFormElement(moved, "local-treatment", "medication", "missing"), /destination/);
 });

@@ -2,13 +2,14 @@
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogDraftCustomTextElement } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, deleteCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { catalogTranslationIssues, updateCatalogEnglish, updateCatalogChoiceEnglish, type TranslationIssue } from "../app/translation-diagnostics";
 import { TranslationIssueSummary } from "./translation-issue-summary";
+import { CustomCodedAuthoring } from "./custom-coded-authoring";
 
 export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   readonly canRead: boolean; readonly canWrite: boolean; readonly canPublish: boolean;
@@ -45,6 +46,13 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [newGroup, setNewGroup] = useState({ namespace: "", slug: "", title: "", recurrence: "multiple" as CatalogDraftCustomGroup["recurrence"], correlatesTo: "" });
+  const [customText, setCustomText] = useState({ namespace: "", slug: "", title: "", definition: "",
+    swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
+    identifying: "", datatype: "string" as CatalogDraftCustomElement["datatype"],
+    recurrence: "single" as CatalogDraftCustomTextElement["recurrence"], correlatesTo: "", groupDefinitionId: "",
+    minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
   const showError = useCallback((reason: unknown) => { setError(adminError(reason, "admin.catalogOperationFailed")); }, [adminError]);
   useEffect(() => {
@@ -107,6 +115,54 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       codeLists: current.definition.codeLists.map((list) => list.listId === next.listId ? next : list) } } : current);
     setDirty(true); setStatus(`Unsaved changes. ${announcement}`); setError("");
   }
+  function addCustomText() {
+    if (!draft || !canWrite || !("revision" in draft)) return;
+    if (editingCustomId) {
+      const existing = draft.definition.customElements?.find((item) => item.id === editingCustomId);
+      if (!existing || existing.retired || !customText.title.trim() || !customText.definition.trim()) {
+        setError(t("admin.customMissingDetails")); return;
+      }
+      setDraft({ ...draft, definition: { ...draft.definition,
+        customElements: draft.definition.customElements?.map((item) => item.id === editingCustomId ? {
+          ...item, title: customText.title.trim(), definition: customText.definition.trim(),
+          ...(customText.swedishTitle.trim() ? { localization: { schemaVersion: 1 as const, sv: {
+            label: customText.swedishTitle.trim(), description: customText.swedishDefinition.trim(),
+            reviewedSource: { label: customText.title.trim(), description: customText.definition.trim() } } } } : {})
+        } : item) } });
+      setDirty(true); setError(""); setStatus(t("admin.customRevisionSaved")); setEditingCustomId(null);
+      setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
+        usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "", groupDefinitionId: "",
+        minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+      return;
+    }
+    const namespace = customText.namespace.trim(); const slug = customText.slug.trim();
+    if (!namespace || !slug || !customText.title.trim() || !customText.definition.trim() || !customText.identifying) {
+      setError(t("admin.customMissingDetails")); return;
+    }
+    if (draft.definition.customElements?.some((item) => item.namespace === namespace && item.slug === slug)) {
+      setError(t("admin.customDuplicateIdentity")); return;
+    }
+    const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
+      title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype as CatalogDraftCustomTextElement["datatype"],
+      recurrence: customText.recurrence,
+      ...(customText.correlatesTo ? { correlatesTo: customText.correlatesTo as NonNullable<CatalogDraftCustomTextElement["correlatesTo"]> } : {}),
+      ...(customText.groupDefinitionId ? { groupDefinitionId: customText.groupDefinitionId } : {}),
+      usage: customText.usage, identifying: customText.identifying === "yes",
+      constraints: customText.datatype === "string" || customText.datatype === "other" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
+        ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
+        ...(customText.pattern ? { pattern: customText.pattern } : {}) } : customText.datatype === "number"
+        ? { ...(customText.minimum ? { minimum: Number(customText.minimum) } : {}),
+          ...(customText.maximum ? { maximum: Number(customText.maximum) } : {}) } : {},
+      ...(customText.swedishTitle.trim() ? { localization: { schemaVersion: 1, sv: {
+        label: customText.swedishTitle.trim(), description: customText.swedishDefinition.trim(),
+        reviewedSource: { label: customText.title.trim(), description: customText.definition.trim() } } } } : {}) };
+    setDraft({ ...draft, definition: { ...draft.definition,
+      customElements: [...(draft.definition.customElements ?? []), element] } });
+    setDirty(true); setError(""); setStatus(t("admin.customAdded", { identity: `${namespace}.${slug}` }));
+    setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
+      usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "", groupDefinitionId: "",
+      minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+  }
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
     try { await work(); } catch (reason) { showError(reason); } finally { setBusy(false); }
@@ -135,6 +191,137 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
 
   return <div className="catalog-editor">
     {versionWorkspace}
+    <section aria-label="Custom groups">
+      <h3>{language === "sv" ? "Anpassade grupper" : "Custom groups"}</h3>
+      <ul>{(draft.definition.customGroups ?? []).map((group) => <li key={group.id}>
+        {group.namespace}.{group.slug} — {language === "sv" ? group.localization?.sv?.label || group.title : group.title}
+        {` (${group.recurrence}${group.correlatesTo ? `; ${group.correlatesTo}` : ""})`}
+      </li>)}</ul>
+      {canEdit && <fieldset disabled={busy}><legend>{language === "sv" ? "Skapa grupp" : "Create group"}</legend>
+        <label>Namespace <input value={newGroup.namespace} onChange={(event) => setNewGroup({ ...newGroup, namespace: event.target.value })} /></label>
+        <label>Slug <input value={newGroup.slug} onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} /></label>
+        <label>English title <input value={newGroup.title} onChange={(event) => setNewGroup({ ...newGroup, title: event.target.value })} /></label>
+        <label>Recurrence <select value={newGroup.recurrence} onChange={(event) => setNewGroup({ ...newGroup, recurrence: event.target.value as CatalogDraftCustomGroup["recurrence"] })}>
+          <option value="single">Single</option><option value="multiple">Multiple</option></select></label>
+        <label>Correlate with <select value={newGroup.correlatesTo} onChange={(event) => setNewGroup({ ...newGroup, correlatesTo: event.target.value })}>
+          <option value="">Patient report</option><option value="eMedications.MedicationGroup">Medication entry</option>
+          <option value="eExam.AssessmentGroup">Assessment entry</option></select></label>
+        <button type="button" onClick={() => {
+          if (!newGroup.namespace.trim() || !newGroup.slug.trim() || !newGroup.title.trim()) { setError("Complete the custom group identity and title."); return; }
+          const group: CatalogDraftCustomGroup = { id: crypto.randomUUID(), namespace: newGroup.namespace.trim(), slug: newGroup.slug.trim(),
+            title: newGroup.title.trim(), recurrence: newGroup.recurrence,
+            ...(newGroup.correlatesTo ? { correlatesTo: newGroup.correlatesTo as NonNullable<CatalogDraftCustomGroup["correlatesTo"]> } : {}) };
+          setDraft({ ...draft, definition: { ...draft.definition, customGroups: [...(draft.definition.customGroups ?? []), group] } });
+          setDirty(true); setNewGroup({ namespace: "", slug: "", title: "", recurrence: "multiple", correlatesTo: "" });
+        }}>Add group</button>
+      </fieldset>}
+    </section>
+    <section aria-labelledby="custom-text-heading">
+      <h3 id="custom-text-heading">{t("admin.customTextElements")}</h3>
+      <ul>{(draft.definition.customElements ?? []).map((item) => <li key={item.id}>
+        <strong>{item.namespace}.{item.slug} — {language === "sv" ? item.localization?.sv?.label || item.title : item.title}</strong>
+        {` (${item.usage}; ${t("admin.customIdentifying")}: ${t(item.identifying ? "admin.customYes" : "admin.customNo")})`}
+        <p>{item.definition}</p>
+        <p>{item.recurrence === "multiple" ? "Multiple values" : "Single value"}{item.correlatesTo ? ` per ${item.correlatesTo}` : " per report"}</p>
+        {item.groupDefinitionId && <p>Grouping: {draft.definition.customGroups?.find((group) => group.id === item.groupDefinitionId)?.title ?? item.groupDefinitionId}</p>}
+        {item.datatype === "coded" && <p>{item.codeSystem}: {item.choices.map((choice) => `${choice.code} — ${choice.label}`).join(", ")}
+          {item.nemsisElement ? `; NEMSIS ${item.nemsisElement}` : ""}</p>}
+        {item.retired && <span>{t("admin.customRetired")}</span>}
+        {canEdit && !item.retired && <>
+          <button type="button" onClick={() => {
+            setEditingCustomId(item.id);
+            setCustomText({ namespace: item.namespace, slug: item.slug, title: item.title,
+              definition: item.definition, swedishTitle: item.localization?.sv?.label ?? "",
+              swedishDefinition: item.localization?.sv?.description ?? "", usage: item.usage,
+              identifying: item.identifying ? "yes" : "no", datatype: item.datatype,
+              recurrence: item.recurrence, correlatesTo: item.correlatesTo ?? "", groupDefinitionId: item.groupDefinitionId ?? "",
+              minLength: item.datatype === "coded" ? "" : String(item.constraints.minLength ?? ""),
+              maxLength: item.datatype === "coded" ? "" : String(item.constraints.maxLength ?? ""),
+              pattern: item.datatype === "coded" ? "" : item.constraints.pattern ?? "",
+              minimum: item.datatype === "coded" ? "" : String(item.constraints.minimum ?? ""),
+              maximum: item.datatype === "coded" ? "" : String(item.constraints.maximum ?? "") });
+          }}>{t("admin.customRevise")}</button>
+          <button type="button" onClick={() => {
+            setDraft({ ...draft, definition: { ...draft.definition, customElements: draft.definition.customElements?.map((entry) =>
+              entry.id === item.id ? { ...entry, retired: true } : entry) } });
+            setDirty(true); setStatus(t("admin.customRetired"));
+          }}>{t("admin.customRetire")}</button>
+        </>}
+      </li>)}</ul>
+      {canEdit && <fieldset disabled={busy}>
+        <legend>{editingCustomId ? t("admin.customRevise") : t("admin.createStandaloneText")}</legend>
+        {editingCustomId && <p>{t("admin.customRevisionHint")}</p>}
+        <label>{language === "sv" ? "Datatyp" : "Data type"} <select disabled={Boolean(editingCustomId)} value={customText.datatype} onChange={(event) => setCustomText({ ...customText,
+          datatype: event.target.value as CatalogDraftCustomElement["datatype"] })}>
+          <option value="string">{language === "sv" ? "Text" : "Text"}</option>
+          <option value="number">{language === "sv" ? "Tal" : "Number"}</option>
+          <option value="dateTime">{language === "sv" ? "Datum och tid" : "Date and time"}</option>
+          <option value="boolean">{language === "sv" ? "Ja eller nej" : "Yes or no"}</option>
+          <option value="binary">{language === "sv" ? "Binär (fil, högst 75 000 byte)" : "Binary (file, at most 75,000 bytes)"}</option>
+          <option value="other">{language === "sv" ? "Annat (text)" : "Other (text)"}</option>
+          <option value="coded" disabled>{language === "sv" ? "Kodad" : "Coded"}</option>
+        </select></label>
+        <label>{t("admin.customNamespace")} <input required disabled={Boolean(editingCustomId)} value={customText.namespace} placeholder="org.example.ems"
+          onChange={(event) => setCustomText({ ...customText, namespace: event.target.value })} /></label>
+        <label>{t("admin.customIdentifier")} <input required disabled={Boolean(editingCustomId)} value={customText.slug} placeholder="LocalNote"
+          onChange={(event) => setCustomText({ ...customText, slug: event.target.value })} /></label>
+        <label>{t("admin.customEnglishTitle")} <input required maxLength={100} value={customText.title}
+          onChange={(event) => setCustomText({ ...customText, title: event.target.value })} /></label>
+        <label>{t("admin.customEnglishDefinition")} <textarea required maxLength={255} value={customText.definition}
+          onChange={(event) => setCustomText({ ...customText, definition: event.target.value })} /></label>
+        <label>{t("admin.customSwedishTitle")} <input maxLength={100} value={customText.swedishTitle}
+          onChange={(event) => setCustomText({ ...customText, swedishTitle: event.target.value })} /></label>
+        <label>{t("admin.customSwedishDefinition")} <textarea maxLength={255} value={customText.swedishDefinition}
+          onChange={(event) => setCustomText({ ...customText, swedishDefinition: event.target.value })} /></label>
+        <label>{t("admin.customUsage")} <select disabled={Boolean(editingCustomId)} value={customText.usage} onChange={(event) => setCustomText({ ...customText,
+          usage: event.target.value as CatalogDraftCustomTextElement["usage"] })}>
+          {["Optional", "Recommended", "Required", "Mandatory"].map((usage) => <option key={usage}>{usage}</option>)}
+        </select></label>
+        <label>{language === "sv" ? "Upprepning" : "Recurrence"} <select disabled={Boolean(editingCustomId)} value={customText.recurrence}
+          onChange={(event) => setCustomText({ ...customText, recurrence: event.target.value as CatalogDraftCustomTextElement["recurrence"] })}>
+          <option value="single">{language === "sv" ? "Ett värde per mål" : "One value per target"}</option>
+          <option value="multiple">{language === "sv" ? "Flera värden per mål" : "Multiple values per target"}</option>
+        </select></label>
+        <label>{language === "sv" ? "Koppla till" : "Correlate with"} <select disabled={Boolean(editingCustomId)} value={customText.correlatesTo}
+          onChange={(event) => setCustomText({ ...customText, correlatesTo: event.target.value })}>
+          <option value="">{language === "sv" ? "Patientrapport" : "Patient report"}</option>
+          <option value="eMedications.MedicationGroup">{language === "sv" ? "Läkemedelspost" : "Medication entry"}</option>
+          <option value="eExam.AssessmentGroup">{language === "sv" ? "Bedömningspost" : "Assessment entry"}</option>
+        </select></label>
+        <label>{language === "sv" ? "Gruppering" : "Grouping"} <select disabled={Boolean(editingCustomId)} value={customText.groupDefinitionId}
+          onChange={(event) => {
+            const group = draft.definition.customGroups?.find((candidate) => candidate.id === event.target.value);
+            setCustomText({ ...customText, groupDefinitionId: event.target.value,
+              ...(group ? { namespace: group.namespace, correlatesTo: group.correlatesTo ?? "" } : {}) });
+          }}>
+          <option value="">{language === "sv" ? "Ingen" : "None"}</option>
+          {(draft.definition.customGroups ?? []).map((group) => <option key={group.id} value={group.id}>{group.title}</option>)}
+        </select></label>
+        <label>{t("admin.customIdentifying")} <select required disabled={Boolean(editingCustomId)} value={customText.identifying}
+          onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
+          <option value="">{t("admin.customChooseClassification")}</option><option value="yes">{t("admin.customYes")}</option><option value="no">{t("admin.customNo")}</option>
+        </select></label>
+        {(customText.datatype === "string" || customText.datatype === "other") && <><label>{t("admin.customMinimumLength")} <input type="number" min="0" max="100000" disabled={Boolean(editingCustomId)} value={customText.minLength}
+          onChange={(event) => setCustomText({ ...customText, minLength: event.target.value })} /></label>
+        <label>{t("admin.customMaximumLength")} <input type="number" min="0" disabled={Boolean(editingCustomId)} value={customText.maxLength}
+          onChange={(event) => setCustomText({ ...customText, maxLength: event.target.value })} /></label>
+        <label>{t("admin.customPattern")} <input disabled={Boolean(editingCustomId)} value={customText.pattern}
+          onChange={(event) => setCustomText({ ...customText, pattern: event.target.value })} /></label></>}
+        {customText.datatype === "number" && <><label>{language === "sv" ? "Minsta värde" : "Minimum"} <input type="number" disabled={Boolean(editingCustomId)} value={customText.minimum}
+          onChange={(event) => setCustomText({ ...customText, minimum: event.target.value })} /></label>
+          <label>{language === "sv" ? "Högsta värde" : "Maximum"} <input type="number" disabled={Boolean(editingCustomId)} value={customText.maximum}
+          onChange={(event) => setCustomText({ ...customText, maximum: event.target.value })} /></label></>}
+        <button type="button" onClick={addCustomText}>{t(editingCustomId ? "admin.customSaveRevision" : "admin.customAddText")}</button>
+      </fieldset>}
+      {canEdit && <CustomCodedAuthoring disabled={busy} groups={draft.definition.customGroups ?? []} onAdd={(element) => {
+        if (draft.definition.customElements?.some((item) => item.namespace === element.namespace && item.slug === element.slug)) {
+          setError(t("admin.customDuplicateIdentity")); return;
+        }
+        setDraft({ ...draft, definition: { ...draft.definition,
+          customElements: [...(draft.definition.customElements ?? []), element] } });
+        setDirty(true); setError(""); setStatus(`Unsaved custom coded element ${element.namespace}.${element.slug}`);
+      }} />}
+    </section>
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
       : canWrite ? `${draft.status === "active" ? t("admin.active") : t("admin.published")} Catalog ${draft.displayName}, version ${draft.version}. Create a draft to edit it.`
         : `${draft.status === "active" ? t("admin.active") : t("admin.published")} Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
@@ -286,9 +473,7 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
 
   function updateValue(index: number, update: (value: CatalogDraftCodeList["values"][number]) => CatalogDraftCodeList["values"][number], announcement: string) {
     const values = list.values.map((value, valueIndex) => valueIndex === index ? update(value) : value);
-    const selected = list.defaultValue && valueKey(list.defaultValue) === valueKey(values[index]!);
-    const defaultValue = selected && !values[index]!.enabled ? null : list.defaultValue;
-    onChange({ ...list, values, defaultValue }, announcement);
+    onChange({ ...list, values }, announcement);
   }
 
   function addValue() {
@@ -322,7 +507,6 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
     <ol aria-label={`${list.name} values`}>
       {list.values.map((value, index) => {
         const key = valueKey(value);
-        const isDefault = list.defaultValue ? valueKey(list.defaultValue) === key : false;
         return <li key={key}>
           <div><strong>{value.code}</strong>{value.codeSystem && <small>{value.codeSystem}</small>}</div>
           <label><AdminText messageKey="admin.label" /> <input disabled={readOnly} aria-label={`${language === "sv" ? t("admin.swedish") : t("admin.english")} label for ${list.listId} ${value.codeSystem} ${value.code}`}
@@ -339,11 +523,6 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
                 sv: { ...current.localization?.sv, reviewedSource: { label: current.label } } } }), `Reviewed ${value.code}.`)}><AdminText messageKey="admin.confirmReview" /></button></p>}
           <label><input disabled={readOnly} type="checkbox" aria-label={`${value.label} enabled`} checked={value.enabled} onChange={(event) => updateValue(index,
             (current) => ({ ...current, enabled: event.target.checked }), `${event.target.checked ? t("admin.enabled") : t("admin.disabled")} ${value.label}.`)} /> <AdminText messageKey="admin.enabled" /></label>
-          <label><input type="radio" name={`${list.listId}-default`} aria-label={`Use ${value.label} as default`} checked={isDefault} disabled={readOnly || !value.enabled}
-            onChange={() => {
-              onChange({ ...list, defaultValue: { code: value.code, codeSystem: value.codeSystem } },
-                `Set ${value.label} as the default.`);
-            }} /> <AdminText messageKey="admin.default" /></label>
           <div className="code-list-order" aria-label={`Reorder ${value.label}`}>
             <button type="button" disabled={readOnly || index === 0} aria-label={`Move ${value.label} up`} onClick={() => onChange(
               moveCodeValue(list, index, index - 1), `Moved ${value.label} up.`)}><AdminText messageKey="admin.moveUp" /></button>
@@ -353,6 +532,5 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
         </li>;
       })}
     </ol>
-    <button type="button" disabled={readOnly || list.defaultValue === null} onClick={() => onChange({ ...list, defaultValue: null }, t("admin.clearedTheCode"))}><AdminText messageKey="admin.clearDefault" /></button>
   </div>;
 }

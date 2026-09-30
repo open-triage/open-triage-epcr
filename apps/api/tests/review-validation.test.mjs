@@ -65,6 +65,7 @@ function evaluatingManager({ storedSha256 = compiledSha256 } = {}) {
         evaluated_by: userId, outcome: parameters[6], findings: JSON.parse(parameters[7]),
         failures: JSON.parse(parameters[8]), evaluated_at: parameters[9] }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   return { manager, calls };
@@ -104,6 +105,7 @@ test("review-only rules are omitted from the offline live bundle", async () => {
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
     if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const configuration = await clinicalFormConfiguration(manager, formVersionId, catalogReleaseId,
@@ -121,6 +123,7 @@ test("review-only rules do not participate in authoritative signing", async () =
       catalog_version: "3.5.1", catalog_dataset: "EMSDataSet" }];
     if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence")) return [];
     if (sql.includes("from app_identity.agency_settings")) return [{ language: "en" }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const signing = new SignReportService({}, {});

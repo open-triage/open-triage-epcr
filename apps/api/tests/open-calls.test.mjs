@@ -163,6 +163,7 @@ test("raw draft loading assembles report metadata and content in one repeatable-
     if (normalized.includes("from clinical.report_note")) return [];
     if (normalized.includes("from clinical.report_photo_note")) return [];
     if (normalized.includes("from clinical.report_audio_note")) return [];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
 
@@ -225,6 +226,7 @@ test("reopening restores the creator's report with its pinned form and saved con
       dispatch_cancellation_revision: "3", dispatch_cancellation_receipt_id: "dispatch-receipt",
       agency_time_zone: "America/New_York"
     }];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = transactional(manager, isolations);
@@ -313,6 +315,7 @@ test("changed active report polling returns the provenance-merged canonical docu
     if (normalized.includes("from clinical.report_note")) return [];
     if (normalized.includes("from clinical.report_photo_note")) return [];
     if (normalized.includes("from clinical.report_audio_note")) return [];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new DraftReportService(transactional(manager, isolations), sessions());
@@ -354,6 +357,7 @@ test("a concurrent save cannot pair revision R with document content from R+1", 
       if (normalized.includes("from clinical.report_note")) return [];
       if (normalized.includes("from clinical.report_photo_note")) return [];
       if (normalized.includes("from clinical.report_audio_note")) return [];
+      if (normalized.includes("customGroupDefinitions")) return [];
       throw new Error(`Unexpected SQL: ${normalized}`);
     } };
     return work(manager);
@@ -408,6 +412,7 @@ test("delayed draft synchronization is permanently rejected after a purge tombst
     if (normalized.includes("pg_advisory_xact_lock")) return [];
     if (normalized.includes("from clinical.report")) return [];
     if (normalized.includes("synthetic_purge_tombstone")) return [{ exists: true }];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new DraftReportService(transactional(manager), sessions());

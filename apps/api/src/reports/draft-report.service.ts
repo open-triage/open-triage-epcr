@@ -30,6 +30,7 @@ import {
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
 import { dispatchConflicts, encounterDocument } from "./encounter-document.persistence.js";
+import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { withReportSnapshot } from "./report-snapshot.js";
 import { reportTextNotes } from "./report-note.persistence.js";
 
@@ -76,6 +77,9 @@ type ElementMetadata = {
   supports_not_values: boolean;
   supports_pertinent_negatives: boolean;
   max_occurs: number | null;
+  text_constraints?: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
+  custom_definition?: import("@open-triage/contracts").CatalogDraftCustomElement | null;
+  form_choice_policy?: import("@open-triage/contracts").FormDraftField["choicePolicy"];
 };
 
 type SingletonTargetStateRow = DraftTargetStateRow & {
@@ -155,7 +159,7 @@ function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftV
     : { kind: "absent" };
   if (value.kind === "absent") return { kind: "absent", ...metadata };
   if (typeof value.value === "boolean") return { kind: "boolean", value: value.value };
-  if (typeof value.value === "number") return Number.isInteger(value.value)
+  if (typeof value.value === "number") return baseDatatype === "integer"
     ? { kind: "integer", value: value.value } : { kind: "numeric", value: value.value };
   const scalarKind: Record<string, DraftValue["kind"]> = {
     string: "text", anyURI: "uri", integer: "integer", decimal: "numeric", boolean: "boolean",
@@ -421,6 +425,8 @@ export class DraftReportService {
         await this.applyGroups(manager, report, { ...command, groups: winningGroups });
         await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
         if (reconciledSingleton) await this.assertPinnedCardinality(manager, report);
+        if (winningOccurrences.some((occurrence) => occurrenceMetadata.get(occurrence.id)?.base_datatype === "coded"))
+          await this.assertCodedChoiceCombinations(manager, report);
 
         await manager.query(`
           with updated as (
@@ -566,16 +572,17 @@ export class DraftReportService {
       max_occurs: string | number;
       occurrence_count: string | number;
     }>>(`
-      select occurrence.element_id, definition.max_occurs, count(*) as occurrence_count
+      select occurrence.element_id, max(definition.max_occurs) as max_occurs, count(*) as occurrence_count
       from clinical.element_occurrence occurrence
-      join catalog.element_definition definition
+      left join catalog.element_definition definition
         on definition.release_id = occurrence.catalog_release_id
        and definition.element_id = occurrence.element_id
+      left join forms.custom_element_definition custom on custom.id = occurrence.element_identity_id
       where occurrence.report_id = $1
         and occurrence.tombstoned_at is null
-        and definition.max_occurs is not null
-      group by occurrence.group_instance_id, occurrence.element_id, definition.max_occurs
-      having count(*) > definition.max_occurs
+        and (definition.max_occurs is not null or custom.definition->>'recurrence' = 'single')
+      group by occurrence.group_instance_id, occurrence.element_id
+      having count(*) > coalesce(max(definition.max_occurs), 1)
       order by occurrence.element_id
       limit 1
     `, [report.id]);
@@ -585,6 +592,29 @@ export class DraftReportService {
         `${violation.element_id} permits at most ${violation.max_occurs} occurrence(s), not ${violation.occurrence_count}`
       );
     }
+  }
+
+  private async assertCodedChoiceCombinations(manager: EntityManager, report: ReportRow): Promise<void> {
+    const invalid = await manager.query<Array<{ element_id: string }>>(`
+      select occurrence.element_id
+      from clinical.element_occurrence occurrence
+      left join catalog.element_definition standard
+        on standard.release_id = occurrence.catalog_release_id
+       and standard.element_id = occurrence.element_id
+      left join forms.custom_element_definition custom
+        on custom.id = occurrence.element_identity_id
+      where occurrence.report_id = $1 and occurrence.tombstoned_at is null
+        and coalesce(standard.base_datatype, custom.base_datatype) = 'coded'
+      group by occurrence.group_instance_id, occurrence.element_id
+      having count(*) > 1 and (
+        bool_or(occurrence.value_kind <> 'coded')
+        or count(*) > count(distinct (coalesce(occurrence.code_system, ''), occurrence.code))
+      )
+      limit 1
+    `, [report.id]);
+    if (invalid[0]) throw new UnprocessableEntityException(
+      `${invalid[0].element_id} cannot combine exceptional or duplicate choices`
+    );
   }
 
   private targetFromState(state: DraftTargetStateRow): IncomingTarget {
@@ -1235,13 +1265,32 @@ export class DraftReportService {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
       this.validateDatatype(value, metadata, occurrence.elementId);
+      if (metadata.base_datatype === "binary" && value.kind === "binary" &&
+          (value.value.length < 1 || value.value.length > 100000 ||
+           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.value) ||
+           Buffer.from(value.value, "base64").toString("base64") !== value.value))
+        throw new UnprocessableEntityException(`${occurrence.elementId} requires canonical base64 of at most 100000 characters`);
+      if (metadata.text_constraints && value.kind === "text") {
+        const constraints = metadata.text_constraints;
+        if (value.value.length < 1 || value.value.length > 100000 || constraints.minLength !== undefined && value.value.length < constraints.minLength ||
+            constraints.maxLength !== undefined && value.value.length > constraints.maxLength ||
+            constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value.value))
+          throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published text constraints`);
+      }
+      if (metadata.text_constraints && value.kind === "numeric") {
+        const bounds = metadata.text_constraints;
+        const numeric = Number(value.value);
+        if (!Number.isFinite(numeric) || bounds.minimum !== undefined && numeric < bounds.minimum ||
+            bounds.maximum !== undefined && numeric > bounds.maximum)
+          throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published numeric bounds`);
+      }
       const columns = this.valueColumns(value);
       return {
         id: occurrence.id,
         group_instance_id: occurrence.groupInstanceId ?? null,
         element_identity_id: metadata.element_identity_id,
         element_id: occurrence.elementId,
-        form_field_id: occurrence.formFieldId ?? null,
+        form_field_id: occurrence.formFieldId ?? metadata.form_field_id ?? null,
         ordinal: occurrence.ordinal ?? 0,
         analytical_repeatable: metadata.analytical_repeatable,
         identifying: metadata.identifying,
@@ -1373,19 +1422,39 @@ export class DraftReportService {
     const fields = formFieldIds.length ? await manager.query<ElementMetadata[]>(`
         select ff.id as form_field_id, ced.namespace || '.' || ced.slug as element_id,
                coalesce(ff.catalog_element_identity_id, ff.custom_element_definition_id) as element_identity_id,
-               ced.base_datatype, null::integer as max_occurs,
+               ced.base_datatype, case when ced.definition->>'recurrence' = 'single' then 1 else null end as max_occurs,
                (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
                (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
-               ff.analytical_repeatable, ced.identifying,
+               ff.analytical_repeatable, ced.identifying, ced.definition as custom_definition,
+               (select item->'choicePolicy' from jsonb_array_elements(fv.canonical_definition->'sections') section,
+                 jsonb_array_elements(section->'fields') item where item->>'key'=ff.stable_key limit 1) as form_choice_policy,
                array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff
+        join forms.form_version fv on fv.id=ff.form_version_id
         left join forms.custom_element_definition ced on ced.id = ff.custom_element_definition_id
         where ff.id = any($1::uuid[]) and ff.form_version_id = $2
       `, [formFieldIds, report.form_version_id]) : [];
     const fieldsById = new Map(fields.map((metadata) => [metadata.form_field_id!, metadata]));
+    const customElementIds = elementIds.filter((id) => id.split(".").length > 2);
+    const custom = customElementIds.length ? await manager.query<ElementMetadata[]>(`
+      select ced.namespace || '.' || ced.slug as element_id,ff.id as form_field_id,
+             ced.id as element_identity_id,ced.base_datatype,
+             case when ced.definition->>'recurrence' = 'single' then 1 else null end as max_occurs,
+             ff.analytical_repeatable,ced.identifying,
+             (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
+             (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
+             array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states,
+             ced.definition->'constraints' as text_constraints, ced.definition as custom_definition,
+             (select item->'choicePolicy' from jsonb_array_elements(fv.canonical_definition->'sections') section,
+               jsonb_array_elements(section->'fields') item where item->>'key'=ff.stable_key limit 1) as form_choice_policy
+      from forms.form_field ff join forms.custom_element_definition ced on ced.id=ff.custom_element_definition_id
+      join forms.form_version fv on fv.id=ff.form_version_id
+      where ff.form_version_id=$1 and ced.namespace || '.' || ced.slug=any($2::text[])
+    `, [report.form_version_id, customElementIds]) : [];
+    const customByElement = new Map(custom.map((metadata) => [metadata.element_id!, metadata]));
     const result = new Map<string, ElementMetadata>();
     for (const occurrence of occurrences) {
-      let metadata = standardByElement.get(occurrence.elementId);
+      let metadata = standardByElement.get(occurrence.elementId) ?? customByElement.get(occurrence.elementId);
       const field = occurrence.formFieldId ? fieldsById.get(occurrence.formFieldId) : undefined;
       if (!metadata && field?.base_datatype && field.element_id === occurrence.elementId) metadata = field;
       if (!metadata) {
@@ -1400,6 +1469,11 @@ export class DraftReportService {
   }
 
   private validateDatatype(value: DraftValue, metadata: ElementMetadata, elementId: string): void {
+    if (metadata.base_datatype === "coded" && metadata.custom_definition?.datatype === "coded") {
+      const findings = customCodedValueFindings(metadata.custom_definition, value,
+        metadata.form_choice_policy, metadata.allowed_absence_states.map((state) => state.replace(/^form:/, "")));
+      if (findings.length) throw new UnprocessableEntityException(findings.join("; "));
+    }
     const expected: Record<string, DraftValue["kind"]> = {
       string: "text", integer: "integer", decimal: "numeric", boolean: "boolean",
       date: "date", dateTime: "datetime", time: "time", duration: "duration",
@@ -1408,6 +1482,16 @@ export class DraftReportService {
     if (!["coded", "null", "pertinent-negative", "absent"].includes(value.kind) && expected[metadata.base_datatype] !== value.kind) {
       throw new UnprocessableEntityException(`${elementId} requires ${metadata.base_datatype}, not ${value.kind}`);
     }
+    if (metadata.base_datatype === "decimal" && value.kind === "numeric" &&
+        (typeof value.value !== "number" && typeof value.value !== "string" ||
+         String(value.value).trim() === "" || !Number.isFinite(Number(value.value))))
+      throw new UnprocessableEntityException(`${elementId} requires a finite number`);
+    if (metadata.base_datatype === "boolean" && value.kind === "boolean" && typeof value.value !== "boolean")
+      throw new UnprocessableEntityException(`${elementId} requires true or false`);
+    if (metadata.base_datatype === "dateTime" && value.kind === "datetime" &&
+        (typeof value.value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value.value) ||
+         !Number.isFinite(Date.parse(value.value))))
+      throw new UnprocessableEntityException(`${elementId} requires an ISO date and time with a timezone`);
     if (value.kind === "null" || value.kind === "pertinent-negative") {
       const prefix = value.kind === "null" ? "not-value:" : "pertinent-negative:";
       if (!metadata.allowed_absence_states.includes(`${prefix}${value.absenceCode}`) &&

@@ -7,6 +7,10 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
+import type {
+  CatalogDraftCustomCodedElement,
+} from "@open-triage/contracts";
 import type {
   CanonicalFormDefinition,
   CanonicalFormField,
@@ -20,6 +24,8 @@ import {
   validatePublishCommand,
   withoutLegacyFormWording
 } from "./form-publication.validation.js";
+import { catalogFieldsConfiguration } from "./clinical-form-configuration.js";
+import { customCodedPolicies, validateFieldChoicePolicies, validateFieldCompletionRequirements } from "./field-choice-policy.js";
 
 type FormVersionRow = {
   id: string;
@@ -44,6 +50,7 @@ type CustomElementRow = {
   organization_id: string;
   base_datatype: string;
   retired_at: Date | null;
+  definition: import("@open-triage/contracts").CatalogDraftCustomElement;
 };
 
 type CustomGroupRow = {
@@ -108,6 +115,19 @@ export class FormPublicationService {
         }
 
         const metadata = await this.resolveMetadata(manager, version, definition);
+        const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+          field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds);
+        const customSnapshot = definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
+          ? await releaseCustomDefinitions(manager, version.catalog_release_id) : null;
+        const invalidChoices = validateFieldChoicePolicies(definition, catalogFields,
+          customSnapshot === null ? await customCodedPolicies(manager, definition)
+            : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
+              .map((item) => [item.id, item])));
+        const completionFindings = validateFieldCompletionRequirements(definition, catalogFields,
+          Object.fromEntries((customSnapshot ?? []).filter((item) => !item.retired).map((item) => [item.id, item])));
+        if (invalidChoices.length || completionFindings.length) throw new UnprocessableEntityException({
+          message: "Form publication failed", findings: [...invalidChoices, ...completionFindings] });
         await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_field where form_version_id = $1", [version.id]);
@@ -209,15 +229,26 @@ export class FormPublicationService {
       where e.release_id = $1 and e.element_id = any($2::text[])
     `, [version.catalog_release_id, nemsisIds]);
     const custom = customIds.length ? await manager.query<CustomElementRow[]>(`
-      select id, organization_id, base_datatype, retired_at
-      from forms.custom_element_definition where id = any($1::uuid[])
-    `, [customIds]) : [];
+      select ced.id, ced.organization_id, ced.base_datatype, ced.retired_at, ced.definition
+      from forms.custom_element_definition ced join catalog.release cr on cr.id=$2
+      where ced.id = any($1::uuid[])
+        and (ced.definition->>'catalogReleaseId' is null or
+          ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb))))
+    `, [customIds, version.catalog_release_id]) : [];
     const groups = groupIds.length ? await manager.query<CustomGroupRow[]>(`
       select id, organization_id, temporal_kind, clinical_time_element_id
       from forms.custom_group_definition where id = any($1::uuid[])
     `, [groupIds]) : [];
     const nemsisById = new Map(nemsis.map((row) => [row.element_id, row]));
     const customById = new Map(custom.map((row) => [row.id, row]));
+    const customSnapshot = customIds.length ? await releaseCustomDefinitions(manager, version.catalog_release_id) : null;
+    const pinnedCustomById = new Map((customSnapshot ?? []).map((item) => [item.id, item]));
+    const retiredIds = new Set((customSnapshot ?? []).filter((item) => item.retired).map((item) => item.id));
+    const pinnedGroups = await manager.query<Array<{ id: string }>>(`
+      select item->>'id' as id from catalog.release cr,
+      jsonb_array_elements(coalesce(cr.provenance->'customGroupDefinitions','[]'::jsonb)) item
+      where cr.id=$1`, [version.catalog_release_id]);
+    const pinnedGroupIds = new Set(pinnedGroups.map((row) => row.id));
     const groupById = new Map(groups.map((row) => [row.id, row]));
     const findings: string[] = [];
     const result = new Map<string, {
@@ -248,7 +279,7 @@ export class FormPublicationService {
       } else {
         const element = customById.get(field.source.elementDefinitionId);
         const group = field.source.groupDefinitionId ? groupById.get(field.source.groupDefinitionId) : undefined;
-        if (!element || element.organization_id !== version.organization_id || element.retired_at) {
+        if (!element || element.organization_id !== version.organization_id || element.retired_at || retiredIds.has(element.id)) {
           findings.push(`field ${field.key} references an unknown or unavailable custom element`);
           continue;
         }
@@ -256,11 +287,23 @@ export class FormPublicationService {
           findings.push(`field ${field.key} references an unknown custom group`);
           continue;
         }
+        const pinnedElement = pinnedCustomById.get(element.id) ?? element.definition;
+        if ((pinnedElement?.groupDefinitionId ?? undefined) !== field.source.groupDefinitionId ||
+          field.source.groupDefinitionId && !pinnedGroupIds.has(field.source.groupDefinitionId)) {
+          findings.push(`field ${field.key} grouping does not match its pinned custom definition`);
+          continue;
+        }
+        if (element.base_datatype === "coded") {
+          const coded = element.definition as import("@open-triage/contracts").CatalogDraftCustomCodedElement;
+          const invalid = (field.allowedAbsenceStates ?? []).filter((code) =>
+            !coded.permittedNotValues.includes(code) && !coded.permittedPertinentNegatives.includes(code));
+          if (invalid.length) findings.push(`field ${field.key} uses unsupported custom absence states: ${invalid.join(", ")}`);
+        } else if (field.choicePolicy !== undefined) findings.push(`field ${field.key} does not support coded choices`);
         result.set(field.key, {
           catalogElementIdentityId: null,
           customElementDefinitionId: element.id,
           customGroupDefinitionId: group?.id ?? null,
-          analyticalRepeatable: Boolean(group)
+          analyticalRepeatable: Boolean(group || (element.definition as { correlatesTo?: string }).correlatesTo)
         });
       }
     }

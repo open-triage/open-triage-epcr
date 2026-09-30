@@ -1,7 +1,7 @@
 import { platformRequestError } from "./platform-errors";
 import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportMediaPolicy, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
-import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
+import { getNemsisDataElement, getNemsisGroup } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
 import {
   apiRequestUrl,
@@ -74,6 +74,7 @@ export function dispatchCancellationNotice(cancellation: DispatchCancellation): 
 export interface DraftGroupMutation {
   readonly id: string;
   readonly groupId: string;
+  readonly customGroupDefinitionId?: string;
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
@@ -140,7 +141,7 @@ function draftTargetId(reportId: string, targetKind: "group" | "occurrence", ide
   return persistedDraftIdPattern.test(identity) ? identity : stableDraftId(reportId, `${targetKind}:${identity}`);
 }
 
-function draftValue(elementId: string, value: EncounterValue): DraftValue {
+function draftValue(elementId: string, value: EncounterValue, customFields?: ClinicalFormConfiguration["customFields"]): DraftValue {
   const metadata: Pick<DraftValue, "notValue" | "pertinentNegative"> = {
     ...(value.notValue ? { notValue: value.notValue } : {}),
     ...(value.pertinentNegative ? { pertinentNegative: value.pertinentNegative } : {}),
@@ -151,7 +152,9 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
     ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}), ...metadata }
     : { kind: "absent", ...metadata };
   if (value.kind === "absent") return { kind: "absent", ...metadata };
-  const base = requireNemsisDataElement(elementId).datatype.base;
+  const custom = Object.values(customFields ?? {}).find((item) => `${item.namespace}.${item.slug}` === elementId);
+  const base = getNemsisDataElement(elementId)?.datatype.base ??
+    (custom?.datatype === "number" ? "decimal" : custom?.datatype === "other" ? "string" : custom?.datatype) ?? "string";
   if (base === "integer") {
     const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
     const numeric = Number(scalar);
@@ -178,6 +181,8 @@ export function encounterDocumentToDraftMutations(
   reportId: string,
   document: EncounterDocument,
   persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  customFields?: ClinicalFormConfiguration["customFields"],
+  customGroups?: ClinicalFormConfiguration["customGroups"],
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
   const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [`${group.id}:${instance.instanceId}`, instance] as const)));
   const groupTargetIds = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [
@@ -187,23 +192,26 @@ export function encounterDocumentToDraftMutations(
   const groups: DraftGroupMutation[] = [];
   const occurrences: DraftOccurrenceMutation[] = [];
   document.groups.forEach((group) => {
-    if (!getNemsisGroup(group.id)) return; // Custom fields require their pinned form-field identities.
+    const customGroup = Object.values(customGroups ?? {}).find((item) => `${item.namespace}.${item.slug}` === group.id);
+    if (!getNemsisGroup(group.id) && !customGroup) return;
     group.instances.forEach((instance, ordinal) => {
-      const parentGroupId = getNemsisGroup(group.id)?.parentId;
+      const parentGroupId = customGroup ? customGroup.correlatesTo ?? "PatientCareReportGroup" : getNemsisGroup(group.id)?.parentId;
       const parentCandidates = parentGroupId ? [...instances.entries()].filter(([key]) => key.startsWith(`${parentGroupId}:`)).map(([, candidate]) => candidate) : [];
-      const parent = parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
-        ?? parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`))
-        ?? parentCandidates[0];
+      const parent = customGroup ? parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
+        : parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
+          ?? parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`))
+          ?? parentCandidates[0];
+      if (customGroup && !parent) throw new Error(`Missing parent for custom group ${group.id}/${instance.instanceId}`);
       const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
-      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
+      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(customGroup ? { customGroupDefinitionId: customGroup.id } : {}), ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
         ...(hasDemoProvenance(instance.attributes) ? { correlationId: `${DEMO_GROUP_CORRELATION_PREFIX}${instance.instanceId}` } : {}) });
       instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
           id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
           ...(hasDemoProvenance(value.attributes) ? { provenanceKind: "demo", provenanceDetail: { generator: DEMO_PROVENANCE_VALUE } } : {}),
-          value: draftValue(element.id, value),
+          value: draftValue(element.id, value, customFields),
         });
       }));
     });
@@ -230,8 +238,10 @@ export function shellStateToDraftMutations(
   reportId: string,
   shell: ShellState,
   persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  customFields?: ClinicalFormConfiguration["customFields"],
+  customGroups?: ClinicalFormConfiguration["customGroups"],
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted);
+  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted, customFields, customGroups);
 }
 
 /** Reduces a canonical document projection to only targets changed from its last accepted projection. */

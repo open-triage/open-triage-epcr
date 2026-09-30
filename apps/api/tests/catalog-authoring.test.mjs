@@ -20,12 +20,89 @@ const definition = { schemaVersion: 1, sourceReleaseId: "release-1", elements: [
 const session = { user: { id: "owner-1" }, organization: { id: "org-1" } };
 
 function serviceWith(manager, sessions = { requireCapability: async () => session }) {
-  return new CatalogAuthoringService({ transaction: async (_level, work) => work(manager), manager,
-    query: (...parameters) => manager.query(...parameters) }, sessions);
+  const wrapped = { ...manager, query: (sql, ...parameters) =>
+    sql.includes("from forms.custom_element_definition ced")
+      ? [] : manager.query(sql, ...parameters) };
+  return new CatalogAuthoringService({ transaction: async (_level, work) => work(wrapped), manager: wrapped,
+    query: (...parameters) => wrapped.query(...parameters) }, sessions);
 }
 
 test("catalog hashes are stable across object key ordering", () => {
   assert.equal(catalogDefinitionSha256({ b: 2, a: 1 }), catalogDefinitionSha256({ a: 1, b: 2 }));
+});
+
+test("custom text validation rejects duplicate identity and incompatible published reuse", async () => {
+  const custom = { id: "da77b0fc-a701-41b0-a387-18b07662ed71", namespace: "org.example.ems",
+    slug: "LocalNote", title: "Local note", definition: "A locally requested note.", datatype: "string",
+    recurrence: "single", usage: "Optional", constraints: { maxLength: 100 }, identifying: false };
+  let inherited = [];
+  let collisions = [];
+  let pinned = null;
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
+    if (sql.includes("customElementDefinitions")) return [{ definitions: pinned }];
+    if (sql.includes("from catalog.element_identity")) return collisions;
+    if (sql.includes("customGroupDefinitions")) return [];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const service = new CatalogAuthoringService({ manager, query: (...args) => manager.query(...args) },
+    { requireCapability: async () => session });
+  const candidate = { ...definition, customElements: [custom] };
+  assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, retired: true }] })).findings.join(" "), /published before retirement/);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [custom, { ...custom, id: "5b5cde30-2057-4e6d-919e-e2cbf712d72b" }] })).findings.join(" "), /Duplicate custom identity/);
+  collisions = [{ id: custom.id, namespace: custom.namespace, canonical_key: `${custom.namespace}.${custom.slug}` }];
+  assert.match((await service.validateDefinition(manager, "release-1", candidate)).findings.join(" "), /already published/);
+  inherited = [{ id: custom.id, namespace: custom.namespace, slug: custom.slug, definition: custom }];
+  pinned = [custom];
+  assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, title: "Revised local note", definition: "A clearer clinical description." }] })).valid, true);
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, retired: true }] })).valid, true);
+  pinned = [{ ...custom, retired: true }];
+  assert.match((await service.validateDefinition(manager, "release-1", candidate)).findings.join(" "), /cannot change its meaning/);
+  pinned = [custom];
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, identifying: true }] })).findings.join(" "), /cannot change its meaning/);
+});
+
+test("custom coded publication validates pinned NEMSIS mappings and distinct code systems", async () => {
+  const custom = { id: "d474249a-f946-4b96-8280-637782b2ef13", namespace: "org.example.ems",
+    slug: "LocalFinding", title: "Local finding", definition: "Agency observation code.",
+    datatype: "coded", recurrence: "single", usage: "Optional", identifying: false,
+    codeSystem: "https://example.org/ems/finding", choices: [{ code: "A", label: "Alert", nemsisCode: "P1" }],
+    nemsisElement: "ePatient.01", permittedNotValues: ["7701003"], permittedPertinentNegatives: ["8801019"] };
+  let inherited = [];
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("select distinct code_system from catalog.element_option")) return [{ code_system: "https://standard.example/codes" }];
+    if (sql.includes("select distinct code from catalog.element_option")) return [{ code: "P1" }];
+    if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
+    if (sql.includes("customElementDefinitions")) return [{ definitions: [custom] }];
+    if (sql.includes("from catalog.element_identity")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const service = new CatalogAuthoringService({ manager }, { requireCapability: async () => session });
+  const candidate = { ...definition, customElements: [custom] };
+  assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, codeSystem: "https://standard.example/codes" }] })).findings.join(" "), /reserved by the pinned standard catalog/);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, choices: [{ code: "A", label: "Alert", nemsisCode: "missing" }] }] })).findings.join(" "), /not a pinned catalog code/);
+  inherited = [{ id: custom.id, namespace: custom.namespace, slug: custom.slug, definition: custom }];
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, title: "Updated finding", choices: [
+      { code: "A", label: "Alerted", nemsisCode: "P1" }, { code: "B", label: "Calm" }
+    ] }] })).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, choices: [{ code: "A", label: "Alert", nemsisCode: "P2" }] }] })).findings.join(" "), /cannot change its meaning/);
 });
 
 test("catalog version inspection only loads a version visible to the organization", async () => {
@@ -46,6 +123,7 @@ test("stale catalog saves fail before changing canonical content", async () => {
     if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
       source_release_id: "release-1", revision: 3, canonical_definition: definition,
       definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   await assert.rejects(serviceWith(manager).save("session", "draft-1", { expectedRevision: 2, definition }), ConflictException);
@@ -63,6 +141,7 @@ test("catalog writers delete only their unpublished draft at the expected revisi
     if (sql.includes("select * from catalog.authoring_draft")) return [draft];
     if (sql.includes("insert into app_identity.configuration_event")) return [];
     if (sql.includes("delete from catalog.authoring_draft")) return [{ id: draft.id }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const service = serviceWith(manager, { requireCapability: async (_token, capability) => {
@@ -104,6 +183,7 @@ test("saving normalizes legacy element labels and requiredness before validation
       return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
         canonical_definition: persisted, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const saved = await serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: legacyDefinition });
@@ -127,6 +207,7 @@ test("Catalog saves discard attempted requiredness and documented occurrence pol
       return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
         canonical_definition: persisted, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   await serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: attempted });
@@ -143,6 +224,7 @@ test("identity, datatype, storage, and unsupported constraint changes are reject
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
     if (sql.includes("select 'inline:'")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const changed = { ...definition, elements: [{ ...element, baseDatatype: "integer",
@@ -242,6 +324,7 @@ test("Catalog readers inspect the active sealed definition when no authoring dra
     }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const viewed = await serviceWith(manager).inspectActive("reader-session");
@@ -262,6 +345,7 @@ test("cloning the active catalog unwraps PostgreSQL mutation tuples into a usabl
       display_name: parameters[5], canonical_definition: JSON.parse(parameters[2]),
       definition_sha256: parameters[3], updated_at: "2026-09-13T10:00:00.000Z", published_release_id: null
     }], 1];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const cloned = await serviceWith(manager).cloneActive("owner-session", { displayName: "Night catalog" });
@@ -290,11 +374,12 @@ function listManager(currentDefinition) {
     if (sql.includes("update catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
       source_release_id: "release-1", revision: 2, canonical_definition: currentDefinition,
       definition_sha256: catalogDefinitionSha256(currentDefinition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
 }
 
-test("recommended code lists support labels, enabled state, ordering, additions, and an enabled default", async () => {
+test("recommended code lists support labels, enabled state, ordering, additions, and inert legacy default metadata", async () => {
   const changed = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
     classification: "suggested", elementIds: sourceCodeList.element_ids, values: [
       { ...sourceCodeList.values[1], label: "Walking or hiking", enabled: false },
@@ -312,9 +397,11 @@ test("inline enumerations are exposed as element-selectable editable code lists"
       { code: "4003001", codeSystem: "", label: "Combitube", sourceLabel: "Combitube", category: null, enabled: true }
     ] };
   const manager = { query: async (sql) => {
+    if (sql.includes("from forms.custom_element_definition ced")) return [];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
     if (sql.includes("select 'inline:'")) return [inline];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const cloned = await serviceWith(manager).cloneDefinition(manager, "release-1");
@@ -334,13 +421,13 @@ test("duplicate codes and removed published values fail validation", async () =>
       /cannot be deleted/.test(JSON.stringify(error.getResponse())));
 });
 
-test("a disabled code cannot be the list default", async () => {
+test("legacy default metadata stays inert when its code is disabled", async () => {
   const invalid = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
     classification: "suggested", elementIds: sourceCodeList.element_ids,
     values: sourceCodeList.values.map((value, index) => index === 0 ? { ...value, enabled: false } : value),
     defaultValue: { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem } }] };
-  await assert.rejects(serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid }),
-    (error) => error instanceof UnprocessableEntityException && /default must reference an enabled value/.test(JSON.stringify(error.getResponse())));
+  const saved = await serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid });
+  assert.deepEqual(saved.definition.codeLists, invalid.codeLists);
 });
 
 
@@ -357,6 +444,7 @@ test("Swedish text survives a revision-checked save and incomplete translations 
       return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
         canonical_definition: savedDefinition, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const localized = { ...definition, elements: [{ ...element, label: "Updated name", description: "Updated description",
@@ -378,6 +466,7 @@ test("malformed catalog localization remains a publication-blocking structural e
       definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const changed = { ...definition, elements: [{ ...element, localization: { schemaVersion: 1, sv: { label: 12 } } }] };
@@ -466,4 +555,29 @@ test("publishing choice translations seals nested list, system, and code identit
     displayName: "Swedish choices", changeNote: "Reviewed Swedish choices" });
   assert.equal(provenance.codeListLocalization["patient-activity"].values["ICD-10-CM"]["Y93.K"].sv.label, "Djurvård");
   assert.equal(JSON.stringify(provenance).includes("\\u0000"), false);
+});
+
+test("API rejects new default authoring while allowing legacy metadata to round-trip", async () => {
+  const current = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: sourceCodeList.values }] };
+  const changed = structuredClone(current);
+  changed.codeLists[0].defaultValue = { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem };
+  await assert.rejects(serviceWith(listManager(current)).save("session", "draft-1", { expectedRevision: 1, definition: changed }),
+    (error) => error instanceof UnprocessableEntityException && /Default-value authoring/.test(error.message));
+});
+
+test("publishing legacy default metadata never projects an active default or reorders choices", async () => {
+  const legacy = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: sourceCodeList.values,
+    defaultValue: { code: sourceCodeList.values[1].code, codeSystem: sourceCodeList.values[1].codeSystem } }] };
+  const original = structuredClone(legacy);
+  let projected;
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("insert into catalog.value_set_option_configuration")) projected = JSON.parse(parameters[1]);
+    return [];
+  } };
+  await serviceWith(manager).project(manager, { source_release_id: "release-1", canonical_definition: legacy }, "release-2");
+  assert.deepEqual(projected.map((value) => [value.code, value.sort_order, value.is_default]),
+    sourceCodeList.values.map((value, index) => [value.code, index, false]));
+  assert.deepEqual(legacy, original);
 });

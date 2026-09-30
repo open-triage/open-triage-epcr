@@ -4,7 +4,7 @@ import { AdminText, useAdminError, useAdminText } from "../app/admin-localizatio
 
 import type { AuthoringVersionOption, FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
-import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadCatalogVersions, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
 import { PlatformRequestError } from "../app/platform-errors";
@@ -30,7 +30,7 @@ export function openStationaryFormPreview(draft: StationaryFormDraft): boolean {
 }
 
 function operationErrorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "Stationary form operation failed.";
+  return reason instanceof Error ? reason.message : "Form operation failed.";
 }
 
 export function moveFormSection(definition: FormDraftDefinition, from: number, to: number): FormDraftDefinition {
@@ -43,7 +43,7 @@ export function moveFormSection(definition: FormDraftDefinition, from: number, t
 
 export function removeFormSection(definition: FormDraftDefinition, index: number): FormDraftDefinition {
   if (index < 0 || index >= definition.sections.length) return definition;
-  if (definition.sections.length === 1) throw new Error("A Stationary form must contain at least one section.");
+  if (definition.sections.length === 1) throw new Error("A form must contain at least one section.");
   return { ...definition, sections: definition.sections.filter((_, sectionIndex) => sectionIndex !== index) };
 }
 
@@ -74,6 +74,8 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   const activationAllowed = canPublish && capabilities.includes("validation:publish");
   const [draft, setDraft] = useState<StationaryFormDraft | null>(null);
   const [versions, setVersions] = useState<AuthoringVersionOption[]>([]);
+  const [catalogVersions, setCatalogVersions] = useState<AuthoringVersionOption[]>([]);
+  const [selectedTargetCatalogId, setSelectedTargetCatalogId] = useState("");
   const [validationVersions, setValidationVersions] = useState<AuthoringVersionOption[]>([]);
   const [selectedValidationVersionId, setSelectedValidationVersionId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -115,6 +117,13 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); });
     return () => { current = false; };
   }, [active, adminError]);
+  useEffect(() => {
+    if (!active || !capabilities.includes("catalog:read")) return;
+    let current = true;
+    loadCatalogVersions().then((items) => { if (current) setCatalogVersions(items); })
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); });
+    return () => { current = false; };
+  }, [active, adminError, capabilities]);
   useEffect(() => {
     if (!active) return;
     let current = true;
@@ -186,6 +195,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     <button type="button" disabled={busy} onClick={() => setActivationReview(null)}>{t("admin.cancelActivation")}</button>
   </section>;
   const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
+  const targetCatalogId = selectedTargetCatalogId || preferredCatalogReleaseId || selectedVersion?.catalogReleaseId || catalogReleaseId;
   const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId;
   const compatibleValidations = validationVersions.filter(({ catalogReleaseId: id }) => id === activationCatalogId);
   const selectedValidation = compatibleValidations.find(({ id }) => id === selectedValidationVersionId)
@@ -199,16 +209,23 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         {version.displayName} · v{version.version}{version.status === "active" ? t("admin.active2") : ""}</option>)}
     </select>
   </div>;
-  const versionWorkspace = <AuthoringVersionWorkspace title="Stationary form" versions={versions}
-    selectedId={selectedVersionId} onSelect={setSelectedVersionId} draftName={newDisplayName}
+  const versionWorkspace = <AuthoringVersionWorkspace title={t("admin.stationaryForm")} versions={versions}
+    selectedId={selectedVersionId} onSelect={(id) => { setSelectedVersionId(id); setSelectedTargetCatalogId(""); }} draftName={newDisplayName}
     onDraftNameChange={setNewDisplayName} canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && !published)}
     onCreateDraft={() => action(async () => {
-      const cloned = await cloneStationaryFormDraft(csrfToken,
-        preferredCatalogReleaseId || selectedVersion?.catalogReleaseId || catalogReleaseId, newDisplayName, selectedVersionId);
+      const cloned = await cloneStationaryFormDraft(csrfToken, targetCatalogId, newDisplayName, selectedVersionId);
       setPublished(null); setActivated(false); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.stationaryFormDraftCreated"));
     })}>
+    {canWrite && !draft && catalogVersions.length > 0 && <div className="authoring-version-row">
+      <label htmlFor="form-target-catalog">{language === "sv" ? "Målkatalog" : "Target catalog"}</label>
+      <select id="form-target-catalog" value={targetCatalogId} onChange={(event) => setSelectedTargetCatalogId(event.target.value)}>
+        {catalogVersions.map((version) => <option key={version.id} value={version.id}>
+          {version.displayName} · v{version.version}{version.id === selectedVersion?.catalogReleaseId
+            ? language === "sv" ? " · nuvarande formulärkatalog" : " · current form catalog" : ""}</option>)}
+      </select>
+    </div>}
     {selectedVersion && selectedVersion.status !== "active" && activationAllowed && !published &&
-      <>{validationChoice}<AuthoringLifecycleAction title="Selected Stationary form" kind="activate" note={activationNote}
+      <>{validationChoice}<AuthoringLifecycleAction title={t("admin.selectedStationaryForm")} kind="activate" note={activationNote}
         onNoteChange={setActivationNote} disabled={busy || !!activationReview || !selectedValidation} buttonLabel={t("admin.activateSelectedVersion")}
         onSubmit={() => action(async () => {
           if (!selectedValidation) return;
@@ -231,7 +248,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     <p className="form-activation-status" role="status"><AdminText messageKey="admin.publishedVersionNotActive" /></p>
     {activationAllowed ? <>
       {validationChoice}
-      <AuthoringLifecycleAction title="Stationary form" kind="activate" note={activationNote}
+      <AuthoringLifecycleAction title={t("admin.stationaryForm")} kind="activate" note={activationNote}
         onNoteChange={setActivationNote} disabled={busy || activated || !!activationReview || !selectedValidation}
         detail={t("admin.activationAppliesThis")}
         buttonLabel={t(activated ? "Agency default active" : "Activate as agency default")} onSubmit={() => action(async () => {
@@ -275,7 +292,8 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       catalogGroups={draft.catalogGroups} language={language}
       onQueryChange={(value) => { setQuery(value); setResults([]); }}
       onSectionChange={setTargetSection} onAdd={add} /></fieldset>}
-    <FormSectionElements definition={draft.definition} catalogGroups={draft.catalogGroups} language={language}
+    <FormSectionElements definition={draft.definition} catalogFields={draft.catalogFields} customFields={draft.customFields} catalogGroups={draft.catalogGroups}
+      newChoicesByField={draft.adoption?.newChoicesByField} language={language}
       busy={busy} readOnly={!canWrite} onChange={change}
       {...(canWrite ? {
         onMoveSection: (from: number, to: number) => change(moveFormSection(draft.definition, from, to),
@@ -306,7 +324,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       <input id="form-display-name" disabled={!canWrite || busy} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus(t("admin.unsavedChanges")); }} />
       {publicationAllowed ? <>
-        <AuthoringLifecycleAction title="Stationary form" kind="publish" note={publicationNote}
+        <AuthoringLifecycleAction title={t("admin.stationaryForm")} kind="publish" note={publicationNote}
           onNoteChange={setPublicationNote} disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
           buttonLabel={t("admin.publishImmutableForm")} onSubmit={() => action(async () => {
             if (!draft.displayName?.trim()) throw new Error(t("admin.enterAForm"));

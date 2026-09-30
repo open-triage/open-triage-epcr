@@ -62,7 +62,7 @@ export type ProcedureEventDefinition = {
     readonly choices?: ReadonlyArray<{ readonly code: string; readonly label: string; readonly sourceLabel: string; readonly category: string }> };
   readonly required: Record<ProcedureField, boolean>;
   readonly references: Record<ProcedureField, NemsisReference>;
-  readonly attempts: { readonly defaultValue: number; readonly min: number; readonly max: number };
+  readonly attempts: { readonly defaultValue?: number; readonly min: number; readonly max: number };
   readonly successOptions: ReadonlyArray<{ readonly value: "yes" | "no"; readonly code: string; readonly label: string }>;
   readonly outcomeOptions: ReadonlyArray<{ readonly value: "improved" | "unchanged" | "worse" | "not-applicable"; readonly code: string; readonly label: string }>;
   readonly complicationOptions: ReadonlyArray<{ readonly code: string; readonly label: string }>;
@@ -241,7 +241,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   for (const field of procedureFields) if (typeof procedureRequired[field] !== "boolean") diagnostics.push(`events.procedure.required.${field} must be a boolean`);
   requiredStrings(procedure.references, "events.procedure.references", procedureFields);
   const attempts = isRecord(procedure.attempts) ? procedure.attempts : {};
-  for (const field of ["defaultValue", "min", "max"] as const) if (!Number.isInteger(attempts[field])) diagnostics.push(`events.procedure.attempts.${field} must be an integer`);
+  for (const field of ["min", "max"] as const) if (!Number.isInteger(attempts[field])) diagnostics.push(`events.procedure.attempts.${field} must be an integer`);
   for (const optionGroup of ["successOptions", "outcomeOptions", "complicationOptions"] as const) {
     if (!Array.isArray(procedure[optionGroup]) || procedure[optionGroup].length === 0) diagnostics.push(`events.procedure.${optionGroup} must contain options`);
   }

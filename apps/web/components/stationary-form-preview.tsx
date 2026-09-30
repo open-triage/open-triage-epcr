@@ -9,6 +9,7 @@ import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { actionableStationaryFindings, validateStationaryRecord, type StationaryValidationFinding } from "../app/stationary-validation";
 import { StationaryRecord } from "./stationary-record";
+import { previewCatalogFields } from "../app/form-field-choices";
 
 /** Creates a detached document; preview edits can never reach report persistence. */
 export function createStationaryPreviewDocument(): EncounterDocument {
@@ -18,15 +19,18 @@ export function createStationaryPreviewDocument(): EncounterDocument {
 /** Applies catalog validation only to the fields present in this draft. */
 export function stationaryPreviewFindings(document: EncounterDocument, draft: StationaryFormDraft): ReadonlyArray<StationaryValidationFinding> {
   const fields = new Map(draft.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
-    field.source.kind === "nemsis" ? [[field.source.elementId, field] as const] : [])));
+    field.source.kind === "nemsis" ? [[field.source.elementId, field] as const]
+      : draft.customFields?.[field.source.elementDefinitionId] ? [[
+        `${draft.customFields[field.source.elementDefinitionId]!.namespace}.${draft.customFields[field.source.elementDefinitionId]!.slug}`, field] as const] : [])));
   const groups = new Set(configuredStationaryPreviewSections(draft.definition).flatMap((section) => [...section.groupIds]));
-  return validateStationaryRecord(document, { definition: draft.definition, catalogFields: draft.catalogFields ?? {} },
+  return validateStationaryRecord(document, { definition: draft.definition,
+    catalogFields: previewCatalogFields(draft.definition, draft.catalogFields ?? {}) },
     new Date().toISOString()).filter((finding) => {
     const elementId = finding.target.fieldId ?? finding.target.elementId;
     if (!elementId) return groups.has(finding.target.groupId);
     const field = fields.get(elementId);
     if (!field) return false;
-    return !(field.required === false && finding.id.startsWith("stationary:field.minimum:"));
+    return true;
   });
 }
 
@@ -38,6 +42,7 @@ export function StationaryFormPreview({ draft, onReturn }: {
   const [document, setDocument] = useState(createStationaryPreviewDocument);
   const [language, setLanguage] = useState<"en" | "sv">("en");
   const findings = useMemo(() => stationaryPreviewFindings(document, draft), [document, draft]);
+  const catalogFields = useMemo(() => previewCatalogFields(draft.definition, draft.catalogFields ?? {}), [draft]);
   return <section className="stationary-form-preview" aria-labelledby="stationary-preview-heading">
     <header className="stationary-preview-heading">
       <div>
@@ -52,6 +57,6 @@ export function StationaryFormPreview({ draft, onReturn }: {
       </div>
     </header>
     <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
-      catalogFields={draft.catalogFields} catalogGroups={draft.catalogGroups} language={language} onDocumentChange={setDocument} />
+      catalogFields={catalogFields} customFields={draft.customFields} customGroups={draft.customGroups} catalogGroups={draft.catalogGroups} language={language} onDocumentChange={setDocument} />
   </section>;
 }

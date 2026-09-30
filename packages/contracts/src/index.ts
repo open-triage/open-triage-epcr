@@ -690,7 +690,8 @@ export interface CatalogDraftCodeList {
   elementIds: string[];
   localization?: { schemaVersion: 1; sv?: { name?: string; reviewedSource?: { name: string } } };
   values: CatalogDraftCodeValue[];
-  defaultValue: { code: string; codeSystem: string } | null;
+  /** Inert legacy metadata, retained for lossless compatibility; not an authoring setting. */
+  defaultValue?: { code: string; codeSystem: string } | null;
 }
 
 export interface CatalogDraftDefinition {
@@ -700,7 +701,54 @@ export interface CatalogDraftDefinition {
   hiddenElementIds?: string[];
   elements: CatalogDraftElement[];
   codeLists: CatalogDraftCodeList[];
+  customElements?: CatalogDraftCustomElement[];
+  customGroups?: CatalogDraftCustomGroup[];
 }
+
+/** A flat grouping identity shared by related custom element definitions. */
+export interface CatalogDraftCustomGroup {
+  id: string;
+  namespace: string;
+  slug: string;
+  title: string;
+  recurrence: "single" | "multiple";
+  correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
+  localization?: { schemaVersion: 1; sv?: { label: string; reviewedSource: { label: string } } };
+}
+
+/** A scalar extension owned by one organization. A target binds values to a stable group instance. */
+export interface CatalogDraftCustomTextElement {
+  id: string;
+  namespace: string;
+  slug: string;
+  title: string;
+  definition: string;
+  datatype: "string" | "number" | "dateTime" | "boolean" | "binary" | "other";
+  recurrence: "single" | "multiple";
+  /** Supported NEMSIS 3.5.1 repeated group; omission places the field at report root. */
+  correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
+  /** eCustomConfiguration.09 grouping identity; independent of visual form sections. */
+  groupDefinitionId?: string;
+  usage: "Mandatory" | "Required" | "Recommended" | "Optional";
+  constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number };
+  identifying: boolean | null;
+  /** Retired in this catalog version; historical pinned forms remain readable. */
+  retired?: boolean;
+  localization?: CatalogDraftElement["localization"];
+}
+
+/** Local codes are identified by their own system and code; NEMSIS mappings are annotations. */
+export interface CatalogDraftCustomCodedElement extends Omit<CatalogDraftCustomTextElement, "datatype" | "constraints"> {
+  datatype: "coded";
+  codeSystem: string;
+  choices: Array<{ code: string; label: string; localization?: CatalogDraftCodeValue["localization"];
+    nemsisCode?: string }>;
+  nemsisElement?: string;
+  permittedNotValues: string[];
+  permittedPertinentNegatives: string[];
+}
+
+export type CatalogDraftCustomElement = CatalogDraftCustomTextElement | CatalogDraftCustomCodedElement;
 
 export interface CatalogDraft {
   id: string;
@@ -861,26 +909,34 @@ export interface FormDraftField {
     { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
+  /** Ordered choices enabled for this field. Omission preserves a legacy published form's catalog behavior. */
+  choicePolicy?: Array<{ kind: "code"; code: string; codeSystem: string } | { kind: "not-value"; code: string }>;
   rules?: FormDraftRule[];
 }
 
 export interface FormDraftDefinition {
   schemaVersion: 1;
-  sections: Array<{ key: string; fields: FormDraftField[] }>;
+  sections: Array<{ key: string; name?: string; fields: FormDraftField[] }>;
 }
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
+  customFields?: Record<string, CatalogDraftCustomElement>;
+  customGroups?: Record<string, CatalogDraftCustomGroup>;
   /** Group wording from the same immutable catalog as the fields. */
   catalogGroups?: Record<string, { name: string; localization?: {
     schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };
   } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    /** Effective unified order for enabled codes and NOT values on a field. */
+    choiceOrder?: NonNullable<FormDraftField["choicePolicy"]>;
     name?: string;
     description?: string;
     localization?: CatalogDraftElement["localization"];
     agencyRequired: boolean;
+    /** Source NEMSIS usage from the pinned catalog release. */
+    usage?: string;
     requirednessSeverity?: "warning" | "error" | null;
     minOccurs: number;
     maxOccurs: number | null;
@@ -906,7 +962,7 @@ export interface ClinicalFormConfiguration {
 }
 
 export interface FormCloneDiagnostic {
-  code: "missing-reference" | "disabled-reference" | "incompatible-reference";
+  code: "missing-reference" | "disabled-reference" | "incompatible-reference" | "retired-reference";
   path: string;
   message: string;
 }
@@ -922,8 +978,12 @@ export interface StationaryFormDraft {
   definition: FormDraftDefinition;
   /** Published catalog configuration used by the detached authoring preview. */
   catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  customFields?: ClinicalFormConfiguration["customFields"];
+  customGroups?: ClinicalFormConfiguration["customGroups"];
   catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   diagnostics: FormCloneDiagnostic[];
+  /** Codes newly available in the target catalog, by stable form field key. They start disabled in choicePolicy. */
+  adoption?: { sourceCatalogReleaseId: string; newChoicesByField: Record<string, NonNullable<FormDraftField["choicePolicy"]>> };
   updatedAt: string;
 }
 
@@ -955,6 +1015,8 @@ export interface FormCatalogElement {
   description: string;
   baseDatatype: string;
   groupPath: string[];
+  customElementDefinitionId?: string;
+  customGroupDefinitionId?: string;
 }
 
 export interface FormCatalogElementPage {

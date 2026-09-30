@@ -2,6 +2,7 @@ import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsi
 import { NEMSIS_DATA_MODEL, getNemsisDataElement, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { validateScalarInput } from "./stationary-scalar";
+import { customTextFindings } from "../components/custom-text-fields";
 
 export type StationaryFindingTarget = {
   readonly sectionId: string;
@@ -151,7 +152,9 @@ function scalarInput(value: Extract<EncounterValue, { kind: "scalar" }>): string
 function valueFindings(element: NemsisDataElement, groupInstanceId: string, value: EncounterValue,
   configured?: ClinicalFormConfiguration["catalogFields"][string]): StationaryValidationFinding[] {
   const target = { groupId: element.groupPath.at(-1)!, groupInstanceId, occurrenceId: value.occurrenceId, fieldId: element.id };
-  if (value.notValue && !element.permittedNotValues.some(({ code }) => code === value.notValue!.code)) {
+  if (value.notValue && (!element.permittedNotValues.some(({ code }) => code === value.notValue!.code) ||
+      (configured?.choiceOrder !== undefined && !configured.choiceOrder.some((choice) =>
+        choice.kind === "not-value" && choice.code === value.notValue!.code)))) {
     return [finding("value.nv", `${value.notValue.code} is not a permitted not-value for ${element.id}.`, target, element.name)];
   }
   if (value.pertinentNegative && !element.permittedPertinentNegatives.some(({ code }) => code === value.pertinentNegative!.code)) {
@@ -165,7 +168,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
     const resolved = resolveNemsisElementValues(element);
     if (resolved.kind === "scalar") return [finding("value.kind", `${element.id} requires a scalar value.`, target, element.name)];
     const configuredChoices = configured?.codeChoices;
-    if (resolved.exhaustive && configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
+    if ((resolved.exhaustive || configured?.choiceOrder !== undefined) && configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
       code === value.code && (!codeSystem || codeSystem === (value.system ?? "")))) {
       return [finding("value.code", `${value.code} is not permitted for ${element.id}.`, target, element.name)];
     }
@@ -180,7 +183,9 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
   }
   if (value.kind === "null") {
     if (!(configured?.nillable ?? element.nillable)) return [finding("value.null", `${element.id} does not permit a null value.`, target, element.name)];
-    return value.notValue && !element.permittedNotValues.some(({ code }) => code === value.notValue!.code)
+    return value.notValue && (!element.permittedNotValues.some(({ code }) => code === value.notValue!.code) ||
+      (configured?.choiceOrder !== undefined && !configured.choiceOrder.some((choice) =>
+        choice.kind === "not-value" && choice.code === value.notValue!.code)))
       ? [finding("value.nv", `${value.notValue.code} is not a permitted not-value for ${element.id}.`, target, element.name)] : [];
   }
   return (configured?.nillable ?? element.nillable) ? [] : [finding("value.absent", `${element.id} requires a value.`, target, element.name)];
@@ -200,7 +205,9 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
   const formRequired = new Set(clinicalForm?.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
     field.source.kind === "nemsis" && field.required ? [field.source.elementId] : [])) ?? []);
   const explicitlyRequiredElements = new Set(patientCareElements.filter((element) =>
-    formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true).map(({ id }) => id));
+    formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true ||
+    ["Mandatory", "Required"].includes(clinicalForm?.catalogFields[element.id]?.usage ?? "") ||
+    (clinicalForm?.catalogFields[element.id]?.minOccurs ?? 0) > 0).map(({ id }) => id));
   const explicitlyRequiredGroups = new Set(patientCareElements.filter(({ id }) => explicitlyRequiredElements.has(id))
     .flatMap(({ groupPath }) => groupPath));
   const catalogGroups = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
@@ -218,7 +225,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const minimum = catalogGroup.repeating && !explicitlyRequired ? 0 : catalogGroup.occurrence.min;
     const parentIsRepeating = catalogGroup.parentId ? catalogGroups.get(catalogGroup.parentId)?.repeating === true : false;
     const validationParents = parents.length ? parents : explicitlyRequired && !parentIsRepeating ? [undefined] : [];
-    if (!authoredPolicy && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
+    if ((!authoredPolicy || explicitlyRequired) && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
       const count = instances.filter((instance) => (instance.parentInstanceId ?? undefined) === parent?.instanceId).length;
       if (count < minimum) findings.push(finding(
         "group.minimum", `Add ${minimum - count} ${catalogGroup.name} ${minimum - count === 1 ? "entry" : "entries"}.`,
@@ -241,12 +248,15 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const configured = clinicalForm?.catalogFields[element.id];
     const editable = elementPresentation.get(element.id)?.mode !== "read-only";
     const elementInstances = instancesByGroup.get(groupId) ?? [];
-    const minimum = formRequired.has(element.id) || configured?.agencyRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min) : configured?.minOccurs ?? element.occurrence.min;
+    const catalogRequired = configured?.agencyRequired || ["Mandatory", "Required"].includes(configured?.usage ?? "") ||
+      (configured?.minOccurs ?? element.occurrence.min) > 0;
+    const minimum = formRequired.has(element.id) || catalogRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min)
+      : configured?.minOccurs ?? element.occurrence.min;
     const maximum = configured ? configured.maxOccurs ?? "unbounded" : element.occurrence.max;
     const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
-      if (!authoredPolicy && editable && values.length < minimum) findings.push(finding(
+      if ((!authoredPolicy || formRequired.has(element.id) || catalogRequired) && editable && values.length < minimum) findings.push(finding(
         "field.minimum", minimum === 1 ? `Record ${element.name}.` : `Record at least ${minimum} values for ${element.name}.`,
         { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
       ));
@@ -258,6 +268,53 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
         if (seenOccurrences.has(value.occurrenceId)) findings.push(finding("field.identity", `Value occurrence identity ${value.occurrenceId} is duplicated.`, { groupId, groupInstanceId: instance.instanceId, occurrenceId: value.occurrenceId, fieldId: element.id }, element.name));
         seenOccurrences.add(value.occurrenceId);
         findings.push(...valueFindings(element, instance.instanceId, value, configured));
+      }
+    }
+  }
+  if (clinicalForm?.customFields) {
+    const report = document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0];
+    for (const field of clinicalForm.definition.sections.flatMap(({ fields }) => fields)) {
+      if (field.source.kind !== "custom" || field.source.groupDefinitionId) continue;
+      const definition = clinicalForm.customFields[field.source.elementDefinitionId];
+      if (!definition || !(field.required || definition.usage === "Mandatory" || definition.usage === "Required")) continue;
+      const identity = `${definition.namespace}.${definition.slug}`;
+      if (report?.elements.find(({ id }) => id === identity)?.values.length) continue;
+      findings.push(finding("field.minimum", `Record ${definition.title}.`, {
+        groupId: "PatientCareReportGroup", ...(report ? { groupInstanceId: report.instanceId } : {}), fieldId: identity,
+      }, definition.title));
+    }
+    for (const field of clinicalForm.definition.sections.flatMap(({ fields }) => fields)) {
+      if (field.source.kind !== "custom") continue;
+      const definition = clinicalForm.customFields[field.source.elementDefinitionId];
+      if (!definition) continue;
+      const customGroup = field.source.groupDefinitionId ? clinicalForm.customGroups?.[field.source.groupDefinitionId] : undefined;
+      const groupId = customGroup ? `${customGroup.namespace}.${customGroup.slug}` : definition.correlatesTo ?? "PatientCareReportGroup";
+      const elementId = `${definition.namespace}.${definition.slug}`;
+      for (const instance of document.groups.find(({ id }) => id === groupId)?.instances ?? []) {
+        const values = instance.elements.find(({ id }) => id === elementId)?.values ?? [];
+        if (groupId !== "PatientCareReportGroup" && !values.length && (field.required || ["Mandatory", "Required"].includes(definition.usage))) {
+          findings.push(finding("custom.minimum", `Record ${definition.title}.`,
+            { groupId, groupInstanceId: instance.instanceId, fieldId: elementId }, definition.title));
+        }
+        for (const value of values) {
+          const target = { groupId, groupInstanceId: instance.instanceId, occurrenceId: value.occurrenceId, fieldId: elementId };
+          if (definition.datatype !== "coded") {
+            const invalid = value.kind === "scalar" ? customTextFindings(definition, value.value, language)
+              : [`${definition.title} requires a scalar value.`];
+            for (const message of invalid) findings.push(finding("custom.value", message, target, definition.title));
+            continue;
+          }
+          const allowedCodes = field.choicePolicy?.filter((choice) => choice.kind === "code").map((choice) =>
+            `${choice.codeSystem}:${choice.code}`);
+          const valid = value.kind === "coded"
+            ? value.system === definition.codeSystem && definition.choices.some((choice) => choice.code === value.code)
+              && (!allowedCodes || allowedCodes.includes(`${value.system}:${value.code}`))
+            : value.kind === "null" && value.notValue
+              ? definition.permittedNotValues.includes(value.notValue.code) && Boolean(field.allowedAbsenceStates?.includes(value.notValue.code))
+              : value.kind === "pertinent-negative"
+                ? definition.permittedPertinentNegatives.includes(value.code) && Boolean(field.allowedAbsenceStates?.includes(value.code)) : false;
+          if (!valid) findings.push(finding("custom.value", `${definition.title} has an unpermitted choice.`, target, definition.title));
+        }
       }
     }
   }
@@ -276,17 +333,21 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     ]));
     for (const authored of authoredFindings.values()) {
       const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === authored.primaryTarget.elementId);
+      const custom = Object.values(clinicalForm.customFields ?? {}).find((definition) =>
+        `${definition.namespace}.${definition.slug}` === authored.primaryTarget.elementId);
+      const customGroup = custom?.groupDefinitionId ? clinicalForm.customGroups?.[custom.groupDefinitionId] : undefined;
       const rule = clinicalForm.validation.bundle.rules.find(({ ruleId }) => ruleId === authored.ruleId);
       const message = displayValidationRuleMessage(authored.message, authored.primaryTarget.elementId,
         rule?.references.elementIds ?? []);
-      const groupId = element?.groupPath.at(-1) ?? "PatientCareReportGroup";
+      const groupId = element?.groupPath.at(-1) ?? (customGroup ? `${customGroup.namespace}.${customGroup.slug}`
+        : custom?.correlatesTo ?? "PatientCareReportGroup");
       findings.push(finding(
         `validation.${authored.validationVersionId}.${authored.ruleId}`,
         message,
         { groupId, ...(authored.primaryTarget.groupInstanceId ? { groupInstanceId: authored.primaryTarget.groupInstanceId } : {}),
           ...(authored.primaryTarget.occurrenceId ? { occurrenceId: authored.primaryTarget.occurrenceId } : {}),
           fieldId: authored.primaryTarget.elementId },
-        element?.name ?? authored.primaryTarget.elementId,
+        element?.name ?? custom?.title ?? authored.primaryTarget.elementId,
         authored.severity,
         { validationVersionId: authored.validationVersionId, ruleId: authored.ruleId,
           targetElementId: authored.primaryTarget.elementId,

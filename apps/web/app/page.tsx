@@ -1,14 +1,20 @@
 "use client";
 
 import { DialogCancelButton, DialogRemoveButton } from "../components/documentation-dialog-buttons";
-import { mobileDisplayDefinition } from "./mobile-localization";
+import { enabledMobileOptions, mobileDisplayDefinition } from "./mobile-localization";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
+import { CustomTextFields } from "../components/custom-text-fields";
+import { CustomCodedFields } from "../components/custom-coded-fields";
+import { RepeatedCustomFields } from "../components/repeated-custom-fields";
+import { CustomGroupFields } from "../components/custom-group-fields";
+import { ChecklistFieldEditor } from "../components/checklist-field-editor";
+import { checklistFieldTarget } from "./checklist-field-target";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./regional-format";
 import { clinicalInstantParts, useAgencyTimeZone } from "./agency-time-zone";
 import { TimePicker } from "../components/time-picker";
@@ -116,6 +122,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
+  const [pinnedChecklistFinding, setPinnedChecklistFinding] = useState<StationaryValidationFinding | null>(null);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
@@ -175,10 +182,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       ...(procedureCatalogChoices ? { choices: procedureCatalogChoices.map((choice) => ({ code: choice.code,
         label: language === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
         sourceLabel: choice.sourceLabel ?? choice.label, category: "" })) } : {}) },
-    successOptions: baseProcedure.successOptions.map((option) => ({ ...option,
+    successOptions: enabledMobileOptions(baseProcedure.successOptions, "eProcedures.06", (option) => option.code, report?.clinicalForm).map((option) => ({ ...option,
       label: report?.clinicalForm?.catalogFields["eProcedures.06"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && language === "sv"
         ? report.clinicalForm.catalogFields["eProcedures.06"].codeChoices!.find((choice) => choice.code === option.code)!.localization!.sv!.label! : option.label })),
-    outcomeOptions: baseProcedure.outcomeOptions.map((option) => ({ ...option,
+    outcomeOptions: enabledMobileOptions(baseProcedure.outcomeOptions, "eProcedures.08", (option) => option.code, report?.clinicalForm).map((option) => ({ ...option,
       label: report?.clinicalForm?.catalogFields["eProcedures.08"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && language === "sv"
         ? report.clinicalForm.catalogFields["eProcedures.08"].codeChoices!.find((choice) => choice.code === option.code)!.localization!.sv!.label! : option.label })),
     labels: { ...baseProcedure.labels,
@@ -212,7 +219,16 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const stationarySectionFindings = useMemo(() => configuredStationaryFindings.flatMap((finding) =>
     finding.severity === "information" ? [] : [{ severity: finding.severity, target: finding.target }]),
   [configuredStationaryFindings]);
-  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
+  const mobileChecklistFindings: ReadonlyArray<SigningFinding> = useMemo(() => [...reviewFindings,
+    ...configuredStationaryFindings.filter((finding): finding is StationaryValidationFinding =>
+      !("eventType" in finding) && finding.severity !== "information" &&
+      Boolean(checklistFieldTarget(finding, encounter.document, report?.clinicalForm)))],
+  [reviewFindings, configuredStationaryFindings, encounter.document, report?.clinicalForm]);
+  const displayMobileChecklistFindings = pinnedChecklistFinding && !mobileChecklistFindings.some(({ id }) => id === pinnedChecklistFinding.id)
+    ? [...mobileChecklistFindings, pinnedChecklistFinding] : mobileChecklistFindings;
+  const displayStationaryFindings = pinnedChecklistFinding && !configuredStationaryFindings.some(({ id }) => id === pinnedChecklistFinding.id)
+    ? [...configuredStationaryFindings, pinnedChecklistFinding] : configuredStationaryFindings;
+  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : mobileChecklistFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const completeErrors = configuredStationaryFindings.filter((finding) => finding.severity === "error");
@@ -540,6 +556,15 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     dispatch({ type: "review-finding-selected", id: finding.id });
   }
 
+  function inlineChecklistEditor(finding: SigningFinding): ReactNode {
+    if (editingBlocked || "eventType" in finding || !report?.clinicalForm ||
+      !checklistFieldTarget(finding, encounter.document, report.clinicalForm)) return null;
+    return <ChecklistFieldEditor key={finding.id} finding={finding} document={encounter.document}
+      form={report.clinicalForm} language={language} disabled={editingBlocked}
+      onMultiChoiceOpenChange={(open) => setPinnedChecklistFinding(open ? finding : null)}
+      onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />;
+  }
+
   function startPhoto(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
@@ -843,6 +868,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             sectionFindings={stationarySectionFindings}
             formDefinition={report?.clinicalForm?.definition}
             catalogFields={report?.clinicalForm?.catalogFields}
+            customFields={report?.clinicalForm?.customFields}
+            customGroups={report?.clinicalForm?.customGroups}
             catalogGroups={report?.clinicalForm?.catalogGroups}
             validation={report?.clinicalForm?.validation}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
@@ -861,6 +888,22 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         onOpenAudio={openAudio}
         onOpenEvent={openTimelineEvent}
       />}
+      {presentationMode === "mobile" && shell.view === "timeline" && report?.clinicalForm?.customFields &&
+        <section className="content-panel" aria-label={t("mobile.customFields")}>
+          {report.clinicalForm.definition.sections.map((section) => <CustomTextFields key={section.key}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+          {report.clinicalForm.definition.sections.map((section) => <CustomCodedFields key={`coded-${section.key}`}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+          {report.clinicalForm.definition.sections.map((section) => <RepeatedCustomFields key={`repeated-${section.key}`}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+          {report.clinicalForm.definition.sections.map((section) => <CustomGroupFields key={`group-${section.key}`}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            groups={report.clinicalForm!.customGroups} language={language}
+            onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+        </section>}
       {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label={t("mobile.encounterTimeline")} onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();
@@ -878,13 +921,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               <p className="eyebrow">{t("mobile.quickChecks")}</p>
               <h1 id="checklist-heading">{t("mobile.checklist")}</h1>
             </div>
-            <span aria-live="polite">{t("mobile.openCount", { count: reviewFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length })}</span>
+            <span aria-live="polite">{t("mobile.openCount", { count: mobileChecklistFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length })}</span>
           </div>
           <p className="review-intro">{t("mobile.checksHelp")}</p>
           <NoteReadinessList language={language} blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
-          {!reviewFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.noFindings")}</p> : reviewFindings.length ? (
+          {!displayMobileChecklistFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.noFindings")}</p> : displayMobileChecklistFindings.length ? (
             <ul className="review-findings checklist-findings">
-              {reviewFindings.map((finding) => (
+              {displayMobileChecklistFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
                   <button type="button" onClick={(event) => editValidationFinding(finding, event.currentTarget)}>
                     <span className="finding-category">{finding.severity === "error" ? t("mobile.error") : t("mobile.warning")} · {finding.category}</span>
@@ -892,6 +935,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                     <span>{finding.message}</span>
                     <small>{"vitalField" in finding.target && finding.target.vitalField ? t("mobile.editValue") : t("mobile.editEntry")}</small>
                   </button>
+                  {inlineChecklistEditor(finding)}
                 </li>
               ))}
             </ul>
@@ -905,7 +949,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         <>
         <ReviewPanel
           language={language}
-          findings={configuredStationaryFindings}
+          findings={displayStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
           noteBlockers={noteBlockers}
@@ -915,6 +959,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           signing={signing}
           signError={signError}
           onFinding={editValidationFinding}
+          inlineEditor={inlineChecklistEditor}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onNoteBlocker={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)}
           onSign={() => void signRecord()}
@@ -1121,7 +1166,7 @@ function DispatchConflictList({ language, conflicts, onDispose }: {
 }
 
 function ReviewPanel({ language, findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
-  blockedReason, onFinding, onWarning, onNoteBlocker, onSign }: {
+  blockedReason, onFinding, inlineEditor, onWarning, onNoteBlocker, onSign }: {
   readonly language: AgencyLanguage;
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly errors: ReadonlyArray<SigningFinding>;
@@ -1134,6 +1179,7 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
   readonly signError: string | null;
   readonly blockedReason?: string;
   readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
+  readonly inlineEditor: (finding: SigningFinding) => ReactNode;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
   readonly onNoteBlocker: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
   readonly onSign: () => void;
@@ -1150,8 +1196,8 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
       {errors[0] && <button type="button" className="next-review-error" onClick={(event) => onFinding(errors[0]!, event.currentTarget)}>{resolveMessage(language, "mobile.fixNext")}</button>}
 
       <NoteReadinessList language={language} blockers={noteBlockers} onOpen={onNoteBlocker} />
-      {groups.map((group) => <FindingGroup language={language} key={group.severity} title={resolveMessage(language, group.severity === "error" ? "stationary.review.errors" : "stationary.review.warnings")} empty={resolveMessage(language, group.severity === "error" ? "stationary.review.errorsEmpty" : "stationary.review.warningsEmpty")} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
-      <FindingGroup language={language} title={resolveMessage(language, "stationary.review.information")} empty={resolveMessage(language, "stationary.review.informationEmpty")} findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} onWarning={onWarning} />
+      {groups.map((group) => <FindingGroup language={language} key={group.severity} title={resolveMessage(language, group.severity === "error" ? "stationary.review.errors" : "stationary.review.warnings")} empty={resolveMessage(language, group.severity === "error" ? "stationary.review.errorsEmpty" : "stationary.review.warningsEmpty")} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} inlineEditor={inlineEditor} onWarning={onWarning} />)}
+      <FindingGroup language={language} title={resolveMessage(language, "stationary.review.information")} empty={resolveMessage(language, "stationary.review.informationEmpty")} findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} inlineEditor={inlineEditor} onWarning={onWarning} />
 
       <div className="review-actions">
         <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? resolveMessage(language, "mobile.signing") : resolveMessage(language, "mobile.sign")}</button>
@@ -1182,12 +1228,13 @@ function NoteReadinessList({ language, blockers, onOpen }: {
   </section>;
 }
 
-function FindingGroup({ language, title, empty, findings, onFinding, onWarning }: {
+function FindingGroup({ language, title, empty, findings, onFinding, inlineEditor, onWarning }: {
   readonly language: AgencyLanguage;
   readonly title: string;
   readonly empty: string;
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
+  readonly inlineEditor: (finding: SigningFinding) => ReactNode;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
 }) {
   const sections = groupReviewFindings(findings);
@@ -1208,6 +1255,7 @@ function FindingGroup({ language, title, empty, findings, onFinding, onWarning }
                 <span>{finding.message}</span>
                 <small>{resolveMessage(language, "mobile.openAffected")}</small>
               </button>
+              {inlineEditor(finding)}
               {finding.severity === "warning" && (
                 <label className="review-acknowledgement">
                   <input type="checkbox" checked={finding.acknowledged} onChange={(event) => onWarning(finding.id, event.target.checked)} />

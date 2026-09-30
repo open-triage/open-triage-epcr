@@ -2,12 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
+import { customTextDefinitionFindings } from "./custom-text-definition.js";
+import { customGroupDefinitionFindings } from "./custom-group-definition.js";
+import { releaseCustomDefinitions } from "./custom-definition-version.js";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -42,6 +45,19 @@ function stable(value: unknown): unknown {
 
 export function catalogDefinitionSha256(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+}
+
+function compatibleCustomMeaning(previous: CatalogDraftCustomElement | undefined, next: CatalogDraftCustomElement): boolean {
+  if (!previous || previous.datatype !== next.datatype) return false;
+  if (previous.datatype === "coded" && next.datatype === "coded") {
+    if (previous.codeSystem !== next.codeSystem || previous.nemsisElement !== next.nemsisElement) return false;
+    const currentCodes = new Map(next.choices.map((choice) => [choice.code, choice]));
+    return previous.choices.every((choice) => currentCodes.get(choice.code)?.nemsisCode === choice.nemsisCode) &&
+      previous.permittedNotValues.every((code) => next.permittedNotValues.includes(code)) &&
+      previous.permittedPertinentNegatives.every((code) => next.permittedPertinentNegatives.includes(code));
+  }
+  if (previous.datatype === "coded" || next.datatype === "coded") return false;
+  return catalogDefinitionSha256(previous.constraints) === catalogDefinitionSha256(next.constraints);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,6 +180,16 @@ export class CatalogAuthoringService {
         message: "Catalog draft revision is stale", expectedRevision: body.expectedRevision, actualRevision: draft.revision
       });
       const definition = await this.upgradeDefinition(manager, draft.source_release_id, body.definition);
+      // Upgrade both sides so older drafts also retain metadata inherited from their pinned source.
+      const previousDefinition = await this.upgradeDefinition(manager, draft.source_release_id, draft.canonical_definition);
+      // Legacy metadata may round-trip unchanged, but clients cannot author defaults.
+      for (const list of definition.codeLists) {
+        const previous = previousDefinition.codeLists.find((candidate) => candidate.listId === list.listId);
+        if (list.defaultValue != null && catalogDefinitionSha256(list.defaultValue) !==
+            catalogDefinitionSha256(previous?.defaultValue ?? null)) {
+          throw new UnprocessableEntityException("Default-value authoring is no longer supported");
+        }
+      }
       const validation = await this.validateDefinition(manager, draft.source_release_id, definition);
       if (!validation.valid) throw new UnprocessableEntityException({ message: "Catalog validation failed", findings: validation.findings });
       const updated = await manager.query<DraftRow[]>(`
@@ -255,6 +281,9 @@ export class CatalogAuthoringService {
           dataModelVersion: source.data_model_version,
           organizationId: session.organization.id, changeNote: body.changeNote,
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
+          customElementIds: (draft.canonical_definition.customElements ?? []).map((element) => element.id),
+          customElementDefinitions: draft.canonical_definition.customElements ?? [],
+          customGroupDefinitions: draft.canonical_definition.customGroups ?? [],
           specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
             .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
@@ -271,6 +300,32 @@ export class CatalogAuthoringService {
                 .map((value) => [value.code, value.localization]))]))
           }])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
+      for (const element of draft.canonical_definition.customElements ?? []) {
+        const inherited = await manager.query<Array<{ id: string }>>(`select id from forms.custom_element_definition where id=$1`, [element.id]);
+        if (inherited[0]) {
+          if (element.retired) await manager.query(`update forms.custom_element_definition
+            set retired_at=coalesce(retired_at,now()) where id=$1 and organization_id=$2`,
+          [element.id, session.organization.id]);
+          continue;
+        }
+        await manager.query(`insert into catalog.element_identity (id,namespace,canonical_key) values ($1,$2,$3)`,
+          [element.id, element.namespace, `${element.namespace}.${element.slug}`]);
+        await manager.query(`insert into forms.custom_element_definition
+          (id,organization_id,namespace,slug,title,base_datatype,identifying,definition)
+          values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+          [element.id, session.organization.id, element.namespace, element.slug, element.title,
+            element.datatype === "number" ? "decimal" : element.datatype === "other" ? "string" : element.datatype, element.identifying,
+            JSON.stringify({ ...element, catalogReleaseId: releaseId })]);
+      }
+      for (const group of draft.canonical_definition.customGroups ?? []) {
+        const inherited = await manager.query<Array<{ id: string }>>(
+          "select id from forms.custom_group_definition where id=$1", [group.id]);
+        if (inherited[0]) continue;
+        await manager.query(`insert into forms.custom_group_definition
+          (id,organization_id,namespace,slug,temporal_kind,definition)
+          values ($1,$2,$3,$4,'non-temporal',$5::jsonb)`,
+          [group.id, session.organization.id, group.namespace, group.slug, JSON.stringify(group)]);
+      }
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
       const editableValueSetOptionCount = draft.canonical_definition.codeLists
@@ -418,7 +473,22 @@ export class CatalogAuthoringService {
   private async cloneDefinition(manager: EntityManager, sourceReleaseId: string): Promise<CatalogDraftDefinition> {
     const elements = await this.sourceElements(manager, sourceReleaseId);
     const codeLists = await this.sourceCodeLists(manager, sourceReleaseId);
+    const legacyCustomElements = await manager.query<Array<{ definition: CatalogDraftCustomElement }>>(`
+      select ced.definition from forms.custom_element_definition ced
+      join catalog.release cr on cr.id=$1
+      where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
+      order by ced.namespace, ced.slug`, [sourceReleaseId]);
+    const snapshot = legacyCustomElements.length ? await releaseCustomDefinitions(manager, sourceReleaseId) : null;
+    const customElements = snapshot === null ? legacyCustomElements : snapshot.map((definition) => ({ definition }));
+    const customGroups = await manager.query<Array<{ definition: CatalogDraftCustomGroup }>>(`
+      select jsonb_array_elements(coalesce(provenance->'customGroupDefinitions','[]'::jsonb)) as definition
+      from catalog.release where id=$1`, [sourceReleaseId]);
     return { schemaVersion: 1, sourceReleaseId,
+      ...(customGroups.length ? { customGroups: customGroups.map((row) => row.definition) } : {}),
+      ...(customElements.length ? { customElements: customElements.map((row) => {
+        const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomElement & { catalogReleaseId?: string };
+        return definition;
+      }) } : {}),
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
       elements: elements.map((row) => ({
       elementId: row.element_id, label: row.name, description: row.description ?? "",
@@ -444,6 +514,10 @@ export class CatalogAuthoringService {
     const existingLists = Array.isArray(existing?.codeLists) ? new Map(existing.codeLists.map((list) => [list.listId, list])) : new Map();
     return { ...baseline,
       ...(existing.hiddenElementIds ? { hiddenElementIds: existing.hiddenElementIds } : {}),
+      ...(Array.isArray(existing.customElements) || baseline.customElements ?
+        { customElements: Array.isArray(existing.customElements) ? existing.customElements : baseline.customElements } : {}),
+      ...(Array.isArray(existing.customGroups) || baseline.customGroups ?
+        { customGroups: Array.isArray(existing.customGroups) ? existing.customGroups : baseline.customGroups } : {}),
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
@@ -585,7 +659,6 @@ export class CatalogAuthoringService {
         warnings.push(`${list.listId} localized list name needs source review`);
       const sourceValues = new Map(baseList.values.map((value) => [`${value.codeSystem}\u0000${value.code}`, value]));
       const seenValues = new Set<string>();
-      const enabledByKey = new Map<string, boolean>();
       for (const [valueIndex, unknownValue] of list.values.entries()) {
         if (!isRecord(unknownValue) || typeof unknownValue.code !== "string" || typeof unknownValue.codeSystem !== "string") {
           findings.push(`${list.listId}.values[${valueIndex}] is invalid`); continue;
@@ -597,7 +670,6 @@ export class CatalogAuthoringService {
           findings.push(`${list.listId} contains a blank or duplicate code`); continue;
         }
         seenValues.add(key);
-        enabledByKey.set(key, unknownValue.enabled === true);
         if (code !== unknownValue.code || codeSystem !== unknownValue.codeSystem ||
             typeof unknownValue.label !== "string" || !unknownValue.label.trim() ||
             typeof unknownValue.sourceLabel !== "string" || !unknownValue.sourceLabel.trim() ||
@@ -617,15 +689,114 @@ export class CatalogAuthoringService {
       }
       for (const key of sourceValues.keys()) if (!seenValues.has(key))
         findings.push(`${list.listId} published code ${key.split("\u0000")[1]} cannot be deleted or changed`);
-      const defaultValue = unknownList.defaultValue;
-      if (defaultValue !== null) {
-        if (!isRecord(defaultValue) || typeof defaultValue.code !== "string" || typeof defaultValue.codeSystem !== "string" ||
-            enabledByKey.get(`${defaultValue.codeSystem}\u0000${defaultValue.code}`) !== true)
-          findings.push(`${list.listId} default must reference an enabled value`);
-      }
     }
     if (seenLists.size !== sourceLists.length)
       findings.push("The draft must retain every inline, agency-maintained, or recommended code list");
+    const groupCandidates = isRecord(definition) ? definition.customGroups : undefined;
+    if (groupCandidates !== undefined && !Array.isArray(groupCandidates)) findings.push("customGroups must be an array");
+    const groups = Array.isArray(groupCandidates) ? groupCandidates as CatalogDraftCustomGroup[] : [];
+    const groupIds = new Set<string>();
+    const groupKeys = new Set<string>();
+    const priorGroups = await manager.query<Array<{ definition: CatalogDraftCustomGroup }>>(`
+      select jsonb_array_elements(coalesce(provenance->'customGroupDefinitions','[]'::jsonb)) as definition
+      from catalog.release where id=$1`, [sourceReleaseId]);
+    const priorGroupById = new Map(priorGroups.map((row) => [row.definition.id, row.definition]));
+    for (const [index, group] of groups.entries()) {
+      findings.push(...customGroupDefinitionFindings(group).map((message) => `customGroups[${index}]: ${message}`));
+      const key = `${group.namespace}.${group.slug}`;
+      if (groupIds.has(group.id) || groupKeys.has(key)) findings.push(`Duplicate custom group ${key}`);
+      groupIds.add(group.id); groupKeys.add(key);
+      const prior = priorGroupById.get(group.id);
+      if (prior && (prior.namespace !== group.namespace || prior.slug !== group.slug ||
+        prior.recurrence !== group.recurrence || prior.correlatesTo !== group.correlatesTo))
+        findings.push(`Published custom group ${key} cannot change its identity, recurrence, or target`);
+      if (group.correlatesTo) {
+        const targets = await manager.query<Array<{ group_id: string }>>(`
+          select group_id from catalog.group_definition where release_id=$1 and group_id=$2 and repeating`,
+          [sourceReleaseId, group.correlatesTo]);
+        if (!targets[0]) findings.push(`Custom group ${key} has an unavailable correlation target`);
+      }
+    }
+    for (const row of priorGroups) if (!groupIds.has(row.definition.id))
+      findings.push(`Published custom group ${row.definition.namespace}.${row.definition.slug} must be retained`);
+    const custom = isRecord(definition) ? definition.customElements : undefined;
+    if (custom !== undefined && !Array.isArray(custom)) findings.push("customElements must be an array");
+    const customIds = new Set<string>();
+    const customKeys = new Set<string>();
+    const codedItems = Array.isArray(custom) ? custom.filter((item): item is import("@open-triage/contracts").CatalogDraftCustomCodedElement =>
+      isRecord(item) && item.datatype === "coded") : [];
+    const reservedSystems = new Set((codedItems.length ? await manager.query<Array<{ code_system: string }>>(`
+      select distinct code_system from catalog.element_option where release_id=$1 and code_system <> ''
+      union select distinct code_system from catalog.value_set_option where release_id=$1 and code_system <> ''
+    `, [sourceReleaseId]) : []).map((row) => row.code_system));
+    const inherited = await manager.query<Array<{ id: string; namespace: string; slug: string; definition: CatalogDraftCustomElement }>>(`
+      select ced.id,ced.namespace,ced.slug,ced.definition from forms.custom_element_definition ced
+      join catalog.release cr on cr.id=$1
+      where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))`, [sourceReleaseId]);
+    const inheritedSnapshot = inherited.length ? await releaseCustomDefinitions(manager, sourceReleaseId) : null;
+    const inheritedById = new Map((inheritedSnapshot ?? inherited.map((row) => row.definition)).map((item) => [item.id, item]));
+    for (const [index, candidate] of (Array.isArray(custom) ? custom : []).entries()) {
+      const item = candidate as CatalogDraftCustomElement;
+      const itemFindings = customTextDefinitionFindings(item);
+      findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
+      if (itemFindings.length) continue;
+      if (item.groupDefinitionId) {
+        const group = groups.find((candidate) => candidate.id === item.groupDefinitionId);
+        if (!group) findings.push(`Custom element ${item.namespace}.${item.slug} references an unknown custom group`);
+        else if (group.namespace !== item.namespace || group.correlatesTo !== item.correlatesTo)
+          findings.push(`Custom element ${item.namespace}.${item.slug} must match its group's namespace and target`);
+      }
+      if (item.correlatesTo) {
+        const targets = await manager.query<Array<{ group_id: string }>>(`
+          select group_id from catalog.group_definition
+          where release_id=$1 and group_id=$2 and repeating`, [sourceReleaseId, item.correlatesTo]);
+        if (!targets[0]) findings.push(`Custom element ${item.namespace}.${item.slug} has an unavailable correlation target ${item.correlatesTo}`);
+      }
+      if (item.datatype === "coded") {
+        if (reservedSystems.has(item.codeSystem))
+          findings.push(`Custom code system ${item.codeSystem} is reserved by the pinned standard catalog`);
+        if (item.nemsisElement && !sourceById.has(item.nemsisElement))
+          findings.push(`Custom element ${item.namespace}.${item.slug} maps to an unknown NEMSIS element`);
+        if (item.choices.some((choice) => choice.nemsisCode) && !item.nemsisElement)
+          findings.push(`Custom element ${item.namespace}.${item.slug} needs an element mapping for mapped codes`);
+        if (item.nemsisElement) {
+          const mappedCodes = item.choices.flatMap((choice) => choice.nemsisCode ? [choice.nemsisCode] : []);
+          if (mappedCodes.length) {
+            const valid = await manager.query<Array<{ code: string }>>(`
+              select distinct code from catalog.element_option where release_id=$1 and element_id=$2 and code=any($3::text[])
+              union select distinct option.code from catalog.value_set_element linked
+                join catalog.value_set_option option on option.release_id=linked.release_id and option.value_set_id=linked.value_set_id
+                where linked.release_id=$1 and linked.element_id=$2 and option.code=any($3::text[])
+            `, [sourceReleaseId, item.nemsisElement, mappedCodes]);
+            const accepted = new Set(valid.map((row) => row.code));
+            for (const code of mappedCodes) if (!accepted.has(code))
+              findings.push(`NEMSIS mapping ${item.nemsisElement}/${code} is not a pinned catalog code`);
+          }
+        }
+      }
+      const key = `${item.namespace}.${item.slug}`;
+      if (customIds.has(item.id) || customKeys.has(key) || sourceById.has(key)) findings.push(`Duplicate custom identity ${key}`);
+      customIds.add(item.id); customKeys.add(key);
+      const old = inherited.find((row) => row.id === item.id);
+      const prior = inheritedById.get(item.id) ?? old?.definition;
+      if (!old && item.retired) findings.push(`Custom element ${key} must be published before retirement`);
+      if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
+        prior?.datatype !== item.datatype || prior?.recurrence !== item.recurrence ||
+        prior?.correlatesTo !== item.correlatesTo || prior?.groupDefinitionId !== item.groupDefinitionId ||
+        prior?.usage !== item.usage || prior?.identifying !== item.identifying ||
+        !compatibleCustomMeaning(prior, item) ||
+        (prior?.retired === true && item.retired !== true)))
+        findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
+    }
+    for (const old of inherited) if (!customIds.has(old.id)) findings.push(`Published custom identity ${old.namespace}.${old.slug} must be retained`);
+    if (customIds.size) {
+      const collisions = await manager.query<Array<{ id: string; namespace: string; canonical_key: string }>>(`
+        select id,namespace,canonical_key from catalog.element_identity
+        where id=any($1::uuid[]) or canonical_key=any($2::text[])`, [[...customIds], [...customKeys]]);
+      for (const collision of collisions) if (!inherited.some((old) => old.id === collision.id &&
+        `${old.namespace}.${old.slug}` === collision.canonical_key))
+        findings.push(`Custom identity ${collision.canonical_key} is already published`);
+    }
     const digest = catalogDefinitionSha256(definition);
     return { valid: findings.length === 0, findings, warnings, definitionSha256: digest,
       projectionsVerified: findings.length === 0 && seen.size === source.length && seenLists.size === sourceLists.length };
@@ -662,7 +833,7 @@ export class CatalogAuthoringService {
     const inlineValues = draft.canonical_definition.codeLists.filter((list) => list.classification === "inline")
       .flatMap((list) => list.values.map((value, index) => ({ element_id: list.elementIds[0]!, source_kind: "inline",
         code: value.code, code_system: value.codeSystem, display: value.label, enabled: value.enabled, sort_order: index,
-        is_default: list.defaultValue?.code === value.code && list.defaultValue.codeSystem === value.codeSystem })));
+        is_default: false })));
     if (inlineValues.length) await manager.query(`insert into catalog.element_option
       (release_id,element_id,source_kind,code,display,code_system)
       select $1,x.element_id,x.source_kind,x.code,x.display,x.code_system
@@ -677,7 +848,7 @@ export class CatalogAuthoringService {
       .flatMap((list) => list.values.map((value, index) => ({
       value_set_id: list.listId, code: value.code, code_system: value.codeSystem, display: value.label,
       source_display: value.sourceLabel, category: value.category, enabled: value.enabled, sort_order: index,
-      is_default: list.defaultValue?.code === value.code && list.defaultValue.codeSystem === value.codeSystem
+      is_default: false
     })));
     if (projectedValues.length) await manager.query(`insert into catalog.value_set_option
       (release_id,value_set_id,code,code_system,display,source_display,category)

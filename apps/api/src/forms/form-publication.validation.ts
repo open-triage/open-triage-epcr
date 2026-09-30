@@ -107,6 +107,9 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
     if (typeof section.key !== "string" || !section.key.trim()) findings.push(`${path}.key is required`);
     else if (sectionKeys.has(section.key)) findings.push(`${path}.key is duplicated`);
     else sectionKeys.add(section.key);
+    if (section.name !== undefined && (typeof section.name !== "string" || !section.name.trim() || section.name.length > 120)) {
+      findings.push(`${path}.name must contain between 1 and 120 characters`);
+    }
     if (section.presentation !== undefined) {
       findings.push(`${path}.presentation is unsupported; edit the catalog group name instead`);
     }
@@ -151,6 +154,20 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
       }
       if (field.configuration !== undefined) {
         findings.push(`${fieldPath}.configuration is unsupported; edit wording in the element catalog`);
+      }
+      if (field.choicePolicy !== undefined) {
+        if (!Array.isArray(field.choicePolicy) || field.choicePolicy.some((choice) => !isRecord(choice) ||
+          !["code", "not-value"].includes(String(choice.kind)) || typeof choice.code !== "string" || !choice.code.trim() ||
+          (choice.kind === "code" && typeof choice.codeSystem !== "string") ||
+          (choice.kind === "not-value" && choice.codeSystem !== undefined))) {
+          findings.push(`${fieldPath}.choicePolicy must contain coded or NOT choice identities`);
+        } else {
+          const identities = field.choicePolicy.map((choice) => `${choice.kind}:${choice.kind === "code" ? choice.codeSystem : ""}:${choice.code}`);
+          if (new Set(identities).size !== identities.length)
+            findings.push(`${fieldPath}.choicePolicy contains duplicate choices`);
+        }
+        if (!isRecord(field.source) || !["nemsis", "custom"].includes(String(field.source.kind)))
+          findings.push(`${fieldPath}.choicePolicy requires a catalog field`);
       }
       if (field.rules !== undefined && !Array.isArray(field.rules)) findings.push(`${fieldPath}.rules must be an array`);
       fields.push(field as unknown as CanonicalFormField);

@@ -16,6 +16,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encounterDocument } from "./encounter-document.persistence.js";
 import { commandSha256 } from "./draft-report.validation.js";
+import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { lockAndValidateReportNotes, type SignedNoteManifestEntry } from "./sign-report-notes.js";
 import type {
   SignedReportResult,
@@ -90,6 +91,11 @@ type OccurrenceRow = {
   base_datatype: string | null;
   min_occurs: number | null;
   max_occurs: number | null;
+  text_constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
+  custom_definition: import("@open-triage/contracts").CatalogDraftCustomElement | null;
+  allowed_absence_states: string[] | null;
+  not_value_code: string | null;
+  pertinent_negative_code: string | null;
 };
 
 type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
@@ -383,8 +389,9 @@ export class SignReportService {
 
   private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
     const findings: SigningFinding[] = [];
-    const form = await manager.query<Array<{ status: string; catalog_release_id: string }>>(`
-      select status, catalog_release_id from forms.form_version where id = $1
+    const form = await manager.query<Array<{ status: string; catalog_release_id: string;
+      canonical_definition: import("@open-triage/contracts").FormDraftDefinition }>>(`
+      select status, catalog_release_id, canonical_definition from forms.form_version where id = $1
     `, [report.form_version_id]);
     if (!form[0] || form[0].status !== "published" || form[0].catalog_release_id !== report.catalog_release_id) {
       findings.push(this.finding("catalog.pinned-version", "$.formVersionId",
@@ -394,13 +401,17 @@ export class SignReportService {
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
       (ff.custom_element_definition_id is not null or m.element_id is not null) as clinically_stored,
       ff.catalog_element_identity_id, ff.custom_element_definition_id,
-      case when e.agency_required is true then 0 else e.min_occurs end as min_occurs,
+      case when e.agency_required is true then 0
+        when ced.definition->>'usage' in ('Mandatory','Required') then 1
+        when e.usage in ('Mandatory','Required') then greatest(e.min_occurs, 1)
+        else e.min_occurs end as min_occurs,
       e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
         and e.element_identity_id = ff.catalog_element_identity_id
       left join catalog.analytics_element_mapping m on m.release_id = e.release_id
         and m.element_id = e.element_id
+      left join forms.custom_element_definition ced on ced.id=ff.custom_element_definition_id
       where ff.form_version_id = $1 order by ff.stable_key`, [report.form_version_id, report.catalog_release_id]);
     const rules = await manager.query<RuleRow[]>(`select r.target_field_id, f.stable_key as target_key,
       r.rule_kind, r.expression
@@ -414,12 +425,46 @@ export class SignReportService {
         when 'boolean' then to_jsonb(o.value_boolean) when 'date' then to_jsonb(o.value_date)
         when 'datetime' then to_jsonb(o.value_datetime) when 'time' then to_jsonb(o.value_time)
         when 'duration' then to_jsonb(o.value_duration) else null end as scalar_value,
-      o.code, o.code_system, o.absence_code, coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
-      e.min_occurs, e.max_occurs
+      o.code, o.code_system, o.absence_code, o.not_value_code, o.pertinent_negative_code,
+      coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
+      e.min_occurs, coalesce(e.max_occurs,
+        case when ced.definition->>'recurrence' = 'single' then 1 else null end) as max_occurs,
+      ced.definition->'constraints' as text_constraints,
+      ced.definition as custom_definition, ff.allowed_absence_states
       from clinical.element_occurrence o
       left join catalog.element_definition e on e.release_id = o.catalog_release_id and e.element_id = o.element_id
       left join forms.custom_element_definition ced on ced.id = o.element_identity_id
+      left join forms.form_field ff on ff.id=o.form_field_id
       where o.report_id = $1 and o.tombstoned_at is null order by o.element_id, o.ordinal, o.id`, [report.id]);
+
+    const choicePolicies = new Map(form[0].canonical_definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.choicePolicy !== undefined
+        ? [[field.source.kind === "nemsis" ? field.source.elementId : field.source.elementDefinitionId,
+          field.choicePolicy] as const] : [])));
+    for (const occurrence of occurrences) {
+      const policy = choicePolicies.get(occurrence.custom_definition ? occurrence.element_identity_id : occurrence.element_id);
+      if (occurrence.custom_definition?.datatype === "coded") {
+        const customFindings = customCodedValueFindings(occurrence.custom_definition, {
+          kind: occurrence.value_kind, code: occurrence.code, codeSystem: occurrence.code_system,
+          absenceCode: occurrence.absence_code,
+          notValue: occurrence.not_value_code ? { code: occurrence.not_value_code } : undefined,
+          pertinentNegative: occurrence.pertinent_negative_code ? { code: occurrence.pertinent_negative_code } : undefined,
+        }, policy, occurrence.allowed_absence_states ?? []);
+        for (const message of customFindings) findings.push(this.finding("catalog.custom-code", `$.occurrences.${occurrence.id}`, message));
+        continue;
+      }
+      if (!policy) continue;
+      if (occurrence.value_kind === "coded" && !policy.some((choice) => choice.kind === "code" &&
+        choice.code === occurrence.code && choice.codeSystem === (occurrence.code_system ?? ""))) {
+        findings.push(this.finding("form.choice-disabled", `$.occurrences.${occurrence.id}.code`,
+          `Code ${occurrence.code} is not enabled for this form field`));
+      }
+      if (occurrence.value_kind === "null" && occurrence.absence_code &&
+        !policy.some((choice) => choice.kind === "not-value" && choice.code === occurrence.absence_code)) {
+        findings.push(this.finding("form.not-value-disabled", `$.occurrences.${occurrence.id}.absenceCode`,
+          `NOT value ${occurrence.absence_code} is not enabled for this form field`));
+      }
+    }
 
     const byField = new Map(fields.map((field) => [field.stable_key,
       occurrences.filter((item) => item.form_field_id === field.id ||
@@ -430,15 +475,15 @@ export class SignReportService {
       // reference, but it is supplied by the pinned configuration rather than
       // stored as clinician-authored element occurrences on the report.
       if (!field.clinically_stored) continue;
-      if (!report.validation_version_id && field.required && values.length === 0) {
+      if (field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));
       }
-      if (!report.validation_version_id && field.agency_required === true && values.length === 0) {
+      if (field.agency_required === true && !field.required && values.length === 0) {
         findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
           `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
-      if (!report.validation_version_id && field.min_occurs !== null && values.length < field.min_occurs) {
+      if (field.min_occurs !== null && field.min_occurs > (field.required ? 1 : 0) && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
           `Field ${field.stable_key} requires at least ${field.min_occurs} occurrence(s); found ${values.length}`));
       }
@@ -446,7 +491,7 @@ export class SignReportService {
     for (const rule of rules) {
       const applies = this.evaluateRule(rule.expression, byField);
       const target = byField.get(rule.target_key) ?? [];
-      if (!report.validation_version_id && rule.rule_kind === "requiredness" && applies && target.length === 0) {
+      if (rule.rule_kind === "requiredness" && applies && target.length === 0) {
         findings.push(this.finding("form.conditional-required", `$.fields.${rule.target_key}`,
           `Field ${rule.target_key} is required by its current form condition`));
       }
@@ -472,13 +517,29 @@ export class SignReportService {
         findings.push(this.finding("catalog.datatype", `${path}.value`,
           `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
       }
+      if (occurrence.value_kind === "text" && occurrence.text_constraints && typeof occurrence.scalar_value === "string") {
+        const limits = occurrence.text_constraints;
+        if (occurrence.scalar_value.length > 100000 || limits.minLength !== undefined && occurrence.scalar_value.length < limits.minLength ||
+            limits.maxLength !== undefined && occurrence.scalar_value.length > limits.maxLength ||
+            limits.pattern && !new RegExp(`^(?:${limits.pattern})$`).test(occurrence.scalar_value))
+          findings.push(this.finding("catalog.text-constraint", `${path}.value`,
+            `${occurrence.element_id} does not satisfy its published text constraints`));
+      }
+      if (occurrence.value_kind === "numeric" && occurrence.text_constraints) {
+        const bounds = occurrence.text_constraints;
+        const numeric = Number(occurrence.scalar_value);
+        if (!Number.isFinite(numeric) || bounds.minimum !== undefined && numeric < bounds.minimum ||
+            bounds.maximum !== undefined && numeric > bounds.maximum)
+          findings.push(this.finding("catalog.numeric-bounds", `${path}.value`,
+            `${occurrence.element_id} does not satisfy its published numeric bounds`));
+      }
     }
     const codedOccurrences = occurrences.filter((occurrence) => occurrence.value_kind === "coded");
     if (codedOccurrences.length) {
       const codedValidation = await manager.query<CodedValidationRow[]>(`
         with incoming as (
           select * from jsonb_to_recordset($2::jsonb) as item(
-            id uuid, element_id text, code text, code_system text)
+            id uuid, element_id text, code text, code_system text, form_policy boolean)
         )
         select incoming.id,
           exists (
@@ -527,23 +588,24 @@ export class SignReportService {
                 where valid_element.release_id = vse.release_id
                   and valid_element.element_id = vse.element_id and option.code = incoming.code
                   and option.code_system = coalesce(incoming.code_system, '')
-                  and coalesce(configured.enabled, true)
+                  and (incoming.form_policy or coalesce(configured.enabled, true))
               )
           ) as exhaustive_value_set_ids
         from incoming
       `, [report.catalog_release_id, JSON.stringify(codedOccurrences.map((occurrence) => ({
         id: occurrence.id, element_id: occurrence.element_id,
         code: occurrence.code, code_system: occurrence.code_system,
+        form_policy: choicePolicies.has(occurrence.element_id),
       })))]);
       const validationById = new Map(codedValidation.map((row) => [row.id, row]));
       for (const occurrence of codedOccurrences) {
         const validation = validationById.get(occurrence.id);
         const path = `$.occurrences.${occurrence.id}.code`;
-        if (validation?.disabled_configured) {
+        if (validation?.disabled_configured && !choicePolicies.has(occurrence.element_id)) {
           findings.push(this.finding("catalog.value-set-disabled", path,
             `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
         }
-        if (validation?.disabled_inline) {
+        if (validation?.disabled_inline && !choicePolicies.has(occurrence.element_id)) {
           findings.push(this.finding("catalog.value-set-disabled", path,
             `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
         }

@@ -17,12 +17,12 @@ export default function AdminPreviewPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const key = new URLSearchParams(window.location.search).get("draft");
-      if (!key) return setError("No Stationary form preview was supplied.");
+      if (!key) return setError("admin.stationaryFormPreviewMissing");
       const serialized = localStorage.getItem(key);
       localStorage.removeItem(key);
-      if (!serialized) return setError("This Stationary form preview has expired. Open it again from Administration.");
+      if (!serialized) return setError("admin.stationaryFormPreviewExpired");
       try { setDraft(JSON.parse(serialized) as StationaryFormDraft); }
-      catch { setError("The Stationary form preview could not be read."); }
+      catch { setError("admin.stationaryFormPreviewReadFailed"); }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
