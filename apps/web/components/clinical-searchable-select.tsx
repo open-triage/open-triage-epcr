@@ -3,13 +3,14 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type ClinicalSelectOption = { readonly key: string; readonly label: string };
+export type ClinicalSelectOption = { readonly key: string; readonly label: string; readonly disabled?: boolean };
 
 type Placement = { readonly left: number; readonly top: number; readonly width: number; readonly maxHeight: number };
 
-export function ClinicalSearchableSelect({ label, value, options, disabled = false, placeholder = "Choose a value", onChange }: {
+export function ClinicalSearchableSelect({ label, value, values, options, disabled = false, placeholder = "Choose a value", onChange }: {
   readonly label: string;
-  readonly value: string;
+  readonly value?: string;
+  readonly values?: ReadonlyArray<string>;
   readonly options: ReadonlyArray<ClinicalSelectOption>;
   readonly disabled?: boolean;
   readonly placeholder?: string;
@@ -26,6 +27,7 @@ export function ClinicalSearchableSelect({ label, value, options, disabled = fal
   const [placement, setPlacement] = useState<Placement | null>(null);
   const visible = options.filter((option) => option.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const selected = options.find((option) => option.key === value);
+  const selectedValues = values ? options.filter((option) => values.includes(option.key)) : [];
   const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
 
   function close(restoreFocus = true) {
@@ -36,7 +38,11 @@ export function ClinicalSearchableSelect({ label, value, options, disabled = fal
 
   function commit(key: string) {
     onChange(key);
-    close();
+    if (values) {
+      setQuery("");
+      setActive(0);
+      search.current?.focus({ preventScroll: true });
+    } else close();
   }
 
   useLayoutEffect(() => {
@@ -93,7 +99,7 @@ export function ClinicalSearchableSelect({ label, value, options, disabled = fal
         setActive(0);
         setQuery("");
         setOpen(true);
-      }}>{selected?.label ?? placeholder}</button>
+      }}>{values ? selectedValues.map((option) => option.label).join(", ") || placeholder : selected?.label ?? placeholder}</button>
     {open && placement && createPortal(<div ref={popup} className="clinical-searchable-popup" style={placement}
       onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); close(); } }}>
       <input ref={search} type="search" role="combobox" aria-label={`${swedish ? "Sök" : "Search"} ${label}`} aria-autocomplete="list"
@@ -105,11 +111,12 @@ export function ClinicalSearchableSelect({ label, value, options, disabled = fal
           if (event.key === "ArrowUp" && visible.length) { event.preventDefault(); setActive((index) => Math.max(index - 1, 0)); }
           if (event.key === "Home" && visible.length) { event.preventDefault(); setActive(0); }
           if (event.key === "End" && visible.length) { event.preventDefault(); setActive(visible.length - 1); }
-          if (event.key === "Enter" && visible[active]) { event.preventDefault(); commit(visible[active].key); }
+          if (event.key === "Enter" && visible[active]) { event.preventDefault(); if (!visible[active].disabled) commit(visible[active].key); }
         }} />
-      <div id={`${id}-options`} className="clinical-searchable-options" role="listbox" aria-label={label}>
+      <div id={`${id}-options`} className="clinical-searchable-options" role="listbox" aria-label={label} aria-multiselectable={values ? true : undefined}>
         {visible.length ? visible.map((option, index) => <button key={option.key} id={`${id}-option-${index}`}
-          type="button" role="option" aria-selected={option.key === value} className={index === active ? "is-active" : ""}
+          type="button" role="option" disabled={option.disabled} aria-selected={values ? values.includes(option.key) : option.key === value}
+          className={`${index === active ? "is-active " : ""}${values?.includes(option.key) ? "is-selected" : ""}`.trim()}
           onMouseEnter={() => setActive(index)} onClick={() => commit(option.key)}>{option.label}</button>)
           : <div className="clinical-searchable-empty" role="status">{swedish ? "Inga matchande värden" : "No matching values"}</div>}
       </div>

@@ -425,6 +425,8 @@ export class DraftReportService {
         await this.applyGroups(manager, report, { ...command, groups: winningGroups });
         await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
         if (reconciledSingleton) await this.assertPinnedCardinality(manager, report);
+        if (winningOccurrences.some((occurrence) => occurrenceMetadata.get(occurrence.id)?.base_datatype === "coded"))
+          await this.assertCodedChoiceCombinations(manager, report);
 
         await manager.query(`
           with updated as (
@@ -590,6 +592,29 @@ export class DraftReportService {
         `${violation.element_id} permits at most ${violation.max_occurs} occurrence(s), not ${violation.occurrence_count}`
       );
     }
+  }
+
+  private async assertCodedChoiceCombinations(manager: EntityManager, report: ReportRow): Promise<void> {
+    const invalid = await manager.query<Array<{ element_id: string }>>(`
+      select occurrence.element_id
+      from clinical.element_occurrence occurrence
+      left join catalog.element_definition standard
+        on standard.release_id = occurrence.catalog_release_id
+       and standard.element_id = occurrence.element_id
+      left join forms.custom_element_definition custom
+        on custom.id = occurrence.element_identity_id
+      where occurrence.report_id = $1 and occurrence.tombstoned_at is null
+        and coalesce(standard.base_datatype, custom.base_datatype) = 'coded'
+      group by occurrence.group_instance_id, occurrence.element_id
+      having count(*) > 1 and (
+        bool_or(occurrence.value_kind <> 'coded')
+        or count(*) > count(distinct (coalesce(occurrence.code_system, ''), occurrence.code))
+      )
+      limit 1
+    `, [report.id]);
+    if (invalid[0]) throw new UnprocessableEntityException(
+      `${invalid[0].element_id} cannot combine exceptional or duplicate choices`
+    );
   }
 
   private targetFromState(state: DraftTargetStateRow): IncomingTarget {

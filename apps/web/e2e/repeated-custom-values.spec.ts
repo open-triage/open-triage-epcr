@@ -8,6 +8,8 @@ test.beforeAll(async () => {
     define: { "process.env": "{}" }, stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `
       import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
       import {RepeatedCustomFields} from './components/repeated-custom-fields';
+      import {StationaryCodedOccurrencesField} from './components/stationary-coded-field';
+      import {stationaryCodedField, editStationaryCodedValue} from './app/stationary-coded-value';
       import {syntheticEncounter} from './app/standard-encounter';
       const base={...syntheticEncounter.document,groups:[...syntheticEncounter.document.groups.filter(g=>g.id!=='eMedications.MedicationGroup'),
         {id:'eMedications.MedicationGroup',instances:[
@@ -16,7 +18,7 @@ test.beforeAll(async () => {
       const common={namespace:'org.example.ems',usage:'Optional',identifying:false,recurrence:'multiple'};
       const definitions={
         text:{...common,id:'10000000-0000-4000-8000-000000000001',slug:'ResponseNote',title:'Response note',definition:'Medication response',datatype:'string',constraints:{},correlatesTo:'eMedications.MedicationGroup'},
-        coded:{...common,id:'10000000-0000-4000-8000-000000000002',slug:'ResponseCode',title:'Response code',definition:'Coded response',datatype:'coded',correlatesTo:'eMedications.MedicationGroup',codeSystem:'https://example.org/codes',choices:[{code:'A',label:'Improved'}],permittedNotValues:['7701003'],permittedPertinentNegatives:['8801019']},
+        coded:{...common,id:'10000000-0000-4000-8000-000000000002',slug:'ResponseCode',title:'Response code',definition:'Coded response',datatype:'coded',correlatesTo:'eMedications.MedicationGroup',codeSystem:'https://example.org/codes',choices:[{code:'A',label:'Improved'},{code:'B',label:'Unchanged'}],permittedNotValues:['7701003'],permittedPertinentNegatives:['8801019']},
         number:{...common,id:'10000000-0000-4000-8000-000000000003',slug:'Score',title:'Score',definition:'Numeric result',datatype:'number',constraints:{}},
         boolean:{...common,id:'10000000-0000-4000-8000-000000000004',slug:'Flag',title:'Flag',definition:'Boolean result',datatype:'boolean',constraints:{}},
         dateTime:{...common,id:'10000000-0000-4000-8000-000000000005',slug:'ObservedAt',title:'Observed at',definition:'Time result',datatype:'dateTime',constraints:{}},
@@ -30,10 +32,15 @@ test.beforeAll(async () => {
         const [view,setView]=useState('stationary');
         const [moved,setMoved]=useState(false);
         const update=next=>{setDoc(next);localStorage.setItem('repeated-custom-document',JSON.stringify(next));};
+        const patient=doc.groups.find(g=>g.id==='ePatientSection').instances[0];
+        const race=stationaryCodedField('ePatient.14');
+        const raceValues=patient.elements.find(e=>e.id==='ePatient.14')?.values||[];
         return <><button onClick={()=>setView(view==='stationary'?'mobile':'stationary')}>Switch view</button>
           <button onClick={()=>setMoved(!moved)}>Move section</button>
           <section aria-label={view+' '+(moved?'treatment':'history')}>
             <RepeatedCustomFields document={doc} fields={fields} definitions={customFields} onDocumentChange={update}/>
+            <StationaryCodedOccurrencesField field={race} values={raceValues} onChange={(value,selection)=>update(editStationaryCodedValue(doc,
+              {groupId:'ePatientSection',instanceId:patient.instanceId,elementId:'ePatient.14',...(value?{occurrenceId:value.occurrenceId}:{})},selection))}/>
           </section><output data-testid="document">{JSON.stringify(doc)}</output></>;
       }
       createRoot(document.getElementById('root')).render(<Harness/>);`
@@ -87,13 +94,27 @@ test("coded, exceptional, scalar and binary paths wait for an explicit value", a
   await open(page);
   const original = await stored(page);
   const codes = field(page, "Response code").locator('[data-custom-target-id="med-a"]');
-  await codes.getByRole("button", { name: "Add value" }).click();
+  await codes.getByRole("button", { name: "Response code" }).click();
   expect(await stored(page)).toEqual(original);
-  await codes.getByRole("combobox", { name: "Response code 1" }).selectOption("code:A");
-  await codes.getByRole("button", { name: "Add value" }).click();
-  await codes.getByRole("combobox", { name: "Response code 2" }).selectOption("not:7701003");
-  await codes.getByRole("button", { name: "Add value" }).click();
-  await codes.getByRole("combobox", { name: "Response code 3" }).selectOption("pn:8801019");
+  const popup = page.locator(".clinical-searchable-popup");
+  const search = popup.getByRole("combobox");
+  await search.fill("Improved");
+  expect(await stored(page)).toEqual(original);
+  await search.press("Enter");
+  await expect(popup).toBeVisible();
+  await expect(popup.getByRole("option", { name: "Improved" })).toHaveAttribute("aria-selected", "true");
+  await expect(popup.getByRole("option", { name: "Improved" })).toHaveClass(/is-selected/);
+  await popup.getByRole("option", { name: "Unchanged" }).click();
+  await expect(popup.getByRole("option", { name: "NOT 7701003" })).toBeDisabled();
+  await popup.getByRole("combobox").fill("nothing matches");
+  expect((await stored(page)).groups.find((group: {id: string}) => group.id === "eMedications.MedicationGroup")
+    .instances[0].elements.find((element: {id: string}) => element.id.endsWith("ResponseCode")).values).toHaveLength(2);
+  await page.keyboard.press("Escape");
+  await expect(popup).toHaveCount(0);
+  await page.getByRole("button", { name: "Switch view" }).click();
+  await expect(codes.getByRole("button", { name: "Response code" })).toContainText("Improved, Unchanged");
+  await page.reload();
+  await expect(codes.getByRole("button", { name: "Response code" })).toContainText("Improved, Unchanged");
   const score = field(page, "Score");
   await score.getByRole("button", { name: "Add value" }).click();
   await score.getByRole("spinbutton", { name: "Score 1" }).fill("12.5");
@@ -114,5 +135,27 @@ test("coded, exceptional, scalar and binary paths wait for an explicit value", a
   expect(root.elements.find((element: {id: string}) => element.id.endsWith("Attachment")).values[0].value).toBe("AQID");
   const medication = document.groups.find((group: {id: string}) => group.id === "eMedications.MedicationGroup").instances[0];
   expect(medication.elements.find((element: {id: string}) => element.id.endsWith("ResponseCode")).values.map((value: {kind: string}) => value.kind))
-    .toEqual(["coded", "null", "pertinent-negative"]);
+    .toEqual(["coded", "coded"]);
+});
+
+test("standard repeated selector commits choices, keeps the list open, and guards exceptional combinations", async ({ page }) => {
+  await open(page);
+  const race = page.locator('fieldset[data-element-id="ePatient.14"]');
+  const trigger = race.getByRole("button", { name: "Race" });
+  await trigger.click();
+  const popup = page.locator(".clinical-searchable-popup");
+  const enabled = popup.getByRole("option", { disabled: false });
+  const first = enabled.first();
+  await first.click();
+  await expect(popup).toBeVisible();
+  await expect(first).toHaveAttribute("aria-selected", "true");
+  await enabled.nth(1).click();
+  const before = await stored(page);
+  await page.getByRole("button", { name: "Switch view" }).click();
+  await expect(popup).toHaveCount(0);
+  expect(await stored(page)).toEqual(before);
+  await page.reload();
+  const after = await stored(page);
+  const patient = after.groups.find((group: {id: string}) => group.id === "ePatientSection").instances[0];
+  expect(patient.elements.find((element: {id: string}) => element.id === "ePatient.14").values.length).toBeGreaterThanOrEqual(2);
 });

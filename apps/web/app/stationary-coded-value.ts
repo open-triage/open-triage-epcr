@@ -28,6 +28,7 @@ export type StationaryCodedField = {
   readonly help: string;
   readonly controlKind: StationaryCodedControlKind;
   readonly exhaustive: boolean;
+  readonly maxOccurs: number | null;
   readonly options: ReadonlyArray<StationaryCodedOption>;
   readonly systems: ReadonlyArray<NemsisCodeSystem>;
   readonly exceptionalChoices: ReadonlyArray<StationaryExceptionalChoice>;
@@ -78,6 +79,7 @@ export function stationaryCodedField(elementOrId: NemsisDataElement | string): S
     help: element.definition,
     controlKind: resolved.exhaustive ? "select" : resolved.kind === "external-code-system" ? "external-search" : "combobox",
     exhaustive: resolved.exhaustive,
+    maxOccurs: element.occurrence.max === "unbounded" ? null : element.occurrence.max,
     options,
     systems: resolved.externalCodeSystems,
     exceptionalChoices,
@@ -97,8 +99,9 @@ export function configuredStationaryCodedField(
     const localization = configured?.exceptionalChoices?.find((candidate) => candidate.key === choice.key)?.localization;
     return { ...choice, label: language === "sv" ? localization?.sv?.label?.trim() || choice.label : choice.label };
   }) as StationaryCodedField["exceptionalChoices"];
-  if (!configured?.codeChoices) return { ...base, exceptionalChoices };
-  return { ...base, exceptionalChoices, ...(configured.choiceOrder ? { choiceOrder: configured.choiceOrder } : {}),
+  if (!configured?.codeChoices) return { ...base, exceptionalChoices, maxOccurs: configured?.maxOccurs ?? base.maxOccurs };
+  return { ...base, exceptionalChoices, maxOccurs: configured.maxOccurs ?? base.maxOccurs,
+    ...(configured.choiceOrder ? { choiceOrder: configured.choiceOrder } : {}),
     options: configured.codeChoices.map((choice) => ({
     code: choice.code,
     label: language === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
@@ -204,6 +207,14 @@ export function editStationaryCodedValue(
   if (target.occurrenceId && !existingValue) throw new Error(`${target.elementId} is missing occurrence ${target.occurrenceId}`);
   const values = [...existingElement?.values ?? []];
   if (selection) {
+    const otherValues = values.filter((value) => value !== existingValue);
+    if (field.maxOccurs !== null && otherValues.length >= field.maxOccurs)
+      throw new Error(`${target.elementId} permits at most ${field.maxOccurs} choices`);
+    if (otherValues.length && (selection.kind !== "coded" || otherValues.some((value) => value.kind !== "coded")))
+      throw new Error(`${target.elementId} cannot combine exceptional and ordinary choices`);
+    if (selection.kind === "coded" && otherValues.some((value) => value.kind === "coded" && value.code === selection.code &&
+      (value.system ?? "") === (selection.system ?? "")))
+      throw new Error(`${target.elementId} already has this choice`);
     const value = {
       ...compatibleValueExtensions(existingValue),
       ...canonicalValue(selection, existingValue?.occurrenceId ?? createId(), withoutDemoProvenance(existingValue?.attributes)),

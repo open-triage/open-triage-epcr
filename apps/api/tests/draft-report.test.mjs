@@ -230,3 +230,17 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
   assert.equal(queries.filter((sql) => sql.includes("from catalog.element_definition")).length, 1);
   assert.equal(queries.filter((sql) => sql.includes("from clinical.draft_target_state") && sql.includes("for update")).length, 1);
 });
+
+test("draft validation rejects mixed or duplicate coded occurrences within the report", async () => {
+  const service = Object.create(DraftReportService.prototype);
+  const report = { id: randomUUID() };
+  let observed = false;
+  const manager = { query: async (sql, parameters) => {
+    assert.match(sql, /occurrence\.report_id = \$1/);
+    assert.deepEqual(parameters, [report.id]);
+    observed = true;
+    return [{ element_id: "ePatient.14" }];
+  } };
+  await assert.rejects(service.assertCodedChoiceCombinations(manager, report), /cannot combine exceptional or duplicate choices/);
+  assert.equal(observed, true);
+});
