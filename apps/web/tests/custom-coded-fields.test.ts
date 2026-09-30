@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CatalogDraftCustomCodedElement } from "@open-triage/contracts";
-import { customCodedValue, setCustomCodedValue } from "../components/custom-coded-fields";
+import { customCodedChoices, customCodedValue, setCustomCodedValue } from "../components/custom-coded-fields";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { loadEncounterDocument } from "../app/encounter-document";
 import { encounterDocumentToDraftMutations } from "../app/draft-report";
@@ -39,15 +39,17 @@ test("custom codes and exceptional attributes survive document and draft round t
 });
 
 test("clinical picker shows the form's ordered codes and enabled exceptional values", () => {
+  const field = { key: "finding", source: { kind: "custom" as const, elementDefinitionId: definition.id },
+    choicePolicy: [{ kind: "not-value" as const, code: "7701003" },
+      { kind: "code" as const, code: "A", codeSystem: definition.codeSystem }],
+    allowedAbsenceStates: ["7701003", "8801019"] };
   const markup = renderToStaticMarkup(createElement(CustomCodedFields, {
     document: syntheticEncounter.document,
-    fields: [{ key: "finding", source: { kind: "custom", elementDefinitionId: definition.id },
-      choicePolicy: [{ kind: "not-value", code: "7701003" },
-        { kind: "code", code: "A", codeSystem: definition.codeSystem }],
-      allowedAbsenceStates: ["7701003", "8801019"] }],
+    fields: [field],
     definitions: { [definition.id]: definition }, onDocumentChange() {},
   }));
-  assert.ok(markup.indexOf("NOT 7701003") < markup.indexOf("Alert"));
-  assert.match(markup, /PN 8801019/);
+  assert.deepEqual(customCodedChoices(field, definition).map(({ label }) => label),
+    ["NOT 7701003", "Alert", "PN 8801019"]);
+  assert.match(markup, /clinical-searchable-trigger/);
   assert.match(markup, /org.example.ems.LocalFinding/);
 });
