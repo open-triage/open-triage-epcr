@@ -935,6 +935,8 @@ export interface ClinicalFormConfiguration {
     description?: string;
     localization?: CatalogDraftElement["localization"];
     agencyRequired: boolean;
+    /** Source NEMSIS usage from the pinned catalog release. */
+    usage?: string;
     requirednessSeverity?: "warning" | "error" | null;
     minOccurs: number;
     maxOccurs: number | null;

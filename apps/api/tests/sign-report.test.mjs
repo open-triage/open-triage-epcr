@@ -152,7 +152,7 @@ test("signing does not require report occurrences for read-only configuration me
   }]);
 });
 
-test("pinned Validation replaces legacy requiredness while Form visibility still protects hidden values", async () => {
+test("pinned Validation preserves form completion and visibility requirements", async () => {
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release",
@@ -181,7 +181,7 @@ test("pinned Validation replaces legacy requiredness while Form visibility still
   const service = new SignReportService({}, {});
   const findings = await service.validateSemantics(manager, { id: "report-id", form_version_id: "form-version",
     catalog_release_id: "catalog-release", validation_version_id: "validation-version" });
-  assert.deepEqual(findings.map(({ code }) => code), ["form.conditional-hidden"]);
+  assert.deepEqual(findings.map(({ code }) => code), ["form.required", "form.conditional-hidden"]);
 });
 
 test("authoritative signing evaluates the report's pinned required-element bundle", async () => {

@@ -84,7 +84,10 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
     if (!definition || definition.datatype === "coded" || field.source.groupDefinitionId ||
       definition.recurrence === "multiple" || definition.correlatesTo) return [];
     const value = customTextValue(document, definition);
-    const findings = [...customTextFindings(definition, value, language), ...(fileErrors[field.key] ? [fileErrors[field.key]] : [])];
+    const findings = [...customTextFindings(definition, value, language),
+      ...(field.required && !value && !["Mandatory", "Required"].includes(definition.usage)
+        ? [language === "sv" ? "Ett värde krävs." : "A value is required."] : []),
+      ...(fileErrors[field.key] ? [fileErrors[field.key]] : [])];
     const id = `custom-text-${field.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`;
     const label = language === "sv" ? definition.localization?.sv?.label || definition.title : definition.title;
     const help = language === "sv" ? definition.localization?.sv?.description || definition.definition : definition.definition;
@@ -116,10 +119,12 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
       : definition.datatype === "number" ? <input id={id} type="number" step="any" value={value}
         min={definition.constraints.minimum} max={definition.constraints.maximum}
         aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`} aria-invalid={Boolean(findings.length)}
+        required={field.required || ["Mandatory", "Required"].includes(definition.usage)}
         onChange={(event) => onDocumentChange(setCustomTextValue(document, definition,
           event.target.value === "" ? null : Number.isFinite(Number(event.target.value)) ? Number(event.target.value) : event.target.value))} />
       : definition.datatype === "boolean" ? <select id={id} value={value} aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`}
-        aria-invalid={Boolean(findings.length)} onChange={(event) => onDocumentChange(setCustomTextValue(document, definition,
+        aria-invalid={Boolean(findings.length)} required={field.required || ["Mandatory", "Required"].includes(definition.usage)}
+        onChange={(event) => onDocumentChange(setCustomTextValue(document, definition,
           event.target.value === "" ? null : event.target.value === "true"))}>
         <option value="">{language === "sv" ? "Inte angivet" : "Not recorded"}</option>
         <option value="true">{language === "sv" ? "Ja" : "Yes"}</option><option value="false">{language === "sv" ? "Nej" : "No"}</option>

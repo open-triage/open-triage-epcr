@@ -10,6 +10,7 @@ type FieldRow = {
   localization: ClinicalFormConfiguration["catalogFields"][string]["localization"] | null;
   exceptional_choices?: ClinicalFormConfiguration["catalogFields"][string]["exceptionalChoices"];
   agency_required: boolean | null;
+  usage: string;
   agency_required_severity: "warning" | "error" | null;
   min_occurs: number;
   max_occurs: number | null;
@@ -112,7 +113,7 @@ export async function catalogFieldsConfiguration(
                and configured.code_system=o.code_system and configured.code=o.code
              where o.release_id=e.release_id and o.element_id=e.element_id
              and o.source_kind in ('not-value', 'pertinent-negative')) as exceptional_choices,
-           e.agency_required, e.agency_required_severity, e.min_occurs, e.max_occurs, e.nillable,
+           e.usage, e.agency_required, e.agency_required_severity, e.min_occurs, e.max_occurs, e.nillable,
            e.supports_not_values, e.supports_pertinent_negatives
     from catalog.element_definition e cross join wording cr
     where e.release_id = $1 and e.element_id = any($2::text[])
@@ -164,6 +165,7 @@ export async function catalogFieldsConfiguration(
       ...(field.localization ? { localization: field.localization } : {}),
       ...(field.exceptional_choices ? { exceptionalChoices: field.exceptional_choices } : {}),
       agencyRequired: field.agency_required === true,
+      usage: field.usage,
       requirednessSeverity: field.agency_required_severity,
       minOccurs: Number(field.min_occurs),
       maxOccurs: field.max_occurs === null ? null : Number(field.max_occurs),

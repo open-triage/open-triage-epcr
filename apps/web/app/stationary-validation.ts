@@ -204,7 +204,9 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
   const formRequired = new Set(clinicalForm?.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
     field.source.kind === "nemsis" && field.required ? [field.source.elementId] : [])) ?? []);
   const explicitlyRequiredElements = new Set(patientCareElements.filter((element) =>
-    formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true).map(({ id }) => id));
+    formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true ||
+    ["Mandatory", "Required"].includes(clinicalForm?.catalogFields[element.id]?.usage ?? "") ||
+    (clinicalForm?.catalogFields[element.id]?.minOccurs ?? 0) > 0).map(({ id }) => id));
   const explicitlyRequiredGroups = new Set(patientCareElements.filter(({ id }) => explicitlyRequiredElements.has(id))
     .flatMap(({ groupPath }) => groupPath));
   const catalogGroups = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
@@ -222,7 +224,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const minimum = catalogGroup.repeating && !explicitlyRequired ? 0 : catalogGroup.occurrence.min;
     const parentIsRepeating = catalogGroup.parentId ? catalogGroups.get(catalogGroup.parentId)?.repeating === true : false;
     const validationParents = parents.length ? parents : explicitlyRequired && !parentIsRepeating ? [undefined] : [];
-    if (!authoredPolicy && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
+    if ((!authoredPolicy || explicitlyRequired) && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
       const count = instances.filter((instance) => (instance.parentInstanceId ?? undefined) === parent?.instanceId).length;
       if (count < minimum) findings.push(finding(
         "group.minimum", `Add ${minimum - count} ${catalogGroup.name} ${minimum - count === 1 ? "entry" : "entries"}.`,
@@ -245,12 +247,15 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const configured = clinicalForm?.catalogFields[element.id];
     const editable = elementPresentation.get(element.id)?.mode !== "read-only";
     const elementInstances = instancesByGroup.get(groupId) ?? [];
-    const minimum = formRequired.has(element.id) || configured?.agencyRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min) : configured?.minOccurs ?? element.occurrence.min;
+    const catalogRequired = configured?.agencyRequired || ["Mandatory", "Required"].includes(configured?.usage ?? "") ||
+      (configured?.minOccurs ?? element.occurrence.min) > 0;
+    const minimum = formRequired.has(element.id) || catalogRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min)
+      : configured?.minOccurs ?? element.occurrence.min;
     const maximum = configured ? configured.maxOccurs ?? "unbounded" : element.occurrence.max;
     const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
-      if (!authoredPolicy && editable && values.length < minimum) findings.push(finding(
+      if ((!authoredPolicy || formRequired.has(element.id) || catalogRequired) && editable && values.length < minimum) findings.push(finding(
         "field.minimum", minimum === 1 ? `Record ${element.name}.` : `Record at least ${minimum} values for ${element.name}.`,
         { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
       ));
@@ -263,6 +268,19 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
         seenOccurrences.add(value.occurrenceId);
         findings.push(...valueFindings(element, instance.instanceId, value, configured));
       }
+    }
+  }
+  if (clinicalForm?.customFields) {
+    const report = document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0];
+    for (const field of clinicalForm.definition.sections.flatMap(({ fields }) => fields)) {
+      if (field.source.kind !== "custom" || field.source.groupDefinitionId) continue;
+      const definition = clinicalForm.customFields[field.source.elementDefinitionId];
+      if (!definition || !(field.required || definition.usage === "Mandatory" || definition.usage === "Required")) continue;
+      const identity = `${definition.namespace}.${definition.slug}`;
+      if (report?.elements.find(({ id }) => id === identity)?.values.length) continue;
+      findings.push(finding("field.minimum", `Record ${definition.title}.`, {
+        groupId: "PatientCareReportGroup", ...(report ? { groupInstanceId: report.instanceId } : {}), fieldId: identity,
+      }, definition.title));
     }
   }
   if (clinicalForm?.validation) {

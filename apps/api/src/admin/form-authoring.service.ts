@@ -6,7 +6,7 @@ import { canonicalDefinitionSha256, FormPublicationValidationError, validateCano
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
 import { catalogFieldsConfiguration, catalogGroupsConfiguration, customGroupsConfiguration } from "../forms/clinical-form-configuration.js";
-import { customCodedPolicies, materializeLegacyChoicePolicies, validateFieldChoicePolicies } from "../forms/field-choice-policy.js";
+import { customCodedPolicies, materializeLegacyChoicePolicies, validateFieldChoicePolicies, validateFieldCompletionRequirements } from "../forms/field-choice-policy.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
 import { releaseCustomDefinitions } from "./custom-definition-version.js";
@@ -223,7 +223,10 @@ export class FormAuthoringService {
         : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
           .map((item) => [item.id, item]));
       const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog, customPolicies);
-      if (choiceFindings.length) throw new UnprocessableEntityException({ message: "Form validation failed", findings: choiceFindings });
+      const completionFindings = validateFieldCompletionRequirements(body.definition, choiceCatalog,
+        Object.fromEntries((customSnapshot ?? []).filter((item) => !item.retired).map((item) => [item.id, item])));
+      if (choiceFindings.length || completionFindings.length) throw new UnprocessableEntityException({
+        message: "Form validation failed", findings: [...choiceFindings, ...completionFindings] });
       const definition = materializeLegacyChoicePolicies(body.definition, choiceCatalog, customPolicies);
       const digest = canonicalDefinitionSha256(definition);
       const updated = await manager.query<VersionRow[]>(`

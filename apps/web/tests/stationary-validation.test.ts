@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileValidationRule, compiledValidationBundleSha256, NEMSIS_351_EMS_MESSAGE_REPAIRS, type CompiledValidationBundle } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, NEMSIS_351_EMS_MESSAGE_REPAIRS, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
 import { displayValidationRuleMessage, validateStationaryRecord } from "../app/stationary-validation";
@@ -158,7 +158,30 @@ test("report-pinned form requiredness and configured choices define clinical val
     "fields removed from the form do not block completion");
 });
 
-test("a pinned Validation bundle is the sole owner of requiredness policy", () => {
+test("custom completion is scoped to its pinned form and accepts documented exceptional values", () => {
+  const definition = { namespace: "agency", slug: "response", title: "Response", usage: "Optional",
+    datatype: "coded", codeSystem: "agency", choices: [{ code: "A", label: "A" }],
+    permittedNotValues: ["NV"], permittedPertinentNegatives: [] };
+  const field = { key: "response", source: { kind: "custom" as const, elementDefinitionId: "custom-id" }, required: true,
+    allowedAbsenceStates: ["NV"] };
+  const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "care", fields: [field] }] },
+    catalogFields: {}, customFields: { "custom-id": definition } } as unknown as ClinicalFormConfiguration;
+  const optional = { ...form, definition: { ...form.definition, sections: [{ key: "care", fields: [{ ...field, required: false }] }] } };
+  const document = structuredClone(syntheticEncounter.document);
+  assert.equal(validateStationaryRecord(document, form, evaluationTimestamp)
+    .some(({ target }) => target.fieldId === "agency.response"), true);
+  assert.equal(validateStationaryRecord(document, optional, evaluationTimestamp)
+    .some(({ target }) => target.fieldId === "agency.response"), false);
+  const complete = { ...document, groups: document.groups.map((group) => group.id !== "PatientCareReportGroup" ? group : {
+    ...group, instances: group.instances.map((instance, index) => index ? instance : { ...instance,
+      elements: [...instance.elements, { id: "agency.response", values: [{ kind: "null" as const,
+        occurrenceId: "custom-not", notValue: { code: "NV" } }] }] }),
+  }) };
+  assert.equal(validateStationaryRecord(complete, form, evaluationTimestamp)
+    .some(({ target }) => target.fieldId === "agency.response"), false);
+});
+
+test("a pinned Validation bundle preserves a stronger form completion requirement", () => {
   const document = structuredClone(syntheticEncounter.document);
   const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
   Object.assign(patient, { elements: patient.elements.filter(({ id }) => id !== "ePatient.25") });
@@ -172,8 +195,8 @@ test("a pinned Validation bundle is the sole owner of requiredness policy", () =
       minOccurs: 1, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: true } },
     validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(bundle), bundle },
   };
-  assert.deepEqual(validateStationaryRecord(document, clinicalForm, evaluationTimestamp), [],
-    "an element omitted from authored rules can be skipped even when legacy projections marked it required");
+  assert.equal(validateStationaryRecord(document, clinicalForm, evaluationTimestamp)
+    .some(({ id, target }) => id.includes("field.minimum") && target.fieldId === "ePatient.25"), true);
 });
 
 test("absent optional repeating records do not promote child minima to report-level findings", () => {
