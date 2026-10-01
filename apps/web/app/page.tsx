@@ -238,7 +238,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     setReportNotes((current) => sameJsonValue(current, next) ? current : next);
   }, [report]);
   const {
-    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision: revisionRef, dispatchConflicts, dispatchCancellation,
+    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, syncFailure, retryFailedSave, revision: revisionRef, dispatchConflicts, dispatchCancellation,
     conflictError, editingBlocked, mediaPolicy, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
@@ -809,7 +809,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           </div></div>
         </>}
         {report && <div className="draft-actions">
-          <span className={`sync-status sync-${syncStatus === "Pending sync" ? "pending-sync" : syncStatus === "Saving" ? "saving" : "saved"}`} role="status" aria-live="polite">{syncStatus === "Pending sync" ? t("mobile.pendingStatus") : syncStatus === "Saving" ? t("mobile.savingStatus") : t("mobile.savedStatus")}</span>
+          <span className={`sync-status sync-${syncStatus === "Pending sync" ? "pending-sync" : syncStatus === "Saving" ? "saving" : syncStatus === "Conflict" ? "conflict" : "saved"}`} role="status" aria-live="polite">{syncStatus === "Pending sync" ? t("mobile.pendingStatus") : syncStatus === "Saving" ? t("mobile.savingStatus") : syncStatus === "Conflict" ? t("mobile.saveNeedsAttention") : t("mobile.savedStatus")}</span>
+          {syncStatus === "Conflict" && <button type="button" onClick={retryFailedSave}>{t("mobile.retrySave")}</button>}
           {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>{t("mobile.timeline")} <span aria-hidden="true">· {timelineEvents.length}</span></button>}
           {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => {
             if (shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
@@ -965,6 +966,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           onSign={() => void signRecord()}
           blockedReason={!restored ? t("mobile.reportLoading")
             : !online ? t("mobile.signOffline")
+              : syncStatus === "Conflict" ? t(syncFailure === "validation-rejected" ? "mobile.signRejectedChange" : "mobile.signSaveConflict")
               : syncStatus !== "Saved" ? t("mobile.signSync")
                 : noteBlockers.length || (report && hasPendingProtectedMedia(report.id)) ? t("mobile.signNotes")
                 : unresolvedDispatchConflicts.length ? t("mobile.signConflicts")
