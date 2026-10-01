@@ -875,15 +875,16 @@ function fingerprint(value: string): string {
 }
 
 function fingerprintInputs(inputs: readonly unknown[]): string {
+  const compare = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
   const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
     : value && typeof value === "object" ? Object.fromEntries(Object.entries(value)
       .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => compare(left, right))
       .map(([key, entry]) => [key, stable(entry)])) : value;
   const ordered = [...inputs].sort((left, right) => {
     const a = left as { elementId: string; groupInstanceId: string };
     const b = right as { elementId: string; groupInstanceId: string };
-    return a.elementId.localeCompare(b.elementId) || a.groupInstanceId.localeCompare(b.groupInstanceId);
+    return compare(a.elementId, b.elementId) || compare(a.groupInstanceId, b.groupInstanceId);
   });
   return fingerprint(JSON.stringify(stable(ordered)));
 }
