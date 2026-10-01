@@ -874,6 +874,20 @@ function fingerprint(value: string): string {
   return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
+function fingerprintInputs(inputs: readonly unknown[]): string {
+  const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
+    : value && typeof value === "object" ? Object.fromEntries(Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stable(entry)])) : value;
+  const ordered = [...inputs].sort((left, right) => {
+    const a = left as { elementId: string; groupInstanceId: string };
+    const b = right as { elementId: string; groupInstanceId: string };
+    return a.elementId.localeCompare(b.elementId) || a.groupInstanceId.localeCompare(b.groupInstanceId);
+  });
+  return fingerprint(JSON.stringify(stable(ordered)));
+}
+
 type DocumentElement = { element: { id: string; values: readonly EncounterValue[] }; groupInstanceId: string; order: number };
 type EvaluationState = { timestamp: number; steps: number; maxSteps: number; maxValues: number; globalElements?: DocumentElement[];
   scopeElementIds?: ReadonlySet<string> };
@@ -1098,8 +1112,8 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
         executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
           rule.references?.elementIds ?? []), primaryTarget: { elementId: match.element.id,
           groupInstanceId: match.groupInstanceId, ...(match.element.values.length === 1 ? { occurrenceId: match.element.values[0]!.occurrenceId } : {}) },
-        inputFingerprint: fingerprint(JSON.stringify([{ elementId: match.element.id, groupInstanceId: match.groupInstanceId,
-          values: match.element.values }])) } satisfies ValidationFinding));
+        inputFingerprint: fingerprintInputs([{ elementId: match.element.id, groupInstanceId: match.groupInstanceId,
+          values: match.element.values }]) } satisfies ValidationFinding));
     }
     const matches = scope.elements.filter(({ element }) => element.id === rule.primaryTarget.elementId);
     const referencedElementIds = rule.references?.elementIds ?? referencedExpressions(rule.assertion).map(({ elementId }) => elementId);
@@ -1115,7 +1129,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
         rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
         ...(uniqueGroupInstanceId ? { groupInstanceId: uniqueGroupInstanceId } : {}),
         ...(uniqueMatch?.element.values.length === 1 ? { occurrenceId: uniqueMatch.element.values[0]!.occurrenceId } : {}) },
-      inputFingerprint: fingerprint(JSON.stringify(relevantInputs)) } satisfies ValidationFinding];
+      inputFingerprint: fingerprintInputs(relevantInputs) } satisfies ValidationFinding];
     });
   });
 }

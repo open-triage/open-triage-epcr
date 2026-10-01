@@ -754,11 +754,12 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   context.failure = null;
   publishStatus(reportId, writableStorageStatus(context));
   if (context.synchronizedRevision >= revision) {
-    // Receipts are serialized by the writer, but checkpoints used to race each
-    // other. An older response could then return 409 after a newer checkpoint
-    // succeeded and incorrectly lock this same tab.
+    // The server accepts a checkpoint only for its latest receipt. Keep the
+    // writer held until this checkpoint settles so the next receipt cannot
+    // advance that revision while this request is in flight.
     context.checkpointQueue = context.checkpointQueue.then(() =>
       checkpointProtectedCiphertext(reportId, context, revision, encrypted.ciphertext));
+    await context.checkpointQueue;
   }
 }
 
