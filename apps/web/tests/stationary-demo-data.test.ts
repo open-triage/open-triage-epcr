@@ -152,6 +152,27 @@ test("the populated report satisfies all enabled canonical NEMSIS validation rul
   const populated = populateStationaryDemoData(serverNumbered);
   assert.deepEqual(validateStationaryRecord(populated, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
 
+  const noMedicationChoices: ClinicalFormConfiguration["catalogFields"] = {
+    "eHistory.12": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: true, choiceOrder: [], codeChoices: [] },
+  };
+  const policyPopulated = populateStationaryDemoData(serverNumbered, noMedicationChoices);
+  assert.equal(policyPopulated.groups.find(({ id }) => id === "eHistory.CurrentMedsGroup")?.instances.some((instance) =>
+    instance.elements.some(({ id }) => id === "eHistory.12")), false);
+  assert.deepEqual(validateStationaryRecord(policyPopulated, { ...clinicalForm, catalogFields: noMedicationChoices },
+    "2026-09-22T18:00:00.000Z"), []);
+  assert.deepEqual(populateStationaryDemoData(policyPopulated, noMedicationChoices), policyPopulated);
+  const repaired = populateStationaryDemoData(populated, noMedicationChoices);
+  assert.equal(repaired.groups.find(({ id }) => id === "eHistory.CurrentMedsGroup")?.instances.some((instance) =>
+    instance.elements.some(({ id }) => id === "eHistory.12")), false);
+  const permittedMedication = populateStationaryDemoData(serverNumbered, {
+    "eHistory.12": { ...noMedicationChoices["eHistory.12"]!, choiceOrder: [{ kind: "code", code: "161", codeSystem: "RxNorm" }],
+      codeChoices: [{ code: "161", codeSystem: "RxNorm", label: "Acetaminophen" }] },
+  });
+  const medicationValue = permittedMedication.groups.find(({ id }) => id === "eHistory.CurrentMedsGroup")!.instances[0]!
+    .elements.find(({ id }) => id === "eHistory.12")!.values[0]!;
+  assert.equal(medicationValue.kind === "coded" ? `${medicationValue.code}:${medicationValue.system}` : "", "161:RxNorm");
+
   const stale = structuredClone(populated);
   const injury = stale.groups.find(({ id }) => id === "eSituationSection")!.instances[0]!
     .elements.find(({ id }) => id === "eSituation.02")!.values[0]!;

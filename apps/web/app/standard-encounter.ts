@@ -6,7 +6,7 @@ import { standardEncounterDefinition } from "./encounter-form-profile";
 import { createBundledDefinitionProvider } from "./encounter-definition";
 import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 import type { CustomDataSet } from "./custom-data-elements";
-import type { EncounterDocument } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument } from "@open-triage/contracts";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
 import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./canonical-events";
@@ -94,7 +94,7 @@ export type ShellAction =
   | { readonly type: "time-zone-loaded"; readonly timeZone: string | null }
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "document-opened"; readonly document: EncounterDocument }
-  | { readonly type: "demo-populated" }
+  | { readonly type: "demo-populated"; readonly catalogFields?: ClinicalFormConfiguration["catalogFields"] }
   | { readonly type: "demo-cleared" }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
@@ -377,7 +377,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "document-opened":
       return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "demo-populated":
-      return { ...state, encounter: { ...state.encounter, document: populateStationaryDemoData(state.encounter.document) } };
+      return { ...state, encounter: { ...state.encounter, document: populateStationaryDemoData(state.encounter.document, action.catalogFields) } };
     case "demo-cleared":
       return { ...state, encounter: { ...state.encounter, document: clearStationaryDemoData(state.encounter.document) } };
     case "view-selected":
