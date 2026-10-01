@@ -63,8 +63,9 @@ export async function clinicalFormConfiguration(
     || compiledValidationBundleSha256(validation[0].compiled_bundle) !== validationCompiledSha256)) {
     throw new Error("The report's pinned validation configuration failed its integrity check");
   }
-  const liveBundle = validation[0] ? { ...validation[0].compiled_bundle,
-    rules: validation[0].compiled_bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("live")
+  const clientBundle = validation[0] ? { ...validation[0].compiled_bundle,
+    rules: validation[0].compiled_bundle.rules.filter((rule) => rule.enabled
+      && rule.executionTargets.some((target) => target === "live" || target === "sign")
       && !isNemsisDemographicElementId(rule.primaryTarget.elementId)
       && !rule.references?.elementIds?.some(isNemsisDemographicElementId)) } : undefined;
   return {
@@ -75,8 +76,8 @@ export async function clinicalFormConfiguration(
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds, true)),
     catalogGroups: await catalogGroupsConfiguration(manager, catalogReleaseId),
-    ...(liveBundle ? { validation: { versionId: validationVersionId!,
-      compiledSha256: compiledValidationBundleSha256(liveBundle), bundle: liveBundle } } : {}),
+    ...(clientBundle ? { validation: { versionId: validationVersionId!,
+      compiledSha256: compiledValidationBundleSha256(clientBundle), bundle: clientBundle } } : {}),
   };
 }
 

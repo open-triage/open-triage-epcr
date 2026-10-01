@@ -79,12 +79,10 @@ async function seedTarget(client, target, importedRules) {
     }
     const references = [compiled.compiled.primaryTarget.elementId, ...compiled.compiled.references.elementIds]
       .filter((elementId) => elementId !== "*");
-    if (rule.sourceKind === "nemsis") {
-      const compatible = compiled.compiled.primaryTarget.elementId !== "*"
-        && references.every((elementId) => availableElements.has(elementId));
-      rule.enabled = rule.enabled && compatible;
-      compiled.compiled.enabled = rule.enabled;
-    }
+    const compatible = compiled.compiled.primaryTarget.elementId !== "*"
+      && references.every((elementId) => availableElements.has(elementId));
+    rule.enabled = rule.enabled && compatible;
+    compiled.compiled.enabled = rule.enabled;
     compiledRules.push(compiled.compiled);
   }
   const compiledBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,

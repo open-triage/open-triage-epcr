@@ -45,7 +45,7 @@ test("custom wording is resolved from the report's pinned catalog release", asyn
   assert.equal((await clinicalFormConfiguration(manager, "new-form", "new-release")).customFields[id].title, "Clearer note");
 });
 
-test("report configuration verifies the pinned artifact and distributes only its enabled live subset", async () => {
+test("report configuration verifies the pinned artifact and includes enabled live and sign rules for review", async () => {
   const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation-1",
     catalogReleaseId: "catalog-release", rules: [
       { ruleId: "live", enabled: true, executionTargets: ["live"], message: "Live message", primaryTarget: { elementId: "eA" } },
@@ -64,7 +64,7 @@ test("report configuration verifies the pinned artifact and distributes only its
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const configuration = await clinicalFormConfiguration(manager, "form-version", "catalog-release", "validation-1", digest);
-  assert.deepEqual(configuration.validation.bundle.rules.map(({ ruleId }) => ruleId), ["live"]);
+  assert.deepEqual(configuration.validation.bundle.rules.map(({ ruleId }) => ruleId), ["live", "sign"]);
   assert.equal(configuration.validation.compiledSha256, compiledValidationBundleSha256(configuration.validation.bundle));
   await assert.rejects(clinicalFormConfiguration(manager, "form-version", "catalog-release", "validation-1", "0".repeat(64)),
     /integrity/);
