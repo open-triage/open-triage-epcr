@@ -206,7 +206,7 @@ export function encounterDocumentToDraftMutations(
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
       groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(customGroup ? { customGroupDefinitionId: customGroup.id } : {}), ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
         ...(hasDemoProvenance(instance.attributes) ? { correlationId: `${DEMO_GROUP_CORRELATION_PREFIX}${instance.instanceId}` } : {}) });
-      instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
+      instance.elements.filter((element) => element.id !== "eRecord.01").forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
           id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
@@ -222,6 +222,7 @@ export function encounterDocumentToDraftMutations(
     if (!group.tombstone && !activeGroupIds.has(group.id)) groups.push({ ...group, tombstone: true });
   }
   for (const occurrence of persisted?.occurrences ?? []) {
+    if (occurrence.elementId === "eRecord.01") continue;
     if (occurrence.tombstone || activeOccurrenceIds.has(occurrence.id)) continue;
     occurrences.push({
       id: occurrence.id,

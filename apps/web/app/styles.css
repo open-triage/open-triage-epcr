@@ -389,10 +389,10 @@ input, select, textarea { touch-action: manipulation; }
 .encounter-header { padding: 18px 20px 16px; background: #fff; border-bottom: 1px solid var(--line); }
 .stationary-presentation { --stationary-top-bars: 86px; --stationary-call-header-height: 88px; --stationary-call-header-min-height: 88px; }
 .stationary-presentation .encounter-header { position: sticky; z-index: 19; top: var(--stationary-top-bars); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: var(--stationary-call-header-min-height); padding: 10px 18px; }
-.encounter-summary { display: grid; grid-template-columns: repeat(3, minmax(90px, auto)) minmax(180px, 1fr); gap: 7px 18px; min-width: 0; }
+.encounter-summary { display: grid; grid-template-columns: repeat(4, minmax(90px, auto)) minmax(180px, 1fr); gap: 7px 18px; min-width: 0; }
 .encounter-summary > span { display: grid; min-width: 0; gap: 1px; }
 .encounter-summary small { color: var(--muted); font-size: var(--text-caption); font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }
-.encounter-summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #30332f; font-size: var(--text-caption); }
+.encounter-summary strong, .encounter-summary output { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #30332f; font-size: var(--text-caption); font-weight: 700; }
 .stationary-presentation .draft-actions { display: grid; grid-template-columns: auto auto; grid-template-rows: 34px 34px; gap: 5px 8px; }
 .stationary-presentation .draft-actions .sync-status { grid-row: 1 / 3; align-self: center; }
 .stationary-presentation .draft-actions button { min-height: 34px; padding-block: 3px; }

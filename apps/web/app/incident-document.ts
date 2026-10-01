@@ -41,6 +41,11 @@ function incidentValue(document: EncounterDocument, field: keyof typeof INCIDENT
   return displayValue(valuesFor(document, groupId, elementId)[0]);
 }
 
+/** eRecord.01 is assigned by the server and displayed without an editor. */
+export function reportNumber(document: EncounterDocument): string {
+  return displayValue(valuesFor(document, "eRecordSection", "eRecord.01")[0]);
+}
+
 /** Projects only the operational NEMSIS fields approved for the mobile encounter header. */
 export function incidentSummary(document: EncounterDocument) {
   const streetAddress = incidentValue(document, "streetAddress");

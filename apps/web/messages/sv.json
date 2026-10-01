@@ -123,6 +123,7 @@
   "reports.reopenFailed": "Rapporten kunde inte öppnas igen.",
   "reports.reauthFailed": "Återautentisering misslyckades.",
   "mobile.response": "Utryckning",
+  "mobile.pcrNumber": "Journalnummer",
   "mobile.incident": "Händelse",
   "mobile.location": "Plats",
   "mobile.saveClose": "Spara och stäng",
