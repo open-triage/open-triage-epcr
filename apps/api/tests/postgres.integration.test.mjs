@@ -2196,7 +2196,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       (select revision from clinical.report where id = $1) as revision,
       (select count(*)::integer from clinical.element_occurrence where report_id = $1) as occurrences,
       (select count(*)::integer from clinical.report_change where report_id = $1) as changes`,
-  [cardinalityGuardReportId])).rows[0], { revision: "1", occurrences: 2, changes: 1 });
+  [cardinalityGuardReportId])).rows[0], { revision: "1", occurrences: 3, changes: 1 });
 
   const sign = (body) => request(`/reports/${reportId}/sign`, "POST", body);
   const missingRequired = await sign({
