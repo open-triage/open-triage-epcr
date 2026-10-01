@@ -3,7 +3,7 @@
   "standard": "NEMSIS",
   "catalogVersion": "3.5.1",
   "dataset": "EMSDataSet",
-  "catalogArtifactSha256": "5d7f4364f8340e16f129c6ea31ea225ee5caa998ea8a26b7a5075e24cb9401c2",
+  "catalogArtifactSha256": "3dda7c8702c46431c1887e52970fa9b9e2683206e97d6323a3e2ec8be72078a2",
   "applicationIdentityNamespace": "61c2071c-f6f0-4df5-82aa-f8461ad95dd6",
   "naming": "Lowercase NEMSIS element identifier with the dot replaced by an underscore; companion columns use descriptive suffixes.",
   "counts": {

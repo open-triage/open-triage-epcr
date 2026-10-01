@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const productionRoots = [path.join(webRoot, "app"), path.join(webRoot, "components")];
 const metadataProperties = /\b(?:sourceDatatype|xsdBase|typeChain|groupPath|nillable|permittedNotValues|permittedPertinentNegatives|valueSource)\s*:/;
+// These editors construct organization-authored metadata from the active draft.
+// They do not define the pinned NEMSIS model checked by this guardrail.
+const authoringEditors = new Set(["components/catalog-authoring.tsx", "components/validation-authoring.tsx"]);
 const hardcodedConstraints = /\bboundaries\s*:\s*\{[^}]*\b(?:min|max)\s*:\s*-?\d/s;
 const hardcodedNullChoices = /\babsenceStates\s*:\s*\[\s*\{\s*code\s*:/s;
 const hardcodedStandardCode = /["'](?:39|77|88|99)\d{5,}["']/;
@@ -18,7 +21,7 @@ async function filesUnder(directory) {
 export function catalogGuardrailViolations(source, relativePath) {
   if (!/\.(?:ts|tsx)$/.test(relativePath)) return [];
   const violations = [];
-  if (metadataProperties.test(source)) violations.push("duplicates generated element metadata");
+  if (!authoringEditors.has(relativePath) && metadataProperties.test(source)) violations.push("duplicates generated element metadata");
   if (duplicateCatalogImport.test(source)) violations.push("imports a duplicate NEMSIS value catalog");
   if (/(?:definition|profile)\.(?:ts|tsx)$/.test(relativePath)) {
     if (hardcodedConstraints.test(source)) violations.push("hardcodes structural boundaries in a form profile");
