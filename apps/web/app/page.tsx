@@ -405,7 +405,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   useEffect(() => {
     const authorized = () => canUseClinicalDemoDraftActions(report) && navigator.onLine &&
       browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true;
-    const populate = () => { if (authorized()) dispatch({ type: "demo-populated" }); };
+    const populate = () => { if (authorized()) dispatch({ type: "demo-populated", catalogFields: report?.clinicalForm?.catalogFields }); };
     const clear = () => { if (authorized()) dispatch({ type: "demo-cleared" }); };
     window.addEventListener(DEMO_POPULATE_EVENT, populate);
     window.addEventListener(DEMO_CLEAR_EVENT, clear);

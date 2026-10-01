@@ -1,4 +1,4 @@
-import type { EncounterDocument, EncounterGroup, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroup, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { stableDraftId } from "./draft-report";
 import { demoAttributes, DEMO_FALLBACK_DATE, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
 import { NEMSIS_DATA_MODEL, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
@@ -104,7 +104,8 @@ function demoDateTime(document: EncounterDocument, elementId: string): string {
   return new Date(baseTime + offsetMinutes * 60_000).toISOString().replace("Z", "+00:00");
 }
 
-function demoValue(document: EncounterDocument, element: NemsisDataElement, instanceId: string): EncounterValue {
+function demoValue(document: EncounterDocument, element: NemsisDataElement, instanceId: string,
+  configured?: ClinicalFormConfiguration["catalogFields"][string]): EncounterValue | undefined {
   const occurrenceId = id(document, `occurrence:${element.id}:${instanceId}`);
   const resolved = resolveNemsisElementValues(element);
   if (resolved.kind === "scalar") {
@@ -116,6 +117,21 @@ function demoValue(document: EncounterDocument, element: NemsisDataElement, inst
       return { kind: "scalar", occurrenceId, value: Number(input), lexical: String(input), attributes };
     }
     return scalarEncounterValue(element, input, occurrenceId, attributes);
+  }
+  if (configured?.choiceOrder !== undefined) {
+    for (const choice of configured.choiceOrder) {
+      if (choice.kind !== "code") continue;
+      const permitted = configured.codeChoices?.find(({ code, codeSystem }) =>
+        code === choice.code && (codeSystem ?? "") === choice.codeSystem);
+      if (permitted) return { kind: "coded", occurrenceId, code: permitted.code,
+        display: permitted.label, ...(permitted.codeSystem ? { system: permitted.codeSystem } : {}),
+        attributes: demoAttributes() };
+    }
+    const permittedNotValue = configured.choiceOrder.find((choice) => choice.kind === "not-value" &&
+      element.permittedNotValues.some(({ code }) => code === choice.code));
+    if (permittedNotValue) return { kind: "null", occurrenceId,
+      notValue: { code: permittedNotValue.code }, attributes: demoAttributes() };
+    return undefined;
   }
   const option = resolved.permissibleValues.find(({ code }) => code === demoCodes[element.id]) ?? resolved.permissibleValues[0];
   if (!option) throw new Error(`No bundled demo choice for ${element.id}`);
@@ -140,7 +156,8 @@ function instances(document: EncounterDocument, groupId: string): ReadonlyArray<
  * Existing dispatch and clinician values are immutable inputs; stable identities
  * make repeated Populate calls idempotent.
  */
-export function populateStationaryDemoData(document: EncounterDocument): EncounterDocument {
+export function populateStationaryDemoData(document: EncounterDocument,
+  catalogFields?: ClinicalFormConfiguration["catalogFields"]): EncounterDocument {
   const groups: EncounterGroup[] = document.groups.map((group) => ({ ...group, instances: [...group.instances] }));
   let next: EncounterDocument = { ...document, groups };
   const orderedGroups = [...NEMSIS_DATA_MODEL.groups].sort((left, right) => left.path.length - right.path.length);
@@ -190,7 +207,14 @@ export function populateStationaryDemoData(document: EncounterDocument): Encount
       const existing = elementIndex < 0 ? undefined : instance.elements[elementIndex];
       if (existing?.values.length && !existing.values.every((value) => hasDemoProvenance(value.attributes))) return instance;
       const elements = [...instance.elements];
-      const generated = demoValue(next, element, instance.instanceId);
+      const generated = demoValue(next, element, instance.instanceId, catalogFields?.[element.id]);
+      if (!generated) {
+        if (existing && existing.values.every((value) => hasDemoProvenance(value.attributes))) {
+          elements.splice(elementIndex, 1);
+          return { ...instance, elements };
+        }
+        return instance;
+      }
       const populated = { id: element.id, values: [{ ...generated,
         occurrenceId: existing?.values[0]?.occurrenceId ?? generated.occurrenceId }] };
       if (existing && JSON.stringify(existing.values) === JSON.stringify(populated.values)) return instance;
