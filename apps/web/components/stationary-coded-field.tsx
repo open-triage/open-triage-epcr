@@ -30,11 +30,8 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
   const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
   const configured = field.choiceOrder?.flatMap((choice) => choice.kind === "code"
     ? field.options.flatMap((option, index) => option.code === choice.code && (option.system ?? "") === choice.codeSystem
-      ? [{ key: `code:${index}`, label: option.label }] : [])
-    : exceptionalChoices.filter((option) => option.key === `not-value:${choice.code}`)
-      .map((option) => ({ key: option.key, label: option.label })))
+      ? [{ key: `code:${index}`, label: option.label }] : []) : [])
     ?? field.options.map((option, index) => ({ key: String(index), label: option.label }));
-  const ordered = [...configured, ...exceptionalChoices.filter((choice) => !configured.some((item) => item.key === choice.key))];
   const currentKey = coded ? `${field.choiceOrder ? "code:" : ""}${field.options.findIndex((option) =>
     option.code === coded.code && (option.system ?? "") === (coded.system ?? ""))}`
     : exceptionalKey;
@@ -42,7 +39,7 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
   return <div className="stationary-coded-picker-row" data-occurrence-id={value?.occurrenceId}>
     <div className="stationary-coded-main-control">
       <ClinicalSearchableSelect label={field.label} value={currentKey} options={[
-        ...ordered,
+        ...configured,
         ...(value ? [{ key: "", label: swedish ? "Ta bort" : "Delete" }] : []),
       ]} placeholder={coded?.display ?? exceptionalLabel ?? (swedish ? "Välj ett värde" : "Choose a value")}
         disabled={disabled} onChange={(selected) => {
@@ -96,32 +93,47 @@ export function StationaryCodedOccurrencesField({ field, values, disabled = fals
 }) {
   const id = useId();
   const swedish = typeof document !== "undefined" && document.documentElement.lang === "sv";
+  const [exceptionalOpen, setExceptionalOpen] = useState(false);
   const configured = field.choiceOrder?.flatMap((choice) => choice.kind === "code"
     ? field.options.flatMap((option, index) => option.code === choice.code && (option.system ?? "") === choice.codeSystem
-      ? [{ key: `code:${index}`, label: option.label }] : [])
-    : field.exceptionalChoices.filter((option) => option.key === `not-value:${choice.code}`)
-      .map((option) => ({ key: option.key, label: option.label })))
+      ? [{ key: `code:${index}`, label: option.label }] : []) : [])
     ?? field.options.map((option, index) => ({ key: `code:${index}`, label: option.label }));
-  const ordered = [...configured, ...field.exceptionalChoices.filter((choice) => !configured.some((option) => option.key === choice.key))];
   const keyFor = (value: EncounterValue): string => value.kind === "coded"
     ? `code:${field.options.findIndex((option) => option.code === value.code && (option.system ?? "") === (value.system ?? ""))}`
     : currentExceptionalKey(value);
-  const selectedKeys = values.map(keyFor);
+  const selectedKeys = values.filter((value) => value.kind === "coded").map(keyFor);
   const hasExceptional = values.some((value) => value.kind !== "coded");
+  const exceptionalValue = values.find((value) => value.kind !== "coded");
+  const exceptionalKey = exceptionalValue ? currentExceptionalKey(exceptionalValue) : "";
+  const exceptionalLabel = field.exceptionalChoices.find((choice) => choice.key === exceptionalKey)?.label;
   const atLimit = field.maxOccurs !== null && values.length >= field.maxOccurs;
   return <fieldset className="stationary-field-control stationary-coded-field stationary-multiple-picker" aria-describedby={`${id}-help`} data-element-id={field.elementId}>
     <StationaryPickerLegend label={field.label} tooltipId={`${id}-help`} tooltip={<>{field.elementId}: {field.help}</>} />
-    <ClinicalSearchableSelect label={field.label} values={selectedKeys} disabled={disabled} onOpenChange={onOpenChange}
-      placeholder={swedish ? "Välj värden" : "Choose values"}
-      options={ordered.map((option) => ({ ...option, disabled: !selectedKeys.includes(option.key) &&
-        (atLimit || hasExceptional || (option.key.startsWith("not-value:") || option.key.startsWith("pertinent-negative:") || option.key === "null") && values.length > 0) }))}
+    <div className="stationary-coded-picker-row">
+    <div className="stationary-coded-main-control"><ClinicalSearchableSelect label={field.label} values={selectedKeys} disabled={disabled} onOpenChange={onOpenChange}
+      placeholder={exceptionalLabel ?? (swedish ? "Välj värden" : "Choose values")}
+      options={configured.map((option) => ({ ...option, disabled: !selectedKeys.includes(option.key) && (atLimit || hasExceptional) }))}
       onChange={(key) => {
         const existing = values.find((value) => keyFor(value) === key);
         if (existing) { onChange(existing, undefined); return; }
-        if (atLimit || hasExceptional || values.length > 0 && !key.startsWith("code:")) return;
+        if (atLimit || hasExceptional) return;
         const option = key.startsWith("code:") ? field.options[Number(key.slice(5))] : undefined;
-        const selection = option ? codedSelectionFromOption(option) : exceptionalSelection(field, key);
+        const selection = option ? codedSelectionFromOption(option) : undefined;
         if (selection) onChange(undefined, selection);
-      }} />
+      }} /></div>
+    {field.exceptionalChoices.length > 0 && <div className="stationary-exceptional-picker">
+      <button className={`null-value-trigger ${hasExceptional ? "active" : ""}`} type="button"
+        aria-label={`Set unavailable or pertinent-negative value for ${field.label}`} aria-expanded={exceptionalOpen}
+        disabled={disabled || (values.length > 0 && !hasExceptional)} onClick={() => setExceptionalOpen((open) => !open)}>×</button>
+      {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${field.label} unavailable or pertinent-negative values`}>
+        {field.exceptionalChoices.map((choice) => <button key={choice.key} type="button" role="menuitem" onClick={() => {
+          onChange(exceptionalValue, exceptionalSelection(field, choice.key)); setExceptionalOpen(false);
+        }}>{choice.label}</button>)}
+        {exceptionalValue && <button type="button" role="menuitem" onClick={() => {
+          onChange(exceptionalValue, undefined); setExceptionalOpen(false);
+        }}>Clear exceptional value</button>}
+      </div>}
+    </div>}
+    </div>
   </fieldset>;
 }

@@ -184,6 +184,41 @@ test("pinned Validation preserves form completion and visibility requirements", 
   assert.deepEqual(findings.map(({ code }) => code), ["form.required", "form.conditional-hidden"]);
 });
 
+test("signing assigns one owner to overlapping form, catalog, and pinned minimum requirements", async () => {
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release",
+      canonical_definition: { schemaVersion: 1, sections: [] } }];
+    if (normalized.includes("from forms.form_field")) return [
+      { id: "software-version", stable_key: "eRecord.04", element_id: "eRecord.04", required: true,
+        clinically_stored: true, catalog_element_identity_id: "software-version-identity",
+        custom_element_definition_id: null, min_occurs: 1, agency_required: true,
+        agency_required_severity: "error" },
+      { id: "multi-value", stable_key: "ePatient.02", element_id: "ePatient.02", required: true,
+        clinically_stored: true, catalog_element_identity_id: "multi-value-identity",
+        custom_element_definition_id: null, min_occurs: 2, agency_required: false,
+        agency_required_severity: null },
+    ];
+    if (normalized.includes("from forms.form_rule") || normalized.includes("from clinical.element_occurrence")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new SignReportService({}, {});
+  const report = { id: "report-id", form_version_id: "form-version", catalog_release_id: "catalog-release" };
+  const withoutBundle = await service.validateSemantics(manager, report);
+  assert.deepEqual(withoutBundle.map(({ code }) => code), ["form.required", "catalog.cardinality"]);
+  const rule = { schemaVersion: 1, languageVersion: "1.0.0", ruleId: "software-version-rule",
+    validationVersionId: "validation-version", name: "Software Version", enabled: true, severity: "error",
+    executionTargets: ["live", "sign"], primaryTarget: { elementId: "eRecord.04" },
+    message: "Record Software Version.", assertion: { operator: "minimum-occurrences", elementId: "eRecord.04", count: 1 } };
+  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation-version",
+    catalogReleaseId: "catalog-release", rules: [rule] };
+  const withBundle = await service.validateSemantics(manager, report, bundle);
+  assert.deepEqual(withBundle.map(({ code }) => code), ["catalog.cardinality"]);
+  assert.deepEqual((await service.validateSemantics(manager, report, { ...bundle,
+    rules: [{ ...rule, severity: "warning" }] })).map(({ code }) => code),
+  ["form.required", "catalog.cardinality"]);
+});
+
 test("authoritative signing evaluates the report's pinned required-element bundle", async () => {
   const validationVersionId = randomUUID();
   const ruleId = randomUUID();

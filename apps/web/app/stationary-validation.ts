@@ -1,4 +1,4 @@
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, minimumRuleCoversRequirement, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
 import { NEMSIS_DATA_MODEL, getNemsisDataElement, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { validateScalarInput } from "./stationary-scalar";
@@ -199,6 +199,9 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
   evaluationTimestamp: string, language: string = "en"): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
   const authoredPolicy = clinicalForm?.validation !== undefined;
+  const authoredBundle = clinicalForm?.validation &&
+    compiledValidationBundleSha256(clinicalForm.validation.bundle) === clinicalForm.validation.compiledSha256
+    ? clinicalForm.validation.bundle : undefined;
   const configuredFields = clinicalForm
     ? new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))
     : null;
@@ -256,7 +259,9 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
-      if ((!authoredPolicy || formRequired.has(element.id) || catalogRequired) && editable && values.length < minimum) findings.push(finding(
+      if ((!authoredPolicy || formRequired.has(element.id) || catalogRequired) && editable && values.length < minimum &&
+        !minimumRuleCoversRequirement(authoredBundle, element.id, minimum, requirednessSeverity, "sign", groupId,
+          elementInstances.length === 1)) findings.push(finding(
         "field.minimum", minimum === 1 ? `Record ${element.name}.` : `Record at least ${minimum} values for ${element.name}.`,
         { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
       ));
@@ -279,6 +284,8 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
       if (!definition || !(field.required || definition.usage === "Mandatory" || definition.usage === "Required")) continue;
       const identity = `${definition.namespace}.${definition.slug}`;
       if (report?.elements.find(({ id }) => id === identity)?.values.length) continue;
+      if (minimumRuleCoversRequirement(authoredBundle, identity, 1, "error", "sign", "PatientCareReportGroup",
+        document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances.length === 1)) continue;
       findings.push(finding("field.minimum", `Record ${definition.title}.`, {
         groupId: "PatientCareReportGroup", ...(report ? { groupInstanceId: report.instanceId } : {}), fieldId: identity,
       }, definition.title));
@@ -292,7 +299,9 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
       const elementId = `${definition.namespace}.${definition.slug}`;
       for (const instance of document.groups.find(({ id }) => id === groupId)?.instances ?? []) {
         const values = instance.elements.find(({ id }) => id === elementId)?.values ?? [];
-        if (groupId !== "PatientCareReportGroup" && !values.length && (field.required || ["Mandatory", "Required"].includes(definition.usage))) {
+        if (groupId !== "PatientCareReportGroup" && !values.length && (field.required || ["Mandatory", "Required"].includes(definition.usage)) &&
+          !minimumRuleCoversRequirement(authoredBundle, elementId, 1, "error", "sign", groupId,
+            document.groups.find(({ id }) => id === groupId)?.instances.length === 1)) {
           findings.push(finding("custom.minimum", `Record ${definition.title}.`,
             { groupId, groupInstanceId: instance.instanceId, fieldId: elementId }, definition.title));
         }
@@ -320,7 +329,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
   }
   if (clinicalForm?.validation) {
     if (!evaluationTimestamp) throw new TypeError("An explicit validation evaluation timestamp is required");
-    if (compiledValidationBundleSha256(clinicalForm.validation.bundle) !== clinicalForm.validation.compiledSha256) {
+    if (!authoredBundle) {
       findings.push(finding(`validation.integrity.${clinicalForm.validation.versionId}`,
         "Live validation is unavailable because the pinned rule artifact failed its integrity check.",
         { groupId: "PatientCareReportGroup" }, "Rule engine"));

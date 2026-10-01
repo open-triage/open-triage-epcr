@@ -200,7 +200,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
         key={group.id}
         aria-label={resolveMessage(language, "stationary.fields", { label: resolveCatalogGroupText(catalogGroups, group.id, language, group.label) })}
       >
-        {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={instance?.instanceId ?? parentInstanceId ?? contextIndex}>
+        {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={contexts.length === 1 ? `${document.encounter.id}:single` : instance?.parentInstanceId ?? parentInstanceId ?? instance?.instanceId ?? contextIndex}>
           {group.fields.map((field) => {
             const pinned = catalogFields[field.id];
             const catalogLocalizedField = pinned ? { ...field,

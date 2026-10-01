@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileValidationRule, compiledValidationBundleSha256, encounterValueFacets, evaluateValidationBundle,
-  evaluateValidationBundleSafely, explainValidationRule, formatValidationSource, validationRuleText,
+  evaluateValidationBundleSafely, explainValidationRule, formatValidationSource, minimumRuleCoversRequirement, validationRuleText,
   type CompiledValidationBundle, type EncounterDocument, type ValidationCatalog,
   type ValidationRuleSource } from "@open-triage/contracts";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
@@ -18,6 +18,27 @@ const rule: ValidationRuleSource = {
   message: "Document the incident number",
   source: 'assert present("eResponse.03")',
 };
+
+test("only an equivalent unconditional pinned minimum replaces structural requiredness", () => {
+  const minimum = compileValidationRule({ ...rule, source: 'require minimum("eResponse.03", 1)' },
+    versionId, new Set(["eResponse.03"])).compiled!;
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [minimum] };
+  const covers = (rules: CompiledValidationBundle["rules"], count = 1, allowUnscoped = true) =>
+    minimumRuleCoversRequirement({ ...bundle, rules }, "eResponse.03", count, "error", "sign",
+      "eResponse.AgencyGroup", allowUnscoped);
+  assert.equal(covers([minimum]), true);
+  assert.equal(covers([{ ...minimum, assertion: { operator: "present", elementId: "eResponse.03" } }]), true);
+  assert.equal(covers([minimum], 2), false);
+  assert.equal(covers([minimum], 1, false), false);
+  assert.equal(covers([{ ...minimum, enabled: false }]), false);
+  assert.equal(covers([{ ...minimum, severity: "warning" }]), false);
+  assert.equal(covers([{ ...minimum, severity: "information" }]), false);
+  assert.equal(covers([{ ...minimum, executionTargets: ["live"] }]), false);
+  assert.equal(covers([{ ...minimum, applicability: { operator: "present", elementId: "eResponse.04" } }]), false);
+  assert.equal(covers([{ ...minimum, scope: { groupId: "other", iteration: "each" } }]), false);
+  assert.equal(covers([{ ...minimum, scope: { groupId: "eResponse.AgencyGroup", iteration: "each" } }], 1, false), true);
+});
 
 test("the reviewed required-element source compiles to one canonical catalog-bound assertion", () => {
   const result = compileValidationRule(rule, versionId, new Set(["eResponse.03"]));
