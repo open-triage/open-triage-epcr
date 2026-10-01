@@ -29,7 +29,7 @@ import {
   validateCreateDraftReportCommand,
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
-import { dispatchConflicts, encounterDocument } from "./encounter-document.persistence.js";
+import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "./encounter-document.persistence.js";
 import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { withReportSnapshot } from "./report-snapshot.js";
 import { reportTextNotes } from "./report-note.persistence.js";
@@ -253,18 +253,22 @@ export class DraftReportService {
           throw new ConflictException("A stable incident or patient identity already belongs to different data");
         }
 
-        await manager.query(`
+        const insertedReports = mutationRows<{ id: string }>(await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
              form_version_id, catalog_release_id, validation_version_id, documenting_user_id,
              form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256)
           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          on conflict (id) do nothing
+          on conflict (id) do nothing returning id
         `, [command.reportId, command.organizationId, command.incidentId, command.patientId,
           active[0].agency_demographic_version_id, active[0].form_version_id,
           active[0].catalog_release_id, active[0].validation_version_id, command.documentingUserId,
           active[0].form_definition_sha256,active[0].catalog_artifact_sha256,
-          active[0].validation_compiled_sha256]);
+          active[0].validation_compiled_sha256]));
+        if (insertedReports.length) {
+          await seedDispatchEncounter(manager, command.reportId, active[0].catalog_release_id,
+            command.documentingUserId, null, await nextPcrNumber(manager));
+        }
         const result = await this.reportResult(manager, command.reportId);
         if (result.organizationId !== command.organizationId || result.incidentId !== command.incidentId ||
             result.patientId !== command.patientId || result.formVersionId !== active[0].form_version_id ||
@@ -286,6 +290,13 @@ export class DraftReportService {
       command = validateSaveDraftReportCommand(input);
     } catch (error) {
       this.rethrowValidation(error);
+    }
+    if (command.occurrences?.some((occurrence) => occurrence.elementId === "eRecord.01")) {
+      throw new UnprocessableEntityException("eRecord.01 is a server-owned report identifier");
+    }
+    if (command.groups?.some((group) => group.tombstone &&
+        ["EMSDataSet", "HeaderGroup", "PatientCareReportGroup", "eRecordSection"].includes(group.groupId))) {
+      throw new UnprocessableEntityException("The report identifier ancestry cannot be removed");
     }
     const digest = commandSha256(command);
     try {

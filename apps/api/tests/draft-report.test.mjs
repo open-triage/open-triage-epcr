@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import {
   commandSha256,
@@ -40,6 +40,22 @@ test("draft creation requires offline-safe UUIDv4 identities", () => {
     (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /reportId.*UUIDv4/.test(finding)));
   assert.throws(() => validateCreateDraftReportCommand({ ...command, patientPseudonymousKey: "a".repeat(64) }),
     (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /server-derived/.test(finding)));
+});
+
+test("the server-owned report number cannot be changed or removed through draft saves", async () => {
+  const service = new DraftReportService({ transaction: () => assert.fail("must reject before persistence") }, {});
+  for (const occurrence of [
+    { id: randomUUID(), elementId: "eRecord.01", value: { kind: "text", value: "PCR-999999999" } },
+    { id: randomUUID(), elementId: "eRecord.01", tombstone: true },
+  ]) {
+    await assert.rejects(service.save("session", randomUUID(), {
+      commandId: randomUUID(), expectedRevision: 0, authorId: randomUUID(), occurrences: [occurrence]
+    }), UnprocessableEntityException);
+  }
+  await assert.rejects(service.save("session", randomUUID(), {
+    commandId: randomUUID(), expectedRevision: 0, authorId: randomUUID(),
+    groups: [{ id: randomUUID(), groupId: "eRecordSection", ordinal: 0, tombstone: true }]
+  }), UnprocessableEntityException);
 });
 
 test("patient HMAC keys are versioned, stable, and installation scoped", () => {

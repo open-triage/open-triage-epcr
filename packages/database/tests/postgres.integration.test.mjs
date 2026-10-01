@@ -74,6 +74,18 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     await grantRoleForTesting(client, role);
   }
 
+  await t.test("API runtime allocates increasing PCR numbers", async () => {
+    await client.query("begin");
+    try {
+      await client.query("set local role open_triage_api_runtime");
+      const first = await client.query("select nextval('clinical.pcr_number_sequence') as number");
+      const second = await client.query("select nextval('clinical.pcr_number_sequence') as number");
+      assert.equal(BigInt(second.rows[0].number), BigInt(first.rows[0].number) + 1n);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   await t.test("Agency Settings default, concurrency guard, and bounded audit hold in PostgreSQL", async () => {
     const organizationId = randomUUID();
     const actorId = randomUUID();

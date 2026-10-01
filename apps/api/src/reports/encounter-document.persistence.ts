@@ -284,6 +284,14 @@ export async function seedDispatchEncounter(
   }
 }
 
+/** Allocate the server-owned, globally unique eRecord.01 value. */
+export async function nextPcrNumber(manager: Queryable): Promise<string> {
+  const rows = await manager.query<Array<{ number: string }>>(
+    "select nextval('clinical.pcr_number_sequence')::text as number"
+  );
+  return `PCR-${rows[0]!.number.padStart(9, "0")}`;
+}
+
 export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}),
     ...(row.not_value_code ? { notValue: { code: row.not_value_code, ...(row.not_value_display ? { display: row.not_value_display } : {}) } } : {}),

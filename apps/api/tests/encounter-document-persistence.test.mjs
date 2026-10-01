@@ -1,9 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ENCOUNTER_DOCUMENT_SCHEMA, ENCOUNTER_DOCUMENT_TYPE, ENCOUNTER_MODEL_VERSION } from "@open-triage/contracts";
-import { dispatchEntityId, encounterDocument, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+import { dispatchEntityId, encounterDocument, nextPcrNumber, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
 
 const reportId = "42000000-0000-4000-8000-000000000002";
+
+test("server PCR numbers preserve sequence order and minimum width", async () => {
+  const numbers = ["1", "2", "1000000000"];
+  const manager = { query: async (sql) => {
+    assert.match(sql, /nextval\('clinical\.pcr_number_sequence'\)/);
+    return [{ number: numbers.shift() }];
+  } };
+  assert.equal(await nextPcrNumber(manager), "PCR-000000001");
+  assert.equal(await nextPcrNumber(manager), "PCR-000000002");
+  assert.equal(await nextPcrNumber(manager), "PCR-1000000000");
+});
 
 test("agency catalog labels rehydrate as their stable NEMSIS data-model version", async () => {
   let reportQuery = "";

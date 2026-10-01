@@ -178,6 +178,43 @@ async function encryptedRecords(page: Page): Promise<Array<Record<string, unknow
   }, { databaseName: "open-triage-protected-clinical-v1", storeName: "encrypted-reports" });
 }
 
+test("protected checkpoints stay ordered while a newer draft is saved", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  let releaseFirst!: () => void;
+  const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  let firstStarted!: () => void;
+  const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+  const checkpoints: number[] = [];
+  let synchronizedRevision = 0;
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, async (route) => {
+    const { ciphertextRevision } = route.request().postDataJSON() as { ciphertextRevision: number };
+    checkpoints.push(ciphertextRevision);
+    if (checkpoints.length === 1) { firstStarted(); await firstHeld; }
+    if (ciphertextRevision < synchronizedRevision) return route.fulfill({ status: 409 });
+    synchronizedRevision = ciphertextRevision;
+    return route.fulfill({ json: { ciphertextRevision } });
+  });
+  try {
+    await page.goto("/");
+    await page.getByRole("group", { name: "Documentation presentation" })
+      .getByRole("button", { name: "Stationary" }).click();
+    await page.getByRole("button", { name: "Open call", exact: true }).click();
+    await started;
+    const firstRevision = checkpoints[0]!;
+    await page.getByRole("textbox", { name: "First Name", exact: true }).fill("STILL EDITABLE");
+    await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
+    await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision))
+      .toBeGreaterThan(firstRevision);
+    expect(checkpoints, "a newer checkpoint must wait for the first response").toEqual([firstRevision]);
+    releaseFirst();
+    await expect.poll(() => checkpoints.length).toBeGreaterThan(1);
+    expect(checkpoints).toEqual([...checkpoints].sort((a, b) => a - b));
+    await expect(page.getByText("Saved data needs recovery")).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toBeEnabled();
+  } finally { releaseFirst(); }
+});
+
 async function installAudioRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => {
     class TestMediaRecorder extends EventTarget {

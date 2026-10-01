@@ -94,6 +94,7 @@ type RuntimeContext = {
   revision: number;
   synchronizedRevision: number;
   writer: LatestProtectedWriteQueue<ProtectedClinicalPayload>;
+  checkpointQueue: Promise<void>;
   failure: Error | null;
   locking: boolean;
   receiptRequest: AbortController | null;
@@ -752,15 +753,21 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   context.synchronizedRevision = synchronizedRevision;
   context.failure = null;
   publishStatus(reportId, writableStorageStatus(context));
-  if (context.synchronizedRevision >= revision) void checkpointProtectedCiphertext(reportId, context, revision, encrypted.ciphertext);
+  if (context.synchronizedRevision >= revision) {
+    // Receipts are serialized by the writer, but checkpoints used to race each
+    // other. An older response could then return 409 after a newer checkpoint
+    // succeeded and incorrectly lock this same tab.
+    context.checkpointQueue = context.checkpointQueue.then(() =>
+      checkpointProtectedCiphertext(reportId, context, revision, encrypted.ciphertext));
+  }
 }
 
 async function checkpointProtectedCiphertext(reportId: string, context: RuntimeContext, revision: number, ciphertext: ArrayBuffer): Promise<void> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
-  const ciphertextSha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-checkpoint`);
-  if (!url || context.locking) return;
+  if (!url || context.locking || contexts.get(reportId) !== context) return;
   try {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
+    const ciphertextSha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const response = await fetch(url, browserRequestInit({
       method: "POST",
       headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
@@ -769,7 +776,8 @@ async function checkpointProtectedCiphertext(reportId: string, context: RuntimeC
         ciphertextRevision: revision, ciphertextSha256 }),
     }));
     if (applyProtectedAuthorityResponse(reportId, response)) return;
-    if (response.status === 409) publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
+    if (response.status === 409 && contexts.get(reportId) === context)
+      publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
   } catch { /* The local authenticated ciphertext remains authoritative until reconnect. */ }
 }
 
@@ -883,6 +891,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const context = { key, localRecordId: crypto.randomUUID(), checkpointScope: "report" as const, envelope, csrfToken,
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
+      checkpointQueue: Promise.resolve(),
       failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
     context.writer = createProtectedWriter(reportId, context);
     contexts.set(reportId, context);
@@ -977,6 +986,7 @@ export async function recoverProtectedReport(
       revision: record?.ciphertextRevision ?? 0,
       synchronizedRevision: record?.synchronizedRevision ?? 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
+      checkpointQueue: Promise.resolve(),
       failure: null,
       locking: false,
       receiptRequest: null,

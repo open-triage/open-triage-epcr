@@ -1647,7 +1647,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
         (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'pertinent-negative') order by e.element_id limit 1) as negative_id,
-      (select group_id from catalog.group_definition where release_id = $1 order by cardinality(path), group_id limit 1) as group_id
+      (select group_id from catalog.group_definition where release_id = $1 and group_id = 'ePatientSection') as group_id
   `, [releaseId]);
   const ids = selected.rows[0];
   for (const [key, value] of Object.entries(ids)) assert.ok(value, `catalog fixture requires ${key}`);
@@ -1788,6 +1788,9 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(created.payload.formVersionId, formVersionId);
   assert.equal(created.payload.agencyDemographicVersionId, agencyVersionId);
   assert.equal(created.payload.catalogReleaseId, releaseId);
+  const assignedPcr = await client.query(`select value_text from clinical.element_occurrence
+    where report_id = $1 and element_id = 'eRecord.01' and tombstoned_at is null`, [reportId]);
+  assert.match(assignedPcr.rows[0].value_text, /^PCR-\d{9,}$/);
 
   const recoveryHandle = randomUUID();
   const registeredEnvelope = await request(`/reports/${reportId}/protected-key-envelope`, "POST", {
@@ -1847,7 +1850,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   const retrieved = await request(`/reports/${reportId}`, "GET");
   assert.equal(retrieved.response.status, 200);
   assert.equal(retrieved.payload.revision, 1);
-  assert.equal(retrieved.payload.groups.length, 1);
+  assert.equal(retrieved.payload.groups.length, 5);
   assert.deepEqual(new Set(retrieved.payload.occurrences.map((row) => row.valueKind)),
     new Set(["text", "datetime", "coded", "null", "pertinent-negative", "absent"]));
   assert.equal(retrieved.payload.occurrences.find((row) => row.valueKind === "datetime").valueUtcOffsetMinutes, -240);
@@ -1862,7 +1865,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
     (select count(*)::integer from clinical.element_occurrence where report_id = $1) as occurrences,
     (select value_text from clinical.element_occurrence where id = $2) as current_text`, [reportId, textOccurrenceId]);
-  assert.deepEqual(stored.rows[0], { changes: 2, occurrences: 6, current_text: "updated" });
+  assert.deepEqual(stored.rows[0], { changes: 2, occurrences: 7, current_text: "updated" });
 
   const stale = await request(`/reports/${reportId}/draft-changes`, "POST", {
     commandId: randomUUID(), expectedRevision: 3, authorId: userId,
@@ -2193,7 +2196,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       (select revision from clinical.report where id = $1) as revision,
       (select count(*)::integer from clinical.element_occurrence where report_id = $1) as occurrences,
       (select count(*)::integer from clinical.report_change where report_id = $1) as changes`,
-  [cardinalityGuardReportId])).rows[0], { revision: "1", occurrences: 2, changes: 1 });
+  [cardinalityGuardReportId])).rows[0], { revision: "1", occurrences: 3, changes: 1 });
 
   const sign = (body) => request(`/reports/${reportId}/sign`, "POST", body);
   const missingRequired = await sign({

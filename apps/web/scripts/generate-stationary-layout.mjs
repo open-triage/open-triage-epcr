@@ -31,7 +31,7 @@ export async function generateStationaryLayout() {
     elements: catalog.elements.map((element) => ({
       id: element.id,
       groupId: element.groupPath.at(-1),
-      mode: element.section === "eCustomResults" ? "enhanced" : element.groupPath.includes("PatientCareReportGroup") ? "editable" : "read-only",
+      mode: element.id === "eRecord.01" ? "read-only" : element.section === "eCustomResults" ? "enhanced" : element.groupPath.includes("PatientCareReportGroup") ? "editable" : "read-only",
     })),
   };
   return `${JSON.stringify(layout, null, 2)}\n`;
