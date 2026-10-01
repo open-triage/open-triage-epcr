@@ -22,6 +22,7 @@ import {
   shellStateToDraftMutations,
   shouldQueueInitialDraftSnapshot,
   type ActiveDraftReport,
+  type DraftSaveFailureCategory,
   type DraftSyncStatus,
 } from "./draft-report";
 import { clearShellState, loadShellStateResult, saveReportSyncStatus, saveShellState } from "./local-persistence";
@@ -56,6 +57,8 @@ export interface ReportWorkspace {
   readonly recoveryNoticeHeading: string;
   readonly bestEffortNoticeInDemoBanner: boolean;
   readonly syncStatus: DraftSyncStatus;
+  readonly syncFailure: DraftSaveFailureCategory | null;
+  readonly retryFailedSave: () => void;
   readonly revision: MutableRefObject<number>;
   readonly dispatchConflicts: ReadonlyArray<DispatchConflict>;
   readonly dispatchCancellation: DispatchCancellation | null;
@@ -93,6 +96,7 @@ export function useReportWorkspace({
   const [restored, setRestored] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
+  const [syncFailure, setSyncFailure] = useState<DraftSaveFailureCategory | null>(null);
   const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
@@ -189,6 +193,7 @@ export function useReportWorkspace({
     while (true) {
       const queued = nextDraftChange(window.localStorage, report.id);
       if (!queued) {
+        setSyncFailure(null);
         setSyncStatus("Saved");
         return;
       }
@@ -208,6 +213,7 @@ export function useReportWorkspace({
             return;
           }
           revision.current = saved.revision;
+          setSyncFailure(null);
           if (conflictRecoveryAttempts.current > 0) recordFeedbackInteraction("draft-sync.recovered");
           conflictRecoveryAttempts.current = 0;
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
@@ -242,6 +248,7 @@ export function useReportWorkspace({
           }
           if (error instanceof DraftSaveRejectedError) {
             if (error.category === "server-conflict") recordFeedbackInteraction("draft-sync.retry-exhausted");
+            setSyncFailure(error.category);
             setSyncStatus("Conflict");
             return;
           }
@@ -258,6 +265,14 @@ export function useReportWorkspace({
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
     }
   }, [completeReport, csrfToken, onSessionEnded, report]);
+
+  const retryFailedSave = useCallback(() => {
+    if (!report || activeSave.current || !nextDraftChange(window.localStorage, report.id)) return;
+    recoverConflictingQueue.current = true;
+    activeEtag.current = undefined;
+    setSyncStatus("Saving");
+    setConflictRecoveryRequest((request) => request + 1);
+  }, [report]);
 
   useEffect(() => {
     if (!report?.expiresAt) return;
@@ -408,6 +423,7 @@ export function useReportWorkspace({
             recoverConflictingQueue.current = false;
             if (!retryDelta.groups.length && !retryDelta.occurrences.length) {
               conflictRecoveryAttempts.current = 0;
+              setSyncFailure(null);
             } else {
               recoveryMutationBatches(retryDelta, serverDraft).forEach((batch, index) => {
                 queueDraftChange(window.localStorage, report.id, {
@@ -512,6 +528,8 @@ export function useReportWorkspace({
     bestEffortNoticeInDemoBanner: !recoveryNotice && protectedStatus.mode === "best-effort" && online &&
       browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true,
     syncStatus,
+    syncFailure,
+    retryFailedSave,
     revision,
     dispatchConflicts,
     dispatchCancellation,

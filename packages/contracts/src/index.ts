@@ -17,6 +17,7 @@ export {
   formatRequiredElementSource,
   formatValidationSource,
   isNemsisDemographicElementId,
+  minimumRuleCoversRequirement,
   repairNemsisImportedMessage,
   validationRuleText,
   type CompiledValidationBundle,
@@ -680,6 +681,8 @@ export interface CatalogDraftCodeValue {
   sourceLabel: string;
   category: string | null;
   enabled: boolean;
+  /** Existing NEMSIS code used when a local extension value is transmitted. */
+  nemsisCode?: string;
   localization?: { schemaVersion: 1; sv?: { label?: string; reviewedSource?: { label: string } } };
 }
 
@@ -712,7 +715,7 @@ export interface CatalogDraftCustomGroup {
   slug: string;
   title: string;
   recurrence: "single" | "multiple";
-  correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
+  correlatesTo?: string;
   localization?: { schemaVersion: 1; sv?: { label: string; reviewedSource: { label: string } } };
 }
 
@@ -725,8 +728,8 @@ export interface CatalogDraftCustomTextElement {
   definition: string;
   datatype: "string" | "number" | "dateTime" | "boolean" | "binary" | "other";
   recurrence: "single" | "multiple";
-  /** Supported NEMSIS 3.5.1 repeated group; omission places the field at report root. */
-  correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
+  /** Repeated group in the pinned NEMSIS catalog; omission places the field at report root. */
+  correlatesTo?: string;
   /** eCustomConfiguration.09 grouping identity; independent of visual form sections. */
   groupDefinitionId?: string;
   usage: "Mandatory" | "Required" | "Recommended" | "Optional";
@@ -948,6 +951,7 @@ export interface ClinicalFormConfiguration {
       code: string;
       codeSystem: string;
       label: string;
+      nemsisCode?: string;
       sourceLabel?: string;
       localization?: CatalogDraftCodeValue["localization"];
       terminologyVersion?: string;

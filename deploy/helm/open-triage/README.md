@@ -91,8 +91,8 @@ configuration. The public demonstration values set
 `migration.bootstrapSynthetic=true`, which performs that installation flow before
 running the idempotent, insert-only fixture bootstrap and reseeding applicable
 definitions. The target organization must
-already exist; this creates only missing `demo.admin` and `demo.clinician`
-accounts and never changes an existing account. For a one-time manual bootstrap, run:
+already exist; this creates the `demo` account if missing, with initial password
+`opentriagedemo`, and never changes an existing account. For a one-time manual bootstrap, run:
 
 ```sh
 npm run bootstrap:synthetic -w @open-triage/database

@@ -6,7 +6,7 @@ import { encounterDocumentDiagnostics } from "../app/encounter-document";
 import { encounterEvents } from "../app/canonical-events";
 import { DEMO_PROVENANCE_ATTRIBUTE, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "../app/demo-provenance";
 import { encounterDocumentToDraftMutations } from "../app/draft-report";
-import { NEMSIS_DATA_MODEL } from "../app/nemsis-data-model";
+import { NEMSIS_DATA_MODEL, resolveNemsisElementValues } from "../app/nemsis-data-model";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, MISSING_VITALS_FINDING_ID, reviewEncounter, syntheticEncounter } from "../app/standard-encounter";
 import { clearStationaryDemoData, populateStationaryDemoData } from "../app/stationary-demo-data";
 import { COMPILED_STATIONARY_LAYOUT } from "../app/stationary-layout";
@@ -26,6 +26,40 @@ const configuredVitalsForm: ClinicalFormConfiguration = {
 
 const editableGroups = new Set(COMPILED_STATIONARY_LAYOUT.groups.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
 const editableElements = new Set(COMPILED_STATIONARY_LAYOUT.elements.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
+
+test("Populate replaces legacy DEMO placeholders with permitted US starter choices", () => {
+  const populated = populateStationaryDemoData(structuredClone(syntheticEncounter.document));
+  const starterElements = NEMSIS_DATA_MODEL.elements.filter((element) =>
+    element.valueSource.kind === "external-code-system" && element.valueSource.bundledListIds.some((id) => id.startsWith("us-")));
+  assert.equal(starterElements.length, 31);
+  const catalogFields: ClinicalFormConfiguration["catalogFields"] = {};
+  for (const element of starterElements) {
+    const choices = resolveNemsisElementValues(element).permissibleValues.map((option) => ({
+      code: option.code, label: option.label, codeSystem: "codeSystem" in option ? option.codeSystem ?? "" : "",
+    }));
+    assert.ok(choices.length, element.id);
+    catalogFields[element.id] = { agencyRequired: false, minOccurs: 0, maxOccurs: null, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: false, codeChoices: choices,
+      choiceOrder: choices.map(({ code, codeSystem }) => ({ kind: "code", code, codeSystem })) };
+  }
+  const form: ClinicalFormConfiguration = { catalogFields, definition: { schemaVersion: 1, sections: [{ key: "starter",
+    fields: starterElements.map(({ id }) => ({ key: id, source: { kind: "nemsis", elementId: id } })) }] } };
+  assert.deepEqual(validateStationaryRecord(populated, form, "2026-10-01T18:00:00Z")
+    .filter(({ id }) => id.startsWith("stationary:value.")), []);
+  const county = populated.groups.flatMap(({ instances }) => instances).flatMap(({ elements }) => elements)
+    .find(({ id }) => id === "ePatient.07")!.values[0]!;
+  assert.equal(county.kind === "coded" && county.code, "36061");
+  assert.equal(county.kind === "coded" && county.system, "ANSI-COUNTY");
+  const legacy = structuredClone(populated);
+  for (const group of legacy.groups) for (const instance of group.instances) for (const element of instance.elements) {
+    for (const value of element.values) if (value.kind === "coded" && hasDemoProvenance(value.attributes)) {
+      Object.assign(value, { code: "DEMO", display: "Synthetic demo value" });
+    }
+  }
+  assert.deepEqual(populateStationaryDemoData(legacy), populated);
+  assert.equal(populated.groups.flatMap(({ instances }) => instances).flatMap(({ elements }) => elements)
+    .flatMap(({ values }) => values).some((value) => value.kind === "coded" && value.code === "DEMO"), false);
+});
 
 test("Populate deterministically covers every editable element and repeating structure without replacing existing values", () => {
   const baseline = structuredClone(syntheticEncounter.document);

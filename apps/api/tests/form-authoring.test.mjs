@@ -27,6 +27,16 @@ const definition = {
   ] }, { key: "empty", name: "Follow-up", fields: [] }]
 };
 
+test("form draft lookup is scoped to its author", async () => {
+  const calls = [];
+  const manager = { query: async (sql, parameters) => { calls.push({ sql, parameters }); return []; } };
+  const service = new FormAuthoringService({ query: (...args) => manager.query(...args), manager },
+    { requireCapability: async () => session });
+  assert.equal(await service.current("session"), null);
+  assert.match(calls[0].sql, /f\.organization_id=\$1 and fv\.created_by=\$2 and fv\.status='draft'/);
+  assert.deepEqual(calls[0].parameters, [organizationId, session.user.id]);
+});
+
 function element(element_id, overrides = {}) {
   return { element_id, element_identity_id: `identity-${element_id}`, base_datatype: "string",
     source_datatype: "string", usage: "Optional", definition: {}, analytical_location: "wide", ...overrides };
@@ -228,7 +238,7 @@ test("form writers delete only the expected draft revision and retain audit evid
   assert.deepEqual(JSON.parse(audit.parameters[6]), {
     formVersionId: draftId, formId, revision: 4, deletedFormVersionId: draftId
   });
-  assert.deepEqual(queries.at(-1).parameters, [draftId, 4]);
+  assert.deepEqual(queries.at(-1).parameters, [draftId, 4, writer.user.id]);
 });
 
 test("stale form deletion fails before audit or deletion", async () => {
@@ -481,4 +491,33 @@ test("saving and reopening an arranged form retains names, empty sections, and m
   assert.deepEqual(saved.definition, arranged);
   assert.deepEqual((await service.current("owner-session")).definition, arranged);
   assert.equal(saved.revision, 2);
+});
+
+test("forms can enable codes hidden by legacy catalog settings and retain their own order", async () => {
+  const authored = { schemaVersion: 1, sections: [{ key: "patient", fields: [{ key: "choice",
+    source: { kind: "nemsis", elementId: "ePatient.25" }, choicePolicy: [
+      { kind: "code", code: "OLD-DISABLED", codeSystem: "local" },
+      { kind: "code", code: "A", codeSystem: "local" },
+    ] }] }] };
+  let row = { id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
+    revision: 1, canonical_definition: authored, definition_sha256: "a".repeat(64), updated_at: new Date() };
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("update forms.form_version")) {
+      row = { ...row, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3], revision: 2 };
+      return [row];
+    }
+    if (sql.includes("from forms.form_version")) return [row];
+    if (sql.includes("from catalog.element_definition")) return [{ ...element("ePatient.25"),
+      min_occurs: 0, max_occurs: 1, nillable: true, supports_not_values: false, supports_pertinent_negatives: false }];
+    if (sql.includes("from catalog.value_set_element")) return (parameters[2] ? ["A", "OLD-DISABLED"] : ["A"])
+      .map((code) => ({ element_id: "ePatient.25", code, code_system: "local", label: code }));
+    if (sql.includes("from catalog.group_definition") || sql.includes("configuration_event") || sql.includes("customGroupDefinitions")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ ...manager, manager, transaction: async (_level, work) => work(manager) },
+    { requireCapability: async () => session });
+  const saved = await service.save("owner-session", draftId, { expectedRevision: 1, definition: authored });
+  assert.deepEqual(saved.definition.sections[0].fields[0].choicePolicy, authored.sections[0].fields[0].choicePolicy);
+  assert.deepEqual(saved.catalogFields["ePatient.25"].codeChoices.map(({ code }) => code), ["A", "OLD-DISABLED"]);
+  assert.deepEqual((await service.current("owner-session")).definition, authored);
 });

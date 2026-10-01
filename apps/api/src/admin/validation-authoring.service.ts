@@ -9,6 +9,7 @@ import {
   formatOccurrenceSource,
   isNemsisDemographicElementId,
   type ClinicianSession,
+  type CatalogDraftCustomElement,
   type CompiledValidationBundle,
   type EncounterDocument,
   type FormDraftDefinition,
@@ -29,6 +30,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { canonicalDefinitionSha256 } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { releaseCustomDefinitions } from "./custom-definition-version.js";
 
 type VersionRow = {
   id: string; organization_id: string; catalog_release_id: string; rule_id: string;
@@ -194,8 +196,8 @@ export class ValidationAuthoringService {
   async current(token: string): Promise<ValidationDraft | null> {
     const session = await this.sessions.requireCapability(token, "validation:read");
     const rows = await this.dataSource.query<VersionRow[]>(`
-      select * from validation.version where organization_id=$1 and status='draft' limit 1
-    `, [session.organization.id]);
+      select * from validation.version where organization_id=$1 and created_by=$2 and status='draft' limit 1
+    `, [session.organization.id, session.user.id]);
     return rows[0] ? draft(rows[0]) : null;
   }
 
@@ -216,7 +218,7 @@ export class ValidationAuthoringService {
   async library(token: string, query: Record<string, unknown>): Promise<ValidationRulePage> {
     const session = await this.sessions.requireCapability(token, "validation:read");
     const rows = await this.dataSource.query<VersionRow[]>(`select * from validation.version
-      where organization_id=$1 and status='draft' limit 1`, [session.organization.id]);
+      where organization_id=$1 and created_by=$2 and status='draft' limit 1`, [session.organization.id, session.user.id]);
     const row = rows[0];
     if (!row) return { items: [], nextCursor: null, total: 0 };
     const catalog = await this.validationCatalog(this.dataSource.manager, row.catalog_release_id);
@@ -271,9 +273,9 @@ export class ValidationAuthoringService {
     const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
     const displayName = requiredText(body.displayName, "displayName", 120);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}`]);
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}:${session.user.id}`]);
       const existing = await manager.query<VersionRow[]>(
-        "select * from validation.version where organization_id=$1 and status='draft'", [session.organization.id]);
+        "select * from validation.version where organization_id=$1 and created_by=$2 and status='draft'", [session.organization.id, session.user.id]);
       if (existing[0]) return draft(existing[0]);
       const catalogs = await manager.query<Array<{ id: string; hidden_element_ids?: string[] }>>(`
         select distinct cr.id,cr.provenance->'hiddenElementIds' as hidden_element_ids from catalog.release cr
@@ -371,13 +373,13 @@ export class ValidationAuthoringService {
     const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
     const displayName = requiredText(body.displayName, "displayName", 120);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}`]);
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}:${session.user.id}`]);
       const sources = await manager.query<VersionRow[]>(`select * from validation.version
         where id=$1 and organization_id=$2 and status='published'`, [sourceId, session.organization.id]);
       const source = sources[0];
       if (!source) throw new NotFoundException(`Published validation version ${sourceId} was not found`);
       const existing = await manager.query<VersionRow[]>(`select * from validation.version
-        where organization_id=$1 and status='draft' for update`, [session.organization.id]);
+        where organization_id=$1 and created_by=$2 and status='draft' for update`, [session.organization.id, session.user.id]);
       if (existing[0]) {
         if (existing[0].cloned_from_id !== sourceId || existing[0].catalog_release_id !== catalogReleaseId) {
           throw new ConflictException("A Validation draft already exists from another version or Catalog");
@@ -417,15 +419,15 @@ export class ValidationAuthoringService {
     if (!Number.isSafeInteger(expectedRevision) || Number(expectedRevision) < 1)
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}`]);
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}:${session.user.id}`]);
       const rows = await manager.query<VersionRow[]>(`select * from validation.version
-        where id=$1 and organization_id=$2 and status='draft' for update`, [id, session.organization.id]);
+        where id=$1 and organization_id=$2 and created_by=$3 and status='draft' for update`, [id, session.organization.id, session.user.id]);
       if (!rows[0]) throw new NotFoundException(`Validation draft ${id} was not found`);
       if (rows[0].revision !== expectedRevision)
         throw new ConflictException("Validation draft revision is stale");
       const deleted = mutationRows<Array<{ id: string }>[number]>(await manager.query(`delete from validation.version
-        where id=$1 and organization_id=$2 and status='draft' and revision=$3 returning id`,
-      [id, session.organization.id, expectedRevision]));
+        where id=$1 and organization_id=$2 and created_by=$4 and status='draft' and revision=$3 returning id`,
+      [id, session.organization.id, expectedRevision, session.user.id]));
       if (!deleted[0]) throw new ConflictException("Validation draft revision is stale or the version was published");
     });
   }
@@ -456,7 +458,7 @@ export class ValidationAuthoringService {
     }
     if (!Array.isArray(body.rules) || !body.rules.length) throw new UnprocessableEntityException("rules must contain at least one rule");
     const existingRows = await this.dataSource.query<VersionRow[]>(`select * from validation.version
-      where id=$1 and organization_id=$2 and status='draft'`, [id, session.organization.id]);
+      where id=$1 and organization_id=$2 and created_by=$3 and status='draft'`, [id, session.organization.id, session.user.id]);
     const existing = existingRows[0];
     if (!existing) throw new NotFoundException(`Validation draft ${id} was not found`);
     const existingRules = new Map(this.rowRules(existing).map((rule) => [rule.id, rule]));
@@ -482,8 +484,8 @@ export class ValidationAuthoringService {
     if (identities.length !== rules.length) throw new UnprocessableEntityException("Rules must retain identities owned by the organization");
     const rows = mutationRows<VersionRow>(await this.dataSource.query(`with updated as (
       update validation.version set revision=revision+1,display_name=$4,source_rule=$5::jsonb,updated_at=now()
-      where id=$1 and organization_id=$2 and status='draft' and revision=$3 returning *) select * from updated`,
-    [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(rules)]));
+      where id=$1 and organization_id=$2 and created_by=$6 and status='draft' and revision=$3 returning *) select * from updated`,
+    [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(rules), session.user.id]));
     if (!rows[0]) throw new ConflictException("Validation draft revision is stale or the draft is no longer editable");
     return draft(rows[0]);
   }
@@ -498,15 +500,15 @@ export class ValidationAuthoringService {
     const candidate = this.rule({ ...body, provenance: undefined, id: randomUUID(), sourceKind: "agency" });
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<VersionRow[]>(`select * from validation.version
-        where id=$1 and organization_id=$2 and status='draft' for update`, [id, session.organization.id]);
+        where id=$1 and organization_id=$2 and created_by=$3 and status='draft' for update`, [id, session.organization.id, session.user.id]);
       const row = rows[0];
       if (!row || Number(row.revision) !== expectedRevision) throw new ConflictException("Validation draft revision is stale or unavailable");
       await manager.query("insert into validation.rule_identity(id,organization_id,created_by) values ($1,$2,$3)",
         [candidate.id, session.organization.id, session.user.id]);
       const rules = [...this.rowRules(row), candidate];
       const updated = mutationRows<VersionRow>(await manager.query(`with updated as (update validation.version
-        set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 returning *) select * from updated`,
-      [id, session.organization.id, JSON.stringify(rules)]));
+        set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 and created_by=$4 and status='draft' returning *) select * from updated`,
+      [id, session.organization.id, JSON.stringify(rules), session.user.id]));
       return draft(updated[0]!);
     });
   }
@@ -519,15 +521,15 @@ export class ValidationAuthoringService {
     }
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<VersionRow[]>(`select * from validation.version
-        where id=$1 and organization_id=$2 and status='draft' for update`, [id, session.organization.id]);
+        where id=$1 and organization_id=$2 and created_by=$3 and status='draft' for update`, [id, session.organization.id, session.user.id]);
       const row = rows[0];
       if (!row || Number(row.revision) !== expectedRevision) throw new ConflictException("Validation draft revision is stale or unavailable");
       let found = false;
       const rules = this.rowRules(row).map((rule) => rule.id === ruleId ? (found = true, { ...rule, enabled }) : rule);
       if (!found) throw new NotFoundException(`Validation rule ${ruleId} was not found`);
       const updated = mutationRows<VersionRow>(await manager.query(`with updated as (update validation.version
-        set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 returning *) select * from updated`,
-      [id, session.organization.id, JSON.stringify(rules)]));
+        set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 and created_by=$4 and status='draft' returning *) select * from updated`,
+      [id, session.organization.id, JSON.stringify(rules), session.user.id]));
       return draft(updated[0]!);
     });
   }
@@ -535,7 +537,7 @@ export class ValidationAuthoringService {
   async validate(token: string, id: string): Promise<ValidationDraftResult> {
     const session = await this.sessions.requireCapability(token, "validation:read");
     const rows = await this.dataSource.query<VersionRow[]>(
-      "select * from validation.version where id=$1 and organization_id=$2", [id, session.organization.id]);
+      "select * from validation.version where id=$1 and organization_id=$2 and created_by=$3 and status='draft'", [id, session.organization.id, session.user.id]);
     if (!rows[0]) throw new NotFoundException(`Validation draft ${id} was not found`);
     return this.validateRow(this.dataSource.manager, rows[0]);
   }
@@ -551,7 +553,7 @@ export class ValidationAuthoringService {
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${session.organization.id}`]);
       const rows = await manager.query<VersionRow[]>(
-        "select * from validation.version where id=$1 and organization_id=$2 for update", [id, session.organization.id]);
+        "select * from validation.version where id=$1 and organization_id=$2 and created_by=$3 for update", [id, session.organization.id, session.user.id]);
       const row = rows[0];
       if (!row) throw new NotFoundException(`Validation draft ${id} was not found`);
       if (row.status !== "draft") throw new ConflictException("Published validation versions are immutable");
@@ -570,9 +572,9 @@ export class ValidationAuthoringService {
       const published = mutationRows<VersionRow>(await manager.query(`with updated as (
         update validation.version set status='published',version=$4,display_name=$5,change_note=$6,
           source_sha256=$7,compiled_bundle=$8::jsonb,compiled_sha256=$9,published_by=$10,published_at=now(),updated_at=now()
-        where id=$1 and organization_id=$2 and status='draft' and revision=$3 returning *) select * from updated`,
+        where id=$1 and organization_id=$2 and created_by=$11 and status='draft' and revision=$3 returning *) select * from updated`,
       [id, session.organization.id, body.expectedRevision, Number(versions[0]!.next_version), displayName, changeNote,
-        sourceSha256, JSON.stringify(validation.compiledBundle), validation.compiledSha256, session.user.id]));
+        sourceSha256, JSON.stringify(validation.compiledBundle), validation.compiledSha256, session.user.id, session.user.id]));
       if (!published[0]) throw new ConflictException("Validation draft changed during publication");
       await manager.query(`insert into validation.change_event
         (organization_id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
@@ -630,6 +632,11 @@ export class ValidationAuthoringService {
         from forms.form_field ff join catalog.element_definition e
           on e.release_id=$2 and e.element_identity_id=ff.catalog_element_identity_id
         where ff.form_version_id=$1 and e.element_id=any($3::text[])
+        union
+        select ced.namespace || '.' || ced.slug as element_id
+        from forms.form_field ff join forms.custom_element_definition ced
+          on ced.id=ff.custom_element_definition_id
+        where ff.form_version_id=$1 and ced.namespace || '.' || ced.slug=any($3::text[])
         union
         select p.element_id from validation.platform_element_source p
         where p.catalog_release_id=$2 and p.element_id=any($3::text[])`,
@@ -796,6 +803,12 @@ export class ValidationAuthoringService {
   }
 
   private async validationCatalog(manager: Pick<EntityManager, "query">, releaseId: string): Promise<ValidationCatalog> {
+    const pinnedCustomElements = await releaseCustomDefinitions(manager, releaseId);
+    const customElements = pinnedCustomElements ?? (await manager.query<Array<{ definition: CatalogDraftCustomElement }>>(`
+      select ced.definition from forms.custom_element_definition ced
+      join catalog.release cr on cr.id=$1
+      where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
+    `, [releaseId])).map(({ definition }) => definition);
     const elements = await manager.query<Array<{ element_id: string; name?: string; base_datatype?: string; group_path: string[];
       min_occurs: number; max_occurs: number | null }>>(
       "select element_id,name,base_datatype,group_path,min_occurs,max_occurs from catalog.element_definition where release_id=$1", [releaseId]);
@@ -816,15 +829,22 @@ export class ValidationAuthoringService {
           on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
         where vse.release_id=$1
       ) e`, [releaseId]);
-    return { elements: elements.map(({ element_id, name, base_datatype, group_path, min_occurs, max_occurs }) => ({
+    return { elements: [...elements.map(({ element_id, name, base_datatype, group_path, min_occurs, max_occurs }) => ({
       elementId: element_id, label: name ?? element_id, baseDatatype: base_datatype ?? "string", groupPath: group_path,
-      intrinsicOccurrence: { min: min_occurs, max: max_occurs ?? "unbounded" },
-    })), groups: groups.map(({ group_id, name, repeating, parent_group_id, min_occurs, max_occurs }) => ({
+      intrinsicOccurrence: { min: min_occurs, max: max_occurs ?? "unbounded" as const },
+    })), ...customElements.filter((element) => !element.retired).map((element) => ({
+      elementId: `${element.namespace}.${element.slug}`, label: element.title,
+      baseDatatype: element.datatype === "number" ? "decimal" : element.datatype === "other" ? "string" : element.datatype,
+      groupPath: [element.correlatesTo ?? "PatientCareReportGroup"],
+      intrinsicOccurrence: { min: 0, max: element.recurrence === "single" ? 1 : "unbounded" as const },
+    }))], groups: groups.map(({ group_id, name, repeating, parent_group_id, min_occurs, max_occurs }) => ({
       groupId: group_id, label: name, repeating, ...(parent_group_id ? { parentGroupId: parent_group_id } : {}),
       intrinsicOccurrence: { min: min_occurs, max: max_occurs ?? "unbounded" },
-    })), codes: codes.map(({ element_id, code, code_system, label, enabled }) => ({
+    })), codes: [...codes.map(({ element_id, code, code_system, label, enabled }) => ({
       elementId: element_id, code, codeSystem: code_system, label, enabled,
-    })) };
+    })), ...customElements.flatMap((element) => element.datatype === "coded" && !element.retired
+      ? element.choices.map((choice) => ({ elementId: `${element.namespace}.${element.slug}`,
+        code: choice.code, codeSystem: element.codeSystem, label: choice.label, enabled: true })) : [])] };
   }
 
   private rule(value: unknown): ValidationRuleSource {

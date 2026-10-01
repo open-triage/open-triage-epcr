@@ -91,8 +91,8 @@ This feature is a complete vertical slice spanning schema, application services,
 69. As a privacy owner, I want generated synthetic calls and reports removed 24 hours after server creation, so that demo records do not accumulate.
 70. As an offline user, I want expired local synthetic data removed and delayed synchronization rejected, so that purged records cannot return.
 71. As a demonstration operator, I want the demo installation to use normal production ownership and security, so that evaluation reflects the real product.
-72. As a demo administrator, I want `demo.admin` to use the existing shared fixture credential with Configuration Author and Clinical Demo access, so that current authoring and clinical demonstrations remain available without publication or security authority.
-73. As a demo clinician, I want `demo.clinician` to use the existing shared fixture credential with Clinical Demo access only, so that the clinical journey remains distinct from administration.
+72. As a demo administrator, I want `demo` / `opentriagedemo` to use the protected Demo role, so that current demonstration workflows remain available.
+73. As a demo clinician, I want `demo` / `opentriagedemo` to support clinical demonstration workflows through its protected Demo role.
 74. As a demonstration operator, I want fixture bootstrap to preserve later account administration, so that rerunning it cannot reset passwords, reactivate users, or restore removed roles.
 75. As an auditor, I want user, credential, session, role, capability, ownership, and synthetic actions recorded without secrets or patient content, so that accountability does not create another sensitive store.
 76. As an administrator, I want optional notes accepted but never required, so that structured audit history does not block time-sensitive administration.
@@ -233,9 +233,8 @@ This feature is a complete vertical slice spanning schema, application services,
 ### 10. Demonstration Fixtures
 
 - A demonstration installation uses normal production ownership, password policy, authorization, and ordinary clinical retention. It has no synthetic-demo configuration profile, lax password mode, automatic sample-call setting, login banner setting, or read-only Admin switch.
-- The fixture adds two ordinary accounts only: `demo.admin` and `demo.clinician`, both initialized with the existing password `open-triage-demo` and no forced first-login password change.
-- `demo.admin` receives Configuration Author and Clinical Demo. It can read the Dashboard, Users, and Roles and read/write Catalog and Forms drafts, but cannot publish or administer security.
-- `demo.clinician` receives Clinical Demo only and has no administrative capability.
+- The fixture adds one ordinary account: `demo`, initialized with password `opentriagedemo` and no forced first-login password change.
+- `demo` receives the protected Demo role for demonstration workflows.
 - Fixture credentials are not returned by installation configuration and are not prefilled on the login form.
 - Fixture seeding may occur before or after ordinary owner bootstrap, but setup remains blocked until a normal owner exists.
 - Bootstrap creates missing fixture accounts and their initial role assignments only. Rerunning it never resets a password, changes active state, or restores removed roles. Fixture changes use explicit schema/data revisions.
@@ -305,7 +304,7 @@ Good tests verify externally observable behavior and durable safety properties r
 - Test one-unit and multi-unit generation, one-unopened-call idempotency per user/unit, no automatic replacement after open, and ordinary-call isolation.
 - Test Populate, Clear, and Delete across synthetic draft, ordinary draft, validation state, and signed-record boundaries.
 - Test exact 24-hour server expiry for calls and signed/unsigned reports, dependent deletion, minimal audit facts, browser cleanup, and permanent delayed-sync rejection.
-- Test the exact `demo.admin`, `demo.clinician`, and `open-triage-demo` fixture behavior, role assignments, lack of credential prefill, ordinary owner requirement, and bootstrap idempotency after administrative changes.
+- Test the `demo` / `opentriagedemo` fixture behavior, protected Demo role assignment, lack of credential prefill, ordinary owner requirement, and bootstrap idempotency after administrative changes.
 
 ### Database and Scale
 

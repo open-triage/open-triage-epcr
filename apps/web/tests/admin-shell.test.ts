@@ -7,7 +7,7 @@ import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVers
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
-import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
+import { catalogAuthority, CatalogCodeListEditor } from "../components/catalog-authoring";
 import { createFormSection, renameFormSection, transferFormElement, addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
@@ -417,20 +417,13 @@ const codeList = { listId: "activity", name: "Patient Activity", classification:
     { code: "TWO", codeSystem: "LOCAL", label: "Second", sourceLabel: "Second", category: null, enabled: true }
   ] };
 
-test("code-list controls expose labeled editing, state and keyboard-operable ordering without default controls", () => {
+test("code-list controls edit content while form editors own enabled choices and order", () => {
   const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor, {
     list: { ...codeList, defaultValue: { code: "TWO", codeSystem: "LOCAL" } }, onChange: () => {} }));
   assert.match(markup, /<legend>Add value<\/legend>/);
-  assert.match(markup, /aria-label="Move First up"/);
-  assert.match(markup, /aria-label="Move Second down"/);
-  assert.equal((markup.match(/Enabled<\/label>/g) ?? []).length, 2);
+  assert.match(markup, /English label for activity LOCAL ONE/);
+  assert.doesNotMatch(markup, /Move First|Move Second|type="checkbox"|Reorder/);
   assert.doesNotMatch(markup, /default|type="radio"/i);
-});
-
-test("accessible move controls reorder values without changing code identity", () => {
-  const moved = moveCodeValue(codeList, 1, 0);
-  assert.deepEqual(moved.values.map(({ code }) => code), ["TWO", "ONE"]);
-  assert.equal(moveCodeValue(codeList, 0, -1), codeList);
 });
 
 test("Catalog authority requires the complete read-write-publish prerequisite chain", () => {
@@ -446,8 +439,8 @@ test("Catalog authority requires the complete read-write-publish prerequisite ch
 test("read-only code-list inspection exposes definitions without mutable controls", () => {
   const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
     { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
-  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 8);
-  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 5);
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 6);
+  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 1);
 });
 
 const formDefinition = { schemaVersion: 1 as const, sections: [

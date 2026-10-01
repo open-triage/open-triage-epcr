@@ -123,8 +123,8 @@ Represent clinical demonstration behavior as a protected, assignable role rather
 95. As a security owner, I want every demo-only mutation authorized server-side, so that hidden UI controls cannot be invoked without the Clinical Demo role.
 96. As a privacy owner, I want synthetic calls and reports to expire 24 hours after server creation, so that their deletion is independent of ordinary installation retention.
 97. As an offline user, I want expired local synthetic records removed and permanently rejected after server purge, so that delayed synchronization cannot resurrect deleted reports.
-98. As a demo administrator, I want the existing `demo.admin` / `open-triage-demo` fixture login to have only Configuration Author and Clinical Demo access, so that it reproduces the current authoring and clinical demo without full administration or publication rights.
-99. As a demo clinician, I want the existing `demo.clinician` / `open-triage-demo` fixture login to have only Clinical Demo access, so that the ordinary clinical journey remains distinct from administration.
+98. As a demo administrator, I want the `demo` / `opentriagedemo` fixture login to use the protected Demo role, so that it supports the current demonstration workflows.
+99. As a demo clinician, I want the `demo` / `opentriagedemo` fixture login to support clinical demonstration workflows through its protected Demo role.
 100. As an installation operator, I want demo installations to use the normal one-time owner bootstrap and production security policy, so that demonstration does not create a privileged runtime mode.
 101. As a production installation owner, I want a safe baseline with ten-year ordinary clinical retention and automatic deletion disabled until explicitly enabled, so that synthetic record handling cannot alter production retention policy.
 102. As an administrator, I want configuration lists to use indexed server-side search and cursor pagination, so that large agencies and catalogs remain responsive.
@@ -249,7 +249,7 @@ Represent clinical demonstration behavior as a protected, assignable role rather
    - Do not generate a replacement call when a synthetic assignment is opened. Populate and Clear apply only to an open synthetic draft. Delete applies to any open synthetic draft after confirmation, including before validation failure, and never to signed or ordinary clinical records.
    - Enforce `clinical:demo` server-side for call generation, synthetic-draft deletion, and draft changes that add or remove demo-owned provenance.
    - Give every generated synthetic call and resulting report immutable provenance and an expiry exactly 24 hours after server creation. Delete expired signed and unsigned synthetic records and dependencies consistently, retain only non-PHI purge audit facts, remove expired browser copies, and reject delayed queues permanently.
-   - Seed only the existing `demo.admin` and `demo.clinician` fixture accounts, both using `open-triage-demo`, with forced first-login password change disabled. Assign Configuration Author plus Clinical Demo to `demo.admin`, and Clinical Demo only to `demo.clinician`.
+   - Seed the `demo` fixture account using `opentriagedemo`, with forced first-login password change disabled. Assign the protected Demo role.
    - Do not expose or prefill fixture credentials through installation configuration. Rerunning fixture bootstrap creates missing fixture users and initial assignments only; it never resets passwords, reactivates users, or restores removed assignments. Fixture evolution uses explicit migrations.
    - Use normal owner bootstrap and production security policy for demonstration installations. Permit fixture seeding before or after owner creation, but keep application setup incomplete and block Admin and clinical work until a normal owner exists.
    - Keep the browser-only static prototype clinician-only; it does not include Admin mode or database-backed fixture accounts.
@@ -322,7 +322,7 @@ Good tests verify externally observable behavior and durable safety properties r
 9. **Clinical Demo and synthetic retention**
    - Test Clinical Demo assignment/removal, authenticated clinical-only banner visibility, exclusion from offline grants, and server denial of every demo-only mutation without the live capability.
    - Test explicit call generation, unit choice, one-unopened-call idempotency, removal of automatic replacement generation, and Populate/Clear/Delete synthetic-draft boundaries.
-   - Exercise the unchanged `demo.admin`, `demo.clinician`, and `open-triage-demo` credentials and their exact protected-role assignments without exposing or prefilling credentials through installation configuration.
+   - Exercise the `demo` / `opentriagedemo` credentials and the protected Demo role assignment without exposing or prefilling credentials through installation configuration.
    - Test 24-hour per-record boundaries for signed and unsigned synthetic reports and calls, dependent deletion, minimal audit facts, browser expiry, delayed offline queues, and permanent server rejection after purge.
    - Verify fixture bootstrap does not overwrite administered fixture accounts, demonstration ownership follows the ordinary production flow, and the static prototype does not expose Admin mode or database-backed fixture accounts.
 

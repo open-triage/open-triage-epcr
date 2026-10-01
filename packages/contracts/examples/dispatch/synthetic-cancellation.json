@@ -49,7 +49,7 @@
       { "id": "eScene.16", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-apartment", "value": "APT 4S" }] },
       { "id": "eScene.18", "values": [{ "kind": "coded", "occurrenceId": "synthetic-scene-state", "code": "36", "system": "ANSI-STATE", "display": "New York" }] },
       { "id": "eScene.19", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-zip", "value": "10001" }] },
-      { "id": "eScene.21", "values": [{ "kind": "coded", "occurrenceId": "synthetic-scene-county", "code": "36061", "system": "ANSI-COUNTY", "display": "New York County" }] }
+      { "id": "eScene.21", "values": [{ "kind": "coded", "occurrenceId": "synthetic-scene-county", "code": "36061", "system": "ANSI-COUNTY", "display": "New York County, NY" }] }
     ] }] }
   ]
 }

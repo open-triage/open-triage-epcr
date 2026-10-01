@@ -26,8 +26,9 @@ export function AuthoringVersionWorkspace({ title, versions, selectedId, onSelec
     <div className="authoring-version-row">
       <label htmlFor={`${title.replaceAll(" ", "-").toLowerCase()}-source-version`}><AdminText messageKey="admin.version2" /></label>
       <select id={`${title.replaceAll(" ", "-").toLowerCase()}-source-version`} value={selectedId}
-        onChange={(event) => onSelect(event.target.value)} disabled={versions.length === 0}>
-        {versions.length === 0 && <option value=""><AdminText messageKey="admin.noPublishedVersions" /></option>}
+        onChange={(event) => onSelect(event.target.value)} disabled={versions.length === 0 && !canCreateWithoutSource}>
+        {canCreateWithoutSource && <option value="">{t("admin.newCatalogVersion")}</option>}
+        {versions.length === 0 && !canCreateWithoutSource && <option value=""><AdminText messageKey="admin.noPublishedVersions" /></option>}
         {versions.map((version) => <option key={version.id} value={version.id}>
           {version.displayName} · v{version.version}{version.status === "active" ? ` · ${t("admin.active")}` : ""}
         </option>)}

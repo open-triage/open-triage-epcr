@@ -8,10 +8,10 @@ const catalog = { elements: [{ elementId: "ePatient.01", label: "Patient", descr
     reviewedSource: { label: "Patient", description: "Optional source" } } }, specialChoices: [],
   constraints: { minOccurs: 0, maxOccurs: 1 } }], codeLists: [], hiddenElementIds: [] } as unknown as CatalogDraftDefinition;
 
-test("catalog review follows stored English source and preserves translated text", () => {
+test("catalog diagnostics ignore old source markers and preserve translated text", () => {
   assert.deepEqual(catalogTranslationIssues(catalog), []);
   const changed = { ...catalog, elements: catalog.elements.map((element) => ({ ...element, label: "Patient name" })) };
-  assert.deepEqual(catalogTranslationIssues(changed as CatalogDraftDefinition).map(({ kind, field }) => [kind, field]), [["review", "label"]]);
+  assert.deepEqual(catalogTranslationIssues(changed as CatalogDraftDefinition), []);
   assert.equal(changed.elements[0]?.localization?.sv?.label, "Patient sv");
   const confirmed = { ...changed, elements: changed.elements.map((element) => ({ ...element,
     localization: { ...element.localization, sv: { ...element.localization?.sv,
@@ -28,17 +28,17 @@ test("catalog diagnostics detect whitespace labels and ignore absent optional En
     [["english", "label"], ["agency", "label"]]);
 });
 
-test("validation diagnostics distinguish missing English, missing Swedish, and source review", () => {
+test("validation diagnostics report missing text without old source markers", () => {
   const rule = { id: "rule-1", name: "  ", message: "Check", localization: { schemaVersion: 1,
     sv: { name: "Namn", message: "Kontroll", reviewedSource: { message: "Old" } } } } as ValidationRuleSource;
   assert.deepEqual(validationTranslationIssues([rule]).map(({ kind, field }) => [kind, field]),
-    [["english", "name"], ["review", "message"]]);
+    [["english", "name"]]);
   assert.deepEqual(validationTranslationIssues([rule], "en").map(({ kind, field }) => [kind, field]),
     [["english", "name"]]);
 });
 
 
-test("editing English retains legacy translations and marks their original source for review", () => {
+test("editing English retains legacy translations and their source metadata", () => {
   const original = { ...catalog.elements[0]!, localization: { schemaVersion: 1 as const, sv: { label: "Patient sv" } } };
   const unchanged = updateCatalogEnglish(original, "label", original.label);
   assert.equal(unchanged, original);
@@ -54,5 +54,5 @@ test("editing English retains legacy translations and marks their original sourc
   const updated = updateValidationEnglish(rule, "name", "Changed");
   assert.equal(updated.localization?.sv?.name, "Namn");
   assert.equal(updated.localization?.sv?.reviewedSource?.name, "Original");
-  assert.deepEqual(validationTranslationIssues([updated]).map(({ kind }) => kind), ["review", "agency"]);
+  assert.deepEqual(validationTranslationIssues([updated]).map(({ kind }) => kind), ["agency"]);
 });

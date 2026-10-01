@@ -371,7 +371,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
         })}</tbody></table>
     </div>
     {!instances.length && <p className="stationary-empty-table">{t("stationary.noRows")}</p>}
-    <StationaryValidationMessages findings={validationFindings} />
+    <StationaryValidationMessages findings={validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId))} />
     {dialogState && <RepeatingGroupDialog key={`${dialogState.instanceId}:${dialogState.isNew}`} placement={placement} draft={dialogState.draft} instanceId={dialogState.instanceId} isNew={dialogState.isNew} returnFocus={dialogState.returnFocus} clinicalForm={clinicalForm}
       onDraftChange={(draft) => setDialogState((current) => current ? { ...current, draft } : current)} onCancel={() => setDialogState(undefined)}
       onSave={() => { onDocumentChange(dialogState.draft); setDialogState(undefined); }} />}

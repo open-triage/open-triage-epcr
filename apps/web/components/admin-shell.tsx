@@ -154,7 +154,7 @@ function AuthorizedAdminShell({ session, language }: {
 
     {context && mounted("Element catalog") && <div hidden={activePanel !== "Element catalog"}><section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><h2 id="catalog-authoring-heading"><AdminText messageKey="admin.elementCatalog" /></h2></div>
-      <CatalogAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
+      <CatalogAuthoring language={language} ownerId={session.user.id} organizationId={session.organization.id} csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
         active={activePanel === "Element catalog"} onPublished={setFormCatalogReleaseId} />
     </section></div>}
 

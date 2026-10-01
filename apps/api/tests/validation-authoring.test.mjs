@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { compiledValidationBundleSha256, evaluateValidationBundle } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle } from "@open-triage/contracts";
 import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -14,14 +14,45 @@ const sourceRule = { id: ruleId, name: "Require incident number", enabled: true,
   message: "Incident number is required", source: 'assert present("eResponse.03")' };
 
 function service(manager, capabilityCalls = []) {
-  return new ValidationAuthoringService({ manager, query: (...args) => manager.query(...args),
-    transaction: async (_isolation, work) => work(manager) }, {
+  const database = { ...manager, query: (sql, ...args) => sql.includes("provenance->'customElementDefinitions'")
+    ? [{ definitions: [] }] : manager.query(sql, ...args) };
+  return new ValidationAuthoringService({ manager: database, query: (...args) => database.query(...args),
+    transaction: async (_isolation, work) => work(database) }, {
     requireCapability: async (_token, capability) => {
       capabilityCalls.push(capability);
       return { organization: { id: organizationId }, user: { id: randomUUID() } };
     }
   });
 }
+
+test("validation draft lookup is scoped to its author", async () => {
+  const calls = [];
+  const manager = { query: async (sql, parameters) => { calls.push({ sql, parameters }); return []; } };
+  assert.equal(await service(manager).current("session"), null);
+  assert.match(calls[0].sql, /organization_id=\$1 and created_by=\$2 and status='draft'/);
+  assert.equal(calls[0].parameters[0], organizationId);
+  assert.match(calls[0].parameters[1], /^[0-9a-f-]{36}$/);
+});
+
+test("published custom elements are available to validation compilation", async () => {
+  const customId = "opentriage.org.Org32000000000040008000000000000001_WorkflowCheckOct01";
+  const manager = { query: async (sql) => {
+    if (sql.includes("provenance->'customElementDefinitions'")) return [{ definitions: [{
+      id: randomUUID(), namespace: "opentriage.org", slug: "Org32000000000040008000000000000001_WorkflowCheckOct01",
+      title: "Workflow check", definition: "Test field", datatype: "string", recurrence: "single",
+      usage: "Optional", constraints: {}, identifying: false,
+    }] }];
+    if (sql.includes("from catalog.element_definition")) return [];
+    if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("from (")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const catalog = await service(manager).validationCatalog(manager, randomUUID());
+  const compiled = compileValidationRule({ ...sourceRule, primaryTargetElementId: customId,
+    source: `require present("${customId}")` }, versionId, catalog);
+  assert.deepEqual(compiled.diagnostics, []);
+  assert.equal(compiled.compiled?.primaryTarget.elementId, customId);
+});
 
 test("discard deletes only an organization-scoped draft at its expected revision", async () => {
   const capabilities = [];
@@ -35,8 +66,8 @@ test("discard deletes only an organization-scoped draft at its expected revision
   } };
   await service(manager, capabilities).delete("session", versionId, { expectedRevision: 2 });
   assert.deepEqual(capabilities, ["validation:write"]);
-  assert.match(calls.at(-1).sql, /organization_id=\$2 and status='draft' and revision=\$3/);
-  assert.deepEqual(calls.at(-1).parameters, [versionId, organizationId, 2]);
+  assert.match(calls.at(-1).sql, /organization_id=\$2 and created_by=\$4 and status='draft' and revision=\$3/);
+  assert.deepEqual(calls.at(-1).parameters, [versionId, organizationId, 2, calls[1].parameters[2]]);
   await assert.rejects(service(manager).delete("session", versionId, { expectedRevision: 1 }), ConflictException);
   const missing = { query: async (sql) => sql.includes("pg_advisory_xact_lock") ? [] : [] };
   await assert.rejects(service(missing).delete("session", versionId, { expectedRevision: 2 }), NotFoundException);

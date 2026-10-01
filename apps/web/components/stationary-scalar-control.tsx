@@ -1,7 +1,7 @@
 "use client";
 
 import type { EncounterValue, ScalarEncounterValue } from "@open-triage/contracts";
-import React, { useId, useSyncExternalStore } from "react";
+import React, { useId, useState, useSyncExternalStore } from "react";
 import type { ChangeEvent } from "react";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { canonicalDecimal, displayDecimal, useRegionalFormat } from "../app/regional-format";
@@ -38,6 +38,7 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
   const id = useId();
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
+  const [exceptionalOpen, setExceptionalOpen] = useState(false);
   const shownValue = inputValue ?? (presentation.family === "numeric"
     ? displayDecimal(String(value?.lexical ?? value?.value ?? ""), region) : value?.lexical ?? value?.value ?? "");
   const commit = (input: string | boolean) => onBlur?.(presentation.family === "numeric" && typeof input === "string"
@@ -52,13 +53,19 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
     reader.addEventListener("load", () => onInput(String(reader.result).split(",", 2)[1] ?? ""));
     reader.readAsDataURL(file);
   };
-  const exceptionalControl = exceptionalChoices.length && onExceptionalChange ? <select
-    aria-label={`${presentation.label} unavailable value`} disabled={disabled}
-    value={exceptionalValue?.notValue?.code ?? ""}
-    onChange={(event) => onExceptionalChange(event.target.value || undefined)}>
-    <option value="">{typeof document !== "undefined" && document.documentElement.lang === "sv" ? "Inget NOT-värde" : "No NOT value"}</option>
-    {exceptionalChoices.map(({ code, label }) => <option value={code} key={code}>{label}</option>)}
-  </select> : exceptionalValue ? <output>{exceptionalValue.notValue?.display ?? exceptionalValue.notValue?.code}</output> : null;
+  const exceptionalControl = exceptionalChoices.length && onExceptionalChange ? <div className="stationary-exceptional-picker">
+    <button className={`null-value-trigger${exceptionalValue ? " active" : ""}`} type="button"
+      aria-label={`Set unavailable value for ${presentation.label}`} aria-expanded={exceptionalOpen}
+      disabled={disabled} onClick={() => setExceptionalOpen((open) => !open)}>×</button>
+    {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${presentation.label} unavailable values`}>
+      {exceptionalChoices.map(({ code, label }) => <button type="button" role="menuitem" key={code} onClick={() => {
+        onExceptionalChange(code); setExceptionalOpen(false);
+      }}>{label}</button>)}
+      {exceptionalValue && <button type="button" role="menuitem" onClick={() => {
+        onExceptionalChange(undefined); setExceptionalOpen(false);
+      }}>Clear unavailable value</button>}
+    </div>}
+  </div> : exceptionalValue ? <output>{exceptionalValue.notValue?.display ?? exceptionalValue.notValue?.code}</output> : null;
   if (presentation.family === "datetime") {
     const candidate = inputValue ?? value?.value;
     // Server-render and first hydration use the source clock; after mount the
@@ -67,7 +74,7 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
     const selected = parts(String(candidate ?? ""));
     const initial = parts(defaultDateTime ?? "");
     const control = <>
-      <TimePicker
+      <div className="stationary-scalar-value-row"><TimePicker
         label={presentation.label}
         date={selected?.date}
         value={selected?.time ?? ""}
@@ -84,7 +91,7 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
           onInput(stationaryLocalDateTimeInput(date, time, zone, selectedInstant));
         }}
       />
-      {exceptionalControl}
+      {exceptionalControl}</div>
       {findings.length > 0 && <small className="stationary-validation-message error" id={errorId} role="alert">{findings.map(({ message }) => message).join(" ")}</small>}
     </>;
     if (embedded) return <div className={`stationary-embedded-control stationary-datetime-control${findings.length ? " stationary-validation-state error" : ""}`} data-occurrence-id={value?.occurrenceId}>{control}</div>;
@@ -107,7 +114,7 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
     onBlur: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => commit(event.target.value),
   };
   const control = <>
-      {presentation.elementId === "eNarrative.01" ? <textarea {...commonTextProperties} rows={5} /> : <input
+      <div className="stationary-scalar-value-row">{presentation.elementId === "eNarrative.01" ? <textarea {...commonTextProperties} rows={5} /> : <input
         autoFocus={initialFocus}
         aria-label={presentation.label}
         type={presentation.inputType}
@@ -127,7 +134,7 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
           : onInput(presentation.family === "boolean" ? event.target.checked : event.target.value)}
         onBlur={(event) => commit(presentation.family === "boolean" ? event.target.checked : event.target.value)}
       />}
-      {exceptionalControl}
+      {exceptionalControl}</div>
       {findings.length > 0 && <small className="stationary-validation-message error" id={errorId} role="alert">{findings.map(({ message }) => message).join(" ")}</small>}
     </>;
   if (embedded) return <div className={`stationary-embedded-control${findings.length ? " stationary-validation-state error" : ""}`} data-occurrence-id={value?.occurrenceId}>{control}</div>;

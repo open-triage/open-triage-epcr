@@ -159,6 +159,28 @@ export interface CompiledValidationBundle {
   rules: CompiledValidationRule[];
 }
 
+/** A pinned, unconditional minimum or presence rule owns an equivalent form/catalog requirement.
+ * Per-instance requirements cannot be replaced by a document-wide rule when several instances exist.
+ */
+export function minimumRuleCoversRequirement(
+  bundle: CompiledValidationBundle | undefined,
+  elementId: string,
+  minimum: number,
+  requiredSeverity: "error" | "warning",
+  executionTarget: ValidationExecutionTarget,
+  groupId?: string,
+  allowUnscoped = true,
+): boolean {
+  if (!bundle || minimum <= 0) return false;
+  return bundle.rules.some((rule) => rule.enabled && rule.executionTargets.includes(executionTarget) &&
+    !rule.applicability && (rule.scope ? rule.scope.groupId === groupId : allowUnscoped) &&
+    (rule.severity === "error" || requiredSeverity === "warning" && rule.severity === "warning") &&
+    rule.primaryTarget.elementId === elementId && (
+      rule.assertion.operator === "minimum-occurrences" && rule.assertion.elementId === elementId &&
+        rule.assertion.count >= minimum ||
+      rule.assertion.operator === "present" && rule.assertion.elementId === elementId && minimum === 1));
+}
+
 /** Demographic (d*) NEMSIS elements belong to the agency dataset, not a patient care report. */
 export function isNemsisDemographicElementId(elementId: string): boolean {
   return /^d[A-Za-z][A-Za-z0-9]*\.\d+$/.test(elementId);
@@ -694,9 +716,6 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     message: "English rule name or message is missing" });
   if (localized && (!localized.sv?.name?.trim() || !localized.sv.message?.trim())) diagnostics.push({ severity: "warning", code: "wording", ruleId: rule.id,
     message: "Swedish rule name or message is missing" });
-  if (localized?.sv?.reviewedSource && (localized.sv.reviewedSource.name !== rule.name ||
-      localized.sv.reviewedSource.message !== rule.message)) diagnostics.push({ severity: "warning", code: "wording", ruleId: rule.id,
-    message: "Swedish wording needs English source review" });
   const parameters = rule.messageParameters;
   if (parameters !== undefined && (typeof parameters !== "object" || parameters === null || Array.isArray(parameters) ||
       Object.entries(parameters).some(([key, value]) => !/^[A-Za-z][A-Za-z0-9_]*$/.test(key) ||

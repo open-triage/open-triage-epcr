@@ -59,8 +59,8 @@ function id(document: EncounterDocument, identity: string): string {
 
 function patternedScalar(pattern: string | undefined): string | undefined {
   if (!pattern) return undefined;
-  if (pattern.includes("[0-9]{5}|")) return "12345";
-  if (pattern.includes("90(\\.[0]{1,6})?")) return "40.7128,-74.0060";
+  if (pattern.includes("[0-9]{5}|")) return "10002";
+  if (pattern.includes("90(\\.[0]{1,6})?")) return "40.71026,-73.98806";
   if (pattern.includes("[C-HJ-NP-X]")) return "18TWL12345678";
   if (pattern.includes("[2-9][0-9][0-9]-")) return "212-555-0100";
   if (pattern === "[0-9]{9}") return "123456789";
@@ -118,13 +118,14 @@ function demoValue(document: EncounterDocument, element: NemsisDataElement, inst
     return scalarEncounterValue(element, input, occurrenceId, attributes);
   }
   const option = resolved.permissibleValues.find(({ code }) => code === demoCodes[element.id]) ?? resolved.permissibleValues[0];
+  if (!option) throw new Error(`No bundled demo choice for ${element.id}`);
   const candidateSystem = option && "codeSystem" in option ? option.codeSystem : resolved.externalCodeSystems[0]?.url;
   const system = typeof candidateSystem === "string" ? candidateSystem : undefined;
   return {
     kind: "coded",
     occurrenceId,
-    code: option?.code ?? "DEMO",
-    display: option?.label ?? "Synthetic demo value",
+    code: option.code,
+    display: option.label,
     ...(system ? { system } : {}),
     attributes: demoAttributes(),
   };

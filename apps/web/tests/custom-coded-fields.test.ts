@@ -38,6 +38,15 @@ test("custom codes and exceptional attributes survive document and draft round t
   assert.equal(customCodedValue(loadEncounterDocument(negative), definition)?.kind, "pertinent-negative");
 });
 
+test("custom codes create the root occurrence in a new patient report", () => {
+  const blank = { ...syntheticEncounter.document, groups: [] };
+  const next = setCustomCodedValue(blank, definition, { kind: "coded", occurrenceId: "local-choice",
+    code: "A", system: definition.codeSystem, display: "Alert" });
+  assert.equal(customCodedValue(next, definition)?.kind, "coded");
+  assert.equal(next.groups[0]?.id, "PatientCareReportGroup");
+  assert.equal(next.groups[0]?.instances.length, 1);
+});
+
 test("clinical picker shows the form's ordered codes and enabled exceptional values", () => {
   const field = { key: "finding", source: { kind: "custom" as const, elementDefinitionId: definition.id },
     choicePolicy: [{ kind: "not-value" as const, code: "7701003" },

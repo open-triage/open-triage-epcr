@@ -15,10 +15,10 @@ export function TranslationIssueSummary({ issues, filter, onFilter, onNavigate }
   const visible = filter === "all" ? issues : issues.filter((issue) => issue.kind === filter);
   const count = (kind: TranslationIssue["kind"]) => issues.filter((issue) => issue.kind === kind).length;
   return <section aria-label={t("admin.translationDiagnostics")}>
-    <p role="status">{t("admin.englishMissingEnglish", { english: count("english"), swedish: count("agency"), review: count("review") })}</p>
+    <p role="status">{t("admin.englishMissingEnglish", { english: count("english"), swedish: count("agency") })}</p>
     <label><AdminText messageKey="admin.showWordingIssues" /> <select value={filter} onChange={(event) => onFilter(event.target.value)}>
       <option value="all"><AdminText messageKey="admin.allIssues" /></option><option value="english"><AdminText messageKey="admin.missingEnglish" /></option>
-      <option value="agency"><AdminText messageKey="admin.missingSwedish" /></option><option value="review"><AdminText messageKey="admin.needsReview" /></option>
+      <option value="agency"><AdminText messageKey="admin.missingSwedish" /></option>
     </select></label>
     {visible.length > 0 && <ul>{visible.slice(0, limit).map((issue, index) => <li key={`${issue.id}:${issue.field}:${issue.kind}:${index}`}>
       <button type="button" onClick={() => onNavigate(issue)}>{issue.id} · {issue.field}: {t(issue.message)}</button>

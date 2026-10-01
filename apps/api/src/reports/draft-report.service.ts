@@ -89,8 +89,8 @@ type SingletonTargetStateRow = DraftTargetStateRow & {
 type OpenCallRow = {
   report_id: string;
   status: "draft" | "signed";
-  call_number: string;
-  dispatched_at: Date | string;
+  call_number: string | null;
+  dispatched_at: Date | string | null;
   dispatch_reason: string | null;
   dispatch_priority_code: string | null;
   dispatch_priority_display: string | null;
@@ -223,8 +223,8 @@ export class DraftReportService {
           from app_identity.active_configuration_bundle active
           join forms.form_version fv on fv.id=active.form_version_id and fv.status='published'
           join forms.form f on f.id=fv.form_id and f.organization_id=active.organization_id
-          where active.organization_id = $2 and f.id = $1
-        `, [command.formId, command.organizationId]);
+          where active.organization_id = $2 and ($1::uuid is null or f.id = $1)
+        `, [command.formId ?? null, command.organizationId]);
         if (!active[0]) throw new NotFoundException("No active published form version was found for the organization");
         if (!active[0].agency_demographic_version_id) {
           throw new UnprocessableEntityException("No effective agency demographic version matches the active form catalog");
@@ -800,13 +800,13 @@ export class DraftReportService {
              organization.deployment_timezone as agency_time_zone,
              r.updated_at as last_saved_at, r.expires_at,
              r.revision, r.form_version_id, r.catalog_release_id,
-             (r.synthetic and ca.synthetic and ca.synthetic_generated_by = $2) as demo_mutable,
+             (r.synthetic and coalesce(ca.synthetic, false) and ca.synthetic_generated_by = $2) as demo_mutable,
              count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
                as validation_error_count
       from clinical.report r
-      join clinical.call_assignment ca
+      left join clinical.call_assignment ca
         on ca.organization_id = r.organization_id and ca.report_id = r.id
-      join app_identity.operational_unit ou on ou.id = ca.unit_id
+      left join app_identity.operational_unit ou on ou.id = ca.unit_id
       join app_identity.organization organization on organization.id = r.organization_id
       left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
       left join clinical.validation_finding vf on vf.report_id = r.id
@@ -817,8 +817,8 @@ export class DraftReportService {
     return {
       openCalls: rows.filter((row) => row.status === "draft").map((row) => ({
         reportId: row.report_id,
-        callNumber: row.call_number,
-        dispatchedAt: new Date(row.dispatched_at).toISOString(),
+        callNumber: row.call_number ?? `New patient · ${row.report_id.slice(0, 8)}`,
+        ...(row.dispatched_at ? { dispatchedAt: new Date(row.dispatched_at).toISOString() } : {}),
         dispatchReason: row.dispatch_reason,
         dispatchPriority: row.dispatch_priority_code ? {
           code: row.dispatch_priority_code,
@@ -853,8 +853,8 @@ export class DraftReportService {
         details.validationVersionId, details.validationCompiledSha256
       );
       const calls = await manager.query<Array<{
-        call_number: string;
-        dispatched_at: Date | string;
+        call_number: string | null;
+        dispatched_at: Date | string | null;
         dispatch_reason: string | null;
         dispatch_priority_code: string | null;
         dispatch_priority_display: string | null;
@@ -879,9 +879,9 @@ export class DraftReportService {
                r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id,
                (r.synthetic and ca.synthetic and ca.synthetic_generated_by = $3) as demo_mutable,
                r.expires_at
-        from clinical.call_assignment ca
-        join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
-        join app_identity.operational_unit ou on ou.id = ca.unit_id
+        from clinical.report r
+        left join clinical.call_assignment ca on ca.report_id = r.id and ca.organization_id = r.organization_id
+        left join app_identity.operational_unit ou on ou.id = ca.unit_id
         join app_identity.organization organization on organization.id = r.organization_id
         left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
         where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
@@ -889,8 +889,8 @@ export class DraftReportService {
       `, [reportId, session.organization.id, session.user.id]);
       if (!calls[0]) throw new NotFoundException(`Report ${reportId} was not found`);
       return {
-        callNumber: calls[0].call_number,
-        dispatchedAt: new Date(calls[0].dispatched_at).toISOString(),
+        callNumber: calls[0].call_number ?? `New patient · ${reportId.slice(0, 8)}`,
+        ...(calls[0].dispatched_at ? { dispatchedAt: new Date(calls[0].dispatched_at).toISOString() } : {}),
         dispatchReason: calls[0].dispatch_reason,
         dispatchPriority: calls[0].dispatch_priority_code ? {
           code: calls[0].dispatch_priority_code,
@@ -1058,7 +1058,7 @@ export class DraftReportService {
                r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id,
                settings.revision as media_settings_revision,
                settings.report_media_allowance_bytes, settings.image_media_limit_bytes
-        from clinical.report r join clinical.call_assignment ca
+        from clinical.report r left join clinical.call_assignment ca
           on ca.report_id = r.id and ca.organization_id = r.organization_id
         join app_identity.agency_settings settings on settings.organization_id = r.organization_id
         where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3

@@ -1,3 +1,5 @@
+import { FormPublicationController } from "../forms/form-publication.controller.js";
+import { CanonicalPackageService } from "./canonical-package.service.js";
 import { Module } from "@nestjs/common";
 import { SessionsModule } from "../sessions/sessions.module.js";
 import { FormsModule } from "../forms/forms.module.js";
@@ -18,8 +20,8 @@ import { AgencySettingsService } from "./agency-settings.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
-  controllers: [AdminController],
-  providers: [AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
+  controllers: [AdminController, FormPublicationController],
+  providers: [CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
     AgencySettingsService],

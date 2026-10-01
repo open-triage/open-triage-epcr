@@ -93,6 +93,9 @@ test("a selected published review-only version evaluates one current report and 
   assert.equal(result.findings[0].message, "Berättelsen behöver granskas");
   assert.ok(calls.some(({ sql }) => sql.includes("insert into clinical.validation_review_evaluation")));
   assert.ok(calls.every(({ sql }) => !sql.includes("clinical.validation_finding")));
+  const reportRead = calls.find(({ sql }) => sql.includes("from clinical.report") && sql.includes("organization_id=$2"));
+  assert.match(reportRead.sql, /status='signed' or documenting_user_id=\$3/);
+  assert.deepEqual(reportRead.parameters, [reportId, organizationId, userId]);
 
   const document = { groups: [] };
   assert.deepEqual(evaluateValidationBundle(bundle, document, "live", { timestamp: "2026-09-18T12:00:00Z" }), []);
@@ -154,7 +157,7 @@ test("review evaluation authorizes before data access and scopes report/version 
   await subject(manager).evaluate("session", reportId, { validationVersionId: versionId });
   const reportRead = calls.find(({ sql }) => sql.includes("from clinical.report") && sql.includes("organization_id=$2"));
   const versionRead = calls.find(({ sql }) => sql.includes("from validation.version"));
-  assert.deepEqual(reportRead.parameters, [reportId, organizationId]);
+  assert.deepEqual(reportRead.parameters, [reportId, organizationId, userId]);
   assert.deepEqual(versionRead.parameters, [versionId, organizationId, catalogReleaseId]);
 });
 

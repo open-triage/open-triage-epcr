@@ -6,7 +6,7 @@ pinned XSD and machine-readable data-dictionary inputs, provenance, and
 source-audit instructions are documented in `nemsis-3.5.1-sources/README.md`.
 The application imports this bundled JSON through `nemsis-data-model.ts`; it
 does not contact NEMSIS at runtime. The versioned
-`../../../../defines/catalog/schema_nemsis-3.5.1.json` file is the authored JSON Schema contract that validates the canonical catalog.
+`../../../../packages/contracts/catalog.schema-1.0.0.json` file is the authored JSON Schema contract that validates the canonical catalog.
 
 Element structure, datatypes, constraints, cardinality, NV/PN semantics, inline
 enumerations, and official defined or suggested lists all live in this one
@@ -14,6 +14,12 @@ catalog. Medication and procedure search project their options directly from
 the applicable elements and bundled lists. Provenance and SHA-256 checksums for
 every pinned upstream source are recorded in the catalog itself; there are no
 separate application-owned medication or procedure catalogs.
+
+The catalog also bundles eight non-exhaustive application-curated US starter
+lists for external-code fields without an official bundled list. Their pinned
+inputs and source references are in [us-starter-lists.md](us-starter-lists.md).
+Populate uses these choices for coherent US defaults; it never invents an
+external code when a list is missing.
 
 NEMSIS and SNOMED CT terminology artifacts remain subject to their respective
 third-party terms, as noted by the repository licensing policy.

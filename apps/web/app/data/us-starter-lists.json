@@ -1,0 +1,713 @@
+[
+  {
+    "id": "us-states",
+    "name": "US States and Territories",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "dAgency.04",
+      "eDisposition.05",
+      "ePatient.08",
+      "ePatient.20",
+      "ePayment.14",
+      "ePayment.28",
+      "ePayment.36",
+      "eScene.18"
+    ],
+    "applicableDatatypes": [
+      "ANSIStateCode"
+    ],
+    "systems": [
+      {
+        "id": "ANSI-STATE",
+        "label": "ANSI State Codes",
+        "url": "https://www.census.gov/library/reference/code-lists/ansi.html"
+      }
+    ],
+    "valueCount": 56,
+    "values": [
+      {
+        "code": "36",
+        "label": "New York",
+        "sourceLabel": "New York",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "01",
+        "label": "Alabama",
+        "sourceLabel": "Alabama",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "02",
+        "label": "Alaska",
+        "sourceLabel": "Alaska",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "04",
+        "label": "Arizona",
+        "sourceLabel": "Arizona",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "05",
+        "label": "Arkansas",
+        "sourceLabel": "Arkansas",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "06",
+        "label": "California",
+        "sourceLabel": "California",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "08",
+        "label": "Colorado",
+        "sourceLabel": "Colorado",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "09",
+        "label": "Connecticut",
+        "sourceLabel": "Connecticut",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "10",
+        "label": "Delaware",
+        "sourceLabel": "Delaware",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "11",
+        "label": "District of Columbia",
+        "sourceLabel": "District of Columbia",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "12",
+        "label": "Florida",
+        "sourceLabel": "Florida",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "13",
+        "label": "Georgia",
+        "sourceLabel": "Georgia",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "15",
+        "label": "Hawaii",
+        "sourceLabel": "Hawaii",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "16",
+        "label": "Idaho",
+        "sourceLabel": "Idaho",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "17",
+        "label": "Illinois",
+        "sourceLabel": "Illinois",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "18",
+        "label": "Indiana",
+        "sourceLabel": "Indiana",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "19",
+        "label": "Iowa",
+        "sourceLabel": "Iowa",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "20",
+        "label": "Kansas",
+        "sourceLabel": "Kansas",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "21",
+        "label": "Kentucky",
+        "sourceLabel": "Kentucky",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "22",
+        "label": "Louisiana",
+        "sourceLabel": "Louisiana",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "23",
+        "label": "Maine",
+        "sourceLabel": "Maine",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "24",
+        "label": "Maryland",
+        "sourceLabel": "Maryland",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "25",
+        "label": "Massachusetts",
+        "sourceLabel": "Massachusetts",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "26",
+        "label": "Michigan",
+        "sourceLabel": "Michigan",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "27",
+        "label": "Minnesota",
+        "sourceLabel": "Minnesota",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "28",
+        "label": "Mississippi",
+        "sourceLabel": "Mississippi",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "29",
+        "label": "Missouri",
+        "sourceLabel": "Missouri",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "30",
+        "label": "Montana",
+        "sourceLabel": "Montana",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "31",
+        "label": "Nebraska",
+        "sourceLabel": "Nebraska",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "32",
+        "label": "Nevada",
+        "sourceLabel": "Nevada",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "33",
+        "label": "New Hampshire",
+        "sourceLabel": "New Hampshire",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "34",
+        "label": "New Jersey",
+        "sourceLabel": "New Jersey",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "35",
+        "label": "New Mexico",
+        "sourceLabel": "New Mexico",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "37",
+        "label": "North Carolina",
+        "sourceLabel": "North Carolina",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "38",
+        "label": "North Dakota",
+        "sourceLabel": "North Dakota",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "39",
+        "label": "Ohio",
+        "sourceLabel": "Ohio",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "40",
+        "label": "Oklahoma",
+        "sourceLabel": "Oklahoma",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "41",
+        "label": "Oregon",
+        "sourceLabel": "Oregon",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "42",
+        "label": "Pennsylvania",
+        "sourceLabel": "Pennsylvania",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "44",
+        "label": "Rhode Island",
+        "sourceLabel": "Rhode Island",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "45",
+        "label": "South Carolina",
+        "sourceLabel": "South Carolina",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "46",
+        "label": "South Dakota",
+        "sourceLabel": "South Dakota",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "47",
+        "label": "Tennessee",
+        "sourceLabel": "Tennessee",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "48",
+        "label": "Texas",
+        "sourceLabel": "Texas",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "49",
+        "label": "Utah",
+        "sourceLabel": "Utah",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "50",
+        "label": "Vermont",
+        "sourceLabel": "Vermont",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "51",
+        "label": "Virginia",
+        "sourceLabel": "Virginia",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "53",
+        "label": "Washington",
+        "sourceLabel": "Washington",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "54",
+        "label": "West Virginia",
+        "sourceLabel": "West Virginia",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "55",
+        "label": "Wisconsin",
+        "sourceLabel": "Wisconsin",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "56",
+        "label": "Wyoming",
+        "sourceLabel": "Wyoming",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "60",
+        "label": "American Samoa",
+        "sourceLabel": "American Samoa",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "66",
+        "label": "Guam",
+        "sourceLabel": "Guam",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "69",
+        "label": "Northern Mariana Islands",
+        "sourceLabel": "Northern Mariana Islands",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "72",
+        "label": "Puerto Rico",
+        "sourceLabel": "Puerto Rico",
+        "codeSystem": "ANSI-STATE"
+      },
+      {
+        "code": "78",
+        "label": "U.S. Virgin Islands",
+        "sourceLabel": "U.S. Virgin Islands",
+        "codeSystem": "ANSI-STATE"
+      }
+    ]
+  },
+  {
+    "id": "us-counties",
+    "name": "US Starter Counties",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "eDisposition.06",
+      "ePatient.07",
+      "eScene.21"
+    ],
+    "applicableDatatypes": [
+      "ANSICountyCode"
+    ],
+    "systems": [
+      {
+        "id": "ANSI-COUNTY",
+        "label": "ANSI County Codes",
+        "url": "https://www.census.gov/library/reference/code-lists/ansi.html"
+      }
+    ],
+    "valueCount": 7,
+    "values": [
+      {
+        "code": "36061",
+        "label": "New York County, NY",
+        "sourceLabel": "New York County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      },
+      {
+        "code": "36005",
+        "label": "Bronx County, NY",
+        "sourceLabel": "Bronx County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      },
+      {
+        "code": "36047",
+        "label": "Kings County, NY",
+        "sourceLabel": "Kings County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      },
+      {
+        "code": "36081",
+        "label": "Queens County, NY",
+        "sourceLabel": "Queens County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      },
+      {
+        "code": "36085",
+        "label": "Richmond County, NY",
+        "sourceLabel": "Richmond County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      },
+      {
+        "code": "36001",
+        "label": "Albany County, NY",
+        "sourceLabel": "Albany County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      },
+      {
+        "code": "36029",
+        "label": "Erie County, NY",
+        "sourceLabel": "Erie County, NY",
+        "codeSystem": "ANSI-COUNTY"
+      }
+    ]
+  },
+  {
+    "id": "us-cities",
+    "name": "US Starter Cities",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "eDisposition.04",
+      "ePatient.06",
+      "ePayment.13",
+      "ePayment.27",
+      "ePayment.35",
+      "eScene.17"
+    ],
+    "applicableDatatypes": [
+      "CityGnisCode",
+      "CityGnisCodePayment"
+    ],
+    "systems": [
+      {
+        "id": "GNIS",
+        "label": "Geographic Names Information System",
+        "url": "https://www.usgs.gov/us-board-on-geographic-names/download-gnis-data"
+      }
+    ],
+    "valueCount": 3,
+    "values": [
+      {
+        "code": "2395220",
+        "label": "New York, NY",
+        "sourceLabel": "New York, NY",
+        "codeSystem": "GNIS"
+      },
+      {
+        "code": "978659",
+        "label": "Albany, NY",
+        "sourceLabel": "Albany, NY",
+        "codeSystem": "GNIS"
+      },
+      {
+        "code": "978764",
+        "label": "Buffalo, NY",
+        "sourceLabel": "Buffalo, NY",
+        "codeSystem": "GNIS"
+      }
+    ]
+  },
+  {
+    "id": "us-countries",
+    "name": "US and Neighboring Countries",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "eDisposition.08",
+      "ePatient.10",
+      "ePayment.16",
+      "ePayment.30",
+      "ePayment.38",
+      "eScene.22"
+    ],
+    "applicableDatatypes": [
+      "ANSICountryCode"
+    ],
+    "systems": [
+      {
+        "id": "ANSI-COUNTRY",
+        "label": "ANSI Country Codes",
+        "url": "https://www.census.gov/library/reference/code-lists/ansi.html"
+      }
+    ],
+    "valueCount": 3,
+    "values": [
+      {
+        "code": "US",
+        "label": "United States",
+        "sourceLabel": "United States",
+        "codeSystem": "ANSI-COUNTRY"
+      },
+      {
+        "code": "CA",
+        "label": "Canada",
+        "sourceLabel": "Canada",
+        "codeSystem": "ANSI-COUNTRY"
+      },
+      {
+        "code": "MX",
+        "label": "Mexico",
+        "sourceLabel": "Mexico",
+        "codeSystem": "ANSI-COUNTRY"
+      }
+    ]
+  },
+  {
+    "id": "us-census-tracts",
+    "name": "US Starter Census Tracts",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "ePatient.11",
+      "eScene.23"
+    ],
+    "applicableDatatypes": [
+      "CensusTracts"
+    ],
+    "systems": [
+      {
+        "id": "CENSUS-TRACT",
+        "label": "US Census Tract GEOID",
+        "url": "https://www.census.gov/programs-surveys/geography/guidance/geo-identifiers.html"
+      }
+    ],
+    "valueCount": 3,
+    "values": [
+      {
+        "code": "36061000600",
+        "label": "Census Tract 6, New York County, NY",
+        "sourceLabel": "Census Tract 6, New York County, NY",
+        "codeSystem": "CENSUS-TRACT"
+      },
+      {
+        "code": "36061000700",
+        "label": "Census Tract 7, New York County, NY",
+        "sourceLabel": "Census Tract 7, New York County, NY",
+        "codeSystem": "CENSUS-TRACT"
+      },
+      {
+        "code": "36001000100",
+        "label": "Census Tract 1, Albany County, NY",
+        "sourceLabel": "Census Tract 1, Albany County, NY",
+        "codeSystem": "CENSUS-TRACT"
+      }
+    ]
+  },
+  {
+    "id": "us-current-medications",
+    "name": "US Starter Current Medications",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "eHistory.12"
+    ],
+    "applicableDatatypes": [
+      "Medication"
+    ],
+    "systems": [
+      {
+        "id": "RxNorm",
+        "label": "RxNorm",
+        "url": "https://www.nlm.nih.gov/research/umls/rxnorm/"
+      }
+    ],
+    "valueCount": 3,
+    "values": [
+      {
+        "code": "1191",
+        "label": "Aspirin",
+        "sourceLabel": "aspirin",
+        "codeSystem": "RxNorm"
+      },
+      {
+        "code": "161",
+        "label": "Acetaminophen (Tylenol)",
+        "sourceLabel": "acetaminophen",
+        "codeSystem": "RxNorm"
+      },
+      {
+        "code": "6918",
+        "label": "Metoprolol (Lopressor)",
+        "sourceLabel": "metoprolol",
+        "codeSystem": "RxNorm"
+      }
+    ]
+  },
+  {
+    "id": "us-diagnoses",
+    "name": "US Starter Diagnoses",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "eOutcome.10",
+      "eOutcome.13",
+      "ePayment.51"
+    ],
+    "applicableDatatypes": [
+      "icd10Code"
+    ],
+    "systems": [
+      {
+        "id": "ICD-10-CM",
+        "label": "ICD-10-CM",
+        "url": "https://www.cdc.gov/nchs/icd/icd-10-cm/"
+      }
+    ],
+    "valueCount": 5,
+    "values": [
+      {
+        "code": "I46.9",
+        "label": "Cardiac arrest",
+        "sourceLabel": "Cardiac arrest, cause unspecified",
+        "codeSystem": "ICD-10-CM",
+        "category": "Cardiovascular"
+      },
+      {
+        "code": "R07.9",
+        "label": "Chest pain, NOS",
+        "sourceLabel": "Chest pain, unspecified",
+        "codeSystem": "ICD-10-CM",
+        "category": "Cardiovascular"
+      },
+      {
+        "code": "R06.02",
+        "label": "Shortness of breath",
+        "sourceLabel": "Shortness of breath",
+        "codeSystem": "ICD-10-CM",
+        "category": "Respiratory"
+      },
+      {
+        "code": "R55",
+        "label": "Fainting/collapse",
+        "sourceLabel": "Syncope and collapse",
+        "codeSystem": "ICD-10-CM",
+        "category": "Level of Consciousness"
+      },
+      {
+        "code": "E16.2",
+        "label": "Hypoglycemia",
+        "sourceLabel": "Hypoglycemia, unspecified",
+        "codeSystem": "ICD-10-CM",
+        "category": "Endocrine/Urinary"
+      }
+    ]
+  },
+  {
+    "id": "us-outcome-procedures",
+    "name": "US Starter Outcome Procedures",
+    "classification": "suggested",
+    "publishedAt": "2026-10-01",
+    "exhaustive": false,
+    "applicableElements": [
+      "eOutcome.09",
+      "eOutcome.12"
+    ],
+    "applicableDatatypes": [
+      "icd10CodeOutcomeProcedures"
+    ],
+    "systems": [
+      {
+        "id": "ICD-10-PCS",
+        "label": "ICD-10-PCS",
+        "url": "https://www.cms.gov/medicare/coding-billing/icd-10-codes"
+      }
+    ],
+    "valueCount": 3,
+    "values": [
+      {
+        "code": "5A12012",
+        "label": "Performance of Cardiac Output, Single, Manual",
+        "sourceLabel": "Performance of Cardiac Output, Single, Manual",
+        "codeSystem": "ICD-10-PCS"
+      },
+      {
+        "code": "BW03ZZZ",
+        "label": "Plain Radiography of Chest",
+        "sourceLabel": "Plain Radiography of Chest",
+        "codeSystem": "ICD-10-PCS"
+      },
+      {
+        "code": "BW21ZZZ",
+        "label": "Computerized Tomography (CT Scan) of Abdomen and Pelvis",
+        "sourceLabel": "Computerized Tomography (CT Scan) of Abdomen and Pelvis",
+        "codeSystem": "ICD-10-PCS"
+      }
+    ]
+  }
+]

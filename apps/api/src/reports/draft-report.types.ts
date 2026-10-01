@@ -9,7 +9,8 @@ export interface CreateDraftReportCommand {
   patientId: string;
   organizationId: string;
   documentingUserId: string;
-  formId: string;
+  /** Omit to use the installation’s active form for a new patient report. */
+  formId?: string;
   patientIdentityState: PatientIdentityState;
 }
 

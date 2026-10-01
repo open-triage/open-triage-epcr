@@ -46,17 +46,17 @@ option. It recreates the synthetic demo account but deliberately leaves owner
 bootstrap as a separate, password-prompting operation.
 
 For database-backed demonstration journeys, first apply migrations and create the
-ordinary installation organization. Then seed the two optional fixture accounts:
+ordinary installation organization. Then seed the optional demo fixture account:
 
 ```sh
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
   npm run bootstrap:synthetic -w @open-triage/database
 ```
 
-The command creates only missing `demo.admin` and `demo.clinician` accounts with
-their initial protected roles. Both start with `open-triage-demo` and do not require
-a first-login password change. Replays never reset their passwords, reactivate them,
-or restore roles removed by an owner. The accounts have no authority until the
+The command creates the `demo` account if missing, with the protected Demo role
+and initial password `opentriagedemo`, without requiring a first-login password
+change. Replays never reset its password, reactivate it, or restore roles removed
+by an owner. The account has no authority until the
 organization has a normal installation owner; follow
 [`docs/runbooks/identity-recovery.md`](docs/runbooks/identity-recovery.md) for owner setup.
 

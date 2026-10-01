@@ -110,6 +110,31 @@ function instanceForParent(document: EncounterDocument, groupId: string, parentI
     : instances.find((instance) => instance.parentInstanceId === parentInstanceId);
 }
 
+function appendGroupInstance(document: EncounterDocument, groupId: string, instance: EncounterGroupInstance): EncounterDocument {
+  const index = document.groups.findIndex(({ id }) => id === groupId);
+  if (index < 0) return { ...document, groups: [...document.groups, { id: groupId, instances: [instance] }] };
+  const groups = [...document.groups];
+  const group = groups[index]!;
+  groups[index] = { ...group, instances: [...group.instances, instance] };
+  return { ...document, groups };
+}
+
+/** A New patient report has no dispatch skeleton; create its single PCR ancestry on first edit. */
+function ensurePatientCareReportInstance(document: EncounterDocument, createId: () => string):
+  { readonly document: EncounterDocument; readonly instance: EncounterGroupInstance } | undefined {
+  const existing = document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances ?? [];
+  if (existing.length === 1) return { document, instance: existing[0]! };
+  if (existing.length > 1) return undefined;
+  const dataset = ensureNonRepeatingInstance(document, "EMSDataSet", undefined, createId);
+  let next = dataset.document;
+  const headers = next.groups.find(({ id }) => id === "HeaderGroup")?.instances ?? [];
+  if (headers.length > 1) return undefined;
+  const header = headers[0] ?? { instanceId: createId(), parentInstanceId: dataset.instance.instanceId, elements: [] };
+  if (!headers.length) next = appendGroupInstance(next, "HeaderGroup", header);
+  const instance: EncounterGroupInstance = { instanceId: createId(), parentInstanceId: header.instanceId, elements: [] };
+  return { document: appendGroupInstance(next, "PatientCareReportGroup", instance), instance };
+}
+
 export function ensureNonRepeatingInstance(
   document: EncounterDocument,
   groupId: string,
@@ -124,9 +149,13 @@ export function ensureNonRepeatingInstance(
   if (parent) {
     if (parent.repeating) {
       const parentInstances = next.groups.find(({ id }) => id === parent.id)?.instances ?? [];
-      const chosen = parentInstanceId
+      let chosen = parentInstanceId
         ? parentInstances.find(({ instanceId }) => instanceId === parentInstanceId)
         : parentInstances.length === 1 ? parentInstances[0] : undefined;
+      if (!chosen && !parentInstanceId && parent.id === "PatientCareReportGroup" && parentInstances.length === 0) {
+        const created = ensurePatientCareReportInstance(next, createId);
+        if (created) { next = created.document; chosen = created.instance; }
+      }
       if (!chosen) throw new Error(`${groupId} requires a containing ${parent.id} occurrence`);
       parentInstanceId = chosen.instanceId;
     } else {

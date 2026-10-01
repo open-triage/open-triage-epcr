@@ -1,5 +1,7 @@
 "use client";
 
+import { CanonicalDefinitions } from "./canonical-definitions";
+
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AuthoringVersionOption, FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
@@ -231,6 +233,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
           if (!selectedValidation) return;
           await activate(selectedVersion.id, selectedValidation.id, activationNote);
         })} /></>}
+    <CanonicalDefinitions kind="form" csrfToken={csrfToken} canPublish={canPublish} selectedId={selectedVersionId} hasDraft={Boolean(draft && !published)} />
   </AuthoringVersionWorkspace>;
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingStationaryFormDraft" /></LoadingStatus>;
   if (!draft) return <div className="form-empty">

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put
 import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, PurgedAdminOfflineRecovery, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationHistoryEvent, ValidationRulePage } from "@open-triage/contracts";
 import type { AgencyMediaSettings } from "@open-triage/contracts";
 import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
+import { CanonicalPackageService } from "./canonical-package.service.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
@@ -36,7 +37,29 @@ export class AdminController {
     private readonly rolePackages: RolePackageService,
     private readonly ownershipTransfer: OwnershipTransferService,
     private readonly validations: ValidationAuthoringService,
-    private readonly agencySettings: AgencySettingsService) {}
+    private readonly agencySettings: AgencySettingsService,
+    private readonly canonical: CanonicalPackageService) {}
+
+  @Get("canonical/:kind")
+  canonicalFiles(@Param("kind") kind: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string) {
+    return this.canonical.list(sessionToken(request, authorization), kind);
+  }
+
+  @Post("canonical/:kind/import")
+  importCanonical(@Param("kind") kind: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string) {
+    return this.canonical.import(sessionToken(request, authorization), kind, body);
+  }
+
+  @Post("canonical/:kind/:id/export")
+  async exportCanonical(@Param("kind") kind: string, @Param("id", new ParseUUIDPipe()) id: string,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string) {
+    const token = sessionToken(request, authorization);
+    const content = await this.canonical.export(token, kind, id);
+    await this.canonical.persist(token, content.kind, id);
+    return content;
+  }
 
   @Get("context")
   context(
@@ -248,9 +271,12 @@ export class AdminController {
   }
 
   @Post("catalog-drafts/:id/publish")
-  publishCatalog(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+  async publishCatalog(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<PublishedCatalog> {
-    return this.catalogs.publish(sessionToken(request, authorization), id, body);
+    const token = sessionToken(request, authorization);
+    const published = await this.catalogs.publish(token, id, body);
+    await this.canonical.persist(token, "catalog", published.id);
+    return published;
   }
 
   @Get("form-draft")
@@ -289,9 +315,12 @@ export class AdminController {
   }
 
   @Post("form-drafts/:id/publish")
-  publishForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+  async publishForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<PublishedStationaryForm> {
-    return this.forms.publish(sessionToken(request, authorization), id, body);
+    const token = sessionToken(request, authorization);
+    const published = await this.forms.publish(token, id, body);
+    await this.canonical.persist(token, "form", published.id);
+    return published;
   }
 
   @Post("form-versions/:id/activate")
@@ -373,9 +402,12 @@ export class AdminController {
   }
 
   @Post("validation-drafts/:id/publish")
-  publishValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+  async publishValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<PublishedValidationVersion> {
-    return this.validations.publish(sessionToken(request, authorization), id, body);
+    const token = sessionToken(request, authorization);
+    const published = await this.validations.publish(token, id, body);
+    await this.canonical.persist(token, "validation", published.id);
+    return published;
   }
 
   @Post("validation-versions/:id/activate")

@@ -10,7 +10,7 @@ const listRoot = path.join(sourceRoot, "lists");
 const dictionaryPath = path.join(sourceRoot, "Combined_ElementDetails_Full.txt");
 const enumerationsPath = path.join(sourceRoot, "Combined_ElementEnumerations.txt");
 const catalogPath = path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
-const schemaPath = path.join(webRoot, "../../defines/catalog/schema_nemsis-3.5.1.json");
+const schemaPath = path.join(webRoot, "../../packages/contracts/catalog.schema-1.0.0.json");
 const releaseBaseUrl = "https://nemsis.org/media/nemsis_v3/release-3.5.1";
 const masterBaseUrl = "https://nemsis.org/media/nemsis_v3/master";
 const retrievalDate = "2026-09-01";
@@ -300,6 +300,7 @@ async function readSources() {
 
 export async function generateCatalog() {
   const { xsdFiles, listFiles, dictionary, enumerations } = await readSources();
+  const starterContent = await readFile(path.join(webRoot, "app/data/us-starter-lists.json"));
   const { index, rows: allRows } = parseDelimited(dictionary);
   for (const header of ["DatasetName", "DatasetType", "ElementNumber", "ElementName", "National", "State", "Definition", "Usage", "MinOccurs", "MaxOccurs", "DataType", "NVList", "PNList"])
     if (index[header] === undefined) throw new Error(`Data dictionary is missing ${header}`);
@@ -321,7 +322,8 @@ export async function generateCatalog() {
     values.push({ code: row[enumerationExport.index.Code], label: row[enumerationExport.index.CodeDescription] });
     inlineValues.set(id, values);
   }
-  const bundledLists = listFiles.map(({ specification, content }) => parseBundledList(specification, content));
+  const bundledLists = [...listFiles.map(({ specification, content }) => parseBundledList(specification, content)),
+    ...JSON.parse(starterContent.toString("utf8"))];
   const listsByElement = new Map();
   for (const list of bundledLists) for (const id of list.applicableElements) {
     if (!dictionaryIds.has(id)) continue;
@@ -357,7 +359,10 @@ export async function generateCatalog() {
     const elementInlineValues = inlineValues.get(id) ?? [];
     const bundledListIds = listsByElement.get(id) ?? [];
     const externalSystemNames = new Set(externalDatatypeSystems[sourceDatatype] ?? []);
-    for (const listId of bundledListIds) for (const system of bundledLists.find((list) => list.id === listId).systems) externalSystemNames.add(system.label);
+    for (const listId of bundledListIds) for (const system of bundledLists.find((list) => list.id === listId).systems) {
+      const name = Object.keys(codeSystems).find((key) => codeSystems[key].id === system.id) ?? system.label;
+      externalSystemNames.add(name);
+    }
     let valueSource;
     if (externalSystemNames.size) valueSource = { kind: "external-code-system", exhaustive: false, systems: [...externalSystemNames].map((name) => codeSystems[name] ?? { id: name, label: name, url: "" }), bundledListIds };
     else if (bundledListIds.length) valueSource = { kind: "bundled-list", exhaustive: false, bundledListIds };
@@ -379,13 +384,14 @@ export async function generateCatalog() {
   }).sort(elementOrder);
 
   const sourceEntries = [
+    { role: "application-suggested-lists", path: "us-starter-lists.json", url: "us-starter-lists.md", content: starterContent },
     { role: "data-dictionary", path: "nemsis-3.5.1-sources/Combined_ElementDetails_Full.txt", url: `${releaseBaseUrl}/DataDictionary/Ancillary/DEMEMS/Combined_ElementDetails_Full.txt`, content: dictionary },
     { role: "element-enumerations", path: "nemsis-3.5.1-sources/Combined_ElementEnumerations.txt", url: `${releaseBaseUrl}/DataDictionary/Ancillary/DEMEMS/Combined_ElementEnumerations.txt`, content: enumerations },
     ...xsdFiles.map((source) => ({ role: "xsd", path: `nemsis-3.5.1-sources/${source.relativePath}`, url: `${releaseBaseUrl}/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/${path.basename(source.relativePath)}`, content: source.content })),
     ...listFiles.map(({ specification, content }) => ({ role: `${specification.classification}-list`, path: `nemsis-3.5.1-sources/lists/${specification.filename}`, url: `${masterBaseUrl}/${specification.remotePath}`, content })),
   ].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const catalog = {
-    $schema: "./schema_nemsis-3.5.1.json", schemaVersion: "1.0.0",
+    $schema: "../../packages/contracts/catalog.schema-1.0.0.json", schemaVersion: "1.0.0",
     catalog: "nemsis-ems-data-model", release: "3.5.1", dataset: "EMSDataSet", elementCount: elements.length,
     statistics: {
       inlineEnumerationElements: inlineValues.size,

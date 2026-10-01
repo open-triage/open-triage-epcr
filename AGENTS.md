@@ -22,8 +22,8 @@ env -u PORT npm run dev -w @open-triage/web
 The database-backed app is then available at `http://localhost:3000`, with the
 API at `http://localhost:3001`.
 
-After creating the normal demonstration organization, seed the two fictional,
-idempotent local fixture accounts before using the app:
+After creating the normal demonstration organization, seed the fictional,
+idempotent local `demo` / `opentriagedemo` fixture account before using the app:
 
 ```sh
 set -a
@@ -34,7 +34,7 @@ npm run bootstrap:synthetic -w @open-triage/database
 
 The bootstrap does not create an organization or installation owner, and it
 never resets an existing fixture account. Complete ordinary owner setup before
-the accounts receive application capabilities.
+the account receives application capabilities.
 
 Confirm the API is ready with `GET http://localhost:3001/api/health`. A successful
 demo login followed by `GET /api/calls/assigned` confirms the seeded database

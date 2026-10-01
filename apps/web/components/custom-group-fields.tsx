@@ -3,6 +3,7 @@
 import type { CatalogDraftCustomGroup, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FormDraftField } from "@open-triage/contracts";
 import React from "react";
 import { RepeatedCustomFields } from "./repeated-custom-fields";
+import { getNemsisGroup } from "../app/nemsis-data-model";
 
 const ROOT = "PatientCareReportGroup";
 
@@ -32,9 +33,9 @@ export function removeCustomGroupInstance(document: EncounterDocument, definitio
 
 function parentLabel(parent: EncounterGroupInstance, target: string | undefined, language: string): string {
   if (!target) return language === "sv" ? "Patientrapport" : "Patient report";
-  const kind = target === "eMedications.MedicationGroup"
-    ? language === "sv" ? "Läkemedel" : "Medication"
-    : language === "sv" ? "Bedömning" : "Assessment";
+  const kind = target === "eMedications.MedicationGroup" ? language === "sv" ? "Läkemedel" : "Medication"
+    : target === "eExam.AssessmentGroup" ? language === "sv" ? "Bedömning" : "Assessment"
+      : getNemsisGroup(target)?.name ?? target;
   const value = parent.elements.flatMap((element) => element.values)
     .find((candidate) => candidate.kind === "coded" || candidate.kind === "scalar");
   const detail = value?.kind === "coded" ? value.display || value.code

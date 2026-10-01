@@ -22,6 +22,16 @@ test("standalone custom text keeps its identity through document validation and 
   assert.equal(customTextValue(setCustomTextValue(next, definition, ""), definition), "");
 });
 
+test("custom text creates the root occurrence in a new patient report", () => {
+  const blank = { ...syntheticEncounter.document, groups: [] };
+  const next = setCustomTextValue(blank, definition, "Documented");
+  assert.equal(customTextValue(next, definition), "Documented");
+  assert.equal(next.groups[0]?.id, "PatientCareReportGroup");
+  assert.equal(next.groups[0]?.instances.length, 1);
+  assert.ok(encounterDocumentToDraftMutations("7ab167d8-c730-4f83-a5f6-9b965b9a25ce", next).occurrences
+    .some(({ elementId, value }) => elementId === customTextIdentity(definition) && value?.kind === "text"));
+});
+
 test("custom text usage and constraints surface invalid values", () => {
   assert.ok(customTextFindings(definition, "").length);
   assert.ok(customTextFindings(definition, "x").length);

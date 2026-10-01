@@ -94,7 +94,7 @@ test("initial seeding is replay-safe, discovers the default definition, publishe
   assert.match(seedScript, /status: "already-active"/);
   assert.match(seedScript, /insert into validation\.version/);
   assert.match(seedScript, /insert into app_identity\.active_configuration_bundle/);
-  assert.match(seedScript, /sourceKind === "nemsis"/);
+  assert.match(seedScript, /references\.every\(\(elementId\) => availableElements\.has\(elementId\)\)/);
   assert.match(seedScript, /rule\.enabled = rule\.enabled && compatible/);
   assert.match(seedScript, /compiledSha256 = compiledValidationBundleSha256\(compiledBundle\)/);
 });

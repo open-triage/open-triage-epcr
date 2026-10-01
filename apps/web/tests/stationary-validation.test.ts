@@ -199,6 +199,36 @@ test("a pinned Validation bundle preserves a stronger form completion requiremen
     .some(({ id, target }) => id.includes("field.minimum") && target.fieldId === "ePatient.25"), true);
 });
 
+test("Software Version has one finding when the pinned minimum rule owns the same requirement", () => {
+  const elementId = "eRecord.04";
+  const rule = compileValidationRule({ id: "software-version-minimum", name: "Software Version", enabled: true,
+    severity: "error", executionTargets: ["live", "sign"], primaryTargetElementId: elementId,
+    message: "Record Software Version.", source: `require minimum("${elementId}", 1)`,
+  }, "validation-version", new Set([elementId]));
+  assert.deepEqual(rule.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [rule.compiled!] };
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [{ key: "record", fields: [
+    { key: "software-version", source: { kind: "nemsis" as const, elementId }, required: true },
+  ] }] }, catalogFields: { [elementId]: { agencyRequired: true, requirednessSeverity: "error" as const,
+    minOccurs: 1, maxOccurs: 1, nillable: false, supportsNotValues: false, supportsPertinentNegatives: false } },
+  validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+  const document = withGroupInstances(syntheticEncounter.document, "eRecord.SoftwareApplicationGroup", [
+    { instanceId: "software-application", elements: [] },
+  ]);
+  const matching = validateStationaryRecord(document, clinicalForm, evaluationTimestamp)
+    .filter(({ target }) => target.fieldId === elementId);
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0]?.message, "Record Software Version.");
+  assert.match(matching[0]!.id, /^validation:/);
+
+  const disabledBundle = { ...bundle, rules: [{ ...rule.compiled!, enabled: false }] };
+  const disabledForm = { ...clinicalForm, validation: { ...clinicalForm.validation,
+    compiledSha256: compiledValidationBundleSha256(disabledBundle), bundle: disabledBundle } };
+  assert.deepEqual(validateStationaryRecord(document, disabledForm, evaluationTimestamp)
+    .filter(({ target }) => target.fieldId === elementId).map(({ id }) => id.split(":")[1]), ["field.minimum"]);
+});
+
 test("absent optional repeating records do not promote child minima to report-level findings", () => {
   const findings = validateStationaryRecord(syntheticEncounter.document, undefined, evaluationTimestamp);
   for (const groupId of ["eVitals.VitalGroup", "eMedications.MedicationGroup", "eProcedures.ProcedureGroup"]) {

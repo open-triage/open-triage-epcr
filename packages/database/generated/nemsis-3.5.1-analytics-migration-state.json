@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "sequence": 1,
-  "mappingSha256": "144d9255af38d6f6bbfcf0d548ff8f558e0acd8357c570cbcfb4cc7d325912e5",
-  "migration": "30000000000001_nemsis_analytics_144d9255af38.sql"
+  "sequence": 2,
+  "mappingSha256": "b59e5c8988bbcc76c19d96b8787400b12efa1efda4c87a28d40ec9d10497bb28",
+  "migration": "30000000000002_nemsis_analytics_b59e5c8988bb.sql"
 }

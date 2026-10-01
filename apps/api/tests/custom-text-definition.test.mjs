@@ -10,6 +10,8 @@ const valid = {
 
 test("custom text requires explicit privacy classification and valid immutable identity metadata", () => {
   assert.deepEqual(customTextDefinitionFindings(valid), []);
+  assert.deepEqual(customTextDefinitionFindings({ ...valid, slug: "eDisposition.02_se" }), []);
+  assert.match(customTextDefinitionFindings({ ...valid, slug: "eDisposition..02_se" }).join("; "), /element ID is invalid/);
   assert.ok(customTextDefinitionFindings({ ...valid, identifying: null }).some((finding) => finding.includes("identifying")));
   assert.ok(customTextDefinitionFindings({ ...valid, title: 42, definition: [] }).length);
   assert.ok(customTextDefinitionFindings({ ...valid, namespace: "NEMSIS", slug: "eVitals.06" }).length);
@@ -32,10 +34,11 @@ test("Binary and Other definitions keep NEMSIS result semantics", () => {
   assert.ok(customTextDefinitionFindings({ ...valid, datatype: "other", constraints: { maxLength: 100001 } }).length);
 });
 
-test("recurrence and correlation targets are explicit and bounded", () => {
+test("recurrence and correlation targets are explicit and validated against the catalog later", () => {
   assert.deepEqual(customTextDefinitionFindings({ ...valid, recurrence: "multiple" }), []);
   assert.deepEqual(customTextDefinitionFindings({ ...valid, correlatesTo: "eMedications.MedicationGroup" }), []);
   assert.deepEqual(customTextDefinitionFindings({ ...valid, correlatesTo: "eExam.AssessmentGroup" }), []);
   assert.match(customTextDefinitionFindings({ ...valid, recurrence: "unbounded" }).join(" "), /recurrence/);
-  assert.match(customTextDefinitionFindings({ ...valid, correlatesTo: "eVitals.VitalGroup" }).join(" "), /Correlation target/);
+  assert.deepEqual(customTextDefinitionFindings({ ...valid, correlatesTo: "eVitals.VitalGroup" }), []);
+  assert.match(customTextDefinitionFindings({ ...valid, correlatesTo: "" }).join(" "), /Correlation target/);
 });

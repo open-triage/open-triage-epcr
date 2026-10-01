@@ -66,8 +66,8 @@ export class FormAuthoringService {
     const session = await this.authorize(token, "forms:read");
     const rows = await this.dataSource.query<VersionRow[]>(`
       select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
-      where f.organization_id=$1 and fv.status='draft' order by fv.created_at desc limit 1
-    `, [session.organization.id]);
+      where f.organization_id=$1 and fv.created_by=$2 and fv.status='draft' order by fv.created_at desc limit 1
+    `, [session.organization.id, session.user.id]);
     if (!rows[0]) return null;
     return this.result(this.dataSource.manager, rows[0]);
   }
@@ -118,8 +118,8 @@ export class FormAuthoringService {
       `, [session.organization.id, sourceVersionId ?? null]);
       if (!source[0]) throw new NotFoundException("The selected Stationary form version is unavailable");
       const existing = await manager.query<VersionRow[]>(`
-        select * from forms.form_version where form_id=$1 and status='draft' for update
-      `, [source[0].form_id]);
+        select * from forms.form_version where form_id=$1 and created_by=$2 and status='draft' for update
+      `, [source[0].form_id, session.user.id]);
       if (existing[0]) {
         if (sourceVersionId && existing[0].cloned_from_id !== sourceVersionId)
           throw new ConflictException("A Stationary form draft already exists from another version");
@@ -157,8 +157,8 @@ export class FormAuthoringService {
     const query = typeof input.query === "string" ? input.query.trim().slice(0, 100).toLowerCase() : "";
     const drafts = await this.dataSource.query<Array<{ catalog_release_id: string }>>(`
       select fv.catalog_release_id from forms.form_version fv join forms.form f on f.id=fv.form_id
-      where fv.id=$1 and f.organization_id=$2 and fv.status='draft'
-    `, [id, session.organization.id]);
+      where fv.id=$1 and f.organization_id=$2 and fv.created_by=$3 and fv.status='draft'
+    `, [id, session.organization.id, session.user.id]);
     if (!drafts[0]) throw new NotFoundException(`Form draft ${id} was not found`);
     const rows = await this.dataSource.query<Array<{
       element_id: string; name: string; description: string; base_datatype: string; group_path: string[];
@@ -203,8 +203,8 @@ export class FormAuthoringService {
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<VersionRow[]>(`
         select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
-        where fv.id=$1 and f.organization_id=$2 for update
-      `, [id, session.organization.id]);
+        where fv.id=$1 and f.organization_id=$2 and fv.created_by=$3 and fv.status='draft' for update
+      `, [id, session.organization.id, session.user.id]);
       const draft = rows[0];
       if (!draft) throw new NotFoundException(`Form draft ${id} was not found`);
       if (draft.revision !== body.expectedRevision) throw new ConflictException({
@@ -216,7 +216,7 @@ export class FormAuthoringService {
       });
       const choiceElementIds = [...new Set(body.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
         field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-      const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds);
+      const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds, true);
       const customSnapshot = body.definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
         ? await releaseCustomDefinitions(manager, draft.catalog_release_id) : null;
       const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, body.definition)
@@ -233,10 +233,10 @@ export class FormAuthoringService {
         with updated as (
           update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
             display_name=coalesce($5,display_name),revision=revision+1,updated_at=now()
-          where id=$1 and revision=$2 and status='draft' returning *
+          where id=$1 and revision=$2 and created_by=$6 and status='draft' returning *
         )
         select * from updated
-      `, [id, body.expectedRevision, JSON.stringify(definition), digest, body.displayName]);
+      `, [id, body.expectedRevision, JSON.stringify(definition), digest, body.displayName, session.user.id]);
       if (!updated[0]) throw new ConflictException("Form draft revision is stale or the form was published");
       await this.auditDraftMutation(manager, session, "form.draft_save", updated[0]!);
       return this.result(manager, updated[0]);
@@ -249,8 +249,8 @@ export class FormAuthoringService {
     await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<VersionRow[]>(`
         select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
-        where fv.id=$1 and f.organization_id=$2 and fv.status='draft' for update
-      `, [id, session.organization.id]);
+        where fv.id=$1 and f.organization_id=$2 and fv.created_by=$3 and fv.status='draft' for update
+      `, [id, session.organization.id, session.user.id]);
       const draft = rows[0];
       if (!draft) throw new NotFoundException(`Form draft ${id} was not found`);
       if (draft.revision !== expectedRevision) throw new ConflictException({
@@ -258,8 +258,8 @@ export class FormAuthoringService {
       });
       await this.auditDraftMutation(manager, session, "form.draft_delete", draft, { deletedFormVersionId: draft.id });
       const deleted = mutationRows<{ id: string }>(await manager.query(
-        "delete from forms.form_version where id=$1 and revision=$2 and status='draft' returning id",
-        [id, expectedRevision]
+        "delete from forms.form_version where id=$1 and revision=$2 and created_by=$3 and status='draft' returning id",
+        [id, expectedRevision, session.user.id]
       ));
       if (!deleted[0]) throw new ConflictException("Form draft revision is stale or the form was published");
     });
@@ -270,8 +270,8 @@ export class FormAuthoringService {
     const body = this.publicationBody(input);
     const rows = await this.dataSource.query<Array<VersionRow & { version: number }>>(`
       select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
-      where fv.id=$1 and f.organization_id=$2 and fv.status='draft'
-    `, [id, session.organization.id]);
+      where fv.id=$1 and f.organization_id=$2 and fv.created_by=$3 and fv.status='draft'
+    `, [id, session.organization.id, session.user.id]);
     const draft = rows[0];
     if (!draft) throw new NotFoundException(`Form draft ${id} was not found`);
     if (draft.revision !== body.expectedRevision) throw new ConflictException({
@@ -434,9 +434,10 @@ export class FormAuthoringService {
         diagnostics.push({ code: "incompatible-reference", path, message: `${field.source.elementId} changed identity, datatype, or storage semantics; remove or replace this field` });
       }
     }
-    const targetCatalog = await catalogFieldsConfiguration(manager, targetReleaseId, elementIds);
+    // Catalog content is available to every form; each field owns enablement and order.
+    const targetCatalog = await catalogFieldsConfiguration(manager, targetReleaseId, elementIds, true);
     const sourceCatalog = sourceReleaseId === targetReleaseId ? targetCatalog
-      : await catalogFieldsConfiguration(manager, sourceReleaseId, elementIds);
+      : await catalogFieldsConfiguration(manager, sourceReleaseId, elementIds, true);
     const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, definition)
       : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
         .map((item) => [item.id, item]));
@@ -553,7 +554,7 @@ export class FormAuthoringService {
     const definition = this.definition(row.canonical_definition);
     const elementIds = [...new Set(definition.sections.flatMap((section) =>
       section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-    const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds);
+    const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds, true);
     const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
       field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
     const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<StationaryFormDraft["customFields"]>[string] }>>(`
@@ -562,7 +563,7 @@ export class FormAuthoringService {
     const snapshotById = new Map((snapshot ?? []).map((item) => [item.id, item]));
     let newChoicesByField: Record<string, Choice[]> = {};
     if (sourceCatalogReleaseId && sourceCatalogReleaseId !== row.catalog_release_id) {
-      const sourceCatalog = await catalogFieldsConfiguration(manager, sourceCatalogReleaseId, elementIds);
+      const sourceCatalog = await catalogFieldsConfiguration(manager, sourceCatalogReleaseId, elementIds, true);
       const sourceSnapshot = customIds.length ? await releaseCustomDefinitions(manager, sourceCatalogReleaseId) : null;
       const sourceById = new Map((sourceSnapshot ?? []).map((item) => [item.id, item]));
       newChoicesByField = formCatalogAdoptionChoices(definition, sourceCatalog, catalogFields, sourceById, snapshotById);

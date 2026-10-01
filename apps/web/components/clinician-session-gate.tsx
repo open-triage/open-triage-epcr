@@ -124,6 +124,12 @@ export function ClinicianSessionGate({ children }: {
 
   const lockAndEndLocalSession = useCallback(async (endedMessage: string) => {
     clearClinicianSession(window.localStorage);
+    try {
+      for (let index = window.sessionStorage.length - 1; index >= 0; index--) {
+        const key = window.sessionStorage.key(index);
+        if (key?.startsWith("open-triage:catalog-editor:")) window.sessionStorage.removeItem(key);
+      }
+    } catch { /* The authenticated view still closes if browser storage is unavailable. */ }
     clearFeedbackTelemetry();
     setActiveReport(null);
     try { await lockProtectedClinicalStorage(); }

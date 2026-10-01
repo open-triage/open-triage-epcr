@@ -6,6 +6,7 @@ import type { ClinicalFormConfiguration, FormCatalogElement, FormDraftDefinition
 import React, { useState } from "react";
 import { getNemsisDataElement, getNemsisGroup } from "../app/nemsis-data-model";
 import { stationaryDisplayLabel } from "../app/stationary-label";
+import { formChoiceLabel } from "../app/form-choice-label";
 import { resolveCatalogGroupText } from "../app/catalog-localization";
 
 export function formSectionLabel(section: FormDraftDefinition["sections"][number],
@@ -231,26 +232,21 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                   const identity = choiceIdentity(choice);
                   const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
                   const unavailable = !availableIds.has(identity);
-                  const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
-                  const custom = field.source.kind === "custom" ? customFields?.[field.source.elementDefinitionId] : undefined;
-                  const choiceLabel = choice.kind === "code"
-                    ? catalog?.codeChoices?.find((candidate) => candidate.code === choice.code && candidate.codeSystem === choice.codeSystem)?.label ??
-                      (custom?.datatype === "coded" ? custom.choices.find((candidate) => candidate.code === choice.code)?.label : undefined)
-                    : `NOT ${choice.code}`;
+                  const choiceLabel = formChoiceLabel(choice, field, catalogFields, customFields, language);
                   return <li key={identity}><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}
                     onChange={(event) => onChange(updateFieldChoices(definition, field.key,
                       event.target.checked ? [...selected, choice] : selected.filter((candidate) => choiceIdentity(candidate) !== identity)),
-                    `Updated choices for ${label}.`)} />{choiceLabel ?? choice.code}</label>
+                    `Updated choices for ${label}.`)} />{choiceLabel}</label>
                     {newIds.has(identity) && <small>{position >= 0
                       ? language === "sv" ? "Ny i målkatalogen · aktiverad" : "New in target catalog · enabled"
                       : language === "sv" ? "Ny i målkatalogen · avstängd tills du väljer den" : "New in target catalog · disabled until selected"}</small>}
                     {unavailable && <small role="alert">{language === "sv" ? "Inte tillgänglig i målkatalogen; avmarkera för att lösa" : "Unavailable in target catalog; uncheck to resolve"}</small>}
-                    {position >= 0 && <><button type="button" disabled={busy || position === 0} aria-label={`Move ${choice.code} choice up`}
+                    {position >= 0 && <><button type="button" disabled={busy || position === 0} aria-label={`Move ${choiceLabel} choice up`}
                       onClick={() => { const next = [...selected]; [next[position - 1], next[position]] = [next[position]!, next[position - 1]!];
-                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choice.code} up.`); }}>↑</button>
-                    <button type="button" disabled={busy || position === selected.length - 1} aria-label={`Move ${choice.code} choice down`}
+                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choiceLabel} up.`); }}>↑</button>
+                    <button type="button" disabled={busy || position === selected.length - 1} aria-label={`Move ${choiceLabel} choice down`}
                       onClick={() => { const next = [...selected]; [next[position], next[position + 1]] = [next[position + 1]!, next[position]!];
-                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choice.code} down.`); }}>↓</button></>}
+                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choiceLabel} down.`); }}>↓</button></>}
                   </li>;
                 })}</ol>
               </details>}
@@ -261,13 +257,13 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                     if (custom?.datatype !== "coded") return null;
                     return [...custom.permittedNotValues.map((code) => ({ code, kind: "NOT" })),
                       ...custom.permittedPertinentNegatives.map((code) => ({ code, kind: "PN" }))].map(({ code, kind }) =>
-                      <label key={`${kind}:${code}`}><input type="checkbox" checked={field.allowedAbsenceStates?.includes(code) ?? false}
+                      <label key={`${kind}:${code}`}><input type="checkbox" disabled={busy} checked={field.allowedAbsenceStates?.includes(code) ?? false}
                         onChange={(event) => onChange({ ...definition, sections: definition.sections.map((section) => ({ ...section,
                           fields: section.fields.map((candidate) => candidate.key !== field.key ? candidate : {
                             ...candidate, allowedAbsenceStates: event.target.checked
                               ? [...(candidate.allowedAbsenceStates ?? []), code]
                               : (candidate.allowedAbsenceStates ?? []).filter((value) => value !== code),
-                          }) })) }, `Updated exceptional values for ${label}.`)} />{kind} {code}
+                          }) })) }, `Updated exceptional values for ${label}.`)} />{formChoiceLabel({ kind: kind === "NOT" ? "not-value" : "pertinent-negative", code }, field, catalogFields, customFields, language)}
                         {kind === "NOT" && newIds.has(`not-value::${code}`) && <small>{language === "sv"
                           ? "Ny i målkatalogen" : "New in target catalog"}</small>}</label>);
                   })()}

@@ -2,7 +2,7 @@
 
 import type { CatalogDraftCustomCodedElement, ClinicalFormConfiguration, EncounterDocument, EncounterValue, FormDraftField } from "@open-triage/contracts";
 import React from "react";
-import { customTextIdentity } from "./custom-text-fields";
+import { customTextIdentity, withCustomRoot } from "./custom-text-fields";
 import { ClinicalSearchableSelect } from "./clinical-searchable-select";
 
 const GROUP_ID = "PatientCareReportGroup";
@@ -15,7 +15,8 @@ export function customCodedValue(document: EncounterDocument, definition: Catalo
 export function setCustomCodedValue(document: EncounterDocument, definition: CatalogDraftCustomCodedElement,
   value: EncounterValue | undefined): EncounterDocument {
   const identity = customTextIdentity(definition);
-  return { ...document, groups: document.groups.map((group) => group.id !== GROUP_ID ? group : {
+  const source = value ? withCustomRoot(document) : document;
+  return { ...source, groups: source.groups.map((group) => group.id !== GROUP_ID ? group : {
     ...group, instances: group.instances.map((instance, index) => index !== 0 ? instance : {
       ...instance, elements: value ? [...instance.elements.filter((element) => element.id !== identity),
         { id: identity, values: [value] }] : instance.elements.filter((element) => element.id !== identity),

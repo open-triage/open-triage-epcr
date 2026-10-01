@@ -6,7 +6,7 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, type CompiledValidationBundle } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, minimumRuleCoversRequirement, type CompiledValidationBundle } from "@open-triage/contracts";
 import {
   evaluateQualityAndNormalization,
   NORMALIZATION_RULE_VERSION,
@@ -54,6 +54,7 @@ type ReportRow = {
 type FieldRow = {
   id: string;
   stable_key: string;
+  element_id?: string | null;
   required: boolean;
   clinically_stored: boolean;
   catalog_element_identity_id: string | null;
@@ -204,8 +205,9 @@ export class SignReportService {
           throw new UnprocessableEntityException("Only the documenting clinician may sign the report");
         }
 
-        const findings = await this.validateSemantics(manager, report);
-        findings.push(...await this.validateAuthoredRules(manager, report, evaluationTimestamp));
+        const authored = await this.evaluateAuthoredRules(manager, report, evaluationTimestamp);
+        const findings = await this.validateSemantics(manager, report, authored.bundle);
+        findings.push(...authored.findings);
         const unresolvedDispatch = await manager.query<Array<{ id: string; element_id: string }>>(`
           select id, element_id from clinical.dispatch_conflict
           where report_id = $1 and disposition is null order by created_at, id
@@ -343,21 +345,26 @@ export class SignReportService {
 
   private async validateAuthoredRules(manager: EntityManager, report: ReportRow,
     evaluationTimestamp = new Date().toISOString()): Promise<SigningFinding[]> {
-    if (!report.validation_version_id) return [];
+    return (await this.evaluateAuthoredRules(manager, report, evaluationTimestamp)).findings;
+  }
+
+  private async evaluateAuthoredRules(manager: EntityManager, report: ReportRow,
+    evaluationTimestamp: string): Promise<{ findings: SigningFinding[]; bundle?: CompiledValidationBundle }> {
+    if (!report.validation_version_id) return { findings: [] };
     const versions = await manager.query<Array<{ compiled_bundle: CompiledValidationBundle; compiled_sha256: string }>>(`
       select compiled_bundle,compiled_sha256 from validation.version
       where id=$1 and organization_id=$2 and catalog_release_id=$3 and status='published'
     `, [report.validation_version_id, report.organization_id, report.catalog_release_id]);
-    if (!versions[0]) return [{ severity: "error", code: "validation.runtime-unavailable",
+    if (!versions[0]) return { findings: [{ severity: "error", code: "validation.runtime-unavailable",
       path: "$.validationVersionId", message: "The pinned validation bundle is unavailable",
       ruleVersion: report.validation_version_id, validationVersionId: report.validation_version_id,
-      executionTarget: "sign" }];
+      executionTarget: "sign" }] };
     if (!report.validation_compiled_sha256 || versions[0].compiled_sha256 !== report.validation_compiled_sha256
       || compiledValidationBundleSha256(versions[0].compiled_bundle) !== report.validation_compiled_sha256) {
-      return [{ severity: "error", code: "validation.integrity", path: "$.validationVersionId",
+      return { findings: [{ severity: "error", code: "validation.integrity", path: "$.validationVersionId",
         message: "The pinned validation bundle failed its integrity check",
         ruleVersion: report.validation_version_id, validationVersionId: report.validation_version_id,
-        ruleId: "bundle", executionTarget: "sign" }];
+        ruleId: "bundle", executionTarget: "sign" }] };
     }
     const document = await encounterDocument(manager, report.id);
     const settings = await manager.query<Array<{ language: string }>>(`
@@ -365,7 +372,7 @@ export class SignReportService {
     `, [report.organization_id]);
     const evaluated = evaluateValidationBundleSafely(versions[0].compiled_bundle, document, "sign",
       { timestamp: evaluationTimestamp, language: settings[0]?.language ?? "en" });
-    return [...evaluated.findings.map((finding) => ({
+    return { bundle: versions[0].compiled_bundle, findings: [...evaluated.findings.map((finding) => ({
       severity: finding.severity,
       code: "validation.required-element",
       path: finding.primaryTarget.occurrenceId ? `$.occurrences.${finding.primaryTarget.occurrenceId}`
@@ -384,10 +391,11 @@ export class SignReportService {
       severity: "error" as const, code: `validation.${failure.code}`, path: `$.validationRules.${failure.ruleId}`,
       message: `${failure.message} (rule ${failure.ruleId})`, ruleVersion: failure.validationVersionId,
       validationVersionId: failure.validationVersionId, ruleId: failure.ruleId, executionTarget: "sign" as const,
-    }))];
+    }))] };
   }
 
-  private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
+  private async validateSemantics(manager: EntityManager, report: ReportRow,
+    authoredBundle?: CompiledValidationBundle): Promise<SigningFinding[]> {
     const findings: SigningFinding[] = [];
     const form = await manager.query<Array<{ status: string; catalog_release_id: string;
       canonical_definition: import("@open-triage/contracts").FormDraftDefinition }>>(`
@@ -399,6 +407,7 @@ export class SignReportService {
       return findings;
     }
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
+      coalesce(e.element_id, ced.namespace || '.' || ced.slug) as element_id,
       (ff.custom_element_definition_id is not null or m.element_id is not null) as clinically_stored,
       ff.catalog_element_identity_id, ff.custom_element_definition_id,
       case when e.agency_required is true then 0
@@ -475,18 +484,19 @@ export class SignReportService {
       // reference, but it is supplied by the pinned configuration rather than
       // stored as clinician-authored element occurrences on the report.
       if (!field.clinically_stored) continue;
-      if (field.required && values.length === 0) {
-        findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
-          `Required form field ${field.stable_key} has no value`));
-      }
-      if (field.agency_required === true && !field.required && values.length === 0) {
-        findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
-          `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
-      }
-      if (field.min_occurs !== null && field.min_occurs > (field.required ? 1 : 0) && values.length < field.min_occurs) {
-        findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
-          `Field ${field.stable_key} requires at least ${field.min_occurs} occurrence(s); found ${values.length}`));
-      }
+      const minimum = Math.max(field.required || field.agency_required ? 1 : 0, field.min_occurs ?? 0);
+      if (values.length >= minimum) continue;
+      const severity = field.required || (field.min_occurs ?? 0) > 0 ? "error" : field.agency_required_severity ?? "error";
+      if (minimumRuleCoversRequirement(authoredBundle, field.element_id ?? field.stable_key,
+        minimum, severity, "sign")) continue;
+      if (minimum > 1) findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
+        `Field ${field.stable_key} requires at least ${minimum} occurrence(s); found ${values.length}`));
+      else if (field.required) findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
+        `Required form field ${field.stable_key} has no value`));
+      else if (field.agency_required) findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
+        `Agency-required field ${field.stable_key} has no value`, severity));
+      else findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
+        `Field ${field.stable_key} requires at least ${minimum} occurrence(s); found ${values.length}`));
     }
     for (const rule of rules) {
       const applies = this.evaluateRule(rule.expression, byField);

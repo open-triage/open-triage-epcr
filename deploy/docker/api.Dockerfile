@@ -39,6 +39,7 @@ RUN npm ci --omit=dev \
 COPY --from=build /workspace/apps/api/dist apps/api/dist
 COPY --from=build /workspace/packages/contracts/dist packages/contracts/dist
 COPY packages/contracts/config packages/contracts/config
+COPY packages/contracts/catalog.schema-1.0.0.json packages/contracts/
 COPY packages/contracts/examples/dispatch packages/contracts/examples/dispatch
 COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs packages/contracts/quality-normalization-policy.json packages/contracts/
 
@@ -62,6 +63,8 @@ COPY packages/database/scripts/verify-reporting-replica.mjs packages/database/sc
 COPY packages/database/config/database-operations-policy.json packages/database/config/retention-policy.json packages/database/config/
 COPY packages/database/generated packages/database/generated
 COPY defines defines
+RUN mkdir -p defines/catalog/local defines/forms/local defines/validation/local \
+    && chown node:node defines/catalog/local defines/forms/local defines/validation/local
 COPY supabase/migrations supabase/migrations
 
 USER node

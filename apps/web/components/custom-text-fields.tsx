@@ -9,6 +9,15 @@ const GROUP_ID = "PatientCareReportGroup";
 const MAX_CUSTOM_RESULT_LENGTH = 100000;
 const canonicalBase64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
+export function withCustomRoot(document: EncounterDocument): EncounterDocument {
+  const root = document.groups.find(({ id }) => id === GROUP_ID);
+  if (root?.instances.length) return document;
+  const instance = { instanceId: crypto.randomUUID(), elements: [] };
+  return { ...document, groups: root
+    ? document.groups.map((group) => group.id === GROUP_ID ? { ...group, instances: [instance] } : group)
+    : [...document.groups, { id: GROUP_ID, instances: [instance] }] };
+}
+
 export function customTextIdentity(definition: Pick<CatalogDraftCustomTextElement, "namespace" | "slug">): string {
   return `${definition.namespace}.${definition.slug}`;
 }
@@ -23,7 +32,8 @@ export function setCustomTextValue(document: EncounterDocument, definition: Cata
   text: string | number | boolean | null): EncounterDocument {
   const identity = customTextIdentity(definition);
   const empty = text === "" || text === null;
-  return { ...document, groups: document.groups.map((group) => group.id !== GROUP_ID ? group : {
+  const source = empty ? document : withCustomRoot(document);
+  return { ...source, groups: source.groups.map((group) => group.id !== GROUP_ID ? group : {
     ...group, instances: group.instances.map((instance, index) => index !== 0 ? instance : {
       ...instance, elements: empty
         ? instance.elements.filter(({ id }) => id !== identity)
