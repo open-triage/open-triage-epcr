@@ -92,6 +92,23 @@ test("the draft adapter preserves identities rehydrated from PostgreSQL", () => 
   if (value) assert.ok(mutations.occurrences.some(({ id }) => id === serverOccurrenceId));
 });
 
+test("server-owned PCR number stays out of draft mutations, including stale tombstones", () => {
+  const baseline = structuredClone(INITIAL_SHELL_STATE.encounter.document);
+  const record = {
+    id: "eRecordSection", instances: [{ instanceId: "42000000-0000-4000-8000-000000000090",
+      elements: [{ id: "eRecord.01", values: [{ kind: "scalar" as const,
+        occurrenceId: "42000000-0000-4000-8000-000000000091", value: "PCR-000000001" }] }] }],
+  };
+  const document = { ...baseline, groups: [...baseline.groups, record] };
+  const mutation = encounterDocumentToDraftMutations(reportId, document, {
+    groups: [],
+    occurrences: [{ id: "42000000-0000-4000-8000-000000000091", elementId: "eRecord.01",
+      groupInstanceId: record.instances[0]!.instanceId, ordinal: 0, tombstone: true }]
+  });
+  assert.equal(mutation.occurrences.some(({ elementId }) => elementId === "eRecord.01"), false);
+  assert.ok(mutation.groups.some(({ groupId }) => groupId === "eRecordSection"));
+});
+
 test("the draft adapter normalizes legacy string vital integers before saving", () => {
   const baseline = structuredClone(INITIAL_SHELL_STATE.encounter.document);
   const document = {

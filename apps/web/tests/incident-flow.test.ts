@@ -1,12 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assignmentSummary, documentTimeline, INCIDENT_FIELD_LOCATIONS, incidentSummary } from "../app/incident-document";
+import { assignmentSummary, documentTimeline, INCIDENT_FIELD_LOCATIONS, incidentSummary, reportNumber } from "../app/incident-document";
 import { RECOVERY_STORAGE_KEY, STORAGE_KEY, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { INITIAL_SHELL_STATE } from "../app/standard-encounter";
 import { encounterEvents } from "../app/canonical-events";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
+
+test("server-owned PCR value is readable for the report header", () => {
+  const document = structuredClone(INITIAL_SHELL_STATE.encounter.document);
+  assert.equal(reportNumber(document), "");
+  const pcr = document.groups.find(({ id }) => id === "PatientCareReportGroup")!;
+  const numbered = { ...document, groups: [...document.groups, { id: "eRecordSection", instances: [{
+    instanceId: "server-record", parentInstanceId: pcr.instances[0]!.instanceId,
+    elements: [{ id: "eRecord.01", values: [{ kind: "scalar" as const, occurrenceId: "server-pcr", value: "PCR-000000321" }] }],
+  }] }] };
+  assert.equal(reportNumber(numbered), "PCR-000000321");
+});
 
 function memoryStorage(): LocalStoragePort & { readonly values: Map<string, string> } {
   const values = new Map<string, string>();

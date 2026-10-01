@@ -124,6 +124,7 @@
   "reports.reopenFailed": "The report could not be reopened.",
   "reports.reauthFailed": "Reauthentication failed.",
   "mobile.response": "Response",
+  "mobile.pcrNumber": "PCR number",
   "mobile.incident": "Incident",
   "mobile.location": "Location",
   "mobile.saveClose": "Save & close",

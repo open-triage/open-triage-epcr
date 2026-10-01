@@ -33,7 +33,7 @@ import {
 } from "./standard-encounter";
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
-import { documentTimeline, incidentSummary } from "./incident-document";
+import { documentTimeline, incidentSummary, reportNumber } from "./incident-document";
 import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
@@ -162,6 +162,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [audioQueueVersion, setAudioQueueVersion] = useState(0);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
+  const pcrNumber = useMemo(() => reportNumber(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(
     () => documentTimeline(encounter.document, zone),
     [encounter.document, zone],
@@ -794,6 +795,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 
       <header ref={encounterHeader} className="encounter-header">
         {presentationMode === "stationary" ? <div className="encounter-summary" aria-label={t("mobile.callInformation")}>
+          <span data-element-id="eRecord.01" data-read-only="true"><small>{t("mobile.pcrNumber")}</small><output>{pcrNumber || t("calls.notProvided")}</output></span>
           <span><small>{t("mobile.response")}</small><strong>{incident.responseNumber || t("calls.notProvided")}</strong></span>
           <span><small>{t("calls.unit")}</small><strong>{incident.callSign || t("calls.notProvided")}</strong></span>
           <span><small>{t("calls.priority")}</small><strong>{incident.dispatchPriority || t("calls.notProvided")}</strong></span>
@@ -801,6 +803,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         </div> : <>
           <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
           <div className="incident-line"><div>
+            <span data-element-id="eRecord.01" data-read-only="true">{t("mobile.pcrNumber")} <output>{pcrNumber || t("calls.notProvided")}</output></span>
             <span>{t("mobile.incident")} {incident.incidentNumber}</span>
             <span>{t("mobile.response")} {incident.responseNumber}</span>
             <span>{t("calls.unit")} {incident.callSign}</span>
