@@ -32,10 +32,11 @@ test("Binary and Other definitions keep NEMSIS result semantics", () => {
   assert.ok(customTextDefinitionFindings({ ...valid, datatype: "other", constraints: { maxLength: 100001 } }).length);
 });
 
-test("recurrence and correlation targets are explicit and bounded", () => {
+test("recurrence and correlation targets are explicit and validated against the catalog later", () => {
   assert.deepEqual(customTextDefinitionFindings({ ...valid, recurrence: "multiple" }), []);
   assert.deepEqual(customTextDefinitionFindings({ ...valid, correlatesTo: "eMedications.MedicationGroup" }), []);
   assert.deepEqual(customTextDefinitionFindings({ ...valid, correlatesTo: "eExam.AssessmentGroup" }), []);
   assert.match(customTextDefinitionFindings({ ...valid, recurrence: "unbounded" }).join(" "), /recurrence/);
-  assert.match(customTextDefinitionFindings({ ...valid, correlatesTo: "eVitals.VitalGroup" }).join(" "), /Correlation target/);
+  assert.deepEqual(customTextDefinitionFindings({ ...valid, correlatesTo: "eVitals.VitalGroup" }), []);
+  assert.match(customTextDefinitionFindings({ ...valid, correlatesTo: "" }).join(" "), /Correlation target/);
 });

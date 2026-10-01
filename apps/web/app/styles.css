@@ -235,6 +235,15 @@ input, select, textarea { touch-action: manipulation; }
 .form-remove-confirmation h3, .form-remove-confirmation p, .form-remove-confirmation ul { margin: 0; }
 .form-findings { border-left: 4px solid #9a6417; padding: 10px 12px; background: #fff8e8; }
 .catalog-editor input[type="search"], .catalog-editor input[type="number"], .catalog-editor input:not([type]), .catalog-editor select, .catalog-editor textarea { border: 1px solid #87928a; border-radius: 5px; padding: 8px; font: inherit; }
+.custom-element-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; max-width: 720px; padding: 16px; }
+.custom-element-form > label, .custom-translation-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; min-width: 0; }
+.custom-element-form > label > input, .custom-element-form > label > select, .custom-element-form > label > textarea, .custom-translation-row input { width: 100%; box-sizing: border-box; }
+.custom-element-form > button { justify-self: start; }
+.custom-multi-select { border: 1px solid #87928a; border-radius: 5px; padding: 9px; background: #fff; }
+.custom-multi-select > label { display: block; padding: 5px 0; }
+.custom-group-translations, .custom-choice-translations { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; max-width: 720px; }
+.custom-choice-translations label { display: grid; gap: 5px; }
+.custom-choice-translations input { width: 100%; box-sizing: border-box; }
 .catalog-elements { flex: 0 1 auto; min-height: 0; max-height: min(520px, 60dvh); overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .catalog-table-warning { position: sticky; z-index: 2; top: 0; margin: 0; padding: 10px 12px; border-bottom: 1px solid #e1c78d; color: #67470c; background: #fff8e8; }
 .catalog-elements table { width: 100%; min-width: 800px; border-collapse: collapse; table-layout: fixed; }
