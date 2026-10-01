@@ -15,6 +15,12 @@ the applicable elements and bundled lists. Provenance and SHA-256 checksums for
 every pinned upstream source are recorded in the catalog itself; there are no
 separate application-owned medication or procedure catalogs.
 
+The catalog also bundles eight non-exhaustive application-curated US starter
+lists for external-code fields without an official bundled list. Their pinned
+inputs and source references are in [us-starter-lists.md](us-starter-lists.md).
+Populate uses these choices for coherent US defaults; it never invents an
+external code when a list is missing.
+
 NEMSIS and SNOMED CT terminology artifacts remain subject to their respective
 third-party terms, as noted by the repository licensing policy.
 

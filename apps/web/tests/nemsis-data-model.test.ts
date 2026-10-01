@@ -47,8 +47,8 @@ test("embeds every official inline enumeration and every permitted NV/PN choice"
   assert.deepEqual(catalog.statistics, {
     inlineEnumerationElements: 205,
     inlineEnumerationValues: 2515,
-    bundledLists: 10,
-    bundledListValues: 1141,
+    bundledLists: 18,
+    bundledListValues: 1224,
     elementsWithNotValues: 193,
     notValues: 441,
     elementsWithPertinentNegatives: 63,
@@ -64,11 +64,11 @@ test("embeds every official inline enumeration and every permitted NV/PN choice"
   assert.ok(systolic?.permittedPertinentNegatives.some((value) => value.code === "8801005" && value.label === "Exam Finding Not Present"));
 });
 
-test("pins all official defined and suggested lists without treating them as exhaustive", () => {
-  assert.equal(catalog.bundledLists.length, 10);
+test("pins official lists and US starter choices without treating them as exhaustive", () => {
+  assert.equal(catalog.bundledLists.length, 18);
   assert.equal(catalog.bundledLists.filter((list) => list.classification === "defined").length, 6);
-  assert.equal(catalog.bundledLists.filter((list) => list.classification === "suggested").length, 4);
-  assert.equal(catalog.bundledLists.reduce((total, list) => total + list.values.length, 0), 1141);
+  assert.equal(catalog.bundledLists.filter((list) => list.classification === "suggested").length, 12);
+  assert.equal(catalog.bundledLists.reduce((total, list) => total + list.values.length, 0), 1224);
   for (const list of catalog.bundledLists) {
     assert.equal(list.exhaustive, false);
     assert.equal(list.valueCount, list.values.length);
@@ -103,12 +103,14 @@ test("every field rendered by the app resolves entirely through the generated ca
 test("records verifiable provenance for every pinned source", () => {
   assert.equal(catalog.provenance.release, "NEMSIS 3.5.1");
   assert.match(catalog.provenance.retrievedAt, /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(catalog.provenance.sources.length, 40);
+  assert.equal(catalog.provenance.sources.length, 41);
   assert.equal(catalog.provenance.sources.filter((source) => source.role === "xsd").length, 28);
   assert.equal(catalog.provenance.sources.filter((source) => source.role === "defined-list").length, 6);
   assert.equal(catalog.provenance.sources.filter((source) => source.role === "suggested-list").length, 4);
+  assert.equal(catalog.provenance.sources.filter((source) => source.role === "application-suggested-lists").length, 1);
   for (const source of catalog.provenance.sources) {
-    assert.match(source.url, /^https:\/\/nemsis\.org\/media\/nemsis_v3\//);
+    if (source.role === "application-suggested-lists") assert.equal(source.url, "us-starter-lists.md");
+    else assert.match(source.url, /^https:\/\/nemsis\.org\/media\/nemsis_v3\//);
     const bytes = readFileSync(new URL(source.path, dataRoot));
     assert.equal(createHash("sha256").update(bytes).digest("hex"), source.sha256, source.path);
   }

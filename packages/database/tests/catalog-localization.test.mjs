@@ -19,8 +19,8 @@ async function shippedSeed() { return JSON.parse(await readFile(file, "utf8")); 
 
 test("one Swedish definition covers every identity in the current catalog", async () => {
   const result = await readCatalogLocalizationSeed(file, catalog);
-  assert.deepEqual(result.coverage.expected, { elements: 453, groups: 88, lists: 215,
-    choices: 3656, specialChoices: 559 });
+  assert.deepEqual(result.coverage.expected, { elements: 453, groups: 88, lists: 223,
+    choices: 3739, specialChoices: 559 });
   assert.deepEqual(result.coverage.supplied, result.coverage.expected);
   assert.deepEqual(result.coverage.available, result.coverage.expected);
   assert.ok(Object.values(result.coverage.missing).every((entries) => entries.length === 0));
@@ -57,8 +57,8 @@ test("entries for future catalogs coexist and are selected only by matching iden
   await withSeed(seed, async (target) => {
     const result = await readCatalogLocalizationSeed(target, catalog);
     assert.deepEqual(result.coverage.supplied, result.coverage.expected);
-    assert.deepEqual(result.coverage.available, { elements: 454, groups: 89, lists: 216,
-      choices: 3657, specialChoices: 560 });
+    assert.deepEqual(result.coverage.available, { elements: 454, groups: 89, lists: 224,
+      choices: 3740, specialChoices: 560 });
     assert.equal(result.elementLocalization["future.01"], undefined);
   });
 });

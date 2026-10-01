@@ -19422,6 +19422,402 @@
             }
           }
         }
+      },
+      "us-states": {
+        "sourceName": "US States and Territories",
+        "name": "USA:s delstater och territorier",
+        "choices": {
+          "ANSI-STATE": {
+            "36": {
+              "sourceLabel": "New York",
+              "label": "New York"
+            },
+            "01": {
+              "sourceLabel": "Alabama",
+              "label": "Alabama"
+            },
+            "02": {
+              "sourceLabel": "Alaska",
+              "label": "Alaska"
+            },
+            "04": {
+              "sourceLabel": "Arizona",
+              "label": "Arizona"
+            },
+            "05": {
+              "sourceLabel": "Arkansas",
+              "label": "Arkansas"
+            },
+            "06": {
+              "sourceLabel": "California",
+              "label": "California"
+            },
+            "08": {
+              "sourceLabel": "Colorado",
+              "label": "Colorado"
+            },
+            "09": {
+              "sourceLabel": "Connecticut",
+              "label": "Connecticut"
+            },
+            "10": {
+              "sourceLabel": "Delaware",
+              "label": "Delaware"
+            },
+            "11": {
+              "sourceLabel": "District of Columbia",
+              "label": "District of Columbia"
+            },
+            "12": {
+              "sourceLabel": "Florida",
+              "label": "Florida"
+            },
+            "13": {
+              "sourceLabel": "Georgia",
+              "label": "Georgia"
+            },
+            "15": {
+              "sourceLabel": "Hawaii",
+              "label": "Hawaii"
+            },
+            "16": {
+              "sourceLabel": "Idaho",
+              "label": "Idaho"
+            },
+            "17": {
+              "sourceLabel": "Illinois",
+              "label": "Illinois"
+            },
+            "18": {
+              "sourceLabel": "Indiana",
+              "label": "Indiana"
+            },
+            "19": {
+              "sourceLabel": "Iowa",
+              "label": "Iowa"
+            },
+            "20": {
+              "sourceLabel": "Kansas",
+              "label": "Kansas"
+            },
+            "21": {
+              "sourceLabel": "Kentucky",
+              "label": "Kentucky"
+            },
+            "22": {
+              "sourceLabel": "Louisiana",
+              "label": "Louisiana"
+            },
+            "23": {
+              "sourceLabel": "Maine",
+              "label": "Maine"
+            },
+            "24": {
+              "sourceLabel": "Maryland",
+              "label": "Maryland"
+            },
+            "25": {
+              "sourceLabel": "Massachusetts",
+              "label": "Massachusetts"
+            },
+            "26": {
+              "sourceLabel": "Michigan",
+              "label": "Michigan"
+            },
+            "27": {
+              "sourceLabel": "Minnesota",
+              "label": "Minnesota"
+            },
+            "28": {
+              "sourceLabel": "Mississippi",
+              "label": "Mississippi"
+            },
+            "29": {
+              "sourceLabel": "Missouri",
+              "label": "Missouri"
+            },
+            "30": {
+              "sourceLabel": "Montana",
+              "label": "Montana"
+            },
+            "31": {
+              "sourceLabel": "Nebraska",
+              "label": "Nebraska"
+            },
+            "32": {
+              "sourceLabel": "Nevada",
+              "label": "Nevada"
+            },
+            "33": {
+              "sourceLabel": "New Hampshire",
+              "label": "New Hampshire"
+            },
+            "34": {
+              "sourceLabel": "New Jersey",
+              "label": "New Jersey"
+            },
+            "35": {
+              "sourceLabel": "New Mexico",
+              "label": "New Mexico"
+            },
+            "37": {
+              "sourceLabel": "North Carolina",
+              "label": "North Carolina"
+            },
+            "38": {
+              "sourceLabel": "North Dakota",
+              "label": "North Dakota"
+            },
+            "39": {
+              "sourceLabel": "Ohio",
+              "label": "Ohio"
+            },
+            "40": {
+              "sourceLabel": "Oklahoma",
+              "label": "Oklahoma"
+            },
+            "41": {
+              "sourceLabel": "Oregon",
+              "label": "Oregon"
+            },
+            "42": {
+              "sourceLabel": "Pennsylvania",
+              "label": "Pennsylvania"
+            },
+            "44": {
+              "sourceLabel": "Rhode Island",
+              "label": "Rhode Island"
+            },
+            "45": {
+              "sourceLabel": "South Carolina",
+              "label": "South Carolina"
+            },
+            "46": {
+              "sourceLabel": "South Dakota",
+              "label": "South Dakota"
+            },
+            "47": {
+              "sourceLabel": "Tennessee",
+              "label": "Tennessee"
+            },
+            "48": {
+              "sourceLabel": "Texas",
+              "label": "Texas"
+            },
+            "49": {
+              "sourceLabel": "Utah",
+              "label": "Utah"
+            },
+            "50": {
+              "sourceLabel": "Vermont",
+              "label": "Vermont"
+            },
+            "51": {
+              "sourceLabel": "Virginia",
+              "label": "Virginia"
+            },
+            "53": {
+              "sourceLabel": "Washington",
+              "label": "Washington"
+            },
+            "54": {
+              "sourceLabel": "West Virginia",
+              "label": "West Virginia"
+            },
+            "55": {
+              "sourceLabel": "Wisconsin",
+              "label": "Wisconsin"
+            },
+            "56": {
+              "sourceLabel": "Wyoming",
+              "label": "Wyoming"
+            },
+            "60": {
+              "sourceLabel": "American Samoa",
+              "label": "American Samoa"
+            },
+            "66": {
+              "sourceLabel": "Guam",
+              "label": "Guam"
+            },
+            "69": {
+              "sourceLabel": "Northern Mariana Islands",
+              "label": "Northern Mariana Islands"
+            },
+            "72": {
+              "sourceLabel": "Puerto Rico",
+              "label": "Puerto Rico"
+            },
+            "78": {
+              "sourceLabel": "U.S. Virgin Islands",
+              "label": "U.S. Virgin Islands"
+            }
+          }
+        }
+      },
+      "us-counties": {
+        "sourceName": "US Starter Counties",
+        "name": "Exempel på län i USA",
+        "choices": {
+          "ANSI-COUNTY": {
+            "36061": {
+              "sourceLabel": "New York County, NY",
+              "label": "New York County, NY"
+            },
+            "36005": {
+              "sourceLabel": "Bronx County, NY",
+              "label": "Bronx County, NY"
+            },
+            "36047": {
+              "sourceLabel": "Kings County, NY",
+              "label": "Kings County, NY"
+            },
+            "36081": {
+              "sourceLabel": "Queens County, NY",
+              "label": "Queens County, NY"
+            },
+            "36085": {
+              "sourceLabel": "Richmond County, NY",
+              "label": "Richmond County, NY"
+            },
+            "36001": {
+              "sourceLabel": "Albany County, NY",
+              "label": "Albany County, NY"
+            },
+            "36029": {
+              "sourceLabel": "Erie County, NY",
+              "label": "Erie County, NY"
+            }
+          }
+        }
+      },
+      "us-cities": {
+        "sourceName": "US Starter Cities",
+        "name": "Exempel på städer i USA",
+        "choices": {
+          "GNIS": {
+            "2395220": {
+              "sourceLabel": "New York, NY",
+              "label": "New York, NY"
+            },
+            "978659": {
+              "sourceLabel": "Albany, NY",
+              "label": "Albany, NY"
+            },
+            "978764": {
+              "sourceLabel": "Buffalo, NY",
+              "label": "Buffalo, NY"
+            }
+          }
+        }
+      },
+      "us-countries": {
+        "sourceName": "US and Neighboring Countries",
+        "name": "USA och grannländer",
+        "choices": {
+          "ANSI-COUNTRY": {
+            "US": {
+              "sourceLabel": "United States",
+              "label": "USA"
+            },
+            "CA": {
+              "sourceLabel": "Canada",
+              "label": "Kanada"
+            },
+            "MX": {
+              "sourceLabel": "Mexico",
+              "label": "Mexiko"
+            }
+          }
+        }
+      },
+      "us-census-tracts": {
+        "sourceName": "US Starter Census Tracts",
+        "name": "Exempel på folkräkningsområden i USA",
+        "choices": {
+          "CENSUS-TRACT": {
+            "36061000600": {
+              "sourceLabel": "Census Tract 6, New York County, NY",
+              "label": "Folkräkningsområde 6, New York County, NY"
+            },
+            "36061000700": {
+              "sourceLabel": "Census Tract 7, New York County, NY",
+              "label": "Folkräkningsområde 7, New York County, NY"
+            },
+            "36001000100": {
+              "sourceLabel": "Census Tract 1, Albany County, NY",
+              "label": "Folkräkningsområde 1, Albany County, NY"
+            }
+          }
+        }
+      },
+      "us-current-medications": {
+        "sourceName": "US Starter Current Medications",
+        "name": "Exempel på aktuella läkemedel i USA",
+        "choices": {
+          "RxNorm": {
+            "1191": {
+              "sourceLabel": "Aspirin",
+              "label": "Acetylsalicylsyra"
+            },
+            "161": {
+              "sourceLabel": "Acetaminophen (Tylenol)",
+              "label": "Paracetamol (Tylenol)"
+            },
+            "6918": {
+              "sourceLabel": "Metoprolol (Lopressor)",
+              "label": "Metoprolol (Lopressor)"
+            }
+          }
+        }
+      },
+      "us-diagnoses": {
+        "sourceName": "US Starter Diagnoses",
+        "name": "Exempel på diagnoser i USA",
+        "choices": {
+          "ICD-10-CM": {
+            "I46.9": {
+              "sourceLabel": "Cardiac arrest",
+              "label": "Hjärtstopp"
+            },
+            "R07.9": {
+              "sourceLabel": "Chest pain, NOS",
+              "label": "Bröstsmärta, ospecificerad"
+            },
+            "R06.02": {
+              "sourceLabel": "Shortness of breath",
+              "label": "Andnöd"
+            },
+            "R55": {
+              "sourceLabel": "Fainting/collapse",
+              "label": "Synkope och kollaps"
+            },
+            "E16.2": {
+              "sourceLabel": "Hypoglycemia",
+              "label": "Hypoglykemi"
+            }
+          }
+        }
+      },
+      "us-outcome-procedures": {
+        "sourceName": "US Starter Outcome Procedures",
+        "name": "Exempel på sjukhusåtgärder i USA",
+        "choices": {
+          "ICD-10-PCS": {
+            "5A12012": {
+              "sourceLabel": "Performance of Cardiac Output, Single, Manual",
+              "label": "Manuella bröstkompressioner"
+            },
+            "BW03ZZZ": {
+              "sourceLabel": "Plain Radiography of Chest",
+              "label": "Lungröntgen"
+            },
+            "BW21ZZZ": {
+              "sourceLabel": "Computerized Tomography (CT Scan) of Abdomen and Pelvis",
+              "label": "Datortomografi av buk och bäcken"
+            }
+          }
+        }
       }
     },
     "specialChoices": {
