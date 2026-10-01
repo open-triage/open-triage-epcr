@@ -16,6 +16,10 @@ const mappingPath = path.join(packageRoot, `generated/${selectedCatalog.key}-ana
 const localizationPath = path.join(repoRoot, "defines/localization/localization_sv.json");
 const catalogStandard = selectedCatalog.standard;
 const databaseUrl = process.env.DATABASE_URL;
+// The pre-starter-list 3.5.1 release is sealed in existing installations.
+// Preserve it during upgrades; the expanded artifact is used for fresh installs.
+const previousCatalogSourceSha256 = "5d7f4364f8340e16f129c6ea31ea225ee5caa998ea8a26b7a5075e24cb9401c2";
+const previousReleaseSha256 = "a4e71a69a5011e785e553bacbe38e0e8a629e9fc76895ce759f52e20bb14654c";
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required to load the NEMSIS catalog");
 
@@ -68,14 +72,21 @@ try {
     "select id, artifact_sha256, provenance from catalog.release where standard = $1 and version = $2 and dataset = $3 for update",
     [catalogStandard, catalog.release, catalog.dataset]
   );
-  if (existing.rows[0] && existing.rows[0].artifact_sha256 !== catalogSha256 && existing.rows[0].provenance?.catalogSourceSha256 !== catalogSha256) {
+  const installed = existing.rows[0];
+  const installedSourceSha256 = installed?.provenance?.catalogSourceSha256;
+  const recognizedPreviousRelease = installed && catalogStandard === "NEMSIS" && catalog.release === "3.5.1" &&
+    (installedSourceSha256 === previousCatalogSourceSha256 || installed.artifact_sha256 === previousReleaseSha256);
+  if (installed && installed.artifact_sha256 !== catalogSha256 && installedSourceSha256 !== catalogSha256 &&
+      !recognizedPreviousRelease) {
     throw new Error(
-      `${catalogStandard} ${catalog.release} is already loaded with a different checksum (${existing.rows[0].artifact_sha256})`
+      `${catalogStandard} ${catalog.release} is already loaded with a different checksum (${installed.artifact_sha256})`
     );
   }
-  if (existing.rows[0]) {
+  if (installed) {
     await client.query("commit");
-    console.log(`${catalogStandard} ${catalog.release} is already loaded with the expected checksum.`);
+    console.log(recognizedPreviousRelease
+      ? `${catalogStandard} ${catalog.release} is sealed with the previous starter lists; preserving its published contents.`
+      : `${catalogStandard} ${catalog.release} is already loaded with the expected checksum.`);
     await client.end();
     process.exit(0);
   }
