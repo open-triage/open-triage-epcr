@@ -21,6 +21,7 @@ export default defineConfig({
     command: "npm run dev -- --hostname 127.0.0.1 --port 3108",
     env: {
       TMPDIR: process.platform === "darwin" ? "/private/tmp" : "/tmp",
+      OPEN_TRIAGE_E2E_DIST_DIR: ".next-e2e",
       ...(serverBackedMock
         ? { NEXT_PUBLIC_API_URL: "http://127.0.0.1:3108" }
         : { NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "true", NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API: "true" }),
