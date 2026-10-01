@@ -35,12 +35,12 @@ test("writes only per-type local folders, discovers parent and local, and preser
     const p = artifact();
     await Promise.all([writePackage(p), writePackage(p)]);
     const parent = path.join(root, "forms");
-    const destination = path.join(parent, "local", `${p.sha256}.json`);
+    const destination = path.join(parent, "local", "portable-v7.json");
     assert.deepEqual(JSON.parse(await readFile(destination, "utf8")), p);
     await writeFile(path.join(parent, "shared.json"), JSON.stringify(p));
     await writeFile(path.join(parent, "broken.json"), "not JSON");
     const files = await discoverPackages("form");
-    assert.deepEqual(files.map(({ file }) => file), ["forms/broken.json", "forms/shared.json", `forms/local/${p.sha256}.json`]);
+    assert.deepEqual(files.map(({ file }) => file), ["forms/broken.json", "forms/shared.json", "forms/local/portable-v7.json"]);
     assert.ok(files[0].error);
     assert.equal(files.filter((file) => file.package).length, 2);
     await writeFile(destination, '{"changed":true}');
@@ -48,6 +48,36 @@ test("writes only per-type local folders, discovers parent and local, and preser
     assert.equal(await readFile(destination, "utf8"), '{"changed":true}');
     assert.equal((await readdir(path.join(parent, "local"))).length, 1);
     assert.deepEqual(await discoverPackages("validation"), []);
+  } finally {
+    if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+    else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("export names use safe interface names and versions while retaining internal digests", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "canonical-names-"));
+  const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+  process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
+  try {
+    for (const kind of ["form", "catalog", "validation"]) {
+      const { sha256: _digest, ...content } = artifact(kind);
+      const p = makePackage({ ...content, name: "../Åland / Emergency Form", version: "2" });
+      await writePackage(p);
+      await writePackage(makePackage({ ...content, name: p.name, version: "3" }));
+      const folder = path.join(root, kind === "form" ? "forms" : kind, "local");
+      assert.deepEqual((await readdir(folder)).sort(), ["aland-emergency-form-v2.json", "aland-emergency-form-v3.json"]);
+      const saved = JSON.parse(await readFile(path.join(folder, "aland-emergency-form-v2.json"), "utf8"));
+      assert.equal(saved.name, p.name);
+      assert.equal(saved.sha256, p.sha256);
+      assert.deepEqual(parsePackage(saved, kind), p);
+      const collision = makePackage({ ...content, name: "Aland Emergency Form", version: "2" });
+      await assert.rejects(writePackage(collision), /already uses this name and version/);
+      assert.deepEqual(JSON.parse(await readFile(path.join(folder, "aland-emergency-form-v2.json"), "utf8")), p);
+      // Legacy exports remain discoverable; the digest is never inferred from the filename.
+      await writeFile(path.join(folder, `${p.sha256}.json`), JSON.stringify(p));
+      assert.equal((await discoverPackages(kind)).filter(({ package: entry }) => entry?.sha256 === p.sha256).length, 2);
+    }
   } finally {
     if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
     else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;

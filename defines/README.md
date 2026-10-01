@@ -23,8 +23,11 @@ Copy a file to the corresponding directory on another installation, or paste its
 contents into **Canonical JSON files** in the editor, then import it. Imports create
 immutable **published** versions; activation remains a separate choice.
 
-Packages use the versioned `opentriage-definition` format. SHA-256 filenames and
-atomic, exclusive writes prevent overwriting an older publication. The embedded
+Packages use the versioned `opentriage-definition` format. Export filenames use
+the name shown in the editor and source version, for example `nemsis-full-v1.json`.
+Names are normalized to safe lowercase filename components. Atomic, exclusive
+writes prevent overwriting an older publication or a different package with the
+same filename. SHA-256 remains the internal package identity. The embedded
 content digest detects corruption, not authenticity. Import only trusted configuration.
 Unknown format versions and changed content digests are rejected.
 

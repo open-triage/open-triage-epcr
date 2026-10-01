@@ -53,10 +53,14 @@ export function localDefinitionsRoot(): string {
   }
   return path.join(root, "defines");
 }
+function filenamePart(value: string, fallback: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "") || fallback;
+}
 export async function writePackage(p: CanonicalPackage): Promise<void> {
   const directory = path.join(localDefinitionsRoot(), p.kind === "form" ? "forms" : p.kind, "local");
   await mkdir(directory, { recursive: true });
-  const destination = path.join(directory, `${p.sha256}.json`);
+  const destination = path.join(directory, `${filenamePart(p.name, p.kind)}-v${filenamePart(p.version, "unknown")}.json`);
   const temporary = path.join(directory, `.${p.sha256}-${randomUUID()}.tmp`);
   const text = JSON.stringify(ordered(p), null, 2) + "\n";
   await writeFile(temporary, text, { flag: "wx", mode: 0o600 });
@@ -65,7 +69,7 @@ export async function writePackage(p: CanonicalPackage): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     if (contentDigest(JSON.parse(await readFile(destination, "utf8"))) !== contentDigest(p))
-      throw new ConflictException("A different canonical file already occupies this digest");
+      throw new ConflictException("A different canonical file already uses this name and version");
   } finally { await unlink(temporary); }
 }
 export async function discoverPackages(kind: DefinitionKind): Promise<Array<{ file: string; package?: CanonicalPackage; raw?: Record<string, unknown>; error?: string }>> {
