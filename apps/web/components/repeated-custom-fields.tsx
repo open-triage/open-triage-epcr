@@ -4,6 +4,7 @@ import type { CatalogDraftCustomElement, ClinicalFormConfiguration, EncounterDoc
 import React, { useState } from "react";
 import { customTextFindings, customTextIdentity } from "./custom-text-fields";
 import { ClinicalSearchableSelect } from "./clinical-searchable-select";
+import { getNemsisGroup } from "../app/nemsis-data-model";
 
 const ROOT = "PatientCareReportGroup";
 const targetNames: Record<string, { en: string; sv: string }> = {
@@ -45,7 +46,7 @@ export function setCustomOccurrence(document: EncounterDocument, definition: Cat
 }
 
 function targetLabel(instance: EncounterGroupInstance, groupId: string, index: number, language: string): string {
-  const title = targetNames[groupId]?.[language === "sv" ? "sv" : "en"] ?? groupId;
+  const title = targetNames[groupId]?.[language === "sv" ? "sv" : "en"] ?? getNemsisGroup(groupId)?.name ?? groupId;
   const first = instance.elements.flatMap((element) => element.values).find((value) => value.kind === "coded" || value.kind === "scalar");
   const detail = first?.kind === "coded" ? first.display || first.code : first?.kind === "scalar" ? String(first.value) : "";
   return `${title} ${index + 1}${detail ? ` — ${detail}` : ""}`;
