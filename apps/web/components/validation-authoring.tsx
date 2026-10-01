@@ -1,5 +1,7 @@
 "use client";
 
+import { CanonicalDefinitions } from "./canonical-definitions";
+
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import { compileValidationRule, explainValidationRule, formatValidationSource, validationRuleText,
@@ -302,6 +304,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
           setVersions((current) => current.map((item) => ({ ...item, status: item.id === selectedVersion.id ? "active" : "published" })));
           setActivationNote(""); setStatus(t("admin.validationActivatedFor")); onActivated?.();
         })} /></>}
+    <CanonicalDefinitions kind="validation" csrfToken={csrfToken} canPublish={canPublish} selectedId={selectedVersionId} hasDraft={Boolean(draft && !published)} />
   </AuthoringVersionWorkspace>;
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingValidationDraft" /></LoadingStatus>;
   if (!draft) return <div className="form-empty">

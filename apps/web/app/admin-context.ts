@@ -199,3 +199,10 @@ export const acceptOwnershipTransfer = (csrfToken: string) =>
 export const cancelOwnershipTransfer = (csrfToken: string, command: CancelOwnershipTransferCommand = {}) =>
   catalogRequest<OwnershipTransferState>("ownership-transfer", csrfToken,
     { method: "DELETE", body: JSON.stringify(command) });
+
+export type CanonicalFile = { file: string; package?: { name?: string; version?: string; sha256?: string }; error?: string; compatible: boolean; installed?: boolean };
+export const loadCanonicalFiles = (kind: string) => catalogRequest<CanonicalFile[]>(`canonical/${kind}`);
+export const importCanonicalFile = (csrfToken: string, kind: string, content: unknown) =>
+  catalogRequest<{ id: string }>(`canonical/${kind}/import`, csrfToken, { method: "POST", body: JSON.stringify(content) });
+export const exportCanonicalFile = (csrfToken: string, kind: string, id: string) =>
+  catalogRequest<unknown>(`canonical/${kind}/${id}/export`, csrfToken, { method: "POST" });

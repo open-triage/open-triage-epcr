@@ -7,3 +7,5 @@ out
 !.env.example
 artifacts
 coverage
+
+defines/*/local

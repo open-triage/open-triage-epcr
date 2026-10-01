@@ -16,3 +16,4 @@ supabase/.temp/
 .DS_Store
 .claude
 .worktrees/
+/defines/*/local/

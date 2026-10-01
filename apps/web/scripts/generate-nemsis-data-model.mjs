@@ -10,7 +10,7 @@ const listRoot = path.join(sourceRoot, "lists");
 const dictionaryPath = path.join(sourceRoot, "Combined_ElementDetails_Full.txt");
 const enumerationsPath = path.join(sourceRoot, "Combined_ElementEnumerations.txt");
 const catalogPath = path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
-const schemaPath = path.join(webRoot, "../../defines/catalog/schema_nemsis-3.5.1.json");
+const schemaPath = path.join(webRoot, "../../packages/contracts/catalog.schema-1.0.0.json");
 const releaseBaseUrl = "https://nemsis.org/media/nemsis_v3/release-3.5.1";
 const masterBaseUrl = "https://nemsis.org/media/nemsis_v3/master";
 const retrievalDate = "2026-09-01";
@@ -385,7 +385,7 @@ export async function generateCatalog() {
     ...listFiles.map(({ specification, content }) => ({ role: `${specification.classification}-list`, path: `nemsis-3.5.1-sources/lists/${specification.filename}`, url: `${masterBaseUrl}/${specification.remotePath}`, content })),
   ].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const catalog = {
-    $schema: "./schema_nemsis-3.5.1.json", schemaVersion: "1.0.0",
+    $schema: "../../packages/contracts/catalog.schema-1.0.0.json", schemaVersion: "1.0.0",
     catalog: "nemsis-ems-data-model", release: "3.5.1", dataset: "EMSDataSet", elementCount: elements.length,
     statistics: {
       inlineEnumerationElements: inlineValues.size,

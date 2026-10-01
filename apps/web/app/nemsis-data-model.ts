@@ -73,7 +73,7 @@ export type NemsisDataElement = {
 };
 
 export type NemsisDataModel = {
-  readonly $schema: "./schema_nemsis-3.5.1.json";
+  readonly $schema: "../../packages/contracts/catalog.schema-1.0.0.json";
   readonly schemaVersion: "1.0.0";
   readonly catalog: "nemsis-ems-data-model";
   readonly release: "3.5.1";

@@ -1,5 +1,7 @@
 "use client";
 
+import { CanonicalDefinitions } from "./canonical-definitions";
+
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogDraftCustomTextElement, CatalogDraftCustomCodedElement } from "@open-triage/contracts";
@@ -406,6 +408,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.catalogDraftCreated"));
     })}>
       <p role="note"><AdminText messageKey="admin.publishedCatalogActivatedWithForm" /></p>
+    <CanonicalDefinitions kind="catalog" csrfToken={csrfToken} canPublish={canPublish} selectedId={selectedVersionId} hasDraft={Boolean(draft && "revision" in draft)} />
     </AuthoringVersionWorkspace>;
 
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingCatalogDraft" /></LoadingStatus>;
