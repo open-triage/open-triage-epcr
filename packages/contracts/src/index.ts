@@ -17,6 +17,7 @@ export {
   formatRequiredElementSource,
   formatValidationSource,
   isNemsisDemographicElementId,
+  minimumRuleCoversRequirement,
   repairNemsisImportedMessage,
   validationRuleText,
   type CompiledValidationBundle,
@@ -680,6 +681,8 @@ export interface CatalogDraftCodeValue {
   sourceLabel: string;
   category: string | null;
   enabled: boolean;
+  /** Existing NEMSIS code used when a local extension value is transmitted. */
+  nemsisCode?: string;
   localization?: { schemaVersion: 1; sv?: { label?: string; reviewedSource?: { label: string } } };
 }
 
@@ -948,6 +951,7 @@ export interface ClinicalFormConfiguration {
       code: string;
       codeSystem: string;
       label: string;
+      nemsisCode?: string;
       sourceLabel?: string;
       localization?: CatalogDraftCodeValue["localization"];
       terminologyVersion?: string;

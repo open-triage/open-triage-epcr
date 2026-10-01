@@ -25,6 +25,7 @@ type ChoiceRow = {
   code_system: string;
   label: string;
   source_label?: string;
+  nemsis_code?: string | null;
   localization: ClinicalFormConfiguration["catalogFields"][string]["codeChoices"] extends Array<infer T> ? T extends { localization?: infer L } ? L : never : never;
   terminology_version: Date | string | null;
   sort_order: number | null;
@@ -120,10 +121,12 @@ export async function catalogFieldsConfiguration(
   `, [catalogReleaseId, elementIds]) : [];
   const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
     with wording as materialized (
-      select provenance->'codeListLocalization' as lists from catalog.release where id=$1
+      select provenance->'codeListLocalization' as lists,
+        provenance->'codeListCustomMappings' as mappings from catalog.release where id=$1
     )
     select * from (select vse.element_id, option.code, option.code_system, option.display as label, option.source_display as source_label,
            cr.lists->value_set.value_set_id->'values'->option.code_system->option.code as localization,
+           cr.mappings->value_set.value_set_id->option.code_system->>option.code as nemsis_code,
            value_set.published_at as terminology_version, configured.sort_order
     from catalog.value_set_element vse
     cross join wording cr
@@ -139,6 +142,7 @@ export async function catalogFieldsConfiguration(
     union all
     select option.element_id, option.code, option.code_system, option.display as label, option.display as source_label,
            cr.lists->('inline:' || option.element_id)->'values'->option.code_system->option.code as localization,
+           cr.mappings->('inline:' || option.element_id)->option.code_system->>option.code as nemsis_code,
            null::text as terminology_version, configured.sort_order
     from catalog.element_option option
     cross join wording cr
@@ -154,6 +158,7 @@ export async function catalogFieldsConfiguration(
   for (const choice of choices) {
     const current = choicesByElement.get(choice.element_id) ?? [];
     current.push({ code: choice.code, codeSystem: choice.code_system, label: choice.label,
+      ...(choice.nemsis_code ? { nemsisCode: choice.nemsis_code } : {}),
       ...(choice.source_label && choice.source_label !== choice.label ? { sourceLabel: choice.source_label } : {}),
       ...(choice.localization ? { localization: choice.localization } : {}),
       ...(choice.terminology_version ? { terminologyVersion: new Date(choice.terminology_version).toISOString() } : {}) });

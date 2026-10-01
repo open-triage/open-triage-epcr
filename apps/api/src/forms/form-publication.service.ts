@@ -117,7 +117,7 @@ export class FormPublicationService {
         const metadata = await this.resolveMetadata(manager, version, definition);
         const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
           field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds);
+        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds, true);
         const customSnapshot = definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
           ? await releaseCustomDefinitions(manager, version.catalog_release_id) : null;
         const invalidChoices = validateFieldChoicePolicies(definition, catalogFields,

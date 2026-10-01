@@ -482,3 +482,32 @@ test("saving and reopening an arranged form retains names, empty sections, and m
   assert.deepEqual((await service.current("owner-session")).definition, arranged);
   assert.equal(saved.revision, 2);
 });
+
+test("forms can enable codes hidden by legacy catalog settings and retain their own order", async () => {
+  const authored = { schemaVersion: 1, sections: [{ key: "patient", fields: [{ key: "choice",
+    source: { kind: "nemsis", elementId: "ePatient.25" }, choicePolicy: [
+      { kind: "code", code: "OLD-DISABLED", codeSystem: "local" },
+      { kind: "code", code: "A", codeSystem: "local" },
+    ] }] }] };
+  let row = { id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
+    revision: 1, canonical_definition: authored, definition_sha256: "a".repeat(64), updated_at: new Date() };
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("update forms.form_version")) {
+      row = { ...row, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3], revision: 2 };
+      return [row];
+    }
+    if (sql.includes("from forms.form_version")) return [row];
+    if (sql.includes("from catalog.element_definition")) return [{ ...element("ePatient.25"),
+      min_occurs: 0, max_occurs: 1, nillable: true, supports_not_values: false, supports_pertinent_negatives: false }];
+    if (sql.includes("from catalog.value_set_element")) return (parameters[2] ? ["A", "OLD-DISABLED"] : ["A"])
+      .map((code) => ({ element_id: "ePatient.25", code, code_system: "local", label: code }));
+    if (sql.includes("from catalog.group_definition") || sql.includes("configuration_event") || sql.includes("customGroupDefinitions")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ ...manager, manager, transaction: async (_level, work) => work(manager) },
+    { requireCapability: async () => session });
+  const saved = await service.save("owner-session", draftId, { expectedRevision: 1, definition: authored });
+  assert.deepEqual(saved.definition.sections[0].fields[0].choicePolicy, authored.sections[0].fields[0].choicePolicy);
+  assert.deepEqual(saved.catalogFields["ePatient.25"].codeChoices.map(({ code }) => code), ["A", "OLD-DISABLED"]);
+  assert.deepEqual((await service.current("owner-session")).definition, authored);
+});

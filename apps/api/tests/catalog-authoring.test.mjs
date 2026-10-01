@@ -385,7 +385,7 @@ test("recommended code lists support labels, enabled state, ordering, additions,
       { ...sourceCodeList.values[1], label: "Walking or hiking", enabled: false },
       sourceCodeList.values[0],
       { code: "LOCAL-1", codeSystem: "Example EMS", label: "Local activity", sourceLabel: "Local activity",
-        category: null, enabled: true }
+        category: null, enabled: true, nemsisCode: "Y93.K" }
     ], defaultValue: { code: "LOCAL-1", codeSystem: "Example EMS" } }] };
   const saved = await serviceWith(listManager(changed)).save("session", "draft-1", { expectedRevision: 1, definition: changed });
   assert.equal(saved.revision, 2);
@@ -409,6 +409,27 @@ test("inline enumerations are exposed as element-selectable editable code lists"
     listId: inline.list_id, name: inline.name, classification: "inline", elementIds: ["eAirway.03"],
     defaultValue: null, values: inline.values
   });
+});
+
+test("inline NEMSIS elements accept mapped local values and reject unmapped values", async () => {
+  const inline = { list_id: "inline:ePatient.01", name: "Patient Name", classification: "inline",
+    element_ids: ["ePatient.01"], default_value: null, values: [
+      { code: "1001", codeSystem: "", label: "Other", sourceLabel: "Other", category: null, enabled: true }
+    ] };
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
+    if (sql.includes("select 'inline:'")) return [inline];
+    if (sql.includes("customGroupDefinitions") || sql.includes("from forms.custom_element_definition")) return [];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const list = { listId: inline.list_id, name: inline.name, classification: "inline", elementIds: inline.element_ids,
+    values: [...inline.values, { code: "LOCAL-1", codeSystem: "urn:agency:example", label: "Local choice",
+      sourceLabel: "Local choice", category: null, enabled: true, nemsisCode: "1001" }] };
+  const service = serviceWith(manager);
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...definition, codeLists: [list] })).valid, true);
+  const unmapped = { ...list, values: list.values.map((value) => value.code === "LOCAL-1" ? { ...value, nemsisCode: "missing" } : value) };
+  assert.match((await service.validateDefinition(manager, "release-1", { ...definition, codeLists: [unmapped] })).findings.join(" "), /mapped NEMSIS value/);
 });
 
 test("duplicate codes and removed published values fail validation", async () => {
@@ -456,7 +477,7 @@ test("Swedish text survives a revision-checked save and incomplete translations 
   assert.equal(savedDefinition.elements[0].description, "Updated description");
   const validation = await service.validate("session", "draft-1");
   assert.equal(validation.valid, true);
-  assert.ok(validation.warnings.some((warning) => warning.includes("needs English source review")));
+  assert.ok(validation.warnings.every((warning) => !warning.includes("source review")));
 });
 
 test("malformed catalog localization remains a publication-blocking structural error", async () => {
@@ -532,7 +553,9 @@ test("publishing choice translations seals nested list, system, and code identit
   const value = { ...sourceCodeList.values[0], localization: { schemaVersion: 1,
     sv: { label: "Djurvård", reviewedSource: { label: sourceCodeList.values[0].label } } } };
   const localized = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
-    classification: "suggested", elementIds: sourceCodeList.element_ids, values: [value], defaultValue: null }] };
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: [value,
+      { code: "LOCAL-1", codeSystem: "urn:agency:example", label: "Local activity", sourceLabel: "Local activity",
+        category: null, enabled: true, nemsisCode: "Y93.K" }], defaultValue: null }] };
   const digest = catalogDefinitionSha256(localized);
   let provenance;
   const manager = { query: async (sql, parameters) => {
@@ -543,7 +566,7 @@ test("publishing choice translations seals nested list, system, and code identit
       dataset: "EMSDataSet", artifact_schema_version: "1.0.0", data_model_version: "3.5.1" }];
     if (sql.includes("insert into catalog.release")) { provenance = JSON.parse(parameters[6]); return []; }
     if (sql.includes("source_counts")) return [{ source_counts: [0, 1, 0, 1, 1, 1, 0, 0],
-      published_counts: [0, 1, 0, 1, 1, 1, 0, 0], expected_option_count: 1, expected_element_option_count: 0 }];
+      published_counts: [0, 1, 0, 1, 1, 2, 0, 0], expected_option_count: 2, expected_element_option_count: 0 }];
     if (sql.includes("update catalog.authoring_draft set published_release_id")) return [{ published_at: new Date() }];
     return [];
   } };
@@ -554,6 +577,7 @@ test("publishing choice translations seals nested list, system, and code identit
   await service.publish("session", "draft-1", { expectedRevision: 2, definitionSha256: digest,
     displayName: "Swedish choices", changeNote: "Reviewed Swedish choices" });
   assert.equal(provenance.codeListLocalization["patient-activity"].values["ICD-10-CM"]["Y93.K"].sv.label, "Djurvård");
+  assert.equal(provenance.codeListCustomMappings["patient-activity"]["urn:agency:example"]["LOCAL-1"], "Y93.K");
   assert.equal(JSON.stringify(provenance).includes("\\u0000"), false);
 });
 

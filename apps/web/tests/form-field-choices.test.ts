@@ -22,7 +22,8 @@ test("authoring and preview use one field policy for codes and NOT values", () =
   const markup = renderToStaticMarkup(createElement(FormSectionElements,
     { definition, catalogFields, onChange() {} }));
   assert.match(markup, /Enabled choices and order/);
-  assert.match(markup, /NOT 7701003/);
+  assert.match(markup, /Not Recorded/);
+  assert.doesNotMatch(markup, /NOT 7701003/);
   const preview = previewCatalogFields(definition, catalogFields);
   assert.deepEqual(preview["ePatient.25"]?.codeChoices?.map((choice) => choice.code), ["9906001"]);
   assert.deepEqual(preview["ePatient.25"]?.exceptionalChoices?.map((choice) => choice.key), ["not-value:7701003"]);

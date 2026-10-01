@@ -8,6 +8,8 @@ const valid = { id: "f064177e-d9aa-487e-b9d3-ad581e117b87", namespace: "org.exam
 
 test("flat custom groups require an explicit recurrence and a nonempty correlation", () => {
   assert.deepEqual(customGroupDefinitionFindings(valid), []);
+  assert.deepEqual(customGroupDefinitionFindings({ ...valid, slug: "eDisposition.Group_se" }), []);
+  assert.match(customGroupDefinitionFindings({ ...valid, slug: "eDisposition..Group_se" }).join("; "), /group ID is invalid/);
   assert.deepEqual(customGroupDefinitionFindings({ ...valid, recurrence: "nested", correlatesTo: "" }), [
     "Custom group recurrence must be single or multiple", "Custom group correlation target is invalid",
   ]);
@@ -15,9 +17,9 @@ test("flat custom groups require an explicit recurrence and a nonempty correlati
   assert.match(customGroupDefinitionFindings({ ...valid, id: "not-an-id" }).join("; "), /version-4 UUID/);
 });
 
-test("a Swedish group label must be reviewed against its current source title", () => {
+test("a Swedish group label remains valid when legacy source metadata is stale", () => {
   assert.deepEqual(customGroupDefinitionFindings({ ...valid, localization: { schemaVersion: 1,
     sv: { label: "Läkemedelssvar", reviewedSource: { label: valid.title } } } }), []);
-  assert.match(customGroupDefinitionFindings({ ...valid, localization: { schemaVersion: 1,
-    sv: { label: "Läkemedelssvar", reviewedSource: { label: "Old title" } } } }).join("; "), /current English title/);
+  assert.deepEqual(customGroupDefinitionFindings({ ...valid, localization: { schemaVersion: 1,
+    sv: { label: "Läkemedelssvar", reviewedSource: { label: "Old title" } } } }), []);
 });

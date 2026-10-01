@@ -216,7 +216,7 @@ export class FormAuthoringService {
       });
       const choiceElementIds = [...new Set(body.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
         field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-      const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds);
+      const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds, true);
       const customSnapshot = body.definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
         ? await releaseCustomDefinitions(manager, draft.catalog_release_id) : null;
       const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, body.definition)
@@ -434,9 +434,10 @@ export class FormAuthoringService {
         diagnostics.push({ code: "incompatible-reference", path, message: `${field.source.elementId} changed identity, datatype, or storage semantics; remove or replace this field` });
       }
     }
-    const targetCatalog = await catalogFieldsConfiguration(manager, targetReleaseId, elementIds);
+    // Catalog content is available to every form; each field owns enablement and order.
+    const targetCatalog = await catalogFieldsConfiguration(manager, targetReleaseId, elementIds, true);
     const sourceCatalog = sourceReleaseId === targetReleaseId ? targetCatalog
-      : await catalogFieldsConfiguration(manager, sourceReleaseId, elementIds);
+      : await catalogFieldsConfiguration(manager, sourceReleaseId, elementIds, true);
     const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, definition)
       : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
         .map((item) => [item.id, item]));
@@ -553,7 +554,7 @@ export class FormAuthoringService {
     const definition = this.definition(row.canonical_definition);
     const elementIds = [...new Set(definition.sections.flatMap((section) =>
       section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-    const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds);
+    const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds, true);
     const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
       field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
     const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<StationaryFormDraft["customFields"]>[string] }>>(`
@@ -562,7 +563,7 @@ export class FormAuthoringService {
     const snapshotById = new Map((snapshot ?? []).map((item) => [item.id, item]));
     let newChoicesByField: Record<string, Choice[]> = {};
     if (sourceCatalogReleaseId && sourceCatalogReleaseId !== row.catalog_release_id) {
-      const sourceCatalog = await catalogFieldsConfiguration(manager, sourceCatalogReleaseId, elementIds);
+      const sourceCatalog = await catalogFieldsConfiguration(manager, sourceCatalogReleaseId, elementIds, true);
       const sourceSnapshot = customIds.length ? await releaseCustomDefinitions(manager, sourceCatalogReleaseId) : null;
       const sourceById = new Map((sourceSnapshot ?? []).map((item) => [item.id, item]));
       newChoicesByField = formCatalogAdoptionChoices(definition, sourceCatalog, catalogFields, sourceById, snapshotById);

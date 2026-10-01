@@ -3,7 +3,7 @@ import { customCodedDefinitionFindings } from "./custom-coded-definition.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const namespace = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$/;
-const slug = /^[A-Za-z][A-Za-z0-9_-]*$/;
+const slug = /^[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/;
 
 export function customTextDefinitionFindings(value: unknown): string[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return ["Custom text definition must be an object"];
@@ -11,7 +11,7 @@ export function customTextDefinitionFindings(value: unknown): string[] {
   const findings: string[] = [];
   if (typeof item.id !== "string" || !uuid.test(item.id)) findings.push("Custom identity must be a version-4 UUID");
   if (typeof item.namespace !== "string" || !namespace.test(item.namespace)) findings.push("Custom namespace must be namespaced and distinct from NEMSIS");
-  if (typeof item.slug !== "string" || !slug.test(item.slug)) findings.push("Custom slug is invalid");
+  if (typeof item.slug !== "string" || !slug.test(item.slug)) findings.push("Custom element ID is invalid");
   if (typeof item.namespace === "string" && typeof item.slug === "string" && `${item.namespace}.${item.slug}`.length > 255)
     findings.push("Custom identity exceeds the NEMSIS 255-character limit");
   if (typeof item.title !== "string" || item.title.trim().length < 2 || item.title.length > 100) findings.push("Custom title must contain 2–100 characters");

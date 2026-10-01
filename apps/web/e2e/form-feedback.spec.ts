@@ -94,7 +94,7 @@ test("activation lists affected rules and requires explicit agreement after canc
   await page.getByRole("button", { name: "Activate selected version", exact: true }).click();
   await confirmation.getByRole("button", { name: "Agree, remove rules and activate" }).click();
   await expect(confirmation).toHaveCount(0);
-  await expect(page.getByText("Stationary form activated for new reports. Existing reports remain pinned to their original versions.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Form activated for new reports. Existing reports remain pinned to their original versions.", { exact: true })).toBeVisible();
   expect(state.requests).toHaveLength(3);
   expect(state.requests[2]).toEqual({ validationVersionId: "validation", changeNote: "Remove unused patient fields",
     removeImpactedRuleIds: ["rule-1", "rule-2"] });

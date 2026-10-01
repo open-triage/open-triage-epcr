@@ -31,7 +31,7 @@ type SourceElementRow = {
 type SourceCodeListRow = {
   list_id: string; name: string; classification: "defined" | "suggested" | "agency" | "inline"; element_ids: string[];
   values: Array<{ code: string; codeSystem: string; label: string; sourceLabel: string;
-    category: string | null; enabled: boolean; localization?: CatalogDraftCodeValue["localization"] }>;
+    category: string | null; enabled: boolean; nemsisCode?: string; localization?: CatalogDraftCodeValue["localization"] }>;
   default_value: { code: string; codeSystem: string } | null;
   localization?: CatalogDraftCodeList["localization"];
 };
@@ -298,7 +298,11 @@ export class CatalogAuthoringService {
             values: Object.fromEntries([...new Set(list.values.map((value) => value.codeSystem))].map((system) =>
               [system, Object.fromEntries(list.values.filter((value) => value.codeSystem === system && value.localization?.sv)
                 .map((value) => [value.code, value.localization]))]))
-          }])) }), body.displayName]);
+          }])),
+          codeListCustomMappings: Object.fromEntries(draft.canonical_definition.codeLists.map((list) => [list.listId,
+            Object.fromEntries([...new Set(list.values.filter((value) => value.nemsisCode).map((value) => value.codeSystem))]
+              .map((system) => [system, Object.fromEntries(list.values.filter((value) => value.codeSystem === system && value.nemsisCode)
+                .map((value) => [value.code, value.nemsisCode]))]))])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
       for (const element of draft.canonical_definition.customElements ?? []) {
         const inherited = await manager.query<Array<{ id: string }>>(`select id from forms.custom_element_definition where id=$1`, [element.id]);
@@ -413,9 +417,16 @@ export class CatalogAuthoringService {
   }
 
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
-    return manager.query(`select e.element_id, e.name, e.description, cr.provenance->'elementLocalization'->e.element_id as localization,
+    // Materialize the translation maps once: extracting from the compressed release
+    // provenance for every element and option dominates editor load time.
+    return manager.query(`with wording as materialized (
+      select provenance->'elementLocalization' as elements,
+        provenance->'specialChoiceLocalization' as special_choices
+      from catalog.release where id=$1
+    )
+    select e.element_id, e.name, e.description, cr.elements->e.element_id as localization,
       (select coalesce(jsonb_agg(jsonb_build_object('kind', o.source_kind, 'code', o.code, 'label', o.display,
-        'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->o.source_kind->o.code)
+        'localization', cr.special_choices->e.element_id->o.source_kind->o.code)
         order by o.source_kind, o.code), '[]'::jsonb) from catalog.element_option o
         where o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind in ('not-value', 'pertinent-negative')) as special_choices,
       e.element_identity_id, e.base_datatype, e.source_datatype,
@@ -425,48 +436,60 @@ export class CatalogAuthoringService {
         coalesce((select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)) value) as hidden_element_ids
       from catalog.element_definition e left join catalog.analytics_element_mapping m
         on m.release_id=e.release_id and m.element_id=e.element_id
-      join catalog.release cr on cr.id=e.release_id
+      cross join wording cr
       where e.release_id=$1 order by e.element_id`, [releaseId]).then((rows: Array<SourceElementRow & { analytical_location: string | null; sql_type: string | null }>) =>
         rows.map((row) => ({ ...row, analytical_location: row.analytical_location ?? "unmapped", sql_type: row.sql_type ?? "" })) as SourceElementRow[]);
   }
 
   private async sourceCodeLists(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceCodeListRow[]> {
-    const valueSets = await manager.query<SourceCodeListRow[]>(`select v.value_set_id as list_id, v.name, v.classification,
-      cr.provenance->'codeListLocalization'->v.value_set_id->'localization' as localization,
+    // Category is required even when null; restore it after stripping optional null metadata.
+    const valueSets = await manager.query<SourceCodeListRow[]>(`with wording as materialized (
+      select provenance->'codeListLocalization' as lists,
+        provenance->'codeListCustomMappings' as mappings from catalog.release where id=$1
+    )
+    select v.value_set_id as list_id, v.name, v.classification,
+      (select lists from wording)->v.value_set_id->'localization' as localization,
       coalesce((select array_agg(vse.element_id order by vse.element_id)
         from catalog.value_set_element vse where vse.release_id=v.release_id
           and vse.value_set_id=v.value_set_id), array[]::text[]) as element_ids,
-      coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
-        'label', o.display, 'sourceLabel', o.source_display, 'category', o.category,
+      coalesce(jsonb_agg((jsonb_strip_nulls(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
+        'label', o.display, 'sourceLabel', o.source_display,
         'enabled', coalesce(c.enabled, true), 'localization',
-        cr.provenance->'codeListLocalization'->v.value_set_id->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
+        (select lists from wording)->v.value_set_id->'values'->o.code_system->o.code,
+        'nemsisCode', (select mappings from wording)->v.value_set_id->o.code_system->>o.code)) ||
+        jsonb_build_object('category', o.category)) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
       from catalog.value_set v left join catalog.value_set_option o
         on o.release_id=v.release_id and o.value_set_id=v.value_set_id
-      join catalog.release cr on cr.id=v.release_id
       left join catalog.value_set_option_configuration c
         on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
       where v.release_id=$1 and v.classification in ('defined', 'suggested', 'agency')
-      group by v.release_id, v.value_set_id, v.name, v.classification, cr.id order by v.value_set_id`, [releaseId]);
-    const inline = await manager.query<SourceCodeListRow[]>(`select 'inline:' || e.element_id as list_id,
+      group by v.release_id, v.value_set_id, v.name, v.classification order by v.value_set_id`, [releaseId]);
+    const inline = await manager.query<SourceCodeListRow[]>(`with wording as materialized (
+      select provenance->'codeListLocalization' as lists,
+        provenance->'codeListCustomMappings' as mappings from catalog.release where id=$1
+    )
+    select 'inline:' || e.element_id as list_id,
       e.name, 'inline'::text as classification, array[e.element_id] as element_ids,
-      cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'localization' as localization,
-      coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
-        'label', o.display, 'sourceLabel', o.display, 'category', null,
+      (select lists from wording)->('inline:' || e.element_id)->'localization' as localization,
+      coalesce(jsonb_agg((jsonb_strip_nulls(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
+        'label', o.display, 'sourceLabel', o.display,
         'enabled', coalesce(c.enabled, true), 'localization',
-        cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
+        (select lists from wording)->('inline:' || e.element_id)->'values'->o.code_system->o.code,
+        'nemsisCode', (select mappings from wording)->('inline:' || e.element_id)->o.code_system->>o.code)) ||
+        jsonb_build_object('category', null)) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
-      from catalog.element_definition e join catalog.release cr on cr.id=e.release_id join catalog.element_option o
+      from catalog.element_definition e join catalog.element_option o
         on o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind='inline'
       left join catalog.element_option_configuration c
         on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
         and c.code_system=o.code_system and c.code=o.code
       where e.release_id=$1
-      group by e.element_id, e.name, cr.id order by e.element_id`, [releaseId]);
+      group by e.element_id, e.name order by e.element_id`, [releaseId]);
     return [...inline, ...valueSets];
   }
 
@@ -589,12 +612,6 @@ export class CatalogAuthoringService {
         else if (isRecord(localization.sv)) {
           if (typeof localization.sv.label !== "string" || !localization.sv.label.trim())
             warnings.push(`${element.elementId}.label is missing Swedish text`);
-          if (localization.sv.label && localization.sv.reviewedSource &&
-              isRecord(localization.sv.reviewedSource) && localization.sv.reviewedSource.label !== element.label)
-            warnings.push(`${element.elementId}.label Swedish text needs English source review`);
-          if (localization.sv.description && localization.sv.reviewedSource &&
-              isRecord(localization.sv.reviewedSource) && localization.sv.reviewedSource.description !== element.description)
-            warnings.push(`${element.elementId}.description Swedish text needs English source review`);
         }
       } else warnings.push(`${element.elementId}.label is missing Swedish text`);
       const baseChoices = base.special_choices ?? [];
@@ -610,8 +627,6 @@ export class CatalogAuthoringService {
           seenChoices.add(key);
           if (choice.localization?.sv?.label !== undefined && typeof choice.localization.sv.label !== "string")
             findings.push(`${element.elementId} special choice ${key} translation is malformed`);
-          if (choice.localization?.sv?.reviewedSource?.label && choice.localization.sv.reviewedSource.label !== choice.label)
-            warnings.push(`${element.elementId} special choice ${key} needs source review`);
         }
       }
       const constraints = element.constraints;
@@ -655,8 +670,6 @@ export class CatalogAuthoringService {
           (listTranslation !== undefined && (typeof listTranslation.name !== "string" ||
             (listTranslation.reviewedSource !== undefined && typeof listTranslation.reviewedSource.name !== "string")))))
         findings.push(`${list.listId} localized list name is malformed`);
-      else if (listTranslation?.reviewedSource && listTranslation.reviewedSource.name !== list.name)
-        warnings.push(`${list.listId} localized list name needs source review`);
       const sourceValues = new Map(baseList.values.map((value) => [`${value.codeSystem}\u0000${value.code}`, value]));
       const seenValues = new Set<string>();
       for (const [valueIndex, unknownValue] of list.values.entries()) {
@@ -681,9 +694,12 @@ export class CatalogAuthoringService {
               (translation !== undefined && (typeof translation.label !== "string" ||
                 (translation.reviewedSource !== undefined && typeof translation.reviewedSource.label !== "string")))))
           findings.push(`${list.listId} value ${code} localization is malformed`);
-        else if (translation?.reviewedSource && translation.reviewedSource.label !== unknownValue.label)
-          warnings.push(`${list.listId} value ${code} needs source review`);
         const baseValue = sourceValues.get(key);
+        if (!baseValue && (!codeSystem || typeof unknownValue.nemsisCode !== "string" ||
+            ![...sourceValues.values()].some((sourceValue) => sourceValue.code === unknownValue.nemsisCode && !sourceValue.nemsisCode)))
+          findings.push(`${list.listId} custom code ${code} needs its own code system and a mapped NEMSIS value`);
+        if (baseValue && unknownValue.nemsisCode !== baseValue.nemsisCode)
+          findings.push(`${list.listId} value ${code} NEMSIS mapping cannot change`);
         if (baseValue && (unknownValue.sourceLabel !== baseValue.sourceLabel || unknownValue.category !== baseValue.category))
           findings.push(`${list.listId} published code ${code} identity and source meaning cannot change`);
       }

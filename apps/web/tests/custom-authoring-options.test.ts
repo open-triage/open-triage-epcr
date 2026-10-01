@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CatalogDraftDefinition } from "@open-triage/contracts";
-import { customCorrelationOptions, customSpecialOptions } from "../app/custom-authoring-options";
+import { customCorrelationOptions, customSpecialOptions, fixedGroupName } from "../app/custom-authoring-options";
 
 const catalog = { schemaVersion: 1, sourceReleaseId: "pinned", hiddenElementIds: ["eHidden.01"],
   elements: [
@@ -19,6 +19,11 @@ test("correlation options reflect visible repeated groups in the draft", () => {
   assert.ok(options.some((group) => group.id === "eVitals.VitalGroup"));
   assert.ok(!options.some((group) => group.id === "eMedications.MedicationGroup"));
   assert.ok(!options.some((group) => group.id === "PatientCareReportGroup"));
+});
+
+test("fixed groups use shipped Swedish names", () => {
+  assert.equal(fixedGroupName("PatientCareReportGroup", "sv"), "Patientjournal");
+  assert.equal(fixedGroupName("PatientCareReportGroup", "en"), "Patient Care Report");
 });
 
 test("exceptional options use the draft's enabled labeled values", () => {
