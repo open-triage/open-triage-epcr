@@ -808,7 +808,7 @@ integrationTest("authorized Admin context resolves only the session organization
     sourceLabel: "Locally managed choice", category: null, enabled: true };
   const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText, binaryElement, otherElement, groupedText],
     customGroups: [customGroup], elements: draft.definition.elements.map((element) =>
-    element.elementId === changedElement.elementId ? { ...element, requirednessSeverity: "warning" } : element),
+    element.elementId === changedElement.elementId ? { ...element, label: `${element.label} (agency label)` } : element),
     codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
       values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
         ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value)],
@@ -836,12 +836,12 @@ integrationTest("authorized Admin context resolves only the session organization
   const publishedCustom = await client.query(`select ced.id,ced.identifying,ced.definition->>'usage' as usage
     from forms.custom_element_definition ced where ced.id=$1`, [customText.id]);
   assert.deepEqual(publishedCustom.rows, [{ id: customText.id, identifying: false, usage: "Required" }]);
-  const requiredness = await client.query(`select
-    (select agency_required from catalog.element_definition where release_id=$1 and element_id=$3) source_required,
-    (select agency_required from catalog.element_definition where release_id=$2 and element_id=$3) published_required`,
+  const elementLabels = await client.query(`select
+    (select name from catalog.element_definition where release_id=$1 and element_id=$3) source_label,
+    (select name from catalog.element_definition where release_id=$2 and element_id=$3) published_label`,
   [release.rows[0].id, published.id, changedElement.elementId]);
-  assert.equal(requiredness.rows[0].source_required, null);
-  assert.equal(requiredness.rows[0].published_required, true);
+  assert.equal(elementLabels.rows[0].source_label, changedElement.label);
+  assert.equal(elementLabels.rows[0].published_label, `${changedElement.label} (agency label)`);
   const carriedDemographics = await client.query(`select catalog_release_id,dagency_01,dagency_02,dagency_04,created_by
     from app_identity.agency_demographic_version
     where organization_id=$1 and catalog_release_id=$2`, [organizationId, published.id]);

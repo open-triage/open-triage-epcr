@@ -79,7 +79,7 @@ export class CanonicalPackageService {
       const { sourceReleaseId: _id, ...portable } = rows[0]?.canonical_definition ?? view.definition;
       definition = portable;
     } else {
-      const rows = kind === "form" ? await this.db.query(`select fv.display_name,fv.version,fv.catalog_release_id,fv.canonical_definition as definition
+      const rows = kind === "form" ? await this.db.query(`select coalesce(fv.display_name, f.name) as display_name,fv.version,fv.catalog_release_id,fv.canonical_definition as definition
         from forms.form_version fv join forms.form f on f.id=fv.form_id
         where fv.id=$1 and f.organization_id=$2 and fv.status='published'`, [id, session.organization.id])
         : await this.db.query(`select display_name,version,catalog_release_id,source_rule as definition
