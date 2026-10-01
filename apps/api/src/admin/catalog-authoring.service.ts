@@ -75,9 +75,9 @@ export class CatalogAuthoringService {
     const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<DraftRow[]>(`
       select * from catalog.authoring_draft
-      where organization_id = $1 and published_release_id is null
+      where organization_id = $1 and created_by = $2 and published_release_id is null
       order by created_at desc limit 1
-    `, [session.organization.id]);
+    `, [session.organization.id, session.user.id]);
     if (!rows[0]) return null;
     return this.result({ ...rows[0], canonical_definition:
       await this.upgradeDefinition(this.dataSource.manager, rows[0].source_release_id, rows[0].canonical_definition) });
@@ -128,11 +128,11 @@ export class CatalogAuthoringService {
     const session = await this.authorize(sessionToken, "catalog:write");
     const displayName = this.displayName(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}`]);
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}:${session.user.id}`]);
       const existing = await manager.query<DraftRow[]>(`
         select * from catalog.authoring_draft
-        where organization_id = $1 and published_release_id is null for update
-      `, [session.organization.id]);
+        where organization_id = $1 and created_by = $2 and published_release_id is null for update
+      `, [session.organization.id, session.user.id]);
       if (existing[0]) {
         const requestedSourceId = input && typeof input === "object" ? (input as Record<string, unknown>).sourceVersionId : undefined;
         if (requestedSourceId && existing[0].source_release_id !== requestedSourceId)
@@ -171,8 +171,8 @@ export class CatalogAuthoringService {
     const body = this.saveBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<DraftRow[]>(`
-        select * from catalog.authoring_draft where id = $1 and organization_id = $2 for update
-      `, [draftId, session.organization.id]);
+        select * from catalog.authoring_draft where id = $1 and organization_id = $2 and created_by = $3 for update
+      `, [draftId, session.organization.id, session.user.id]);
       const draft = rows[0];
       if (!draft) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
       if (draft.published_release_id) throw new ConflictException("Published catalog drafts are immutable");
@@ -196,10 +196,10 @@ export class CatalogAuthoringService {
         with updated as (
           update catalog.authoring_draft set revision = revision + 1, canonical_definition = $3::jsonb,
             definition_sha256 = $4, display_name = coalesce($6, display_name), updated_at = now()
-          where id = $1 and organization_id = $2 and revision = $5 and published_release_id is null returning *
+          where id = $1 and organization_id = $2 and created_by = $7 and revision = $5 and published_release_id is null returning *
         )
         select * from updated
-      `, [draftId, session.organization.id, JSON.stringify(definition), validation.definitionSha256, body.expectedRevision, body.displayName]);
+      `, [draftId, session.organization.id, JSON.stringify(definition), validation.definitionSha256, body.expectedRevision, body.displayName, session.user.id]);
       if (!updated[0]) throw new ConflictException("Catalog draft revision is stale");
       return this.result(updated[0]);
     });
@@ -209,11 +209,11 @@ export class CatalogAuthoringService {
     const session = await this.authorize(sessionToken, "catalog:write");
     const expectedRevision = this.expectedRevision(input);
     await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}`]);
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}:${session.user.id}`]);
       const rows = await manager.query<DraftRow[]>(`
         select * from catalog.authoring_draft
-        where id=$1 and organization_id=$2 and published_release_id is null for update
-      `, [draftId, session.organization.id]);
+        where id=$1 and organization_id=$2 and created_by=$3 and published_release_id is null for update
+      `, [draftId, session.organization.id, session.user.id]);
       const draft = rows[0];
       if (!draft) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
       if (draft.revision !== expectedRevision) throw new ConflictException({
@@ -227,8 +227,8 @@ export class CatalogAuthoringService {
         JSON.stringify({ catalogDraftId: draft.id, sourceReleaseId: draft.source_release_id, revision: draft.revision })]);
       const deleted = mutationRows<{ id: string }>(await manager.query(`
         delete from catalog.authoring_draft
-        where id=$1 and organization_id=$2 and revision=$3 and published_release_id is null returning id
-      `, [draftId, session.organization.id, expectedRevision]));
+        where id=$1 and organization_id=$2 and created_by=$4 and revision=$3 and published_release_id is null returning id
+      `, [draftId, session.organization.id, expectedRevision, session.user.id]));
       if (!deleted[0]) throw new ConflictException("Catalog draft revision is stale or the catalog was published");
     });
   }
@@ -236,8 +236,8 @@ export class CatalogAuthoringService {
   async validate(sessionToken: string, draftId: string): Promise<CatalogValidationResult> {
     const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<DraftRow[]>(`
-      select * from catalog.authoring_draft where id = $1 and organization_id = $2
-    `, [draftId, session.organization.id]);
+      select * from catalog.authoring_draft where id = $1 and organization_id = $2 and created_by = $3 and published_release_id is null
+    `, [draftId, session.organization.id, session.user.id]);
     if (!rows[0]) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
     const definition = await this.upgradeDefinition(this.dataSource.manager, rows[0].source_release_id,
       rows[0].canonical_definition);
@@ -249,8 +249,8 @@ export class CatalogAuthoringService {
     const body = this.publishBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<DraftRow[]>(`
-        select * from catalog.authoring_draft where id = $1 and organization_id = $2 for update
-      `, [draftId, session.organization.id]);
+        select * from catalog.authoring_draft where id = $1 and organization_id = $2 and created_by = $3 for update
+      `, [draftId, session.organization.id, session.user.id]);
       const draft = rows[0];
       if (!draft) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
       if (draft.published_release_id) throw new ConflictException("This catalog draft has already been published");

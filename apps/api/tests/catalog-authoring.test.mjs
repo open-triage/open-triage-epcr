@@ -27,6 +27,14 @@ function serviceWith(manager, sessions = { requireCapability: async () => sessio
     query: (...parameters) => wrapped.query(...parameters) }, sessions);
 }
 
+test("catalog draft lookup is scoped to its author", async () => {
+  const calls = [];
+  const manager = { query: async (sql, parameters) => { calls.push({ sql, parameters }); return []; } };
+  assert.equal(await serviceWith(manager).current("session"), null);
+  assert.match(calls[0].sql, /organization_id = \$1 and created_by = \$2 and published_release_id is null/);
+  assert.deepEqual(calls[0].parameters, ["org-1", "owner-1"]);
+});
+
 test("catalog hashes are stable across object key ordering", () => {
   assert.equal(catalogDefinitionSha256({ b: 2, a: 1 }), catalogDefinitionSha256({ a: 1, b: 2 }));
 });
@@ -155,8 +163,8 @@ test("catalog writers delete only their unpublished draft at the expected revisi
     catalogDraftId: "draft-1", sourceReleaseId: "release-1", revision: 4
   });
   const deletion = calls.find(({ sql }) => sql.includes("delete from catalog.authoring_draft"));
-  assert.match(deletion.sql, /organization_id=\$2 and revision=\$3 and published_release_id is null/);
-  assert.deepEqual(deletion.parameters, ["draft-1", "org-1", 4]);
+  assert.match(deletion.sql, /organization_id=\$2 and created_by=\$4 and revision=\$3 and published_release_id is null/);
+  assert.deepEqual(deletion.parameters, ["draft-1", "org-1", 4, "owner-1"]);
 
   const mutations = [];
   const staleManager = { query: async (sql) => {

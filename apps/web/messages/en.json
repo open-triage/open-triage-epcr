@@ -821,6 +821,7 @@
   "admin.catalogStructureIs": "Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid.",
   "admin.version2": "Version",
   "admin.noPublishedVersions": "No published versions",
+  "admin.newCatalogVersion": "New version from catalog",
   "admin.newDraft": "New draft",
   "admin.draftInProgress": "Draft in progress. Publish or discard it before starting another.",
   "admin.syntheticPreview": "Synthetic preview",

@@ -81,8 +81,8 @@ export class ReviewValidationService {
     return this.dataSource.transaction("REPEATABLE READ", async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
         select id,organization_id,catalog_release_id,revision from clinical.report
-        where id=$1 and organization_id=$2
-      `, [reportId, session.organization.id]);
+        where id=$1 and organization_id=$2 and (status='signed' or documenting_user_id=$3)
+      `, [reportId, session.organization.id, session.user.id]);
       const report = reports[0];
       if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
 

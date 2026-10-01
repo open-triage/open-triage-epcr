@@ -7,7 +7,7 @@ import { compileValidationRule, explainValidationRule, formatValidationSource, v
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
-import { activateValidationVersion, cloneValidationVersion, createValidationDraft, deleteValidationDraft, loadStationaryFormVersions,
+import { activateValidationVersion, cloneValidationVersion, createValidationDraft, deleteValidationDraft, loadCatalogVersions, loadStationaryFormVersions,
   loadValidationDraft, loadValidationVersions, publishValidationDraft,
   createValidationRule, loadActiveCatalogDefinition, loadCatalogVersion, loadValidationRules, saveValidationDraft,
   setValidationRuleEnabled, validateValidationDraft } from "../app/admin-context";
@@ -16,14 +16,24 @@ import { validationTranslationIssues, updateValidationEnglish } from "../app/tra
 import { TranslationIssueSummary } from "./translation-issue-summary";
 
 export function validationCatalog(definition: CatalogDefinitionView["definition"]): ValidationCatalog {
-  return { elements: definition.elements.map(({ elementId, label, baseDatatype, storageSemantics, constraints }) => {
+  return { elements: [...definition.elements.map(({ elementId, label, baseDatatype, storageSemantics, constraints }) => {
       const groupPath = storageSemantics.groupPath;
       return { elementId, label, baseDatatype, groupPath,
-        intrinsicOccurrence: { min: constraints.minOccurs, max: constraints.maxOccurs ?? "unbounded" } };
-    }),
-    codes: definition.codeLists.flatMap((list) => list.elementIds.flatMap((elementId) => list.values.map((value) => ({
+        intrinsicOccurrence: { min: constraints.minOccurs, max: constraints.maxOccurs ?? "unbounded" as const } };
+    }), ...(definition.customElements ?? []).filter((element) => !element.retired).map((element) => ({
+      elementId: `${element.namespace}.${element.slug}`, label: element.title,
+      baseDatatype: element.datatype === "number" ? "decimal" : element.datatype === "other" ? "string" : element.datatype,
+      groupPath: [element.groupDefinitionId
+        ? (() => { const group = definition.customGroups?.find(({ id }) => id === element.groupDefinitionId);
+            return group ? `${group.namespace}.${group.slug}` : element.correlatesTo ?? "PatientCareReportGroup"; })()
+        : element.correlatesTo ?? "PatientCareReportGroup"],
+      intrinsicOccurrence: { min: 0, max: element.recurrence === "single" ? 1 : "unbounded" as const },
+    }))],
+    codes: [...definition.codeLists.flatMap((list) => list.elementIds.flatMap((elementId) => list.values.map((value) => ({
       elementId, code: value.code, codeSystem: value.codeSystem, label: value.label, enabled: value.enabled,
-    })))) };
+    })))), ...(definition.customElements ?? []).flatMap((element) => element.datatype === "coded" && !element.retired
+      ? element.choices.map((choice) => ({ elementId: `${element.namespace}.${element.slug}`,
+        code: choice.code, codeSystem: element.codeSystem, label: choice.label, enabled: true })) : [])] };
 }
 
 export function ValidationReferenceAssistance({ catalog, elementId, onElementIdChange }: {
@@ -156,6 +166,8 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const canPublish = capabilities.includes("validation:publish");
   const [draft, setDraft] = useState<ValidationDraft | null>(null);
   const [versions, setVersions] = useState<AuthoringVersionOption[]>([]);
+  const [catalogVersions, setCatalogVersions] = useState<AuthoringVersionOption[]>([]);
+  const [selectedTargetCatalogId, setSelectedTargetCatalogId] = useState("");
   const [formVersions, setFormVersions] = useState<AuthoringVersionOption[]>([]);
   const [selectedFormVersionId, setSelectedFormVersionId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -207,6 +219,13 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   useEffect(() => {
     if (!active) return;
     let current = true;
+    loadCatalogVersions().then((items) => { if (current) setCatalogVersions(items); })
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.validationOperationFailed")); });
+    return () => { current = false; };
+  }, [active, adminError]);
+  useEffect(() => {
+    if (!active) return;
+    let current = true;
     loadStationaryFormVersions().then((items) => { if (current) setFormVersions(items); })
       .catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.formVersionsAre")); });
     return () => { current = false; };
@@ -238,6 +257,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const explanation = inlineValidation?.compiled && catalog ? explainValidationRule(inlineValidation.compiled, catalog) : null;
   const visibleCatalogElements = catalog?.elements.filter(({ elementId }) => !hiddenElementIds.includes(elementId)) ?? [];
   const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
+  const targetCatalogId = selectedTargetCatalogId || selectedVersion?.catalogReleaseId || catalogReleaseId;
   const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId ?? "";
   const compatibleForms = formVersions.filter(({ catalogReleaseId: id }) => id === activationCatalogId);
   const selectedForm = compatibleForms.find(({ id }) => id === selectedFormVersionId)
@@ -252,19 +272,26 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     </select>
   </div>;
   const versionWorkspace = <AuthoringVersionWorkspace title="Validation rules" versions={versions}
-    selectedId={selectedVersionId} onSelect={setSelectedVersionId} draftName={displayName}
+    selectedId={selectedVersionId} onSelect={(id) => { setSelectedVersionId(id); setSelectedTargetCatalogId(""); }} draftName={displayName}
     onDraftNameChange={setDisplayName} canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && !published)}
     canCreateWithoutSource={Boolean(catalogReleaseId)}
     onCreateDraft={() => action(async () => {
       const cloned = selectedVersion
-        ? await cloneValidationVersion(csrfToken, selectedVersion.id,
-          selectedVersion.catalogReleaseId ?? catalogReleaseId, displayName)
-        : await createValidationDraft(csrfToken, catalogReleaseId, displayName);
+        ? await cloneValidationVersion(csrfToken, selectedVersion.id, targetCatalogId, displayName)
+        : await createValidationDraft(csrfToken, targetCatalogId, displayName);
       const definition = await loadCatalogVersion(cloned.catalogReleaseId);
       setCatalog(validationCatalog(definition.definition));
       setHiddenElementIds(definition.definition.hiddenElementIds ?? []);
       setPublished(null); setDraft(cloned); setDisplayName(""); setDirty(false); setStatus(t("admin.validationDraftCreated"));
     })}>
+    {canWrite && !draft && catalogVersions.length > 0 && <div className="authoring-version-row">
+      <label htmlFor="validation-target-catalog">{language === "sv" ? "Målkatalog" : "Target catalog"}</label>
+      <select id="validation-target-catalog" value={targetCatalogId}
+        onChange={(event) => setSelectedTargetCatalogId(event.target.value)}>
+        {catalogVersions.map((version) => <option key={version.id} value={version.id}>
+          {version.displayName} · v{version.version}</option>)}
+      </select>
+    </div>}
     {selectedVersion && selectedVersion.status !== "active" && canPublish && !draft && !published &&
       <>{formActivationChoice}<AuthoringLifecycleAction title="Selected Validation rules" kind="activate" note={activationNote}
         onNoteChange={setActivationNote} disabled={busy || !selectedForm} buttonLabel="Activate selected version"

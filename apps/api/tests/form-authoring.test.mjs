@@ -27,6 +27,16 @@ const definition = {
   ] }, { key: "empty", name: "Follow-up", fields: [] }]
 };
 
+test("form draft lookup is scoped to its author", async () => {
+  const calls = [];
+  const manager = { query: async (sql, parameters) => { calls.push({ sql, parameters }); return []; } };
+  const service = new FormAuthoringService({ query: (...args) => manager.query(...args), manager },
+    { requireCapability: async () => session });
+  assert.equal(await service.current("session"), null);
+  assert.match(calls[0].sql, /f\.organization_id=\$1 and fv\.created_by=\$2 and fv\.status='draft'/);
+  assert.deepEqual(calls[0].parameters, [organizationId, session.user.id]);
+});
+
 function element(element_id, overrides = {}) {
   return { element_id, element_identity_id: `identity-${element_id}`, base_datatype: "string",
     source_datatype: "string", usage: "Optional", definition: {}, analytical_location: "wide", ...overrides };
@@ -228,7 +238,7 @@ test("form writers delete only the expected draft revision and retain audit evid
   assert.deepEqual(JSON.parse(audit.parameters[6]), {
     formVersionId: draftId, formId, revision: 4, deletedFormVersionId: draftId
   });
-  assert.deepEqual(queries.at(-1).parameters, [draftId, 4]);
+  assert.deepEqual(queries.at(-1).parameters, [draftId, 4, writer.user.id]);
 });
 
 test("stale form deletion fails before audit or deletion", async () => {

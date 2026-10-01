@@ -819,6 +819,7 @@
   "admin.catalogStructureIs": "Katalogstrukturen är skrivskyddad. Valideringsregler kan inte göra förekomster som saknar stöd strukturellt giltiga.",
   "admin.version2": "Version",
   "admin.noPublishedVersions": "Inga publicerade versioner",
+  "admin.newCatalogVersion": "Ny version från katalog",
   "admin.newDraft": "Nytt utkast",
   "admin.draftInProgress": "Utkast pågår. Publicera eller radera det innan ett nytt påbörjas.",
   "admin.syntheticPreview": "Syntetisk förhandsvisning",

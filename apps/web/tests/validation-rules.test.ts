@@ -5,6 +5,7 @@ import { compileValidationRule, compiledValidationBundleSha256, encounterValueFa
   type CompiledValidationBundle, type EncounterDocument, type ValidationCatalog,
   type ValidationRuleSource } from "@open-triage/contracts";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
+import { validationCatalog } from "../components/validation-authoring";
 
 const versionId = "51000000-0000-4000-8000-000000000001";
 const evaluation = { timestamp: "2026-01-01T00:00:00.000Z" };
@@ -18,6 +19,20 @@ const rule: ValidationRuleSource = {
   message: "Document the incident number",
   source: 'assert present("eResponse.03")',
 };
+
+test("validation editor includes published custom elements and their codes", () => {
+  const elementId = "opentriage.org.Org32000000000040008000000000000001_WorkflowStatus";
+  const catalog = validationCatalog({ schemaVersion: 1, sourceReleaseId: "catalog", elements: [], codeLists: [],
+    customElements: [{ id: "52000000-0000-4000-8000-000000000002", namespace: "opentriage.org",
+      slug: "Org32000000000040008000000000000001_WorkflowStatus", title: "Workflow status",
+      definition: "Status chosen in the report", datatype: "coded", recurrence: "single", usage: "Optional",
+      identifying: false, codeSystem: "https://example.org/workflow", choices: [{ code: "done", label: "Done" }],
+      permittedNotValues: [], permittedPertinentNegatives: [] }] });
+  const compiled = compileValidationRule({ ...rule, primaryTargetElementId: elementId,
+    source: `require coded("${elementId}", "https://example.org/workflow", "done")` }, versionId, catalog);
+  assert.deepEqual(compiled.diagnostics, []);
+  assert.equal(catalog.elements.find(({ elementId: id }) => id === elementId)?.label, "Workflow status");
+});
 
 test("only an equivalent unconditional pinned minimum replaces structural requiredness", () => {
   const minimum = compileValidationRule({ ...rule, source: 'require minimum("eResponse.03", 1)' },
