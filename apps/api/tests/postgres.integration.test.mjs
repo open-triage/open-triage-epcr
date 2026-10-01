@@ -805,7 +805,7 @@ integrationTest("authorized Admin context resolves only the session organization
   const groupedText = { ...customText, id: randomUUID(), slug: `GroupedNote${randomUUID().replaceAll("-", "")}`,
     title: "Grouped note", usage: "Optional", groupDefinitionId: customGroup.id };
   const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
-    sourceLabel: "Locally managed choice", category: null, enabled: true };
+    sourceLabel: "Locally managed choice", category: null, enabled: true, nemsisCode: disabledValue.code };
   const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText, binaryElement, otherElement, groupedText],
     customGroups: [customGroup], elements: draft.definition.elements.map((element) =>
     element.elementId === changedElement.elementId ? { ...element, label: `${element.label} (agency label)` } : element),
