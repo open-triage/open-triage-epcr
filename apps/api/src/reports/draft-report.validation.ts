@@ -138,9 +138,10 @@ export function validateDraftValue(value: unknown, path: string, findings: strin
 export function validateCreateDraftReportCommand(value: unknown): CreateDraftReportCommand {
   if (!isRecord(value)) throw new DraftReportValidationError(["request body must be an object"]);
   const findings: string[] = [];
-  for (const key of ["commandId", "reportId", "incidentId", "patientId", "organizationId", "documentingUserId", "formId"] as const) {
+  for (const key of ["commandId", "reportId", "incidentId", "patientId", "organizationId", "documentingUserId"] as const) {
     requireUuid(value[key], key, findings);
   }
+  if (value.formId !== undefined) requireUuid(value.formId, "formId", findings);
   if (!["known", "unknown", "temporary", "unavailable"].includes(String(value.patientIdentityState))) {
     findings.push("patientIdentityState is invalid");
   }

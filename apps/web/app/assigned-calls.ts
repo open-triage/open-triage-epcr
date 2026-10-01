@@ -19,6 +19,22 @@ import {
 
 export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
 
+/** Create a patient report against the installation's active form. */
+export async function createNewPatientReport(session: import("@open-triage/contracts").ClinicianSession): Promise<ReopenOpenCallResponse> {
+  const url = apiRequestUrl("/api/reports");
+  if (!url) throw new Error("Creating a patient report requires a live connection.");
+  const response = await fetch(url, browserRequestInit({ method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+    body: JSON.stringify({ commandId: crypto.randomUUID(), reportId: crypto.randomUUID(), incidentId: crypto.randomUUID(),
+      patientId: crypto.randomUUID(), organizationId: session.organization.id, documentingUserId: session.user.id,
+      patientIdentityState: "unknown" }),
+  }));
+  if (!response.ok) throw await platformRequestError(response);
+  const created = await response.json() as { id: string };
+  return reopenOpenCall(session.csrfToken ?? session.accessToken ?? "", created.id);
+}
+
+
 export async function fetchSyntheticCallGenerationContext(): Promise<SyntheticCallGenerationContext> {
   const url = apiRequestUrl("/api/calls/synthetic-generation");
   if (!url) throw new Error("Synthetic call generation requires a live connection.");

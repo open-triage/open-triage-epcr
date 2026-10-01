@@ -185,6 +185,7 @@ test("reopening restores the creator's report with its pinned form and saved con
     form_version_id: "pinned-form", catalog_release_id: "pinned-catalog", documenting_user_id: ownerSession.user.id
   };
   const isolations = [];
+  let withoutAssignment = false;
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
     queries.push({ sql: normalized, parameters });
@@ -218,7 +219,9 @@ test("reopening restores the creator's report with its pinned form and saved con
     if (normalized.includes("from clinical.report_note")) return [];
     if (normalized.includes("from clinical.report_photo_note")) return [];
     if (normalized.includes("from clinical.report_audio_note")) return [];
-    if (normalized.includes("from clinical.call_assignment ca")) return [{
+    if (normalized.includes("left join clinical.call_assignment ca on ca.report_id")) return withoutAssignment
+      ? [{ call_number: null, dispatched_at: null, dispatch_reason: null, chief_complaint: null,
+          unit_call_sign: null, agency_time_zone: "America/New_York", demo_mutable: false, expires_at: null }] : [{
       call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
       dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
       dispatch_priority_code: "2305003", dispatch_priority_display: "Emergent",
@@ -252,6 +255,11 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.ok(queries.every(({ parameters }) => !parameters || !parameters.includes("another-user")));
   assert.deepEqual(queries[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
   assert.deepEqual(isolations, ["REPEATABLE READ"]);
+  withoutAssignment = true;
+  const standalone = await controller.reopen(reportId, `Bearer ${ownerSession.accessToken}`);
+  assert.equal(standalone.callNumber, `New patient · ${reportId.slice(0, 8)}`);
+  assert.equal(standalone.dispatchedAt, undefined);
+  assert.equal(standalone.report.formVersionId, "pinned-form");
 });
 
 test("active report polling returns separate revisions and omits the document for a matching ETag", async () => {
@@ -494,4 +502,23 @@ test("another clinician cannot replay a queued signing command", async () => {
     attestation: { meaning: "author approval" }
   }), NotFoundException);
   assert.ok(!queried.some((sql) => sql.includes("clinical.command_receipt")));
+});
+
+test("a clinician-owned report without a dispatch assignment appears in Open reports", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000011";
+  let listingSql = "";
+  const dataSource = { query: async (sql) => {
+    if (sql.includes("purge_expired_synthetic_records")) return [];
+    listingSql = sql;
+    return [{ report_id: reportId, status: "draft", call_number: null, dispatched_at: null,
+      dispatch_reason: null, chief_complaint: null, unit_call_sign: null, agency_time_zone: "Europe/Stockholm",
+      last_saved_at: "2026-09-03T14:00:00.000Z", revision: 0, form_version_id: "form", catalog_release_id: "catalog",
+      validation_error_count: 0, demo_mutable: false, expires_at: null }];
+  } };
+  const result = await new DraftReportService(dataSource, sessions()).listOpen(ownerSession.accessToken);
+  assert.match(listingSql, /left join clinical\.call_assignment/);
+  assert.deepEqual(result.openCalls[0], { reportId, callNumber: "New patient · 42000000",
+    dispatchReason: null, dispatchPriority: null, chiefComplaint: null, unitCallSign: null,
+    agencyTimeZone: "Europe/Stockholm", lastSavedAt: "2026-09-03T14:00:00.000Z",
+    syncStatus: "saved", validationErrorCount: 0, revision: 0, formVersionId: "form", catalogReleaseId: "catalog" });
 });

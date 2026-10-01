@@ -564,6 +564,37 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         [reportId, release.rows[0].id, element.rows[0].element_identity_id, element.rows[0].element_id,
           element.rows[0].identifying, userId], "23514");
 
+      const record = await client.query(`select m.element_identity_id, m.identifying
+        from catalog.analytics_element_mapping m
+        where m.release_id = $1 and m.element_id = 'eRecord.01'`, [release.rows[0].id]);
+      assert.equal(record.rowCount, 1);
+      const oldGroup = "10000000-0000-4000-8000-000000000009";
+      const replacementGroup = "10000000-0000-4000-8000-00000000000a";
+      const groupSql = `insert into clinical.group_instance
+        (id, report_id, catalog_release_id, group_id, ordinal, created_by)
+        values ($1, $2, $3, 'eRecordSection', 0, $4)`;
+      await client.query(groupSql, [oldGroup, reportId, release.rows[0].id, userId]);
+      const occurrenceSql = `insert into clinical.element_occurrence
+        (id, report_id, catalog_release_id, group_instance_id, element_identity_id,
+         element_id, ordinal, analytical_repeatable, identifying, value_kind, value_text, author_id)
+        values ($1, $2, $3, $4, $5, 'eRecord.01', 0, false, $6, 'text', 'Replacement', $7)`;
+      const oldOccurrence = "10000000-0000-4000-8000-00000000000b";
+      const replacementOccurrence = "10000000-0000-4000-8000-00000000000c";
+      const duplicateOccurrence = "10000000-0000-4000-8000-00000000000d";
+      const occurrenceParams = (id) => [id, reportId, release.rows[0].id, oldGroup,
+        record.rows[0].element_identity_id, record.rows[0].identifying, userId];
+      await client.query(occurrenceSql, occurrenceParams(oldOccurrence));
+      await client.query("update clinical.element_occurrence set tombstoned_at = now() where id = $1", [oldOccurrence]);
+      await client.query(occurrenceSql, occurrenceParams(replacementOccurrence));
+      await rejectsSql(client, occurrenceSql, occurrenceParams(duplicateOccurrence), "23505");
+      await client.query("update clinical.element_occurrence set tombstoned_at = now() where id = $1", [replacementOccurrence]);
+      await client.query("update clinical.group_instance set tombstoned_at = now() where id = $1", [oldGroup]);
+      await client.query(groupSql, [replacementGroup, reportId, release.rows[0].id, userId]);
+      await rejectsSql(client, groupSql, ["10000000-0000-4000-8000-00000000000e", reportId, release.rows[0].id, userId], "23505");
+      assert.equal((await client.query(`select count(*)::integer as count from clinical.element_occurrence
+        where report_id = $1 and element_id = 'eRecord.01'`, [reportId])).rows[0].count, 2,
+      "both deleted clinical values remain in history after their positions are reused");
+
       await rejectsSql(client, "update catalog.release set provenance = '{\"changed\":true}' where id = $1", [release.rows[0].id], "P0001");
     } finally {
       await client.query("rollback");

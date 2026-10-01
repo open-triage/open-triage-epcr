@@ -11,6 +11,7 @@ import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clin
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
+  createNewPatientReport,
   fetchOpenCalls as fetchOpenReports,
   reopenOpenCall as reopenOpenReport,
 } from "../app/assigned-calls";
@@ -69,6 +70,7 @@ export function OpenReports({
   const zone = useAgencyTimeZone();
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
   const [reauthenticating, setReauthenticating] = useState(false);
@@ -289,6 +291,20 @@ export function OpenReports({
           <p className="eyebrow">{t("reports.yourDocumentation")}</p>
           <h1 id="open-reports-title">{t("reports.openReports")}</h1>
         </div>
+        <button type="button" disabled={creating || reopeningId !== null || paused || Boolean(activeReportId)}
+          onClick={() => { void (async () => {
+            setCreating(true); setError(null);
+            try {
+              const opened = await createNewPatientReport(session);
+              await prepareProtectedReport(csrfToken, opened.report.id);
+              await onReopened?.(opened);
+              await refresh();
+            } catch (reason) {
+              setError(reason instanceof Error ? reason.message : t("reports.refreshFailed"));
+            } finally { setCreating(false); }
+          })(); }}>
+          {creating ? t("reports.creatingPatient") : t("reports.newPatient")}
+        </button>
       </div>
       <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
       {error && <p className="assignment-error" role="alert">{error}</p>}

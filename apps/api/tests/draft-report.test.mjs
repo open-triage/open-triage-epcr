@@ -34,6 +34,8 @@ test("draft creation requires offline-safe UUIDv4 identities", () => {
     patientIdentityState: "unknown"
   };
   assert.deepEqual(validateCreateDraftReportCommand(command), command);
+  const { formId: _formId, ...newPatient } = command;
+  assert.deepEqual(validateCreateDraftReportCommand(newPatient), newPatient);
   assert.throws(() => validateCreateDraftReportCommand({ ...command, reportId: "32000000-0000-3000-8000-000000000001" }),
     (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /reportId.*UUIDv4/.test(finding)));
   assert.throws(() => validateCreateDraftReportCommand({ ...command, patientPseudonymousKey: "a".repeat(64) }),

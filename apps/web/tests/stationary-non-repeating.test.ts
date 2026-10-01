@@ -161,3 +161,34 @@ test("editing an absent optional inline group creates its canonical ancestry onc
   assert.equal(second.document.groups.find(({ id }) => id === "eNarrativeSection")!.instances.length, 1);
   assert.equal(second.document.groups.find(({ id }) => id === "PatientCareReportGroup")!.instances.length, 1);
 });
+
+test("a New patient report creates its single PCR ancestry on the first field edit", () => {
+  const document = { ...structuredClone(synthetic), groups: [] } as EncounterDocument;
+  let sequence = 0;
+  const createId = () => `new-patient-${++sequence}`;
+  const edited = editNonRepeatingScalarValue(document, {
+    groupId: "ePatient.PatientNameGroup", elementId: "ePatient.03",
+  }, "HEADLESS", createId);
+  assert.equal(edited.ok, true);
+  if (!edited.ok) throw new Error("expected successful edit");
+  for (const id of ["EMSDataSet", "HeaderGroup", "PatientCareReportGroup", "ePatientSection", "ePatient.PatientNameGroup"])
+    assert.equal(edited.document.groups.find((group) => group.id === id)?.instances.length, 1, id);
+  const pcr = edited.document.groups.find(({ id }) => id === "PatientCareReportGroup")!.instances[0]!;
+  const second = editNonRepeatingScalarValue(edited.document, {
+    groupId: "eNarrativeSection", elementId: "eNarrative.01",
+  }, "Synthetic note", createId);
+  assert.equal(second.ok, true);
+  if (!second.ok) throw new Error("expected successful second edit");
+  assert.equal(second.document.groups.find(({ id }) => id === "PatientCareReportGroup")!.instances.length, 1);
+  assert.equal(second.document.groups.find(({ id }) => id === "eNarrativeSection")!.instances[0]!.parentInstanceId, pcr.instanceId);
+  const withEmptyStructuralGroups = { ...document, groups: [
+    { id: "HeaderGroup", instances: [] }, { id: "PatientCareReportGroup", instances: [] },
+  ] } as EncounterDocument;
+  const fromEmptyGroups = editNonRepeatingScalarValue(withEmptyStructuralGroups, {
+    groupId: "eNarrativeSection", elementId: "eNarrative.01",
+  }, "Synthetic note", createId);
+  assert.equal(fromEmptyGroups.ok, true);
+  if (!fromEmptyGroups.ok) throw new Error("expected successful edit with empty groups");
+  for (const id of ["HeaderGroup", "PatientCareReportGroup"])
+    assert.equal(fromEmptyGroups.document.groups.filter((group) => group.id === id).length, 1, id);
+});

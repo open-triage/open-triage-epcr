@@ -77,6 +77,7 @@ test("open report terminology is used for visible copy and UI identifiers", asyn
   await expect(section).toBeVisible();
   await expect(section).toHaveClass(/open-reports/);
   await expect(section.getByRole("heading", { name: "Open reports" })).toHaveAttribute("id", "open-reports-title");
+  await expect(section.getByRole("button", { name: "New patient" })).toBeEnabled();
   await expect(section.getByText("You have no open reports.")).toBeVisible();
   await expect(page.locator("#open-calls-title, .open-calls, .open-call-card")).toHaveCount(0);
 });
