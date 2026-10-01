@@ -144,7 +144,12 @@ test("the populated report satisfies all enabled canonical NEMSIS validation rul
     catalogFields: {},
     validation: { versionId: bundle.validationVersionId, compiledSha256: compiledValidationBundleSha256(bundle), bundle },
   };
-  const populated = populateStationaryDemoData(syntheticEncounter.document);
+  const pcrInstanceId = syntheticEncounter.document.groups.find(({ id }) => id === "PatientCareReportGroup")!.instances[0]!.instanceId;
+  const serverNumbered = { ...structuredClone(syntheticEncounter.document), groups: [...syntheticEncounter.document.groups, { id: "eRecordSection", instances: [{
+    instanceId: "server-record", parentInstanceId: pcrInstanceId,
+    elements: [{ id: "eRecord.01", values: [{ kind: "scalar", occurrenceId: "server-pcr-number", value: "PCR-000000001" }] }],
+  }] }] } as typeof syntheticEncounter.document;
+  const populated = populateStationaryDemoData(serverNumbered);
   assert.deepEqual(validateStationaryRecord(populated, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
 
   const stale = structuredClone(populated);
@@ -162,7 +167,7 @@ test("the populated report satisfies all enabled canonical NEMSIS validation rul
   assert.deepEqual(validateStationaryRecord(refreshed, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
   assert.deepEqual(populateStationaryDemoData(refreshed), refreshed);
 
-  const withoutDispatchTime = { ...syntheticEncounter.document, groups: syntheticEncounter.document.groups.map((group) =>
+  const withoutDispatchTime = { ...serverNumbered, groups: serverNumbered.groups.map((group) =>
     group.id === "eTimesSection" ? { ...group, instances: group.instances.map((instance) => ({ ...instance,
       elements: instance.elements.filter(({ id }) => id !== "eTimes.03") })) } : group) };
   const generatedTimeline = populateStationaryDemoData(withoutDispatchTime);
@@ -170,9 +175,9 @@ test("the populated report satisfies all enabled canonical NEMSIS validation rul
     "a demo-generated dispatch time does not move the timeline on a second Populate");
   assert.deepEqual(validateStationaryRecord(generatedTimeline, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
 
-  const justOpened = { ...syntheticEncounter.document,
-    encounter: { ...syntheticEncounter.document.encounter, createdAt: "2026-09-22T14:49:05Z" },
-    groups: syntheticEncounter.document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
+  const justOpened = { ...serverNumbered,
+    encounter: { ...serverNumbered.encounter, createdAt: "2026-09-22T14:49:05Z" },
+    groups: serverNumbered.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
       ...instance, elements: instance.elements.map((element) => element.id === "eTimes.03"
         ? { ...element, values: element.values.map((value) => value.kind === "scalar"
           ? { ...value, value: "2026-09-22T14:49:00+00:00" } : value) } : element),

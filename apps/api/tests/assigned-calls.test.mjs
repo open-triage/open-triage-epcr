@@ -272,6 +272,7 @@ test("opening and retrying one assignment creates one draft without an automatic
       return [];
     }
     if (normalized.includes("insert into clinical.group_instance")) return [];
+    if (normalized.includes("nextval('clinical.pcr_number_sequence')")) return [{ number: "1" }];
     if (normalized.includes("from catalog.element_definition e")) return [{
       element_id: "eRecord.01", agency_required: true, min_occurs: 0, max_occurs: 1,
       nillable: false, supports_not_values: false, supports_pertinent_negatives: false

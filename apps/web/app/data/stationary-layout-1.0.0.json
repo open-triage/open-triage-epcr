@@ -2791,7 +2791,7 @@
     {
       "id": "eRecord.01",
       "groupId": "eRecordSection",
-      "mode": "editable"
+      "mode": "read-only"
     },
     {
       "id": "eRecord.02",

@@ -23,6 +23,7 @@ test("canonical stationary layout is schema-valid and covers the pinned catalog 
 test("separates editable patient care, enhanced custom results, and read-only metadata", () => {
   const byId = new Map(layout.elements.map((element) => [element.id, element]));
   assert.equal(byId.get("ePatient.01")?.mode, "editable");
+  assert.equal(byId.get("eRecord.01")?.mode, "read-only");
   assert.equal(byId.get("eCustomResults.01")?.mode, "enhanced");
   assert.equal(byId.get("dAgency.01")?.mode, "read-only");
   assert.equal(byId.get("eCustomConfiguration.01")?.mode, "read-only");

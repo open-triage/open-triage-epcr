@@ -14,7 +14,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
-import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
+import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
@@ -403,7 +403,7 @@ export class AssignedCallsService {
             `, [assignment.dispatch_receipt_id, session.organization.id])
           : [];
         await seedDispatchEncounter(manager, reportId, version.catalog_release_id, session.user.id,
-          receipts[0]?.source_payload ?? null, `PCR-${reportId}`);
+          receipts[0]?.source_payload ?? null, await nextPcrNumber(manager));
         await manager.query(`
           update clinical.call_assignment
           set status = 'opened', report_id = $2, updated_at = now()

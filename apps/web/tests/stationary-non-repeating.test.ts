@@ -55,6 +55,7 @@ test("system-owned metadata is externally read-only and cannot create draft muta
     groupId: "DemographicGroup", elementId: "dAgency.01",
   }, "unsafe mutation"), /read-only system-owned metadata/);
   assert.deepEqual(encounterDocumentToDraftMutations("report-062", document), before);
+  assert.throws(() => requireEditableNonRepeatingElement("eRecordSection", "eRecord.01"), /read-only system-owned metadata/);
 });
 
 test("the full inline surface exposes every field while rendering system metadata without form controls", () => {
