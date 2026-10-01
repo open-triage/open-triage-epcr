@@ -132,6 +132,42 @@ test("an evaluation-time warning keeps its acknowledgement fingerprint as the cl
   assert.equal(first[0]?.inputFingerprint, later[0]?.inputFingerprint);
 });
 
+test("warning fingerprints survive database element ordering and JSON key ordering", () => {
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [{
+      schemaVersion: 1, languageVersion: "1.0.0", ruleId: rule.id, validationVersionId: versionId,
+      name: "Review two values", enabled: true, severity: "warning", executionTargets: ["live", "sign"],
+      primaryTarget: { elementId: "fingerprint.b" }, message: "Review arrest values",
+      assertion: { operator: "equals", elementId: "fingerprint.b", value: "other" },
+      references: { elementIds: ["fingerprint.a", "fingerprint.b"], codes: [] },
+    }] };
+  const base = structuredClone(syntheticEncounter) as EncounterDocument;
+  const first: EncounterDocument = { ...base, groups: [...base.groups,
+    { id: "fingerprint-group", instances: [{ instanceId: "fingerprint-instance", elements: [
+    { id: "fingerprint.b", values: [{ kind: "scalar", occurrenceId: "arrest-two", value: "cardiac" }] },
+    { id: "fingerprint.a", values: [{ kind: "scalar", occurrenceId: "arrest-one", value: "no" }] },
+  ] }] }] };
+  const changedElements: EncounterDocument["groups"][number]["instances"][number]["elements"] = [
+    { id: "fingerprint.a", values: [{ value: "no", occurrenceId: "arrest-one", kind: "scalar" }] },
+    { id: "fingerprint.b", values: [{ value: "cardiac", occurrenceId: "arrest-two", kind: "scalar" }] },
+  ];
+  const withElements = (elements: typeof changedElements): EncounterDocument => ({ ...first,
+    groups: [...first.groups.slice(0, -1), { id: "fingerprint-group", instances: [
+      { instanceId: "fingerprint-instance", elements },
+    ] }] });
+  const second = withElements(changedElements);
+  const live = evaluateValidationBundle(bundle, first, "live", evaluation);
+  const sign = evaluateValidationBundle(bundle, second, "sign", evaluation);
+  assert.equal(live.length, 1);
+  assert.equal(sign.length, 1);
+  assert.equal(live[0]!.inputFingerprint, sign[0]!.inputFingerprint);
+  const altered = withElements([changedElements[0]!, { id: "fingerprint.b", values: [
+    { value: "other value", occurrenceId: "arrest-two", kind: "scalar" },
+  ] }]);
+  assert.notEqual(evaluateValidationBundle(bundle, altered, "sign", evaluation)[0]!.inputFingerprint,
+    live[0]!.inputFingerprint);
+});
+
 test("legacy imported scene rule does not warn until Mass Casualty Incident is Yes", () => {
   const old = compileValidationRule({ ...rule, id: "scene-rule", severity: "warning", primaryTargetElementId: "eScene.06",
     message: 'should be "Multiple" when is "Yes".',

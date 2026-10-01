@@ -186,12 +186,22 @@ test("protected checkpoints stay ordered while a newer draft is saved", async ({
   let firstStarted!: () => void;
   const started = new Promise<void>((resolve) => { firstStarted = resolve; });
   const checkpoints: number[] = [];
+  const receipts: number[] = [];
+  let holdNext = false;
+  let latestReceipt = 0;
   let synchronizedRevision = 0;
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, async (route) => {
+    const { ciphertextRevision } = route.request().postDataJSON() as { ciphertextRevision: number };
+    receipts.push(ciphertextRevision);
+    latestReceipt = ciphertextRevision;
+    await route.fulfill({ json: { schemaVersion: 1, recoveryDeadline: "2099-09-18T12:00:00.000Z" } });
+  });
   await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, async (route) => {
     const { ciphertextRevision } = route.request().postDataJSON() as { ciphertextRevision: number };
     checkpoints.push(ciphertextRevision);
-    if (checkpoints.length === 1) { firstStarted(); await firstHeld; }
-    if (ciphertextRevision < synchronizedRevision) return route.fulfill({ status: 409 });
+    if (holdNext) { holdNext = false; firstStarted(); await firstHeld; }
+    if (ciphertextRevision < synchronizedRevision || ciphertextRevision !== latestReceipt)
+      return route.fulfill({ status: 409 });
     synchronizedRevision = ciphertextRevision;
     return route.fulfill({ json: { ciphertextRevision } });
   });
@@ -200,15 +210,22 @@ test("protected checkpoints stay ordered while a newer draft is saved", async ({
     await page.getByRole("group", { name: "Documentation presentation" })
       .getByRole("button", { name: "Stationary" }).click();
     await page.getByRole("button", { name: "Open call", exact: true }).click();
+    const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+    await firstName.waitFor();
+    holdNext = true;
+    await firstName.fill("FIRST EDIT");
+    await firstName.press("Tab");
     await started;
-    const firstRevision = checkpoints[0]!;
-    await page.getByRole("textbox", { name: "First Name", exact: true }).fill("STILL EDITABLE");
-    await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
-    await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision))
-      .toBeGreaterThan(firstRevision);
-    expect(checkpoints, "a newer checkpoint must wait for the first response").toEqual([firstRevision]);
+    const firstRevision = checkpoints.at(-1)!;
+    const receiptsWhileHeld = [...receipts];
+    await firstName.fill("STILL EDITABLE");
+    await firstName.press("Tab");
+    await expect(firstName).toHaveValue("STILL EDITABLE");
+    expect(checkpoints.at(-1), "a newer checkpoint must wait for the first response").toBe(firstRevision);
+    expect(receipts, "a newer receipt must wait for the first checkpoint").toEqual(receiptsWhileHeld);
     releaseFirst();
-    await expect.poll(() => checkpoints.length).toBeGreaterThan(1);
+    await expect.poll(() => checkpoints.at(-1)).toBeGreaterThan(firstRevision);
+    expect(receipts.some((revision) => revision > firstRevision)).toBe(true);
     expect(checkpoints).toEqual([...checkpoints].sort((a, b) => a - b));
     await expect(page.getByText("Saved data needs recovery")).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toBeEnabled();
