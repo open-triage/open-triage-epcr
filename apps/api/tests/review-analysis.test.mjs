@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ReviewService } from "../dist/review/review.service.js";
+import { ReviewService as ActualReviewService } from "../dist/review/review.service.js";
+
+class ReviewService extends ActualReviewService {
+  constructor(database, sessions) {
+    super({ ...database, transaction: async (_isolation, run) => run(database) }, sessions);
+  }
+}
 
 const health = { observed_at: new Date(), oldest_backlog_age_seconds: null,
   persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0,
@@ -52,7 +58,8 @@ test("Review distribution preserves missing, absence, and report denominators", 
     values: [{ value: "A", count: 3, percentage: 37.5 },
       { value: "B", count: 2, percentage: 25 }], summary: null });
   assert.equal(result.population.scope, "own");
-  const analysisQuery = queries.find(({ sql }) => sql.includes("review_field_source"));
+  const analysisQuery = queries.find(({ sql }) => sql.includes("review_field_source") &&
+    sql.includes("limit 501"));
   assert.deepEqual(analysisQuery.parameters.slice(2), [session.organization.id, true, false,
     session.user.id, "eSituation.11", "eDisposition.30", "eSituation.09", "C", null]);
   assert.match(analysisQuery.sql, /source.organization_id = \$3::uuid/);
@@ -98,7 +105,8 @@ test("operational time measures retain endpoint context, scope, and invalid deno
     absent: 1, invalid: 1, values: [], summary: 12.5 });
   assert.equal(result.field.unit, "min");
   assert.equal(result.population.scope, "own");
-  const query = queries.find(({ sql }) => sql.includes("review_operational_time_source"));
+  const query = queries.find(({ sql }) => sql.includes("review_operational_time_source") &&
+    sql.includes("group by 1"));
   assert.deepEqual(query.parameters.slice(2), [session.organization.id, false, false,
     session.user.id, "eSituation.11", "eDisposition.30", "transported", null]);
   assert.match(query.sql, /source.organization_id = \$3::uuid/);

@@ -2,8 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ReviewController } from "../dist/review/review.controller.js";
-import { ReviewService } from "../dist/review/review.service.js";
-import { aggregateRevision, analysisCsv } from "../dist/review/review-csv.js";
+import { ReviewService as ActualReviewService } from "../dist/review/review.service.js";
+
+class ReviewService extends ActualReviewService {
+  constructor(database, sessions) {
+    super({ ...database, transaction: async (_isolation, run) => run(database) }, sessions);
+  }
+}
+import { aggregateRevision, analysisCsv, underlyingCsv } from "../dist/review/review-csv.js";
 
 const freshness = { observedAt: "2026-10-02T10:00:00.000Z", targetSeconds: 300,
   status: "current", oldestBacklogSeconds: null, replicaLagSeconds: null };
@@ -180,7 +186,75 @@ test("export re-runs field discovery after identifying and report capability rev
   capabilities = ["review:all"];
   await assert.rejects(controller.exportAnalysis({ definition, expectedRevision: shown.exportRevision },
     "Bearer token", undefined, response()), { status: 400 });
+  await assert.rejects(controller.exportAnalysisRecords({ definition, expectedRevision: shown.exportRevision },
+    "Bearer token", undefined, response()), { status: 400 });
   capabilities = [];
   await assert.rejects(controller.exportAnalysis({ definition, expectedRevision: shown.exportRevision },
     "Bearer token", undefined, response()), { status: 403 });
+  await assert.rejects(controller.exportAnalysisRecords({ definition, expectedRevision: shown.exportRevision },
+    "Bearer token", undefined, response()), { status: 403 });
+});
+
+test("underlying CSV keeps one report row for repeated groups and rejects a source-only change", async () => {
+  let current = { ...numeric, sources: [
+    { reportId: "report-a", reportingDate: "2026-10-01", group: "A", value: 4,
+      state: "valid", unit: "min", selectedOccurrenceId: "occ-2", orderMode: "occurrence-order",
+      occurrenceIds: ["occ-1", "occ-2"], groupInstanceIds: ["group-1"],
+      sourceValues: [{ occurrenceId: "occ-1", customDefinitionId: "definition-1",
+        groupInstanceId: "group-1", effectiveAmendmentSequence: 2, value: 3 }] },
+    { reportId: "report-a", reportingDate: "2026-10-01", group: "B", value: 7,
+      state: "valid", unit: "min", occurrenceIds: ["occ-3"], groupInstanceIds: ["group-2"],
+      sourceValues: [{ occurrenceId: "occ-3", value: 7 }] },
+  ] };
+  const controller = new ReviewController({ analysis: async () => current });
+  const shown = await controller.analysis(current.definition, "Bearer token");
+  const sent = response();
+  await controller.exportAnalysisRecords({ definition: shown.definition,
+    expectedRevision: shown.exportRevision }, "Bearer token", undefined, sent);
+  const rows = parseCsv(sent.body);
+  const records = rows.slice(rows.findIndex((row) => row[0] === "report_id") + 1);
+  assert.equal(records.length, 1);
+  assert.equal(records[0][0], "report-a");
+  const groups = JSON.parse(records[0][5]);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].selectedOccurrenceId, "occ-2");
+  assert.equal(groups[0].occurrences[0].effectiveAmendmentSequence, 2);
+  current = { ...current, sources: current.sources.map((source, index) => index ? source :
+    { ...source, sourceValues: [{ ...source.sourceValues[0], value: 99 }] }) };
+  await assert.rejects(controller.exportAnalysisRecords({ definition: shown.definition,
+    expectedRevision: shown.exportRevision }, "Bearer token", undefined, response()), { status: 409 });
+});
+
+test("underlying volume and workload exports preserve complete report rows", async () => {
+  const sourceRows = Array.from({ length: 1200 }, (_, index) => ({
+    reportId: `report-${String(index).padStart(4, "0")}`, reportingDate: "2026-10-01" }));
+  const completeVolume = { ...volume, total: sourceRows.length,
+    points: [{ date: "2026-10-01", count: sourceRows.length }], sources: sourceRows };
+  const volumeRows = parseCsv(underlyingCsv(completeVolume));
+  assert.equal(volumeRows.length - volumeRows.findIndex((row) => row[0] === "report_id") - 1, 1200);
+  const workload = { definition: { groupBy: "status", filters },
+    population: { unit: "review-item", scope: "all", organizationId: population.organizationId,
+      includesUnsigned: true }, freshness: { source: "operational-primary",
+      observedAt: "2026-10-02T10:00:00.000Z" }, totalItems: 2, reopenedItems: 0,
+    unsignedItems: 1, exceptionallyClosedItems: 1,
+    groups: [{ key: "completed", count: 2 }], sources: [{ reportId: "report-a",
+      reportingDate: null, items: [{ itemId: "item-a", group: "completed", status: "completed",
+        exceptionCode: "report-not-required" }, { itemId: "item-b", group: "completed",
+        status: "completed", exceptionCode: null }] }] };
+  const controller = new ReviewController({ workload: async () => workload,
+    volume: async () => completeVolume });
+  const shown = await controller.workload(workload.definition, "Bearer token");
+  const sent = response();
+  await controller.exportWorkloadRecords({ definition: workload.definition,
+    expectedRevision: shown.exportRevision,
+    displayedObservedAt: workload.freshness.observedAt }, "Bearer token", undefined, sent);
+  await assert.rejects(controller.exportWorkloadRecords({ definition: workload.definition,
+    expectedRevision: shown.exportRevision, displayedObservedAt: "invalid" },
+  "Bearer token", undefined, response()), { status: 400 });
+  const records = parseCsv(sent.body);
+  assert.equal(records.filter((row) => row[0] === "report-a").length, 1);
+  assert.equal(JSON.parse(records.at(-1)[3]).length, 2);
+  const volumeShown = await controller.volume("real", filters.from, filters.to, "Bearer token");
+  await controller.exportVolumeRecords({ definition: volume.definition,
+    expectedRevision: volumeShown.exportRevision }, "Bearer token", undefined, response());
 });

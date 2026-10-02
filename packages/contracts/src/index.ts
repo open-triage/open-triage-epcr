@@ -419,6 +419,7 @@ export interface ReviewVolumeResult {
   };
   total: number | null;
   points: Array<{ date: string; count: number }>;
+  sources?: Array<{ reportId: string; reportingDate: string }>;
 }
 
 export interface ReviewAnalysisField {
@@ -467,6 +468,12 @@ export interface ReviewWorkloadResult {
   unsignedItems: number;
   exceptionallyClosedItems: number;
   groups: Array<{ key: string; count: number }>;
+  /** Permitted structured contributors. One CSV cell per report contains its item list. */
+  sources?: Array<{ reportId: string; reportingDate: string | null; items: Array<{
+    itemId: string; criterionId: string | null; group: string; priority: string;
+    status: string; kind: string; firstMatchedAt: string; completedAt: string | null;
+    reopened: boolean; resolutionReason: string | null; exceptionCode: string | null;
+  }> }>;
 }
 
 export interface ReviewAnalysisReviewFilters {
@@ -483,6 +490,9 @@ export interface ReviewAnalysisResult {
   freshness: ReviewVolumeResult["freshness"];
   /** Effective occurrence values and identity retained for an eventual underlying-record export. */
   sources?: Array<{ reportId: string; group: string | null; value: string[] | number | null;
+    reportingDate?: string; operationalTime?: { start: string | null; end: string | null;
+      startAbsent: boolean; endAbsent: boolean; state: "valid" | "invalid" | "absent" | "missing" };
+    state?: "valid" | "absent" | "missing";
     unit: string | null; occurrenceIds: string[]; groupInstanceIds: string[];
     selectedOccurrenceId?: string; orderMode?: "clinical-time" | "occurrence-order";
     sourceValues: Array<{ occurrenceId: string; groupId: string | null; groupInstanceId: string | null;

@@ -85,10 +85,10 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     } catch { setError(t("review.analysisUnavailable")); }
   };
 
-  const exportCsv = async () => {
+  const exportCsv = async (records = false) => {
     if (!result) return;
     setExportBusy(true); setExportNotice(null);
-    const outcome = await downloadReviewCsv("analysis", result, csrfToken);
+    const outcome = await downloadReviewCsv("analysis", result, csrfToken, records);
     if (outcome.status === "refreshed") {
       setResult(outcome.result); setExportNotice(t("review.csvRefreshed"));
     } else if (outcome.status === "denied") {
@@ -167,6 +167,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       <p>{t("review.analysisReportUnit")}</p>
       {result.exportRevision && <button type="button" disabled={exportBusy}
         onClick={() => void exportCsv()}>{t("review.csvDownload")}</button>}
+      {result.exportRevision && <button type="button" disabled={exportBusy}
+        onClick={() => void exportCsv(true)}>{t("review.csvRecordsDownload")}</button>}
       <p>{t("review.analysisScope", { scope: t(`review.scope.${result.population.scope}`) })}{" · "}
         {t("review.volumeFresh", { time: new Intl.DateTimeFormat(language, {
           dateStyle: "medium", timeStyle: "short" }).format(new Date(result.freshness.observedAt)) })}</p>
