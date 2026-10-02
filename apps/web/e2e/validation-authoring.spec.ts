@@ -35,7 +35,8 @@ test("validation rule creation, language, severity, targets, source, save, and v
     if (path === "validation-draft") return route.fulfill({ json: draft });
     if (path === "validation-versions" || path === "form-versions") return route.fulfill({ json: [] });
     if (path === "catalog-versions/catalog") return route.fulfill({ json: catalog });
-    if (path.startsWith("validation-rules")) return route.fulfill({ json: { items: [], total: draft.rules.length, nextCursor: null } });
+    if (path.startsWith("validation-rules")) return route.fulfill({ json: { items: draft.rules.map(rule => ({
+      rule, source: "agency", validity: "valid", diagnostics: [] })), total: draft.rules.length, nextCursor: null } });
     if (path === "validation-drafts/draft/rules" && method === "POST") {
       draft = { ...draft, revision: draft.revision + 1,
         rules: [...draft.rules, { ...body, id: "52000000-0000-4000-8000-000000000001" }] };
@@ -57,6 +58,8 @@ test("validation rule creation, language, severity, targets, source, save, and v
   await editor.getByLabel("Message (en)").fill("Enter the patient name");
   await editor.getByLabel("Severity", { exact: true }).selectOption("error");
   await editor.getByRole("group", { name: "Targets" }).getByLabel("sign").check();
+  await editor.getByRole("group", { name: "Targets" }).getByLabel("review").check();
+  await editor.getByLabel("Review priority").selectOption("high");
   await editor.getByLabel("Wording language").selectOption("sv");
   await editor.getByLabel("Name (sv)").fill("Ange patientnamn");
   await editor.getByLabel("Message (sv)").fill("Ange patientens namn");
@@ -68,10 +71,12 @@ test("validation rule creation, language, severity, targets, source, save, and v
   await expect(page.getByRole("button", { name: "Validate draft" })).toBeEnabled();
   await page.getByRole("button", { name: "Validate draft" }).click();
   await expect(page.locator(".validation-result")).toContainText("Validation passed");
-  expect(draft.rules[0]).toMatchObject({ name: "Require patient name", severity: "error",
-    executionTargets: ["live", "sign"], source: 'require present("ePatient.02")',
+  expect(draft.rules[0]).toMatchObject({ name: "Require patient name", severity: "error", reviewPriority: "high",
+    executionTargets: ["live", "sign", "review"], source: 'require present("ePatient.02")',
     localization: { sv: { name: "Ange patientnamn", message: "Ange patientens namn" } } });
   expect(requests.some(({ path, method }) => path === "validation-drafts/draft" && method === "PUT")).toBe(true);
   await page.reload();
   await expect(page.locator(".validation-rule-editor").getByLabel("Name (en)")).toHaveValue("Require patient name");
+  await expect(page.locator(".validation-rule-editor").getByLabel("Review priority")).toHaveValue("high");
+  await expect(page.locator(".validation-rule-table")).toContainText("High");
 });

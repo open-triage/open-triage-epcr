@@ -8,6 +8,10 @@ After that baseline is active, migration and demonstration bootstrap discover ma
 
 The migration credential alone performs this rollout. Long-lived API, analytics, and retention workloads do not receive the reset function. Existing Validation capabilities remain: the installation owner and Administrator can publish; Demo can read/write but not publish; custom roles receive nothing automatically.
 
+## Review rule priority compatibility
+
+A review-target validation rule has a High, Medium, or Low review priority independent of its Error, Warning, or Information severity. The priority does not change its assertion or signing behavior. New authoring requests without a review priority use Medium, and publication writes that priority into the compiled bundle. Previously published review rules with no priority remain immutable and readable; readers treat their missing priority as Medium. Publishing a new version does not evaluate historical reports or add them to a review queue.
+
 ## Reset unsigned rollout data
 
 Run the preview from a trusted host with the short-lived migration `DATABASE_URL`:

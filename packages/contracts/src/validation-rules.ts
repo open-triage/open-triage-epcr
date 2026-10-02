@@ -5,7 +5,13 @@ export const VALIDATION_LANGUAGE_VERSION = "1.0.0" as const;
 export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
 
 export type ValidationSeverity = "error" | "warning" | "information";
+export type ValidationReviewPriority = "high" | "medium" | "low";
 export type ValidationExecutionTarget = "live" | "sign" | "review";
+
+/** Published legacy review rules have no priority; treat them as Medium without rewriting history. */
+export function reviewPriorityOfRule(rule: { reviewPriority?: ValidationReviewPriority }): ValidationReviewPriority {
+  return rule.reviewPriority ?? "medium";
+}
 export type ValidationRuleSourceKind = "agency" | "nemsis" | "catalog" | "form" | "platform";
 
 export interface ValidationRuleProvenance {
@@ -30,6 +36,7 @@ export interface ValidationRuleSource {
   name: string;
   enabled: boolean;
   severity: ValidationSeverity;
+  reviewPriority?: ValidationReviewPriority;
   executionTargets: ValidationExecutionTarget[];
   primaryTargetElementId: string;
   message: string;
@@ -140,6 +147,7 @@ export interface CompiledValidationRule {
   name: string;
   enabled: boolean;
   severity: ValidationSeverity;
+  reviewPriority?: ValidationReviewPriority;
   executionTargets: ValidationExecutionTarget[];
   primaryTarget: { elementId: string };
   scope?: { groupId: string; iteration: "each" };
@@ -799,6 +807,8 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
   }
   if (!rule.executionTargets.length) diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id,
     message: "Select at least one execution target" });
+  if (rule.reviewPriority !== undefined && !["high", "medium", "low"].includes(rule.reviewPriority))
+    diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id, message: "Invalid review priority" });
   if (diagnostics.some(({ severity }) => severity === "error")) return { diagnostics };
   const elements = [...new Set(expressions.map(({ elementId }) => elementId))].sort();
   const codes = expressions.map(({ expression }) => expression)
@@ -809,6 +819,7 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     schemaVersion: VALIDATION_COMPILED_SCHEMA_VERSION, languageVersion: VALIDATION_LANGUAGE_VERSION,
     ruleId: rule.id, validationVersionId, name: rule.name.trim(), enabled: rule.enabled,
     severity: rule.severity, executionTargets: [...new Set(rule.executionTargets)].sort(),
+    ...(rule.executionTargets.includes("review") ? { reviewPriority: reviewPriorityOfRule(rule) } : {}),
     primaryTarget: { elementId: rule.primaryTargetElementId }, message: rule.message.trim(),
     ...(rule.localization ? { localization: rule.localization } : {}),
     ...(rule.messageParameters ? { messageParameters: rule.messageParameters } : {}),
