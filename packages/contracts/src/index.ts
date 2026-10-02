@@ -190,6 +190,35 @@ export interface ReviewSignedReport {
   notes: ReportNote[];
 }
 
+export interface ReviewVolumeDefinition {
+  measure: "signed-report-count";
+  grouping: "day";
+  filters: {
+    from: string;
+    to: string;
+    dataset: "real" | "synthetic";
+  };
+}
+
+export interface ReviewVolumeResult {
+  definition: ReviewVolumeDefinition;
+  population: {
+    unit: "patient-report";
+    scope: "own" | "all";
+    organizationId: string;
+    signedOnly: true;
+  };
+  freshness: {
+    observedAt: string;
+    targetSeconds: 300;
+    status: "current" | "stale";
+    oldestBacklogSeconds: number | null;
+    replicaLagSeconds: number | null;
+  };
+  total: number | null;
+  points: Array<{ date: string; count: number }>;
+}
+
 export interface ClinicianSession {
   /** Present only in the static, serverless demonstration build. */
   accessToken?: string;

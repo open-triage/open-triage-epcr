@@ -108,3 +108,44 @@ test("signed report query applies organization, user, signature and dataset scop
   await assert.rejects(service.signedReports("token", "both"), BadRequestException);
   await assert.rejects(service.signedReports("token", "real", "0"), BadRequestException);
 });
+
+test("volume validates filters, binds both scope dimensions, and suppresses stale counts", async () => {
+  const calls = [];
+  let stale = false;
+  let partial = false;
+  let current = session(["review:self"]);
+  const database = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.includes("projection_health")) return [{ observed_at: "2026-10-02T12:00:00Z",
+      oldest_backlog_age_seconds: stale ? 301 : null, persistent_failure_count: 0, retrying_count: 0,
+      stale_run_count: 0, last_run_status: partial ? "partial" : "succeeded", is_read_only_replica: false,
+      replay_lag_seconds: null }];
+    return [{ date: "2026-10-01", count: "2" }, { date: "2026-10-02", count: "0" }];
+  } };
+  const service = new ReviewService(database, { get: async () => current });
+  const result = await service.volume("token", "real", "2026-10-01", "2026-10-02");
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.definition.filters, { from: "2026-10-01", to: "2026-10-02", dataset: "real" });
+  assert.equal(result.population.unit, "patient-report");
+  assert.deepEqual(calls[1].params, ["2026-10-01", "2026-10-02", "org-a", false, false, "user-a"]);
+  assert.match(calls[1].sql, /source\.organization_id = \$3/);
+  assert.match(calls[1].sql, /source\.synthetic = \$4/);
+  assert.match(calls[1].sql, /source\.documenting_user_id = \$6/);
+  assert.match(calls[1].sql, /count\(source\.report_id\)/);
+  current = session(["review:all", "clinical:demo"], "user-b", "org-b");
+  const all = await service.volume("token", undefined, "2026-10-01", "2026-10-02");
+  assert.equal(all.population.scope, "all");
+  assert.deepEqual(calls[3].params.slice(2), ["org-b", true, true, "user-b"]);
+  stale = true;
+  const before = calls.length;
+  const withheld = await service.volume("token", "real", "2026-10-01", "2026-10-02");
+  assert.equal(withheld.total, null);
+  assert.deepEqual(withheld.points, []);
+  assert.equal(calls.length, before + 1);
+  stale = false;
+  partial = true;
+  assert.equal((await service.volume("token", "real", "2026-10-01", "2026-10-02")).total, null);
+  await assert.rejects(service.volume("token", "both", "2026-10-01", "2026-10-02"), BadRequestException);
+  await assert.rejects(service.volume("token", "real", "2026-02-30", "2026-10-02"), BadRequestException);
+  await assert.rejects(service.volume("token", "real", "2026-10-02", "2026-10-01"), BadRequestException);
+});

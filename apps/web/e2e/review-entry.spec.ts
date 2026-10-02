@@ -10,6 +10,7 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
     capabilities: ["review:all"], workspaceAvailable: true,
   };
   const requestedDatasets: string[] = [];
+  let staleVolume = false;
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
@@ -25,6 +26,20 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
         reports: [{ id: `${dataset}-report`, reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z" }],
       } });
     }
+    if (url.pathname === "/api/review/volume") {
+      const dataset = url.searchParams.get("dataset")!;
+      const from = url.searchParams.get("from")!;
+      const to = url.searchParams.get("to")!;
+      return route.fulfill({ json: {
+        definition: { measure: "signed-report-count", grouping: "day", filters: { from, to, dataset } },
+        population: { unit: "patient-report", scope: "all", organizationId: "organization-id", signedOnly: true },
+        freshness: { observedAt: "2026-10-02T08:00:00Z", targetSeconds: 300,
+          status: staleVolume ? "stale" : "current", oldestBacklogSeconds: staleVolume ? 301 : null,
+          replicaLagSeconds: null },
+        total: staleVolume ? null : dataset === "real" ? 2 : 1,
+        points: staleVolume ? [] : [{ date: from, count: dataset === "real" ? 2 : 1 }, { date: to, count: 0 }],
+      } });
+    }
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
@@ -33,8 +48,15 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Mobile" })).toHaveCount(0);
   await expect(page.getByText("real-report")).toBeVisible();
+  await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toBeVisible();
+  await expect(page.getByText("Signed patient reports in the selected period: 2", { exact: false })).toBeVisible();
   await page.getByLabel("Dataset").selectOption("synthetic");
   await expect(page.getByText("synthetic-report")).toBeVisible();
+  await expect(page.getByText("Signed patient reports in the selected period: 1", { exact: false })).toBeVisible();
+  staleVolume = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("Report volume is withheld", { exact: false })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toHaveCount(0);
   expect(requestedDatasets[0]).toBe("real");
   expect(requestedDatasets.at(-1)).toBe("synthetic");
   await page.reload();
