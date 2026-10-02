@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 import { aggregateRevision, analysisCsv, volumeCsv } from "./review-csv.js";
@@ -252,6 +252,20 @@ export class ReviewController {
     @Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string) {
     return this.review.overdueDraft(bearerToken(authorization, cookie), id, dataset);
+  }
+
+  @Post("items/bulk-claim")
+  @Header("Cache-Control", "no-store, private")
+  bulkClaim(@Body() command: ReviewBulkClaimCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewBulkResult> {
+    return this.review.bulkClaim(bearerToken(authorization, cookie), command, csrfToken);
+  }
+
+  @Post("items/bulk-assign")
+  @Header("Cache-Control", "no-store, private")
+  bulkAssign(@Body() command: ReviewBulkAssignCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewBulkResult> {
+    return this.review.bulkAssign(bearerToken(authorization, cookie), command, csrfToken);
   }
 
   @Post("items/:id/claim")

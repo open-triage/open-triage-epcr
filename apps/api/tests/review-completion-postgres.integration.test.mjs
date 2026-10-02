@@ -25,6 +25,10 @@ integrationTest("assigned reviewer completes one item with pinned outcome and re
     await client.query(migration("20261002250000_review_overdue_drafts"));
   if (!(await client.query("select to_regclass('clinical.review_amendment_decision') relation")).rows[0].relation)
     await client.query(migration("20261002270000_review_amendment_rereview"));
+  if (!(await client.query("select 1 from information_schema.columns where table_schema='clinical' and table_name='review_item' and column_name='exception_code'")).rows[0])
+    await client.query(migration("20261002280000_review_overdue_exceptions"));
+  if (!(await client.query("select to_regclass('clinical.review_comment') relation")).rows[0].relation)
+    await client.query(migration("20261002290000_review_discussion"));
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     where r.status='signed' limit 1`)).rows[0];
@@ -100,6 +104,10 @@ integrationTest("independent review rejects the author after configuration chang
     await client.query(migration("20261002250000_review_overdue_drafts"));
   if (!(await client.query("select to_regclass('clinical.review_amendment_decision') relation")).rows[0].relation)
     await client.query(migration("20261002270000_review_amendment_rereview"));
+  if (!(await client.query("select 1 from information_schema.columns where table_schema='clinical' and table_name='review_item' and column_name='exception_code'")).rows[0])
+    await client.query(migration("20261002280000_review_overdue_exceptions"));
+  if (!(await client.query("select to_regclass('clinical.review_comment') relation")).rows[0].relation)
+    await client.query(migration("20261002290000_review_discussion"));
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic,
     owner.user_id reviewer_id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     join app_identity.installation_owner owner on owner.organization_id=r.organization_id

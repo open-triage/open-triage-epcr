@@ -1467,5 +1467,20 @@
   "review.sendComment": "Send comment",
   "review.commentError.conflict": "The item changed. Review the latest discussion and send your comment again.",
   "review.commentError.denied": "You no longer have permission to comment on this item.",
-  "review.commentError.unavailable": "The comment could not be sent. Retry to check whether it was saved."
+  "review.commentError.unavailable": "The comment could not be sent. Retry to check whether it was saved.",
+  "review.bulkSelect": "Select",
+  "review.bulkSelectItem": "Select review item {id}",
+  "review.bulkSelectPage": "Select this page",
+  "review.bulkClearSelection": "Clear selection",
+  "review.bulkSelected": "{count} selected",
+  "review.bulkClaim": "Claim selected",
+  "review.bulkAssign": "Assign selected",
+  "review.bulkAssignee": "Assign to",
+  "review.bulkResults": "Bulk assignment results",
+  "review.bulkSummary": "{succeeded} succeeded; {failed} could not be changed.",
+  "review.bulkSucceeded": "Assigned",
+  "review.bulkReason.conflict": "Changed since selection; refresh and select again",
+  "review.bulkReason.ineligible": "Reviewer is not eligible for this item",
+  "review.bulkReason.out-of-scope": "Item is no longer available in this scope",
+  "review.bulkUnavailable": "Bulk assignment is unavailable. Try again."
 }

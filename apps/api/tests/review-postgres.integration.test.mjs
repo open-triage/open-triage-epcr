@@ -118,6 +118,10 @@ async function ensureReviewWorkflowSchema(client) {
     await client.query(readFileSync(new URL("../../../supabase/migrations/20261002250000_review_overdue_drafts.sql", import.meta.url), "utf8"));
   if (!(await client.query("select to_regclass('clinical.review_amendment_decision') relation")).rows[0].relation)
     await client.query(readFileSync(new URL("../../../supabase/migrations/20261002270000_review_amendment_rereview.sql", import.meta.url), "utf8"));
+  if (!(await client.query("select 1 from information_schema.columns where table_schema='clinical' and table_name='review_item' and column_name='exception_code'")).rows[0])
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002280000_review_overdue_exceptions.sql", import.meta.url), "utf8"));
+  if (!(await client.query("select to_regclass('clinical.review_comment') relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002290000_review_discussion.sql", import.meta.url), "utf8"));
 }
 
 integrationTest("Review claim stores one versioned assignment and immutable history in PostgreSQL", async (t) => {

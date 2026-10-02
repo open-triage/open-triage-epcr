@@ -1,6 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -1086,6 +1086,61 @@ export class ReviewService implements OnModuleDestroy {
     return this.item(token, id, command.dataset);
   }
 
+  private validateBulk(command: ReviewBulkClaimCommand): void {
+    if (!command || !["real", "synthetic"].includes(command.dataset) ||
+      !Array.isArray(command.selections) || command.selections.length < 1 || command.selections.length > 100 ||
+      command.selections.some((selection) => !selection || !uuid(selection.itemId) ||
+        !uuid(selection.commandId) || !Number.isSafeInteger(selection.expectedVersion) ||
+        selection.expectedVersion < 0) ||
+      new Set(command.selections.map((selection) => selection.itemId)).size !== command.selections.length ||
+      new Set(command.selections.map((selection) => selection.commandId)).size !== command.selections.length)
+      throw new BadRequestException("Select 1 to 100 distinct Review items with current versions");
+  }
+
+  private async bulkAssignments(token: string, command: ReviewBulkClaimCommand,
+    csrfToken: string | undefined, assigneeId?: string): Promise<ReviewBulkResult> {
+    this.validateBulk(command);
+    await this.sessions.assertCsrf(token, csrfToken);
+    const scope = reviewScope(await this.sessions.get(token));
+    if (assigneeId === undefined ? scope.reports !== "all" : !scope.administrator)
+      throw new ForbiddenException(assigneeId === undefined ?
+        "Review-all access is required to claim items" : "Review administration is required");
+    this.dataset(command.dataset, scope);
+    const results: ReviewBulkResult["results"] = [];
+    // Each selection uses the single-item transaction, lock, eligibility checks,
+    // version comparison, and durable command history. A failed item cannot roll
+    // back successful selections or overwrite a concurrent assignment.
+    for (const selection of command.selections) {
+      try {
+        const item = assigneeId === undefined ? await this.claim(token, selection.itemId,
+          { commandId: selection.commandId, expectedVersion: selection.expectedVersion,
+            dataset: command.dataset }, csrfToken) : await this.assign(token, selection.itemId,
+          { commandId: selection.commandId, expectedVersion: selection.expectedVersion,
+            dataset: command.dataset, assigneeId }, csrfToken);
+        results.push({ itemId: selection.itemId, status: "succeeded", item });
+      } catch (error) {
+        if (!(error instanceof HttpException)) throw error;
+        const status = error.getStatus();
+        if (status !== 400 && status !== 403 && status !== 404 && status !== 409) throw error;
+        results.push({ itemId: selection.itemId, status: "failed", reason:
+          status === 409 ? "conflict" : status === 404 ? "out-of-scope" : "ineligible" });
+      }
+    }
+    return { results };
+  }
+
+  bulkClaim(token: string, command: ReviewBulkClaimCommand,
+    csrfToken?: string): Promise<ReviewBulkResult> {
+    return this.bulkAssignments(token, command, csrfToken);
+  }
+
+  bulkAssign(token: string, command: ReviewBulkAssignCommand,
+    csrfToken?: string): Promise<ReviewBulkResult> {
+    if (!command || !uuid(command.assigneeId))
+      throw new BadRequestException("Select an eligible Review assignee");
+    return this.bulkAssignments(token, command, csrfToken, command.assigneeId);
+  }
+
   async routes(token: string): Promise<ReviewCriterionRoute[]> {
     const scope = reviewScope(await this.sessions.get(token));
     if (!scope.administrator) throw new ForbiddenException("Review administration is required");
@@ -1281,12 +1336,13 @@ export class ReviewService implements OnModuleDestroy {
       [itemId, scope.organizationId, dataset === "synthetic"]);
       const item = rows[0];
       if (!item) throw new NotFoundException("Review item was not found in scope");
-      const previous = await manager.query<Array<{ actor_id: string | null; assignee_id: string | null;
-        item_version: string; action: string }>>(`select actor_id,assignee_id,item_version,action
+      const previous = await manager.query<Array<{ item_id: string; actor_id: string | null; assignee_id: string | null;
+        item_version: string; action: string }>>(`select item_id,actor_id,assignee_id,item_version,action
         from clinical.review_assignment_history where organization_id=$1 and command_id=$2`,
       [scope.organizationId, command.commandId]);
       if (previous[0]) {
-        if (previous[0].actor_id !== scope.userId || previous[0].assignee_id !== command.assigneeId ||
+        if (previous[0].item_id !== itemId || previous[0].actor_id !== scope.userId ||
+          previous[0].assignee_id !== command.assigneeId ||
           previous[0].action !== "assigned" || Number(previous[0].item_version) !== command.expectedVersion + 1)
           throw new ConflictException("Review assignment command has already been used");
         return;
