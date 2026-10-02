@@ -9,6 +9,7 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { ReviewVolumeChart } from "./review-volume-chart";
 import { ReviewAnalysisBuilder } from "./review-analysis-builder";
 import { downloadReviewCsv } from "./review-csv-download";
+import { ReviewRetrospectivePanel } from "./review-retrospective-panel";
 
 function dateString(date: Date): string { return date.toISOString().slice(0, 10); }
 
@@ -479,6 +480,10 @@ export function ReviewShell({ session, language, online }: {
           !Number.isInteger(deadlineHours) || deadlineHours < 1 || deadlineHours > 720}
           onClick={() => void saveOverduePolicy()}>{t("review.saveOverdueDeadline")}</button>
       </section>}
+      {session.capabilities?.includes("review:admin") && <ReviewRetrospectivePanel key={dataset}
+        dataset={dataset} language={language} online={online}
+        csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        refresh={() => setRefresh((current) => current + 1)} />}
       {backlog && <section aria-labelledby="review-backlog-heading"><h2 id="review-backlog-heading">{t("review.backlog")}</h2>
         {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}

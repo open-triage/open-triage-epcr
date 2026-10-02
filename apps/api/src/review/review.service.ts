@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -12,6 +12,9 @@ import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./rev
 import { reduceRepeated, type RepeatedRow } from "./review-repeated.js";
 import { eligibleReviewer, eligibleReviewers } from "./review-assignment.js";
 import { reduceCustom, type CustomOccurrenceRow, type CustomReportRow } from "./review-custom.js";
+import { loadRetrospectivePopulation, previewRetrospective, requireRetrospectiveAdmin,
+  retrospectiveRunStatus, retrospectiveVersions, validateRetrospectiveDefinition } from "./review-retrospective.js";
+import { processReviewWork } from "./review-worker.js";
 
 function positiveInteger(value: string | undefined, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -63,6 +66,149 @@ export class ReviewService implements OnModuleDestroy {
       });
     }
     return this.reportingInitialization;
+  }
+
+  async retrospectiveVersions(token: string): Promise<ReviewRetrospectiveVersion[]> {
+    return retrospectiveVersions(this.database.manager, reviewScope(await this.sessions.get(token)));
+  }
+
+  async retrospectivePreview(token: string, definition: ReviewRetrospectiveDefinition): Promise<ReviewRetrospectivePreview> {
+    const scope = reviewScope(await this.sessions.get(token));
+    return (await previewRetrospective(this.database.manager, scope, definition)).preview;
+  }
+
+  async retrospectiveRuns(token: string): Promise<ReviewRetrospectiveRun[]> {
+    const scope = reviewScope(await this.sessions.get(token));
+    requireRetrospectiveAdmin(scope);
+    const rows = await this.database.query<Array<{ id: string }>>(`
+      select id from clinical.review_retrospective_run where organization_id=$1
+      order by created_at desc,id desc limit 25`, [scope.organizationId]);
+    return Promise.all(rows.map((row) => retrospectiveRunStatus(this.database.manager, scope, row.id)));
+  }
+
+  async retrospectiveRun(token: string, id: string): Promise<ReviewRetrospectiveRun> {
+    return retrospectiveRunStatus(this.database.manager, reviewScope(await this.sessions.get(token)), id);
+  }
+
+  async startRetrospective(token: string, command: StartReviewRetrospectiveCommand,
+    csrfToken?: string): Promise<ReviewRetrospectiveRun> {
+    if (!command || !uuid(command.commandId) || typeof command.expectedRevision !== "string" ||
+      !/^[0-9a-f]{64}$/.test(command.expectedRevision))
+      throw new BadRequestException("Invalid retrospective Review command");
+    validateRetrospectiveDefinition(command.definition);
+    await this.sessions.assertCsrf(token, csrfToken);
+    const scope = reviewScope(await this.sessions.get(token));
+    requireRetrospectiveAdmin(scope);
+    const prior = (await this.database.query<Array<{ id: string; actor_id: string;
+      criterion_id: string; validation_version_id: string; dataset: string;
+      date_from: string; date_to: string; preview_hash: string }>>(`
+      select id,actor_id,criterion_id,validation_version_id,dataset,date_from::text,date_to::text,preview_hash
+      from clinical.review_retrospective_run where organization_id=$1 and command_id=$2`,
+    [scope.organizationId, command.commandId]))[0];
+    if (prior) {
+      if (prior.actor_id !== scope.userId || prior.criterion_id !== command.definition.criterionId ||
+        prior.validation_version_id !== command.definition.validationVersionId ||
+        prior.dataset !== command.definition.dataset || prior.date_from !== command.definition.from ||
+        prior.date_to !== command.definition.to || prior.preview_hash !== command.expectedRevision)
+        throw new ConflictException("Retrospective Review command has already been used");
+      return retrospectiveRunStatus(this.database.manager, scope, prior.id);
+    }
+    const { preview, candidates } = await previewRetrospective(this.database.manager, scope, command.definition);
+    if (preview.revision !== command.expectedRevision)
+      throw new ConflictException({ message: "Retrospective Review selection changed; preview again", preview });
+    const runId = await this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const current = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      requireRetrospectiveAdmin(current);
+      await manager.query(`select pg_advisory_xact_lock(hashtextextended($1::text,0))`,
+        [`review-retrospective:${current.organizationId}:${command.commandId}`]);
+      const replay = (await manager.query<Array<{ id: string; actor_id: string; preview_hash: string }>>(`
+        select id,actor_id,preview_hash from clinical.review_retrospective_run
+        where organization_id=$1 and command_id=$2`, [current.organizationId, command.commandId]))[0];
+      if (replay) {
+        if (replay.actor_id !== current.userId || replay.preview_hash !== command.expectedRevision)
+          throw new ConflictException("Retrospective Review command has already been used");
+        return replay.id;
+      }
+      const currentPopulation = await loadRetrospectivePopulation(manager, current, command.definition);
+      if (currentPopulation.sourceRevision !== preview.sourceRevision)
+        throw new ConflictException("Retrospective Review population changed; preview again");
+      const [inserted] = mutationRows<{ id: string }>(await manager.query(`
+        insert into clinical.review_retrospective_run
+          (organization_id,command_id,actor_id,criterion_id,validation_version_id,dataset,report_scope,
+           date_from,date_to,preview_hash)
+        values ($1,$2,$3,$4,$5,$6,'all',$7,$8,$9) returning id`,
+      [current.organizationId, command.commandId, current.userId, command.definition.criterionId,
+        command.definition.validationVersionId, command.definition.dataset, command.definition.from,
+        command.definition.to, preview.revision]));
+      if (!inserted) throw new Error("Retrospective Review run was not created");
+      if (candidates.length) await manager.query(`
+        insert into clinical.review_retrospective_report
+          (run_id,report_id,organization_id,signed_snapshot_id,amendment_sequence,reporting_date,
+           catalog_release_id,preview_outcome,preview_existing,failure_code)
+        select $1::uuid,c.report_id,$2::uuid,c.signed_snapshot_id,c.amendment_sequence,
+          c.reporting_date,c.catalog_release_id,c.outcome,c.existing,c.failure_code
+        from jsonb_to_recordset($3::jsonb) as c(report_id uuid,signed_snapshot_id uuid,
+          amendment_sequence integer,reporting_date date,catalog_release_id uuid,outcome text,
+          existing boolean,failure_code text)`,
+      [inserted.id, current.organizationId, JSON.stringify(candidates.map((candidate) => ({
+        report_id: candidate.report_id, signed_snapshot_id: candidate.signed_snapshot_id,
+        amendment_sequence: Number(candidate.amendment_sequence), reporting_date: candidate.reporting_date,
+        catalog_release_id: candidate.catalog_release_id, outcome: candidate.outcome,
+        existing: candidate.existing_item_version !== null, failure_code: candidate.failureCode })))]);
+      return inserted.id;
+    });
+    return retrospectiveRunStatus(this.database.manager, scope, runId);
+  }
+
+  async advanceRetrospective(token: string, id: string, requestedBatch: number,
+    csrfToken?: string): Promise<ReviewRetrospectiveRun> {
+    if (!uuid(id) || !Number.isSafeInteger(requestedBatch) || requestedBatch < 1 || requestedBatch > 25)
+      throw new BadRequestException("Invalid retrospective Review batch");
+    await this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      requireRetrospectiveAdmin(scope);
+      const [run] = await manager.query<Array<{ criterion_id: string; validation_version_id: string }>>(`
+        select criterion_id,validation_version_id from clinical.review_retrospective_run
+        where id=$1 and organization_id=$2`, [id, scope.organizationId]);
+      if (!run) throw new NotFoundException("Retrospective Review run is unavailable");
+      const reports = await manager.query<Array<{ report_id: string; signed_snapshot_id: string;
+        amendment_sequence: number; work_id: string | null; state: string | null }>>(`
+        select rr.report_id,rr.signed_snapshot_id,rr.amendment_sequence,rr.work_id,w.state
+        from clinical.review_retrospective_report rr
+        left join clinical.review_work w on w.id=rr.work_id
+        where rr.run_id=$1 and rr.organization_id=$2 and rr.preview_outcome<>'incompatible'
+          and (rr.work_id is null or w.state='failed')
+        order by (rr.work_id is not null),rr.reporting_date,rr.report_id
+        limit $3 for update of rr skip locked`,
+      [id, scope.organizationId, requestedBatch]);
+      for (const report of reports) {
+        if (report.work_id) {
+          await manager.query(`update clinical.review_work set next_attempt_at=now()
+            where id=$1 and state='failed'`, [report.work_id]);
+          continue;
+        }
+        const [inserted] = mutationRows<{ id: string }>(await manager.query(`
+          insert into clinical.review_work (organization_id,report_id,signed_snapshot_id,
+            amendment_sequence,validation_version_id,source_key,selected_criterion_id)
+          values ($1,$2,$3,$4,$5,$6,$7) on conflict do nothing returning id`,
+        [scope.organizationId, report.report_id, report.signed_snapshot_id,
+          report.amendment_sequence, run.validation_version_id,
+          `retrospective:${run.criterion_id}`, run.criterion_id]));
+        const workId = inserted?.id ?? (await manager.query<Array<{ id: string }>>(`
+          select id from clinical.review_work where report_id=$1 and signed_snapshot_id=$2
+            and amendment_sequence=$3 and validation_version_id=$4 and source_key=$5`,
+        [report.report_id, report.signed_snapshot_id, report.amendment_sequence,
+          run.validation_version_id, `retrospective:${run.criterion_id}`]))[0]?.id;
+        if (!workId) throw new Error("Retrospective Review work could not be recovered");
+        await manager.query(`update clinical.review_retrospective_report set work_id=$3
+          where run_id=$1 and report_id=$2 and organization_id=$4`,
+        [id, report.report_id, workId, scope.organizationId]);
+      }
+    });
+    await processReviewWork(this.database, requestedBatch, id);
+    return this.retrospectiveRun(token, id);
   }
 
   async analysisFields(token: string): Promise<ReviewAnalysisField[]> {
