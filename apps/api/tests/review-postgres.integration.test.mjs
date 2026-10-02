@@ -1,10 +1,54 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { ReviewService } from "../dist/review/review.service.js";
 
 const integrationTest = process.env.DATABASE_URL ? test : test.skip;
+
+integrationTest("Review claim stores one versioned assignment and immutable history in PostgreSQL", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  if (!(await client.query("select to_regclass('clinical.review_item') as relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002160000_review_sign_to_queue.sql", import.meta.url), "utf8"));
+  if (!(await client.query("select to_regclass('clinical.review_assignment_history') as relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002170000_review_claim_item.sql", import.meta.url), "utf8"));
+  const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
+    from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
+    where r.status='signed' limit 1`)).rows[0];
+  if (!candidate) return t.skip("No signed report is available in the local database");
+  const itemId = randomUUID();
+  await client.query(`insert into clinical.review_item
+    (id,organization_id,report_id,criterion_id,priority,first_matched_at)
+    values ($1,$2,$3,$4,'high',now())`,
+  [itemId, candidate.organization_id, candidate.id, randomUUID()]);
+  await client.query("set local role open_triage_api_runtime");
+  let session = { user: { id: candidate.documenting_user_id },
+    organization: { id: candidate.organization_id }, capabilities: ["review:all"] };
+  const database = { transaction: async (work) => work({ query: async (sql, params) =>
+    (await client.query(sql, params)).rows }), query: async (sql, params) => (await client.query(sql, params)).rows };
+  const service = new ReviewService(database, { get: async () => session, assertCsrf: async () => {} });
+  const command = { commandId: randomUUID(), expectedVersion: 0,
+    dataset: candidate.synthetic ? "synthetic" : "real" };
+  const claimed = await service.claim("unused", itemId, command, "valid");
+  assert.equal(claimed.assigneeId, candidate.documenting_user_id);
+  assert.equal(claimed.version, 1);
+  assert.equal(claimed.assignmentHistory.length, 1);
+  assert.equal((await service.claim("unused", itemId, command, "valid")).assignmentHistory.length, 1);
+  assert.equal((await service.queue("unused", { dataset: command.dataset })).items
+    .find((item) => item.id === itemId)?.assigneeId, candidate.documenting_user_id);
+  await assert.rejects(service.claim("unused", itemId, { ...command, commandId: randomUUID() }, "valid"),
+    { status: 409 });
+  session = { ...session, capabilities: ["review:self"] };
+  await assert.rejects(service.claim("unused", itemId, { ...command, commandId: randomUUID() }, "valid"),
+    { status: 403 });
+  session = { ...session, capabilities: ["review:all"], organization: { id: randomUUID() } };
+  await assert.rejects(service.claim("unused", itemId, { ...command, commandId: randomUUID() }, "valid"),
+    { status: 404 });
+});
 
 integrationTest("Review signed-report list is scoped by current organization, author, and dataset in PostgreSQL", async (t) => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });

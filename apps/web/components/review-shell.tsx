@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
-  ReviewQueueResponse, ReviewQueueItem, ReportNote } from "@open-triage/contracts";
+  ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -32,6 +32,10 @@ export function ReviewShell({ session, language, online }: {
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
+  const selectedItemId = selectedItem?.id;
+  const [itemDetail, setItemDetail] = useState<ReviewItemDetail | null>(null);
+  const [claimError, setClaimError] = useState<"conflict" | "unavailable" | null>(null);
+  const [claiming, setClaiming] = useState<string | null>(null);
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [from, setFrom] = useState(() => dateString(new Date(Date.now() - 29 * 86400000)));
@@ -97,6 +101,38 @@ export function ReviewShell({ session, language, online }: {
     }).catch(() => { if (!controller.signal.aborted) { setDetail(null); setDetailError(true); } });
     return () => controller.abort();
   }, [dataset, online, selected, refresh]);
+
+  useEffect(() => {
+    if (!online || !selectedItemId) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/items/${selectedItemId}?dataset=${dataset}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewItemDetail;
+      if (!controller.signal.aborted) setItemDetail(next);
+    }).catch(() => { if (!controller.signal.aborted) setItemDetail(null); });
+    return () => controller.abort();
+  }, [dataset, online, selectedItemId, refresh]);
+
+  async function claim(item: ReviewQueueItem) {
+    const url = apiRequestUrl(`/api/review/items/${item.id}/claim`);
+    if (!url || claiming) return;
+    setClaiming(item.id);
+    setClaimError(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: item.version, dataset }) }));
+      if (response.status === 409) { setClaimError("conflict"); setRefresh((value) => value + 1); return; }
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewItemDetail;
+      setQueue((previous) => previous ? { ...previous,
+        items: previous.items.map((entry) => entry.id === item.id ? next : entry) } : previous);
+      if (selectedItem?.id === item.id) { setSelectedItem(next); setItemDetail(next); }
+    } catch { setClaimError("unavailable"); }
+    finally { setClaiming(null); }
+  }
 
   useEffect(() => {
     if (!online || from > to) return;
@@ -172,15 +208,19 @@ export function ReviewShell({ session, language, online }: {
           <label>{t("review.to")} <input type="date" value={queueTo} onChange={(event) => { setQueueTo(event.target.value); setQueuePage(1); }} /></label>
         </div>
         {queueError && <p role="alert">{t("review.queueUnavailable")}</p>}
+        {claimError && <p role="alert">{t(claimError === "conflict" ? "review.claimConflict" : "review.claimUnavailable")}</p>}
         {queue && <><p>{t("review.queueCount", { count: queue.total })}</p>
           {queue.items.length === 0 ? <p>{t("review.queueEmpty")}</p> : <table><thead><tr>
             <th>{t("review.priority")}</th><th>{t("review.status")}</th><th>{t("review.criterion")}</th>
-            <th>{t("review.report")}</th><th>{t("review.age")}</th></tr></thead><tbody>
+            <th>{t("review.report")}</th><th>{t("review.age")}</th><th>{t("review.assignee")}</th></tr></thead><tbody>
             {queue.items.map((item) => <tr key={item.id} className={`review-priority-${item.priority}`}>
               <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status}`)}</td>
               <td><code>{item.criterionId}</code><div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
-              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setDetail(null); }}><code>{item.reportId}</code></button></td>
+              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); }}><code>{item.reportId}</code></button></td>
               <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
+              <td>{item.assigneeId ? (item.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{item.assigneeId}</code>) :
+                session.capabilities?.includes("review:all") && item.status === "new" ?
+                  <button type="button" disabled={!!claiming} onClick={() => void claim(item)}>{t("review.claim")}</button> : t("review.unassigned")}</td>
             </tr>)}</tbody></table>}
           <nav className="review-pagination" aria-label={t("review.queuePages")}>
             <button type="button" disabled={queuePage === 1} onClick={() => setQueuePage(queuePage - 1)}>{t("review.previous")}</button>
@@ -203,7 +243,7 @@ export function ReviewShell({ session, language, online }: {
           <table><thead><tr><th>{t("review.report")}</th><th>{t("review.reportingDate")}</th>
             <th>{t("review.signedAt")}</th>{result.identifying && <th>{t("review.clinician")}</th>}</tr></thead>
             <tbody>{result.reports.map((report) => <tr key={report.id}>
-              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
+              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setItemDetail(null); setDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
               <td>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.signedAt))}</td>
               {result.identifying && <td>{report.documentingClinician ?? "—"}</td>}
             </tr>)}</tbody></table>}
@@ -215,13 +255,22 @@ export function ReviewShell({ session, language, online }: {
         </nav>
       </>}
       {selected && <section className="review-detail" aria-label={t("review.detail")}>
-        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setDetail(null); }}>{t("review.close")}</button>
+        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setItemDetail(null); setDetail(null); }}>{t("review.close")}</button>
         {detailError && <p role="alert">{t("review.detailUnavailable")}</p>}
         {!detail && !detailError && <p role="status">{t("review.detailLoading")}</p>}
         {detail && <>
           <h2>{t("review.detail")}: <code>{detail.id}</code></h2>
           <p>{t("review.amendments", { count: detail.amendmentSequence })}</p>
           {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
+            <p>{t("review.assignee")}: {itemDetail?.assigneeId ?
+              (itemDetail.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{itemDetail.assigneeId}</code>) : t("review.unassigned")}</p>
+            {itemDetail && !itemDetail.assigneeId && itemDetail.status === "new" && session.capabilities?.includes("review:all") &&
+              <button type="button" disabled={!!claiming} onClick={() => void claim(itemDetail)}>{t("review.claim")}</button>}
+            {itemDetail && <section><h4>{t("review.assignmentHistory")}</h4>
+              {itemDetail.assignmentHistory.length === 0 ? <p>{t("review.noAssignmentHistory")}</p> :
+                <ol>{itemDetail.assignmentHistory.map((event) => <li key={event.commandId}>
+                  {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.assignedAt))}: {event.actorId === session.user.id ? t("review.assignedToYou") : <code>{event.assigneeId}</code>}
+                </li>)}</ol>}</section>}
             <p>{t("review.criterion")}: <code>{selectedItem.criterionId}</code></p>
             <ul>{selectedItem.findings.map((finding, index) => <li key={index}>
               {finding.message} — {finding.primaryTarget.elementId}

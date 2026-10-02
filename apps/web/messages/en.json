@@ -1313,5 +1313,13 @@
   "review.backlog": "Processing backlog",
   "review.backlogEmpty": "No pending or failed review work.",
   "review.attempts": "attempts",
-  "review.findings": "Criterion findings"
+  "review.findings": "Criterion findings",
+  "review.assignee": "Assignee",
+  "review.unassigned": "Unassigned",
+  "review.assignedToYou": "Assigned to you",
+  "review.claim": "Claim",
+  "review.assignmentHistory": "Assignment history",
+  "review.noAssignmentHistory": "No assignments yet.",
+  "review.claimConflict": "This item changed. Refresh and try again.",
+  "review.claimUnavailable": "Could not claim this item. Try again."
 }

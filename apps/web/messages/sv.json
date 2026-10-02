@@ -1311,5 +1311,13 @@
   "review.backlog": "Bearbetningskö",
   "review.backlogEmpty": "Inga väntande eller misslyckade granskningar.",
   "review.attempts": "försök",
-  "review.findings": "Kriteriefynd"
+  "review.findings": "Kriteriefynd",
+  "review.assignee": "Tilldelad granskare",
+  "review.unassigned": "Ej tilldelad",
+  "review.assignedToYou": "Tilldelad dig",
+  "review.claim": "Ta ärendet",
+  "review.assignmentHistory": "Tilldelningshistorik",
+  "review.noAssignmentHistory": "Inga tilldelningar ännu.",
+  "review.claimConflict": "Ärendet har ändrats. Uppdatera och försök igen.",
+  "review.claimUnavailable": "Kunde inte ta ärendet. Försök igen."
 }
