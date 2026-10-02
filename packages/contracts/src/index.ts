@@ -313,6 +313,19 @@ export interface ReviewQueueResponse {
   items: ReviewQueueItem[];
 }
 
+export type ReviewAttentionKind = "assignments" | "responses" | "reopened" | "unavailable-assignees";
+
+export interface ReviewAttentionResponse {
+  dataset: "real" | "synthetic";
+  asOf: string;
+  assignments: number;
+  responses: number;
+  reopened: number;
+  unavailableAssignees?: number;
+  unavailableRoutes?: number;
+  processingFailures?: number;
+}
+
 export interface ReviewSignedReportSummary {
   id: string;
   reportingDate: string;

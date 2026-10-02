@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 import { aggregateRevision, analysisCsv, volumeCsv, workloadCsv } from "./review-csv.js";
@@ -128,9 +128,16 @@ export class ReviewController {
   @Get("queue")
   @Header("Cache-Control", "no-store, private")
   queue(@Query() filters: { dataset?: string; criterion?: string; priority?: string; status?: string;
-      from?: string; to?: string; page?: string; pageSize?: string },
+      attention?: ReviewAttentionKind; from?: string; to?: string; page?: string; pageSize?: string },
     @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
     return this.review.queue(bearerToken(authorization, cookie), filters);
+  }
+
+  @Get("attention")
+  @Header("Cache-Control", "no-store, private")
+  attention(@Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewAttentionResponse> {
+    return this.review.attention(bearerToken(authorization, cookie), dataset);
   }
 
   @Get("backlog")

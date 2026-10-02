@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClinicianSession, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
+import type { ClinicianSession, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
   ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReviewOverdueExceptionCode, ReviewBulkResult, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
@@ -14,10 +14,12 @@ import { ReviewRetrospectivePanel } from "./review-retrospective-panel";
 
 function dateString(date: Date): string { return date.toISOString().slice(0, 10); }
 
-export function ReviewShell({ session, language, online }: {
+export function ReviewShell({ session, language, online, attention, onAttentionRefresh }: {
   session: ClinicianSession;
   language: AgencyLanguage;
   online: boolean;
+  attention: ReviewAttentionResponse | null;
+  onAttentionRefresh: (dataset: "real" | "synthetic") => void;
 }) {
   const [dataset, setDataset] = useState<"real" | "synthetic">(
     session.capabilities?.includes("clinical:demo") ? "synthetic" : "real");
@@ -31,6 +33,7 @@ export function ReviewShell({ session, language, online }: {
   const [bulkResult, setBulkResult] = useState<ReviewBulkResult | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState(false);
+  const [attentionFilter, setAttentionFilter] = useState<ReviewAttentionKind | "">("");
   const [priority, setPriority] = useState("");
   const [status, setStatus] = useState("");
   const [criterion, setCriterion] = useState("");
@@ -84,7 +87,7 @@ export function ReviewShell({ session, language, online }: {
   const [volumeExportNotice, setVolumeExportNotice] = useState<string | null>(null);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
 
-  const bulkScopeKey = JSON.stringify([dataset, queuePage, priority, status, criterion, queueFrom, queueTo]);
+  const bulkScopeKey = JSON.stringify([dataset, queuePage, priority, status, attentionFilter, criterion, queueFrom, queueTo]);
   const activeBulkSelection = bulkSelection.key === bulkScopeKey ? bulkSelection.items : {};
 
   useEffect(() => {
@@ -93,6 +96,7 @@ export function ReviewShell({ session, language, online }: {
     const query = new URLSearchParams({ dataset, page: String(queuePage) });
     if (priority) query.set("priority", priority);
     if (status) query.set("status", status);
+    if (attentionFilter) query.set("attention", attentionFilter);
     if (criterion) query.set("criterion", criterion);
     if (queueFrom) query.set("from", queueFrom);
     if (queueTo) query.set("to", queueTo);
@@ -104,7 +108,15 @@ export function ReviewShell({ session, language, online }: {
       if (!controller.signal.aborted) { setQueue(next); setQueueError(false); }
     }).catch(() => { if (!controller.signal.aborted) { setQueue(null); setQueueError(true); } });
     return () => controller.abort();
-  }, [dataset, online, queuePage, priority, status, criterion, queueFrom, queueTo, refresh]);
+  }, [dataset, online, queuePage, priority, status, attentionFilter, criterion, queueFrom, queueTo, refresh]);
+
+  useEffect(() => { onAttentionRefresh(dataset); }, [dataset, refresh, onAttentionRefresh]);
+
+  function showAttention(kind: ReviewAttentionKind | "") {
+    setAttentionFilter(kind); setPriority(""); setStatus(""); setCriterion("");
+    setQueueFrom(""); setQueueTo(""); setQueuePage(1);
+    document.getElementById("review-queue-heading")?.scrollIntoView();
+  }
 
   useEffect(() => {
     if (!online || !session.capabilities?.includes("review:admin")) return;
@@ -504,8 +516,29 @@ export function ReviewShell({ session, language, online }: {
           </tr>)}</tbody></table>
         </>}
       </section>
+      {attention && <section aria-label={t("review.attentionHeading")}>
+        <h2>{t("review.attentionHeading")}</h2>
+        <div className="review-controls">
+          <button type="button" onClick={() => showAttention("assignments")}>
+            {t("review.attentionAssignments", { count: attention.assignments })}</button>
+          <button type="button" onClick={() => showAttention("responses")}>
+            {t("review.attentionResponses", { count: attention.responses })}</button>
+          <button type="button" onClick={() => showAttention("reopened")}>
+            {t("review.attentionReopened", { count: attention.reopened })}</button>
+          {attention.unavailableAssignees !== undefined && <>
+            <button type="button" onClick={() => showAttention("unavailable-assignees")}>
+              {t("review.attentionUnavailable", { count: attention.unavailableAssignees ?? 0 })}</button>
+            <button type="button" onClick={() => document.getElementById("review-routing-heading")?.scrollIntoView()}>
+              {t("review.attentionRoutes", { count: attention.unavailableRoutes ?? 0 })}</button>
+            <button type="button" onClick={() => document.getElementById("review-backlog-heading")?.scrollIntoView()}>
+              {t("review.attentionFailures", { count: attention.processingFailures ?? 0 })}</button>
+          </>}
+        </div>
+      </section>}
       <section aria-labelledby="review-queue-heading">
         <h2 id="review-queue-heading">{t("review.queue")}</h2>
+        {attentionFilter && <p role="status">{t(`review.attentionFilter.${attentionFilter}`)}{" "}
+          <button type="button" onClick={() => showAttention("")}>{t("review.attentionAll")}</button></p>}
         <div className="review-controls">
           <label>{t("review.priority")} <select value={priority} onChange={(event) => { setPriority(event.target.value); setQueuePage(1); }}>
             <option value="">{t("review.all")}</option><option value="high">{t("review.high")}</option>
