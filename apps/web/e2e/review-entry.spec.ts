@@ -11,7 +11,7 @@ test("Review administrator configures routing and reassigns an item without vali
     organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
     expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:admin"], workspaceAvailable: true };
   let route = { criterionId, name: "Narrative check", route: "unassigned", namedUserId: null as string | null,
-    version: 0, recoveryReason: null };
+    independentReview: false, version: 0, recoveryReason: null };
   let assigneeId: string | null = null;
   let version = 0;
   let history: Array<{ commandId: string; actorId: string; assigneeId: string | null;
@@ -30,9 +30,10 @@ test("Review administrator configures routing and reassigns an item without vali
     if (path === `/api/review/routes/${criterionId}`) {
       expect(request.request().headers()["x-csrf-token"]).toBe("review-admin-csrf");
       const body = request.request().postDataJSON() as { route: typeof route.route; namedUserId: string | null;
-        expectedVersion: number };
+        independentReview: boolean; expectedVersion: number };
       expect(body.expectedVersion).toBe(route.version);
-      route = { ...route, route: body.route, namedUserId: body.namedUserId, version: route.version + 1 };
+      route = { ...route, route: body.route, namedUserId: body.namedUserId,
+        independentReview: body.independentReview, version: route.version + 1 };
       return request.fulfill({ json: route });
     }
     if (path === "/api/review/eligible-reviewers")
@@ -71,6 +72,15 @@ test("Review administrator configures routing and reassigns an item without vali
   await expect(page.getByText("Routing saved.")).toBeVisible();
   expect(route.route).toBe("named");
   expect(route.namedUserId).toBe(reviewerId);
+  await page.getByLabel("Require independent review").check();
+  await expect(page.getByText("Reports documented by this reviewer will remain unassigned for another reviewer.")).toBeVisible();
+  await page.getByRole("button", { name: "Save route" }).click();
+  expect(route.independentReview).toBe(true);
+  await page.getByLabel("Route to").selectOption("author");
+  await expect(page.getByText("Choose an unassigned queue or a named reviewer.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save route" })).toBeDisabled();
+  await page.getByLabel("Route to").selectOption("named");
+  await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
   await page.getByRole("button", { name: reportId }).first().click();
   await page.getByLabel("Assign reviewer").selectOption(reviewerId);
   await page.getByRole("button", { name: "Save assignment" }).click();

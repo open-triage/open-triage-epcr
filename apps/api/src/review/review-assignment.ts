@@ -45,8 +45,8 @@ export async function eligibleReviewer(manager: Pick<EntityManager, "query">, or
 export async function reconcileReviewAssignments(database: DataSource, limit = 100): Promise<void> {
   await database.transaction(async (manager) => {
     const routes = await manager.query<Array<{ organization_id: string; criterion_id: string;
-      named_user_id: string; version: string }>>(`
-      select organization_id,criterion_id,named_user_id,version
+      named_user_id: string; independent_review: boolean; version: string }>>(`
+      select organization_id,criterion_id,named_user_id,independent_review,version
       from clinical.review_criterion_route where route='named'
       order by eligibility_checked_at nulls first,organization_id,criterion_id
       limit $1 for update skip locked`, [limit]);
@@ -62,9 +62,10 @@ export async function reconcileReviewAssignments(database: DataSource, limit = 1
           eligibility_checked_at=now() where organization_id=$1 and criterion_id=$2`,
         [route.organization_id, route.criterion_id]);
         await manager.query(`insert into clinical.review_criterion_route_history
-          (organization_id,criterion_id,command_id,actor_id,route,named_user_id,route_version,reason)
-          values ($1,$2,gen_random_uuid(),null,'unassigned',null,$3,'ineligible')`,
-        [route.organization_id, route.criterion_id, Number(route.version) + 1]);
+          (organization_id,criterion_id,command_id,actor_id,route,named_user_id,
+           independent_review,route_version,reason)
+          values ($1,$2,gen_random_uuid(),null,'unassigned',null,$3,$4,'ineligible')`,
+        [route.organization_id, route.criterion_id, route.independent_review, Number(route.version) + 1]);
       }
     }
     const items = await manager.query<Array<{ id: string; organization_id: string; assignee_id: string;

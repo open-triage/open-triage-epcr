@@ -24,9 +24,11 @@ test("creating an outcome accepts TypeORM's PostgreSQL RETURNING tuple", async (
 
 test("concurrent progress commands serialize on the item and stale command conflicts", async () => {
   const item = { version: 1, status: "new", assignee_id: "reviewer",
-    outcome_option_id: null, outcome_revision: null };
+    outcome_option_id: null, outcome_revision: null, documenting_user_id: "author",
+    independent_review: false };
   const history = [];
   const manager = { async query(sql, params) {
+    if (sql.includes("from app_identity.organization")) return [{ id: params[0] }];
     if (sql.includes("for update of i")) return [{ ...item, version: String(item.version) }];
     if (sql.includes("from clinical.review_progress_history"))
       return history.filter((event) => event.command_id === params[1]);

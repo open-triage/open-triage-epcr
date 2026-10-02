@@ -50,6 +50,10 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
           where w.state in ('pending', 'failed') and w.next_attempt_at <= now()
           order by w.next_attempt_at, w.id limit 1 for update of w skip locked`))[0];
         if (!work) return false;
+        // Configuration updates take an exclusive organization lock; hold this shared lock
+        // through routing and item creation so a setting change cannot race the decision.
+        await manager.query(`select id from app_identity.organization where id=$1 for share`,
+          [work.organization_id]);
         const evaluationTime = new Date().toISOString();
         const version = (await manager.query<Version[]>(`
           select compiled_bundle, compiled_sha256, catalog_release_id from validation.version

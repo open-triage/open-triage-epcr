@@ -658,6 +658,8 @@ export class ReviewService implements OnModuleDestroy {
       await this.sessions.assertCsrf(token, csrfToken, manager);
       const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
       if (scope.reports !== "all") throw new ForbiddenException("Review-all access is required to claim items");
+      await manager.query(`select id from app_identity.organization where id=$1 for share`,
+        [scope.organizationId]);
       const dataset = this.dataset(command.dataset, scope);
       // Lock the item itself so two claimants cannot both observe an unassigned version.
       const rows = await manager.query<Array<{ version: string; status: string; assignee_id: string | null;
@@ -701,7 +703,7 @@ export class ReviewService implements OnModuleDestroy {
     const scope = reviewScope(await this.sessions.get(token));
     if (!scope.administrator) throw new ForbiddenException("Review administration is required");
     const rows = await this.database.query<Array<{ criterion_id: string; name: string; route: ReviewCriterionRoute["route"];
-      named_user_id: string | null; version: string; recovery_reason: string | null }>>(`
+      named_user_id: string | null; independent_review: boolean; version: string; recovery_reason: string | null }>>(`
       with published as (
         select distinct on ((rule.value->>'ruleId')::uuid)
           (rule.value->>'ruleId')::uuid criterion_id,rule.value->>'name' name
@@ -710,12 +712,14 @@ export class ReviewService implements OnModuleDestroy {
         order by (rule.value->>'ruleId')::uuid,v.published_at desc
       )
       select p.criterion_id,p.name,coalesce(route.route,'unassigned') route,
-        route.named_user_id,coalesce(route.version,0)::text version,route.recovery_reason
+        route.named_user_id,coalesce(route.independent_review,false) independent_review,
+        coalesce(route.version,0)::text version,route.recovery_reason
       from published p left join clinical.review_criterion_route route
         on route.organization_id=$1 and route.criterion_id=p.criterion_id
       order by p.name,p.criterion_id`, [scope.organizationId]);
     return rows.map((row) => ({ criterionId: row.criterion_id, name: row.name,
-      route: row.route, namedUserId: row.named_user_id, version: Number(row.version),
+      route: row.route, namedUserId: row.named_user_id, independentReview: row.independent_review,
+      version: Number(row.version),
       recoveryReason: row.recovery_reason }));
   }
 
@@ -748,12 +752,17 @@ export class ReviewService implements OnModuleDestroy {
     if (!uuid(criterionId) || !command || !uuid(command.commandId) ||
       !Number.isSafeInteger(command.expectedVersion) || command.expectedVersion < 0 ||
       !["unassigned", "author", "named"].includes(command.route) ||
-      (command.route === "named" ? !uuid(command.namedUserId) : command.namedUserId !== null))
+      (command.route === "named" ? !uuid(command.namedUserId) : command.namedUserId !== null) ||
+      typeof command.independentReview !== "boolean")
       throw new BadRequestException("Invalid Review route command");
+    if (command.independentReview && command.route === "author")
+      throw new BadRequestException("Independent review cannot route to the documenting clinician; choose a named reviewer or the unassigned queue");
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
       const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
       if (!scope.administrator) throw new ForbiddenException("Review administration is required");
+      await manager.query(`select id from app_identity.organization where id=$1 for update`,
+        [scope.organizationId]);
       const exists = await manager.query<Array<{ id: string }>>(`
         select v.id from validation.version v
         cross join lateral jsonb_array_elements(v.compiled_bundle->'rules') rule(value)
@@ -767,12 +776,14 @@ export class ReviewService implements OnModuleDestroy {
         select version from clinical.review_criterion_route where organization_id=$1 and criterion_id=$2 for update`,
       [scope.organizationId, criterionId]))[0]!;
       const previous = await manager.query<Array<{ route: string; named_user_id: string | null;
+        independent_review: boolean;
         route_version: string; actor_id: string | null }>>(`
-        select route,named_user_id,route_version,actor_id from clinical.review_criterion_route_history
+        select route,named_user_id,independent_review,route_version,actor_id from clinical.review_criterion_route_history
         where organization_id=$1 and command_id=$2`, [scope.organizationId, command.commandId]);
       if (previous[0]) {
         if (previous[0].actor_id !== scope.userId || previous[0].route !== command.route ||
           previous[0].named_user_id !== command.namedUserId ||
+          previous[0].independent_review !== command.independentReview ||
           Number(previous[0].route_version) !== command.expectedVersion + 1)
           throw new ConflictException("Review route command has already been used");
         return;
@@ -785,14 +796,15 @@ export class ReviewService implements OnModuleDestroy {
         if (!eligible) throw new BadRequestException("Named reviewer must have current organization-wide Review access");
       }
       await manager.query(`update clinical.review_criterion_route set route=$3,named_user_id=$4,
-        version=version+1,recovery_reason=null,updated_by=$5,updated_at=now(),eligibility_checked_at=null
+        independent_review=$5,version=version+1,recovery_reason=null,updated_by=$6,updated_at=now(),eligibility_checked_at=null
         where organization_id=$1 and criterion_id=$2`,
-      [scope.organizationId, criterionId, command.route, command.namedUserId, scope.userId]);
+      [scope.organizationId, criterionId, command.route, command.namedUserId,
+        command.independentReview, scope.userId]);
       await manager.query(`insert into clinical.review_criterion_route_history
-        (organization_id,criterion_id,command_id,actor_id,route,named_user_id,route_version,reason)
-        values ($1,$2,$3,$4,$5,$6,$7,'configured')`,
+        (organization_id,criterion_id,command_id,actor_id,route,named_user_id,independent_review,route_version,reason)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,'configured')`,
       [scope.organizationId, criterionId, command.commandId, scope.userId,
-        command.route, command.namedUserId, command.expectedVersion + 1]);
+        command.route, command.namedUserId, command.independentReview, command.expectedVersion + 1]);
     });
     const configured = (await this.routes(token)).find((route) => route.criterionId === criterionId);
     if (!configured) throw new NotFoundException("Published Review criterion was not found");
@@ -808,6 +820,8 @@ export class ReviewService implements OnModuleDestroy {
       await this.sessions.assertCsrf(token, csrfToken, manager);
       const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
       if (!scope.administrator) throw new ForbiddenException("Review administration is required");
+      await manager.query(`select id from app_identity.organization where id=$1 for share`,
+        [scope.organizationId]);
       const dataset = this.dataset(command.dataset, scope);
       const rows = await manager.query<Array<{ version: string; assignee_id: string | null;
         status: string; documenting_user_id: string; independent_review: boolean }>>(`
@@ -931,11 +945,17 @@ export class ReviewService implements OnModuleDestroy {
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
       const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      await manager.query(`select id from app_identity.organization where id=$1 for share`,
+        [scope.organizationId]);
       const dataset = this.dataset(command.dataset, scope);
       const rows = await manager.query<Array<{ version: string; status: string; assignee_id: string | null;
-        outcome_option_id: string | null; outcome_revision: number | null }>>(`
-        select i.version,i.status,i.assignee_id,i.outcome_option_id,i.outcome_revision
+        outcome_option_id: string | null; outcome_revision: number | null;
+        documenting_user_id: string; independent_review: boolean }>>(`
+        select i.version,i.status,i.assignee_id,i.outcome_option_id,i.outcome_revision,
+          r.documenting_user_id,coalesce(route.independent_review,false) independent_review
         from clinical.review_item i join clinical.report r on r.id=i.report_id
+        left join clinical.review_criterion_route route on route.organization_id=i.organization_id
+          and route.criterion_id=i.criterion_id
         where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
           and r.synthetic=$3 and r.status='signed' and ($4::boolean or r.documenting_user_id=$5)
         for update of i`, [id, scope.organizationId, dataset === "synthetic",
@@ -944,6 +964,8 @@ export class ReviewService implements OnModuleDestroy {
       if (!item) throw new NotFoundException("Review item was not found in scope");
       if (item.assignee_id !== scope.userId)
         throw new ForbiddenException("Only the assigned reviewer can progress this item");
+      if (item.independent_review && item.documenting_user_id === scope.userId)
+        throw new ForbiddenException("Independent review requires a reviewer other than the documenting clinician");
       const previous = await manager.query<Array<{ actor_id: string; item_version: string;
         status: string; outcome_option_id: string | null }>>(`
         select actor_id,item_version,status,outcome_option_id from clinical.review_progress_history

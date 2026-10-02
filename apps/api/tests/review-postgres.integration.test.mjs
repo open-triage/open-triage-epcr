@@ -13,6 +13,9 @@ async function ensureCustomReviewSource(client) {
     await client.query(readFileSync(new URL("../../../supabase/migrations/20261002180000_review_repeated_field_source.sql", import.meta.url), "utf8"));
   if (!(await client.query("select to_regclass('analytics.review_custom_dictionary') as relation")).rows[0].relation)
     await client.query(readFileSync(new URL("../../../supabase/migrations/20261002190000_review_custom_scalar_analytics.sql", import.meta.url), "utf8"));
+  if (!(await client.query(`select 1 from information_schema.columns where table_schema='analytics'
+    and table_name='review_custom_dictionary' and column_name='grouped'`)).rows[0])
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002220000_review_custom_grouped_source.sql", import.meta.url), "utf8"));
 }
 
 integrationTest("Review operational time uses offset-aware signed endpoints and scoped denominators", async (t) => {
@@ -108,6 +111,9 @@ async function ensureReviewWorkflowSchema(client) {
     ["clinical.review_outcome_option", "20261002210000_review_completion.sql"],
   ]) if (!(await client.query("select to_regclass($1) relation", [table])).rows[0].relation)
     await client.query(readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), "utf8"));
+  if (!(await client.query(`select 1 from information_schema.columns where table_schema='clinical'
+    and table_name='review_criterion_route_history' and column_name='independent_review'`)).rows[0])
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002240000_review_independent_route_history.sql", import.meta.url), "utf8"));
 }
 
 integrationTest("Review claim stores one versioned assignment and immutable history in PostgreSQL", async (t) => {
@@ -253,20 +259,31 @@ integrationTest("Review criterion routing is configured without validation-write
   assert.equal(initial?.route, "unassigned");
   session = { ...session, capabilities: ["review:all"] };
   await assert.rejects(service.configureRoute("unused", criterion.criterion_id, { commandId: randomUUID(),
-    expectedVersion: 0, route: "named", namedUserId: actorId }, "valid"), { status: 403 });
+    expectedVersion: 0, route: "named", namedUserId: actorId, independentReview: false }, "valid"), { status: 403 });
   session = { ...session, capabilities: ["review:all", "review:admin"] };
   const command = { commandId: randomUUID(), expectedVersion: 0,
-    route: "named", namedUserId: actorId };
+    route: "named", namedUserId: actorId, independentReview: false };
   const named = await service.configureRoute("unused", criterion.criterion_id, command, "valid");
   assert.equal(named.route, "named");
   assert.equal(named.version, 1);
   assert.equal((await service.configureRoute("unused", criterion.criterion_id, command, "valid")).version, 1);
   await assert.rejects(service.configureRoute("unused", criterion.criterion_id,
     { ...command, commandId: randomUUID() }, "valid"), { status: 409 });
-  const history = (await client.query(`select count(*)::integer total from clinical.review_criterion_route_history
+  await assert.rejects(service.configureRoute("unused", criterion.criterion_id, {
+    commandId: randomUUID(), expectedVersion: 1, route: "author", namedUserId: null,
+    independentReview: true }, "valid"), { status: 400 });
+  const independent = await service.configureRoute("unused", criterion.criterion_id, {
+    commandId: randomUUID(), expectedVersion: 1, route: "named", namedUserId: actorId,
+    independentReview: true }, "valid");
+  assert.equal(independent.independentReview, true);
+  assert.equal(independent.version, 2);
+  const history = (await client.query(`select count(*)::integer total,
+    array_agg(independent_review order by route_version) independent
+    from clinical.review_criterion_route_history
     where organization_id=$1 and criterion_id=$2`,
   [criterion.organization_id, criterion.criterion_id])).rows[0];
-  assert.equal(history.total, 1);
+  assert.equal(history.total, 2);
+  assert.deepEqual(history.independent, [false, true]);
 });
 
 integrationTest("Review signed-report list is scoped by current organization, author, and dataset in PostgreSQL", async (t) => {
