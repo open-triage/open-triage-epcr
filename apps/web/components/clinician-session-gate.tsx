@@ -1,7 +1,7 @@
 "use client";
 import { PlatformRequestError } from "../app/platform-errors";
 
-import type { AssignedCall, ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
+import type { AssignedCall, ClinicianSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
@@ -32,7 +32,7 @@ import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { AdminShell } from "./admin-shell";
 import { ReviewShell } from "./review-shell";
-import { browserRequestConfiguration } from "../app/browser-api";
+import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
@@ -91,6 +91,38 @@ export function ClinicianSessionGate({ children }: {
   const [modeMessage, setModeMessage] = useState<string | null>(null);
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
+  const attentionSessionKey = session ? `${session.organization.id}:${session.user.id}:${session.capabilities?.join(",")}` : "";
+  const [storedReviewAttention, setStoredReviewAttention] = useState<{
+    key: string; value: ReviewAttentionResponse } | null>(null);
+  const [attentionDatasetSelection, setAttentionDatasetSelection] = useState<{
+    key: string; dataset: "real" | "synthetic" } | null>(null);
+  const reviewAttentionDataset = attentionDatasetSelection?.key === attentionSessionKey
+    ? attentionDatasetSelection.dataset : session?.capabilities?.includes("clinical:demo") ? "synthetic" : "real";
+  const reviewAttention = online && storedReviewAttention?.key === attentionSessionKey &&
+    storedReviewAttention.value.dataset === reviewAttentionDataset ? storedReviewAttention.value : null;
+  const [reviewAttentionRevision, setReviewAttentionRevision] = useState(0);
+  const refreshReviewAttention = useCallback((dataset: "real" | "synthetic") => {
+    setAttentionDatasetSelection({ key: attentionSessionKey, dataset });
+    setReviewAttentionRevision((value) => value + 1);
+  }, [attentionSessionKey]);
+  useEffect(() => {
+    if (!online || !session || !hasReviewMode(session.capabilities)) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/attention?dataset=${reviewAttentionDataset}`);
+    const load = () => {
+      if (!url || controller.signal.aborted) return;
+      void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        const value = await response.json() as ReviewAttentionResponse;
+        if (!controller.signal.aborted) setStoredReviewAttention({ key: attentionSessionKey, value });
+      }).catch(() => { if (!controller.signal.aborted) setStoredReviewAttention(null); });
+    };
+    load();
+    const interval = window.setInterval(load, 30_000);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => { controller.abort(); window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
+  }, [session, online, attentionSessionKey, reviewAttentionDataset, reviewAttentionRevision]);
   const [generatedAssignmentId, setGeneratedAssignmentId] = useState<string | null>(null);
   const [logoutWarning, setLogoutWarning] = useState<ProtectedLogoutSummary | null>(null);
   const [lockingSession, setLockingSession] = useState(false);
@@ -387,7 +419,10 @@ export function ClinicianSessionGate({ children }: {
             onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           {hasReviewMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "review"}
             disabled={activeReport !== null || openingCall !== null}
-            onClick={() => selectPresentationMode("review")}>{t("navigation.review")}</button>}
+            onClick={() => selectPresentationMode("review")}>{t("navigation.review")}
+            {reviewAttention && reviewAttention.dataset === reviewAttentionDataset &&
+              reviewAttention.assignments + reviewAttention.responses + reviewAttention.reopened > 0 &&
+              <> ({reviewAttention.assignments + reviewAttention.responses + reviewAttention.reopened})</>}</button>}
         </div>
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
@@ -465,7 +500,9 @@ export function ClinicianSessionGate({ children }: {
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} />}
-      {presentationMode === "review" && !activeReport && <ReviewShell session={session} language={language} online={online} />}
+      {presentationMode === "review" && !activeReport && <ReviewShell session={session} language={language}
+        online={online} attention={reviewAttention?.dataset === reviewAttentionDataset ? reviewAttention : null}
+        onAttentionRefresh={refreshReviewAttention} />}
     </div>
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>

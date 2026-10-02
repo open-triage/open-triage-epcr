@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -41,6 +41,27 @@ function reviewOutcome(row: { outcome_option_id: string | null; outcome_revision
     label: row.outcome_label ?? "", meaning: row.outcome_meaning ?? "",
   } : null;
 }
+
+// A reassignment remains new work until this reviewer progresses the item.
+const newAssignment = `i.assignee_id=$4 and i.status<>'completed' and (
+  i.status='new' or exists (select 1 from clinical.review_assignment_history assignment
+    where assignment.item_id=i.id and assignment.organization_id=i.organization_id
+      and assignment.assignee_id=$4 and assignment.item_version > coalesce((
+        select max(progress.item_version) from clinical.review_progress_history progress
+        where progress.item_id=i.id and progress.organization_id=i.organization_id
+          and progress.actor_id=$4),0)))
+  and not exists (select 1 from clinical.review_criterion_route route
+    where route.organization_id=i.organization_id and route.criterion_id=i.criterion_id
+      and route.independent_review and r.documenting_user_id=$4)`;
+
+// A new request supersedes any prior response. Discussion content is never read here.
+const outstandingResponse = `r.documenting_user_id=$4 and i.status='awaiting-clinician'
+  and not exists (select 1 from clinical.review_comment c
+    where c.item_id=i.id and c.organization_id=i.organization_id
+      and c.actor_id=$4 and c.item_version > coalesce((
+        select max(progress.item_version) from clinical.review_progress_history progress
+        where progress.item_id=i.id and progress.organization_id=i.organization_id
+          and progress.status='awaiting-clinician'),0))`;
 
 @Injectable()
 export class ReviewService implements OnModuleDestroy {
@@ -893,8 +914,48 @@ export class ReviewService implements OnModuleDestroy {
   }
 
 
+  async attention(token: string, requestedDataset?: string): Promise<ReviewAttentionResponse> {
+    const scope = reviewScope(await this.sessions.get(token));
+    const dataset = this.dataset(requestedDataset, scope);
+    const parameters = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId];
+    const [counts] = await this.database.query<Array<{ assignments: string; responses: string;
+      reopened: string; unavailable_assignees: string }>>(`
+      select count(*) filter (where ${newAssignment})::text assignments,
+        count(*) filter (where ${scope.identifying ? outstandingResponse : "false"})::text responses,
+        count(*) filter (where i.assignee_id=$4 and i.reopened and i.status<>'completed'
+          and not exists (select 1 from clinical.review_criterion_route route
+            where route.organization_id=i.organization_id and route.criterion_id=i.criterion_id
+              and route.independent_review and r.documenting_user_id=$4))::text reopened,
+        count(*) filter (where i.assignee_id is null and i.recovery_reason is not null
+          and i.status<>'completed')::text unavailable_assignees
+      from clinical.review_item i join clinical.report r on r.id=i.report_id
+      where i.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+        and ((i.kind='criterion' and r.status='signed') or i.kind='overdue-unsigned')
+        and ($3::boolean or r.documenting_user_id=$4)`, parameters);
+    const summary: ReviewAttentionResponse = { dataset, asOf: new Date().toISOString(),
+      assignments: Number(counts?.assignments ?? 0), responses: Number(counts?.responses ?? 0),
+      reopened: Number(counts?.reopened ?? 0) };
+    if (!scope.administrator) return summary;
+    const [[routes], [failures]] = await Promise.all([
+      this.database.query<Array<{ total: string }>>(`select count(*)::text total
+        from clinical.review_criterion_route where organization_id=$1 and recovery_reason is not null`,
+      [scope.organizationId]),
+      this.database.query<Array<{ total: string }>>(`select count(distinct failures.report_id)::text total from (
+        select w.report_id from clinical.review_work w join clinical.report r on r.id=w.report_id
+        where w.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+          and ($3::boolean or r.documenting_user_id=$4) and w.state='failed'
+        union all
+        select r.id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
+        where r.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+          and ($3::boolean or r.documenting_user_id=$4) and s.validation_version_id is null
+      ) failures`, parameters),
+    ]);
+    return { ...summary, unavailableAssignees: Number(counts?.unavailable_assignees ?? 0),
+      unavailableRoutes: Number(routes?.total ?? 0), processingFailures: Number(failures?.total ?? 0) };
+  }
+
   async queue(token: string, filters: { dataset?: string; criterion?: string; priority?: string;
-    status?: string; from?: string; to?: string; page?: string; pageSize?: string }) {
+    status?: string; attention?: ReviewAttentionKind; from?: string; to?: string; page?: string; pageSize?: string }) {
     const scope = reviewScope(await this.sessions.get(token));
     const dataset = this.dataset(filters.dataset, scope);
     const page = positiveInteger(filters.page, 1, 1000000);
@@ -907,6 +968,16 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review priority");
     if (filters.status && !["new", "in-review", "awaiting-clinician", "completed"].includes(filters.status))
       throw new BadRequestException("Invalid Review status");
+    const attentionWhere: Record<ReviewAttentionKind, string> = {
+      assignments: newAssignment,
+      responses: scope.identifying ? outstandingResponse : "false",
+      reopened: "i.assignee_id=$4 and i.reopened and i.status<>'completed' and not exists (select 1 from clinical.review_criterion_route route where route.organization_id=i.organization_id and route.criterion_id=i.criterion_id and route.independent_review and r.documenting_user_id=$4)",
+      "unavailable-assignees": "i.assignee_id is null and i.recovery_reason is not null and i.status<>'completed'",
+    };
+    if (filters.attention && !Object.hasOwn(attentionWhere, filters.attention))
+      throw new BadRequestException("Invalid Review attention filter");
+    if (filters.attention === "unavailable-assignees" && !scope.administrator)
+      throw new ForbiddenException("Review administration is required");
     for (const value of [filters.from, filters.to]) if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value))
       throw new BadRequestException("Invalid Review date");
     const params = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
@@ -918,7 +989,8 @@ export class ReviewService implements OnModuleDestroy {
       and ($5::uuid is null or i.criterion_id=$5) and ($6::text is null or i.priority=$6)
       and ($7::text is null or i.status=$7)
       and ($8::date is null or coalesce(r.reporting_date,i.deadline_basis_at::date) >= $8)
-      and ($9::date is null or coalesce(r.reporting_date,i.deadline_basis_at::date) <= $9)`;
+      and ($9::date is null or coalesce(r.reporting_date,i.deadline_basis_at::date) <= $9)
+      ${filters.attention ? `and (${attentionWhere[filters.attention]})` : ""}`;
     const [counts, rows] = await Promise.all([
       this.database.query<Array<{ total: string }>>(`select count(*)::text total from clinical.review_item i
         join clinical.report r on r.id=i.report_id where ${where}`, params),
@@ -1697,13 +1769,16 @@ export class ReviewService implements OnModuleDestroy {
       from (
         select w.id,w.report_id,w.state,w.attempts,w.last_error,w.created_at
         from clinical.review_work w join clinical.report r on r.id=w.report_id
-        where w.organization_id=$1 and r.synthetic=$2 and w.state <> 'complete'
+        where w.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+          and ($3::boolean or r.documenting_user_id=$4) and w.state <> 'complete'
         union all
         select r.id,r.id,'unevaluated'::text,0,'No pinned published Validation version'::text,s.signed_at
-        from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
+      from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
         where r.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+          and ($3::boolean or r.documenting_user_id=$4)
           and s.validation_version_id is null
-      ) backlog order by backlog.created_at desc limit 100`, [scope.organizationId, dataset === "synthetic"]);
+      ) backlog order by backlog.created_at desc limit 100`,
+    [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
     return { dataset, asOf: new Date().toISOString(), work: rows.map((row) => ({
       id: row.id, reportId: row.report_id, state: row.state, attempts: row.attempts,
       lastError: row.last_error, createdAt: new Date(row.created_at).toISOString(),
