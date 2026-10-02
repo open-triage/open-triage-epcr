@@ -35,8 +35,14 @@ export function ReviewShell({ session, language, online }: {
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
-  const selectedItemId = selectedItem?.id;
+  const [selectedReportItemId, setSelectedReportItemId] = useState<string | null>(null);
+  const selectedItemId = selectedItem?.id ?? selectedReportItemId;
   const [itemDetail, setItemDetail] = useState<ReviewItemDetail | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentPending, setCommentPending] = useState<{ commandId: string; expectedVersion: number;
+    itemId: string; body: string } | null>(null);
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState<"conflict" | "denied" | "unavailable" | null>(null);
   const [claimError, setClaimError] = useState<"conflict" | "unavailable" | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [routes, setRoutes] = useState<ReviewCriterionRoute[] | null>(null);
@@ -312,6 +318,30 @@ export function ReviewShell({ session, language, online }: {
     finally { setWorkflowBusy(false); }
   }
 
+  async function sendComment(item: ReviewItemDetail) {
+    const body = commentDraft.trim();
+    const url = apiRequestUrl(`/api/review/items/${item.id}/comments`);
+    if (!url || !body || commentBusy) return;
+    const command = commentPending?.itemId === item.id && commentPending.body === body
+      ? commentPending : { commandId: crypto.randomUUID(), expectedVersion: item.version, itemId: item.id, body };
+    setCommentPending(command); setCommentBusy(true); setCommentError(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: command.commandId, expectedVersion: command.expectedVersion,
+          dataset, body }) }));
+      if (response.status === 409) { setCommentPending(null); setCommentError("conflict");
+        setRefresh((value) => value + 1); return; }
+      if (response.status === 403) { setCommentPending(null); setCommentError("denied");
+        setRefresh((value) => value + 1); return; }
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewItemDetail;
+      setItemDetail(next); if (selectedItem?.id === item.id) setSelectedItem(next);
+      setCommentDraft(""); setCommentPending(null); setRefresh((value) => value + 1);
+    } catch { setCommentError("unavailable"); }
+    finally { setCommentBusy(false); }
+  }
+
   async function saveOutcome() {
     const url = apiRequestUrl("/api/review/outcomes");
     if (!url || workflowBusy) return;
@@ -403,6 +433,7 @@ export function ReviewShell({ session, language, online }: {
       <div className="review-controls">
         <label>{t("review.dataset")}{" "}<select value={dataset} onChange={(event) => {
           setResult(null); setDetail(null); setDraftDetail(null); setSelected(null); setSelectedItem(null);
+          setSelectedReportItemId(null); setCommentDraft(""); setCommentPending(null);
           setVolume(null); setVolumeError(false); setQueue(null);
           setDataset(event.target.value as "real" | "synthetic"); setPage(1); setQueuePage(1);
         }}>
@@ -472,7 +503,7 @@ export function ReviewShell({ session, language, online }: {
                 {item.clearancePending && <p role="status">{t("review.clearancePending")}</p>}
                 {item.closureReason && <p>{t("review.automaticClosure")}</p>}
                 <div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
-              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); setDraftDetail(null); }}><code>{item.reportId}</code></button></td>
+              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setSelectedReportItemId(null); setItemDetail(null); setDetail(null); setDraftDetail(null); setCommentDraft(""); setCommentPending(null); }}><code>{item.reportId}</code></button></td>
               <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
               <td>{item.recoveryReason && <span role="status">{t("review.recovered")} </span>}
                 {item.assigneeId ? (item.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{item.assigneeId}</code>) :
@@ -585,7 +616,7 @@ export function ReviewShell({ session, language, online }: {
           <table><thead><tr><th>{t("review.report")}</th><th>{t("review.reportingDate")}</th>
             <th>{t("review.signedAt")}</th>{result.identifying && <th>{t("review.clinician")}</th>}</tr></thead>
             <tbody>{result.reports.map((report) => <tr key={report.id}>
-              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setItemDetail(null); setDetail(null); setDraftDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
+              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setSelectedReportItemId(null); setItemDetail(null); setDetail(null); setDraftDetail(null); setDetailError(false); setCommentDraft(""); setCommentPending(null); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
               <td>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.signedAt))}</td>
               {result.identifying && <td>{report.documentingClinician ?? "—"}</td>}
             </tr>)}</tbody></table>}
@@ -597,7 +628,7 @@ export function ReviewShell({ session, language, online }: {
         </nav>
       </>}
       {selected && <section className="review-detail" aria-label={t("review.detail")}>
-        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setItemDetail(null); setDetail(null); setDraftDetail(null); }}>{t("review.close")}</button>
+        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setSelectedReportItemId(null); setItemDetail(null); setDetail(null); setDraftDetail(null); setCommentDraft(""); setCommentPending(null); }}>{t("review.close")}</button>
         {detailError && <p role="alert">{t("review.detailUnavailable")}</p>}
         {!viewDetail && !detailError && <p role="status">{t("review.detailLoading")}</p>}
         {viewDetail && <>
@@ -606,12 +637,15 @@ export function ReviewShell({ session, language, online }: {
             dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p> :
             <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
           {!!viewDetail.reviewItems?.length && <section><h3>{t("review.reportItems")}</h3><ul>
-            {viewDetail.reviewItems.map((item) => <li key={item.id}><code>{item.criterionId}</code>: {t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
+            {viewDetail.reviewItems.map((item) => <li key={item.id}><button type="button"
+              onClick={() => { setSelectedItem(null); setSelectedReportItemId(item.id); setItemDetail(null);
+                setCommentDraft(""); setCommentPending(null); }}><code>{item.criterionId}</code></button>:
+              {" "}{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
               {item.outcome && <> — {item.outcome.label}: {item.outcome.meaning}</>}
               {item.clearancePending && <> — {t("review.clearancePending")}</>}
               {item.closureReason && <> — {t("review.automaticClosure")}</>}</li>)}
           </ul></section>}
-          {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
+          {(selectedItem || itemDetail) && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
             {itemDetail?.recoveryReason && <p role="alert">{t("review.recovered")}</p>}
             <p>{t("review.assignee")}: {itemDetail?.assigneeId ?
               (itemDetail.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{itemDetail.assigneeId}</code>) : t("review.unassigned")}</p>
@@ -693,9 +727,26 @@ export function ReviewShell({ session, language, online }: {
                     {t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.complete")}</button>
                 </>}
               </div>}
+              <section aria-label={t("review.discussionHeading")}><h4>{t("review.discussionHeading")}</h4>
+                {itemDetail.commentsRestricted ? <p>{t("review.discussionRestricted")}</p> : <>
+                  {(itemDetail.comments ?? []).length === 0 ? <p>{t("review.discussionEmpty")}</p> :
+                    <ol>{(itemDetail.comments ?? []).map((comment) => <li key={comment.id}>
+                      <strong>{comment.actorName}</strong> <time dateTime={comment.recordedAt}>
+                        {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.recordedAt))}
+                      </time><p>{comment.body}</p>
+                    </li>)}</ol>}
+                  {itemDetail.canComment && <div>
+                    <label>{t("review.commentLabel")} <textarea value={commentDraft} maxLength={4000}
+                      onChange={(event) => { setCommentDraft(event.target.value); setCommentPending(null); }} /></label>
+                    <button type="button" disabled={commentBusy || !commentDraft.trim()}
+                      onClick={() => void sendComment(itemDetail)}>{t("review.sendComment")}</button>
+                  </div>}
+                </>}
+                {commentError && <p role="alert">{t(`review.commentError.${commentError}`)}</p>}
+              </section>
             </>}
-            <p>{t("review.criterion")}: <code>{selectedItem.criterionId}</code></p>
-            <ul>{selectedItem.findings.map((finding, index) => <li key={index}>
+            <p>{t("review.criterion")}: <code>{(itemDetail ?? selectedItem)!.criterionId}</code></p>
+            <ul>{(itemDetail ?? selectedItem)!.findings.map((finding, index) => <li key={index}>
               {finding.message} — {finding.primaryTarget.elementId}
               {finding.primaryTarget.groupInstanceId && <code> / {finding.primaryTarget.groupInstanceId}</code>}
             </li>)}</ul></section>}

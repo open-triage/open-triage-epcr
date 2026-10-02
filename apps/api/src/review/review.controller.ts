@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 import { aggregateRevision, analysisCsv, volumeCsv } from "./review-csv.js";
@@ -283,6 +283,14 @@ export class ReviewController {
     @Body() command: ReviewProgressCommand, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
     return this.review.progress(bearerToken(authorization, cookie), id, command, csrfToken);
+  }
+
+  @Post("items/:id/comments")
+  @Header("Cache-Control", "no-store, private")
+  comment(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: AddReviewCommentCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
+    return this.review.addComment(bearerToken(authorization, cookie), id, command, csrfToken);
   }
 
   @Get("outcomes")

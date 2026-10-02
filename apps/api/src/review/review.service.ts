@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -871,10 +871,11 @@ export class ReviewService implements OnModuleDestroy {
       resolution_reason: string | null; exception_code: ReviewOverdueExceptionCode | null;
       reporting_date: string | null; signed_at: Date | string | null; findings: ReviewItemDetail["findings"];
       outcome_option_id: string | null; outcome_revision: number | null;
-      outcome_label: string | null; outcome_meaning: string | null }>>(`
+      outcome_label: string | null; outcome_meaning: string | null;
+      documenting_user_id: string }>>(`
       select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
         i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,i.exception_code,
-        r.reporting_date,r.catalog_release_id,s.signed_at,i.outcome_option_id,i.outcome_revision,
+        r.reporting_date,r.catalog_release_id,r.documenting_user_id,s.signed_at,i.outcome_option_id,i.outcome_revision,
         outcome.label as outcome_label,outcome.meaning as outcome_meaning,
         case when i.active_match then (select e.findings from clinical.review_item_evidence e
           where e.item_id=i.id order by e.recorded_at desc,e.id desc limit 1)
@@ -940,6 +941,13 @@ export class ReviewService implements OnModuleDestroy {
     const visibleDetailTargets = new Set(detailVisibility.map((entry) => entry.element_id));
     const permittedFindings = (findings: ReviewItemDetail["findings"]) =>
       findings.filter((finding) => scope.identifying || visibleDetailTargets.has(finding.primaryTarget.elementId));
+    const comments = scope.identifying ? await this.database.query<Array<{
+      id: string; actor_id: string; display_name: string; body: string;
+      item_version: string; recorded_at: Date | string }>>(`
+      select c.id,c.actor_id,u.display_name,c.body,c.item_version,c.recorded_at
+      from clinical.review_comment c join app_identity.app_user u on u.id=c.actor_id
+      where c.item_id=$1 and c.organization_id=$2
+      order by c.recorded_at,c.id`, [id, scope.organizationId]) : [];
     return { id: row.id, reportId: row.report_id, criterionId: row.criterion_id,
       kind: row.kind, deadlineAt: row.deadline_at ? new Date(row.deadline_at).toISOString() : null,
       deadlineSource: row.deadline_source, resolutionReason: row.resolution_reason,
@@ -968,7 +976,12 @@ export class ReviewService implements OnModuleDestroy {
         findings: permittedFindings(decision.findings),
         changes: decision.changes.filter((change) => scope.identifying || !change.identifying)
           .map(({ elementId, groupInstanceId, occurrenceId, change }) =>
-            ({ elementId, groupInstanceId, occurrenceId, change })) })) };
+            ({ elementId, groupInstanceId, occurrenceId, change })) })),
+      comments: comments.map((comment) => ({ id: comment.id, actorId: comment.actor_id,
+        actorName: comment.display_name, body: comment.body, itemVersion: Number(comment.item_version),
+        recordedAt: new Date(comment.recorded_at).toISOString() })), commentsRestricted: !scope.identifying,
+      canComment: scope.identifying && (scope.administrator ||
+        row.documenting_user_id === scope.userId || row.assignee_id === scope.userId) };
 
   }
 
@@ -1365,6 +1378,61 @@ export class ReviewService implements OnModuleDestroy {
         active: command.active };
     });
     return value;
+  }
+
+  async addComment(token: string, id: string, command: AddReviewCommentCommand,
+    csrfToken?: string): Promise<ReviewItemDetail> {
+    if (!uuid(id) || !command || !uuid(command.commandId) ||
+      !Number.isSafeInteger(command.expectedVersion) || command.expectedVersion < 0 ||
+      typeof command.body !== "string" || command.body.trim().length < 1 ||
+      command.body.length > 4000)
+      throw new BadRequestException("Invalid Review comment command");
+    await this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      if (!scope.identifying)
+        throw new ForbiddenException("Review identifying access is required for unrestricted discussion");
+      const dataset = this.dataset(command.dataset, scope);
+      const [item] = await manager.query<Array<{ version: string; assignee_id: string | null;
+        documenting_user_id: string; independent_review: boolean }>>(`
+        select i.version,i.assignee_id,r.documenting_user_id,
+          coalesce(route.independent_review,false) independent_review
+        from clinical.review_item i join clinical.report r on r.id=i.report_id
+        left join clinical.review_criterion_route route on route.organization_id=i.organization_id
+          and route.criterion_id=i.criterion_id
+        where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
+          and r.synthetic=$3 and (r.status='signed' or i.kind='overdue-unsigned')
+          and ($4::boolean or r.documenting_user_id=$5)
+        for update of i`,
+      [id, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
+      if (!item) throw new NotFoundException("Review item was not found in scope");
+      const isClinician = item.documenting_user_id === scope.userId;
+      const isCurrentReviewer = item.assignee_id === scope.userId &&
+        await eligibleReviewer(manager, scope.organizationId, item.documenting_user_id,
+          scope.userId, item.independent_review);
+      if (!isClinician && !isCurrentReviewer && !scope.administrator)
+        throw new ForbiddenException("Only the clinician, assigned reviewer, or Review administrator can comment");
+      const [previous] = await manager.query<Array<{ actor_id: string; item_id: string;
+        item_version: string; body: string }>>(`
+        select actor_id,item_id,item_version,body from clinical.review_comment
+        where organization_id=$1 and command_id=$2`, [scope.organizationId, command.commandId]);
+      if (previous) {
+        if (previous.item_id !== id || previous.actor_id !== scope.userId ||
+          previous.body !== command.body.trim() ||
+          Number(previous.item_version) !== command.expectedVersion + 1)
+          throw new ConflictException("Review comment command has already been used");
+        return;
+      }
+      if (Number(item.version) !== command.expectedVersion)
+        throw new ConflictException("Review item changed; refresh and try again");
+      await manager.query(`update clinical.review_item set version=version+1,updated_at=now()
+        where id=$1 and organization_id=$2`, [id, scope.organizationId]);
+      await manager.query(`insert into clinical.review_comment
+        (organization_id,item_id,command_id,actor_id,item_version,body)
+        values ($1,$2,$3,$4,$5,$6)`, [scope.organizationId, id, command.commandId,
+        scope.userId, command.expectedVersion + 1, command.body.trim()]);
+    });
+    return this.item(token, id, command.dataset);
   }
 
   async progress(token: string, id: string, command: ReviewProgressCommand,

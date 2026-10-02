@@ -1459,5 +1459,13 @@
   "review.retroChanged": "The selection or signed reports changed. Preview again before starting.",
   "review.retroUnavailable": "Historical Review is unavailable. Refresh and try again.",
   "review.yes": "Yes",
-  "review.no": "No"
+  "review.no": "No",
+  "review.discussionHeading": "Review discussion",
+  "review.discussionRestricted": "Discussion text requires Review identifying access. Status and outcomes remain available.",
+  "review.discussionEmpty": "No comments yet.",
+  "review.commentLabel": "Comment",
+  "review.sendComment": "Send comment",
+  "review.commentError.conflict": "The item changed. Review the latest discussion and send your comment again.",
+  "review.commentError.denied": "You no longer have permission to comment on this item.",
+  "review.commentError.unavailable": "The comment could not be sent. Retry to check whether it was saved."
 }
