@@ -10,6 +10,9 @@ const starters = [
   { id: "eSituation.09", label: "review.analysisComplaint" },
   { id: "eSituation.11", label: "review.analysisImpression" },
   { id: "eDisposition.30", label: "review.analysisDisposition" },
+  { id: "review.duration.response", label: "review.analysisResponse" },
+  { id: "review.duration.scene", label: "review.analysisScene" },
+  { id: "review.duration.transport", label: "review.analysisTransport" },
 ] as const;
 
 export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, csrfToken }: {
@@ -66,7 +69,9 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     <p>{t("review.analysisHelp")}</p>
     <div className="review-controls">{starters.map((starter) =>
       <button key={starter.id} type="button" disabled={!fields.some((item) => item.id === starter.id)}
-        onClick={() => { setFieldId(starter.id); setOperation("distribution"); setResult(null); }}>
+        onClick={() => { const next = fields.find((item) => item.id === starter.id);
+          setFieldId(starter.id); setOperation(next?.operations[0] ?? "distribution");
+          setReducer(""); setUnit(""); setGroupBy(""); setFilterId(""); setFilterValue(""); setResult(null); }}>
         {t(starter.label)}
       </button>)}</div>
     <div className="review-controls">
@@ -76,6 +81,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         setReducer(""); setUnit(""); setGroupBy(""); setFilterId(""); setFilterValue(""); setResult(null);
       }}>{fields.map((item) => <option key={item.id} value={item.id}>{item.label} ({item.id})</option>)}</select></label>
       {field?.unsupportedReason && <p role="note">{t("review.analysisUnsupportedCustom")}</p>}
+      {field?.interval && <p role="note">{t("review.analysisInterval", {
+        start: field.interval.start, end: field.interval.end, unit: field.unit ?? "min" })} {t("review.analysisIntervalPolicy")}</p>}
       <label>{t("review.analysisOperation")}{" "}<select value={operation} onChange={(event) => {
         setOperation(event.target.value as ReviewAnalysisDefinition["operation"]); setResult(null);
       }}>{field?.operations.map((item) => <option key={item} value={item}>{t(`review.analysis.${item}`)}</option>)}</select></label>
@@ -122,7 +129,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         {result.definition.groupBy && <h3>{group.group ?? t("review.analysisMissingGroup")}</h3>}
         <p>{t("review.analysisDenominator", { count: group.denominator })}{" · "}
           {t("review.analysisMissing", { count: group.missing })}{" · "}
-          {t("review.analysisAbsent", { count: group.absent })}</p>
+          {t("review.analysisAbsent", { count: group.absent })}
+          {group.invalid !== undefined && <> {" · "}{t("review.analysisInvalid", { count: group.invalid })}</>}</p>
         {result.definition.operation === "distribution" ? <>
           <ReviewAnalysisChart values={group.values} title={t("review.analysisChart")} />
           <table><caption>{result.field.label}</caption><thead><tr>

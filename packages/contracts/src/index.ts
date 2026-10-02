@@ -299,7 +299,9 @@ export interface ReviewAnalysisField {
   unit: string | null;
   repeating?: boolean;
   operations: Array<"distribution" | "mean" | "median" | "minimum" | "maximum">;
-  source?: "custom";
+  source?: "custom" | "operational-time";
+  /** Canonical signed ePCR timestamps. Duration is computed in elapsed minutes. */
+  interval?: { start: string; end: string; eligibility: "signed-patient-reports" };
   unsupportedReason?: string;
 }
 
@@ -338,6 +340,8 @@ export interface ReviewAnalysisResult {
     denominator: number;
     missing: number;
     absent: number;
+    /** Present for operational time: both endpoints exist but end precedes start. */
+    invalid?: number;
     values: Array<{ value: string | null; count: number; percentage: number }>;
     summary: number | null;
   }>;
