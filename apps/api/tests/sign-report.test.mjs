@@ -147,12 +147,10 @@ test("signing does not require report occurrences for read-only configuration me
   });
 
   assert.match(fieldQuery, /left join catalog\.analytics_element_mapping/);
-  assert.deepEqual(findings.map(({ code, path }) => ({ code, path })), [{
-    code: "catalog.cardinality", path: "$.fields.ePatient.01"
-  }]);
+  assert.deepEqual(findings, []);
 });
 
-test("pinned Validation preserves form completion and visibility requirements", async () => {
+test("pinned Validation owns completion while form visibility remains enforced", async () => {
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release",
@@ -181,10 +179,10 @@ test("pinned Validation preserves form completion and visibility requirements", 
   const service = new SignReportService({}, {});
   const findings = await service.validateSemantics(manager, { id: "report-id", form_version_id: "form-version",
     catalog_release_id: "catalog-release", validation_version_id: "validation-version" });
-  assert.deepEqual(findings.map(({ code }) => code), ["form.required", "form.conditional-hidden"]);
+  assert.deepEqual(findings.map(({ code }) => code), ["form.conditional-hidden"]);
 });
 
-test("signing assigns one owner to overlapping form, catalog, and pinned minimum requirements", async () => {
+test("signing never supplements pinned rules with form or catalog minimum requirements", async () => {
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release",
@@ -205,18 +203,9 @@ test("signing assigns one owner to overlapping form, catalog, and pinned minimum
   const service = new SignReportService({}, {});
   const report = { id: "report-id", form_version_id: "form-version", catalog_release_id: "catalog-release" };
   const withoutBundle = await service.validateSemantics(manager, report);
-  assert.deepEqual(withoutBundle.map(({ code }) => code), ["form.required", "catalog.cardinality"]);
-  const rule = { schemaVersion: 1, languageVersion: "1.0.0", ruleId: "software-version-rule",
-    validationVersionId: "validation-version", name: "Software Version", enabled: true, severity: "error",
-    executionTargets: ["live", "sign"], primaryTarget: { elementId: "eRecord.04" },
-    message: "Record Software Version.", assertion: { operator: "minimum-occurrences", elementId: "eRecord.04", count: 1 } };
-  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation-version",
-    catalogReleaseId: "catalog-release", rules: [rule] };
-  const withBundle = await service.validateSemantics(manager, report, bundle);
-  assert.deepEqual(withBundle.map(({ code }) => code), ["catalog.cardinality"]);
-  assert.deepEqual((await service.validateSemantics(manager, report, { ...bundle,
-    rules: [{ ...rule, severity: "warning" }] })).map(({ code }) => code),
-  ["form.required", "catalog.cardinality"]);
+  assert.deepEqual(withoutBundle.map(({ code }) => code), []);
+  const pinned = await service.validateSemantics(manager, { ...report, validation_version_id: "validation-version" });
+  assert.deepEqual(pinned, []);
 });
 
 test("authoritative signing evaluates the report's pinned required-element bundle", async () => {

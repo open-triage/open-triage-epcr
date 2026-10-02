@@ -164,7 +164,7 @@ test("encounter-review warnings contribute to section badges without becoming in
   assert.match(preview, /vitals: 0 errors, 1 warning/i);
 });
 
-test("populated vital review warnings appear in the stationary section rail", () => {
+test("pinned documentation excludes legacy code-backed clinical warnings", () => {
   let populated = populateStationaryDemoData(document);
   for (const elementId of ["eVitals.06", "eVitals.10", "eVitals.12", "eVitals.14"]) {
     const groupId = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === elementId)!.groupPath.at(-1)!;
@@ -185,13 +185,13 @@ test("populated vital review warnings appear in the stationary section rail", ()
     })),
   ] }] };
   const visible = stationaryReviewFindings(vitalFindings, { definition: formDefinition, catalogFields: {} });
-  assert.equal(visible.length, 4);
+  assert.equal(visible.length, 0);
   const fullHtml = renderToStaticMarkup(createElement(StationaryRecord, { document: populated,
     sectionFindings: visible, onDocumentChange() {} }));
-  assert.match(fullHtml, /Vitals: 0 errors, 4 warnings/);
+  assert.doesNotMatch(fullHtml, /4 warnings/);
   const html = renderToStaticMarkup(createElement(StationaryRecord, { document: populated, formDefinition,
     sectionFindings: visible, onDocumentChange() {} }));
-  assert.match(html, /vitals: 0 errors, 4 warnings/i);
+  assert.doesNotMatch(html, /4 warnings/i);
 });
 
 test("a warning on a vital field highlights its table row", () => {

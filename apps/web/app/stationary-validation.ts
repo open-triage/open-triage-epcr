@@ -1,6 +1,5 @@
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, minimumRuleCoversRequirement, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
 import { NEMSIS_DATA_MODEL, getNemsisDataElement, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
-import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { validateScalarInput } from "./stationary-scalar";
 import { customTextFindings } from "../components/custom-text-fields";
 
@@ -48,8 +47,6 @@ type ClinicalReviewFinding = {
   readonly target: { readonly groupId: string; readonly elementId?: string };
 };
 
-const groupPresentation = new Map(COMPILED_STATIONARY_LAYOUT.groups.map((group) => [group.id, group]));
-const elementPresentation = new Map(COMPILED_STATIONARY_LAYOUT.elements.map((element) => [element.id, element]));
 const patientCareElements = NEMSIS_DATA_MODEL.elements.filter((element) => element.groupPath.includes("PatientCareReportGroup"));
 const patientCareGroups = NEMSIS_DATA_MODEL.groups.filter((group) => group.path.includes("PatientCareReportGroup"));
 
@@ -93,10 +90,8 @@ export function displayValidationRuleMessage(message: string, primaryElementId: 
 }
 
 /**
- * A pinned form owns structural/requiredness errors, while the encounter review
- * still owns clinical plausibility warnings. Limit those warnings to clinical
- * groups represented by the pinned form so a deliberately omitted workflow
- * does not produce irrelevant findings.
+ * Pinned documentation uses authored rules for clinical findings. The bundled
+ * demonstration can still display its own findings when no form is pinned.
  */
 export function stationaryReviewFindings<T extends ClinicalReviewFinding>(
   findings: ReadonlyArray<T>,
@@ -105,12 +100,7 @@ export function stationaryReviewFindings<T extends ClinicalReviewFinding>(
   const reportFindings = findings.filter(({ target }) => !isNemsisDemographicElementId(target.elementId ?? "")
     && patientCareGroups.some(({ id }) => id === target.groupId));
   if (!clinicalForm) return reportFindings;
-  const configuredElements = new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
-    field.source.kind === "nemsis" && !isNemsisDemographicElementId(field.source.elementId) ? [field.source.elementId] : [])));
-  const configuredGroups = new Set(patientCareElements.filter(({ id }) => configuredElements.has(id))
-    .flatMap(({ groupPath }) => groupPath));
-  return reportFindings.filter(({ severity, target }) => severity === "warning"
-    && (configuredElements.has(target.elementId ?? "") || configuredGroups.has(target.groupId)));
+  return [];
 }
 
 function finding(
@@ -198,47 +188,18 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
 export function validateStationaryRecord(document: EncounterDocument, clinicalForm: ClinicalFormConfiguration | undefined,
   evaluationTimestamp: string, language: string = "en"): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
-  const authoredPolicy = clinicalForm?.validation !== undefined;
   const authoredBundle = clinicalForm?.validation &&
     compiledValidationBundleSha256(clinicalForm.validation.bundle) === clinicalForm.validation.compiledSha256
     ? clinicalForm.validation.bundle : undefined;
   const configuredFields = clinicalForm
     ? new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))
     : null;
-  const formRequired = new Set(clinicalForm?.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
-    field.source.kind === "nemsis" && field.required ? [field.source.elementId] : [])) ?? []);
-  const explicitlyRequiredElements = new Set(patientCareElements.filter((element) =>
-    formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true ||
-    ["Mandatory", "Required"].includes(clinicalForm?.catalogFields[element.id]?.usage ?? "") ||
-    (clinicalForm?.catalogFields[element.id]?.minOccurs ?? 0) > 0).map(({ id }) => id));
-  const explicitlyRequiredGroups = new Set(patientCareElements.filter(({ id }) => explicitlyRequiredElements.has(id))
-    .flatMap(({ groupPath }) => groupPath));
-  const catalogGroups = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
   const instancesByGroup = new Map(document.groups.map((group) => [group.id, group.instances]));
   const seenInstances = new Set<string>();
   const seenOccurrences = new Set<string>();
 
   for (const catalogGroup of patientCareGroups) {
-    const relevant = !configuredFields || patientCareElements.some((element) =>
-      configuredFields.has(element.id) && element.groupPath.includes(catalogGroup.id));
     const instances = instancesByGroup.get(catalogGroup.id) ?? [];
-    const presentation = groupPresentation.get(catalogGroup.id);
-    const parents = catalogGroup.parentId ? instancesByGroup.get(catalogGroup.parentId) ?? [] : [undefined];
-    const explicitlyRequired = explicitlyRequiredGroups.has(catalogGroup.id);
-    const minimum = catalogGroup.repeating && !explicitlyRequired ? 0 : catalogGroup.occurrence.min;
-    const parentIsRepeating = catalogGroup.parentId ? catalogGroups.get(catalogGroup.parentId)?.repeating === true : false;
-    const validationParents = parents.length ? parents : explicitlyRequired && !parentIsRepeating ? [undefined] : [];
-    if ((!authoredPolicy || explicitlyRequired) && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
-      const count = instances.filter((instance) => (instance.parentInstanceId ?? undefined) === parent?.instanceId).length;
-      if (count < minimum) findings.push(finding(
-        "group.minimum", `Add ${minimum - count} ${catalogGroup.name} ${minimum - count === 1 ? "entry" : "entries"}.`,
-        { groupId: catalogGroup.id, ...(parent ? { parentGroupInstanceId: parent.instanceId } : {}) }, catalogGroup.name,
-      ));
-      if (catalogGroup.occurrence.max !== "unbounded" && count > catalogGroup.occurrence.max) findings.push(finding(
-        "group.maximum", `${catalogGroup.name} permits at most ${catalogGroup.occurrence.max} occurrence(s); found ${count}.`,
-        { groupId: catalogGroup.id, ...(parent ? { parentGroupInstanceId: parent.instanceId } : {}) }, catalogGroup.name,
-      ));
-    }
     for (const instance of instances) {
       if (seenInstances.has(instance.instanceId)) findings.push(finding("group.identity", `Group occurrence identity ${instance.instanceId} is duplicated.`, { groupId: catalogGroup.id, groupInstanceId: instance.instanceId }, catalogGroup.name));
       seenInstances.add(instance.instanceId);
@@ -249,26 +210,9 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     if (configuredFields && !configuredFields.has(element.id)) continue;
     const groupId = element.groupPath.at(-1)!;
     const configured = clinicalForm?.catalogFields[element.id];
-    const editable = elementPresentation.get(element.id)?.mode !== "read-only";
     const elementInstances = instancesByGroup.get(groupId) ?? [];
-    const catalogRequired = configured?.agencyRequired || ["Mandatory", "Required"].includes(configured?.usage ?? "") ||
-      (configured?.minOccurs ?? element.occurrence.min) > 0;
-    const minimum = formRequired.has(element.id) || catalogRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min)
-      : configured?.minOccurs ?? element.occurrence.min;
-    const maximum = configured ? configured.maxOccurs ?? "unbounded" : element.occurrence.max;
-    const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
-      if ((!authoredPolicy || formRequired.has(element.id) || catalogRequired) && editable && values.length < minimum &&
-        !minimumRuleCoversRequirement(authoredBundle, element.id, minimum, requirednessSeverity, "sign", groupId,
-          elementInstances.length === 1)) findings.push(finding(
-        "field.minimum", minimum === 1 ? `Record ${element.name}.` : `Record at least ${minimum} values for ${element.name}.`,
-        { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
-      ));
-      if (!authoredPolicy && maximum !== "unbounded" && values.length > maximum) findings.push(finding(
-        "field.maximum", `${element.name} permits at most ${maximum} value(s); found ${values.length}.`,
-        { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name,
-      ));
       for (const value of values) {
         if (seenOccurrences.has(value.occurrenceId)) findings.push(finding("field.identity", `Value occurrence identity ${value.occurrenceId} is duplicated.`, { groupId, groupInstanceId: instance.instanceId, occurrenceId: value.occurrenceId, fieldId: element.id }, element.name));
         seenOccurrences.add(value.occurrenceId);
@@ -277,19 +221,6 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     }
   }
   if (clinicalForm?.customFields) {
-    const report = document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0];
-    for (const field of clinicalForm.definition.sections.flatMap(({ fields }) => fields)) {
-      if (field.source.kind !== "custom" || field.source.groupDefinitionId) continue;
-      const definition = clinicalForm.customFields[field.source.elementDefinitionId];
-      if (!definition || !(field.required || definition.usage === "Mandatory" || definition.usage === "Required")) continue;
-      const identity = `${definition.namespace}.${definition.slug}`;
-      if (report?.elements.find(({ id }) => id === identity)?.values.length) continue;
-      if (minimumRuleCoversRequirement(authoredBundle, identity, 1, "error", "sign", "PatientCareReportGroup",
-        document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances.length === 1)) continue;
-      findings.push(finding("field.minimum", `Record ${definition.title}.`, {
-        groupId: "PatientCareReportGroup", ...(report ? { groupInstanceId: report.instanceId } : {}), fieldId: identity,
-      }, definition.title));
-    }
     for (const field of clinicalForm.definition.sections.flatMap(({ fields }) => fields)) {
       if (field.source.kind !== "custom") continue;
       const definition = clinicalForm.customFields[field.source.elementDefinitionId];
@@ -299,12 +230,6 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
       const elementId = `${definition.namespace}.${definition.slug}`;
       for (const instance of document.groups.find(({ id }) => id === groupId)?.instances ?? []) {
         const values = instance.elements.find(({ id }) => id === elementId)?.values ?? [];
-        if (groupId !== "PatientCareReportGroup" && !values.length && (field.required || ["Mandatory", "Required"].includes(definition.usage)) &&
-          !minimumRuleCoversRequirement(authoredBundle, elementId, 1, "error", "sign", groupId,
-            document.groups.find(({ id }) => id === groupId)?.instances.length === 1)) {
-          findings.push(finding("custom.minimum", `Record ${definition.title}.`,
-            { groupId, groupInstanceId: instance.instanceId, fieldId: elementId }, definition.title));
-        }
         for (const value of values) {
           const target = { groupId, groupInstanceId: instance.instanceId, occurrenceId: value.occurrenceId, fieldId: elementId };
           if (definition.datatype !== "coded") {

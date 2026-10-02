@@ -910,7 +910,7 @@
   "admin.form": "Form",
   "admin.platform": "Platform",
   "admin.none": "None",
-  "admin.ruleScopeHelp": "Documentation severity None suppresses live and signing findings. Review priority None suppresses review findings. Form and catalog requirements still apply independently of this rule set.",
+  "admin.ruleScopeHelp": "Documentation severity None suppresses live and signing findings. Review priority None suppresses review findings. Clinical completion requirements come from the report’s pinned validation rules.",
   "admin.severity": "Documentation severity",
   "admin.reviewPriority": "Review priority",
   "admin.priority.high": "High",

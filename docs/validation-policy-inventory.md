@@ -15,6 +15,6 @@ Clinical and business policy is owned by an immutable, report-pinned Validation 
 | NEMSIS Schematron clinical constraints | Imported visible `nemsis` Validation rules | Clinical/business rules |
 | Quality normalization findings | Versioned quality evaluator | Clinical review rules; not completion requiredness |
 
-Legacy reports without a pinned Validation version continue to evaluate their immutable Catalog/Form projections. Reports with a pinned Validation version evaluate requiredness and documented cardinality only from that bundle. This preserves old records while preventing duplicate findings for current workflows.
+Documentation and signing evaluate clinical requiredness and documented cardinality only through the report-pinned Validation bundle. Legacy Catalog/Form required flags and NEMSIS structural minima do not add completion findings, including when an authored rule is disabled. Existing signed findings remain immutable. Datatype, value-shape, identity, and hidden-value integrity checks continue to protect stored data.
 
 Catalog authoring continues to own labels, datatypes and storage identity, intrinsic structure, code lists, code labels, enablement, and defaults. Form authoring continues to own selection, ordering, layout, and visibility.

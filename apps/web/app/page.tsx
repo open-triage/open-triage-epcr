@@ -220,7 +220,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const stationarySectionFindings = useMemo(() => configuredStationaryFindings.flatMap((finding) =>
     finding.severity === "information" ? [] : [{ severity: finding.severity, target: finding.target }]),
   [configuredStationaryFindings]);
-  const mobileChecklistFindings: ReadonlyArray<SigningFinding> = useMemo(() => [...reviewFindings,
+  const mobileChecklistFindings: ReadonlyArray<SigningFinding> = useMemo(() => [...(report?.clinicalForm ? [] : reviewFindings),
     ...configuredStationaryFindings.filter((finding): finding is StationaryValidationFinding =>
       !("eventType" in finding) && finding.severity !== "information" &&
       Boolean(checklistFieldTarget(finding, encounter.document, report?.clinicalForm)))],

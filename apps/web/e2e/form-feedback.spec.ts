@@ -63,6 +63,8 @@ async function editor(page: import("@playwright/test").Page) {
 
 test("field removal survives language changes and save/reload", async ({ page }) => {
   const state = await editor(page);
+  await expect(page.getByText("Required on this form", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Required by the catalog", { exact: true })).toHaveCount(0);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Remove ePatient.02", exact: true }).click();
   await expect(page.getByRole("button", { name: "Remove ePatient.02", exact: true })).toHaveCount(0);

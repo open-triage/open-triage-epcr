@@ -908,7 +908,7 @@
   "admin.form": "Formulär",
   "admin.platform": "Plattform",
   "admin.none": "Ingen",
-  "admin.ruleScopeHelp": "Dokumentationsnivån Ingen döljer fynd vid dokumentation och signering. Granskningsprioriteten Ingen döljer granskningsfynd. Formulärets och katalogens krav gäller oberoende av denna regeluppsättning.",
+  "admin.ruleScopeHelp": "Dokumentationsnivån Ingen döljer fynd vid dokumentation och signering. Granskningsprioriteten Ingen döljer granskningsfynd. Krav på klinisk dokumentation kommer från rapportens låsta valideringsregler.",
   "admin.severity": "Dokumentationsnivå",
   "admin.reviewPriority": "Granskningsprioritet",
   "admin.priority.high": "Hög",
