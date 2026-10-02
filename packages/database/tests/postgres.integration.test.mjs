@@ -200,7 +200,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.deepEqual(capabilityKeys, [
       "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
       "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
-      "forms:read", "forms:write", "roles:assign", "roles:read", "roles:write",
+      "forms:read", "forms:write", "review:admin", "review:all", "review:identifying",
+      "review:self", "roles:assign", "roles:read", "roles:write",
       "sessions:read", "sessions:revoke", "settings:read", "settings:write",
       "users:read", "users:write",
       "validation:publish", "validation:read", "validation:write"
@@ -230,7 +231,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         left join app_identity.role_version_capability rvc on rvc.role_version_id = rv.id
         where r.organization_id = $1 and r.protected
         group by r.id order by r.system_key`, [organizationId]);
-      assert.equal(protectedRoles.rows.length, 3);
+      assert.equal(protectedRoles.rows.length, 5);
+      assert.deepEqual(protectedRoles.rows.find(({ system_key }) => system_key === "clinician").capabilities,
+        ["clinical:document", "review:self"]);
+      assert.deepEqual(protectedRoles.rows.find(({ system_key }) => system_key === "reviewer").capabilities,
+        ["review:all"]);
+      assert.deepEqual(protectedRoles.rows.find(({ system_key }) => system_key === "review-administrator").capabilities,
+        ["review:admin", "review:all"]);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), true);
       assert.equal(administrator.capabilities.length, 21);
@@ -240,7 +247,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
       assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
         "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-        "forms:read", "forms:write", "roles:read", "settings:read", "users:read", "validation:read", "validation:write"
+        "forms:read", "forms:write", "review:admin", "review:all", "review:identifying",
+        "roles:read", "settings:read", "users:read", "validation:read", "validation:write"
       ] });
       await client.query(`insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by, note)
