@@ -148,6 +148,7 @@ export interface ReviewQueueItem {
   deadlineAt?: string | null;
   deadlineSource?: "call-completed" | "report-created" | null;
   resolutionReason?: string | null;
+  exceptionCode?: ReviewOverdueExceptionCode | null;
   priority: "high" | "medium" | "low";
   status: "new" | "in-review" | "awaiting-clinician" | "completed";
   outcome: { optionId: string; revision: number; label: string; meaning: string } | null;
@@ -206,8 +207,9 @@ export interface AssignReviewItemCommand {
 }
 
 export interface ReviewItemDetail extends ReviewQueueItem {
-  overdueHistory?: Array<{ action: "detected" | "resolved-by-signing"; recordedAt: string;
-    itemVersion: number }>;
+  overdueHistory?: Array<{ action: "detected" | "resolved-by-signing" | "closed-exceptionally" |
+    "signed-after-exception"; recordedAt: string; itemVersion: number;
+    actorId: string | null; reasonCode: ReviewOverdueExceptionCode | null }>;
   assignmentHistory: ReviewAssignmentEvent[];
   progressHistory: Array<{ commandId: string; actorId: string | null; itemVersion: number;
     status: ReviewQueueItem["status"]; outcome: ReviewQueueItem["outcome"];
@@ -235,6 +237,13 @@ export interface ClaimReviewItemCommand {
   commandId: string;
   expectedVersion: number;
   dataset: "real" | "synthetic";
+}
+
+export type ReviewOverdueExceptionCode = "duplicate-follow-up" | "report-not-required" |
+  "administrative-exception";
+
+export interface CloseReviewOverdueCommand extends ClaimReviewItemCommand {
+  reasonCode: ReviewOverdueExceptionCode;
 }
 
 export interface ReviewProgressCommand extends ClaimReviewItemCommand {

@@ -29,3 +29,16 @@ To replay overdue discovery, run the Review worker again. It is safe to retry;
 existing items and their pinned deadline are retained. Operational investigation
 can compare `clinical.review_item` rows with `kind='overdue-unsigned'` and
 `clinical.review_overdue_history` to the signed-only `clinical.review_work` queue.
+
+## Exceptional unsigned closure
+
+A Review administrator may close an overdue follow-up without signing the report.
+The command requires a fixed reason code (`duplicate-follow-up`,
+`report-not-required`, or `administrative-exception`) and records the actor,
+command ID, item version, and time in append-only history. No patient or
+free-text reason is stored in the exception record. The item remains in Review
+with `resolution_reason='closed-exceptionally'` and `exception_code` for
+operational workload counts. The clinical report remains draft; it is still
+excluded from signed analytics. Scheduler retries find the existing item and do
+not create another. If the clinician later signs, Review records a
+`signed-after-exception` history event and retains the original closure reason.

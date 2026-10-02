@@ -2,7 +2,7 @@
 
 import type { ClinicianSession, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
-  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReportNote } from "@open-triage/contracts";
+  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReviewOverdueExceptionCode, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -57,6 +57,7 @@ export function ReviewShell({ session, language, online }: {
   const [outcomeActive, setOutcomeActive] = useState(true);
   const [workflowError, setWorkflowError] = useState<"conflict" | "unavailable" | null>(null);
   const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [exceptionCode, setExceptionCode] = useState<ReviewOverdueExceptionCode | "">("");
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
   const [draftDetail, setDraftDetail] = useState<ReviewOverdueDraft | null>(null);
   const [overduePolicy, setOverduePolicy] = useState<{ deadlineHours: number; version: number } | null>(null);
@@ -117,7 +118,7 @@ export function ReviewShell({ session, language, online }: {
 
   useEffect(() => {
     if (!online || !selected || (selectedItem?.kind === "overdue-unsigned" &&
-      selectedItem.status !== "completed")) return;
+      !(selectedItem.signedAt || itemDetail?.signedAt))) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/reports/${selected}?dataset=${dataset}`);
     if (!url) return;
@@ -127,11 +128,11 @@ export function ReviewShell({ session, language, online }: {
       if (!controller.signal.aborted) { setDetail(next); setDetailError(false); }
     }).catch(() => { if (!controller.signal.aborted) { setDetail(null); setDetailError(true); } });
     return () => controller.abort();
-  }, [dataset, online, selected, selectedItem?.kind, selectedItem?.status, refresh]);
+  }, [dataset, online, selected, selectedItem?.kind, selectedItem?.signedAt, itemDetail?.signedAt, refresh]);
 
   useEffect(() => {
     if (!online || !selectedItemId || selectedItem?.kind !== "overdue-unsigned" ||
-      selectedItem.status === "completed") return;
+      !!(selectedItem.signedAt || itemDetail?.signedAt)) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/items/${selectedItemId}/draft?dataset=${dataset}`);
     if (!url) return;
@@ -140,7 +141,7 @@ export function ReviewShell({ session, language, online }: {
       if (!controller.signal.aborted) { setDraftDetail(await response.json() as ReviewOverdueDraft); setDetailError(false); }
     }).catch(() => { if (!controller.signal.aborted) { setDraftDetail(null); setDetailError(true); } });
     return () => controller.abort();
-  }, [dataset, online, selectedItemId, selectedItem?.kind, selectedItem?.status, refresh]);
+  }, [dataset, online, selectedItemId, selectedItem?.kind, selectedItem?.signedAt, itemDetail?.signedAt, refresh]);
 
   useEffect(() => {
     if (!online || !session.capabilities?.includes("review:admin")) return;
@@ -290,6 +291,23 @@ export function ReviewShell({ session, language, online }: {
       if (!response.ok) throw new Error(String(response.status));
       const next = await response.json() as ReviewItemDetail;
       setItemDetail(next); setSelectedItem(next); setRefresh((value) => value + 1);
+    } catch { setWorkflowError("unavailable"); }
+    finally { setWorkflowBusy(false); }
+  }
+
+  async function closeOverdueException(item: ReviewItemDetail) {
+    const url = apiRequestUrl(`/api/review/items/${item.id}/close-exceptionally`);
+    if (!url || workflowBusy || !exceptionCode) return;
+    setWorkflowBusy(true); setWorkflowError(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: item.version,
+          dataset, reasonCode: exceptionCode }) }));
+      if (response.status === 409) { setWorkflowError("conflict"); setRefresh((value) => value + 1); return; }
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewItemDetail;
+      setItemDetail(next); setSelectedItem(next); setExceptionCode(""); setRefresh((value) => value + 1);
     } catch { setWorkflowError("unavailable"); }
     finally { setWorkflowBusy(false); }
   }
@@ -616,12 +634,26 @@ export function ReviewShell({ session, language, online }: {
                 </li>)}</ol>}</section>}
             {itemDetail && <><p>{t("review.status")}: {t(`review.${itemDetail.status === "in-review" ? "inReview" : itemDetail.status === "awaiting-clinician" ? "awaitingClinician" : itemDetail.status}`)}</p>
               {itemDetail.resolutionReason === "resolved-by-signing" && <p>{t("review.resolvedBySigning")}</p>}
+              {itemDetail.resolutionReason === "closed-exceptionally" && <p>
+                {t("review.closedExceptionally")}: {t(`review.exception.${itemDetail.exceptionCode}`)}</p>}
               {!!itemDetail.overdueHistory?.length && <ol>{itemDetail.overdueHistory.map((event) =>
-                <li key={event.itemVersion}>{t(event.action === "detected" ? "review.overdueDetected" : "review.resolvedBySigning")}
+                <li key={event.itemVersion}>{t(`review.overdueHistory.${event.action}`)}
+                  {event.reasonCode && <>: {t(`review.exception.${event.reasonCode}`)}</>}
+                  {event.actorId && <> · <code>{event.actorId}</code></>}
                   {" · "}{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}</li>)}</ol>}
               {itemDetail.reopened && <p role="status">{t("review.reopened")}</p>}
               {itemDetail.clearancePending && <p role="status">{t("review.clearancePending")}</p>}
               {itemDetail.closureReason && <p>{t("review.automaticClosure")}</p>}
+              {itemDetail.kind === "overdue-unsigned" && itemDetail.status !== "completed" &&
+                session.capabilities?.includes("review:admin") && <div className="review-controls">
+                  <label>{t("review.exceptionReason")} <select value={exceptionCode}
+                    onChange={(event) => setExceptionCode(event.target.value as ReviewOverdueExceptionCode | "")}>
+                    <option value="">{t("review.chooseExceptionReason")}</option>
+                    {(["duplicate-follow-up", "report-not-required", "administrative-exception"] as const).map((code) =>
+                      <option key={code} value={code}>{t(`review.exception.${code}`)}</option>)}</select></label>
+                  <button type="button" disabled={!exceptionCode || workflowBusy}
+                    onClick={() => void closeOverdueException(itemDetail)}>{t("review.closeExceptionally")}</button>
+                </div>}
               {itemDetail.outcome && <p>{t("review.outcomeChoice")}: {itemDetail.outcome.label} — {itemDetail.outcome.meaning}</p>}
               <section><h4>{t("review.progressHistory")}</h4>
                 {!itemDetail.progressHistory?.length ? <p>{t("review.noProgressHistory")}</p> :
