@@ -206,6 +206,27 @@ export interface AssignReviewItemCommand {
   assigneeId: string | null;
 }
 
+export interface ReviewBulkSelection {
+  itemId: string;
+  commandId: string;
+  expectedVersion: number;
+}
+
+export interface ReviewBulkClaimCommand {
+  dataset: "real" | "synthetic";
+  selections: ReviewBulkSelection[];
+}
+
+export interface ReviewBulkAssignCommand extends ReviewBulkClaimCommand {
+  assigneeId: string | null;
+}
+
+export interface ReviewBulkResult {
+  results: Array<{ itemId: string; status: "succeeded" | "failed";
+    reason?: "conflict" | "ineligible" | "out-of-scope";
+    item?: ReviewItemDetail }>;
+}
+
 export interface ReviewItemDetail extends ReviewQueueItem {
   overdueHistory?: Array<{ action: "detected" | "resolved-by-signing" | "closed-exceptionally" |
     "signed-after-exception"; recordedAt: string; itemVersion: number;

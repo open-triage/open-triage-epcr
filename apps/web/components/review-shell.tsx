@@ -2,7 +2,7 @@
 
 import type { ClinicianSession, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
-  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReviewOverdueExceptionCode, ReportNote } from "@open-triage/contracts";
+  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReviewOverdueExceptionCode, ReviewBulkResult, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -24,6 +24,12 @@ export function ReviewShell({ session, language, online }: {
   const [queue, setQueue] = useState<ReviewQueueResponse | null>(null);
   const [queueError, setQueueError] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
+  const [bulkSelection, setBulkSelection] = useState<{ key: string; items: Record<string, number> }>(
+    { key: "", items: {} });
+  const [bulkAssignee, setBulkAssignee] = useState("");
+  const [bulkResult, setBulkResult] = useState<ReviewBulkResult | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState(false);
   const [priority, setPriority] = useState("");
   const [status, setStatus] = useState("");
   const [criterion, setCriterion] = useState("");
@@ -76,6 +82,9 @@ export function ReviewShell({ session, language, online }: {
   const [volumeExportBusy, setVolumeExportBusy] = useState(false);
   const [volumeExportNotice, setVolumeExportNotice] = useState<string | null>(null);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
+
+  const bulkScopeKey = JSON.stringify([dataset, queuePage, priority, status, criterion, queueFrom, queueTo]);
+  const activeBulkSelection = bulkSelection.key === bulkScopeKey ? bulkSelection.items : {};
 
   useEffect(() => {
     if (!online) return;
@@ -395,6 +404,29 @@ export function ReviewShell({ session, language, online }: {
     finally { setClaiming(null); }
   }
 
+  async function runBulk(action: "claim" | "assign") {
+    const selections = Object.entries(activeBulkSelection).map(([itemId, expectedVersion]) =>
+      ({ itemId, expectedVersion, commandId: crypto.randomUUID() }));
+    if (!selections.length || bulkBusy || (action === "assign" && !bulkAssignee)) return;
+    const url = apiRequestUrl(`/api/review/items/bulk-${action}`);
+    if (!url) return;
+    setBulkBusy(true); setBulkError(false); setBulkResult(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ dataset, selections,
+          ...(action === "assign" ? { assigneeId: bulkAssignee } : {}) }) }));
+      if (!response.ok) throw new Error(String(response.status));
+      const result = await response.json() as ReviewBulkResult;
+      setBulkResult(result);
+      setBulkSelection({ key: bulkScopeKey, items: {} });
+      setQueue((previous) => previous ? { ...previous, items: previous.items.map((item) =>
+        result.results.find((entry) => entry.itemId === item.id && entry.item)?.item ?? item) } : previous);
+      setRefresh((value) => value + 1);
+    } catch { setBulkError(true); }
+    finally { setBulkBusy(false); }
+  }
+
   useEffect(() => {
     if (!online || from > to) return;
     const controller = new AbortController();
@@ -492,10 +524,46 @@ export function ReviewShell({ session, language, online }: {
         {claimError && <p role="alert">{t(claimError === "conflict" ? "review.claimConflict" : "review.claimUnavailable")}</p>}
         {workflowError && <p role="alert">{t(workflowError === "conflict" ? "review.workflowConflict" : "review.workflowUnavailable")}</p>}
         {queue && <><p>{t("review.queueCount", { count: queue.total })}</p>
+          {(session.capabilities?.includes("review:all") || session.capabilities?.includes("review:admin")) &&
+            <div className="review-controls">
+              <button type="button" onClick={() => setBulkSelection({ key: bulkScopeKey, items: Object.fromEntries(
+                queue.items.map((item) => [item.id, item.version])) })}>{t("review.bulkSelectPage")}</button>
+              <button type="button" onClick={() => setBulkSelection({ key: bulkScopeKey, items: {} })}>{t("review.bulkClearSelection")}</button>
+              <span>{t("review.bulkSelected", { count: Object.keys(activeBulkSelection).length })}</span>
+              {session.capabilities?.includes("review:all") && <button type="button"
+                disabled={!Object.keys(activeBulkSelection).length || bulkBusy}
+                onClick={() => void runBulk("claim")}>{t("review.bulkClaim")}</button>}
+              {session.capabilities?.includes("review:admin") && <>
+                <label>{t("review.bulkAssignee")} <select value={bulkAssignee}
+                  onChange={(event) => setBulkAssignee(event.target.value)}>
+                  <option value="">{t("review.chooseReviewer")}</option>
+                  {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.displayName}</option>)}
+                </select></label>
+                <button type="button" disabled={!Object.keys(activeBulkSelection).length || !bulkAssignee || bulkBusy}
+                  onClick={() => void runBulk("assign")}>{t("review.bulkAssign")}</button>
+              </>}
+            </div>}
+          {bulkError && <p role="alert">{t("review.bulkUnavailable")}</p>}
+          {bulkResult && <section aria-label={t("review.bulkResults")}>
+            <p>{t("review.bulkSummary", { succeeded: bulkResult.results.filter((entry) => entry.status === "succeeded").length,
+              failed: bulkResult.results.filter((entry) => entry.status === "failed").length })}</p>
+            <ul>{bulkResult.results.map((entry) => <li key={entry.itemId}><code>{entry.itemId}</code>: {entry.status === "succeeded" ?
+              t("review.bulkSucceeded") : t(`review.bulkReason.${entry.reason}`)}</li>)}</ul>
+          </section>}
           {queue.items.length === 0 ? <p>{t("review.queueEmpty")}</p> : <table><thead><tr>
+            <th>{t("review.bulkSelect")}</th>
             <th>{t("review.priority")}</th><th>{t("review.status")}</th><th>{t("review.criterion")}</th>
             <th>{t("review.report")}</th><th>{t("review.age")}</th><th>{t("review.assignee")}</th></tr></thead><tbody>
             {queue.items.map((item) => <tr key={item.id} className={`review-priority-${item.priority}`}>
+              <td><input type="checkbox" aria-label={t("review.bulkSelectItem", { id: item.id })}
+                checked={Object.hasOwn(activeBulkSelection, item.id)} onChange={(event) => {
+                  setBulkSelection((previous) => {
+                    const next = previous.key === bulkScopeKey ? { ...previous.items } : {};
+                    if (event.target.checked) next[item.id] = item.version;
+                    else delete next[item.id];
+                    return { key: bulkScopeKey, items: next };
+                  });
+                }} /></td>
               <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
                 {item.outcome && <div>{item.outcome.label}</div>}</td>
               <td>{item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : <code>{item.criterionId}</code>}

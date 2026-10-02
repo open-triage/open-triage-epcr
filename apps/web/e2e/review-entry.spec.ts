@@ -4,6 +4,7 @@ import settings from "@open-triage/contracts/config/installation.production.json
 test("Review administrator configures routing and reassigns an item without validation authoring", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
   const itemId = "123e4567-e89b-42d3-a456-426614174131";
+  const secondItemId = "123e4567-e89b-42d3-a456-426614174135";
   const reportId = "123e4567-e89b-42d3-a456-426614174132";
   const criterionId = "123e4567-e89b-42d3-a456-426614174133";
   const reviewerId = "123e4567-e89b-42d3-a456-426614174134";
@@ -20,6 +21,7 @@ test("Review administrator configures routing and reassigns an item without vali
   const item = () => ({ id: itemId, reportId, criterionId, priority: "high", status: "new", assigneeId,
     version, firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
     signedAt: "2026-10-02T07:00:00Z", findings: [] });
+  const secondItem = () => ({ ...item(), id: secondItemId, version: 0, assigneeId: null });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.route("**/api/**", (request) => {
     const url = new URL(request.request().url());
@@ -48,7 +50,20 @@ test("Review administrator configures routing and reassigns an item without vali
     if (path === "/api/review/eligible-reviewers")
       return request.fulfill({ json: [{ id: reviewerId, displayName: "Morgan Reviewer" }] });
     if (path === "/api/review/queue") return request.fulfill({ json: { dataset: "real", page: 1,
-      pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
+      pageSize: 25, total: 2, asOf: new Date().toISOString(), items: [item(), secondItem()] } });
+    if (path === "/api/review/items/bulk-assign") {
+      expect(request.request().headers()["x-csrf-token"]).toBe("review-admin-csrf");
+      const body = request.request().postDataJSON() as { assigneeId: string;
+        selections: Array<{ itemId: string; expectedVersion: number; commandId: string }> };
+      expect(body.assigneeId).toBe(reviewerId);
+      expect(body.selections.map(({ itemId, expectedVersion }) => [itemId, expectedVersion]))
+        .toEqual([[itemId, 1], [secondItemId, 0]]);
+      expect(body.selections.every(({ commandId }) => !!commandId)).toBe(true);
+      return request.fulfill({ json: { results: [
+        { itemId, status: "failed", reason: "conflict" },
+        { itemId: secondItemId, status: "succeeded", item: { ...secondItem(), assigneeId: reviewerId, version: 1 } },
+      ] } });
+    }
     if (path === `/api/review/items/${itemId}`) return request.fulfill({ json: { ...item(), assignmentHistory: history } });
     if (path === `/api/review/items/${itemId}/assign`) {
       const body = request.request().postDataJSON() as { commandId: string; assigneeId: string | null;
@@ -99,6 +114,11 @@ test("Review administrator configures routing and reassigns an item without vali
   await page.getByRole("button", { name: "Save assignment" }).click();
   await expect(page.getByRole("cell", { name: reviewerId })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
+  await page.getByRole("button", { name: "Select this page" }).click();
+  await page.getByRole("combobox", { name: "Assign to" }).selectOption(reviewerId);
+  await page.getByRole("button", { name: "Assign selected" }).click();
+  await expect(page.getByText("1 succeeded; 1 could not be changed.")).toBeVisible();
+  await expect(page.getByText("Changed since selection; refresh and select again")).toBeVisible();
 });
 
 test("Review claim persists in the queue and item history, with recoverable stale state", async ({ page }) => {
@@ -152,9 +172,9 @@ test("Review claim persists in the queue and item history, with recoverable stal
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Claim" }).first().click();
+  await page.getByRole("button", { name: "Claim", exact: true }).first().click();
   await expect(page.getByText("This item changed. Refresh and try again.")).toBeVisible();
-  await page.getByRole("button", { name: "Claim" }).first().click();
+  await page.getByRole("button", { name: "Claim", exact: true }).first().click();
   await expect(page.getByRole("cell", { name: "Assigned to you" })).toBeVisible();
   await page.getByRole("button", { name: reportId }).first().click();
   await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();

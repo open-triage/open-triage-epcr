@@ -1465,5 +1465,20 @@
   "review.sendComment": "Skicka kommentar",
   "review.commentError.conflict": "Ärendet har ändrats. Läs den senaste diskussionen och skicka kommentaren igen.",
   "review.commentError.denied": "Du har inte längre behörighet att kommentera detta ärende.",
-  "review.commentError.unavailable": "Kommentaren kunde inte skickas. Försök igen för att kontrollera om den sparades."
+  "review.commentError.unavailable": "Kommentaren kunde inte skickas. Försök igen för att kontrollera om den sparades.",
+  "review.bulkSelect": "Välj",
+  "review.bulkSelectItem": "Välj granskningsärende {id}",
+  "review.bulkSelectPage": "Välj denna sida",
+  "review.bulkClearSelection": "Rensa urval",
+  "review.bulkSelected": "{count} valda",
+  "review.bulkClaim": "Ta valda ärenden",
+  "review.bulkAssign": "Tilldela valda",
+  "review.bulkAssignee": "Tilldela till",
+  "review.bulkResults": "Resultat av grupptilldelning",
+  "review.bulkSummary": "{succeeded} lyckades; {failed} kunde inte ändras.",
+  "review.bulkSucceeded": "Tilldelat",
+  "review.bulkReason.conflict": "Ändrat sedan urvalet; uppdatera och välj igen",
+  "review.bulkReason.ineligible": "Granskaren är inte behörig för detta ärende",
+  "review.bulkReason.out-of-scope": "Ärendet finns inte längre i detta urval",
+  "review.bulkUnavailable": "Grupptilldelning är inte tillgänglig. Försök igen."
 }
