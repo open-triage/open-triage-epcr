@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult,
+  ReviewAnalysisReviewFilters } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -28,6 +29,9 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   const [groupBy, setGroupBy] = useState("");
   const [filterId, setFilterId] = useState("");
   const [filterValue, setFilterValue] = useState("");
+  const [reviewFilters, setReviewFilters] = useState<ReviewAnalysisReviewFilters>({ criteria: [], outcomes: [] });
+  const [reviewCriterionId, setReviewCriterionId] = useState("");
+  const [reviewOutcomeId, setReviewOutcomeId] = useState("");
   const [result, setResult] = useState<ReviewAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
@@ -47,6 +51,17 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/analysis/review-filters?dataset=${dataset}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      if (!controller.signal.aborted) setReviewFilters(await response.json() as ReviewAnalysisReviewFilters);
+    }).catch(() => { if (!controller.signal.aborted) setReviewFilters({ criteria: [], outcomes: [] }); });
+    return () => controller.abort();
+  }, [dataset, refresh]);
+
   const field = fields.find((item) => item.id === fieldId);
   const run = async () => {
     const url = apiRequestUrl("/api/review/analysis");
@@ -57,7 +72,10 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       ...(fieldId === "eMedications.05" && unit ? { unit: unit.trim() } : {}),
       ...(groupBy ? { groupBy } : {}),
       filters: { from, to, dataset,
-        ...(filterId && filterValue ? { field: { id: filterId, value: filterValue } } : {}) } };
+        ...(filterId && filterValue ? { field: { id: filterId, value: filterValue } } : {}),
+        ...(reviewCriterionId || reviewOutcomeId ? { review: {
+          ...(reviewCriterionId ? { criterionId: reviewCriterionId } : {}),
+          ...(reviewOutcomeId ? { outcomeOptionId: reviewOutcomeId } : {}) } } : {}) } };
     try {
       const response = await fetch(url, browserRequestInit({ method: "POST",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
@@ -127,6 +145,16 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       {filterId && <label>{t("review.analysisFilterValue")}{" "}<input value={filterValue}
         maxLength={256} onChange={(event) => { setFilterValue(event.target.value); setResult(null); }} /></label>}
+      <label>{t("review.analysisReviewCriterion")} <select value={reviewCriterionId}
+        onChange={(event) => { setReviewCriterionId(event.target.value); setResult(null); }}>
+        <option value="">{t("review.analysisAll")}</option>
+        {reviewFilters.criteria.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select></label>
+      <label>{t("review.analysisRecordedOutcome")} <select value={reviewOutcomeId}
+        onChange={(event) => { setReviewOutcomeId(event.target.value); setResult(null); }}>
+        <option value="">{t("review.analysisAll")}</option>
+        {reviewFilters.outcomes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select></label>
       <button type="button" disabled={!field || field.operations.length === 0 || from > to || (filterId !== "" && !filterValue) ||
         (field.repeating && field.kind === "numeric" && !reducer) ||
         (fieldId === "eMedications.05" && !unit.trim())}
@@ -136,6 +164,7 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     {exportNotice && <p role="alert">{exportNotice}</p>}
     {result?.freshness.status === "stale" && <p role="alert">{t("review.volumeStale")}</p>}
     {result?.freshness.status === "current" && <>
+      <p>{t("review.analysisReportUnit")}</p>
       {result.exportRevision && <button type="button" disabled={exportBusy}
         onClick={() => void exportCsv()}>{t("review.csvDownload")}</button>}
       <p>{t("review.analysisScope", { scope: t(`review.scope.${result.population.scope}`) })}{" · "}

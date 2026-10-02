@@ -1,12 +1,12 @@
-import type { ReviewAnalysisResult, ReviewVolumeResult } from "@open-triage/contracts";
+import type { ReviewAnalysisResult, ReviewVolumeResult, ReviewWorkloadResult } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 
 export type ReviewCsvResult<T> = { status: "downloaded" } | { status: "refreshed"; result: T } |
   { status: "denied" } | { status: "error" };
 
 /** The API rechecks authorization and the exact aggregate before sending CSV. */
-export async function downloadReviewCsv<T extends ReviewAnalysisResult | ReviewVolumeResult>(
-  kind: "analysis" | "volume", result: T, csrfToken: string,
+export async function downloadReviewCsv<T extends ReviewAnalysisResult | ReviewVolumeResult | ReviewWorkloadResult>(
+  kind: "analysis" | "volume" | "workload", result: T, csrfToken: string,
 ): Promise<ReviewCsvResult<T>> {
   const url = apiRequestUrl(`/api/review/${kind}/export`);
   if (!url || !result.exportRevision) return { status: "error" };
@@ -26,7 +26,7 @@ export async function downloadReviewCsv<T extends ReviewAnalysisResult | ReviewV
     const href = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = kind === "analysis" ? "review-analysis.csv" : "review-volume.csv";
+    anchor.download = `review-${kind}.csv`;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
