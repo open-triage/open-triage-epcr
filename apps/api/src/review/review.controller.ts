@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { ClaimReviewItemCommand, ReviewItemDetail, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 
@@ -85,5 +85,20 @@ export class ReviewController {
     @Headers("cookie") cookie?: string,
   ): Promise<ReviewVolumeResult> {
     return this.review.volume(bearerToken(authorization, cookie), dataset, from, to);
+  }
+  @Get("items/:id")
+  @Header("Cache-Control", "no-store, private")
+  item(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewItemDetail> {
+    return this.review.item(bearerToken(authorization, cookie), id, dataset);
+  }
+
+  @Post("items/:id/claim")
+  @Header("Cache-Control", "no-store, private")
+  claim(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: ClaimReviewItemCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
+    return this.review.claim(bearerToken(authorization, cookie), id, command, csrfToken);
   }
 }

@@ -155,7 +155,7 @@ test("review queue filters are scoped before pagination and report links", async
   const database = { async query(sql, params) {
     calls.push({ sql, params });
     return sql.includes("count(*)") ? [{ total: "1" }] : [{ id: "item-a", report_id: "report-a",
-      criterion_id: "rule-a", priority: "high", status: "new", assignee_id: null,
+      criterion_id: "rule-a", priority: "high", status: "new", assignee_id: null, version: "0",
       first_matched_at: "2026-10-02T10:00:00Z", reporting_date: "2026-10-02",
       signed_at: "2026-10-02T09:00:00Z", findings: [{ message: "Review" }] }];
   } };
@@ -164,12 +164,72 @@ test("review queue filters are scoped before pagination and report links", async
     from: "2026-10-01", to: "2026-10-02", page: "2", pageSize: "10" });
   assert.equal(result.total, 1);
   assert.equal(result.items[0].reportId, "report-a");
+  assert.equal(result.items[0].version, 0);
   assert.deepEqual(calls[0].params.slice(0, 9), ["org-a", false, false, "user-a", null,
     "high", "new", "2026-10-01", "2026-10-02"]);
   assert.match(calls[0].sql, /r\.documenting_user_id=\$4/);
   assert.match(calls[1].sql, /limit \$10 offset \$11/);
   assert.deepEqual(calls[1].params.slice(9), [10, 10]);
   await assert.rejects(service.queue("token", { priority: "critical" }), BadRequestException);
+});
+
+test("claim requires review-all, CSRF, current unassigned version, and replays once", async () => {
+  let current = session(["review:all"]);
+  const item = { version: 0, status: "new", assignee_id: null };
+  const history = [];
+  const manager = { async query(sql, params) {
+    if (sql.includes("from clinical.review_item i") && sql.includes("for update")) return [{ ...item }];
+    if (sql.includes("from clinical.review_assignment_history where item_id"))
+      return history.filter((event) => event.command_id === params[1]);
+    if (sql.includes("update clinical.review_item set")) {
+      item.version++; item.assignee_id = params[1]; return [];
+    }
+    if (sql.includes("insert into clinical.review_assignment_history")) {
+      history.push({ command_id: params[2], actor_id: params[3], assignee_id: params[3], item_version: params[4] });
+      return [];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  let transactionTail = Promise.resolve();
+  const database = { transaction: async (work) => {
+    const prior = transactionTail;
+    let release;
+    transactionTail = new Promise((resolve) => { release = resolve; });
+    await prior;
+    try { return await work(manager); } finally { release(); }
+  }, query: async (sql) =>
+    sql.includes("from clinical.review_assignment_history") ? history.map((event) => ({
+      ...event, assigned_at: "2026-10-02T10:00:00Z" })) : [{ id: "item-a", report_id: "report-a",
+      criterion_id: "criterion-a", priority: "high", status: item.status,
+      assignee_id: item.assignee_id, version: String(item.version),
+      first_matched_at: "2026-10-02T09:00:00Z", reporting_date: "2026-10-02",
+      signed_at: "2026-10-02T09:00:00Z", findings: [] }] };
+  const service = new ReviewService(database, { get: async () => current,
+    assertCsrf: async (_token, csrf) => { if (csrf !== "valid") throw new ForbiddenException(); } });
+  const command = { commandId: "123e4567-e89b-42d3-a456-426614174000", expectedVersion: 0, dataset: "real" };
+  current = session(["review:self"]);
+  await assert.rejects(service.claim("token", "item-a", command, "valid"), ForbiddenException);
+  current = session(["review:all"]);
+  await assert.rejects(service.claim("token", "item-a", command), ForbiddenException);
+  assert.equal((await service.claim("token", "item-a", command, "valid")).assigneeId, "user-a");
+  assert.equal(history.length, 1);
+  assert.equal((await service.claim("token", "item-a", command, "valid")).assignmentHistory.length, 1);
+  await assert.rejects(service.claim("token", "item-a", { ...command,
+    commandId: "123e4567-e89b-42d3-a456-426614174001" }, "valid"), { status: 409 });
+  current = session(["review:all"], "user-b");
+  await assert.rejects(service.claim("token", "item-a", command, "valid"), { status: 409 });
+  assert.equal(history.length, 1);
+  item.version = 0; item.assignee_id = null; history.length = 0;
+  const contenders = ["user-a", "user-b"].map((userId, index) => {
+    const contender = new ReviewService(database, { get: async () => session(["review:all"], userId),
+      assertCsrf: async () => {} });
+    return contender.claim("token", "item-a", { ...command,
+      commandId: `123e4567-e89b-42d3-a456-42661417400${index + 2}` }, "valid");
+  });
+  const outcomes = await Promise.allSettled(contenders);
+  assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(outcomes.filter((result) => result.status === "rejected" && result.reason.status === 409).length, 1);
+  assert.equal(history.length, 1);
 });
 
 test("only review administrators can inspect processing failures", async () => {

@@ -147,10 +147,29 @@ export interface ReviewQueueItem {
   priority: "high" | "medium" | "low";
   status: "new" | "in-review" | "resolved";
   assigneeId: string | null;
+  version: number;
   firstMatchedAt: string;
   reportingDate: string;
   signedAt: string;
   findings: import("./validation-rules.js").ValidationFinding[];
+}
+
+export interface ReviewAssignmentEvent {
+  commandId: string;
+  actorId: string;
+  assigneeId: string;
+  itemVersion: number;
+  assignedAt: string;
+}
+
+export interface ReviewItemDetail extends ReviewQueueItem {
+  assignmentHistory: ReviewAssignmentEvent[];
+}
+
+export interface ClaimReviewItemCommand {
+  commandId: string;
+  expectedVersion: number;
+  dataset: "real" | "synthetic";
 }
 
 export interface ReviewQueueResponse {
