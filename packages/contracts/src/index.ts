@@ -220,6 +220,9 @@ export interface ReviewItemDetail extends ReviewQueueItem {
     validationVersionId: string; evaluatedAt: string; findings: import("./validation-rules.js").ValidationFinding[];
     changes: Array<{ elementId: string | null; groupInstanceId: string;
       occurrenceId: string | null; change: "added" | "removed" | "changed" }> }>;
+  comments: ReviewComment[];
+  commentsRestricted: boolean;
+  canComment: boolean;
 }
 
 export interface ReviewAmendmentPolicy {
@@ -231,6 +234,22 @@ export interface ConfigureReviewAmendmentPolicyCommand {
   commandId: string;
   expectedVersion: number;
   clearance: ReviewAmendmentPolicy["clearance"];
+}
+
+export interface ReviewComment {
+  id: string;
+  actorId: string;
+  actorName: string;
+  body: string;
+  itemVersion: number;
+  recordedAt: string;
+}
+
+export interface AddReviewCommentCommand {
+  commandId: string;
+  expectedVersion: number;
+  dataset: "real" | "synthetic";
+  body: string;
 }
 
 export interface ClaimReviewItemCommand {
