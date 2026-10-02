@@ -18,6 +18,8 @@ test("Review administrator configures routing and reassigns an item without vali
   let version = 0;
   let history: Array<{ commandId: string; actorId: string; assigneeId: string | null;
     itemVersion: number; assignedAt: string; action: string }> = [];
+  let queueReads = 0;
+  let attentionReads = 0;
   const item = () => ({ id: itemId, reportId, criterionId, priority: "high", status: "new", assigneeId,
     version, firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
     signedAt: "2026-10-02T07:00:00Z", findings: [] });
@@ -49,8 +51,17 @@ test("Review administrator configures routing and reassigns an item without vali
     }
     if (path === "/api/review/eligible-reviewers")
       return request.fulfill({ json: [{ id: reviewerId, displayName: "Morgan Reviewer" }] });
-    if (path === "/api/review/queue") return request.fulfill({ json: { dataset: "real", page: 1,
-      pageSize: 25, total: 2, asOf: new Date().toISOString(), items: [item(), secondItem()] } });
+    if (path === "/api/review/queue") {
+      queueReads++;
+      return request.fulfill({ json: { dataset: "real", page: 1,
+        pageSize: 25, total: 2, asOf: new Date().toISOString(), items: [item(), secondItem()] } });
+    }
+    if (path === "/api/review/attention") {
+      attentionReads++;
+      return request.fulfill({ json: { dataset: "real", asOf: new Date().toISOString(),
+        assignments: 0, responses: 0, reopened: 0, unavailableAssignees: 0,
+        unavailableRoutes: 0, processingFailures: 0 } });
+    }
     if (path === "/api/review/items/bulk-assign") {
       expect(request.request().headers()["x-csrf-token"]).toBe("review-admin-csrf");
       const body = request.request().postDataJSON() as { assigneeId: string;
@@ -111,8 +122,11 @@ test("Review administrator configures routing and reassigns an item without vali
   await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
   await page.getByRole("button", { name: reportId }).first().click();
   await page.getByLabel("Assign reviewer").selectOption(reviewerId);
+  const readsBeforeAssignment = { queue: queueReads, attention: attentionReads };
   await page.getByRole("button", { name: "Save assignment" }).click();
   await expect(page.getByRole("cell", { name: reviewerId })).toBeVisible();
+  await expect.poll(() => queueReads).toBeGreaterThan(readsBeforeAssignment.queue);
+  await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeAssignment.attention);
   await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
   await page.getByRole("button", { name: "Select this page" }).click();
   await page.getByRole("combobox", { name: "Assign to" }).selectOption(reviewerId);
@@ -130,6 +144,7 @@ test("Review claim persists in the queue and item history, with recoverable stal
     expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all"], workspaceAvailable: true };
   let version = 0;
   let assigneeId: string | null = null;
+  let attentionReads = 0;
   let history: Array<{ commandId: string; actorId: string; assigneeId: string; itemVersion: number; assignedAt: string }> = [];
   let stale = true;
   const item = () => ({ id: itemId, reportId, criterionId: "123e4567-e89b-42d3-a456-426614174113",
@@ -141,6 +156,11 @@ test("Review claim persists in the queue and item history, with recoverable stal
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
+    if (url.pathname === "/api/review/attention") {
+      attentionReads++;
+      return route.fulfill({ json: { dataset: "real", asOf: new Date().toISOString(),
+        assignments: assigneeId === "reviewer" ? 1 : 0, responses: 0, reopened: 0 } });
+    }
     if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
       identifying: false, administrator: false, page: 1, pageSize: 25, total: 0, asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
@@ -174,8 +194,11 @@ test("Review claim persists in the queue and item history, with recoverable stal
   await page.goto("/");
   await page.getByRole("button", { name: "Claim", exact: true }).first().click();
   await expect(page.getByText("This item changed. Refresh and try again.")).toBeVisible();
+  const readsBeforeClaim = attentionReads;
   await page.getByRole("button", { name: "Claim", exact: true }).first().click();
   await expect(page.getByRole("cell", { name: "Assigned to you" })).toBeVisible();
+  await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeClaim);
+  await expect(page.getByRole("button", { name: "New assignments: 1" })).toBeVisible();
   await page.getByRole("button", { name: reportId }).first().click();
   await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
   await expect(page.getByText("Assigned to you").last()).toBeVisible();
