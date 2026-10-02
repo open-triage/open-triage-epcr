@@ -144,6 +144,10 @@ export interface ReviewQueueItem {
   id: string;
   reportId: string;
   criterionId: string;
+  kind?: "criterion" | "overdue-unsigned";
+  deadlineAt?: string | null;
+  deadlineSource?: "call-completed" | "report-created" | null;
+  resolutionReason?: string | null;
   priority: "high" | "medium" | "low";
   status: "new" | "in-review" | "awaiting-clinician" | "completed";
   outcome: { optionId: string; revision: number; label: string; meaning: string } | null;
@@ -151,8 +155,8 @@ export interface ReviewQueueItem {
   version: number;
   recoveryReason?: string | null;
   firstMatchedAt: string;
-  reportingDate: string;
-  signedAt: string;
+  reportingDate: string | null;
+  signedAt: string | null;
   findings: import("./validation-rules.js").ValidationFinding[];
 }
 
@@ -198,6 +202,8 @@ export interface AssignReviewItemCommand {
 }
 
 export interface ReviewItemDetail extends ReviewQueueItem {
+  overdueHistory?: Array<{ action: "detected" | "resolved-by-signing"; recordedAt: string;
+    itemVersion: number }>;
   assignmentHistory: ReviewAssignmentEvent[];
   progressHistory: Array<{ commandId: string; actorId: string; itemVersion: number;
     status: ReviewQueueItem["status"]; outcome: ReviewQueueItem["outcome"]; recordedAt: string }>;
@@ -286,6 +292,18 @@ export interface ReviewSignedReport {
   notes: ReportNote[];
   reviewItems?: Array<{ id: string; criterionId: string; status: ReviewQueueItem["status"];
     outcome: ReviewQueueItem["outcome"] }>;
+}
+
+export interface ReviewOverdueDraft {
+  id: string;
+  itemId: string;
+  createdAt: string;
+  deadlineAt: string;
+  deadlineSource: "call-completed" | "report-created";
+  identifying: boolean;
+  groups: ReviewReportGroup[];
+  values: ReviewReportValue[];
+  notes: readonly ReportNote[];
 }
 
 export interface ReviewVolumeDefinition {

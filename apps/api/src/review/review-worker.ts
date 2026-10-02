@@ -4,6 +4,7 @@ import type { DataSource, EntityManager } from "typeorm";
 import { encounterDocument } from "../reports/encounter-document.persistence.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { eligibleReviewers, reconcileReviewAssignments } from "./review-assignment.js";
+import { discoverOverdueDrafts } from "./review-overdue.js";
 
 const MAX_BATCH = 100;
 type Work = { id: string; organization_id: string; report_id: string; signed_snapshot_id: string;
@@ -39,7 +40,10 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
   let processed = 0;
   let failed = 0;
   await reconcileReviewAssignments(database);
-  await database.transaction(async (manager) => { await discoverReviewWork(manager, limit); });
+  await database.transaction(async (manager) => {
+    await discoverOverdueDrafts(manager, limit);
+    await discoverReviewWork(manager, limit);
+  });
   for (let index = 0; index < limit; index += 1) {
     try {
       const didWork = await database.transaction("REPEATABLE READ", async (manager) => {

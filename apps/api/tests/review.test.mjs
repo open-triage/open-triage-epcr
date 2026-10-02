@@ -254,6 +254,7 @@ test("Review routing is admin-only, versioned, replay-safe, and validates named 
   const manager = { async query(sql, params) {
     if (sql.includes("from app_identity.organization")) return [{ id: params[0] }];
     if (sql.includes("from validation.version v")) return [{ id: "published" }];
+    if (sql.includes("review_overdue_criterion_id")) return [{ id: "123e4567-e89b-42d3-a456-426614174099" }];
     if (sql.includes("insert into clinical.review_criterion_route (")) return [];
     if (sql.includes("select version from clinical.review_criterion_route")) return [{ version: String(state.version) }];
     if (sql.includes("from clinical.review_criterion_route_history"))
