@@ -200,7 +200,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const t = (key: string, parameters: Record<string, string | number> = {}) => resolveMessage(language, key, parameters);
   const cancelDialog = useEffectEvent(onCancel);
   const instance = repeatingGroupInstances(draft, placement.id).find((candidate) => candidate.instanceId === instanceId);
-  const liveFindings = useMemo(() => stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft]);
+  const liveFindings = useMemo(() => placement.mode === "read-only" ? [] : stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft, placement.mode]);
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
       const initial = frame.current?.querySelector<HTMLElement>("[autofocus]")

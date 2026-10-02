@@ -79,6 +79,8 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
+  await page.getByRole("tab", { name: "Clinical analysis", exact: true }).click();
   await page.getByRole("button", { name: "Primary symptom" }).click();
   await page.getByLabel("Filter field").selectOption("eDisposition.30");
   await page.getByLabel("Code").fill("transported");
@@ -134,6 +136,7 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
 
 test("Review saves, revises, publishes, and reopens a definition under the selected dataset", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed mock API configuration.");
+  await page.clock.install();
   const id = "123e4567-e89b-42d3-a456-426614174199";
   const session = { csrfToken: "saved-analysis-csrf", user: { id: "review-admin", displayName: "Admin" },
     organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
@@ -189,7 +192,10 @@ test("Review saves, revises, publishes, and reopens a definition under the selec
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
+  await page.getByRole("tab", { name: "Clinical analysis", exact: true }).click();
   await page.getByLabel("Matching Review criterion").selectOption("criterion-one");
+  await page.getByRole("tab", { name: "Saved analyses", exact: true }).click();
   await page.getByLabel("Analysis name").fill("Case mix");
   await page.getByRole("button", { name: "Save as new" }).click();
   await expect(page.getByText("Saved version 1")).toBeVisible();
@@ -206,7 +212,7 @@ test("Review saves, revises, publishes, and reopens a definition under the selec
   await page.getByLabel("Dataset").selectOption("synthetic");
   await expect(page.getByText("Reports: 3", { exact: false })).toBeVisible();
   const beforeRefresh = opens;
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.clock.fastForward(16_000);
   await expect.poll(() => opens).toBeGreaterThan(beforeRefresh);
   await expect(page.getByText("Reports: 3", { exact: false })).toBeVisible();
 });

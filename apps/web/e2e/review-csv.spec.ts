@@ -77,6 +77,7 @@ test("Review CSV refreshes changed volume and exports the displayed aggregates",
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
   const volumeSection = page.locator('section[aria-labelledby="review-volume-heading"]');
   const analysisSection = page.locator('section[aria-labelledby="review-analysis-heading"]');
   await expect(volumeSection.getByText("Signed patient reports in the selected period: 2", { exact: false })).toBeVisible();
@@ -89,6 +90,7 @@ test("Review CSV refreshes changed volume and exports the displayed aggregates",
   const volumeRecords = page.waitForEvent("download");
   await volumeSection.getByRole("button", { name: "Download underlying records CSV" }).click();
   expect(await readFile(await (await volumeRecords).path(), "utf8")).toContain("report-a");
+  await page.getByRole("tab", { name: "Clinical analysis", exact: true }).click();
   await analysisSection.getByRole("button", { name: "Run analysis" }).click();
   await expect(analysisSection.getByRole("cell", { name: "50.0%" })).toBeVisible();
   const analysisDownload = page.waitForEvent("download");

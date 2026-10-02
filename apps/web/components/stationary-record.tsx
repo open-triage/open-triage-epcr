@@ -29,7 +29,8 @@ function statusText(language: FormLanguage, errors: number, warnings: number): s
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
 export function StationaryRecord({ document, findings = [], sectionFindings = findings,
-  formDefinition, catalogFields = {}, customFields, customGroups, catalogGroups, validation, language = currentCatalogLanguage(), onDocumentChange }: {
+  formDefinition, catalogFields = {}, customFields, customGroups, catalogGroups, validation, readOnly = false, language = currentCatalogLanguage(), onDocumentChange }: {
+  readonly readOnly?: boolean;
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   /** Includes encounter-review findings for section counts without duplicating inline field messages. */
@@ -108,7 +109,7 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
     };
   }, [moveToSection, sections]);
 
-  return <div className="stationary-record-layout">
+  return <div className={`stationary-record-layout${readOnly ? " stationary-read-only" : ""}`}>
     <nav className="stationary-section-rail" aria-label={resolveMessage(language, "stationary.sections")}>
       <ul>{sections.map((section) => {
         const status = statuses.get(section.id)!;
@@ -153,13 +154,14 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
             </p>
           </header>
           {("blocks" in section ? section.blocks : stationarySectionBlocks(section)).map((block, blockIndex) => block.kind === "inline"
-            ? <StationaryNonRepeatingRecord key={`${block.group.id}:${blockIndex}`} document={document} groups={[
+            ? <fieldset key={`${block.group.id}:${blockIndex}`} disabled={readOnly} className="stationary-record-fields"><StationaryNonRepeatingRecord document={document} groups={[
               { ...inlineGroups.get(block.group.id)!, fields: block.elementIds
                 ? block.elementIds.flatMap((id) => inlineGroups.get(block.group.id)!.fields.find((field) => field.id === id) ?? [])
                 : inlineGroups.get(block.group.id)!.fields }
-            ]} findings={findings} catalogFields={catalogFields} catalogGroups={catalogGroups} language={language} onDocumentChange={onDocumentChange} />
-            : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
+            ]} findings={findings} catalogFields={catalogFields} catalogGroups={catalogGroups} language={language} onDocumentChange={onDocumentChange} /></fieldset>
+            : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[readOnly ? { ...block.group, mode: "read-only" } : block.group]} findings={findings}
               clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
+          <fieldset disabled={readOnly} className="stationary-record-fields">
           {"fields" in section && <CustomTextFields document={document} fields={section.fields} definitions={customFields}
             language={language} onDocumentChange={onDocumentChange} />}
           {"fields" in section && <CustomCodedFields document={document} fields={section.fields} definitions={customFields}
@@ -168,6 +170,7 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
             language={language} onDocumentChange={onDocumentChange} />}
           {"fields" in section && <CustomGroupFields document={document} fields={section.fields} definitions={customFields}
             groups={customGroups} language={language} onDocumentChange={onDocumentChange} />}
+          </fieldset>
         </section>;
       })}
     </div>

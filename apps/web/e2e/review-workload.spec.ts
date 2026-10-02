@@ -64,6 +64,8 @@ test("workload uses item counts while clinical Review filters retain signed repo
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
+  await page.getByRole("tab", { name: "Review workload", exact: true }).click();
   const workload = page.locator('section[aria-labelledby="review-workload-heading"]');
   await workload.getByRole("button", { name: "Analyze workload" }).click();
   await expect(workload.getByText("Review items: 4", { exact: false })).toBeVisible();
@@ -77,6 +79,7 @@ test("workload uses item counts while clinical Review filters retain signed repo
   await workload.getByRole("button", { name: "Download underlying records CSV" }).click();
   expect(await readFile(await (await recordsDownload).path(), "utf8")).toContain("report-a");
   const clinical = page.locator('section[aria-labelledby="review-analysis-heading"]');
+  await page.getByRole("tab", { name: "Clinical analysis", exact: true }).click();
   await clinical.getByLabel("Matching Review criterion").selectOption(criterionId);
   await clinical.getByLabel("Recorded Review outcome").selectOption(outcomeId);
   await clinical.getByRole("button", { name: "Run analysis" }).click();

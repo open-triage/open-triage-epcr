@@ -1,3 +1,4 @@
+import { openReviewCall } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
@@ -31,7 +32,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
     if (!localStorage.getItem("open-triage.clinician-session.v1"))
       localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored));
   }, session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/installation") return route.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
@@ -68,32 +69,40 @@ test("reviewer requests a clinician response and both see the scoped discussion"
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: reportId }).first().click();
-  await page.getByRole("button", { name: "Await clinician" }).click();
-  await page.getByRole("textbox", { name: "Comment" }).fill("Please clarify the timeline.");
-  await page.getByRole("button", { name: "Send comment" }).click();
-  await expect(page.getByText("Please clarify the timeline.")).toBeVisible();
+  let call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  await call.getByRole("button", { name: "Await clinician" }).click();
+  await call.getByRole("textbox", { name: "Comment", exact: true }).fill("Please clarify the timeline.");
+  await call.getByRole("button", { name: "Send comment" }).click();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
+  await expect(call.getByText("Please clarify the timeline.")).toBeVisible();
   expect(status).toBe("awaiting-clinician");
+  await call.close();
 
   session = sessionFor(clinician);
   await page.evaluate((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.reload();
-  await page.getByRole("button", { name: reportId }).last().click();
-  await page.getByRole("button", { name: criterionId }).click();
+  await page.getByRole("tab", { name: "Reports", exact: true }).click();
+  call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).last());
+  await call.getByRole("button", { name: "Criterion findings", exact: true }).click();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
   await expect.poll(() => detailReads).toBeGreaterThan(1);
-  await expect(page.getByText("Please clarify the timeline.")).toBeVisible();
-  await page.getByRole("textbox", { name: "Comment" }).fill("The event occurred after arrival.");
-  await page.getByRole("button", { name: "Send comment" }).click();
-  await expect(page.getByText("The event occurred after arrival.")).toBeVisible();
+  await expect(call.getByText("Please clarify the timeline.")).toBeVisible();
+  await call.getByRole("tab", { name: "Document findings", exact: true }).click();
+  await call.getByRole("textbox", { name: "Comment", exact: true }).fill("The event occurred after arrival.");
+  await call.getByRole("button", { name: "Send comment" }).click();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
+  await expect(call.getByText("The event occurred after arrival.")).toBeVisible();
   expect(comments.map((entry) => entry.actorId)).toEqual([reviewer, clinician]);
+  await call.close();
 
   session = sessionFor(clinician, false);
   await page.evaluate((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.reload();
-  await page.getByRole("button", { name: reportId }).last().click();
-  await page.getByRole("button", { name: criterionId }).click();
-  await expect(page.getByText("Awaiting clinician").last()).toBeVisible();
-  await expect(page.getByText("Discussion text requires Review identifying access. Status and outcomes remain available.")).toBeVisible();
-  await expect(page.getByText("Please clarify the timeline.")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Send comment" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Reports", exact: true }).click();
+  call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).last());
+  await call.getByRole("button", { name: "Criterion findings", exact: true }).click();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
+  await expect(call.getByText("Discussion text requires Review identifying access. Status and outcomes remain available.")).toBeVisible();
+  await expect(call.getByText("Please clarify the timeline.")).toHaveCount(0);
+  await expect(call.getByRole("button", { name: "Send comment" })).toHaveCount(0);
 });

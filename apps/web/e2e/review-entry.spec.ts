@@ -1,3 +1,4 @@
+import { openReviewCall, refreshOnFocus } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
@@ -25,7 +26,7 @@ test("Review administrator configures routing and reassigns an item without vali
     signedAt: "2026-10-02T07:00:00Z", findings: [] });
   const secondItem = () => ({ ...item(), id: secondItemId, version: 0, assigneeId: null });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (request) => {
+  await page.context().route("**/api/**", (request) => {
     const url = new URL(request.request().url());
     const path = url.pathname;
     if (path === "/api/installation") return request.fulfill({ json: { settings } });
@@ -100,7 +101,9 @@ test("Review administrator configures routing and reassigns an item without vali
     return request.fulfill({ status: 404 });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Criterion routing" })).toBeVisible();
+
   await page.getByLabel("When a criterion clears").selectOption("automatic");
   await page.getByRole("button", { name: "Save clearance policy" }).click();
   await expect(page.getByText("Clearance policy saved.")).toBeVisible();
@@ -120,14 +123,20 @@ test("Review administrator configures routing and reassigns an item without vali
   await expect(page.getByRole("button", { name: "Save route" })).toBeDisabled();
   await page.getByLabel("Route to").selectOption("named");
   await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
-  await page.getByRole("button", { name: reportId }).first().click();
-  await page.getByLabel("Assign reviewer").selectOption(reviewerId);
+  await page.getByRole("tab", { name: "Review queue", exact: true }).click();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  await call.locator(".review-assignment > summary").click();
+  await call.getByLabel("Assign reviewer").selectOption(reviewerId);
   const readsBeforeAssignment = { queue: queueReads, attention: attentionReads };
-  await page.getByRole("button", { name: "Save assignment" }).click();
-  await expect(page.getByRole("cell", { name: reviewerId })).toBeVisible();
+  await call.getByRole("button", { name: "Save assignment" }).click();
+  await expect(call.getByText("Assignment saved.", { exact: true })).toBeVisible();
+  await refreshOnFocus(page);
   await expect.poll(() => queueReads).toBeGreaterThan(readsBeforeAssignment.queue);
   await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeAssignment.attention);
-  await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
+  await expect(call.getByRole("heading", { name: "Assignment history" })).toBeVisible();
+  await call.close();
+  await expect(page.getByRole("button", { name: "Select this page" })).toBeVisible();
   await page.getByRole("button", { name: "Select this page" }).click();
   await page.getByRole("combobox", { name: "Assign to" }).selectOption(reviewerId);
   await page.getByRole("button", { name: "Assign selected" }).click();
@@ -152,7 +161,7 @@ test("Review claim persists in the queue and item history, with recoverable stal
     reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", findings: [],
     reopened: version > 0, clearancePending: false });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
@@ -196,15 +205,16 @@ test("Review claim persists in the queue and item history, with recoverable stal
   await expect(page.getByText("This item changed. Refresh and try again.")).toBeVisible();
   const readsBeforeClaim = attentionReads;
   await page.getByRole("button", { name: "Claim", exact: true }).first().click();
-  await expect(page.getByRole("cell", { name: "Assigned to you" })).toBeVisible();
+  await expect(page.getByText("Assigned to you", { exact: true }).first()).toBeVisible();
   await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeClaim);
-  await expect(page.getByRole("button", { name: "New assignments: 1" })).toBeVisible();
-  await page.getByRole("button", { name: reportId }).first().click();
-  await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
-  await expect(page.getByText("Assigned to you").last()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Amendment evaluation history" })).toBeVisible();
-  await expect(page.getByText("Returned for re-review after a relevant amendment").last()).toBeVisible();
-  await expect(page.getByText("eVitals.06").last()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Assigned to me/ })).toBeVisible();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  await call.getByRole("tab", { name: "History", exact: true }).click();
+  await expect(call.getByRole("heading", { name: "Assignment history" })).toBeVisible();
+  await expect(call.getByText("Assigned to you").last()).toBeVisible();
+  await expect(call.getByRole("heading", { name: "Amendment evaluation history" })).toBeVisible();
+  await expect(call.getByRole("tabpanel", { name: "History", exact: true }).getByText("Amendment 1: Returned for re-review", { exact: false })).toBeVisible();
+  await expect(call.getByText("eVitals.06").last()).toBeVisible();
 });
 
 test("Review-only account enters its scoped signed-report list and keeps datasets separate", async ({ page, context }) => {
@@ -219,7 +229,7 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
   let staleVolume = false;
   const queueRequests: string[] = [];
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
@@ -261,29 +271,36 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Signed reports" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Mobile" })).toHaveCount(0);
-  await expect(page.getByText("real-report").first()).toBeVisible();
-  await expect(page.getByText("Review missing narrative")).toBeVisible();
-  await expect(page.getByRole("cell", { name: "High" })).toBeVisible();
-  await page.getByLabel("Priority").selectOption("high");
+  await expect(page.getByRole("button", { name: "Report ID · REAL-REP" })).toBeVisible();
+  await page.getByRole("tab", { name: "Review queue", exact: true }).click();
+  await page.locator(".review-record-button").first().hover();
+  await expect(page.getByText("Review missing narrative", { exact: true })).toBeVisible();
+  await expect(page.locator(".review-badge.priority-high")).toBeVisible();
+  await page.getByRole("combobox", { name: /^Priority/ }).selectOption("high");
   await expect.poll(() => queueRequests.some((query) => query.includes("priority=high"))).toBe(true);
+  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
   await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toBeVisible();
   await expect(page.getByText("Signed patient reports in the selected period: 2", { exact: false })).toBeVisible();
   await page.getByLabel("Dataset").selectOption("synthetic");
-  await expect(page.getByText("synthetic-report")).toBeVisible();
+  await page.getByRole("tab", { name: "Reports", exact: true }).click();
+  await expect(page.getByText("Report ID · SYNTHETI")).toBeVisible();
+  await page.getByRole("tab", { name: "Review queue", exact: true }).click();
   await expect(page.getByText("No matching review items.")).toBeVisible();
+  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
   await expect(page.getByText("Signed patient reports in the selected period: 1", { exact: false })).toBeVisible();
   staleVolume = true;
-  await page.getByRole("button", { name: "Refresh" }).click();
+  await refreshOnFocus(page);
   await expect(page.getByText("Report volume is withheld", { exact: false })).toBeVisible();
   await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toHaveCount(0);
   expect(requestedDatasets[0]).toBe("real");
   expect(requestedDatasets.at(-1)).toBe("synthetic");
   await page.reload();
-  await expect(page.getByRole("button", { name: "Review" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveAttribute("aria-pressed", "true");
   await context.setOffline(true);
   await expect(page.getByText("Review requires a connection.", { exact: false })).toBeVisible();
 });
@@ -295,7 +312,7 @@ test("Review opens effective grouped signed content without identifying text", a
     organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
     expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all"], workspaceAvailable: true };
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/installation") return route.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
@@ -310,10 +327,11 @@ test("Review opens effective grouped signed content without identifying text", a
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: id }).click();
-  await expect(page.getByRole("heading", { name: "Assessment entry #2" })).toBeVisible();
-  await expect(page.getByText("Score")).toBeVisible();
-  await expect(page.getByText("4", { exact: true })).toBeVisible();
-  await expect(page.getByText("1 signed amendments")).toBeVisible();
-  await expect(page.getByText("Surname")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Reports", exact: true }).click();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${id.slice(0, 8).toUpperCase()}` }));
+  await expect(call.getByRole("heading", { name: "Assessment entry #2" })).toBeVisible();
+  await expect(call.getByText("Score")).toBeVisible();
+  await expect(call.getByText("4", { exact: true })).toBeVisible();
+  await expect(call.getByText("1 signed amendments")).toBeVisible();
+  await expect(call.getByText("Surname")).toHaveCount(0);
 });

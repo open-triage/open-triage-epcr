@@ -1,3 +1,4 @@
+import { openReviewCall } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
@@ -20,7 +21,7 @@ test("reviewer progresses one item and completes with an agency outcome", async 
     firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
     signedAt: "2026-10-02T07:00:00Z", findings: [] });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
@@ -54,15 +55,15 @@ test("reviewer progresses one item and completes with an agency outcome", async 
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: reportId }).first().click();
-  await page.getByRole("button", { name: "Start review" }).click();
-  await expect(page.getByText("In review", { exact: true }).last()).toBeVisible();
-  await page.getByRole("button", { name: "Await clinician" }).click();
-  await page.getByRole("button", { name: "Resume review" }).click();
-  await page.getByRole("combobox", { name: "Outcome" }).last().selectOption(optionId);
-  await page.getByRole("button", { name: "Complete item" }).click();
-  await expect(page.getByText("Status: Completed", { exact: true })).toBeVisible();
-  await expect(page.getByText("Follow-up — Clinician follow-up").last()).toBeVisible();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  await call.getByRole("button", { name: "Start review" }).click();
+  await expect(call.getByText("Status: In review", { exact: true })).toBeVisible();
+  await call.getByRole("button", { name: "Await clinician" }).click();
+  await call.getByRole("button", { name: "Resume review" }).click();
+  await call.getByRole("combobox", { name: "Outcome" }).last().selectOption(optionId);
+  await call.getByRole("button", { name: "Complete item" }).click();
+  await expect(call.getByText("Status: Completed", { exact: true })).toBeVisible();
+  await expect(call.getByText("Follow-up — Clinician follow-up").last()).toBeVisible();
   expect(progressHistory.map((entry) => entry.status)).toEqual([
     "in-review", "awaiting-clinician", "in-review", "completed"]);
 });

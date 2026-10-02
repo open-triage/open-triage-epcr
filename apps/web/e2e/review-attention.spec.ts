@@ -1,7 +1,8 @@
+import { refreshOnFocus } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
-test("Review attention links follow actionable work and disappear after closure or scope loss", async ({ page }) => {
+test("Review badges update automatically and administration attention remains scoped", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed mock API configuration.");
   const self = "123e4567-e89b-42d3-a456-426614174151";
   const other = "123e4567-e89b-42d3-a456-426614174152";
@@ -43,6 +44,7 @@ test("Review attention links follow actionable work and disappear after closure 
         (kind === "responses" && counts().responses) || (kind === "reopened" && counts().reopened) ||
         (kind === "unavailable-assignees" && state.recoveryReason));
       return route.fulfill({ json: { dataset: "real", page: 1, pageSize: 25,
+        assignmentCounts: { all: visible() ? 1 : 0, mine: visible() && state.assigneeId === self ? 1 : 0, unassigned: visible() && !state.assigneeId ? 1 : 0 },
         total: matching ? 1 : 0, asOf: new Date().toISOString(), items: matching ? [item()] : [] } });
     }
     if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real",
@@ -58,39 +60,20 @@ test("Review attention links follow actionable work and disappear after closure 
   });
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Review (1)" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "New assignments: 1" })).toBeVisible();
-  await page.getByRole("button", { name: "New assignments: 1" }).click();
-  await expect(page.getByText("Showing your new assignments.")).toBeVisible();
-  await expect(page.getByRole("cell", { name: "High" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "1 day" })).toBeVisible();
-  await page.getByRole("checkbox", { name: `Select review item ${itemId}` }).check();
-  await expect(page.getByText("1 selected")).toBeVisible();
-
+  await expect(page.getByRole("button", { name: "All reviews 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assigned to me 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /New assignments:|Clinician responses requested:|Reopened reviews:/ })).toHaveCount(0);
   state = { ...state, status: "awaiting-clinician", assigneeId: other };
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Clinician responses requested: 1" })).toBeVisible();
-  await page.getByRole("button", { name: "Clinician responses requested: 1" }).click();
-  await expect(page.getByText("Showing requests for your response.")).toBeVisible();
-  await expect(page.getByText("0 selected")).toBeVisible();
-  await expect(page.getByRole("cell", { name: "Awaiting clinician" })).toBeVisible();
-
+  await refreshOnFocus(page);
+  await expect(page.getByRole("button", { name: "Assigned to me 0", exact: true })).toBeVisible();
   responded = true;
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Clinician responses requested: 0" })).toBeVisible();
-
-  state = { ...state, status: "in-review", assigneeId: self, reopened: true };
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Reopened reviews: 1" })).toBeVisible();
-  await page.getByRole("button", { name: "Reopened reviews: 1" }).click();
-  await expect(page.getByText("Showing your reopened reviews.")).toBeVisible();
-
   state = { ...state, status: "completed", reopened: false, assigneeId: null, recoveryReason: null };
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await refreshOnFocus(page);
   await expect(page.getByRole("button", { name: "Review", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reopened reviews: 0" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unassigned 1", exact: true })).toBeVisible();
 
   state = { ...state, status: "new", authorId: other, recoveryReason: "assignee-ineligible" };
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await refreshOnFocus(page);
   await expect(page.getByRole("button", { name: "Unavailable assignees: 1" })).toBeVisible();
   await page.getByRole("button", { name: "Unavailable assignees: 1" }).click();
   await expect(page.getByText("Showing work returned to the unassigned queue.")).toBeVisible();

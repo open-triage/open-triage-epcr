@@ -1,3 +1,4 @@
+import { openReviewCall } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
@@ -17,7 +18,7 @@ test("reviewer inspects an overdue draft and administrator changes its deadline"
     reportingDate: null, signedAt: null, deadlineAt: "2026-10-02T08:00:00Z",
     deadlineSource: "call-completed", resolutionReason: null, findings: [] };
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
@@ -53,11 +54,12 @@ test("reviewer inspects an overdue draft and administrator changes its deadline"
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: reportId }).click();
-  await expect(page.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
-  await expect(page.getByText("Primary Symptom", { exact: true })).toBeVisible();
-  await expect(page.getByText("Pain", { exact: true })).toBeVisible();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
+  await expect(call.getByText("Primary Symptom", { exact: true })).toBeVisible();
+  await expect(call.getByText("Pain", { exact: true })).toBeVisible();
   expect(draftReads).toBeGreaterThan(0);
+  await page.getByRole("tab", { name: "Settings", exact: true }).click();
   await page.getByLabel("Hours after call completion").fill("48");
   await page.getByRole("button", { name: "Save deadline" }).click();
   await expect(page.getByLabel("Hours after call completion")).toHaveValue("48");
@@ -78,7 +80,7 @@ test("signing resolution remains visible in Review history", async ({ page }) =>
     reportingDate: "2026-10-02", signedAt: "2026-10-02T09:00:00Z", findings: [],
     resolutionReason: "resolved-by-signing" };
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
@@ -104,7 +106,7 @@ test("signing resolution remains visible in Review history", async ({ page }) =>
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: reportId }).click();
-  await expect(page.getByText("Resolved by signing").first()).toBeVisible();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  await expect(call.getByText("Resolved by signing").first()).toBeVisible();
   expect(signedReads).toBeGreaterThan(0);
 });

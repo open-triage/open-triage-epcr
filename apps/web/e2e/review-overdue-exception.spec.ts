@@ -1,3 +1,4 @@
+import { openReviewCall } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
@@ -17,7 +18,7 @@ test("review administrator closes an overdue unsigned follow-up with a coded rea
     deadlineSource: "report-created", resolutionReason: closed ? "closed-exceptionally" : null,
     exceptionCode: closed ? "report-not-required" : null, findings: [] });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/**", (route) => {
+  await page.context().route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
@@ -55,13 +56,13 @@ test("review administrator closes an overdue unsigned follow-up with a coded rea
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: reportId }).click();
-  await expect(page.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Close unsigned follow-up exceptionally" })).toBeDisabled();
-  await page.getByLabel("Exception reason").selectOption("report-not-required");
-  await page.getByRole("button", { name: "Close unsigned follow-up exceptionally" }).click();
-  await expect(page.getByText("Closed exceptionally while unsigned").first()).toBeVisible();
-  await expect(page.getByText("Report not required").first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
+  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
+  await expect(call.getByRole("button", { name: "Close unsigned follow-up exceptionally" })).toBeDisabled();
+  await call.getByRole("combobox", { name: /^Exception reason/ }).selectOption("report-not-required");
+  await call.getByRole("button", { name: "Close unsigned follow-up exceptionally" }).click();
+  await expect(call.getByText("Closed exceptionally while unsigned").first()).toBeVisible();
+  await expect(call.getByText("Report not required").first()).toBeVisible();
+  await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
   expect(signedReads).toBe(0);
 });
