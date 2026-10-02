@@ -6,7 +6,7 @@ import {
 } from "@open-triage/contracts/quality-rules";
 
 const databaseUrl = process.env.DATABASE_URL;
-const PROJECTOR_VERSION = "1.0.0";
+const PROJECTOR_VERSION = "1.1.0";
 const BATCH_SIZE = Number.parseInt(process.env.ANALYTICS_PROJECTOR_BATCH_SIZE ?? "100", 10);
 const MAX_ATTEMPTS = Number.parseInt(process.env.ANALYTICS_PROJECTOR_MAX_ATTEMPTS ?? "12", 10);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -323,6 +323,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        coalesce(date_correction.reporting_date_source, r.reporting_date_source) as reporting_date_source,
        r.incident_id,
        r.organization_id,
+       r.documenting_user_id,
+       r.synthetic,
        r.agency_demographic_version_id,
        r.catalog_release_id,
        p.pseudonymous_key as patient_key,
@@ -444,6 +446,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   };
   const wide = {
     ...common,
+    documenting_user_id: report.documenting_user_id,
+    synthetic: report.synthetic,
     form_version: report.form_version,
     signed_at: report.signed_at,
     last_amended_at: report.last_amended_at,
@@ -581,14 +585,15 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       `select
         (select count(*) = 1 and bool_and(
            reporting_date = $2::date and signed_snapshot_id = $3
-           and effective_amendment_sequence = $4 and projector_version = $5)
+           and effective_amendment_sequence = $4 and projector_version = $5
+           and documenting_user_id = $7 and synthetic = $8)
          from analytics_private.epcr where report_id = $1) as wide_current,
         (select count(*) = $6 and coalesce(bool_and(
            reporting_date = $2::date and signed_snapshot_id = $3
            and effective_amendment_sequence = $4 and projector_version = $5), true)
          from analytics_private.epcr_repeatable_element where report_id = $1) as repeatable_current`,
       [reportId, report.reporting_date, report.signed_snapshot_id, report.amendment_count,
-        PROJECTOR_VERSION, repeatRows.length]
+        PROJECTOR_VERSION, repeatRows.length, report.documenting_user_id, report.synthetic]
     )).rows[0];
     if (status.wide_current && status.repeatable_current) {
       return { report, repeatableCount: repeatRows.length, repaired: false };

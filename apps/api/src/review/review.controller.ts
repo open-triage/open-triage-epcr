@@ -1,5 +1,5 @@
 import { Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Query, Res } from "@nestjs/common";
-import type { ReviewSignedReport, ReviewSignedReportsResponse } from "@open-triage/contracts";
+import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 
@@ -43,5 +43,17 @@ export class ReviewController {
     response.setHeader("Pragma", "no-cache");
     response.setHeader("ETag", `"sha256-${media.sha256}"`);
     return response.send(media.bytes);
+  }
+
+  @Get("volume")
+  @Header("Cache-Control", "no-store, private")
+  volume(
+    @Query("dataset") dataset?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ReviewVolumeResult> {
+    return this.review.volume(bearerToken(authorization, cookie), dataset, from, to);
   }
 }

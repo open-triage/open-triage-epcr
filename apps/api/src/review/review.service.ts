@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue } from "@open-triage/contracts";
+import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
@@ -16,10 +16,88 @@ function positiveInteger(value: string | undefined, fallback: number, maximum: n
   return number;
 }
 
+function validDate(value: string | undefined): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
 @Injectable()
-export class ReviewService {
+export class ReviewService implements OnModuleDestroy {
+  private reportingInitialization?: Promise<DataSource>;
   constructor(@InjectDataSource() private readonly database: DataSource,
     private readonly sessions: ClinicianSessionService) {}
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.reportingInitialization) {
+      const replica = await this.reportingInitialization.catch(() => null);
+      if (replica?.isInitialized) await replica.destroy();
+    }
+  }
+
+  private async analyticsDatabase(): Promise<DataSource> {
+    const url = process.env.REPORTING_REPLICA_DATABASE_URL;
+    if (!url) return this.database;
+    if (!this.reportingInitialization) {
+      const reportingDatabase = new DataSource({ type: "postgres", url, synchronize: false,
+        extra: { max: 5, statement_timeout: 10000 } });
+      this.reportingInitialization = reportingDatabase.initialize().catch((error: unknown) => {
+        this.reportingInitialization = undefined;
+        throw error;
+      });
+    }
+    return this.reportingInitialization;
+  }
+
+  async volume(token: string, requestedDataset?: string,
+    from?: string, to?: string): Promise<ReviewVolumeResult> {
+    const scope = reviewScope(await this.sessions.get(token));
+    const dataset = requestedDataset ?? scope.defaultDataset;
+    if (dataset !== "real" && dataset !== "synthetic") throw new BadRequestException("Invalid Review dataset");
+    if (!validDate(from) || !validDate(to) || from > to ||
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000 > 365) {
+      throw new BadRequestException("Invalid Review date period");
+    }
+    const database = await this.analyticsDatabase();
+    const [health] = await database.query<Array<{
+      observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
+      persistent_failure_count: number; retrying_count: number;
+      stale_run_count: number; last_run_status: string | null;
+      is_read_only_replica: boolean; replay_lag_seconds: string | number | null;
+    }>>(`select h.observed_at, h.oldest_backlog_age_seconds,
+        h.persistent_failure_count, h.retrying_count, h.stale_run_count, h.last_run_status,
+        r.is_read_only_replica, r.replay_lag_seconds
+      from operations.projection_health h cross join operations.reporting_replica_health r`);
+    if (!health) throw new Error("Projection health is unavailable");
+    const backlog = health.oldest_backlog_age_seconds === null ? null : Number(health.oldest_backlog_age_seconds);
+    const lag = health.replay_lag_seconds === null ? null : Number(health.replay_lag_seconds);
+    const replicaConfigured = !!process.env.REPORTING_REPLICA_DATABASE_URL;
+    const current = Number(health.persistent_failure_count) === 0 &&
+      Number(health.retrying_count) === 0 && Number(health.stale_run_count) === 0 &&
+      health.last_run_status !== "failed" && health.last_run_status !== "partial" &&
+      (backlog === null || backlog <= 300) &&
+      (!replicaConfigured || (health.is_read_only_replica && lag !== null && lag <= 300));
+    const definition = { measure: "signed-report-count" as const, grouping: "day" as const,
+      filters: { from, to, dataset: dataset as "real" | "synthetic" } };
+    const population = { unit: "patient-report" as const, scope: scope.reports,
+      organizationId: scope.organizationId, signedOnly: true as const };
+    const freshness = { observedAt: new Date(health.observed_at).toISOString(), targetSeconds: 300 as const,
+      status: current ? "current" as const : "stale" as const,
+      oldestBacklogSeconds: backlog, replicaLagSeconds: lag };
+    if (!current) return { definition, population, freshness, total: null, points: [] };
+    const rows = await database.query<Array<{ date: string; count: string }>>(`
+      select days.date::date::text as date, count(source.report_id)::text as count
+      from generate_series($1::date, $2::date, interval '1 day') days(date)
+      left join analytics.review_volume_source source
+        on source.reporting_date = days.date::date
+        and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+        and ($5::boolean or source.documenting_user_id = $6::uuid)
+      group by days.date order by days.date`,
+    [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
+    const points = rows.map((row) => ({ date: row.date, count: Number(row.count) }));
+    return { definition, population, freshness, points,
+      total: points.reduce((sum, point) => sum + point.count, 0) };
+  }
 
   async signedReports(token: string, requestedDataset?: string,
     requestedPage?: string, requestedPageSize?: string): Promise<ReviewSignedReportsResponse> {

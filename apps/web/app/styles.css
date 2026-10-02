@@ -923,4 +923,5 @@ input, select, textarea { touch-action: manipulation; }
 .review-detail dd { margin: .15rem 0 0; overflow-wrap: anywhere; }
 .review-detail article { padding-block: .75rem; border-top: 1px solid var(--border-color, #ced4da); }
 .review-detail img, .review-detail audio { display: block; max-width: 100%; margin-top: .75rem; }
+.review-volume-chart { display: block; width: 100%; max-width: 720px; height: auto; margin-block: 1rem; }
 .review-pagination { justify-content: flex-start; }
