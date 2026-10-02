@@ -32,6 +32,7 @@ test("signed inspection applies amendments and withholds unrestricted content", 
       corrected_value: { id: "old", value_integer: 4 }, sequence: 1 }];
     if (sql.includes("from clinical.report_note note") || sql.includes("from clinical.report_photo_note note") ||
         sql.includes("from clinical.report_audio_note note")) return [];
+    if (sql.includes("from clinical.review_item item")) return [];
     throw new Error(`unexpected query ${sql}`);
   } };
   const service = new ReviewService({ transaction: async (level, callback) =>
@@ -198,6 +199,7 @@ test("claim requires review-all, CSRF, current unassigned version, and replays o
     await prior;
     try { return await work(manager); } finally { release(); }
   }, query: async (sql) =>
+    sql.includes("from clinical.review_progress_history") ? [] :
     sql.includes("from clinical.review_assignment_history") ? history.map((event) => ({
       ...event, assigned_at: "2026-10-02T10:00:00Z" })) : [{ id: "item-a", report_id: "report-a",
       criterion_id: "criterion-a", priority: "high", status: item.status,

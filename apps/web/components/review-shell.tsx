@@ -2,7 +2,7 @@
 
 import type { ClinicianSession, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
-  ReviewEligibleReviewer, ReportNote } from "@open-triage/contracts";
+  ReviewEligibleReviewer, ReviewOutcomeOption, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -43,6 +43,14 @@ export function ReviewShell({ session, language, online }: {
   const [routeDrafts, setRouteDrafts] = useState<Record<string, { route: ReviewCriterionRoute["route"]; namedUserId: string | null }>>({});
   const [assignmentTarget, setAssignmentTarget] = useState("");
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
+  const [outcomes, setOutcomes] = useState<ReviewOutcomeOption[]>([]);
+  const [outcomeId, setOutcomeId] = useState("");
+  const [completionOutcomeId, setCompletionOutcomeId] = useState("");
+  const [outcomeLabel, setOutcomeLabel] = useState("");
+  const [outcomeMeaning, setOutcomeMeaning] = useState("");
+  const [outcomeActive, setOutcomeActive] = useState(true);
+  const [workflowError, setWorkflowError] = useState<"conflict" | "unavailable" | null>(null);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [from, setFrom] = useState(() => dateString(new Date(Date.now() - 29 * 86400000)));
@@ -188,6 +196,54 @@ export function ReviewShell({ session, language, online }: {
     } catch { setAssignmentMessage(t("review.assignmentChanged")); setRefresh((value) => value + 1); }
   }
 
+  useEffect(() => {
+    if (!online) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl("/api/review/outcomes");
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      if (!controller.signal.aborted) setOutcomes(await response.json() as ReviewOutcomeOption[]);
+    }).catch(() => { if (!controller.signal.aborted) setOutcomes([]); });
+    return () => controller.abort();
+  }, [online, refresh]);
+
+  async function progress(item: ReviewItemDetail, status: "in-review" | "awaiting-clinician" | "completed") {
+    const url = apiRequestUrl(`/api/review/items/${item.id}/progress`);
+    if (!url || workflowBusy) return;
+    setWorkflowBusy(true); setWorkflowError(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: item.version,
+          dataset, status, ...(status === "completed" ? { outcomeOptionId: completionOutcomeId } : {}) }) }));
+      if (response.status === 409) { setWorkflowError("conflict"); setRefresh((value) => value + 1); return; }
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewItemDetail;
+      setItemDetail(next); setSelectedItem(next); setRefresh((value) => value + 1);
+    } catch { setWorkflowError("unavailable"); }
+    finally { setWorkflowBusy(false); }
+  }
+
+  async function saveOutcome() {
+    const url = apiRequestUrl("/api/review/outcomes");
+    if (!url || workflowBusy) return;
+    const current = outcomes.find((option) => option.id === outcomeId);
+    setWorkflowBusy(true); setWorkflowError(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(),
+          ...(current ? { optionId: current.id, expectedRevision: current.revision } : {}),
+          label: outcomeLabel, meaning: outcomeMeaning, active: outcomeActive }) }));
+      if (response.status === 409) { setWorkflowError("conflict"); setRefresh((value) => value + 1); return; }
+      if (!response.ok) throw new Error(String(response.status));
+      setOutcomeId(""); setOutcomeLabel(""); setOutcomeMeaning(""); setOutcomeActive(true);
+      setRefresh((value) => value + 1);
+    } catch { setWorkflowError("unavailable"); }
+    finally { setWorkflowBusy(false); }
+  }
+
   async function claim(item: ReviewQueueItem) {
     const url = apiRequestUrl(`/api/review/items/${item.id}/claim`);
     if (!url || claiming) return;
@@ -275,7 +331,9 @@ export function ReviewShell({ session, language, online }: {
           </select></label>
           <label>{t("review.status")} <select value={status} onChange={(event) => { setStatus(event.target.value); setQueuePage(1); }}>
             <option value="">{t("review.all")}</option><option value="new">{t("review.new")}</option>
-            <option value="in-review">{t("review.inReview")}</option><option value="resolved">{t("review.resolved")}</option>
+            <option value="in-review">{t("review.inReview")}</option>
+            <option value="awaiting-clinician">{t("review.awaitingClinician")}</option>
+            <option value="completed">{t("review.completed")}</option>
           </select></label>
           <label>{t("review.criterion")} <input value={criterion} onChange={(event) => { setCriterion(event.target.value); setQueuePage(1); }} /></label>
           <label>{t("review.from")} <input type="date" value={queueFrom} onChange={(event) => { setQueueFrom(event.target.value); setQueuePage(1); }} /></label>
@@ -283,12 +341,14 @@ export function ReviewShell({ session, language, online }: {
         </div>
         {queueError && <p role="alert">{t("review.queueUnavailable")}</p>}
         {claimError && <p role="alert">{t(claimError === "conflict" ? "review.claimConflict" : "review.claimUnavailable")}</p>}
+        {workflowError && <p role="alert">{t(workflowError === "conflict" ? "review.workflowConflict" : "review.workflowUnavailable")}</p>}
         {queue && <><p>{t("review.queueCount", { count: queue.total })}</p>
           {queue.items.length === 0 ? <p>{t("review.queueEmpty")}</p> : <table><thead><tr>
             <th>{t("review.priority")}</th><th>{t("review.status")}</th><th>{t("review.criterion")}</th>
             <th>{t("review.report")}</th><th>{t("review.age")}</th><th>{t("review.assignee")}</th></tr></thead><tbody>
             {queue.items.map((item) => <tr key={item.id} className={`review-priority-${item.priority}`}>
-              <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status}`)}</td>
+              <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
+                {item.outcome && <div>{item.outcome.label}</div>}</td>
               <td><code>{item.criterionId}</code><div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
               <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); }}><code>{item.reportId}</code></button></td>
               <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
@@ -335,6 +395,26 @@ export function ReviewShell({ session, language, online }: {
         {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
             {work.lastError && <p>{work.lastError}</p>}</li>)}</ul>}</section>}
+      {session.capabilities?.includes("review:admin") && <section aria-labelledby="review-outcomes-heading">
+        <h2 id="review-outcomes-heading">{t("review.outcomes")}</h2>
+        <p>{t("review.outcomeHistoryHelp")}</p>
+        <label>{t("review.outcomeChoice")} <select value={outcomeId} onChange={(event) => {
+          const selected = outcomes.find((option) => option.id === event.target.value);
+          setOutcomeId(event.target.value); setOutcomeLabel(selected?.label ?? "");
+          setOutcomeMeaning(selected?.meaning ?? ""); setOutcomeActive(selected?.active ?? true);
+        }}><option value="">{t("review.newOutcome")}</option>
+          {outcomes.map((option) => <option key={option.id} value={option.id}>
+            {option.label} (v{option.revision}{option.active ? "" : `, ${t("review.retired")}`})
+          </option>)}</select></label>
+        <label>{t("review.outcomeLabel")} <input value={outcomeLabel} maxLength={120}
+          onChange={(event) => setOutcomeLabel(event.target.value)} /></label>
+        <label>{t("review.outcomeMeaning")} <textarea value={outcomeMeaning} maxLength={1000}
+          onChange={(event) => setOutcomeMeaning(event.target.value)} /></label>
+        <label><input type="checkbox" checked={outcomeActive} onChange={(event) => setOutcomeActive(event.target.checked)} />
+          {t("review.outcomeActive")}</label>
+        <button type="button" disabled={workflowBusy || !outcomeLabel.trim() || !outcomeMeaning.trim()}
+          onClick={() => void saveOutcome()}>{t("review.saveOutcome")}</button>
+      </section>}
       <ReviewAnalysisBuilder key={`${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
         from={from} to={to} language={language} refresh={refresh}
         csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
@@ -364,6 +444,10 @@ export function ReviewShell({ session, language, online }: {
         {detail && <>
           <h2>{t("review.detail")}: <code>{detail.id}</code></h2>
           <p>{t("review.amendments", { count: detail.amendmentSequence })}</p>
+          {!!detail.reviewItems?.length && <section><h3>{t("review.reportItems")}</h3><ul>
+            {detail.reviewItems.map((item) => <li key={item.id}><code>{item.criterionId}</code>: {t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
+              {item.outcome && <> — {item.outcome.label}: {item.outcome.meaning}</>}</li>)}
+          </ul></section>}
           {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
             {itemDetail?.recoveryReason && <p role="alert">{t("review.recovered")}</p>}
             <p>{t("review.assignee")}: {itemDetail?.assigneeId ?
@@ -385,6 +469,34 @@ export function ReviewShell({ session, language, online }: {
                 <ol>{itemDetail.assignmentHistory.map((event) => <li key={event.commandId}>
                   {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.assignedAt))}: {t(`review.assignmentAction.${event.action ?? "claimed"}`)} {event.assigneeId === session.user.id ? t("review.assignedToYou") : event.assigneeId ? <code>{event.assigneeId}</code> : t("review.unassigned")}
                 </li>)}</ol>}</section>}
+            {itemDetail && <><p>{t("review.status")}: {t(`review.${itemDetail.status === "in-review" ? "inReview" : itemDetail.status === "awaiting-clinician" ? "awaitingClinician" : itemDetail.status}`)}</p>
+              {itemDetail.outcome && <p>{t("review.outcomeChoice")}: {itemDetail.outcome.label} — {itemDetail.outcome.meaning}</p>}
+              <section><h4>{t("review.progressHistory")}</h4>
+                {!itemDetail.progressHistory?.length ? <p>{t("review.noProgressHistory")}</p> :
+                  <ol>{itemDetail.progressHistory.map((event) => <li key={event.commandId}>
+                    {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}: {t(`review.${event.status === "in-review" ? "inReview" : event.status === "awaiting-clinician" ? "awaitingClinician" : event.status}`)}
+                    {event.outcome && <> — {event.outcome.label}: {event.outcome.meaning}</>}
+                    {" · "}<code>{event.actorId}</code>
+                  </li>)}</ol>}</section>
+              {itemDetail.assigneeId === session.user.id && <div className="review-controls">
+                {itemDetail.status === "new" && <button type="button" disabled={workflowBusy}
+                  onClick={() => void progress(itemDetail, "in-review")}>{t("review.startReview")}</button>}
+                {itemDetail.status === "in-review" && <button type="button" disabled={workflowBusy}
+                  onClick={() => void progress(itemDetail, "awaiting-clinician")}>{t("review.awaitClinician")}</button>}
+                {itemDetail.status === "awaiting-clinician" && <button type="button" disabled={workflowBusy}
+                  onClick={() => void progress(itemDetail, "in-review")}>{t("review.resumeReview")}</button>}
+                {["in-review", "awaiting-clinician", "completed"].includes(itemDetail.status) && <>
+                  <label>{t("review.outcomeChoice")} <select value={completionOutcomeId}
+                    onChange={(event) => setCompletionOutcomeId(event.target.value)}>
+                    <option value="">{t("review.chooseOutcome")}</option>
+                    {outcomes.filter((option) => option.active).map((option) =>
+                      <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+                  <button type="button" disabled={workflowBusy || !completionOutcomeId}
+                    onClick={() => void progress(itemDetail, "completed")}>
+                    {t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.complete")}</button>
+                </>}
+              </div>}
+            </>}
             <p>{t("review.criterion")}: <code>{selectedItem.criterionId}</code></p>
             <ul>{selectedItem.findings.map((finding, index) => <li key={index}>
               {finding.message} — {finding.primaryTarget.elementId}

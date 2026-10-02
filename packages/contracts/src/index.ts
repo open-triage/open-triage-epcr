@@ -145,7 +145,8 @@ export interface ReviewQueueItem {
   reportId: string;
   criterionId: string;
   priority: "high" | "medium" | "low";
-  status: "new" | "in-review" | "resolved";
+  status: "new" | "in-review" | "awaiting-clinician" | "completed";
+  outcome: { optionId: string; revision: number; label: string; meaning: string } | null;
   assigneeId: string | null;
   version: number;
   recoveryReason?: string | null;
@@ -196,12 +197,32 @@ export interface AssignReviewItemCommand {
 
 export interface ReviewItemDetail extends ReviewQueueItem {
   assignmentHistory: ReviewAssignmentEvent[];
+  progressHistory: Array<{ commandId: string; actorId: string; itemVersion: number;
+    status: ReviewQueueItem["status"]; outcome: ReviewQueueItem["outcome"]; recordedAt: string }>;
 }
 
 export interface ClaimReviewItemCommand {
   commandId: string;
   expectedVersion: number;
   dataset: "real" | "synthetic";
+}
+
+export interface ReviewProgressCommand extends ClaimReviewItemCommand {
+  status: "in-review" | "awaiting-clinician" | "completed";
+  outcomeOptionId?: string;
+}
+
+export interface ReviewOutcomeOption {
+  id: string; revision: number; label: string; meaning: string; active: boolean;
+}
+
+export interface ReviewOutcomeCommand {
+  commandId: string;
+  optionId?: string;
+  expectedRevision?: number;
+  label: string;
+  meaning: string;
+  active: boolean;
 }
 
 export interface ReviewQueueResponse {
@@ -261,6 +282,8 @@ export interface ReviewSignedReport {
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
   notes: ReportNote[];
+  reviewItems?: Array<{ id: string; criterionId: string; status: ReviewQueueItem["status"];
+    outcome: ReviewQueueItem["outcome"] }>;
 }
 
 export interface ReviewVolumeDefinition {

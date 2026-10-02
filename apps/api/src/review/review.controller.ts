@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 
@@ -131,5 +131,27 @@ export class ReviewController {
     @Body() command: AssignReviewItemCommand, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
     return this.review.assign(bearerToken(authorization, cookie), id, command, csrfToken);
+  }
+  @Post("items/:id/progress")
+  @Header("Cache-Control", "no-store, private")
+  progress(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: ReviewProgressCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
+    return this.review.progress(bearerToken(authorization, cookie), id, command, csrfToken);
+  }
+
+  @Get("outcomes")
+  @Header("Cache-Control", "no-store, private")
+  outcomes(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewOutcomeOption[]> {
+    return this.review.outcomes(bearerToken(authorization, cookie));
+  }
+
+  @Post("outcomes")
+  @Header("Cache-Control", "no-store, private")
+  configureOutcome(@Body() command: ReviewOutcomeCommand,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+    @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewOutcomeOption> {
+    return this.review.configureOutcome(bearerToken(authorization, cookie), command, csrfToken);
   }
 }

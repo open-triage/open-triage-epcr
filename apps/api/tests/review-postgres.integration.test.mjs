@@ -100,17 +100,22 @@ integrationTest("Review operational time uses offset-aware signed endpoints and 
   assert.equal((await service.analysis("unused", definition)).groups[0].summary, 21);
 });
 
+async function ensureReviewWorkflowSchema(client) {
+  for (const [table, file] of [
+    ["clinical.review_item", "20261002160000_review_sign_to_queue.sql"],
+    ["clinical.review_assignment_history", "20261002170000_review_claim_item.sql"],
+    ["clinical.review_criterion_route", "20261002200000_review_assignment_routing.sql"],
+    ["clinical.review_outcome_option", "20261002210000_review_completion.sql"],
+  ]) if (!(await client.query("select to_regclass($1) relation", [table])).rows[0].relation)
+    await client.query(readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), "utf8"));
+}
+
 integrationTest("Review claim stores one versioned assignment and immutable history in PostgreSQL", async (t) => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   t.after(async () => { await client.query("rollback"); await client.end(); });
   await client.query("begin");
-  if (!(await client.query("select to_regclass('clinical.review_item') as relation")).rows[0].relation)
-    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002160000_review_sign_to_queue.sql", import.meta.url), "utf8"));
-  if (!(await client.query("select to_regclass('clinical.review_assignment_history') as relation")).rows[0].relation)
-    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002170000_review_claim_item.sql", import.meta.url), "utf8"));
-  if (!(await client.query("select to_regclass('clinical.review_criterion_route') as relation")).rows[0].relation)
-    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002200000_review_assignment_routing.sql", import.meta.url), "utf8"));
+  await ensureReviewWorkflowSchema(client);
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     where r.status='signed' and exists (select 1 from app_identity.installation_owner owner
@@ -151,12 +156,7 @@ integrationTest("Review administration reassigns eligible users and recovers dis
   await client.connect();
   t.after(async () => { await client.query("rollback"); await client.end(); });
   await client.query("begin");
-  for (const [table, file] of [
-    ["clinical.review_item", "20261002160000_review_sign_to_queue.sql"],
-    ["clinical.review_assignment_history", "20261002170000_review_claim_item.sql"],
-    ["clinical.review_criterion_route", "20261002200000_review_assignment_routing.sql"],
-  ]) if (!(await client.query("select to_regclass($1) relation", [table])).rows[0].relation)
-    await client.query(readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), "utf8"));
+  await ensureReviewWorkflowSchema(client);
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     where r.status='signed' and exists (select 1 from app_identity.installation_owner owner
@@ -230,12 +230,7 @@ integrationTest("Review criterion routing is configured without validation-write
   await client.connect();
   t.after(async () => { await client.query("rollback"); await client.end(); });
   await client.query("begin");
-  for (const [table, file] of [
-    ["clinical.review_item", "20261002160000_review_sign_to_queue.sql"],
-    ["clinical.review_assignment_history", "20261002170000_review_claim_item.sql"],
-    ["clinical.review_criterion_route", "20261002200000_review_assignment_routing.sql"],
-  ]) if (!(await client.query("select to_regclass($1) relation", [table])).rows[0].relation)
-    await client.query(readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), "utf8"));
+  await ensureReviewWorkflowSchema(client);
   const criterion = (await client.query(`select v.organization_id,v.created_by,
       (rule.value->>'ruleId')::uuid criterion_id
     from validation.version v cross join lateral jsonb_array_elements(v.compiled_bundle->'rules') rule(value)
@@ -308,8 +303,10 @@ integrationTest("Review signed-report list is scoped by current organization, au
 integrationTest("Review signed detail is server-redacted and directly scoped in PostgreSQL", async (t) => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
-  t.after(() => client.end());
-  await client.query("set role open_triage_api_runtime");
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  await ensureReviewWorkflowSchema(client);
+  await client.query("set local role open_triage_api_runtime");
   const candidate = (await client.query(`select r.id, r.organization_id, r.documenting_user_id, r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id = r.id
     where r.status = 'signed' limit 1`)).rows[0];
