@@ -917,4 +917,10 @@ input, select, textarea { touch-action: manipulation; }
 .review-shell table { width: 100%; border-collapse: collapse; margin-block: 1rem; }
 .review-shell th, .review-shell td { text-align: left; padding: .75rem; border-bottom: 1px solid var(--border-color, #ced4da); }
 .review-shell code { overflow-wrap: anywhere; }
+.review-detail { margin-top: 2rem; padding: 1.25rem; border: 1px solid var(--border-color, #ced4da); border-radius: .5rem; }
+.review-detail dl { display: grid; gap: .65rem; }
+.review-detail dt { font-weight: 600; }
+.review-detail dd { margin: .15rem 0 0; overflow-wrap: anywhere; }
+.review-detail article { padding-block: .75rem; border-top: 1px solid var(--border-color, #ced4da); }
+.review-detail img, .review-detail audio { display: block; max-width: 100%; margin-top: .75rem; }
 .review-pagination { justify-content: flex-start; }
