@@ -112,12 +112,13 @@ test("signed report query applies organization, user, signature and dataset scop
 test("volume validates filters, binds both scope dimensions, and suppresses stale counts", async () => {
   const calls = [];
   let stale = false;
+  let partial = false;
   let current = session(["review:self"]);
   const database = { async query(sql, params) {
     calls.push({ sql, params });
     if (sql.includes("projection_health")) return [{ observed_at: "2026-10-02T12:00:00Z",
       oldest_backlog_age_seconds: stale ? 301 : null, persistent_failure_count: 0, retrying_count: 0,
-      stale_run_count: 0, last_run_status: "succeeded", is_read_only_replica: false,
+      stale_run_count: 0, last_run_status: partial ? "partial" : "succeeded", is_read_only_replica: false,
       replay_lag_seconds: null }];
     return [{ date: "2026-10-01", count: "2" }, { date: "2026-10-02", count: "0" }];
   } };
@@ -141,6 +142,9 @@ test("volume validates filters, binds both scope dimensions, and suppresses stal
   assert.equal(withheld.total, null);
   assert.deepEqual(withheld.points, []);
   assert.equal(calls.length, before + 1);
+  stale = false;
+  partial = true;
+  assert.equal((await service.volume("token", "real", "2026-10-01", "2026-10-02")).total, null);
   await assert.rejects(service.volume("token", "both", "2026-10-01", "2026-10-02"), BadRequestException);
   await assert.rejects(service.volume("token", "real", "2026-02-30", "2026-10-02"), BadRequestException);
   await assert.rejects(service.volume("token", "real", "2026-10-02", "2026-10-01"), BadRequestException);

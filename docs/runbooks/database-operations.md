@@ -37,6 +37,15 @@ place.
 
 ## Reporting replica role test
 
+The Review volume API may use `REVIEW_REPORTING_REPLICA_DATABASE_URL` to query
+the physical standby. Provision this URL with an API-runtime credential that
+inherits `open_triage_api_runtime`; the API's narrow analytical view and
+projection-health grants are separate from general analyst credentials. When
+unset, Review volume queries the primary `DATABASE_URL`. The API withholds
+counts if replica replay or the projection exceeds the five-minute freshness
+target, or projection has failed. `REPORTING_REPLICA_DATABASE_URL` remains the
+independent analyst verification credential below.
+
 Create named login roles through the identity broker, grant exactly one portable
 `NOLOGIN` analyst role, and route them only through the query gateway. On every
 credential issuance and replica replacement run:

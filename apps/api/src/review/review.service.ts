@@ -36,7 +36,7 @@ export class ReviewService implements OnModuleDestroy {
   }
 
   private async analyticsDatabase(): Promise<DataSource> {
-    const url = process.env.REPORTING_REPLICA_DATABASE_URL;
+    const url = process.env.REVIEW_REPORTING_REPLICA_DATABASE_URL;
     if (!url) return this.database;
     if (!this.reportingInitialization) {
       const reportingDatabase = new DataSource({ type: "postgres", url, synchronize: false,
@@ -71,7 +71,7 @@ export class ReviewService implements OnModuleDestroy {
     if (!health) throw new Error("Projection health is unavailable");
     const backlog = health.oldest_backlog_age_seconds === null ? null : Number(health.oldest_backlog_age_seconds);
     const lag = health.replay_lag_seconds === null ? null : Number(health.replay_lag_seconds);
-    const replicaConfigured = !!process.env.REPORTING_REPLICA_DATABASE_URL;
+    const replicaConfigured = !!process.env.REVIEW_REPORTING_REPLICA_DATABASE_URL;
     const current = Number(health.persistent_failure_count) === 0 &&
       Number(health.retrying_count) === 0 && Number(health.stale_run_count) === 0 &&
       health.last_run_status !== "failed" && health.last_run_status !== "partial" &&

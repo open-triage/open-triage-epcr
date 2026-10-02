@@ -71,6 +71,11 @@ integrationTest("Review volume counts patient reports separately within incident
   t.after(async () => { await client.query("rollback"); await client.end(); });
   await client.query("begin");
   await client.query("select analytics_private.ensure_partitions(date '2026-10-01', date '2026-10-03')");
+  const privileges = (await client.query(`select
+    has_table_privilege('open_triage_api_runtime', 'analytics.review_volume_source', 'select') as api_source,
+    has_table_privilege('open_triage_analyst', 'analytics.review_volume_source', 'select') as analyst_source,
+    has_table_privilege('open_triage_api_runtime', 'analytics_private.epcr', 'select') as api_private`)).rows[0];
+  assert.deepEqual(privileges, { api_source: true, analyst_source: false, api_private: false });
   const organizationId = randomUUID();
   const otherOrganizationId = randomUUID();
   const userId = randomUUID();
