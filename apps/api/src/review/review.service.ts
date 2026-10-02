@@ -51,13 +51,33 @@ export class ReviewService implements OnModuleDestroy {
     return this.reportingInitialization;
   }
 
-  analysisFields(token: string): Promise<ReviewAnalysisField[]> {
-    return this.sessions.get(token).then((session) => {
-      reviewScope(session);
-      return [...reviewFields, ...repeatedReviewFields].map((field) => ({ ...field,
-        operations: field.kind === "categorical" ? ["distribution"] :
-          ["mean", "median", "minimum", "maximum"] }));
-    });
+  async analysisFields(token: string): Promise<ReviewAnalysisField[]> {
+    const scope = reviewScope(await this.sessions.get(token));
+    const custom = await this.database.query<Array<{ custom_definition_id: string; title: string;
+      datatype: string; recurrence: string; identifying: boolean; semantic_count: string;
+      datatype_count: string;
+      recurrence_count: string; privacy_count: string }>>(`
+      select custom_definition_id, title, datatype, recurrence, identifying,
+        semantic_count, datatype_count, recurrence_count, privacy_count
+      from analytics.review_custom_dictionary
+      where organization_id = $1::uuid and ($2::boolean or not identifying)
+      order by title, custom_definition_id`, [scope.organizationId, scope.identifying]);
+    return [...[...reviewFields, ...repeatedReviewFields].map((field) => ({ ...field,
+      operations: field.kind === "categorical" ? ["distribution" as const] :
+        ["mean" as const, "median" as const, "minimum" as const, "maximum" as const] })),
+    ...custom.map((row): ReviewAnalysisField => {
+      const compatible = Number(row.semantic_count) === 1 && Number(row.datatype_count) === 1 && Number(row.privacy_count) === 1 &&
+        Number(row.recurrence_count) === 1 && row.recurrence === "single";
+      const numeric = row.datatype === "number";
+      const categorical = ["string", "coded", "boolean", "date", "dateTime"].includes(row.datatype);
+      const operations: ReviewAnalysisField["operations"] = compatible && numeric
+        ? ["mean", "median", "minimum", "maximum"] : compatible && categorical
+          ? ["distribution"] : [];
+      return { id: row.custom_definition_id, label: row.title, source: "custom",
+        kind: numeric ? "numeric" : "categorical", unit: null, operations,
+        ...(operations.length ? {} : { unsupportedReason: !compatible
+          ? "Historical definitions differ or this field repeats" : "This value type has no supported chart operation" }) };
+    })];
   }
 
   async analysis(token: string, input: ReviewAnalysisDefinition): Promise<ReviewAnalysisResult> {
@@ -70,17 +90,17 @@ export class ReviewService implements OnModuleDestroy {
       (dataset !== "real" && dataset !== "synthetic")) {
       throw new BadRequestException("Invalid Review analysis period or dataset");
     }
-    const field = [...reviewFields, ...repeatedReviewFields].find((candidate) => candidate.id === input.fieldId);
-    const groupField = input.groupBy ? reviewFields.find((candidate) => candidate.id === input.groupBy) : undefined;
+    const fields = await this.analysisFields(token);
+    const field = fields.find((candidate) => candidate.id === input.fieldId);
+    const groupField = input.groupBy ? fields.find((candidate) => candidate.id === input.groupBy) : undefined;
     const filter = input.filters.field;
-    const filterField = filter ? [...reviewFields, ...repeatedReviewFields].find((candidate) => candidate.id === filter.id) : undefined;
+    const filterField = filter ? fields.find((candidate) => candidate.id === filter.id) : undefined;
     if (!field || (input.groupBy && (!groupField || groupField.kind !== "categorical")) ||
       (filter && (!filterField || filterField.kind !== "categorical" ||
         typeof filter.value !== "string" || !filter.value || filter.value.length > 256))) {
       throw new BadRequestException("Review field is not permitted");
     }
-    if (field.kind === "categorical" ? input.operation !== "distribution" :
-      !["mean", "median", "minimum", "maximum"].includes(input.operation)) {
+    if (!field.operations.includes(input.operation)) {
       throw new BadRequestException("Unsupported Review field operation");
     }
     if ("repeating" in field && field.repeating && field.kind === "numeric" &&
@@ -92,6 +112,9 @@ export class ReviewService implements OnModuleDestroy {
     if (input.unit && (field.id !== "eMedications.05" || typeof input.unit !== "string" ||
       !/^[A-Za-z0-9.\[\]{}\/\-]{1,40}$/.test(input.unit)))
       throw new BadRequestException("Invalid Review analysis unit");
+    if ((field.source === "custom" && (groupField || filterField)) ||
+      groupField?.source === "custom" || filterField?.source === "custom")
+      throw new BadRequestException("Custom field grouping and filtering are not yet supported");
     const definition: ReviewAnalysisDefinition = { fieldId: field.id, operation: input.operation,
       ...(groupField ? { groupBy: groupField.id } : {}),
       ...(input.reducer ? { reducer: input.reducer } : {}),
@@ -118,8 +141,7 @@ export class ReviewService implements OnModuleDestroy {
     const freshness = { observedAt: new Date(health.observed_at).toISOString(), targetSeconds: 300 as const,
       status: current ? "current" as const : "stale" as const,
       oldestBacklogSeconds: backlog, replicaLagSeconds: lag };
-    const metadata: ReviewAnalysisField = { ...field,
-      operations: field.kind === "categorical" ? ["distribution"] : ["mean", "median", "minimum", "maximum"] };
+    const metadata: ReviewAnalysisField = { ...field };
     const population = { unit: "patient-report" as const, scope: scope.reports,
       organizationId: scope.organizationId, signedOnly: true as const };
     if (!current) return { definition, field: metadata, population, freshness, groups: [] };
@@ -154,6 +176,67 @@ export class ReviewService implements OnModuleDestroy {
         throw new BadRequestException("Select a medication dosage unit");
       const reduced = reduceRepeated(rows, definition, unit);
       return { definition, field: { ...metadata, unit }, population, freshness, ...reduced };
+    }
+    if (field.source === "custom") {
+      const parameters = [from, to, scope.organizationId, dataset === "synthetic",
+        scope.reports === "all", scope.userId, field.id];
+      const source = `from analytics.review_volume_source report
+        left join analytics.review_custom_field_source value
+          on value.report_id = report.report_id and value.custom_definition_id = $7::uuid
+        where report.reporting_date between $1::date and $2::date
+          and report.organization_id = $3::uuid and report.synthetic = $4::boolean
+          and ($5::boolean or report.documenting_user_id = $6::uuid)`;
+      const scalar = `case when value.absence_kind is not null or value.not_value_code is not null
+        or value.pertinent_negative_code is not null then null else case value.value_kind
+        when 'text' then value.value_text when 'coded' then value.code
+        when 'boolean' then value.value_boolean::text
+        when 'date' then value.value_date::text when 'datetime' then value.value_datetime::text
+        else null end end`;
+      if (field.kind === "categorical") {
+        const rows = await database.query<Array<{ field_value: string | null; absent: boolean;
+          count: string }>>(`select ${scalar} as field_value,
+          (value.absence_kind is not null or value.not_value_code is not null
+            or value.pertinent_negative_code is not null) as absent, count(*)::text as count
+          ${source} group by 1, 2 order by 1 nulls first limit 501`, parameters);
+        if (rows.length > 500) throw new BadRequestException("Review analysis has too many categories");
+        const group = { group: null, denominator: 0, missing: 0, absent: 0,
+          values: [] as ReviewAnalysisResult["groups"][number]["values"], summary: null };
+        for (const row of rows) {
+          const count = Number(row.count);
+          group.denominator += count;
+          if (row.field_value === null) {
+            if (row.absent) group.absent += count; else group.missing += count;
+          } else {
+            if (row.field_value.length > 256) throw new BadRequestException("Custom category exceeds chart limits");
+            group.values.push({ value: row.field_value, count, percentage: 0 });
+          }
+        }
+        for (const value of group.values)
+          value.percentage = group.denominator ? value.count * 100 / group.denominator : 0;
+        return { definition, field: metadata, population, freshness, groups: [group] };
+      }
+      const numericValue = `case when value.absence_kind is not null or value.not_value_code is not null
+        or value.pertinent_negative_code is not null then null
+        else coalesce(value.value_numeric, value.value_integer::numeric) end`;
+      const [row] = await database.query<Array<{ denominator: string; missing: string;
+        absent: string; mean: string | null; median: string | null;
+        minimum: string | null; maximum: string | null }>>(`
+        select count(*)::text as denominator,
+          count(*) filter (where ${numericValue} is null
+            and value.absence_kind is null and value.not_value_code is null
+            and value.pertinent_negative_code is null)::text as missing,
+          count(*) filter (where value.absence_kind is not null or value.not_value_code is not null
+            or value.pertinent_negative_code is not null)::text as absent,
+          avg(${numericValue})::text as mean,
+          percentile_cont(0.5) within group (order by (${numericValue})::double precision)::text as median,
+          min(${numericValue})::text as minimum,
+          max(${numericValue})::text as maximum
+        ${source}`, parameters);
+      if (!row) throw new Error("Custom Review aggregate is unavailable");
+      return { definition, field: metadata, population, freshness,
+        groups: [{ group: null, denominator: Number(row.denominator), missing: Number(row.missing),
+          absent: Number(row.absent), values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null
+            ? null : Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) }] };
     }
     const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
       scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null];

@@ -82,6 +82,27 @@ recorded with a safe error code and a non-zero exit; correct the cause and repea
 
 ## Backfill
 
+### Custom scalar transition (projector 1.2.0)
+
+After deploying migration `20261002190000_review_custom_scalar_analytics.sql` and
+the 1.2.0 projector, rebuild each historical signed-report date range with the
+bounded backfill command below. Use a unique key per range, run it repeatedly
+until `processedCount` is zero, then reconcile the same range. The projector
+reconstructs effective add, replace, and remove amendments from clinical history,
+deletes the old projection in the same transaction, and writes each surviving
+custom value exactly once into `epcr_repeatable_element`. Report-level custom
+rows have null analytical group fields; their clinical root group is unchanged.
+
+Older `additional_elements` and `additional_identifying_elements` JSON may still
+exist on reports awaiting rebuild. Review custom BI reads only the long table,
+so it never unions or counts those JSON copies. Reports awaiting rebuild can
+appear missing for a custom field; the projector version makes reconciliation
+detect them as stale. After backfill, the projector omits custom values from
+the JSON additions. Compare counts by report and custom identity through the
+projector role before retiring the transition. Run the backfill separately for
+real and synthetic report dates as needed; the projector preserves each report's
+dataset classification.
+
 Use a unique, non-clinical job key and an inclusive date range. Each invocation is
 bounded by `ANALYTICS_PROJECTOR_BATCH_SIZE`; invoke it repeatedly until its run
 reports no additional work:

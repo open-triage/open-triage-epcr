@@ -6,7 +6,7 @@ import {
 } from "@open-triage/contracts/quality-rules";
 
 const databaseUrl = process.env.DATABASE_URL;
-const PROJECTOR_VERSION = "1.1.0";
+const PROJECTOR_VERSION = "1.2.0";
 const BATCH_SIZE = Number.parseInt(process.env.ANALYTICS_PROJECTOR_BATCH_SIZE ?? "100", 10);
 const MAX_ATTEMPTS = Number.parseInt(process.env.ANALYTICS_PROJECTOR_MAX_ATTEMPTS ?? "12", 10);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -332,6 +332,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        fv.id as form_version_id,
        fv.version as form_version,
        cr.version as catalog_version,
+       cr.provenance->'customElementDefinitions' as pinned_custom_definitions,
        ss.id as signed_snapshot_id,
        ss.canonical_sha256 as signed_snapshot_sha256,
        ss.signed_at,
@@ -351,7 +352,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        limit 1
      ) date_correction on true
      where r.id = $1 and r.status = 'signed'
-     group by r.id, p.pseudonymous_key, p.pseudonymous_key_version, fv.id, cr.version, ss.id,
+     group by r.id, p.pseudonymous_key, p.pseudonymous_key_version, fv.id, cr.version, cr.provenance, ss.id,
        date_correction.reporting_date, date_correction.reporting_date_source`,
     [reportId]
   );
@@ -404,6 +405,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   }
 
   const elements = [...elementsById.values()];
+  const customDefinitions = new Map((Array.isArray(report.pinned_custom_definitions)
+    ? report.pinned_custom_definitions : []).map((definition) => [definition.id, definition]));
   const quality = evaluateQualityAndNormalization(elements.map((element) => ({
     id: element.id,
     elementId: element.element_id,
@@ -463,8 +466,10 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
     const elementFindings = findingsByOccurrence.get(element.id) ?? [];
     const elementDerived = derivedByOccurrence.get(element.id) ?? null;
     const mapping = mappingByElement.get(element.element_id);
+    const customDefinition = customDefinitions.get(element.element_identity_id);
+    if (!mapping && !customDefinition) throw new Error(`Unmapped element ${element.element_id} has no pinned custom definition`);
     const repeatable = mapping?.analyticalLocation === "repeatable" || (!mapping && element.analytical_repeatable);
-    if (!repeatable) {
+    if (!repeatable && !customDefinition) {
       if (seenWide.has(element.element_id)) throw new Error(`Non-repeatable element ${element.element_id} occurs more than once`);
       seenWide.add(element.element_id);
       if (["null", "pertinent-negative", "absent"].includes(element.value_kind)
@@ -487,12 +492,16 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       continue;
     }
 
-    if (!element.group_instance_id) {
+    if (!element.group_instance_id && !customDefinition) {
       throw new Error(`Repeatable occurrence ${element.id} has no group instance`);
     }
-    const group = groupById.get(element.group_instance_id);
-    if (!group) throw new Error(`Occurrence ${element.id} references missing group ${element.group_instance_id}`);
-    const analyticalGroupPath = mapping?.groupPath ?? [group.group_id];
+    const clinicalGroup = element.group_instance_id ? groupById.get(element.group_instance_id) : null;
+    if (element.group_instance_id && !clinicalGroup) throw new Error(`Occurrence ${element.id} references missing group ${element.group_instance_id}`);
+    // The clinical report root is a storage container, not an analytical recurrence.
+    const reportLevel = !!customDefinition && !customDefinition.correlatesTo && !customDefinition.groupDefinitionId;
+    const group = reportLevel ? null : clinicalGroup;
+    if (!group && !reportLevel) throw new Error(`Occurrence ${element.id} has no analytical group`);
+    const analyticalGroupPath = mapping?.groupPath ?? (group ? [group.group_id] : []);
     const mappedGroup = [...analyticalGroupPath].reverse().find((groupId) => timeByGroup.has(groupId));
     const timeMapping = mappedGroup ? timeByGroup.get(mappedGroup) : null;
     const sourceGroupId =
@@ -510,15 +519,18 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       element_identity_id: element.element_identity_id,
       element_id: element.element_id,
       element_occurrence_id: element.id,
-      group_id: group.group_id,
-      group_instance_id: group.id,
-      parent_group_instance_id: group.parent_group_instance_id,
+      group_id: group?.group_id ?? null,
+      group_instance_id: group?.id ?? null,
+      parent_group_instance_id: group?.parent_group_instance_id ?? null,
       group_path: analyticalGroupPath,
-      instance_path: instancePath(groupById, group.id),
-      group_ordinal: group.ordinal,
+      instance_path: group ? instancePath(groupById, group.id) : [],
+      group_ordinal: group?.ordinal ?? null,
       element_ordinal: element.ordinal,
       correlation_id: element.correlation_id,
-      group_correlation_id: group.correlation_id,
+      group_correlation_id: group?.correlation_id ?? null,
+      is_custom: !!customDefinition,
+      custom_definition_id: customDefinition ? element.element_identity_id : null,
+      custom_definition: customDefinition ? JSON.stringify(customDefinition) : null,
       value_kind: element.value_kind,
       value_text: element.value_text,
       value_integer: element.value_integer,
@@ -547,9 +559,9 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       clinical_time_element_id: timeElement?.element_id ?? null,
       clinical_utc_offset_minutes: timeElement?.value_utc_offset_minutes ?? null,
       clinical_time_precision: timeElement?.value_precision ?? null,
-      documented_time: element.documented_time ?? group.documented_time,
+      documented_time: element.documented_time ?? group?.documented_time ?? null,
       documented_utc_offset_minutes:
-        element.documented_utc_offset_minutes ?? group.documented_utc_offset_minutes,
+        element.documented_utc_offset_minutes ?? group?.documented_utc_offset_minutes ?? null,
       documented_time_precision: element.documented_precision,
       server_received_time: element.server_received_time,
       normalized_numeric: elementDerived?.derivedNumeric ?? null,

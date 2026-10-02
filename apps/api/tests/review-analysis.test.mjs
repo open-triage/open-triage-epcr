@@ -26,6 +26,7 @@ test("Review distribution preserves missing, absence, and report denominators", 
   const queries = [];
   const service = new ReviewService({ query: async (sql, parameters) => {
     queries.push({ sql, parameters });
+    if (sql.includes("review_custom_dictionary")) return [];
     if (sql.includes("projection_health")) return [health];
     return [
       { group_value: null, field_value: null, absent: false, count: "2" },
@@ -43,10 +44,11 @@ test("Review distribution preserves missing, absence, and report denominators", 
     values: [{ value: "A", count: 3, percentage: 37.5 },
       { value: "B", count: 2, percentage: 25 }], summary: null });
   assert.equal(result.population.scope, "own");
-  assert.deepEqual(queries[1].parameters.slice(2), [session.organization.id, true, false,
+  const analysisQuery = queries.find(({ sql }) => sql.includes("review_field_source"));
+  assert.deepEqual(analysisQuery.parameters.slice(2), [session.organization.id, true, false,
     session.user.id, "eSituation.11", "eDisposition.30", "eSituation.09", "C"]);
-  assert.match(queries[1].sql, /source.organization_id = \$3::uuid/);
-  assert.match(queries[1].sql, /limit 501/);
+  assert.match(analysisQuery.sql, /source.organization_id = \$3::uuid/);
+  assert.match(analysisQuery.sql, /limit 501/);
 });
 
 test("Review numeric summaries retain units and null values", async () => {
@@ -85,6 +87,7 @@ test("repeated numeric analysis requires a reducer and keeps the scoped source q
   const queries = [];
   const service = new ReviewService({ query: async (sql, parameters) => {
     queries.push({ sql, parameters });
+    if (sql.includes("review_custom_dictionary")) return [];
     if (sql.includes("projection_health")) return [health];
     return [{ report_id: "r1", group_value: null, occurrence_id: "o1", group_id: "g", group_instance_id: "g1",
       parent_group_instance_id: null,
@@ -99,15 +102,17 @@ test("repeated numeric analysis requires a reducer and keeps the scoped source q
     operation: "mean", reducer: "first" }));
   assert.equal(result.groups[0].summary, 100);
   assert.equal(result.sources[0].sourceValues[0].occurrenceId, "o1");
-  assert.match(queries[1].sql, /source.organization_id = \$3::uuid/);
-  assert.match(queries[1].sql, /source.synthetic = \$4::boolean/);
-  assert.match(queries[1].sql, /source.documenting_user_id = \$6::uuid/);
+  const repeatedQuery = queries.find(({ sql }) => sql.includes("from analytics.review_field_source_with_identity source"));
+  assert.match(repeatedQuery.sql, /source.organization_id = \$3::uuid/);
+  assert.match(repeatedQuery.sql, /source.synthetic = \$4::boolean/);
+  assert.match(repeatedQuery.sql, /source.documenting_user_id = \$6::uuid/);
 });
 
 test("a repeated category filter works for a wide-field measure without report fan-out", async () => {
   const queries = [];
   const service = new ReviewService({ query: async (sql) => {
     queries.push(sql);
+    if (sql.includes("review_custom_dictionary")) return [];
     if (sql.includes("projection_health")) return [health];
     return [{ group_value: null, field_value: "A", absent: false, count: "2" }];
   } }, { get: async () => session });
@@ -116,6 +121,61 @@ test("a repeated category filter works for a wide-field measure without report f
     field: { id: "eMedications.03", value: "drug-A" },
   } }));
   assert.equal(result.groups[0].denominator, 2);
-  assert.match(queries[1], /from analytics.review_field_source_with_identity source/);
-  assert.match(queries[1], /exists \(select 1 from analytics.review_repeated_field_source f/);
+  const analysisQuery = queries.find((sql) => sql.includes("from analytics.review_field_source_with_identity source"));
+  assert.match(analysisQuery, /from analytics.review_field_source_with_identity source/);
+  assert.match(analysisQuery, /exists \(select 1 from analytics.review_repeated_field_source f/);
+});
+
+test("Review discovers projected historical custom fields and enforces privacy and operation policy", async () => {
+  const customId = "33333333-3333-4333-8333-333333333333";
+  const rows = [
+    { custom_definition_id: customId, title: "Dose", datatype: "number", recurrence: "single",
+      identifying: false, semantic_count: "1", datatype_count: "1", recurrence_count: "1", privacy_count: "1" },
+    { custom_definition_id: "44444444-4444-4444-8444-444444444444", title: "Opaque attachment",
+      datatype: "binary", recurrence: "single", identifying: false,
+      semantic_count: "1", datatype_count: "1", recurrence_count: "1", privacy_count: "1" },
+  ];
+  const queries = [];
+  const service = new ReviewService({ query: async (sql, parameters) => {
+    queries.push({ sql, parameters });
+    if (sql.includes("review_custom_dictionary")) return rows;
+    if (sql.includes("projection_health")) return [health];
+    if (sql.includes("review_custom_field_source")) return [{ denominator: "4", missing: "1",
+      absent: "1", mean: "2.5", median: "2.5", minimum: "2", maximum: "3" }];
+    return [];
+  } }, { get: async () => session });
+  const fields = await service.analysisFields("token");
+  assert.deepEqual(fields.find(({ id }) => id === customId)?.operations,
+    ["mean", "median", "minimum", "maximum"]);
+  assert.deepEqual(fields.find(({ label }) => label === "Opaque attachment")?.operations, []);
+  const result = await service.analysis("token", definition({ fieldId: customId, operation: "mean" }));
+  assert.equal(result.groups[0].summary, 2.5);
+  assert.equal(result.groups[0].absent, 1);
+  assert.match(queries.find(({ sql }) => sql.includes("review_custom_field_source")).sql,
+    /report.organization_id = \$3::uuid/);
+  await assert.rejects(service.analysis("token", definition({ fieldId: customId,
+    operation: "distribution" })), { status: 400 });
+  await assert.rejects(service.analysis("token", definition({ fieldId: customId,
+    operation: "mean", groupBy: "eSituation.11" })), { status: 400 });
+});
+
+test("Review custom scalar distribution keeps exceptional and missing values separate", async () => {
+  const id = "55555555-5555-4555-8555-555555555555";
+  const service = new ReviewService({ query: async (sql) => {
+    if (sql.includes("review_custom_dictionary")) return [{ custom_definition_id: id,
+      title: "Transport mode", datatype: "string", recurrence: "single", identifying: false,
+      semantic_count: "1", datatype_count: "1", recurrence_count: "1", privacy_count: "1" }];
+    if (sql.includes("projection_health")) return [health];
+    if (sql.includes("review_custom_field_source")) return [
+      { field_value: null, absent: false, count: "2" },
+      { field_value: null, absent: true, count: "1" },
+      { field_value: "ground", absent: false, count: "3" },
+    ];
+    return [];
+  } }, { get: async () => session });
+  const fields = await service.analysisFields("token");
+  assert.deepEqual(fields.find((field) => field.id === id)?.operations, ["distribution"]);
+  const result = await service.analysis("token", definition({ fieldId: id }));
+  assert.deepEqual(result.groups[0], { group: null, denominator: 6, missing: 2, absent: 1,
+    summary: null, values: [{ value: "ground", count: 3, percentage: 50 }] });
 });
