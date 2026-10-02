@@ -109,12 +109,12 @@ test("admin drafts retain edits and filters across tabs and validation deletion 
   const editor = page.locator(".form-editor");
   await expect(editor.getByRole("group", { name: "Form draft actions" })).toBeVisible();
   await expect(editor.locator(".form-section-toggle[aria-expanded=true]")).toHaveCount(1);
-  await expect(editor.getByRole("button", { name: "Move eSituation.11 up", exact: true })).toHaveCount(0);
+  await expect(editor.getByRole("button", { name: "Reorder eSituation.11", exact: true })).toHaveCount(0);
   expect(catalogSearches).toBe(0);
   await editor.getByLabel("Go to section").selectOption("assessment");
-  await expect(editor.getByRole("button", { name: "Move eSituation.11 up", exact: true })).toBeVisible();
+  await expect(editor.getByRole("list", { name: "assessment form elements" })).toBeVisible();
   await editor.getByLabel("Go to section").selectOption("patient");
-  await editor.getByRole("button", { name: "Move ePatient.02 down", exact: true }).click();
+  await editor.getByRole("button", { name: "Reorder ePatient.02", exact: true }).dragTo(editor.getByRole("list", { name: "patient form elements" }).locator(":scope > li").last());
   await editor.getByLabel("Find by identifier, name, or description").fill("patient name");
   await expect.poll(() => catalogSearches).toBe(1);
   const initialFormLoads = formLoads;
@@ -184,7 +184,7 @@ test("Catalog reader, writer, and publisher controls follow their independent au
     ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish"]);
   await page.getByRole("button", { name: "Admin" }).click();
   await page.getByRole("button", { name: "Element catalog", exact: true }).click();
-  await expect(page.getByLabel("Label for ePatient.01")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "New element", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toHaveCount(0);
 
@@ -198,7 +198,7 @@ test("Catalog reader, writer, and publisher controls follow their independent au
   await signInAsCombinedOwner(page, ["admin-dashboard:read", "catalog:read", "catalog:write"]);
   await page.getByRole("button", { name: "Admin" }).click();
   await page.getByRole("button", { name: "Element catalog", exact: true }).click();
-  await expect(page.getByLabel("Label for ePatient.01")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "New element", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Save draft" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toHaveCount(0);
   await expect(page.getByText("permits draft authoring but not publication or activation")).toBeVisible();
@@ -769,10 +769,12 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await editor.getByLabel("Find by identifier, name, or description").fill("patient");
   await editor.getByRole("button", { name: "Add ePatient.01" }).click();
   await expect(editor.getByRole("button", { name: "ePatient.01 is already in the form" })).toBeDisabled();
-  await editor.getByRole("button", { name: "Move ePatient.01 up" }).click();
-  await expect(editor.getByText("Unsaved changes. Moved ePatient.01 up.", { exact: true })).toBeVisible();
+  const fieldHandle = editor.getByRole("button", { name: "Reorder ePatient.01", exact: true });
+  await fieldHandle.press("Space"); await fieldHandle.press("ArrowUp"); await fieldHandle.press("Space");
+  await expect(editor.getByText("Unsaved changes. Field moved. Data binding preserved.", { exact: true })).toBeVisible();
 
-  await editor.getByRole("button", { name: "Move assessment up" }).click();
+  const sectionHandle = editor.getByRole("button", { name: "Reorder assessment", exact: true });
+  await sectionHandle.press("Space"); await sectionHandle.press("ArrowUp"); await sectionHandle.press("Space");
   await expect(editor.getByText("Unsaved changes. Moved assessment up.", { exact: true })).toBeVisible();
   await editor.getByRole("button", { name: "Remove assessment" }).click();
   const removal = editor.getByRole("alertdialog", { name: "Remove assessment?" });

@@ -17,7 +17,8 @@ const starters = [
   { id: "review.duration.transport", label: "review.analysisTransport" },
 ] as const;
 
-export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, csrfToken, administrator }: {
+export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, csrfToken, administrator, view = "clinical" }: {
+  view?: "clinical" | "saved";
   dataset: "real" | "synthetic"; from: string; to: string;
   language: AgencyLanguage; refresh: number; csrfToken: string; administrator: boolean;
 }) {
@@ -173,9 +174,9 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   };
 
   return <section aria-labelledby="review-analysis-heading">
-    <h2 id="review-analysis-heading">{t("review.analysisHeading")}</h2>
+    <h2 id="review-analysis-heading">{t(view === "saved" ? "review.savedHeading" : "review.analysisHeading")}</h2>
     <p>{t("review.analysisHelp")}</p>
-    <section aria-labelledby="review-saved-heading">
+    <section hidden={view !== "saved"} aria-labelledby="review-saved-heading">
       <h3 id="review-saved-heading">{t("review.savedHeading")}</h3>
       <div className="review-controls">
         <label>{t("review.savedChoose")} <select value={selectedSavedId}

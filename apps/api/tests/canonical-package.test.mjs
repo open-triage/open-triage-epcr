@@ -143,3 +143,28 @@ test("relocating the catalog schema preserves historical artifact checksums", as
   assert.equal(catalogArtifactSha256(text), catalogArtifactSha256(previous));
   assert.equal(catalogArtifactSha256(text), catalogArtifactSha256(original));
 });
+
+test("editor synchronization imports every file, continues after errors, and exports published versions", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "canonical-sync-"));
+  const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+  process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
+  try {
+    await writePackage(artifact("validation"));
+    await writeFile(path.join(root, "validation", "broken.json"), "not JSON");
+    const calls = [];
+    const authoring = { versions: async () => [{ id: "published" }] };
+    const sessions = { requireCapability: async (_token, capability) => { calls.push(capability); } };
+    const service = new CanonicalPackageService({}, sessions, authoring, authoring, authoring);
+    service.import = async (_token, kind, content) => { calls.push(["import", kind, content.sha256]); return { id: "published" }; };
+    service.persist = async (_token, kind, id) => { calls.push(["export", kind, id]); };
+    const result = await service.synchronize("token", "validation");
+    assert.equal(result.errors.length, 1);
+    assert.match(result.errors[0], /broken.json/);
+    assert.deepEqual(calls, ["validation:publish", ["import", "validation", artifact("validation").sha256],
+      ["export", "validation", "published"]]);
+  } finally {
+    if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+    else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});

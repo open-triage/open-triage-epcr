@@ -402,7 +402,11 @@ test("form code policies show NOT labels and save enablement and ordering", asyn
   await form.getByText("Enabled choices and order", { exact: true }).first().click();
   const choices = form.getByRole("list", { name: "Choices for ePatient.15", exact: true });
   await expect(choices.getByRole("checkbox", { name: "Not Recorded", exact: true })).toBeChecked();
-  await choices.getByRole("button", { name: "Move Not Recorded choice up", exact: true }).click();
+  const handle = choices.getByRole("button", { name: "Reorder Not Recorded choice", exact: true });
+  await handle.dragTo(choices.getByRole("listitem").first());
+  expect(JSON.parse((await page.getByTestId("form").textContent())!).sections[0].fields[0].choicePolicy[0].kind).toBe("not-value");
+  await handle.press("Space"); await handle.press("ArrowDown"); await handle.press("Space");
+  await handle.press("Space"); await handle.press("ArrowUp"); await handle.press("Space");
   await choices.getByRole("checkbox", { name: "One", exact: true }).uncheck();
   const definition = JSON.parse((await page.getByTestId("form").textContent())!);
   expect(definition.sections[0].fields[0].choicePolicy).toEqual([{ kind: "not-value", code: "7701003" }]);
@@ -460,4 +464,23 @@ test("Swedish fixed group names and editable fixed value sets are available", as
   const withInline = await page.evaluate(() => JSON.parse(localStorage.getItem("editor-draft")!));
   expect(withInline.definition.codeLists[1].values).toContainEqual({ code: "LOCAL-GENDER", codeSystem: "urn:example:local", label: "Local gender",
     sourceLabel: "Local gender", category: null, enabled: true, nemsisCode: "9906001" });
+});
+
+
+test("form field drag handles reorder by touch without changing field identities", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 1200 });
+  const form = page.getByRole("region", { name: "Form editor", exact: true });
+  await form.scrollIntoViewIfNeeded();
+  const handle = form.getByRole("button", { name: "Reorder ePatient.15", exact: true });
+  const target = form.getByRole("button", { name: "Reorder response", exact: true });
+  const from = await handle.boundingBox(), to = await target.boundingBox();
+  expect(from).not.toBeNull(); expect(to).not.toBeNull();
+  const client = await page.context().newCDPSession(page);
+  const start = { x: from!.x + from!.width / 2, y: from!.y + from!.height / 2 };
+  const finish = { x: to!.x + to!.width / 2, y: to!.y + to!.height / 2 };
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+  await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [finish] });
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect.poll(async () => JSON.parse((await page.getByTestId("form").textContent())!).sections[0].fields.map((field: { key: string }) => field.key)).toEqual(["response", "age"]);
+  await client.detach();
 });

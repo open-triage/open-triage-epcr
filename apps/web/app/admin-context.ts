@@ -103,9 +103,10 @@ export const publishValidationDraft = (csrfToken: string, draft: ValidationDraft
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, changeNote })
   });
 export const activateValidationVersion = (csrfToken: string, id: string, formVersionId: string,
-  catalogReleaseId: string, changeNote: string) =>
+  catalogReleaseId: string, changeNote: string, removeImpactedRuleIds?: readonly string[]) =>
   catalogRequest<ValidationActivation>(`validation-versions/${id}/activate`, csrfToken, {
-    method: "POST", body: JSON.stringify({ formVersionId, catalogReleaseId, changeNote })
+    method: "POST", body: JSON.stringify({ formVersionId, catalogReleaseId, changeNote,
+      ...(removeImpactedRuleIds ? { removeImpactedRuleIds } : {}) })
   });
 
 export async function loadAdminContext(): Promise<AdminContext> {
@@ -206,3 +207,15 @@ export const importCanonicalFile = (csrfToken: string, kind: string, content: un
   catalogRequest<{ id: string }>(`canonical/${kind}/import`, csrfToken, { method: "POST", body: JSON.stringify(content) });
 export const exportCanonicalFile = (csrfToken: string, kind: string, id: string) =>
   catalogRequest<unknown>(`canonical/${kind}/${id}/export`, csrfToken, { method: "POST" });
+
+// One in-flight synchronization per editor prevents duplicate imports in React Strict Mode.
+const canonicalSynchronizations = new Map<string, Promise<{ errors: string[] }>>();
+export function synchronizeCanonicalFiles(csrfToken: string, kind: string) {
+  const key = `${kind}:${csrfToken}`;
+  const pending = canonicalSynchronizations.get(key);
+  if (pending) return pending;
+  const request = catalogRequest<{ errors: string[] }>(`canonical/${kind}/synchronize`, csrfToken, { method: "POST" })
+    .finally(() => canonicalSynchronizations.delete(key));
+  canonicalSynchronizations.set(key, request);
+  return request;
+}

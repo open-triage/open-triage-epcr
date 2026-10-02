@@ -5,12 +5,12 @@ import { compiledValidationBundleSha256 } from '@open-triage/contracts';
 import { processReviewWork } from '../dist/review/review-worker.js';
 
 function fixture({ incompatible = false, route = 'unassigned', eligible = true, allAccess = true,
-  independent = false, retrospective = false } = {}) {
+  independent = false, retrospective = false, reviewPriority, severity = 'warning' } = {}) {
   const organization = randomUUID(), report = randomUUID(), snapshot = randomUUID();
   const version = randomUUID(), catalog = randomUUID(), workId = randomUUID();
   const rules = [randomUUID(), randomUUID()].map((ruleId, index) => ({
     schemaVersion: 1, languageVersion: '1.0.0', ruleId, validationVersionId: version,
-    name: `Criterion ${index}`, enabled: true, severity: 'warning', reviewPriority: index ? 'low' : 'high',
+    name: `Criterion ${index}`, enabled: true, severity, reviewPriority: reviewPriority ?? (index ? 'low' : 'high'),
     executionTargets: ['review'], primaryTarget: { elementId: `eTest.0${index + 1}` },
     ...(index === 0 ? { scope: { groupId: 'eTestSection', iteration: 'each' } } : {}),
     message: `Review criterion ${index}`, assertion: { operator: 'constant', value: false },
@@ -133,4 +133,13 @@ test('author routing accepts review-self while named routing requires organizati
   await processReviewWork(named.database, 1);
   assert.ok(named.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql))
     .every(({ params }) => params[5] === null && params[6] === 'configured-assignee-ineligible'));
+});
+
+test('None review priority creates no items while None documentation severity still creates review items', async () => {
+  const disabled = fixture({ reviewPriority: 'none' });
+  await processReviewWork(disabled.database, 25);
+  assert.equal(disabled.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql)).length, 0);
+  const reviewOnly = fixture({ severity: 'none' });
+  await processReviewWork(reviewOnly.database, 25);
+  assert.equal(reviewOnly.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql)).length, 2);
 });

@@ -41,6 +41,29 @@ test("authoring accepts independent review priority and rejects unknown values",
   assert.throws(() => subject.rule({ ...input, reviewPriority: "urgent" }), UnprocessableEntityException);
 });
 
+test("None suppresses only its workflow and authoring preserves both choices", () => {
+  const subject = service({ query: async () => [] });
+  const timestamp = "2026-01-01T00:00:00.000Z";
+  const document = { groups: [] };
+  for (const [severity, reviewPriority, signing, review] of [
+    ["none", "high", 0, 1], ["warning", "none", 1, 0], ["none", "none", 0, 0],
+  ]) {
+    const authored = subject.rule({ ...sourceRule, severity, reviewPriority,
+      executionTargets: ["live", "sign", "review"] });
+    assert.equal(authored.severity, severity);
+    assert.equal(authored.reviewPriority, reviewPriority);
+    const compiled = compileValidationRule(authored, versionId, new Set(["eResponse.03"])).compiled;
+    assert.ok(compiled);
+    const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
+      catalogReleaseId: randomUUID(), rules: [compiled] };
+    assert.equal(evaluateValidationBundle(bundle, document, "live", { timestamp }).length, signing);
+    assert.equal(evaluateValidationBundle(bundle, document, "sign", { timestamp }).length, signing);
+    const findings = evaluateValidationBundle(bundle, document, "review", { timestamp });
+    assert.equal(findings.length, review);
+    if (review) assert.equal(findings[0].severity, "information");
+  }
+});
+
 function service(manager, capabilityCalls = []) {
   const database = { ...manager, query: (sql, ...args) => sql.includes("provenance->'customElementDefinitions'")
     ? [{ definitions: [] }] : manager.query(sql, ...args) };

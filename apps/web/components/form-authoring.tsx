@@ -4,6 +4,7 @@ import { AdminText, useAdminText } from "../app/admin-localization";
 
 import type { ClinicalFormConfiguration, FormCatalogElement, FormDraftDefinition, FormDraftField } from "@open-triage/contracts";
 import React, { useState } from "react";
+import { SortableList } from "./sortable-list";
 import { getNemsisDataElement, getNemsisGroup } from "../app/nemsis-data-model";
 import { stationaryDisplayLabel } from "../app/stationary-label";
 import { formChoiceLabel } from "../app/form-choice-label";
@@ -183,7 +184,9 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
       {definition.sections.map((section) => <option key={section.key} value={section.key}>
         {formSectionLabel(section, catalogGroups, language)} ({t("admin.countElements", { count: section.fields.length })})</option>)}
     </select>
-    {definition.sections.map((section, sectionIndex) => {
+    <SortableList items={definition.sections} identity={(section) => section.key}
+      label={(section) => section.key} language={language} disabled={busy || readOnly || !onMoveSection}
+      onMove={(from, to) => onMoveSection?.(from, to)} renderItem={(section, sectionIndex, sectionHandle) => {
       const open = selectedKey === section.key;
       return <section className="form-section" key={section.key}>
       <header className="form-section-header">
@@ -192,10 +195,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
           {formSectionLabel(section, catalogGroups, language)} <small>{section.key}</small> <span>{t("admin.countElements", { count: section.fields.length })}</span>
         </button>
         {onMoveSection && onRequestRemoveSection && <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
-          <button type="button" disabled={busy || sectionIndex === 0} aria-label={`Move ${section.key} up`}
-            onClick={() => onMoveSection(sectionIndex, sectionIndex - 1)}><AdminText messageKey="admin.moveUp" /></button>
-          <button type="button" disabled={busy || sectionIndex === definition.sections.length - 1} aria-label={`Move ${section.key} down`}
-            onClick={() => onMoveSection(sectionIndex, sectionIndex + 1)}><AdminText messageKey="admin.moveDown" /></button>
+          {sectionHandle}
           <button type="button" disabled={busy || definition.sections.length === 1} aria-label={`Remove ${section.key}`}
             onClick={() => onRequestRemoveSection(sectionIndex)}><AdminText messageKey="admin.removeSection" /></button>
         </div>}
@@ -204,8 +204,11 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
         <input aria-label={t("admin.sectionName")} disabled={busy} maxLength={120} value={section.name ?? formSectionLabel(section, catalogGroups, language)}
           onChange={(event) => onChange(renameFormSection(definition, section.key, event.target.value), t("admin.sectionRenamed"))} />
       </label>}
-      {open && <ol aria-label={`${section.key} form elements`}>
-        {section.fields.map((field, index) => {
+      {open && <SortableList ordered items={section.fields} identity={(field) => field.key}
+        label={(field) => field.source.kind === "nemsis" ? field.source.elementId : field.key}
+        language={language} disabled={busy || readOnly} ariaLabel={`${section.key} form elements`}
+        onMove={(from, to) => onChange(moveFormElement(definition, section.key, from, to), t("admin.fieldMoved"))}
+        renderItem={(field, _index, fieldHandle) => {
           const label = field.source.kind === "nemsis" ? field.source.elementId : field.key;
           const clinicalLabel = field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.name : t("admin.customElement");
           const available = availableChoices(field, catalogFields, customFields);
@@ -219,7 +222,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
           const catalogRequired = catalog ? catalog.minOccurs > 0 || catalog.agencyRequired ||
             catalog.usage === "Mandatory" || catalog.usage === "Required"
             : custom ? custom.usage === "Mandatory" || custom.usage === "Required" : false;
-          return <li key={field.key}>
+          return <>
             <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
             {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
               <label><input type="checkbox" checked={catalogRequired || field.required === true} disabled={busy || catalogRequired}
@@ -228,12 +231,18 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
               {catalogRequired && <small>{language === "sv" ? "Krävs av katalogen" : "Required by the catalog"}</small>}
               {reviewChoices.length > 0 && <details><summary>{language === "sv" ? "Aktiva val och ordning" : "Enabled choices and order"}
                 {newIds.size > 0 && ` · ${newIds.size} ${language === "sv" ? "nya val" : "new choices"}`}</summary>
-                <ol aria-label={`Choices for ${label}`}>{reviewChoices.map((choice) => {
+                <SortableList ordered items={reviewChoices} identity={choiceIdentity}
+                  label={(choice) => `${formChoiceLabel(choice, field, catalogFields, customFields, language)} choice`}
+                  language={language} disabled={busy} canDrag={(choice) => selectedIds.has(choiceIdentity(choice))}
+                  ariaLabel={`Choices for ${label}`} onMove={(from, to) => {
+                    const next = [...selected]; const [moving] = next.splice(from, 1); next.splice(to, 0, moving!);
+                    onChange(updateFieldChoices(definition, field.key, next), `Reordered choices for ${label}.`);
+                  }} renderItem={(choice, _index, choiceHandle) => {
                   const identity = choiceIdentity(choice);
                   const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
                   const unavailable = !availableIds.has(identity);
                   const choiceLabel = formChoiceLabel(choice, field, catalogFields, customFields, language);
-                  return <li key={identity}><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}
+                  return <><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}
                     onChange={(event) => onChange(updateFieldChoices(definition, field.key,
                       event.target.checked ? [...selected, choice] : selected.filter((candidate) => choiceIdentity(candidate) !== identity)),
                     `Updated choices for ${label}.`)} />{choiceLabel}</label>
@@ -241,14 +250,9 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                       ? language === "sv" ? "Ny i målkatalogen · aktiverad" : "New in target catalog · enabled"
                       : language === "sv" ? "Ny i målkatalogen · avstängd tills du väljer den" : "New in target catalog · disabled until selected"}</small>}
                     {unavailable && <small role="alert">{language === "sv" ? "Inte tillgänglig i målkatalogen; avmarkera för att lösa" : "Unavailable in target catalog; uncheck to resolve"}</small>}
-                    {position >= 0 && <><button type="button" disabled={busy || position === 0} aria-label={`Move ${choiceLabel} choice up`}
-                      onClick={() => { const next = [...selected]; [next[position - 1], next[position]] = [next[position]!, next[position - 1]!];
-                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choiceLabel} up.`); }}>↑</button>
-                    <button type="button" disabled={busy || position === selected.length - 1} aria-label={`Move ${choiceLabel} choice down`}
-                      onClick={() => { const next = [...selected]; [next[position], next[position + 1]] = [next[position + 1]!, next[position]!];
-                        onChange(updateFieldChoices(definition, field.key, next), `Moved ${choiceLabel} down.`); }}>↓</button></>}
-                  </li>;
-                })}</ol>
+                    {choiceHandle}
+                  </>;
+                }} />
               </details>}
               {field.source.kind === "custom" && customFields?.[field.source.elementDefinitionId]?.datatype === "coded" &&
                 <details><summary>Permitted exceptional values</summary>
@@ -275,18 +279,14 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                 </select>
               </label>
               <small>{t("admin.dataBinding")}: {field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.groupPath.join(" / ") : field.source.groupDefinitionId ?? field.source.elementDefinitionId}</small>
-              <button type="button" disabled={busy || index === 0} aria-label={`Move ${label} up`} onClick={() =>
-                onChange(moveFormElement(definition, section.key, index, index - 1), `Moved ${label} up.`)}><AdminText messageKey="admin.moveUp" /></button>
-              <button type="button" disabled={busy || index === section.fields.length - 1} aria-label={`Move ${label} down`} onClick={() =>
-                onChange(moveFormElement(definition, section.key, index, index + 1), `Moved ${label} down.`)}><AdminText messageKey="admin.moveDown" /></button>
+              {fieldHandle}
               <button type="button" disabled={busy} aria-label={`Remove ${label}`} onClick={() => {
                 if (window.confirm(`Remove ${label} from ${section.key}?`))
                   onChange(removeFormElement(definition, section.key, field.key), `Removed ${label}.`);
               }}><AdminText messageKey="admin.remove" /></button>
             </div>}
-          </li>;
-        })}
-      </ol>}
-    </section>; })}
+          </>;
+        }} />}
+    </section>; }} />
   </div>;
 }

@@ -40,7 +40,7 @@ export type StationaryActionableFinding = Omit<StationaryValidationFinding, "sev
 };
 
 export function actionableStationaryFindings(findings: ReadonlyArray<StationaryValidationFinding>): ReadonlyArray<StationaryActionableFinding> {
-  return findings.filter((finding): finding is StationaryActionableFinding => finding.severity !== "information");
+  return findings.filter((finding): finding is StationaryActionableFinding => finding.severity === "error" || finding.severity === "warning");
 }
 
 type ClinicalReviewFinding = {

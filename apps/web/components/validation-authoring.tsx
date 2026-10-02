@@ -1,13 +1,14 @@
 "use client";
 
-import { CanonicalDefinitions } from "./canonical-definitions";
+import { synchronizeCanonicalFiles } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import { compileValidationRule, explainValidationRule, formatValidationSource, reviewPriorityOfRule, validationRuleText,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PlatformRequestError } from "../app/platform-errors";
 import { LoadingStatus } from "./loading-status";
 import { activateValidationVersion, cloneValidationVersion, createValidationDraft, deleteValidationDraft, loadCatalogVersions, loadStationaryFormVersions,
   loadValidationDraft, loadValidationVersions, publishValidationDraft,
@@ -87,7 +88,7 @@ export function ValidationRuleFilterControls({ value, onChange, elements = [] }:
       <option value=""><AdminText messageKey="admin.allSources" /></option><option value="agency"><AdminText messageKey="admin.agency" /></option><option value="nemsis">NEMSIS</option>
       <option value="catalog"><AdminText messageKey="admin.catalog" /></option><option value="form"><AdminText messageKey="admin.form" /></option><option value="platform"><AdminText messageKey="admin.platform" /></option></select></label>
     <label><AdminText messageKey="admin.severity" /> <select value={value.severity} onChange={(event) => change("severity", event.target.value)}>
-      <option value=""><AdminText messageKey="admin.allSeverities" /></option><option value="error"><AdminText messageKey="admin.error" /></option><option value="warning"><AdminText messageKey="admin.warning" /></option>
+      <option value=""><AdminText messageKey="admin.allSeverities" /></option><option value="none"><AdminText messageKey="admin.none" /></option><option value="error"><AdminText messageKey="admin.error" /></option><option value="warning"><AdminText messageKey="admin.warning" /></option>
       <option value="information"><AdminText messageKey="admin.information" /></option></select></label>
     <label><AdminText messageKey="admin.target" /> <select value={value.executionTarget} onChange={(event) => change("executionTarget", event.target.value)}>
       <option value=""><AdminText messageKey="admin.allTargets" /></option><option value="live"><AdminText messageKey="admin.live" /></option><option value="sign"><AdminText messageKey="admin.sign" /></option>
@@ -181,6 +182,11 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [displayName, setDisplayName] = useState("");
   const [changeNote, setChangeNote] = useState("");
   const [activationNote, setActivationNote] = useState("");
+  const [activationReview, setActivationReview] = useState<{
+    validationId: string; formId: string; catalogId: string; note: string;
+    rules: ReadonlyArray<{ id: string; name: string }>;
+  } | null>(null);
+  const activationReviewRef = useRef<HTMLElement>(null);
   const [validation, setValidation] = useState<ValidationDraftResult | null>(null);
   const [published, setPublished] = useState<PublishedValidationVersion | null>(null);
   const [catalog, setCatalog] = useState<ValidationCatalog | null>(null);
@@ -193,6 +199,8 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "",
     executionTarget: "", enabled: "", validity: "" });
   const draftRevision = draft?.revision;
+
+  useEffect(() => { activationReviewRef.current?.focus(); }, [activationReview]);
 
   useEffect(() => {
     let current = true;
@@ -212,12 +220,20 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   useEffect(() => {
     if (!active) return;
     let current = true;
-    loadValidationVersions().then((items) => { if (current) {
+    (async () => {
+      if (canPublish) {
+        try {
+          const result = await synchronizeCanonicalFiles(csrfToken, "validation");
+          if (current && result.errors.length) setError(result.errors.join("\n"));
+        } catch (reason) { if (current) setError(adminError(reason, "admin.validationVersionsAre")); }
+      }
+      return loadValidationVersions();
+    })().then((items) => { if (current) {
       setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.validationVersionsAre")); });
     return () => { current = false; };
-  }, [active, adminError]);
+  }, [active, adminError, canPublish, csrfToken]);
   useEffect(() => {
     if (!active) return;
     let current = true;
@@ -246,6 +262,38 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     try { await work(); } catch (reason) { setError(adminError(reason, "admin.validationOperationFailed")); }
     finally { setBusy(false); }
   }
+  async function activate(validationId: string, formId: string, catalogId: string, note: string,
+    removedRuleIds?: readonly string[]) {
+    setActivationReview(null);
+    try {
+      const activation = await activateValidationVersion(csrfToken, validationId, formId, catalogId, note, removedRuleIds);
+      setSelectedVersionId(activation.validationVersionId);
+      setDraft(null); setPublished(null); setActivationNote("");
+      setStatus(t("admin.validationActivatedFor")); onActivated?.();
+      setVersions(await loadValidationVersions());
+    } catch (reason) {
+      if (reason instanceof PlatformRequestError && reason.code === "admin.formValidationRemovalRequired"
+        && reason.impactedRules?.length) {
+        setActivationReview({ validationId, formId, catalogId, note, rules: reason.impactedRules });
+      } else throw reason;
+    }
+  }
+  function changeActivationNote(note: string) {
+    setActivationNote(note); setActivationReview(null);
+  }
+  const activationConfirmation = activationReview && <section role="alertdialog" aria-modal="false"
+    aria-labelledby="validation-removal-heading" className="form-remove-confirmation" tabIndex={-1}
+    ref={activationReviewRef}>
+    <h3 id="validation-removal-heading">{t("admin.formValidationRemovalHeading")}</h3>
+    <p>{t("admin.formValidationRemovalExplanation")}</p>
+    <p>{t("admin.affectedRulesCount", { count: activationReview.rules.length })}</p>
+    <ul style={{ maxHeight: "20rem", overflowY: "auto" }}>{activationReview.rules.map((rule) =>
+      <li key={rule.id}>{rule.name}</li>)}</ul>
+    <button type="button" disabled={busy || !canPublish || !canWrite} onClick={() => action(() => activate(
+      activationReview.validationId, activationReview.formId, activationReview.catalogId, activationReview.note,
+      activationReview.rules.map(({ id }) => id)))}>{t("admin.removeRulesAndActivate")}</button>
+    <button type="button" disabled={busy} onClick={() => setActivationReview(null)}>{t("admin.cancelActivation")}</button>
+  </section>;
   function change(update: (current: ValidationDraft) => ValidationDraft) {
     setDraft((current) => current ? update(current) : current); setDirty(true); setValidation(null); setStatus(t("admin.unsavedChanges2"));
   }
@@ -267,14 +315,17 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const formActivationChoice = <div className="authoring-version-row">
     <label htmlFor="validation-activation-form"><AdminText messageKey="admin.stationaryForm" /></label>
     <select id="validation-activation-form" value={selectedForm?.id ?? ""}
-      onChange={(event) => setSelectedFormVersionId(event.target.value)} disabled={compatibleForms.length === 0}>
+      onChange={(event) => { setSelectedFormVersionId(event.target.value); setActivationReview(null); }}
+      disabled={busy || compatibleForms.length === 0}>
       {compatibleForms.length === 0 && <option value=""><AdminText messageKey="admin.noCompatiblePublishedForm" /></option>}
       {compatibleForms.map((form) => <option key={form.id} value={form.id}>
         {form.displayName} · v{form.version}{form.status === "active" ? t("admin.active2") : ""}</option>)}
     </select>
   </div>;
   const versionWorkspace = <AuthoringVersionWorkspace title="Validation rules" versions={versions}
-    selectedId={selectedVersionId} onSelect={(id) => { setSelectedVersionId(id); setSelectedTargetCatalogId(""); }} draftName={displayName}
+    selectedId={selectedVersionId} onSelect={(id) => {
+      setSelectedVersionId(id); setSelectedTargetCatalogId(""); setActivationReview(null);
+    }} draftName={displayName}
     onDraftNameChange={setDisplayName} canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && !published)}
     canCreateWithoutSource={Boolean(catalogReleaseId)}
     onCreateDraft={() => action(async () => {
@@ -284,7 +335,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       const definition = await loadCatalogVersion(cloned.catalogReleaseId);
       setCatalog(validationCatalog(definition.definition));
       setHiddenElementIds(definition.definition.hiddenElementIds ?? []);
-      setPublished(null); setDraft(cloned); setDisplayName(""); setDirty(false); setStatus(t("admin.validationDraftCreated"));
+      setActivationReview(null); setPublished(null); setDraft(cloned); setDisplayName(""); setDirty(false); setStatus(t("admin.validationDraftCreated"));
     })}>
     {canWrite && !draft && catalogVersions.length > 0 && <div className="authoring-version-row">
       <label htmlFor="validation-target-catalog">{language === "sv" ? "Målkatalog" : "Target catalog"}</label>
@@ -296,19 +347,18 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     </div>}
     {selectedVersion && selectedVersion.status !== "active" && canPublish && !draft && !published &&
       <>{formActivationChoice}<AuthoringLifecycleAction title="Selected Validation rules" kind="activate" note={activationNote}
-        onNoteChange={setActivationNote} disabled={busy || !selectedForm} buttonLabel="Activate selected version"
+        onNoteChange={changeActivationNote} disabled={busy || !selectedForm} buttonLabel="Activate selected version"
         onSubmit={() => action(async () => {
           if (!selectedForm || !selectedVersion.catalogReleaseId) return;
-          await activateValidationVersion(csrfToken, selectedVersion.id, selectedForm.id,
+          await activate(selectedVersion.id, selectedForm.id,
             selectedVersion.catalogReleaseId, activationNote);
-          setVersions((current) => current.map((item) => ({ ...item, status: item.id === selectedVersion.id ? "active" : "published" })));
-          setActivationNote(""); setStatus(t("admin.validationActivatedFor")); onActivated?.();
         })} /></>}
-    <CanonicalDefinitions kind="validation" csrfToken={csrfToken} canPublish={canPublish} selectedId={selectedVersionId} hasDraft={Boolean(draft && !published)} />
+    <p><AdminText messageKey="admin.ruleScopeHelp" /></p>
   </AuthoringVersionWorkspace>;
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingValidationDraft" /></LoadingStatus>;
   if (!draft) return <div className="form-empty">
     {versionWorkspace}
+    {activationConfirmation}
     {error && <p role="alert">{error}</p>}<p role="status">{status}</p>
   </div>;
 
@@ -318,13 +368,12 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     <p>{t("admin.versionVersionAnd", { version: published.version, count: published.ruleIds.length, catalog: published.catalogReleaseId })}</p>
     {formActivationChoice}
     <AuthoringLifecycleAction title="Validation rules" kind="activate" note={activationNote}
-      onNoteChange={setActivationNote} disabled={busy || !canPublish || !selectedForm} buttonLabel={t("admin.activateForClinical")}
+      onNoteChange={changeActivationNote} disabled={busy || !canPublish || !selectedForm} buttonLabel={t("admin.activateForClinical")}
       onSubmit={() => action(async () => {
       if (!selectedForm) return;
-      await activateValidationVersion(csrfToken, published.id, selectedForm.id, published.catalogReleaseId, activationNote);
-      setVersions((current) => current.map((item) => ({ ...item, status: item.id === published.id ? "active" : "published" })));
-      setStatus(t("admin.validationActivatedFor")); onActivated?.();
+      await activate(published.id, selectedForm.id, published.catalogReleaseId, activationNote);
     })} />
+    {activationConfirmation}
     {error && <p role="alert">{error}</p>}<p role="status" aria-live="polite">{status}</p>
   </div>;
 
@@ -387,13 +436,13 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <div className="validation-rule-row"><label htmlFor="validation-severity"><AdminText messageKey="admin.severity" /></label>
       <select id="validation-severity" value={selectedRule.severity}
         onChange={(event) => changeRule((rule) => ({ ...rule, severity: event.target.value as typeof rule.severity }))}>
-        <option value="error"><AdminText messageKey="admin.error" /></option><option value="warning"><AdminText messageKey="admin.warning" /></option><option value="information"><AdminText messageKey="admin.information" /></option>
+        <option value="none"><AdminText messageKey="admin.none" /></option><option value="error"><AdminText messageKey="admin.error" /></option><option value="warning"><AdminText messageKey="admin.warning" /></option><option value="information"><AdminText messageKey="admin.information" /></option>
       </select></div>
       {selectedRule.executionTargets.includes("review") && <div className="validation-rule-row">
         <label htmlFor="validation-review-priority"><AdminText messageKey="admin.reviewPriority" /></label>
         <select id="validation-review-priority" value={reviewPriorityOfRule(selectedRule)}
-          onChange={(event) => changeRule((rule) => ({ ...rule, reviewPriority: event.target.value as "high" | "medium" | "low" }))}>
-          <option value="high"><AdminText messageKey="admin.priority.high" /></option>
+          onChange={(event) => changeRule((rule) => ({ ...rule, reviewPriority: event.target.value as "none" | "high" | "medium" | "low" }))}>
+          <option value="none"><AdminText messageKey="admin.none" /></option><option value="high"><AdminText messageKey="admin.priority.high" /></option>
           <option value="medium"><AdminText messageKey="admin.priority.medium" /></option>
           <option value="low"><AdminText messageKey="admin.priority.low" /></option>
         </select></div>}

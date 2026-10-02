@@ -42,6 +42,29 @@ export class CanonicalPackageService {
     }));
   }
 
+  /** Import discovered files and repair exports whenever an editor opens. */
+  async synchronize(token: string, value: string) {
+    const kind = this.kind(value);
+    await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
+    const errors: string[] = [];
+    const files = await discoverPackages(kind);
+    for (const entry of files) {
+      try {
+        if (entry.error) throw new UnprocessableEntityException(entry.error);
+        await this.import(token, kind, entry.package ?? entry.raw);
+      } catch (error) {
+        errors.push(`${entry.file}: ${error instanceof Error ? error.message : "File import failed"}`);
+      }
+    }
+    const versions = kind === "catalog" ? await this.catalogs.versions(token)
+      : kind === "form" ? await this.forms.versions(token) : await this.validations.versions(token);
+    for (const version of versions) {
+      try { await this.persist(token, kind, version.id); }
+      catch (error) { errors.push(`${version.id}: ${error instanceof Error ? error.message : "File export failed"}`); }
+    }
+    return { errors };
+  }
+
   private async normalize(token: string, kind: DefinitionKind, input: unknown) {
     const raw = input as Record<string, unknown> | undefined;
     if (raw?.format === "opentriage-definition") return parsePackage(raw, kind);
@@ -93,7 +116,7 @@ export class CanonicalPackageService {
   }
   async persist(token: string, kind: DefinitionKind, id: string) {
     try { await writePackage(await this.export(token, kind, id)); }
-    catch { throw new ServiceUnavailableException({ message: "Publication succeeded, but canonical file export failed. Export this published version again after restoring writable local storage.", publishedId: id }); }
+    catch { throw new ServiceUnavailableException({ message: "Publication succeeded, but canonical file export failed. Open the editor again after restoring writable local storage to retry automatically.", publishedId: id }); }
   }
   async import(token: string, value: string, input: unknown) {
     const kind = this.kind(value);

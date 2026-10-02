@@ -17,7 +17,7 @@ type PriorDecision = { lineage: ReviewInputLine[]; matched: boolean; amendment_s
 export async function reconcileAmendedReview(manager: Pick<EntityManager, "query">,
   work: WorkContext, bundle: CompiledValidationBundle, document: EncounterDocument,
   evaluationId: string, findings: readonly ValidationFinding[], evaluationTime: string): Promise<void> {
-  const reviewRules = bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("review"));
+  const reviewRules = bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("review") && reviewPriorityOfRule(rule) !== "none");
   const ids = [...new Set(document.groups.flatMap((group) => group.instances.flatMap((instance) =>
     instance.elements.map((element) => element.id))))];
   const privacy = await manager.query<Array<{ element_id: string; identifying: boolean }>>(`

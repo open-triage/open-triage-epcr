@@ -1,6 +1,6 @@
 "use client";
 
-import { CanonicalDefinitions } from "./canonical-definitions";
+import { synchronizeCanonicalFiles } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
@@ -124,13 +124,21 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
   useEffect(() => {
     if (!active) return;
     let current = true;
-    loadCatalogVersions().then((items) => { if (current) {
+    (async () => {
+      if (canPublish) {
+        try {
+          const result = await synchronizeCanonicalFiles(csrfToken, "catalog");
+          if (current && result.errors.length) setError(result.errors.join("\n"));
+        } catch (reason) { if (current) showError(reason); }
+      }
+      return loadCatalogVersions();
+    })().then((items) => { if (current) {
       setVersions(items);
       setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) showError(reason); });
     return () => { current = false; };
-  }, [active, showError]);
+  }, [active, showError, canPublish, csrfToken]);
   useEffect(() => {
     if (!loaded || !selectedVersionId || hasAuthoringDraft || draft?.id === selectedVersionId) return;
     let current = true;
@@ -408,7 +416,6 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.catalogDraftCreated"));
     })}>
       <p role="note"><AdminText messageKey="admin.publishedCatalogActivatedWithForm" /></p>
-    <CanonicalDefinitions kind="catalog" csrfToken={csrfToken} canPublish={canPublish} selectedId={selectedVersionId} hasDraft={Boolean(draft && "revision" in draft)} />
     </AuthoringVersionWorkspace>;
 
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingCatalogDraft" /></LoadingStatus>;

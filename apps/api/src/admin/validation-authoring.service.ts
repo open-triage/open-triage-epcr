@@ -853,11 +853,11 @@ export class ValidationAuthoringService {
     const severity = body.severity;
     const targets = body.executionTargets;
     const reviewPriority = body.reviewPriority;
-    if (!["error", "warning", "information"].includes(String(severity))) throw new UnprocessableEntityException("Invalid rule severity");
+    if (!["none", "error", "warning", "information"].includes(String(severity))) throw new UnprocessableEntityException("Invalid rule severity");
     if (!Array.isArray(targets) || targets.some((target) => !["live", "sign", "review"].includes(String(target)))) {
       throw new UnprocessableEntityException("Invalid execution target");
     }
-    if (reviewPriority !== undefined && !["high", "medium", "low"].includes(String(reviewPriority)))
+    if (reviewPriority !== undefined && !["none", "high", "medium", "low"].includes(String(reviewPriority)))
       throw new UnprocessableEntityException("Invalid review priority");
     if (typeof body.enabled !== "boolean") throw new UnprocessableEntityException("rule.enabled must be a boolean");
     const kind = body.sourceKind === undefined ? undefined : String(body.sourceKind);

@@ -4,8 +4,8 @@ import { NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS, NEMSIS_351_EMS_MESSAGE_REPAIRS } 
 export const VALIDATION_LANGUAGE_VERSION = "1.0.0" as const;
 export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
 
-export type ValidationSeverity = "error" | "warning" | "information";
-export type ValidationReviewPriority = "high" | "medium" | "low";
+export type ValidationSeverity = "none" | "error" | "warning" | "information";
+export type ValidationReviewPriority = "none" | "high" | "medium" | "low";
 export type ValidationExecutionTarget = "live" | "sign" | "review";
 
 /** Published legacy review rules have no priority; treat them as Medium without rewriting history. */
@@ -202,7 +202,7 @@ function isPatientCareReportRule(rule: CompiledValidationRule): boolean {
 export interface ValidationFinding {
   validationVersionId: string;
   ruleId: string;
-  severity: ValidationSeverity;
+  severity: Exclude<ValidationSeverity, "none">;
   executionTarget: ValidationExecutionTarget;
   message: string;
   primaryTarget: { elementId: string; groupInstanceId?: string; occurrenceId?: string };
@@ -807,7 +807,7 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
   }
   if (!rule.executionTargets.length) diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id,
     message: "Select at least one execution target" });
-  if (rule.reviewPriority !== undefined && !["high", "medium", "low"].includes(rule.reviewPriority))
+  if (rule.reviewPriority !== undefined && !["none", "high", "medium", "low"].includes(rule.reviewPriority))
     diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id, message: "Invalid review priority" });
   if (diagnostics.some(({ severity }) => severity === "error")) return { diagnostics };
   const elements = [...new Set(expressions.map(({ elementId }) => elementId))].sort();
@@ -1103,7 +1103,8 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
             order: elements.find(({ element: candidate, groupInstanceId }) => candidate === element && groupInstanceId === instance.instanceId)?.order ?? 0 })))) };
     });
   };
-  return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget)).flatMap((rule) => {
+  return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget) &&
+    (executionTarget === "review" ? reviewPriorityOfRule(rule) !== "none" : rule.severity !== "none")).flatMap((rule) => {
     const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string; scopeElementIds?: ReadonlySet<string> }> = rule.scope
       ? scopedRows(rule.scope.groupId) : [{ elements }];
     return scopes.flatMap((scope) => {
@@ -1120,7 +1121,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     if (evaluateExpression(rule.assertion, scope.elements, state)) return [];
     if (rule.primaryTarget.elementId === "*" && rule.assertion.operator === "all-elements") {
       return violatingAllElements(rule.assertion.invariant, scope.elements, rule.assertion.excludedElementIds).map((match) => ({
-        validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
+        validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity === "none" ? "information" : rule.severity,
         executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
           rule.references?.elementIds ?? []), primaryTarget: { elementId: match.element.id,
           groupInstanceId: match.groupInstanceId, ...(match.element.values.length === 1 ? { occurrenceId: match.element.values[0]!.occurrenceId } : {}) },
@@ -1136,7 +1137,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     // signing), even when the documented values had not changed.
     const uniqueMatch = matches.length === 1 ? matches[0] : undefined;
     const uniqueGroupInstanceId = uniqueMatch?.groupInstanceId ?? (matches.length === 0 ? scope.rootGroupInstanceId : undefined);
-    return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
+    return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity === "none" ? "information" : rule.severity,
       executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
         rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
         ...(uniqueGroupInstanceId ? { groupInstanceId: uniqueGroupInstanceId } : {}),
@@ -1154,7 +1155,8 @@ export function evaluateValidationBundleSafely(bundle: CompiledValidationBundle,
     code: "compatibility", message: "The compiled validation bundle has no rule list",
   }] };
   const targetRules = bundle.rules.filter((rule) => rule?.enabled && Array.isArray(rule.executionTargets)
-    && rule.executionTargets.includes(executionTarget) && isPatientCareReportRule(rule));
+    && rule.executionTargets.includes(executionTarget) &&
+    (executionTarget === "review" ? reviewPriorityOfRule(rule) !== "none" : rule.severity !== "none") && isPatientCareReportRule(rule));
   if (targetRules.length > MAX_RULES_PER_EVALUATION) return { findings: [], failures: [{
     validationVersionId: bundle.validationVersionId, ruleId: "bundle", executionTarget,
     code: "resource-limit", message: `The compiled validation bundle exceeds ${MAX_RULES_PER_EVALUATION} rules`,

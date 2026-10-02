@@ -1,6 +1,6 @@
 "use client";
 
-import { CanonicalDefinitions } from "./canonical-definitions";
+import { synchronizeCanonicalFiles } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
@@ -113,12 +113,20 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   useEffect(() => {
     if (!active) return;
     let current = true;
-    loadStationaryFormVersions().then((items) => { if (current) {
+    (async () => {
+      if (canPublish) {
+        try {
+          const result = await synchronizeCanonicalFiles(csrfToken, "form");
+          if (current && result.errors.length) setError(result.errors.join("\n"));
+        } catch (reason) { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); }
+      }
+      return loadStationaryFormVersions();
+    })().then((items) => { if (current) {
       setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); });
     return () => { current = false; };
-  }, [active, adminError]);
+  }, [active, adminError, canPublish, csrfToken]);
   useEffect(() => {
     if (!active || !capabilities.includes("catalog:read")) return;
     let current = true;
@@ -233,7 +241,6 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
           if (!selectedValidation) return;
           await activate(selectedVersion.id, selectedValidation.id, activationNote);
         })} /></>}
-    <CanonicalDefinitions kind="form" csrfToken={csrfToken} canPublish={canPublish} selectedId={selectedVersionId} hasDraft={Boolean(draft && !published)} />
   </AuthoringVersionWorkspace>;
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingStationaryFormDraft" /></LoadingStatus>;
   if (!draft) return <div className="form-empty">
