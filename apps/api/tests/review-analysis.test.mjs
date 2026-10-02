@@ -9,6 +9,14 @@ const session = { user: { id: "11111111-1111-4111-8111-111111111111" },
   organization: { id: "22222222-2222-4222-8222-222222222222" }, capabilities: ["review:self"] };
 const definition = (overrides = {}) => ({ fieldId: "eSituation.11", operation: "distribution",
   filters: { from: "2026-10-01", to: "2026-10-02", dataset: "real" }, ...overrides });
+const customOccurrence = (report_id, occurrence_id, custom_definition_id,
+  categorical_value, numeric_value, absence_kind = null) => ({ report_id, occurrence_id,
+  custom_definition_id, categorical_value, numeric_value, absence_kind,
+  group_id: null, group_instance_id: null, parent_group_instance_id: null,
+  group_ordinal: null, element_ordinal: 0, instance_path: [],
+  clinical_time: null, documented_time: null, code: categorical_value,
+  unit_code: null, absence_code: null, normalization_rule_id: null,
+  quality_flags: null });
 
 test("Review field discovery is authorized and excludes free-text and identifying fields", async () => {
   let active = session;
@@ -172,8 +180,13 @@ test("Review discovers projected historical custom fields and enforces privacy a
     queries.push({ sql, parameters });
     if (sql.includes("review_custom_dictionary")) return rows;
     if (sql.includes("projection_health")) return [health];
-    if (sql.includes("review_custom_field_source")) return [{ denominator: "4", missing: "1",
-      absent: "1", mean: "2.5", median: "2.5", minimum: "2", maximum: "3" }];
+    if (sql.includes("as standard_group_value")) return ["r1", "r2", "r3", "r4"]
+      .map((report_id) => ({ report_id, standard_group_value: null }));
+    if (sql.includes("review_custom_field_source")) return [
+      customOccurrence("r1", "o1", customId, null, "2"),
+      customOccurrence("r2", "o2", customId, null, "3"),
+      customOccurrence("r3", "o3", customId, null, null, "null"),
+    ];
     return [];
   } }, { get: async () => session });
   const fields = await service.analysisFields("token");
@@ -184,11 +197,10 @@ test("Review discovers projected historical custom fields and enforces privacy a
   assert.equal(result.groups[0].summary, 2.5);
   assert.equal(result.groups[0].absent, 1);
   assert.match(queries.find(({ sql }) => sql.includes("review_custom_field_source")).sql,
-    /report.organization_id = \$3::uuid/);
+    /report.organization_id=\$3::uuid/);
   await assert.rejects(service.analysis("token", definition({ fieldId: customId,
     operation: "distribution" })), { status: 400 });
-  await assert.rejects(service.analysis("token", definition({ fieldId: customId,
-    operation: "mean", groupBy: "eSituation.11" })), { status: 400 });
+  assert.equal(result.groups[0].missing, 1);
 });
 
 test("Review custom scalar distribution keeps exceptional and missing values separate", async () => {
@@ -198,10 +210,13 @@ test("Review custom scalar distribution keeps exceptional and missing values sep
       title: "Transport mode", datatype: "string", recurrence: "single", identifying: false,
       semantic_count: "1", datatype_count: "1", recurrence_count: "1", privacy_count: "1" }];
     if (sql.includes("projection_health")) return [health];
+    if (sql.includes("as standard_group_value")) return ["r1", "r2", "r3", "r4", "r5", "r6"]
+      .map((report_id) => ({ report_id, standard_group_value: null }));
     if (sql.includes("review_custom_field_source")) return [
-      { field_value: null, absent: false, count: "2" },
-      { field_value: null, absent: true, count: "1" },
-      { field_value: "ground", absent: false, count: "3" },
+      customOccurrence("r1", "o1", id, "ground", null),
+      customOccurrence("r2", "o2", id, "ground", null),
+      customOccurrence("r3", "o3", id, "ground", null),
+      customOccurrence("r4", "o4", id, null, null, "null"),
     ];
     return [];
   } }, { get: async () => session });
@@ -210,4 +225,55 @@ test("Review custom scalar distribution keeps exceptional and missing values sep
   const result = await service.analysis("token", definition({ fieldId: id }));
   assert.deepEqual(result.groups[0], { group: null, denominator: 6, missing: 2, absent: 1,
     summary: null, values: [{ value: "ground", count: 3, percentage: 50 }] });
+});
+
+test("Review exposes grouped custom operations and scopes parent-aware analysis", async () => {
+  const dose = "77777777-7777-4777-8777-777777777777";
+  const route = "88888888-8888-4888-8888-888888888888";
+  const dictionary = [
+    { custom_definition_id: dose, title: "Grouped dose", datatype: "number",
+      recurrence: "multiple", grouped: true, identifying: false, semantic_count: "1",
+      datatype_count: "1", recurrence_count: "1", privacy_count: "1" },
+    { custom_definition_id: route, title: "Grouped route", datatype: "coded",
+      recurrence: "multiple", grouped: true, identifying: false, semantic_count: "1",
+      datatype_count: "1", recurrence_count: "1", privacy_count: "1" },
+  ];
+  const grouped = (report, occurrence, id, parent, group, category, numeric) => ({
+    ...customOccurrence(report, occurrence, id, category, numeric),
+    group_id: "CustomGroup", group_instance_id: group, parent_group_instance_id: parent,
+    instance_path: ["root", parent, group], group_ordinal: 1, element_ordinal: 1,
+  });
+  const queries = [];
+  const service = new ReviewService({ query: async (sql, parameters) => {
+    queries.push({ sql, parameters });
+    if (sql.includes("review_custom_dictionary")) return dictionary;
+    if (sql.includes("projection_health")) return [health];
+    if (sql.includes("as standard_group_value")) return ["r1", "r2"]
+      .map((report_id) => ({ report_id, standard_group_value: null }));
+    if (sql.includes("review_custom_field_source")) return [
+      grouped("r1", "dose-1", dose, "parent-1", "group-1", null, "10"),
+      grouped("r1", "dose-2", dose, "parent-2", "group-2", null, "90"),
+      grouped("r1", "route-1", route, "parent-1", "group-1", "A", null),
+      grouped("r1", "route-2", route, "parent-2", "group-2", "B", null),
+      grouped("r2", "dose-3", dose, "parent-3", "group-3", null, "20"),
+      grouped("r2", "route-3", route, "parent-3", "group-3", "A", null),
+    ];
+    return [];
+  } }, { get: async () => session });
+  const fields = await service.analysisFields("token");
+  assert.equal(fields.find((field) => field.id === dose)?.repeating, true);
+  assert.deepEqual(fields.find((field) => field.id === route)?.operations, ["distribution"]);
+  await assert.rejects(service.analysis("token", definition({ fieldId: dose,
+    operation: "mean" })), { status: 400 });
+  const result = await service.analysis("token", definition({ fieldId: dose,
+    operation: "mean", reducer: "first", groupBy: route,
+    filters: { from: "2026-10-01", to: "2026-10-02", dataset: "synthetic",
+      field: { id: route, value: "A" } } }));
+  assert.deepEqual(result.groups.map(({ group, denominator, summary }) =>
+    ({ group, denominator, summary })), [{ group: "A", denominator: 2, summary: 15 }]);
+  const source = queries.find(({ sql }) => sql.includes("review_custom_field_source"));
+  assert.deepEqual(source.parameters.slice(2, 6), [session.organization.id, true, false, session.user.id]);
+  assert.match(source.sql, /report.organization_id=\$3::uuid/);
+  assert.match(queries.find(({ sql }) => sql.includes("review_custom_dictionary")).sql,
+    /\(\$2::boolean or not identifying\)/);
 });

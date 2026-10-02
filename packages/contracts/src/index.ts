@@ -353,11 +353,16 @@ export interface ReviewAnalysisResult {
   sources?: Array<{ reportId: string; group: string | null; value: string[] | number | null;
     unit: string | null; occurrenceIds: string[]; groupInstanceIds: string[];
     selectedOccurrenceId?: string; orderMode?: "clinical-time" | "occurrence-order";
-    sourceValues: Array<{ occurrenceId: string; groupId: string; groupInstanceId: string;
+    sourceValues: Array<{ occurrenceId: string; groupId: string | null; groupInstanceId: string | null;
       parentGroupInstanceId: string | null; value: string | number | null;
       unit: string | null; clinicalTime: string | null; documentedTime: string | null;
       absenceKind: string | null; absenceCode: string | null;
-      normalizationRuleId: string | null; qualityFlags: string[] }> }>;
+      normalizationRuleId: string | null; qualityFlags: string[];
+      elementIdentityId?: string; customDefinitionId?: string;
+      catalogReleaseId?: string; effectiveAmendmentSequence?: number;
+      groupPath?: string[]; instancePath?: string[];
+      groupOrdinal?: number | null; elementOrdinal?: number | null;
+      correlationId?: string | null; groupCorrelationId?: string | null }> }>;
   groups: Array<{
     group: string | null;
     denominator: number;
