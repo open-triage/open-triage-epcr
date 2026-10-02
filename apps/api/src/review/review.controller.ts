@@ -1,11 +1,34 @@
 import { Body, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { ClaimReviewItemCommand, ReviewItemDetail, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 
 @Controller("review")
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
+
+  @Get("routes")
+  @Header("Cache-Control", "no-store, private")
+  routes(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewCriterionRoute[]> {
+    return this.review.routes(bearerToken(authorization, cookie));
+  }
+
+  @Post("routes/:criterionId")
+  @Header("Cache-Control", "no-store, private")
+  configureRoute(@Param("criterionId", new ParseUUIDPipe({ version: "4" })) criterionId: string,
+    @Body() command: ConfigureReviewRouteCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewCriterionRoute> {
+    return this.review.configureRoute(bearerToken(authorization, cookie), criterionId, command, csrfToken);
+  }
+
+  @Get("eligible-reviewers")
+  @Header("Cache-Control", "no-store, private")
+  reviewers(@Query("itemId") itemId?: string, @Query("dataset") dataset?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewEligibleReviewer[]> {
+    return this.review.reviewers(bearerToken(authorization, cookie), itemId, dataset);
+  }
 
   @Get("queue")
   @Header("Cache-Control", "no-store, private")
@@ -100,5 +123,13 @@ export class ReviewController {
     @Body() command: ClaimReviewItemCommand, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
     return this.review.claim(bearerToken(authorization, cookie), id, command, csrfToken);
+  }
+
+  @Post("items/:id/assign")
+  @Header("Cache-Control", "no-store, private")
+  assign(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: AssignReviewItemCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
+    return this.review.assign(bearerToken(authorization, cookie), id, command, csrfToken);
   }
 }

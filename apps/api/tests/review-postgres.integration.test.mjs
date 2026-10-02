@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { ReviewService } from "../dist/review/review.service.js";
+import { reconcileReviewAssignments } from "../dist/review/review-assignment.js";
 
 const integrationTest = process.env.DATABASE_URL ? test : test.skip;
 
@@ -16,9 +17,12 @@ integrationTest("Review claim stores one versioned assignment and immutable hist
     await client.query(readFileSync(new URL("../../../supabase/migrations/20261002160000_review_sign_to_queue.sql", import.meta.url), "utf8"));
   if (!(await client.query("select to_regclass('clinical.review_assignment_history') as relation")).rows[0].relation)
     await client.query(readFileSync(new URL("../../../supabase/migrations/20261002170000_review_claim_item.sql", import.meta.url), "utf8"));
+  if (!(await client.query("select to_regclass('clinical.review_criterion_route') as relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002200000_review_assignment_routing.sql", import.meta.url), "utf8"));
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-    where r.status='signed' limit 1`)).rows[0];
+    where r.status='signed' and exists (select 1 from app_identity.installation_owner owner
+      where owner.organization_id=r.organization_id) limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report is available in the local database");
   const itemId = randomUUID();
   await client.query(`insert into clinical.review_item
@@ -48,6 +52,134 @@ integrationTest("Review claim stores one versioned assignment and immutable hist
   session = { ...session, capabilities: ["review:all"], organization: { id: randomUUID() } };
   await assert.rejects(service.claim("unused", itemId, { ...command, commandId: randomUUID() }, "valid"),
     { status: 404 });
+});
+
+integrationTest("Review administration reassigns eligible users and recovers disabled assignees", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  for (const [table, file] of [
+    ["clinical.review_item", "20261002160000_review_sign_to_queue.sql"],
+    ["clinical.review_assignment_history", "20261002170000_review_claim_item.sql"],
+    ["clinical.review_criterion_route", "20261002200000_review_assignment_routing.sql"],
+  ]) if (!(await client.query("select to_regclass($1) relation", [table])).rows[0].relation)
+    await client.query(readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), "utf8"));
+  const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
+    from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
+    where r.status='signed' and exists (select 1 from app_identity.installation_owner owner
+      where owner.organization_id=r.organization_id) limit 1`)).rows[0];
+  if (!candidate) return t.skip("No signed report with a configured organization is available");
+  const itemId = randomUUID();
+  const criterionId = randomUUID();
+  await client.query(`insert into validation.rule_identity (id,organization_id,created_by)
+    values ($1,$2,$3)`, [criterionId, candidate.organization_id, candidate.documenting_user_id]);
+  await client.query(`insert into clinical.review_item
+    (id,organization_id,report_id,criterion_id,priority,first_matched_at)
+    values ($1,$2,$3,$4,'medium',now())`,
+  [itemId, candidate.organization_id, candidate.id, criterionId]);
+  await client.query("set local role open_triage_api_runtime");
+  const actor = candidate.documenting_user_id;
+  const session = { user: { id: actor }, organization: { id: candidate.organization_id },
+    capabilities: ["review:all", "review:admin"] };
+  const query = async (sql, params) => (await client.query(sql, params)).rows;
+  const database = { manager: { query }, query, transaction: async (work) => work({ query }) };
+  const service = new ReviewService(database, { get: async () => session, assertCsrf: async () => {} });
+  const dataset = candidate.synthetic ? "synthetic" : "real";
+  const eligible = await service.reviewers("unused", itemId, dataset);
+  const ownerId = (await client.query(`select user_id from app_identity.installation_owner
+    where organization_id=$1`, [candidate.organization_id])).rows[0]?.user_id;
+  const nonOwner = eligible.find((user) => user.id !== ownerId);
+  if (!nonOwner) return t.skip("No eligible non-owner reviewer is available in the local organization");
+  const firstReviewer = eligible.find((user) => user.id !== nonOwner.id) ?? nonOwner;
+  const first = await service.assign("unused", itemId, { commandId: randomUUID(), expectedVersion: 0,
+    dataset, assigneeId: firstReviewer.id }, "valid");
+  assert.equal(first.version, 1);
+  assert.equal(first.assigneeId, firstReviewer.id);
+  assert.equal(first.assignmentHistory[0].action, "assigned");
+  await assert.rejects(service.assign("unused", itemId, { commandId: randomUUID(), expectedVersion: 0,
+    dataset, assigneeId: null }, "valid"), { status: 409 });
+  if (firstReviewer.id !== nonOwner.id) {
+    const second = await service.assign("unused", itemId, { commandId: randomUUID(), expectedVersion: 1,
+      dataset, assigneeId: nonOwner.id }, "valid");
+    assert.equal(second.assigneeId, nonOwner.id);
+    assert.equal(second.assignmentHistory.length, 2);
+  }
+  const latest = await service.item("unused", itemId, dataset);
+  await client.query("update app_identity.app_user set active=false where id=$1", [latest.assigneeId]);
+  await reconcileReviewAssignments(database);
+  const recovered = await service.item("unused", itemId, dataset);
+  assert.equal(recovered.assigneeId, null);
+  assert.equal(recovered.recoveryReason, "assignee-ineligible");
+  assert.equal(recovered.assignmentHistory.at(-1).action, "recovered");
+  assert.equal(recovered.assignmentHistory.at(-1).previousAssigneeId, latest.assigneeId);
+  await client.query("update app_identity.app_user set active=true where id=$1", [nonOwner.id]);
+  const reassigned = await service.assign("unused", itemId, { commandId: randomUUID(),
+    expectedVersion: recovered.version, dataset, assigneeId: nonOwner.id }, "valid");
+  assert.equal(reassigned.assigneeId, nonOwner.id);
+  await client.query(`insert into clinical.review_criterion_route
+    (organization_id,criterion_id,route,named_user_id) values ($1,$2,'named',$3)`,
+  [candidate.organization_id, criterionId, nonOwner.id]);
+  await client.query(`update app_identity.user_role_assignment set ended_at=now(),ended_by=$2
+    where user_id=$1 and ended_at is null`, [nonOwner.id, ownerId]);
+  await reconcileReviewAssignments(database);
+  const roleLoss = await service.item("unused", itemId, dataset);
+  assert.equal(roleLoss.assigneeId, null);
+  assert.equal(roleLoss.assignmentHistory.at(-1).action, "recovered");
+  const routeRecovery = (await client.query(`select route,named_user_id,recovery_reason
+    from clinical.review_criterion_route where organization_id=$1 and criterion_id=$2`,
+  [candidate.organization_id, criterionId])).rows[0];
+  assert.deepEqual(routeRecovery, { route: "unassigned", named_user_id: null,
+    recovery_reason: "configured-assignee-ineligible" });
+});
+
+integrationTest("Review criterion routing is configured without validation-write authority", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  for (const [table, file] of [
+    ["clinical.review_item", "20261002160000_review_sign_to_queue.sql"],
+    ["clinical.review_assignment_history", "20261002170000_review_claim_item.sql"],
+    ["clinical.review_criterion_route", "20261002200000_review_assignment_routing.sql"],
+  ]) if (!(await client.query("select to_regclass($1) relation", [table])).rows[0].relation)
+    await client.query(readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), "utf8"));
+  const criterion = (await client.query(`select v.organization_id,v.created_by,
+      (rule.value->>'ruleId')::uuid criterion_id
+    from validation.version v cross join lateral jsonb_array_elements(v.compiled_bundle->'rules') rule(value)
+    join app_identity.app_user u on u.id=v.created_by and u.active
+    where v.status='published' and rule.value->'executionTargets' ? 'review' limit 1`)).rows[0];
+  if (!criterion) return t.skip("No published Review criterion is available");
+  const owner = (await client.query(`select user_id from app_identity.installation_owner
+    where organization_id=$1`, [criterion.organization_id])).rows[0];
+  if (!owner) await client.query(`insert into app_identity.installation_owner
+    (organization_id,user_id,established_by_operator_id) values ($1,$2,'review-test')`,
+  [criterion.organization_id, criterion.created_by]);
+  const actorId = owner?.user_id ?? criterion.created_by;
+  await client.query("set local role open_triage_api_runtime");
+  let session = { user: { id: actorId }, organization: { id: criterion.organization_id },
+    capabilities: ["review:all", "review:admin"] };
+  const query = async (sql, params) => (await client.query(sql, params)).rows;
+  const database = { manager: { query }, query, transaction: async (work) => work({ query }) };
+  const service = new ReviewService(database, { get: async () => session, assertCsrf: async () => {} });
+  const initial = (await service.routes("unused")).find((route) => route.criterionId === criterion.criterion_id);
+  assert.equal(initial?.route, "unassigned");
+  session = { ...session, capabilities: ["review:all"] };
+  await assert.rejects(service.configureRoute("unused", criterion.criterion_id, { commandId: randomUUID(),
+    expectedVersion: 0, route: "named", namedUserId: actorId }, "valid"), { status: 403 });
+  session = { ...session, capabilities: ["review:all", "review:admin"] };
+  const command = { commandId: randomUUID(), expectedVersion: 0,
+    route: "named", namedUserId: actorId };
+  const named = await service.configureRoute("unused", criterion.criterion_id, command, "valid");
+  assert.equal(named.route, "named");
+  assert.equal(named.version, 1);
+  assert.equal((await service.configureRoute("unused", criterion.criterion_id, command, "valid")).version, 1);
+  await assert.rejects(service.configureRoute("unused", criterion.criterion_id,
+    { ...command, commandId: randomUUID() }, "valid"), { status: 409 });
+  const history = (await client.query(`select count(*)::integer total from clinical.review_criterion_route_history
+    where organization_id=$1 and criterion_id=$2`,
+  [criterion.organization_id, criterion.criterion_id])).rows[0];
+  assert.equal(history.total, 1);
 });
 
 integrationTest("Review signed-report list is scoped by current organization, author, and dataset in PostgreSQL", async (t) => {

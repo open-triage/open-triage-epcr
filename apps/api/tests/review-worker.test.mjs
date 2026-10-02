@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { compiledValidationBundleSha256 } from '@open-triage/contracts';
 import { processReviewWork } from '../dist/review/review-worker.js';
 
-function fixture({ incompatible = false } = {}) {
+function fixture({ incompatible = false, route = 'unassigned', eligible = true, allAccess = true } = {}) {
   const organization = randomUUID(), report = randomUUID(), snapshot = randomUUID();
   const version = randomUUID(), catalog = randomUUID(), workId = randomUUID();
   const rules = [randomUUID(), randomUUID()].map((ruleId, index) => ({
@@ -18,12 +18,20 @@ function fixture({ incompatible = false } = {}) {
   const bundle = { schemaVersion: 1, languageVersion: '1.0.0', validationVersionId: version,
     catalogReleaseId: catalog, rules };
   const work = { id: workId, organization_id: organization, report_id: report,
+    documenting_user_id: randomUUID(),
     signed_snapshot_id: snapshot, signed_revision: 3, amendment_sequence: 0,
     validation_version_id: version, catalog_release_id: catalog, attempts: 0 };
   const calls = [];
+  const namedReviewerId = randomUUID();
   let state = 'pending';
   const manager = { async query(sql, params = []) {
     calls.push({ sql, params });
+    if (sql.includes('from clinical.review_criterion_route where route=')) return [];
+    if (sql.includes('from clinical.review_item i join clinical.report r') && sql.includes('eligibility_checked_at')) return [];
+    if (sql.includes('from clinical.review_criterion_route where organization_id=')) return route === 'unassigned'
+      ? [] : [{ route, named_user_id: route === 'named' ? namedReviewerId : null, independent_review: false }];
+    if (sql.includes('from app_identity.app_user u')) return eligible
+      ? [{ id: params[1], display_name: 'Reviewer', all_access: allAccess, self_access: true }] : [];
     if (sql.includes('insert into clinical.review_work')) return [{ id: workId }];
     if (sql.includes('from clinical.review_work w join clinical.signed_snapshot')) return state === 'pending' ? [work] : [];
     if (sql.includes('from validation.version')) return [{ compiled_bundle: bundle,
@@ -40,20 +48,21 @@ function fixture({ incompatible = false } = {}) {
     ];
     if (sql.includes('from clinical.element_occurrence') || sql.includes('from clinical.amendment a')) return [];
     if (sql.includes('insert into clinical.review_evaluation')) return [{ id: randomUUID() }];
-    if (sql.includes('insert into clinical.review_item (')) return [{ id: randomUUID() }];
+    if (/insert into clinical\.review_item\s*\(/.test(sql)) return [{ id: randomUUID() }];
+    if (sql.includes('insert into clinical.review_assignment_history')) return [];
     if (sql.includes('insert into clinical.review_item_evidence')) return [];
     if (sql.includes('update clinical.review_work')) { state = params[1] === 'complete' ? 'complete' : 'failed'; return []; }
     throw new Error(`Unexpected SQL ${sql}`);
   } };
   const database = { transaction: async (isolation, callback) => (typeof isolation === "function" ? isolation : callback)(manager) };
-  return { database, calls, rules, get state() { return state; } };
+  return { database, calls, rules, work, namedReviewerId, get state() { return state; } };
 }
 
 test('bounded worker creates separate criterion items and immutable evidence once', async () => {
   const value = fixture();
   assert.deepEqual(await processReviewWork(value.database, 2), { processed: 1, failed: 0 });
   assert.equal(value.state, 'complete');
-  const itemWrites = value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_item ('));
+  const itemWrites = value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql));
   assert.equal(itemWrites.length, 2);
   assert.deepEqual(itemWrites.map(({ params }) => params[2]), value.rules.map(({ ruleId }) => ruleId));
   assert.deepEqual(itemWrites.map(({ params }) => params[3]), ['high', 'low']);
@@ -71,5 +80,37 @@ test('catalog incompatibility is recorded as a failed evaluation without creatin
   const evaluation = value.calls.find(({ sql }) => sql.includes('insert into clinical.review_evaluation'));
   assert.equal(evaluation.params[10], 'failed');
   assert.equal(JSON.parse(evaluation.params[12])[0].code, 'compatibility');
-  assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_item (')).length, 0);
+  assert.equal(value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql)).length, 0);
+});
+
+for (const route of ['unassigned', 'author', 'named']) {
+  test(`signed matching report follows ${route} criterion routing`, async () => {
+    const value = fixture({ route });
+    await processReviewWork(value.database, 1);
+    const writes = value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql));
+    const expected = route === 'author' ? value.work.documenting_user_id
+      : route === 'named' ? value.namedReviewerId : null;
+    assert.equal(writes.length, 2);
+    assert.ok(writes.every(({ params }) => params[5] === expected));
+    assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_assignment_history')).length,
+      expected ? 2 : 0);
+  });
+}
+
+test('ineligible configured reviewer leaves new work unassigned with an administrative indicator', async () => {
+  const value = fixture({ route: 'named', eligible: false });
+  await processReviewWork(value.database, 1);
+  const writes = value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql));
+  assert.ok(writes.every(({ params }) => params[5] === null && params[6] === 'configured-assignee-ineligible'));
+});
+
+test('author routing accepts review-self while named routing requires organization-wide access', async () => {
+  const author = fixture({ route: 'author', allAccess: false });
+  await processReviewWork(author.database, 1);
+  assert.ok(author.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql))
+    .every(({ params }) => params[5] === author.work.documenting_user_id));
+  const named = fixture({ route: 'named', allAccess: false });
+  await processReviewWork(named.database, 1);
+  assert.ok(named.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql))
+    .every(({ params }) => params[5] === null && params[6] === 'configured-assignee-ineligible'));
 });

@@ -148,6 +148,7 @@ export interface ReviewQueueItem {
   status: "new" | "in-review" | "resolved";
   assigneeId: string | null;
   version: number;
+  recoveryReason?: string | null;
   firstMatchedAt: string;
   reportingDate: string;
   signedAt: string;
@@ -156,10 +157,41 @@ export interface ReviewQueueItem {
 
 export interface ReviewAssignmentEvent {
   commandId: string;
-  actorId: string;
-  assigneeId: string;
+  actorId: string | null;
+  assigneeId: string | null;
+  previousAssigneeId?: string | null;
+  action?: "claimed" | "assigned" | "routed" | "recovered";
+  reason?: string | null;
   itemVersion: number;
   assignedAt: string;
+}
+
+export interface ReviewCriterionRoute {
+  criterionId: string;
+  name: string;
+  route: "unassigned" | "author" | "named";
+  namedUserId: string | null;
+  version: number;
+  recoveryReason: string | null;
+}
+
+export interface ReviewEligibleReviewer {
+  id: string;
+  displayName: string;
+}
+
+export interface ConfigureReviewRouteCommand {
+  commandId: string;
+  expectedVersion: number;
+  route: "unassigned" | "author" | "named";
+  namedUserId: string | null;
+}
+
+export interface AssignReviewItemCommand {
+  commandId: string;
+  expectedVersion: number;
+  dataset: "real" | "synthetic";
+  assigneeId: string | null;
 }
 
 export interface ReviewItemDetail extends ReviewQueueItem {

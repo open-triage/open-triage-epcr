@@ -2,11 +2,13 @@ import { compiledValidationBundleSha256, evaluateValidationBundleSafely, reviewP
   type CompiledValidationBundle, type ValidationFinding } from "@open-triage/contracts";
 import type { DataSource, EntityManager } from "typeorm";
 import { encounterDocument } from "../reports/encounter-document.persistence.js";
+import { mutationRows } from "../database/mutation-result.js";
+import { eligibleReviewers, reconcileReviewAssignments } from "./review-assignment.js";
 
 const MAX_BATCH = 100;
 type Work = { id: string; organization_id: string; report_id: string; signed_snapshot_id: string;
   signed_revision: string | number; amendment_sequence: number; attempts: number; validation_version_id: string;
-  catalog_release_id: string; };
+  catalog_release_id: string; documenting_user_id: string; };
 type Version = { compiled_bundle: CompiledValidationBundle; compiled_sha256: string; catalog_release_id: string };
 
 /** Discover work from committed signatures; signing never waits for this worker. */
@@ -36,12 +38,13 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_BATCH) throw new RangeError("Invalid Review batch size");
   let processed = 0;
   let failed = 0;
+  await reconcileReviewAssignments(database);
   await database.transaction(async (manager) => { await discoverReviewWork(manager, limit); });
   for (let index = 0; index < limit; index += 1) {
     try {
       const didWork = await database.transaction("REPEATABLE READ", async (manager) => {
         const work = (await manager.query<Work[]>(`
-          select w.*, s.signed_revision, r.catalog_release_id
+          select w.*, s.signed_revision, r.catalog_release_id, r.documenting_user_id
           from clinical.review_work w join clinical.signed_snapshot s on s.id = w.signed_snapshot_id
           join clinical.report r on r.id = w.report_id
           where w.state in ('pending', 'failed') and w.next_attempt_at <= now()
@@ -76,7 +79,7 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
           }
         }
         const outcome = failures.length ? 'failed' : findings.length ? 'findings' : 'passed';
-        const evaluation = (await manager.query<Array<{ id: string }>>(`
+        const evaluation = mutationRows<{ id: string }>(await manager.query(`
           insert into clinical.review_evaluation
             (work_id,attempt,organization_id,report_id,signed_snapshot_id,signed_revision,amendment_sequence,
              validation_version_id,validation_compiled_sha256,evaluated_at,outcome,findings,failures)
@@ -92,12 +95,32 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
           for (const [criterionId, matches] of byCriterion) {
             const rule = version.compiled_bundle.rules.find((candidate) => candidate.ruleId === criterionId);
             if (!rule) continue;
-            const item = (await manager.query<Array<{ id: string }>>(`
-              insert into clinical.review_item (organization_id,report_id,criterion_id,priority,first_matched_at)
-              values ($1,$2,$3,$4,$5)
-              on conflict (organization_id,report_id,criterion_id) do update
-                set priority=excluded.priority, updated_at=now() returning id`,
-            [work.organization_id, work.report_id, criterionId, reviewPriorityOfRule(rule), evaluationTime]))[0]!;
+            const route = (await manager.query<Array<{ route: string; named_user_id: string | null;
+              independent_review: boolean }>>(`select route,named_user_id,independent_review
+              from clinical.review_criterion_route where organization_id=$1 and criterion_id=$2`,
+            [work.organization_id, criterionId]))[0];
+            const proposed = route?.route === 'author' ? work.documenting_user_id
+              : route?.route === 'named' ? route.named_user_id : null;
+            const candidates = proposed ? await eligibleReviewers(manager, work.organization_id,
+              work.documenting_user_id, route?.independent_review ?? false, proposed) : [];
+            const assignee = candidates[0] && (route?.route !== 'named' || candidates[0].all_access)
+              ? proposed : null;
+            const recoveryReason = proposed && !assignee ? 'configured-assignee-ineligible' : null;
+            const inserted = mutationRows<{ id: string }>(await manager.query(`
+              insert into clinical.review_item
+                (organization_id,report_id,criterion_id,priority,first_matched_at,assignee_id,version,recovery_reason)
+              values ($1,$2,$3,$4,$5,$6,case when $6::uuid is null then 0 else 1 end,$7)
+              on conflict (organization_id,report_id,criterion_id) do nothing returning id`,
+            [work.organization_id, work.report_id, criterionId, reviewPriorityOfRule(rule), evaluationTime,
+              assignee, recoveryReason]))[0];
+            const item = inserted ?? mutationRows<{ id: string }>(await manager.query(`
+              update clinical.review_item set priority=$4,updated_at=now()
+              where organization_id=$1 and report_id=$2 and criterion_id=$3 returning id`,
+            [work.organization_id, work.report_id, criterionId, reviewPriorityOfRule(rule)]))[0]!;
+            if (inserted && assignee) await manager.query(`insert into clinical.review_assignment_history
+              (organization_id,item_id,command_id,actor_id,assignee_id,item_version,action,reason)
+              values ($1,$2,gen_random_uuid(),null,$3,1,'routed',$4)`,
+            [work.organization_id, item.id, assignee, route!.route]);
             await manager.query(`insert into clinical.review_item_evidence
               (organization_id,item_id,evaluation_id,work_id,findings) values ($1,$2,$3,$4,$5::jsonb)
               on conflict (item_id,work_id) do nothing`,

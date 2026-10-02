@@ -1,6 +1,83 @@
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
+test("Review administrator configures routing and reassigns an item without validation authoring", async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
+  const itemId = "123e4567-e89b-42d3-a456-426614174131";
+  const reportId = "123e4567-e89b-42d3-a456-426614174132";
+  const criterionId = "123e4567-e89b-42d3-a456-426614174133";
+  const reviewerId = "123e4567-e89b-42d3-a456-426614174134";
+  const session = { csrfToken: "review-admin-csrf", user: { id: "administrator", displayName: "Administrator" },
+    organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
+    expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:admin"], workspaceAvailable: true };
+  let route = { criterionId, name: "Narrative check", route: "unassigned", namedUserId: null as string | null,
+    version: 0, recoveryReason: null };
+  let assigneeId: string | null = null;
+  let version = 0;
+  let history: Array<{ commandId: string; actorId: string; assigneeId: string | null;
+    itemVersion: number; assignedAt: string; action: string }> = [];
+  const item = () => ({ id: itemId, reportId, criterionId, priority: "high", status: "new", assigneeId,
+    version, firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
+    signedAt: "2026-10-02T07:00:00Z", findings: [] });
+  await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
+  await page.route("**/api/**", (request) => {
+    const url = new URL(request.request().url());
+    const path = url.pathname;
+    if (path === "/api/installation") return request.fulfill({ json: { settings } });
+    if (path === "/api/sessions/current") return request.fulfill({ json: session });
+    if (path === "/api/review/routes" && request.request().method() === "GET")
+      return request.fulfill({ json: [route] });
+    if (path === `/api/review/routes/${criterionId}`) {
+      expect(request.request().headers()["x-csrf-token"]).toBe("review-admin-csrf");
+      const body = request.request().postDataJSON() as { route: typeof route.route; namedUserId: string | null;
+        expectedVersion: number };
+      expect(body.expectedVersion).toBe(route.version);
+      route = { ...route, route: body.route, namedUserId: body.namedUserId, version: route.version + 1 };
+      return request.fulfill({ json: route });
+    }
+    if (path === "/api/review/eligible-reviewers")
+      return request.fulfill({ json: [{ id: reviewerId, displayName: "Morgan Reviewer" }] });
+    if (path === "/api/review/queue") return request.fulfill({ json: { dataset: "real", page: 1,
+      pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
+    if (path === `/api/review/items/${itemId}`) return request.fulfill({ json: { ...item(), assignmentHistory: history } });
+    if (path === `/api/review/items/${itemId}/assign`) {
+      const body = request.request().postDataJSON() as { commandId: string; assigneeId: string | null;
+        expectedVersion: number };
+      expect(body.expectedVersion).toBe(version);
+      assigneeId = body.assigneeId; version++;
+      history = [...history, { commandId: body.commandId, actorId: "administrator", assigneeId,
+        itemVersion: version, assignedAt: "2026-10-02T08:00:00Z", action: "assigned" }];
+      return request.fulfill({ json: { ...item(), assignmentHistory: history } });
+    }
+    if (path === "/api/review/reports") return request.fulfill({ json: { dataset: "real", scope: "all",
+      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
+      asOf: new Date().toISOString(), reports: [] } });
+    if (path === `/api/review/reports/${reportId}`) return request.fulfill({ json: { id: reportId,
+      reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 0,
+      identifying: false, groups: [], values: [], notes: [] } });
+    if (path === "/api/review/backlog") return request.fulfill({ json: { work: [] } });
+    if (path === "/api/review/volume") return request.fulfill({ json: { definition: { measure: "signed-report-count",
+      grouping: "day", filters: { from: "2026-10-01", to: "2026-10-02", dataset: "real" } },
+      population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
+      freshness: { observedAt: new Date().toISOString(), targetSeconds: 300, status: "current",
+        oldestBacklogSeconds: null, replicaLagSeconds: null }, total: 0, points: [] } });
+    return request.fulfill({ status: 404 });
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Criterion routing" })).toBeVisible();
+  await page.getByLabel("Route to").selectOption("named");
+  await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
+  await page.getByRole("button", { name: "Save route" }).click();
+  await expect(page.getByText("Routing saved.")).toBeVisible();
+  expect(route.route).toBe("named");
+  expect(route.namedUserId).toBe(reviewerId);
+  await page.getByRole("button", { name: reportId }).first().click();
+  await page.getByLabel("Assign reviewer").selectOption(reviewerId);
+  await page.getByRole("button", { name: "Save assignment" }).click();
+  await expect(page.getByRole("cell", { name: reviewerId })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
+});
+
 test("Review claim persists in the queue and item history, with recoverable stale state", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
   const itemId = "123e4567-e89b-42d3-a456-426614174111";
