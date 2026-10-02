@@ -11,6 +11,7 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
   };
   const requestedDatasets: string[] = [];
   let staleVolume = false;
+  const queueRequests: string[] = [];
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
@@ -25,6 +26,17 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
         asOf: "2026-10-02T08:00:00Z",
         reports: [{ id: `${dataset}-report`, reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z" }],
       } });
+    }
+    if (url.pathname === "/api/review/queue") {
+      const dataset = url.searchParams.get("dataset")!;
+      queueRequests.push(url.search);
+      const items = dataset === "real" ? [{ id: "review-item", reportId: "real-report",
+        criterionId: "123e4567-e89b-42d3-a456-426614174001", priority: "high", status: "new",
+        assigneeId: null, firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
+        signedAt: "2026-10-02T07:00:00Z", findings: [{ message: "Review missing narrative",
+          primaryTarget: { elementId: "eNarrative.01" } }] }] : [];
+      return route.fulfill({ json: { dataset, page: 1, pageSize: 25, total: items.length,
+        asOf: "2026-10-02T08:00:00Z", items } });
     }
     if (url.pathname === "/api/review/volume") {
       const dataset = url.searchParams.get("dataset")!;
@@ -47,11 +59,16 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
   await expect(page.getByRole("button", { name: "Review" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Mobile" })).toHaveCount(0);
-  await expect(page.getByText("real-report")).toBeVisible();
+  await expect(page.getByText("real-report").first()).toBeVisible();
+  await expect(page.getByText("Review missing narrative")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "High" })).toBeVisible();
+  await page.getByLabel("Priority").selectOption("high");
+  await expect.poll(() => queueRequests.some((query) => query.includes("priority=high"))).toBe(true);
   await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toBeVisible();
   await expect(page.getByText("Signed patient reports in the selected period: 2", { exact: false })).toBeVisible();
   await page.getByLabel("Dataset").selectOption("synthetic");
   await expect(page.getByText("synthetic-report")).toBeVisible();
+  await expect(page.getByText("No matching review items.")).toBeVisible();
   await expect(page.getByText("Signed patient reports in the selected period: 1", { exact: false })).toBeVisible();
   staleVolume = true;
   await page.getByRole("button", { name: "Refresh" }).click();

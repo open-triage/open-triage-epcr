@@ -223,7 +223,7 @@ export class ReviewService implements OnModuleDestroy {
     const pageSize = positiveInteger(filters.pageSize, 25, 100);
     const offset = (page - 1) * pageSize;
     if (!Number.isSafeInteger(offset)) throw new BadRequestException("Invalid Review pagination");
-    if (filters.criterion && !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(filters.criterion))
+    if (filters.criterion && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(filters.criterion))
       throw new BadRequestException("Invalid Review criterion");
     if (filters.priority && !["high", "medium", "low"].includes(filters.priority))
       throw new BadRequestException("Invalid Review priority");

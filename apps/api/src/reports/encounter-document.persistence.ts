@@ -320,7 +320,7 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
 }
 
 /** Rehydrates the portable encounter document from normalized canonical storage. */
-export async function encounterDocument(manager: Queryable, reportId: string, includeAmendments = false): Promise<EncounterDocument> {
+export async function encounterDocument(manager: Queryable, reportId: string, includeAmendments = false, maxAmendmentSequence?: number): Promise<EncounterDocument> {
   const reports = await manager.query<ReportDocumentRow[]>(`
     select r.id, r.created_at, r.updated_at, f.id as form_id, fv.version as form_version,
            cr.standard as catalog_standard,
@@ -354,7 +354,8 @@ export async function encounterDocument(manager: Queryable, reportId: string, in
       corrected_value: Partial<StoredOccurrenceRow> | null }>>(`
       select ac.action, ac.target_element_occurrence_id, ac.corrected_value
       from clinical.amendment a join clinical.amendment_change ac on ac.amendment_id = a.id
-      where a.report_id = $1 order by a.sequence, ac.id`, [reportId]);
+      where a.report_id = $1 and ($2::integer is null or a.sequence <= $2)
+      order by a.sequence, ac.id`, [reportId, maxAmendmentSequence ?? null]);
     for (const overlay of overlays) {
       if (overlay.action === "remove" && overlay.target_element_occurrence_id)
         effective.delete(overlay.target_element_occurrence_id);

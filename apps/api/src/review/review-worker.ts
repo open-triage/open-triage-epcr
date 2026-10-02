@@ -39,7 +39,7 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
   await database.transaction(async (manager) => { await discoverReviewWork(manager, limit); });
   for (let index = 0; index < limit; index += 1) {
     try {
-      const didWork = await database.transaction(async (manager) => {
+      const didWork = await database.transaction("REPEATABLE READ", async (manager) => {
         const work = (await manager.query<Work[]>(`
           select w.*, s.signed_revision, r.catalog_release_id
           from clinical.review_work w join clinical.signed_snapshot s on s.id = w.signed_snapshot_id
@@ -63,7 +63,7 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
             code: 'integrity', message: 'The published review bundle failed its integrity check' }];
         } else {
           try {
-            const document = await encounterDocument(manager, work.report_id, true);
+            const document = await encounterDocument(manager, work.report_id, true, Number(work.amendment_sequence));
             const settings = await manager.query<Array<{ language: string }>>(
               `select language from app_identity.agency_settings where organization_id=$1`, [work.organization_id]);
             const result = evaluateValidationBundleSafely(version.compiled_bundle, document, 'review',

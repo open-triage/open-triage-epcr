@@ -149,3 +149,34 @@ test("volume validates filters, binds both scope dimensions, and suppresses stal
   await assert.rejects(service.volume("token", "real", "2026-02-30", "2026-10-02"), BadRequestException);
   await assert.rejects(service.volume("token", "real", "2026-10-02", "2026-10-01"), BadRequestException);
 });
+
+test("review queue filters are scoped before pagination and report links", async () => {
+  const calls = [];
+  const database = { async query(sql, params) {
+    calls.push({ sql, params });
+    return sql.includes("count(*)") ? [{ total: "1" }] : [{ id: "item-a", report_id: "report-a",
+      criterion_id: "rule-a", priority: "high", status: "new", assignee_id: null,
+      first_matched_at: "2026-10-02T10:00:00Z", reporting_date: "2026-10-02",
+      signed_at: "2026-10-02T09:00:00Z", findings: [{ message: "Review" }] }];
+  } };
+  const service = new ReviewService(database, { get: async () => session(["review:self"]) });
+  const result = await service.queue("token", { dataset: "real", priority: "high", status: "new",
+    from: "2026-10-01", to: "2026-10-02", page: "2", pageSize: "10" });
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].reportId, "report-a");
+  assert.deepEqual(calls[0].params.slice(0, 9), ["org-a", false, false, "user-a", null,
+    "high", "new", "2026-10-01", "2026-10-02"]);
+  assert.match(calls[0].sql, /r\.documenting_user_id=\$4/);
+  assert.match(calls[1].sql, /limit \$10 offset \$11/);
+  assert.deepEqual(calls[1].params.slice(9), [10, 10]);
+  await assert.rejects(service.queue("token", { priority: "critical" }), BadRequestException);
+});
+
+test("only review administrators can inspect processing failures", async () => {
+  const database = { query: async () => [] };
+  let current = session(["review:all"]);
+  const service = new ReviewService(database, { get: async () => current });
+  await assert.rejects(service.backlog("token"), ForbiddenException);
+  current = session(["review:all", "review:admin"]);
+  assert.deepEqual((await service.backlog("token")).work, []);
+});

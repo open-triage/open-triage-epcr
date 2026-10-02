@@ -11,6 +11,7 @@ function fixture({ incompatible = false } = {}) {
     schemaVersion: 1, languageVersion: '1.0.0', ruleId, validationVersionId: version,
     name: `Criterion ${index}`, enabled: true, severity: 'warning', reviewPriority: index ? 'low' : 'high',
     executionTargets: ['review'], primaryTarget: { elementId: `eTest.0${index + 1}` },
+    ...(index === 0 ? { scope: { groupId: 'eTestSection', iteration: 'each' } } : {}),
     message: `Review criterion ${index}`, assertion: { operator: 'constant', value: false },
     references: { elementIds: [], codes: [] },
   }));
@@ -33,15 +34,18 @@ function fixture({ incompatible = false } = {}) {
       created_at: '2026-10-02T08:00:00Z', updated_at: '2026-10-02T09:00:00Z',
       form_id: randomUUID(), form_version: 1, catalog_standard: 'NEMSIS',
       catalog_version: '3.5.1', catalog_dataset: 'EMSDataSet' }];
-    if (sql.includes('from clinical.group_instance') || sql.includes('from clinical.element_occurrence') ||
-        sql.includes('from clinical.amendment a')) return [];
+    if (sql.includes('from clinical.group_instance')) return [
+      { id: randomUUID(), parent_group_instance_id: null, group_id: 'eTestSection', ordinal: 0, documented_time: null, correlation_id: null },
+      { id: randomUUID(), parent_group_instance_id: null, group_id: 'eTestSection', ordinal: 1, documented_time: null, correlation_id: null },
+    ];
+    if (sql.includes('from clinical.element_occurrence') || sql.includes('from clinical.amendment a')) return [];
     if (sql.includes('insert into clinical.review_evaluation')) return [{ id: randomUUID() }];
     if (sql.includes('insert into clinical.review_item (')) return [{ id: randomUUID() }];
     if (sql.includes('insert into clinical.review_item_evidence')) return [];
     if (sql.includes('update clinical.review_work')) { state = params[1] === 'complete' ? 'complete' : 'failed'; return []; }
     throw new Error(`Unexpected SQL ${sql}`);
   } };
-  const database = { transaction: async (callback) => callback(manager) };
+  const database = { transaction: async (isolation, callback) => (typeof isolation === "function" ? isolation : callback)(manager) };
   return { database, calls, rules, get state() { return state; } };
 }
 
@@ -53,7 +57,9 @@ test('bounded worker creates separate criterion items and immutable evidence onc
   assert.equal(itemWrites.length, 2);
   assert.deepEqual(itemWrites.map(({ params }) => params[2]), value.rules.map(({ ruleId }) => ruleId));
   assert.deepEqual(itemWrites.map(({ params }) => params[3]), ['high', 'low']);
-  assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_item_evidence')).length, 2);
+  const evidenceWrites = value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_item_evidence'));
+  assert.equal(evidenceWrites.length, 2);
+  assert.equal(JSON.parse(evidenceWrites[0].params[3]).length, 2);
   assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_evaluation')).length, 1);
   assert.deepEqual(await processReviewWork(value.database, 2), { processed: 0, failed: 0 });
 });
