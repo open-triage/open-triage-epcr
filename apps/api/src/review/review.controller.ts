@@ -1,8 +1,8 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
-import { aggregateRevision, analysisCsv, volumeCsv } from "./review-csv.js";
+import { aggregateRevision, analysisCsv, volumeCsv, workloadCsv } from "./review-csv.js";
 
 type CsvResponse = { setHeader(name: string, value: string): unknown; send(body: string): unknown };
 
@@ -145,6 +145,37 @@ export class ReviewController {
   fields(@Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string): Promise<ReviewAnalysisField[]> {
     return this.review.analysisFields(bearerToken(authorization, cookie));
+  }
+
+  @Get("analysis/review-filters")
+  @Header("Cache-Control", "no-store, private")
+  analysisReviewFilters(@Query("dataset") dataset?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewAnalysisReviewFilters> {
+    return this.review.analysisReviewFilters(bearerToken(authorization, cookie), dataset);
+  }
+
+  @Post("workload")
+  @Header("Cache-Control", "no-store, private")
+  async workload(@Body() definition: ReviewWorkloadDefinition,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewWorkloadResult> {
+    const result = await this.review.workload(bearerToken(authorization, cookie), definition);
+    return { ...result, exportRevision: aggregateRevision(result) };
+  }
+
+  @Post("workload/export")
+  async exportWorkload(@Body() request: { definition: ReviewWorkloadDefinition; expectedRevision: string },
+    @Headers("authorization") authorization: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res() response: CsvResponse) {
+    const revision = expectedRevision(request?.expectedRevision);
+    const result = await this.review.workload(bearerToken(authorization, cookie), request?.definition);
+    const current = aggregateRevision(result);
+    if (current !== revision)
+      throw new ConflictException({ message: "Review workload changed; refresh before exporting",
+        result: { ...result, exportRevision: current } });
+    return sendCsv(response, "review-workload.csv", workloadCsv(result));
   }
 
   @Post("analysis")

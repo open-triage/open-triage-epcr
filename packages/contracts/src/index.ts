@@ -434,7 +434,31 @@ export interface ReviewAnalysisDefinition {
     to: string;
     dataset: "real" | "synthetic";
     field?: { id: string; value: string };
+    review?: { criterionId?: string; outcomeOptionId?: string };
   };
+}
+
+export interface ReviewWorkloadDefinition {
+  groupBy: "criterion" | "priority" | "status" | "age" | "completion-duration" | "exception-reason";
+  filters: { from: string; to: string; dataset: "real" | "synthetic" };
+}
+
+export interface ReviewWorkloadResult {
+  exportRevision?: string;
+  definition: ReviewWorkloadDefinition;
+  population: { unit: "review-item"; scope: "own" | "all"; organizationId: string;
+    includesUnsigned: true };
+  freshness: { source: "operational-primary"; observedAt: string };
+  totalItems: number;
+  reopenedItems: number;
+  unsignedItems: number;
+  exceptionallyClosedItems: number;
+  groups: Array<{ key: string; count: number }>;
+}
+
+export interface ReviewAnalysisReviewFilters {
+  criteria: Array<{ id: string; label: string }>;
+  outcomes: Array<{ id: string; label: string }>;
 }
 
 export interface ReviewAnalysisResult {

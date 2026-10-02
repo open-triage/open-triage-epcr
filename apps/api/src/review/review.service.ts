@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -12,6 +12,7 @@ import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./rev
 import { reduceRepeated, type RepeatedRow } from "./review-repeated.js";
 import { eligibleReviewer, eligibleReviewers } from "./review-assignment.js";
 import { reduceCustom, type CustomOccurrenceRow, type CustomReportRow } from "./review-custom.js";
+import { reduceWorkload, type WorkloadRow } from "./review-workload.js";
 import { loadRetrospectivePopulation, previewRetrospective, requireRetrospectiveAdmin,
   retrospectiveRunStatus, retrospectiveVersions, validateRetrospectiveDefinition } from "./review-retrospective.js";
 import { processReviewWork } from "./review-worker.js";
@@ -211,6 +212,83 @@ export class ReviewService implements OnModuleDestroy {
     return this.retrospectiveRun(token, id);
   }
 
+  async workload(token: string, input: ReviewWorkloadDefinition): Promise<ReviewWorkloadResult> {
+    const scope = reviewScope(await this.sessions.get(token));
+    if (!input || !input.filters || !["criterion", "priority", "status", "age",
+      "completion-duration", "exception-reason"].includes(input.groupBy) ||
+      !validDate(input.filters.from) || !validDate(input.filters.to) ||
+      input.filters.from > input.filters.to ||
+      (Date.parse(`${input.filters.to}T00:00:00Z`) -
+        Date.parse(`${input.filters.from}T00:00:00Z`)) / 86400000 > 365 ||
+      !["real", "synthetic"].includes(input.filters.dataset))
+      throw new BadRequestException("Invalid Review workload definition");
+    const dataset = this.dataset(input.filters.dataset, scope);
+    const definition: ReviewWorkloadDefinition = { groupBy: input.groupBy,
+      filters: { from: input.filters.from, to: input.filters.to, dataset } };
+    const rows = await this.database.query<WorkloadRow[]>(`
+      select i.id,i.criterion_id,i.priority,i.status,i.kind,r.status report_status,i.first_matched_at,
+        exists (select 1 from clinical.review_progress_history history
+          where history.organization_id=i.organization_id and history.item_id=i.id
+            and history.reason='relevant-amendment') reopened,
+        i.resolution_reason,i.exception_code,
+        completion.recorded_at completion_at,reopening.recorded_at reopened_at
+      from clinical.review_item i join clinical.report r
+        on r.id=i.report_id and r.organization_id=i.organization_id
+      left join lateral (
+        select event.recorded_at,event.item_version from (
+          select h.recorded_at,h.item_version from clinical.review_progress_history h
+          where h.organization_id=i.organization_id and h.item_id=i.id and h.status='completed'
+          union all
+          select h.recorded_at,h.item_version from clinical.review_overdue_history h
+          where h.organization_id=i.organization_id and h.item_id=i.id
+            and h.action in ('resolved-by-signing','closed-exceptionally')
+        ) event order by event.item_version desc limit 1
+      ) completion on true
+      left join lateral (
+        select max(h.recorded_at) recorded_at from clinical.review_progress_history h
+        where h.organization_id=i.organization_id and h.item_id=i.id
+          and h.reason='relevant-amendment'
+          and h.item_version < completion.item_version
+      ) reopening on true
+      where i.organization_id=$1 and r.synthetic=$2
+        and ($3::boolean or r.documenting_user_id=$4)
+        and i.first_matched_at >= $5::date
+        and i.first_matched_at < ($6::date + interval '1 day')
+        and (i.kind='overdue-unsigned' or r.status='signed')
+      order by i.id limit 20001`,
+    [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+      definition.filters.from, definition.filters.to]);
+    if (rows.length > 20000) throw new BadRequestException("Review workload exceeds the item limit");
+    return reduceWorkload(rows, definition, scope.reports, scope.organizationId);
+  }
+
+  async analysisReviewFilters(token: string, requestedDataset?: string): Promise<ReviewAnalysisReviewFilters> {
+    const scope = reviewScope(await this.sessions.get(token));
+    const dataset = this.dataset(requestedDataset, scope);
+    const params = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId];
+    const criteria = await this.database.query<Array<{ id: string }>>(`
+      select distinct i.criterion_id id from clinical.review_item i
+      join clinical.report r on r.id=i.report_id and r.organization_id=i.organization_id
+      where i.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+        and i.kind='criterion' and ($3::boolean or r.documenting_user_id=$4)
+      order by id limit 501`, params);
+    const outcomes = await this.database.query<Array<{ id: string; label: string }>>(`
+      select distinct on (h.outcome_option_id) h.outcome_option_id id,revision.label
+      from clinical.review_progress_history h
+      join clinical.review_item i on i.id=h.item_id and i.organization_id=h.organization_id
+      join clinical.report r on r.id=i.report_id and r.organization_id=i.organization_id
+      join clinical.review_outcome_revision revision
+        on revision.option_id=h.outcome_option_id and revision.revision=h.outcome_revision
+      where i.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+        and i.kind='criterion' and ($3::boolean or r.documenting_user_id=$4)
+        and h.outcome_option_id is not null
+      order by h.outcome_option_id,h.recorded_at desc,h.id desc limit 501`, params);
+    if (criteria.length > 500 || outcomes.length > 500)
+      throw new BadRequestException("Review filter choices exceed the limit");
+    return { criteria: criteria.map((row) => ({ id: row.id, label: row.id })),
+      outcomes: outcomes.map((row) => ({ id: row.id, label: row.label })) };
+  }
+
   async analysisFields(token: string): Promise<ReviewAnalysisField[]> {
     const scope = reviewScope(await this.sessions.get(token));
     const custom = await this.database.query<Array<{ custom_definition_id: string; title: string;
@@ -256,6 +334,12 @@ export class ReviewService implements OnModuleDestroy {
     const groupField = input.groupBy ? fields.find((candidate) => candidate.id === input.groupBy) : undefined;
     const filter = input.filters.field;
     const filterField = filter ? fields.find((candidate) => candidate.id === filter.id) : undefined;
+    const reviewFilter = input.filters.review;
+    if (reviewFilter && (typeof reviewFilter !== "object" || Array.isArray(reviewFilter) ||
+      (!reviewFilter.criterionId && !reviewFilter.outcomeOptionId) ||
+      (reviewFilter.criterionId !== undefined && !uuid(reviewFilter.criterionId)) ||
+      (reviewFilter.outcomeOptionId !== undefined && !uuid(reviewFilter.outcomeOptionId))))
+      throw new BadRequestException("Invalid Review criterion or outcome filter");
     if (!field || (input.groupBy && (!groupField || groupField.kind !== "categorical" ||
       !groupField.operations.includes("distribution"))) ||
       (filter && (!filterField || filterField.kind !== "categorical" ||
@@ -285,7 +369,10 @@ export class ReviewService implements OnModuleDestroy {
       ...(groupField ? { groupBy: groupField.id } : {}),
       ...(input.reducer ? { reducer: input.reducer } : {}),
       ...(input.unit ? { unit: input.unit } : {}),
-      filters: { from, to, dataset, ...(filter ? { field: { id: filter.id, value: filter.value } } : {}) } };
+      filters: { from, to, dataset, ...(filter ? { field: { id: filter.id, value: filter.value } } : {}),
+        ...(reviewFilter ? { review: { ...(reviewFilter.criterionId ?
+          { criterionId: reviewFilter.criterionId } : {}),
+          ...(reviewFilter.outcomeOptionId ? { outcomeOptionId: reviewFilter.outcomeOptionId } : {}) } } : {}) } };
     const database = await this.analyticsDatabase();
     const [health] = await database.query<Array<{
       observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
@@ -311,6 +398,25 @@ export class ReviewService implements OnModuleDestroy {
     const population = { unit: "patient-report" as const, scope: scope.reports,
       organizationId: scope.organizationId, signedOnly: true as const };
     if (!current) return { definition, field: metadata, population, freshness, groups: [] };
+    const reviewIds = reviewFilter ? await database.query<Array<{ report_id: string }>>(`
+      select distinct i.report_id from clinical.review_item i
+      join clinical.report r on r.id=i.report_id and r.organization_id=i.organization_id
+      where i.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+        and ($3::boolean or r.documenting_user_id=$4)
+        and r.reporting_date between $5::date and $6::date
+        and i.kind='criterion'
+        and ($7::uuid is null or (i.active_match and i.criterion_id=$7))
+        and ($8::uuid is null or exists (
+          select 1 from clinical.review_progress_history h
+          where h.organization_id=i.organization_id and h.item_id=i.id
+            and h.outcome_option_id=$8))
+      order by i.report_id limit 20001`,
+    [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+      from, to, reviewFilter.criterionId ?? null, reviewFilter.outcomeOptionId ?? null]) : null;
+    if (reviewIds && reviewIds.length > 20000)
+      throw new BadRequestException("Review criterion filter exceeds the report limit");
+    const permittedReportIds = reviewIds?.map((row) => row.report_id) ?? null;
+    if (reviewIds?.length === 0) return { definition, field: metadata, population, freshness, groups: [] };
     if (field.source !== "custom" && "repeating" in field && field.repeating) {
       const rows = await database.query<RepeatedRow[]>(`
         select source.report_id, source.field_values ->> $8::text as group_value,
@@ -332,10 +438,12 @@ export class ReviewService implements OnModuleDestroy {
               where f.report_id = source.report_id and f.reporting_date = source.reporting_date
                 and f.element_id = $9::text and f.code = $10::text)` :
             "source.field_values ->> $9::text = $10::text"})
+          and ($11::uuid[] is null or source.report_id=any($11::uuid[]))
         order by source.report_id, occurrence.group_ordinal, occurrence.element_ordinal,
           occurrence.element_occurrence_id limit 20001`,
       [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
-        field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null]);
+        field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null,
+        permittedReportIds]);
       if (rows.length > 20000) throw new BadRequestException("Review analysis exceeds the repeated-value limit");
       const unit = field.id === "eMedications.05" ? input.unit ?? null : field.unit;
       if (field.id === "eMedications.05" && !unit)
@@ -353,11 +461,12 @@ export class ReviewService implements OnModuleDestroy {
           and source.organization_id=$3::uuid and source.synthetic=$4::boolean
           and ($5::boolean or source.documenting_user_id=$6::uuid)
           and ($8::text is null or source.field_values ->> $8::text = $9::text)
+          and ($10::uuid[] is null or source.report_id=any($10::uuid[]))
         order by source.report_id limit 20001`,
       [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
         scope.userId, groupField?.source === "custom" ? null : groupField?.id ?? null,
         filterField?.source === "custom" ? null : filterField?.id ?? null,
-        filterField?.source === "custom" ? null : filter?.value ?? null]);
+        filterField?.source === "custom" ? null : filter?.value ?? null, permittedReportIds]);
       if (reportRows.length > 20000) throw new BadRequestException("Review analysis exceeds the report limit");
       const ids = [...new Set([field, groupField, filterField]
         .filter((candidate): candidate is ReviewAnalysisField => candidate?.source === "custom")
@@ -390,10 +499,11 @@ export class ReviewService implements OnModuleDestroy {
           and report.organization_id=$3::uuid and report.synthetic=$4::boolean
           and ($5::boolean or report.documenting_user_id=$6::uuid)
           and c.custom_definition_id=any($7::uuid[])
+          and ($8::uuid[] is null or c.report_id=any($8::uuid[]))
         order by c.report_id, c.group_ordinal nulls first, c.element_ordinal,
           c.element_occurrence_id limit 20001`,
       [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
-        scope.userId, ids]);
+        scope.userId, ids, permittedReportIds]);
       if (occurrences.length > 20000) throw new BadRequestException("Review analysis exceeds the occurrence limit");
       if (occurrences.some((row) => row.categorical_value && row.categorical_value.length > 256))
         throw new BadRequestException("Custom category exceeds chart limits");
@@ -440,9 +550,10 @@ export class ReviewService implements OnModuleDestroy {
               where f.report_id = source.report_id and f.reporting_date = source.reporting_date
                 and f.element_id = $8::text and f.code = $9::text)` :
             "source.field_values ->> $8::text = $9::text"})
+          and ($10::uuid[] is null or source.report_id=any($10::uuid[]))
         group by 1 order by 1 nulls first limit 101`,
       [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
-        groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null]);
+        groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null, permittedReportIds]);
       if (rows.length > 100) throw new BadRequestException("Review analysis has too many groups");
       return { definition, field: metadata, population, freshness,
         groups: rows.map((row) => ({ group: row.group_value, denominator: Number(row.denominator),
@@ -451,7 +562,8 @@ export class ReviewService implements OnModuleDestroy {
             ? null : Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) })) };
     }
     const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
-      scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null];
+      scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null,
+      permittedReportIds];
     const source = `from analytics.${filterField && "repeating" in filterField ?
       "review_field_source_with_identity" : "review_field_source"} source
       where source.reporting_date between $1::date and $2::date
@@ -461,7 +573,8 @@ export class ReviewService implements OnModuleDestroy {
           `exists (select 1 from analytics.review_repeated_field_source f
             where f.report_id = source.report_id and f.reporting_date = source.reporting_date
               and f.element_id = $9::text and f.code = $10::text)` :
-          "source.field_values ->> $9::text = $10::text"})`;
+          "source.field_values ->> $9::text = $10::text"})
+        and ($11::uuid[] is null or source.report_id=any($11::uuid[]))`;
     const group = `case when $8::text is null then null else source.field_values ->> $8::text end`;
     if (field.kind === "categorical") {
       const rows = await database.query<Array<{ group_value: string | null; field_value: string | null;

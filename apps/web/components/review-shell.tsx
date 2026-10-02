@@ -8,6 +8,7 @@ import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { ReviewVolumeChart } from "./review-volume-chart";
 import { ReviewAnalysisBuilder } from "./review-analysis-builder";
+import { ReviewWorkloadBuilder } from "./review-workload-builder";
 import { downloadReviewCsv } from "./review-csv-download";
 import { ReviewRetrospectivePanel } from "./review-retrospective-panel";
 
@@ -675,6 +676,9 @@ export function ReviewShell({ session, language, online }: {
       </section>}
       <ReviewAnalysisBuilder key={`${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
         from={from} to={to} language={language} refresh={refresh}
+        csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
+      <ReviewWorkloadBuilder key={`workload-${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
+        from={from} to={to} language={language}
         csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
       {error && <p role="alert">{t("review.unavailable")}</p>}
       {!result && !error && <p role="status">{t("review.loading")}</p>}

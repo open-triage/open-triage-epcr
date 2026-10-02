@@ -54,7 +54,7 @@ test("Review distribution preserves missing, absence, and report denominators", 
   assert.equal(result.population.scope, "own");
   const analysisQuery = queries.find(({ sql }) => sql.includes("review_field_source"));
   assert.deepEqual(analysisQuery.parameters.slice(2), [session.organization.id, true, false,
-    session.user.id, "eSituation.11", "eDisposition.30", "eSituation.09", "C"]);
+    session.user.id, "eSituation.11", "eDisposition.30", "eSituation.09", "C", null]);
   assert.match(analysisQuery.sql, /source.organization_id = \$3::uuid/);
   assert.match(analysisQuery.sql, /limit 501/);
 });
@@ -100,7 +100,7 @@ test("operational time measures retain endpoint context, scope, and invalid deno
   assert.equal(result.population.scope, "own");
   const query = queries.find(({ sql }) => sql.includes("review_operational_time_source"));
   assert.deepEqual(query.parameters.slice(2), [session.organization.id, false, false,
-    session.user.id, "eSituation.11", "eDisposition.30", "transported"]);
+    session.user.id, "eSituation.11", "eDisposition.30", "transported", null]);
   assert.match(query.sql, /source.organization_id = \$3::uuid/);
   assert.match(query.sql, /interval_source.etimes_06 >= interval_source.etimes_03/);
   await assert.rejects(service.analysis("token", definition({ fieldId: "eTimes.03",

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ReviewAnalysisResult, ReviewVolumeResult } from "@open-triage/contracts";
+import type { ReviewAnalysisResult, ReviewVolumeResult, ReviewWorkloadResult } from "@open-triage/contracts";
 
 type Cell = string | number | boolean | null | undefined;
 
@@ -18,9 +18,35 @@ function csv(rows: Cell[][]): string {
 }
 
 /** Includes authorization scope, source freshness, definition, and every value. */
-export function aggregateRevision(result: ReviewAnalysisResult | ReviewVolumeResult): string {
+export function aggregateRevision(result: ReviewAnalysisResult | ReviewVolumeResult | ReviewWorkloadResult): string {
   const { exportRevision: _ignored, ...payload } = result;
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  const stable = "totalItems" in payload ? { ...payload,
+    freshness: { source: payload.freshness.source } } : payload;
+  return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
+}
+
+export function workloadCsv(result: ReviewWorkloadResult): string {
+  const rows: Cell[][] = [
+    ["context", "value"],
+    ["dataset", result.definition.filters.dataset],
+    ["from", result.definition.filters.from],
+    ["to", result.definition.filters.to],
+    ["population_unit", result.population.unit],
+    ["report_scope", result.population.scope],
+    ["organization_id", result.population.organizationId],
+    ["includes_unsigned", result.population.includesUnsigned],
+    ["freshness_source", result.freshness.source],
+    ["observed_at", result.freshness.observedAt],
+    ["result_revision", aggregateRevision(result)],
+    ["group_by", result.definition.groupBy],
+    ["total_items", result.totalItems],
+    ["reopened_items", result.reopenedItems],
+    ["unsigned_items", result.unsignedItems],
+    ["exceptionally_closed_items", result.exceptionallyClosedItems],
+    [], ["group", "item_count"],
+    ...result.groups.map((group) => [group.key, group.count]),
+  ];
+  return csv(rows);
 }
 
 function context(result: ReviewAnalysisResult | ReviewVolumeResult): Cell[][] {
@@ -70,6 +96,8 @@ export function analysisCsv(result: ReviewAnalysisResult): string {
     ["selected_unit", definition.unit],
     ["filter_field", definition.filters.field?.id],
     ["filter_value", definition.filters.field?.value],
+    ["review_criterion_id", definition.filters.review?.criterionId],
+    ["recorded_review_outcome_id", definition.filters.review?.outcomeOptionId],
     ["interval_start", field.interval?.start],
     ["interval_end", field.interval?.end],
     [],
