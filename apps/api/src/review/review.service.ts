@@ -270,10 +270,17 @@ export class ReviewService implements OnModuleDestroy {
     const dataset = this.dataset(requestedDataset, scope);
     const rows = await this.database.query<Array<{ id: string; report_id: string; state: string;
       attempts: number; last_error: string | null; created_at: Date | string }>>(`
-      select w.id,w.report_id,w.state,w.attempts,w.last_error,w.created_at
-      from clinical.review_work w join clinical.report r on r.id=w.report_id
-      where w.organization_id=$1 and r.synthetic=$2 and w.state <> 'complete'
-      order by w.created_at desc limit 100`, [scope.organizationId, dataset === "synthetic"]);
+      select backlog.id,backlog.report_id,backlog.state,backlog.attempts,backlog.last_error,backlog.created_at
+      from (
+        select w.id,w.report_id,w.state,w.attempts,w.last_error,w.created_at
+        from clinical.review_work w join clinical.report r on r.id=w.report_id
+        where w.organization_id=$1 and r.synthetic=$2 and w.state <> 'complete'
+        union all
+        select r.id,r.id,'unevaluated'::text,0,'No pinned published Validation version'::text,s.signed_at
+        from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
+        where r.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+          and s.validation_version_id is null
+      ) backlog order by backlog.created_at desc limit 100`, [scope.organizationId, dataset === "synthetic"]);
     return { dataset, asOf: new Date().toISOString(), work: rows.map((row) => ({
       id: row.id, reportId: row.report_id, state: row.state, attempts: row.attempts,
       lastError: row.last_error, createdAt: new Date(row.created_at).toISOString(),

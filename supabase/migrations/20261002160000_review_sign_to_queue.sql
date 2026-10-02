@@ -67,9 +67,10 @@ create table clinical.review_item_evidence (
   organization_id uuid not null references app_identity.organization(id),
   item_id uuid not null references clinical.review_item(id),
   evaluation_id uuid not null references clinical.review_evaluation(id),
+  work_id uuid not null references clinical.review_work(id),
   findings jsonb not null check (jsonb_typeof(findings) = 'array' and jsonb_array_length(findings) > 0),
   recorded_at timestamptz not null default now(),
-  unique (item_id, evaluation_id)
+  unique (item_id, work_id)
 );
 create trigger review_item_evidence_append_only before update or delete on clinical.review_item_evidence
   for each row execute function public.prevent_update_or_delete();
