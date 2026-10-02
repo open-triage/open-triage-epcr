@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
@@ -27,6 +27,14 @@ function validDate(value: string | undefined): value is string {
 
 const uuid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+function reviewOutcome(row: { outcome_option_id: string | null; outcome_revision: number | null;
+  outcome_label: string | null; outcome_meaning: string | null }): ReviewItemDetail["outcome"] {
+  return row.outcome_option_id && row.outcome_revision !== null ? {
+    optionId: row.outcome_option_id, revision: Number(row.outcome_revision),
+    label: row.outcome_label ?? "", meaning: row.outcome_meaning ?? "",
+  } : null;
+}
 
 @Injectable()
 export class ReviewService implements OnModuleDestroy {
@@ -507,10 +515,21 @@ export class ReviewService implements OnModuleDestroy {
           a.elementId.localeCompare(b.elementId) || a.ordinal - b.ordinal || a.id.localeCompare(b.id));
       // Narrative and media metadata are unrestricted clinical content. Return neither without identifying access.
       const notes = scope.identifying ? [...await reportTextNotes(manager, id)] : [];
+      const reviewItems = await manager.query<Array<{ id: string; criterion_id: string;
+        status: ReviewItemDetail["status"]; outcome_option_id: string | null;
+        outcome_revision: number | null; outcome_label: string | null; outcome_meaning: string | null }>>(`
+        select item.id,item.criterion_id,item.status,item.outcome_option_id,item.outcome_revision,
+          outcome.label as outcome_label,outcome.meaning as outcome_meaning
+        from clinical.review_item item left join clinical.review_outcome_revision outcome
+          on outcome.option_id=item.outcome_option_id and outcome.revision=item.outcome_revision
+        where item.report_id=$1 and item.organization_id=$2 order by item.first_matched_at,item.id`,
+      [id, scope.organizationId]);
       return { id, reportingDate: report.reporting_date, signedAt: new Date(report.signed_at).toISOString(),
         amendmentSequence: changes.at(-1)?.sequence ?? 0, identifying: scope.identifying,
         groups: groups.map((group) => ({ id: group.id, parentGroupInstanceId: group.parent_group_instance_id,
-          groupId: group.group_id, label: group.label, ordinal: Number(group.ordinal) })), values, notes };
+          groupId: group.group_id, label: group.label, ordinal: Number(group.ordinal) })), values, notes,
+        reviewItems: reviewItems.map((item) => ({ id: item.id, criterionId: item.criterion_id,
+          status: item.status, outcome: reviewOutcome(item) })) };
     });
   }
 
@@ -527,7 +546,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review criterion");
     if (filters.priority && !["high", "medium", "low"].includes(filters.priority))
       throw new BadRequestException("Invalid Review priority");
-    if (filters.status && !["new", "in-review", "resolved"].includes(filters.status))
+    if (filters.status && !["new", "in-review", "awaiting-clinician", "completed"].includes(filters.status))
       throw new BadRequestException("Invalid Review status");
     for (const value of [filters.from, filters.to]) if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value))
       throw new BadRequestException("Invalid Review date");
@@ -546,21 +565,26 @@ export class ReviewService implements OnModuleDestroy {
       this.database.query<Array<{ id: string; report_id: string; criterion_id: string; priority: string;
         status: string; assignee_id: string | null; version: string; recovery_reason: string | null;
         first_matched_at: Date | string;
-        reporting_date: string; signed_at: Date | string; findings: unknown }>>(`
+        reporting_date: string; signed_at: Date | string; findings: unknown;
+        outcome_option_id: string | null; outcome_revision: number | null;
+        outcome_label: string | null; outcome_meaning: string | null }>>(`
         select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
           i.recovery_reason,i.first_matched_at,
-          r.reporting_date,s.signed_at,
+          r.reporting_date,s.signed_at,i.outcome_option_id,i.outcome_revision,
+          outcome.label as outcome_label,outcome.meaning as outcome_meaning,
           (select e.findings from clinical.review_item_evidence e where e.item_id=i.id
             order by e.recorded_at desc,e.id desc limit 1) findings
         from clinical.review_item i join clinical.report r on r.id=i.report_id
         join clinical.signed_snapshot s on s.report_id=r.id
+        left join clinical.review_outcome_revision outcome
+          on outcome.option_id=i.outcome_option_id and outcome.revision=i.outcome_revision
         where ${where} order by i.first_matched_at desc,i.id desc limit $10 offset $11`,
       [...params, pageSize, offset]),
     ]);
     return { dataset, page, pageSize, total: Number(counts[0]?.total ?? 0),
       asOf: new Date().toISOString(), items: rows.map((row) => ({
         id: row.id, reportId: row.report_id, criterionId: row.criterion_id, priority: row.priority,
-        status: row.status, assigneeId: row.assignee_id, version: Number(row.version),
+        status: row.status, outcome: reviewOutcome(row), assigneeId: row.assignee_id, version: Number(row.version),
         recoveryReason: row.recovery_reason,
         firstMatchedAt: new Date(row.first_matched_at).toISOString(),
         reportingDate: row.reporting_date, signedAt: new Date(row.signed_at).toISOString(),
@@ -572,17 +596,22 @@ export class ReviewService implements OnModuleDestroy {
     const scope = reviewScope(await this.sessions.get(token));
     const dataset = this.dataset(requestedDataset, scope);
     const rows = await this.database.query<Array<{ id: string; report_id: string; criterion_id: string;
-      priority: "high" | "medium" | "low"; status: "new" | "in-review" | "resolved";
+      priority: "high" | "medium" | "low"; status: ReviewItemDetail["status"];
       assignee_id: string | null; version: string; recovery_reason: string | null;
       first_matched_at: Date | string;
-      reporting_date: string; signed_at: Date | string; findings: ReviewItemDetail["findings"] }>>(`
+      reporting_date: string; signed_at: Date | string; findings: ReviewItemDetail["findings"];
+      outcome_option_id: string | null; outcome_revision: number | null;
+      outcome_label: string | null; outcome_meaning: string | null }>>(`
       select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
         i.recovery_reason,i.first_matched_at,
-        r.reporting_date,s.signed_at,
+        r.reporting_date,s.signed_at,i.outcome_option_id,i.outcome_revision,
+        outcome.label as outcome_label,outcome.meaning as outcome_meaning,
         (select e.findings from clinical.review_item_evidence e where e.item_id=i.id
           order by e.recorded_at desc,e.id desc limit 1) findings
       from clinical.review_item i join clinical.report r on r.id=i.report_id
       join clinical.signed_snapshot s on s.report_id=r.id
+      left join clinical.review_outcome_revision outcome
+        on outcome.option_id=i.outcome_option_id and outcome.revision=i.outcome_revision
       where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
         and r.synthetic=$3 and r.status='signed' and ($4::boolean or r.documenting_user_id=$5)`,
     [id, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
@@ -594,8 +623,17 @@ export class ReviewService implements OnModuleDestroy {
       select command_id,actor_id,assignee_id,previous_assignee_id,action,reason,item_version,assigned_at
       from clinical.review_assignment_history where item_id=$1 and organization_id=$2
       order by item_version`, [id, scope.organizationId]);
+    const progress = await this.database.query<Array<{ command_id: string; actor_id: string;
+      item_version: string; status: ReviewItemDetail["status"]; recorded_at: Date | string;
+      outcome_option_id: string | null; outcome_revision: number | null;
+      outcome_label: string | null; outcome_meaning: string | null }>>(`
+      select h.command_id,h.actor_id,h.item_version,h.status,h.recorded_at,
+        h.outcome_option_id,h.outcome_revision,o.label as outcome_label,o.meaning as outcome_meaning
+      from clinical.review_progress_history h left join clinical.review_outcome_revision o
+        on o.option_id=h.outcome_option_id and o.revision=h.outcome_revision
+      where h.item_id=$1 and h.organization_id=$2 order by h.item_version`, [id, scope.organizationId]);
     return { id: row.id, reportId: row.report_id, criterionId: row.criterion_id,
-      priority: row.priority, status: row.status, assigneeId: row.assignee_id,
+      priority: row.priority, status: row.status, outcome: reviewOutcome(row), assigneeId: row.assignee_id,
       version: Number(row.version), recoveryReason: row.recovery_reason,
       firstMatchedAt: new Date(row.first_matched_at).toISOString(),
       reportingDate: row.reporting_date, signedAt: new Date(row.signed_at).toISOString(),
@@ -603,7 +641,9 @@ export class ReviewService implements OnModuleDestroy {
         commandId: event.command_id, actorId: event.actor_id, assigneeId: event.assignee_id,
         previousAssigneeId: event.previous_assignee_id, action: event.action, reason: event.reason,
         itemVersion: Number(event.item_version), assignedAt: new Date(event.assigned_at).toISOString(),
-      })) };
+      })), progressHistory: progress.map((event) => ({ commandId: event.command_id,
+        actorId: event.actor_id, itemVersion: Number(event.item_version), status: event.status,
+        outcome: reviewOutcome(event), recordedAt: new Date(event.recorded_at).toISOString() })) };
   }
 
   async claim(token: string, id: string, command: ClaimReviewItemCommand, csrfToken?: string): Promise<ReviewItemDetail> {
@@ -787,8 +827,7 @@ export class ReviewService implements OnModuleDestroy {
           throw new ConflictException("Review assignment command has already been used");
         return;
       }
-      if (Number(item.version) !== command.expectedVersion || item.status === "resolved" ||
-        item.assignee_id === command.assigneeId)
+      if (Number(item.version) !== command.expectedVersion || item.assignee_id === command.assigneeId)
         throw new ConflictException("Review item changed; refresh and try again");
       if (command.assigneeId && !await eligibleReviewer(manager, scope.organizationId,
         item.documenting_user_id, command.assigneeId, item.independent_review))
@@ -803,6 +842,146 @@ export class ReviewService implements OnModuleDestroy {
         command.assigneeId, item.assignee_id, command.expectedVersion + 1]);
     });
     return this.item(token, itemId, command.dataset);
+  }
+
+  async outcomes(token: string): Promise<ReviewOutcomeOption[]> {
+    const scope = reviewScope(await this.sessions.get(token));
+    const rows = await this.database.query<Array<{ id: string; revision: number; label: string;
+      meaning: string; active: boolean }>>(`
+      select option.id,revision.revision,revision.label,revision.meaning,revision.active
+      from clinical.review_outcome_option option join clinical.review_outcome_revision revision
+        on revision.option_id=option.id and revision.revision=option.current_revision
+      where option.organization_id=$1 and ($2::boolean or revision.active)
+      order by revision.label,option.id`, [scope.organizationId, scope.administrator]);
+    return rows.map((row) => ({ id: row.id, revision: Number(row.revision), label: row.label,
+      meaning: row.meaning, active: row.active }));
+  }
+
+  async configureOutcome(token: string, command: ReviewOutcomeCommand,
+    csrfToken?: string): Promise<ReviewOutcomeOption> {
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!command || !uuid.test(command.commandId) || (command.optionId && !uuid.test(command.optionId)) ||
+      (command.optionId ? !Number.isSafeInteger(command.expectedRevision) || command.expectedRevision! < 1 :
+        command.expectedRevision !== undefined) || typeof command.label !== "string" ||
+      !command.label.trim() || command.label.length > 120 || typeof command.meaning !== "string" ||
+      !command.meaning.trim() || command.meaning.length > 1000 || typeof command.active !== "boolean")
+      throw new BadRequestException("Invalid Review outcome command");
+    const value = await this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      if (!scope.administrator) throw new ForbiddenException("Review administration is required");
+      // Serialize create/revise commands within the organization so concurrent retries see history.
+      await manager.query(`select id from app_identity.organization where id=$1 for update`,
+        [scope.organizationId]);
+      const previous = await manager.query<Array<{ option_id: string; revision: number; label: string;
+        meaning: string; active: boolean; actor_id: string }>>(`
+        select option_id,revision,label,meaning,active,actor_id
+        from clinical.review_outcome_revision where organization_id=$1 and command_id=$2`,
+      [scope.organizationId, command.commandId]);
+      if (previous[0]) {
+        const row = previous[0];
+        if (row.actor_id !== scope.userId || (command.optionId && row.option_id !== command.optionId) ||
+          row.label !== command.label.trim() || row.meaning !== command.meaning.trim() ||
+          row.active !== command.active || row.revision !== (command.expectedRevision ?? 0) + 1)
+          throw new ConflictException("Review outcome command has already been used");
+        return { id: row.option_id, revision: Number(row.revision), label: row.label,
+          meaning: row.meaning, active: row.active };
+      }
+      let id = command.optionId;
+      let revision = 1;
+      if (id) {
+        const options = await manager.query<Array<{ current_revision: number }>>(`
+          select current_revision from clinical.review_outcome_option
+          where id=$1 and organization_id=$2 for update`, [id, scope.organizationId]);
+        if (!options[0]) throw new NotFoundException("Review outcome was not found");
+        if (Number(options[0].current_revision) !== command.expectedRevision)
+          throw new ConflictException("Review outcome changed; refresh and try again");
+        revision = command.expectedRevision! + 1;
+        await manager.query(`update clinical.review_outcome_option set current_revision=$3
+          where id=$1 and organization_id=$2`, [id, scope.organizationId, revision]);
+      } else {
+        const created = await manager.query<Array<{ id: string }>>(`
+          insert into clinical.review_outcome_option (organization_id)
+          values ($1) returning id`, [scope.organizationId]);
+        id = created[0]!.id;
+      }
+      await manager.query(`insert into clinical.review_outcome_revision
+        (option_id,organization_id,revision,command_id,actor_id,label,meaning,active)
+        values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, scope.organizationId, revision, command.commandId, scope.userId,
+        command.label.trim(), command.meaning.trim(), command.active]);
+      return { id, revision, label: command.label.trim(), meaning: command.meaning.trim(),
+        active: command.active };
+    });
+    return value;
+  }
+
+  async progress(token: string, id: string, command: ReviewProgressCommand,
+    csrfToken?: string): Promise<ReviewItemDetail> {
+    const validUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!command || !validUuid.test(command.commandId) ||
+      !Number.isSafeInteger(command.expectedVersion) || command.expectedVersion < 0 ||
+      !["in-review", "awaiting-clinician", "completed"].includes(command.status) ||
+      (command.status === "completed" ? !command.outcomeOptionId || !validUuid.test(command.outcomeOptionId) :
+        command.outcomeOptionId !== undefined)) throw new BadRequestException("Invalid Review progress command");
+    await this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const dataset = this.dataset(command.dataset, scope);
+      const rows = await manager.query<Array<{ version: string; status: string; assignee_id: string | null;
+        outcome_option_id: string | null; outcome_revision: number | null }>>(`
+        select i.version,i.status,i.assignee_id,i.outcome_option_id,i.outcome_revision
+        from clinical.review_item i join clinical.report r on r.id=i.report_id
+        where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
+          and r.synthetic=$3 and r.status='signed' and ($4::boolean or r.documenting_user_id=$5)
+        for update of i`, [id, scope.organizationId, dataset === "synthetic",
+        scope.reports === "all", scope.userId]);
+      const item = rows[0];
+      if (!item) throw new NotFoundException("Review item was not found in scope");
+      if (item.assignee_id !== scope.userId)
+        throw new ForbiddenException("Only the assigned reviewer can progress this item");
+      const previous = await manager.query<Array<{ actor_id: string; item_version: string;
+        status: string; outcome_option_id: string | null }>>(`
+        select actor_id,item_version,status,outcome_option_id from clinical.review_progress_history
+        where item_id=$1 and command_id=$2`, [id, command.commandId]);
+      if (previous[0]) {
+        if (previous[0].actor_id !== scope.userId || previous[0].status !== command.status ||
+          previous[0].outcome_option_id !== (command.outcomeOptionId ?? null) ||
+          Number(previous[0].item_version) !== command.expectedVersion + 1)
+          throw new ConflictException("Review progress command has already been used");
+        return;
+      }
+      if (Number(item.version) !== command.expectedVersion) throw new ConflictException("Review item changed; refresh and try again");
+      const transitions: Record<string, string[]> = { new: ["in-review"],
+        "in-review": ["awaiting-clinician", "completed"],
+        "awaiting-clinician": ["in-review", "completed"], completed: ["completed"] };
+      if (!transitions[item.status]?.includes(command.status))
+        throw new ConflictException("Review status transition is not allowed");
+      let outcomeRevision: number | null = null;
+      if (command.outcomeOptionId) {
+        const outcomes = await manager.query<Array<{ revision: number }>>(`
+          select revision.revision from clinical.review_outcome_option option
+          join clinical.review_outcome_revision revision
+            on revision.option_id=option.id and revision.revision=option.current_revision
+          where option.id=$1 and option.organization_id=$2 and revision.active
+          for share of option`,
+        [command.outcomeOptionId, scope.organizationId]);
+        if (!outcomes[0]) throw new BadRequestException("Review outcome is not active");
+        outcomeRevision = Number(outcomes[0].revision);
+      }
+      if (item.status === "completed" && item.outcome_option_id === command.outcomeOptionId &&
+        Number(item.outcome_revision) === outcomeRevision)
+        throw new ConflictException("Review outcome has not changed");
+      await manager.query(`update clinical.review_item set status=$3,outcome_option_id=$4,
+        outcome_revision=$5,version=version+1,updated_at=now()
+        where id=$1 and organization_id=$2`, [id, scope.organizationId,
+        command.status, command.outcomeOptionId ?? null, outcomeRevision]);
+      await manager.query(`insert into clinical.review_progress_history
+        (organization_id,item_id,command_id,actor_id,item_version,status,outcome_option_id,outcome_revision)
+        values ($1,$2,$3,$4,$5,$6,$7,$8)`, [scope.organizationId,id,command.commandId,
+        scope.userId,command.expectedVersion+1,command.status,command.outcomeOptionId ?? null,outcomeRevision]);
+    });
+    return this.item(token, id, command.dataset);
   }
 
   async backlog(token: string, requestedDataset?: string) {
