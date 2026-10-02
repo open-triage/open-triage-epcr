@@ -128,6 +128,34 @@ test("CSV serializes every completed aggregate row without truncation", () => {
   assert.deepEqual(rows.at(-1).slice(6, 9), ["code-499", "1", "0.2"]);
 });
 
+test("grouped custom aggregates export every group, reducer, filter, and unit context", async () => {
+  const result = { ...numeric,
+    definition: { ...numeric.definition, fieldId: "33333333-3333-4333-8333-333333333333",
+      groupBy: "44444444-4444-4444-8444-444444444444", reducer: "first", unit: "mg",
+      filters: { ...filters, field: { id: "55555555-5555-4555-8555-555555555555", value: "=IV" } } },
+    field: { id: "33333333-3333-4333-8333-333333333333", label: "Dose", source: "custom",
+      kind: "numeric", unit: "mg", repeating: true,
+      operations: ["mean", "median", "minimum", "maximum"] },
+    groups: [{ group: "=Night", denominator: 3, missing: 1, absent: 0,
+      values: [], summary: 2.5 }, { group: "Day", denominator: 2, missing: 0,
+      absent: 1, values: [], summary: 5 }],
+    sources: [{ reportId: "r1", group: "=Night", value: 2.5, unit: "mg",
+      occurrenceIds: ["o1"], groupInstanceIds: ["g1"], sourceValues: [] }] };
+  const controller = new ReviewController({ analysis: async () => result });
+  const shown = await controller.analysis(result.definition, "Bearer token");
+  const sent = response();
+  await controller.exportAnalysis({ definition: result.definition,
+    expectedRevision: shown.exportRevision }, "Bearer token", undefined, sent);
+  const rows = parseCsv(sent.body);
+  assert.deepEqual(rows.find((row) => row[0] === "group_by"),
+    ["group_by", "44444444-4444-4444-8444-444444444444"]);
+  assert.deepEqual(rows.find((row) => row[0] === "reducer"), ["reducer", "first"]);
+  assert.deepEqual(rows.find((row) => row[0] === "filter_value"), ["filter_value", "'=IV"]);
+  assert.deepEqual(rows.slice(-2).map((row) => [row[0], row[2], row[9], row[10]]),
+    [["'=Night", "3", "2.5", "mg"], ["Day", "2", "5", "mg"]]);
+  assert.equal(sent.body.includes("r1"), false, "Aggregate CSV must omit underlying report identities");
+});
+
 test("export re-runs field discovery after identifying and report capability revocation", async () => {
   const id = "33333333-3333-4333-8333-333333333333";
   let capabilities = ["review:all", "review:identifying"];

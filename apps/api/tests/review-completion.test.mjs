@@ -2,6 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ReviewService } from "../dist/review/review.service.js";
 
+test("creating an outcome accepts TypeORM's PostgreSQL RETURNING tuple", async () => {
+  const organizationId = "11111111-1111-4111-8111-111111111111";
+  const optionId = "22222222-2222-4222-8222-222222222222";
+  const commandId = "33333333-3333-4333-8333-333333333333";
+  const manager = { async query(sql) {
+    if (sql.includes("from app_identity.organization")) return [{ id: organizationId }];
+    if (sql.includes("from clinical.review_outcome_revision")) return [];
+    if (sql.includes("insert into clinical.review_outcome_option")) return [[{ id: optionId }], 1];
+    if (sql.includes("insert into clinical.review_outcome_revision")) return [[], 1];
+    throw new Error(`Unexpected query: ${sql}`);
+  } };
+  const service = new ReviewService({ transaction: async (work) => work(manager) },
+    { get: async () => ({ user: { id: optionId }, organization: { id: organizationId },
+      capabilities: ["review:all", "review:admin"] }), assertCsrf: async () => {} });
+  const result = await service.configureOutcome("token", { commandId, label: "Reviewed",
+    meaning: "Complete review", active: true }, "valid");
+  assert.deepEqual(result, { id: optionId, revision: 1, label: "Reviewed",
+    meaning: "Complete review", active: true });
+});
+
 test("concurrent progress commands serialize on the item and stale command conflicts", async () => {
   const item = { version: 1, status: "new", assignee_id: "reviewer",
     outcome_option_id: null, outcome_revision: null };
