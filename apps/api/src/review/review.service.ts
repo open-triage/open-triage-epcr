@@ -7,7 +7,8 @@ import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { recordMediaAccess } from "../reports/report-note-collaboration.js";
 import { reviewScope } from "./review-scope.js";
 import type { ReviewScope } from "./review-scope.js";
-import { reviewFields } from "./review-fields.js";
+import { reviewFields, repeatedReviewFields } from "./review-fields.js";
+import { reduceRepeated, type RepeatedRow } from "./review-repeated.js";
 
 function positiveInteger(value: string | undefined, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -53,7 +54,7 @@ export class ReviewService implements OnModuleDestroy {
   analysisFields(token: string): Promise<ReviewAnalysisField[]> {
     return this.sessions.get(token).then((session) => {
       reviewScope(session);
-      return reviewFields.map((field) => ({ ...field,
+      return [...reviewFields, ...repeatedReviewFields].map((field) => ({ ...field,
         operations: field.kind === "categorical" ? ["distribution"] :
           ["mean", "median", "minimum", "maximum"] }));
     });
@@ -69,10 +70,10 @@ export class ReviewService implements OnModuleDestroy {
       (dataset !== "real" && dataset !== "synthetic")) {
       throw new BadRequestException("Invalid Review analysis period or dataset");
     }
-    const field = reviewFields.find((candidate) => candidate.id === input.fieldId);
+    const field = [...reviewFields, ...repeatedReviewFields].find((candidate) => candidate.id === input.fieldId);
     const groupField = input.groupBy ? reviewFields.find((candidate) => candidate.id === input.groupBy) : undefined;
     const filter = input.filters.field;
-    const filterField = filter ? reviewFields.find((candidate) => candidate.id === filter.id) : undefined;
+    const filterField = filter ? [...reviewFields, ...repeatedReviewFields].find((candidate) => candidate.id === filter.id) : undefined;
     if (!field || (input.groupBy && (!groupField || groupField.kind !== "categorical")) ||
       (filter && (!filterField || filterField.kind !== "categorical" ||
         typeof filter.value !== "string" || !filter.value || filter.value.length > 256))) {
@@ -82,8 +83,19 @@ export class ReviewService implements OnModuleDestroy {
       !["mean", "median", "minimum", "maximum"].includes(input.operation)) {
       throw new BadRequestException("Unsupported Review field operation");
     }
+    if ("repeating" in field && field.repeating && field.kind === "numeric" &&
+      !["first", "last", "minimum", "maximum"].includes(input.reducer ?? "")) {
+      throw new BadRequestException("Repeated numeric field requires a per-report reducer");
+    }
+    if (input.reducer && (!("repeating" in field) || field.kind !== "numeric"))
+      throw new BadRequestException("Reducer is only supported for repeated numeric fields");
+    if (input.unit && (field.id !== "eMedications.05" || typeof input.unit !== "string" ||
+      !/^[A-Za-z0-9.\[\]{}\/\-]{1,40}$/.test(input.unit)))
+      throw new BadRequestException("Invalid Review analysis unit");
     const definition: ReviewAnalysisDefinition = { fieldId: field.id, operation: input.operation,
       ...(groupField ? { groupBy: groupField.id } : {}),
+      ...(input.reducer ? { reducer: input.reducer } : {}),
+      ...(input.unit ? { unit: input.unit } : {}),
       filters: { from, to, dataset, ...(filter ? { field: { id: filter.id, value: filter.value } } : {}) } };
     const database = await this.analyticsDatabase();
     const [health] = await database.query<Array<{
@@ -111,13 +123,50 @@ export class ReviewService implements OnModuleDestroy {
     const population = { unit: "patient-report" as const, scope: scope.reports,
       organizationId: scope.organizationId, signedOnly: true as const };
     if (!current) return { definition, field: metadata, population, freshness, groups: [] };
+    if ("repeating" in field && field.repeating) {
+      const rows = await database.query<RepeatedRow[]>(`
+        select source.report_id, source.field_values ->> $8::text as group_value,
+          occurrence.element_occurrence_id as occurrence_id, occurrence.group_id,
+          occurrence.group_instance_id, occurrence.parent_group_instance_id,
+          occurrence.group_ordinal, occurrence.element_ordinal, occurrence.clinical_time,
+          occurrence.documented_time, occurrence.code, occurrence.numeric_value,
+          occurrence.unit_code, occurrence.absence_kind, occurrence.absence_code,
+          occurrence.normalization_rule_id, occurrence.quality_flags
+        from analytics.review_field_source_with_identity source
+        left join analytics.review_repeated_field_source occurrence
+          on occurrence.report_id = source.report_id and occurrence.reporting_date = source.reporting_date
+          and occurrence.element_id = $7::text
+        where source.reporting_date between $1::date and $2::date
+          and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+          and ($5::boolean or source.documenting_user_id = $6::uuid)
+          and ($9::text is null or ${filterField && "repeating" in filterField ?
+            `exists (select 1 from analytics.review_repeated_field_source f
+              where f.report_id = source.report_id and f.reporting_date = source.reporting_date
+                and f.element_id = $9::text and f.code = $10::text)` :
+            "source.field_values ->> $9::text = $10::text"})
+        order by source.report_id, occurrence.group_ordinal, occurrence.element_ordinal,
+          occurrence.element_occurrence_id limit 20001`,
+      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+        field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null]);
+      if (rows.length > 20000) throw new BadRequestException("Review analysis exceeds the repeated-value limit");
+      const unit = field.id === "eMedications.05" ? input.unit ?? null : field.unit;
+      if (field.id === "eMedications.05" && !unit)
+        throw new BadRequestException("Select a medication dosage unit");
+      const reduced = reduceRepeated(rows, definition, unit);
+      return { definition, field: { ...metadata, unit }, population, freshness, ...reduced };
+    }
     const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
       scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null];
-    const source = `from analytics.review_field_source source
+    const source = `from analytics.${filterField && "repeating" in filterField ?
+      "review_field_source_with_identity" : "review_field_source"} source
       where source.reporting_date between $1::date and $2::date
         and source.organization_id = $3::uuid and source.synthetic = $4::boolean
         and ($5::boolean or source.documenting_user_id = $6::uuid)
-        and ($9::text is null or source.field_values ->> $9::text = $10::text)`;
+        and ($9::text is null or ${filterField && "repeating" in filterField ?
+          `exists (select 1 from analytics.review_repeated_field_source f
+            where f.report_id = source.report_id and f.reporting_date = source.reporting_date
+              and f.element_id = $9::text and f.code = $10::text)` :
+          "source.field_values ->> $9::text = $10::text"})`;
     const group = `case when $8::text is null then null else source.field_values ->> $8::text end`;
     if (field.kind === "categorical") {
       const rows = await database.query<Array<{ group_value: string | null; field_value: string | null;

@@ -96,3 +96,18 @@ each rebuilt report, so interruption and replay resume safely. Watch
 and run reconciliation over the same range when the backfill completes. Backfills
 must use a separately scheduled job with controlled concurrency; do not enlarge
 the routine queue batch until it threatens the normal freshness margin.
+# Repeated Review fields
+
+The basic Review builder exposes an allowlist of non-identifying repeated standard fields from
+`analytics.review_repeated_field_source`. Category membership is deduplicated within each
+patient report; a report may contribute to several categories, so category percentages can
+exceed 100% in total. A repeated numeric field requires a first, last, minimum, or maximum
+reducer before the cross-report mean, median, minimum, or maximum is calculated. Medication
+dosage also requires an explicit unit code; doses in other units are excluded from that result.
+
+First and last use clinical timestamps only when every eligible occurrence in that report has
+one. If any timestamp is missing, they use group ordinal, element ordinal, then occurrence ID
+for the whole report. Equal timestamps use the same deterministic ties. Occurrence order
+expresses documentation order and must not be described as clinical chronology. Results retain
+the effective source values and occurrence/group IDs for later record export. The API rejects
+analyses above 20,000 source rows; narrow the period or filters before retrying.

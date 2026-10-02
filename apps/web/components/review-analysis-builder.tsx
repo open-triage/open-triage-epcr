@@ -19,6 +19,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   const [fields, setFields] = useState<ReviewAnalysisField[]>([]);
   const [fieldId, setFieldId] = useState("eSituation.09");
   const [operation, setOperation] = useState<ReviewAnalysisDefinition["operation"]>("distribution");
+  const [reducer, setReducer] = useState<ReviewAnalysisDefinition["reducer"] | "">("");
+  const [unit, setUnit] = useState("");
   const [groupBy, setGroupBy] = useState("");
   const [filterId, setFilterId] = useState("");
   const [filterValue, setFilterValue] = useState("");
@@ -45,6 +47,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     if (!url) return;
     setResult(null); setError(null);
     const definition: ReviewAnalysisDefinition = { fieldId, operation,
+      ...(field?.repeating && field.kind === "numeric" && reducer ? { reducer } : {}),
+      ...(fieldId === "eMedications.05" && unit ? { unit: unit.trim() } : {}),
       ...(groupBy ? { groupBy } : {}),
       filters: { from, to, dataset,
         ...(filterId && filterValue ? { field: { id: filterId, value: filterValue } } : {}) } };
@@ -68,15 +72,24 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     <div className="review-controls">
       <label>{t("review.analysisField")}{" "}<select value={fieldId} onChange={(event) => {
         const next = fields.find((item) => item.id === event.target.value);
-        setFieldId(event.target.value); setOperation(next?.operations[0] ?? "distribution"); setResult(null);
+        setFieldId(event.target.value); setOperation(next?.operations[0] ?? "distribution");
+        setReducer(""); setUnit(""); setResult(null);
       }}>{fields.map((item) => <option key={item.id} value={item.id}>{item.label} ({item.id})</option>)}</select></label>
       <label>{t("review.analysisOperation")}{" "}<select value={operation} onChange={(event) => {
         setOperation(event.target.value as ReviewAnalysisDefinition["operation"]); setResult(null);
       }}>{field?.operations.map((item) => <option key={item} value={item}>{t(`review.analysis.${item}`)}</option>)}</select></label>
+      {field?.repeating && field.kind === "numeric" && <label>{t("review.analysisReducer")}{" "}
+        <select value={reducer} onChange={(event) => { setReducer(event.target.value as ReviewAnalysisDefinition["reducer"]); setResult(null); }}>
+          <option value="">{t("review.analysisChooseReducer")}</option>
+          {(["first", "last", "minimum", "maximum"] as const).map((item) =>
+            <option key={item} value={item}>{t(`review.analysis.reducer.${item}`)}</option>)}
+        </select></label>}
+      {fieldId === "eMedications.05" && <label>{t("review.analysisUnit")}{" "}
+        <input value={unit} maxLength={40} onChange={(event) => { setUnit(event.target.value); setResult(null); }} /></label>}
       <label>{t("review.analysisGroup")}{" "}<select value={groupBy} onChange={(event) => {
         setGroupBy(event.target.value); setResult(null);
       }}><option value="">{t("review.analysisAll")}</option>
-        {fields.filter((item) => item.kind === "categorical").map((item) =>
+        {fields.filter((item) => item.kind === "categorical" && !item.repeating).map((item) =>
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     </div>
     <div className="review-controls">
@@ -87,7 +100,9 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       {filterId && <label>{t("review.analysisFilterValue")}{" "}<input value={filterValue}
         maxLength={256} onChange={(event) => { setFilterValue(event.target.value); setResult(null); }} /></label>}
-      <button type="button" disabled={!field || from > to || (filterId !== "" && !filterValue)}
+      <button type="button" disabled={!field || from > to || (filterId !== "" && !filterValue) ||
+        (field.repeating && field.kind === "numeric" && !reducer) ||
+        (fieldId === "eMedications.05" && !unit.trim())}
         onClick={() => void run()}>{t("review.analysisRun")}</button>
     </div>
     {error && <p role="alert">{error}</p>}
@@ -97,6 +112,11 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         {t("review.volumeFresh", { time: new Intl.DateTimeFormat(language, {
           dateStyle: "medium", timeStyle: "short" }).format(new Date(result.freshness.observedAt)) })}</p>
       {result.groups.length === 0 && <p>{t("review.analysisEmpty")}</p>}
+      {result.field.repeating && result.field.kind === "categorical" &&
+        <p>{t("review.analysisMultiCategory")}</p>}
+      {result.definition.reducer && <p>{t("review.analysisReducerContext", {
+        reducer: t(`review.analysis.reducer.${result.definition.reducer}`) })}{" "}
+        {t("review.analysisOrderContext")}</p>}
       {result.groups.map((group, index) => <section key={`${group.group ?? "all"}-${index}`}>
         {result.definition.groupBy && <h3>{group.group ?? t("review.analysisMissingGroup")}</h3>}
         <p>{t("review.analysisDenominator", { count: group.denominator })}{" · "}

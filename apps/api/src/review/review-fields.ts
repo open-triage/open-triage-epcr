@@ -554,3 +554,9 @@ export const reviewFields = [
     "unit": null
   }
 ] as const;
+
+export const repeatedReviewFields = [
+  { id: "eMedications.03", label: "Medication Administered", kind: "categorical", unit: null, repeating: true },
+  { id: "eMedications.05", label: "Medication Dosage", kind: "numeric", unit: null, repeating: true },
+  { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric", unit: "mm[Hg]", repeating: true },
+] as const;

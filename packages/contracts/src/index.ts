@@ -246,6 +246,7 @@ export interface ReviewAnalysisField {
   label: string;
   kind: "categorical" | "numeric";
   unit: string | null;
+  repeating?: boolean;
   operations: Array<"distribution" | "mean" | "median" | "minimum" | "maximum">;
 }
 
@@ -253,6 +254,10 @@ export interface ReviewAnalysisDefinition {
   fieldId: string;
   operation: "distribution" | "mean" | "median" | "minimum" | "maximum";
   groupBy?: string;
+  /** Required for repeated numeric fields. */
+  reducer?: "first" | "last" | "minimum" | "maximum";
+  /** Unit code for repeated medication dosage; no cross-unit arithmetic. */
+  unit?: string;
   filters: {
     from: string;
     to: string;
@@ -266,6 +271,15 @@ export interface ReviewAnalysisResult {
   field: ReviewAnalysisField;
   population: ReviewVolumeResult["population"];
   freshness: ReviewVolumeResult["freshness"];
+  /** Effective occurrence values and identity retained for an eventual underlying-record export. */
+  sources?: Array<{ reportId: string; group: string | null; value: string[] | number | null;
+    unit: string | null; occurrenceIds: string[]; groupInstanceIds: string[];
+    selectedOccurrenceId?: string; orderMode?: "clinical-time" | "occurrence-order";
+    sourceValues: Array<{ occurrenceId: string; groupId: string; groupInstanceId: string;
+      parentGroupInstanceId: string | null; value: string | number | null;
+      unit: string | null; clinicalTime: string | null; documentedTime: string | null;
+      absenceKind: string | null; absenceCode: string | null;
+      normalizationRuleId: string | null; qualityFlags: string[] }> }>;
   groups: Array<{
     group: string | null;
     denominator: number;
