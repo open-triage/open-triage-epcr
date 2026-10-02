@@ -137,7 +137,7 @@ export class ReviewController {
   @Get("queue")
   @Header("Cache-Control", "no-store, private")
   queue(@Query() filters: { dataset?: string; criterion?: string; priority?: string; status?: string;
-      attention?: ReviewAttentionKind; from?: string; to?: string; page?: string; pageSize?: string },
+      attention?: ReviewAttentionKind; from?: string; to?: string; page?: string; pageSize?: string; assignment?: string; search?: string },
     @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
     return this.review.queue(bearerToken(authorization, cookie), filters);
   }
@@ -410,6 +410,13 @@ export class ReviewController {
     @Body() command: AssignReviewItemCommand, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
     return this.review.assign(bearerToken(authorization, cookie), id, command, csrfToken);
+  }
+  @Post("items/:id/forward")
+  @Header("Cache-Control", "no-store, private")
+  forward(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: AssignReviewItemCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewItemDetail> {
+    return this.review.assign(bearerToken(authorization, cookie), id, command, csrfToken, true);
   }
   @Post("items/:id/close-exceptionally")
   @Header("Cache-Control", "no-store, private")

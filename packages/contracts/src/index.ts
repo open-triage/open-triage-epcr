@@ -143,6 +143,10 @@ export interface CreateClinicianSessionCommand {
 export interface ReviewQueueItem {
   id: string;
   reportId: string;
+  reportNumber?: string | null;
+  criterionName?: string | null;
+  criterionDescription?: string | null;
+  assigneeName?: string | null;
   criterionId: string;
   kind?: "criterion" | "overdue-unsigned";
   deadlineAt?: string | null;
@@ -258,6 +262,7 @@ export interface ConfigureReviewAmendmentPolicyCommand {
 }
 
 export interface ReviewComment {
+  kind?: "comment" | "finding";
   id: string;
   actorId: string;
   actorName: string;
@@ -267,6 +272,7 @@ export interface ReviewComment {
 }
 
 export interface AddReviewCommentCommand {
+  kind?: "comment" | "finding";
   commandId: string;
   expectedVersion: number;
   dataset: "real" | "synthetic";
@@ -305,6 +311,7 @@ export interface ReviewOutcomeCommand {
 }
 
 export interface ReviewQueueResponse {
+  assignmentCounts?: { all: number; mine: number; unassigned: number };
   dataset: "real" | "synthetic";
   page: number;
   pageSize: number;
@@ -328,6 +335,7 @@ export interface ReviewAttentionResponse {
 
 export interface ReviewSignedReportSummary {
   id: string;
+  reportNumber?: string | null;
   reportingDate: string;
   signedAt: string;
   documentingClinician?: string;
@@ -366,6 +374,8 @@ export interface ReviewReportGroup {
 }
 
 export interface ReviewSignedReport {
+  document?: EncounterDocument;
+  clinicalForm?: ClinicalFormConfiguration;
   id: string;
   reportingDate: string;
   signedAt: string;
@@ -374,11 +384,13 @@ export interface ReviewSignedReport {
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
   notes: ReportNote[];
-  reviewItems?: Array<{ id: string; criterionId: string; status: ReviewQueueItem["status"];
+  reviewItems?: Array<{ id: string; criterionId: string; criterionName?: string; status: ReviewQueueItem["status"];
     outcome: ReviewQueueItem["outcome"]; clearancePending: boolean; closureReason: string | null }>;
 }
 
 export interface ReviewOverdueDraft {
+  document?: EncounterDocument;
+  clinicalForm?: ClinicalFormConfiguration;
   id: string;
   itemId: string;
   createdAt: string;

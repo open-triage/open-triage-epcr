@@ -30,7 +30,7 @@ function fixture() {
     }
     if (sql.includes('insert into clinical.review_comment')) {
       comments.push({ id: randomUUID(), item_id: params[1], command_id: params[2],
-        actor_id: params[3], item_version: params[4], body: params[5] }); return [];
+        actor_id: params[3], item_version: params[4], body: params[5], kind: params[6] }); return [];
     }
     throw Error(`Unexpected query: ${sql}`);
   } };
@@ -139,4 +139,16 @@ test('item detail withholds discussion text without identifying access but keeps
   const reopened = await service.item('token', itemId, 'real');
   assert.equal(reopened.status, 'in-review');
   assert.equal(reopened.comments[0].body, 'Patient name here');
+});
+
+
+test('findings remain distinct from comments and command replay includes the entry type', async () => {
+  const value = fixture();
+  const command = { commandId: randomUUID(), expectedVersion: 2, dataset: 'real', kind: 'finding', body: 'Timeline verified.' };
+  await value.service.addComment('token', itemId, command, 'csrf');
+  await value.service.addComment('token', itemId, command, 'csrf');
+  assert.equal(value.comments.length, 1);
+  assert.equal(value.comments[0].kind, 'finding');
+  await assert.rejects(value.service.addComment('token', itemId, { ...command, kind: 'comment' }, 'csrf'), { status: 409 });
+  await assert.rejects(value.service.addComment('token', itemId, { ...command, kind: 'unknown' }, 'csrf'), { status: 400 });
 });

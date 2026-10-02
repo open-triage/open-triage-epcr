@@ -59,7 +59,7 @@ test('attention queue uses the same report scope and rejects administrative filt
   ]) {
     await service.queue('token', { dataset: 'real', attention: kind });
     const pair = calls.splice(0);
-    assert.equal(pair.length, 2);
+    assert.equal(pair.length, 3);
     for (const call of pair) {
       assert.match(call.sql, /i\.organization_id=\$1 and r\.organization_id=\$1 and r\.synthetic=\$2/);
       assert.match(call.sql, /\(\$3::boolean or r\.documenting_user_id=\$4\)/);
