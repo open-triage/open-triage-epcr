@@ -12,7 +12,8 @@
     "identity:account": "npm run build && node dist/identity/identity-account.cli.entry.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
+    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs",
+    "review:work": "npm run build && node dist/review/review-worker.entry.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

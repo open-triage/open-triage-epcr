@@ -1,6 +1,7 @@
 "use client";
 
-import type { ClinicianSession, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReportNote } from "@open-triage/contracts";
+import type { ClinicianSession, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
+  ReviewQueueResponse, ReviewQueueItem, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -16,10 +17,20 @@ export function ReviewShell({ session, language, online }: {
   const [dataset, setDataset] = useState<"real" | "synthetic">(
     session.capabilities?.includes("clinical:demo") ? "synthetic" : "real");
   const [page, setPage] = useState(1);
+  const [queue, setQueue] = useState<ReviewQueueResponse | null>(null);
+  const [queueError, setQueueError] = useState(false);
+  const [queuePage, setQueuePage] = useState(1);
+  const [priority, setPriority] = useState("");
+  const [status, setStatus] = useState("");
+  const [criterion, setCriterion] = useState("");
+  const [queueFrom, setQueueFrom] = useState("");
+  const [queueTo, setQueueTo] = useState("");
+  const [backlog, setBacklog] = useState<Array<{ reportId: string; state: string; attempts: number; lastError: string | null }> | null>(null);
   const [result, setResult] = useState<ReviewSignedReportsResponse | null>(null);
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [from, setFrom] = useState(() => dateString(new Date(Date.now() - 29 * 86400000)));
@@ -27,6 +38,38 @@ export function ReviewShell({ session, language, online }: {
   const [volume, setVolume] = useState<ReviewVolumeResult | null>(null);
   const [volumeError, setVolumeError] = useState(false);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
+
+  useEffect(() => {
+    if (!online) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ dataset, page: String(queuePage) });
+    if (priority) query.set("priority", priority);
+    if (status) query.set("status", status);
+    if (criterion) query.set("criterion", criterion);
+    if (queueFrom) query.set("from", queueFrom);
+    if (queueTo) query.set("to", queueTo);
+    const url = apiRequestUrl(`/api/review/queue?${query}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewQueueResponse;
+      if (!controller.signal.aborted) { setQueue(next); setQueueError(false); }
+    }).catch(() => { if (!controller.signal.aborted) { setQueue(null); setQueueError(true); } });
+    return () => controller.abort();
+  }, [dataset, online, queuePage, priority, status, criterion, queueFrom, queueTo, refresh]);
+
+  useEffect(() => {
+    if (!online || !session.capabilities?.includes("review:admin")) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/backlog?dataset=${dataset}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const value = await response.json() as { work: typeof backlog };
+      if (!controller.signal.aborted) setBacklog(value.work);
+    }).catch(() => { if (!controller.signal.aborted) setBacklog(null); });
+    return () => controller.abort();
+  }, [dataset, online, refresh, session.capabilities]);
 
   useEffect(() => {
     if (!online) return;
@@ -77,8 +120,9 @@ export function ReviewShell({ session, language, online }: {
     {!online ? <p role="status">{t("review.offline")}</p> : <>
       <div className="review-controls">
         <label>{t("review.dataset")}{" "}<select value={dataset} onChange={(event) => {
-          setResult(null); setDetail(null); setSelected(null); setVolume(null); setVolumeError(false);
-          setDataset(event.target.value as "real" | "synthetic"); setPage(1);
+          setResult(null); setDetail(null); setSelected(null); setSelectedItem(null);
+          setVolume(null); setVolumeError(false); setQueue(null);
+          setDataset(event.target.value as "real" | "synthetic"); setPage(1); setQueuePage(1);
         }}>
           <option value="real">{t("review.real")}</option>
           <option value="synthetic">{t("review.synthetic")}</option>
@@ -111,6 +155,44 @@ export function ReviewShell({ session, language, online }: {
           </tr>)}</tbody></table>
         </>}
       </section>
+
+      <section aria-labelledby="review-queue-heading">
+        <h2 id="review-queue-heading">{t("review.queue")}</h2>
+        <div className="review-controls">
+          <label>{t("review.priority")} <select value={priority} onChange={(event) => { setPriority(event.target.value); setQueuePage(1); }}>
+            <option value="">{t("review.all")}</option><option value="high">{t("review.high")}</option>
+            <option value="medium">{t("review.medium")}</option><option value="low">{t("review.low")}</option>
+          </select></label>
+          <label>{t("review.status")} <select value={status} onChange={(event) => { setStatus(event.target.value); setQueuePage(1); }}>
+            <option value="">{t("review.all")}</option><option value="new">{t("review.new")}</option>
+            <option value="in-review">{t("review.inReview")}</option><option value="resolved">{t("review.resolved")}</option>
+          </select></label>
+          <label>{t("review.criterion")} <input value={criterion} onChange={(event) => { setCriterion(event.target.value); setQueuePage(1); }} /></label>
+          <label>{t("review.from")} <input type="date" value={queueFrom} onChange={(event) => { setQueueFrom(event.target.value); setQueuePage(1); }} /></label>
+          <label>{t("review.to")} <input type="date" value={queueTo} onChange={(event) => { setQueueTo(event.target.value); setQueuePage(1); }} /></label>
+        </div>
+        {queueError && <p role="alert">{t("review.queueUnavailable")}</p>}
+        {queue && <><p>{t("review.queueCount", { count: queue.total })}</p>
+          {queue.items.length === 0 ? <p>{t("review.queueEmpty")}</p> : <table><thead><tr>
+            <th>{t("review.priority")}</th><th>{t("review.status")}</th><th>{t("review.criterion")}</th>
+            <th>{t("review.report")}</th><th>{t("review.age")}</th></tr></thead><tbody>
+            {queue.items.map((item) => <tr key={item.id} className={`review-priority-${item.priority}`}>
+              <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status}`)}</td>
+              <td><code>{item.criterionId}</code><div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
+              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setDetail(null); }}><code>{item.reportId}</code></button></td>
+              <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
+            </tr>)}</tbody></table>}
+          <nav className="review-pagination" aria-label={t("review.queuePages")}>
+            <button type="button" disabled={queuePage === 1} onClick={() => setQueuePage(queuePage - 1)}>{t("review.previous")}</button>
+            <span>{t("review.page", { page: queuePage })}</span>
+            <button type="button" disabled={queuePage * queue.pageSize >= queue.total} onClick={() => setQueuePage(queuePage + 1)}>{t("review.next")}</button>
+          </nav></>}
+      </section>
+      {backlog && <section aria-labelledby="review-backlog-heading"><h2 id="review-backlog-heading">{t("review.backlog")}</h2>
+        {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
+          <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
+            {work.lastError && <p>{work.lastError}</p>}</li>)}</ul>}</section>}
+
       {error && <p role="alert">{t("review.unavailable")}</p>}
       {!result && !error && <p role="status">{t("review.loading")}</p>}
       {result && <>
@@ -119,7 +201,7 @@ export function ReviewShell({ session, language, online }: {
           <table><thead><tr><th>{t("review.report")}</th><th>{t("review.reportingDate")}</th>
             <th>{t("review.signedAt")}</th>{result.identifying && <th>{t("review.clinician")}</th>}</tr></thead>
             <tbody>{result.reports.map((report) => <tr key={report.id}>
-              <td><button type="button" onClick={() => { setSelected(report.id); setDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
+              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
               <td>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.signedAt))}</td>
               {result.identifying && <td>{report.documentingClinician ?? "—"}</td>}
             </tr>)}</tbody></table>}
@@ -131,12 +213,18 @@ export function ReviewShell({ session, language, online }: {
         </nav>
       </>}
       {selected && <section className="review-detail" aria-label={t("review.detail")}>
-        <button type="button" onClick={() => { setSelected(null); setDetail(null); }}>{t("review.close")}</button>
+        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setDetail(null); }}>{t("review.close")}</button>
         {detailError && <p role="alert">{t("review.detailUnavailable")}</p>}
         {!detail && !detailError && <p role="status">{t("review.detailLoading")}</p>}
         {detail && <>
           <h2>{t("review.detail")}: <code>{detail.id}</code></h2>
           <p>{t("review.amendments", { count: detail.amendmentSequence })}</p>
+          {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
+            <p>{t("review.criterion")}: <code>{selectedItem.criterionId}</code></p>
+            <ul>{selectedItem.findings.map((finding, index) => <li key={index}>
+              {finding.message} — {finding.primaryTarget.elementId}
+              {finding.primaryTarget.groupInstanceId && <code> / {finding.primaryTarget.groupInstanceId}</code>}
+            </li>)}</ul></section>}
           {detail.groups.map((group) => <section key={group.id}>
             <h3>{group.parentGroupInstanceId ? `${detail.groups.find((item) => item.id === group.parentGroupInstanceId)?.label ?? ""} / ` : ""}
               {group.label} {group.ordinal > 0 ? `#${group.ordinal + 1}` : ""}</h3>

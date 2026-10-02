@@ -46,6 +46,14 @@ analytics:
     requests: { cpu: 25m, memory: 64Mi }
     limits: { cpu: 100m, memory: 128Mi }
 
+reviewWorker:
+  enabled: true
+  schedule: "* * * * *"
+  batchSize: 25
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
 syntheticExpiry:
   enabled: true
   schedule: "* * * * *"
