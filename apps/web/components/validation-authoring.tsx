@@ -4,7 +4,7 @@ import { CanonicalDefinitions } from "./canonical-definitions";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import { compileValidationRule, explainValidationRule, formatValidationSource, validationRuleText,
+import { compileValidationRule, explainValidationRule, formatValidationSource, reviewPriorityOfRule, validationRuleText,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
@@ -346,7 +346,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <p role="status">{library ? `${library.total} matching rule${library.total === 1 ? "" : "s"}.` : t("admin.loadingRules")}</p>
       <div className="validation-rule-table-scroll"><table className="validation-rule-table">
         <caption className="sr-only"><AdminText messageKey="admin.validationRules" /></caption><thead><tr><th scope="col"><AdminText messageKey="admin.rule" /></th><th scope="col"><AdminText messageKey="admin.element" /></th>
-          <th scope="col"><AdminText messageKey="admin.source" /></th><th scope="col"><AdminText messageKey="admin.severity" /></th><th scope="col"><AdminText messageKey="admin.targets" /></th>
+          <th scope="col"><AdminText messageKey="admin.source" /></th><th scope="col"><AdminText messageKey="admin.severity" /></th><th scope="col"><AdminText messageKey="admin.reviewPriority" /></th><th scope="col"><AdminText messageKey="admin.targets" /></th>
           <th scope="col"><AdminText messageKey="admin.state" /></th><th scope="col"><AdminText messageKey="admin.validity" /></th></tr></thead><tbody>{(library?.items ?? []).map((item) => {
         const index = draft.rules.findIndex(({ id }) => id === item.rule.id);
         return <tr key={item.rule.id} className={index === selectedRuleIndex ? "is-selected" : undefined}>
@@ -354,7 +354,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
           aria-current={index === selectedRuleIndex ? "page" : undefined} onClick={() => {
             setSelectedRuleIndex(index); setReferenceElementId(item.rule.primaryTargetElementId);
           }}>{validationRuleText(item.rule, wordingLanguage, "name")}</button></th><td><code>{item.rule.primaryTargetElementId}</code></td>
-          <td>{item.source}</td><td>{item.rule.severity}</td><td>{item.rule.executionTargets.join(", ")}</td>
+          <td>{item.source}</td><td>{item.rule.severity}</td><td>{item.rule.executionTargets.includes("review") ? t(`admin.priority.${reviewPriorityOfRule(item.rule)}`) : "—"}</td><td>{item.rule.executionTargets.join(", ")}</td>
           <td>{item.rule.enabled ? t("admin.enabled") : t("admin.disabled")}</td><td>{item.validity}
             {item.diagnostics.length > 0 && <span className="validation-help" tabIndex={0}
               aria-label={`${item.rule.name} diagnostics: ${item.diagnostics.map(({ message }) => message).join("; ")}`}
@@ -389,6 +389,14 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         onChange={(event) => changeRule((rule) => ({ ...rule, severity: event.target.value as typeof rule.severity }))}>
         <option value="error"><AdminText messageKey="admin.error" /></option><option value="warning"><AdminText messageKey="admin.warning" /></option><option value="information"><AdminText messageKey="admin.information" /></option>
       </select></div>
+      {selectedRule.executionTargets.includes("review") && <div className="validation-rule-row">
+        <label htmlFor="validation-review-priority"><AdminText messageKey="admin.reviewPriority" /></label>
+        <select id="validation-review-priority" value={reviewPriorityOfRule(selectedRule)}
+          onChange={(event) => changeRule((rule) => ({ ...rule, reviewPriority: event.target.value as "high" | "medium" | "low" }))}>
+          <option value="high"><AdminText messageKey="admin.priority.high" /></option>
+          <option value="medium"><AdminText messageKey="admin.priority.medium" /></option>
+          <option value="low"><AdminText messageKey="admin.priority.low" /></option>
+        </select></div>}
       <div className="validation-rule-row"><span id="validation-targets-label"><AdminText messageKey="admin.targets" /></span><div role="group" aria-labelledby="validation-targets-label" className="validation-targets">{(["live", "sign", "review"] as const).map((target) => <label key={target}>
         <input type="checkbox" checked={selectedRule.executionTargets.includes(target)} onChange={(event) => changeRule((rule) => ({
           ...rule, executionTargets: event.target.checked ? [...new Set([...rule.executionTargets, target])] : rule.executionTargets.filter((item) => item !== target),

@@ -100,7 +100,8 @@ function sourceKind(rule: ValidationRuleSource): ValidationRuleSourceKind {
 }
 
 function canonicalRule(rule: ValidationRuleSource): string {
-  return JSON.stringify([rule.enabled, rule.severity, [...rule.executionTargets].sort(), rule.primaryTargetElementId,
+  return JSON.stringify([rule.enabled, rule.severity, rule.executionTargets.includes("review") ? rule.reviewPriority ?? "medium" : null,
+    [...rule.executionTargets].sort(), rule.primaryTargetElementId,
     rule.message.trim(), rule.source.trim().replace(/\s+/g, " ")]);
 }
 
@@ -145,7 +146,7 @@ function ruleChanges(before: ValidationRuleSource[], after: ValidationRuleSource
   for (const rule of after) {
     const prior = previous.get(rule.id);
     if (!prior) { additions.push({ ruleId: rule.id, name: rule.name }); continue; }
-    const fields: string[] = (["name", "severity", "primaryTargetElementId", "message", "source"] as const)
+    const fields: string[] = (["name", "severity", "reviewPriority", "primaryTargetElementId", "message", "source"] as const)
       .filter((field) => rule[field] !== prior[field]);
     if (prior.enabled !== rule.enabled) fields.push("enabled");
     if (fields.length) modifications.push({ ruleId: rule.id, fields });
@@ -851,10 +852,13 @@ export class ValidationAuthoringService {
     const body = record(value);
     const severity = body.severity;
     const targets = body.executionTargets;
+    const reviewPriority = body.reviewPriority;
     if (!["error", "warning", "information"].includes(String(severity))) throw new UnprocessableEntityException("Invalid rule severity");
     if (!Array.isArray(targets) || targets.some((target) => !["live", "sign", "review"].includes(String(target)))) {
       throw new UnprocessableEntityException("Invalid execution target");
     }
+    if (reviewPriority !== undefined && !["high", "medium", "low"].includes(String(reviewPriority)))
+      throw new UnprocessableEntityException("Invalid review priority");
     if (typeof body.enabled !== "boolean") throw new UnprocessableEntityException("rule.enabled must be a boolean");
     const kind = body.sourceKind === undefined ? undefined : String(body.sourceKind);
     if (kind && !RULE_SOURCES.has(kind as ValidationRuleSourceKind)) throw new UnprocessableEntityException("Invalid rule source");
@@ -906,6 +910,7 @@ export class ValidationAuthoringService {
     }
     return { id: uuidText(body.id, "rule.id"), name: requiredText(body.name, "rule.name", 120),
       enabled: body.enabled, severity: severity as ValidationRuleSource["severity"],
+      ...(targets.includes("review") ? { reviewPriority: (reviewPriority ?? "medium") as ValidationRuleSource["reviewPriority"] } : {}),
       executionTargets: targets as ValidationRuleSource["executionTargets"],
       primaryTargetElementId: requiredText(body.primaryTargetElementId, "rule.primaryTargetElementId", 200),
       message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 20_000),

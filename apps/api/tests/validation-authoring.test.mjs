@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle } from "@open-triage/contracts";
-import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle, reviewPriorityOfRule } from "@open-triage/contracts";
+import { ConflictException, NotFoundException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 
@@ -12,6 +12,34 @@ const ruleId = randomUUID();
 const sourceRule = { id: ruleId, name: "Require incident number", enabled: true, severity: "error",
   executionTargets: ["live", "sign"], primaryTargetElementId: "eResponse.03",
   message: "Incident number is required", source: 'assert present("eResponse.03")' };
+
+test("review priority compiles independently of signing severity and legacy review rules use Medium", () => {
+  const catalog = new Set(["eResponse.03"]);
+  const authored = { ...sourceRule, severity: "warning", executionTargets: ["sign", "review"], reviewPriority: "high" };
+  const compiled = compileValidationRule(authored, versionId, catalog).compiled;
+  assert.equal(compiled.reviewPriority, "high");
+  assert.equal(compiled.severity, "warning");
+  assert.deepEqual(compiled.assertion, { operator: "present", elementId: "eResponse.03" });
+  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
+    catalogReleaseId: randomUUID(), rules: [compiled] };
+  const document = { $schema: "./encounter-document.schema-1.0.0.json", documentType: "open-triage.encounter",
+    modelVersion: "1.1.0", dataModel: { standard: "NEMSIS", version: "test", dataset: "EMSDataSet" },
+    formProfile: { id: "test", version: "1" }, encounter: { id: "test", createdAt: "2000-01-01T00:00:00.000Z",
+      updatedAt: "2000-01-01T00:00:00.000Z" }, groups: [] };
+  assert.equal(evaluateValidationBundle(bundle, document, "sign", { timestamp: "2000-01-01T00:00:00.000Z" })[0].severity, "warning");
+  const legacy = compileValidationRule({ ...authored, reviewPriority: undefined }, versionId, catalog).compiled;
+  assert.equal(legacy.reviewPriority, "medium");
+  assert.equal(reviewPriorityOfRule({}), "medium");
+  assert.equal(compileValidationRule({ ...authored, reviewPriority: "urgent" }, versionId, catalog).compiled, undefined);
+});
+
+test("authoring accepts independent review priority and rejects unknown values", () => {
+  const subject = service({ query: async () => [] });
+  const input = { ...sourceRule, executionTargets: ["sign", "review"], reviewPriority: "low" };
+  assert.equal(subject.rule(input).reviewPriority, "low");
+  assert.equal(subject.rule({ ...input, reviewPriority: undefined }).reviewPriority, "medium");
+  assert.throws(() => subject.rule({ ...input, reviewPriority: "urgent" }), UnprocessableEntityException);
+});
 
 function service(manager, capabilityCalls = []) {
   const database = { ...manager, query: (sql, ...args) => sql.includes("provenance->'customElementDefinitions'")
@@ -356,7 +384,8 @@ test("publication persists source and compiled integrity with a complete actor-a
   const addedId = randomUUID();
   const baselineRule = { ...sourceRule, executionTargets: ["live", "sign"] };
   const changedRule = { ...sourceRule, name: "Historical incident number", enabled: false, executionTargets: ["review"] };
-  const addedRule = { ...sourceRule, id: addedId, name: "Review disposition", executionTargets: ["review"] };
+  const addedRule = { ...sourceRule, id: addedId, name: "Review disposition", severity: "warning",
+    reviewPriority: "high", executionTargets: ["sign", "review"] };
   const baseline = { id: randomUUID(), organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
     cloned_from_id: null, revision: 1, display_name: "Baseline", source_rule: [baselineRule], status: "published",
     version: 1, source_sha256: "a".repeat(64), compiled_bundle: { rules: [] }, compiled_sha256: "b".repeat(64),
@@ -394,7 +423,10 @@ test("publication persists source and compiled integrity with a complete actor-a
   assert.equal(audit[0], organizationId);
   assert.equal(audit[2], baseline.id);
   assert.equal(audit[5], "Reviewed policy changes");
-  assert.deepEqual(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).executionTargets, ["review"]);
+  assert.deepEqual(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).executionTargets, ["review", "sign"]);
+  assert.equal(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).reviewPriority, "high");
+  assert.equal(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).severity, "warning");
+  assert.equal(publishedBundle.rules.find(({ ruleId: id }) => id === ruleId).reviewPriority, "medium");
 });
 
 test("Validation history is organization isolated and exposes immutable lifecycle evidence", async () => {

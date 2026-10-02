@@ -19,6 +19,7 @@ export {
   isNemsisDemographicElementId,
   minimumRuleCoversRequirement,
   repairNemsisImportedMessage,
+  reviewPriorityOfRule,
   validationRuleText,
   type CompiledValidationBundle,
   type CompiledValidationExpression,
@@ -37,6 +38,7 @@ export {
   type ValidationRuleProvenance,
   type ValidationRuleSourceKind,
   type ValidationSeverity,
+  type ValidationReviewPriority,
   ValidationCompatibilityError,
   ValidationResourceLimitError,
 } from "./validation-rules.js";
