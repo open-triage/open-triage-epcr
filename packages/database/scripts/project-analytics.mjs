@@ -6,7 +6,7 @@ import {
 } from "@open-triage/contracts/quality-rules";
 
 const databaseUrl = process.env.DATABASE_URL;
-const PROJECTOR_VERSION = "1.2.0";
+const PROJECTOR_VERSION = "1.3.0";
 const BATCH_SIZE = Number.parseInt(process.env.ANALYTICS_PROJECTOR_BATCH_SIZE ?? "100", 10);
 const MAX_ATTEMPTS = Number.parseInt(process.env.ANALYTICS_PROJECTOR_MAX_ATTEMPTS ?? "12", 10);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

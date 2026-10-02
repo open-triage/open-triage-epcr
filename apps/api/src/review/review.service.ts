@@ -10,6 +10,7 @@ import type { ReviewScope } from "./review-scope.js";
 import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./review-fields.js";
 import { reduceRepeated, type RepeatedRow } from "./review-repeated.js";
 import { eligibleReviewer, eligibleReviewers } from "./review-assignment.js";
+import { reduceCustom, type CustomOccurrenceRow, type CustomReportRow } from "./review-custom.js";
 
 function positiveInteger(value: string | undefined, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -68,9 +69,9 @@ export class ReviewService implements OnModuleDestroy {
     const custom = await this.database.query<Array<{ custom_definition_id: string; title: string;
       datatype: string; recurrence: string; identifying: boolean; semantic_count: string;
       datatype_count: string;
-      recurrence_count: string; privacy_count: string }>>(`
+      recurrence_count: string; privacy_count: string; grouped: boolean }>>(`
       select custom_definition_id, title, datatype, recurrence, identifying,
-        semantic_count, datatype_count, recurrence_count, privacy_count
+        semantic_count, datatype_count, recurrence_count, privacy_count, grouped
       from analytics.review_custom_dictionary
       where organization_id = $1::uuid and ($2::boolean or not identifying)
       order by title, custom_definition_id`, [scope.organizationId, scope.identifying]);
@@ -78,17 +79,18 @@ export class ReviewService implements OnModuleDestroy {
       operations: field.kind === "categorical" ? ["distribution" as const] :
         ["mean" as const, "median" as const, "minimum" as const, "maximum" as const] })),
     ...custom.map((row): ReviewAnalysisField => {
-      const compatible = Number(row.semantic_count) === 1 && Number(row.datatype_count) === 1 && Number(row.privacy_count) === 1 &&
-        Number(row.recurrence_count) === 1 && row.recurrence === "single";
+      const compatible = Number(row.semantic_count) === 1 && Number(row.datatype_count) === 1 &&
+        Number(row.privacy_count) === 1 && Number(row.recurrence_count) === 1;
       const numeric = row.datatype === "number";
       const categorical = ["string", "coded", "boolean", "date", "dateTime"].includes(row.datatype);
       const operations: ReviewAnalysisField["operations"] = compatible && numeric
         ? ["mean", "median", "minimum", "maximum"] : compatible && categorical
           ? ["distribution"] : [];
       return { id: row.custom_definition_id, label: row.title, source: "custom",
-        kind: numeric ? "numeric" : "categorical", unit: null, operations,
+        kind: numeric ? "numeric" : "categorical", unit: null,
+        repeating: row.grouped || row.recurrence === "multiple", operations,
         ...(operations.length ? {} : { unsupportedReason: !compatible
-          ? "Historical definitions differ or this field repeats" : "This value type has no supported chart operation" }) };
+          ? "Historical definitions differ" : "This value type has no supported chart operation" }) };
     })];
   }
 
@@ -107,8 +109,10 @@ export class ReviewService implements OnModuleDestroy {
     const groupField = input.groupBy ? fields.find((candidate) => candidate.id === input.groupBy) : undefined;
     const filter = input.filters.field;
     const filterField = filter ? fields.find((candidate) => candidate.id === filter.id) : undefined;
-    if (!field || (input.groupBy && (!groupField || groupField.kind !== "categorical")) ||
+    if (!field || (input.groupBy && (!groupField || groupField.kind !== "categorical" ||
+      !groupField.operations.includes("distribution"))) ||
       (filter && (!filterField || filterField.kind !== "categorical" ||
+        !filterField.operations.includes("distribution") ||
         typeof filter.value !== "string" || !filter.value || filter.value.length > 256))) {
       throw new BadRequestException("Review field is not permitted");
     }
@@ -124,9 +128,12 @@ export class ReviewService implements OnModuleDestroy {
     if (input.unit && (field.id !== "eMedications.05" || typeof input.unit !== "string" ||
       !/^[A-Za-z0-9.\[\]{}\/\-]{1,40}$/.test(input.unit)))
       throw new BadRequestException("Invalid Review analysis unit");
-    if ((field.source === "custom" && (groupField || filterField)) ||
-      groupField?.source === "custom" || filterField?.source === "custom")
-      throw new BadRequestException("Custom field grouping and filtering are not yet supported");
+    if ((groupField?.source === "custom" || filterField?.source === "custom") && field.source !== "custom")
+      throw new BadRequestException("Custom grouping and filtering require a custom measure");
+    if (field.source === "custom" &&
+      ((groupField?.repeating && groupField.source !== "custom") ||
+        (filterField?.repeating && filterField.source !== "custom")))
+      throw new BadRequestException("Repeated standard dimensions are unsupported for custom measures");
     const definition: ReviewAnalysisDefinition = { fieldId: field.id, operation: input.operation,
       ...(groupField ? { groupBy: groupField.id } : {}),
       ...(input.reducer ? { reducer: input.reducer } : {}),
@@ -157,7 +164,7 @@ export class ReviewService implements OnModuleDestroy {
     const population = { unit: "patient-report" as const, scope: scope.reports,
       organizationId: scope.organizationId, signedOnly: true as const };
     if (!current) return { definition, field: metadata, population, freshness, groups: [] };
-    if ("repeating" in field && field.repeating) {
+    if (field.source !== "custom" && "repeating" in field && field.repeating) {
       const rows = await database.query<RepeatedRow[]>(`
         select source.report_id, source.field_values ->> $8::text as group_value,
           occurrence.element_occurrence_id as occurrence_id, occurrence.group_id,
@@ -190,65 +197,61 @@ export class ReviewService implements OnModuleDestroy {
       return { definition, field: { ...metadata, unit }, population, freshness, ...reduced };
     }
     if (field.source === "custom") {
-      const parameters = [from, to, scope.organizationId, dataset === "synthetic",
-        scope.reports === "all", scope.userId, field.id];
-      const source = `from analytics.review_volume_source report
-        left join analytics.review_custom_field_source value
-          on value.report_id = report.report_id and value.custom_definition_id = $7::uuid
+      const reportRows = await database.query<CustomReportRow[]>(`
+        select source.report_id,
+          case when $7::text is null then null else source.field_values ->> $7::text end
+            as standard_group_value
+        from analytics.review_field_source_with_identity source
+        where source.reporting_date between $1::date and $2::date
+          and source.organization_id=$3::uuid and source.synthetic=$4::boolean
+          and ($5::boolean or source.documenting_user_id=$6::uuid)
+          and ($8::text is null or source.field_values ->> $8::text = $9::text)
+        order by source.report_id limit 20001`,
+      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
+        scope.userId, groupField?.source === "custom" ? null : groupField?.id ?? null,
+        filterField?.source === "custom" ? null : filterField?.id ?? null,
+        filterField?.source === "custom" ? null : filter?.value ?? null]);
+      if (reportRows.length > 20000) throw new BadRequestException("Review analysis exceeds the report limit");
+      const ids = [...new Set([field, groupField, filterField]
+        .filter((candidate): candidate is ReviewAnalysisField => candidate?.source === "custom")
+        .map((candidate) => candidate.id))];
+      const occurrences = await database.query<CustomOccurrenceRow[]>(`
+        select c.report_id, c.element_occurrence_id as occurrence_id,
+          c.custom_definition_id, c.element_identity_id, c.catalog_release_id,
+          c.effective_amendment_sequence, c.group_id, c.group_instance_id,
+          c.parent_group_instance_id, c.group_path, c.instance_path,
+          c.group_ordinal, c.element_ordinal, c.correlation_id, c.group_correlation_id,
+          c.clinical_time, c.documented_time, c.code,
+          case when c.absence_kind is not null or c.not_value_code is not null
+            or c.pertinent_negative_code is not null then null
+            else case c.value_kind when 'coded' then c.code when 'text' then c.value_text
+              when 'boolean' then c.value_boolean::text when 'date' then c.value_date::text
+              when 'datetime' then c.value_datetime::text else null end end as categorical_value,
+          case when c.absence_kind is not null or c.not_value_code is not null
+            or c.pertinent_negative_code is not null then null
+            else coalesce(c.normalized_numeric, c.value_numeric, c.value_integer::numeric) end
+            as numeric_value,
+          coalesce(c.normalized_unit_code, c.source_unit_code) as unit_code,
+          coalesce(c.absence_kind, case when c.not_value_code is not null then 'null'
+            when c.pertinent_negative_code is not null then 'pertinent-negative' end) as absence_kind,
+          coalesce(c.absence_code, c.not_value_code, c.pertinent_negative_code) as absence_code,
+          c.normalization_rule_id, c.quality_flags
+        from analytics.review_custom_field_source c
+        join analytics.review_volume_source report on report.report_id=c.report_id
+          and report.reporting_date=c.reporting_date and report.organization_id=c.organization_id
         where report.reporting_date between $1::date and $2::date
-          and report.organization_id = $3::uuid and report.synthetic = $4::boolean
-          and ($5::boolean or report.documenting_user_id = $6::uuid)`;
-      const scalar = `case when value.absence_kind is not null or value.not_value_code is not null
-        or value.pertinent_negative_code is not null then null else case value.value_kind
-        when 'text' then value.value_text when 'coded' then value.code
-        when 'boolean' then value.value_boolean::text
-        when 'date' then value.value_date::text when 'datetime' then value.value_datetime::text
-        else null end end`;
-      if (field.kind === "categorical") {
-        const rows = await database.query<Array<{ field_value: string | null; absent: boolean;
-          count: string }>>(`select ${scalar} as field_value,
-          (value.absence_kind is not null or value.not_value_code is not null
-            or value.pertinent_negative_code is not null) as absent, count(*)::text as count
-          ${source} group by 1, 2 order by 1 nulls first limit 501`, parameters);
-        if (rows.length > 500) throw new BadRequestException("Review analysis has too many categories");
-        const group = { group: null, denominator: 0, missing: 0, absent: 0,
-          values: [] as ReviewAnalysisResult["groups"][number]["values"], summary: null };
-        for (const row of rows) {
-          const count = Number(row.count);
-          group.denominator += count;
-          if (row.field_value === null) {
-            if (row.absent) group.absent += count; else group.missing += count;
-          } else {
-            if (row.field_value.length > 256) throw new BadRequestException("Custom category exceeds chart limits");
-            group.values.push({ value: row.field_value, count, percentage: 0 });
-          }
-        }
-        for (const value of group.values)
-          value.percentage = group.denominator ? value.count * 100 / group.denominator : 0;
-        return { definition, field: metadata, population, freshness, groups: [group] };
-      }
-      const numericValue = `case when value.absence_kind is not null or value.not_value_code is not null
-        or value.pertinent_negative_code is not null then null
-        else coalesce(value.value_numeric, value.value_integer::numeric) end`;
-      const [row] = await database.query<Array<{ denominator: string; missing: string;
-        absent: string; mean: string | null; median: string | null;
-        minimum: string | null; maximum: string | null }>>(`
-        select count(*)::text as denominator,
-          count(*) filter (where ${numericValue} is null
-            and value.absence_kind is null and value.not_value_code is null
-            and value.pertinent_negative_code is null)::text as missing,
-          count(*) filter (where value.absence_kind is not null or value.not_value_code is not null
-            or value.pertinent_negative_code is not null)::text as absent,
-          avg(${numericValue})::text as mean,
-          percentile_cont(0.5) within group (order by (${numericValue})::double precision)::text as median,
-          min(${numericValue})::text as minimum,
-          max(${numericValue})::text as maximum
-        ${source}`, parameters);
-      if (!row) throw new Error("Custom Review aggregate is unavailable");
-      return { definition, field: metadata, population, freshness,
-        groups: [{ group: null, denominator: Number(row.denominator), missing: Number(row.missing),
-          absent: Number(row.absent), values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null
-            ? null : Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) }] };
+          and report.organization_id=$3::uuid and report.synthetic=$4::boolean
+          and ($5::boolean or report.documenting_user_id=$6::uuid)
+          and c.custom_definition_id=any($7::uuid[])
+        order by c.report_id, c.group_ordinal nulls first, c.element_ordinal,
+          c.element_occurrence_id limit 20001`,
+      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
+        scope.userId, ids]);
+      if (occurrences.length > 20000) throw new BadRequestException("Review analysis exceeds the occurrence limit");
+      if (occurrences.some((row) => row.categorical_value && row.categorical_value.length > 256))
+        throw new BadRequestException("Custom category exceeds chart limits");
+      const reduced = reduceCustom(reportRows, occurrences, definition, field, groupField, filterField);
+      return { definition, field: metadata, population, freshness, ...reduced };
     }
     if (field.source === "operational-time") {
       // IDs come from the fixed allowlist; no client supplied SQL identifier is interpolated.

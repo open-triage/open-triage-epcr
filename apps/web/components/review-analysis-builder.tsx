@@ -97,14 +97,18 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       <label>{t("review.analysisGroup")}{" "}<select value={groupBy} onChange={(event) => {
         setGroupBy(event.target.value); setResult(null);
       }}><option value="">{t("review.analysisAll")}</option>
-        {fields.filter((item) => item.kind === "categorical" && !item.repeating && !item.source && field?.source !== "custom").map((item) =>
+        {fields.filter((item) => item.kind === "categorical" && item.operations.includes("distribution") &&
+          (field?.source === "custom" ? item.source === "custom" || !item.repeating
+            : !item.source && !item.repeating)).map((item) =>
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     </div>
     <div className="review-controls">
       <label>{t("review.analysisFilter")}{" "}<select value={filterId} onChange={(event) => {
         setFilterId(event.target.value); setFilterValue(""); setResult(null);
       }}><option value="">{t("review.analysisAll")}</option>
-        {fields.filter((item) => item.kind === "categorical" && !item.source && field?.source !== "custom").map((item) =>
+        {fields.filter((item) => item.kind === "categorical" && item.operations.includes("distribution") &&
+          (field?.source === "custom" ? item.source === "custom" || !item.repeating
+            : !item.source)).map((item) =>
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       {filterId && <label>{t("review.analysisFilterValue")}{" "}<input value={filterValue}
         maxLength={256} onChange={(event) => { setFilterValue(event.target.value); setResult(null); }} /></label>}

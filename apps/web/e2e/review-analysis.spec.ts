@@ -37,6 +37,11 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
         operations: ["mean", "median", "minimum", "maximum"] },
       { id: "33333333-3333-4333-8333-333333333333", label: "Custom dose", source: "custom",
         kind: "numeric", unit: null, operations: ["mean", "median", "minimum", "maximum"] },
+      { id: "55555555-5555-4555-8555-555555555555", label: "Grouped dose", source: "custom",
+        kind: "numeric", repeating: true, unit: null,
+        operations: ["mean", "median", "minimum", "maximum"] },
+      { id: "66666666-6666-4666-8666-666666666666", label: "Grouped route", source: "custom",
+        kind: "categorical", repeating: true, unit: null, operations: ["distribution"] },
       { id: "44444444-4444-4444-8444-444444444444", label: "Opaque custom note", source: "custom",
         kind: "categorical", unit: null, operations: [], unsupportedReason: "opaque" },
     ] });
@@ -46,12 +51,14 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
       const repeated = definition.fieldId === "eVitals.06";
       const custom = definition.fieldId === "33333333-3333-4333-8333-333333333333";
       const operational = definition.fieldId === "review.duration.response";
+      const grouped = definition.fieldId === "55555555-5555-4555-8555-555555555555";
       return route.fulfill({ json: {
         definition, field: repeated
           ? { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric",
             unit: "mm[Hg]", repeating: true, operations: ["mean", "median", "minimum", "maximum"] }
-          : custom
-          ? { id: definition.fieldId, label: "Custom dose", source: "custom", kind: "numeric",
+          : custom || grouped
+          ? { id: definition.fieldId, label: grouped ? "Grouped dose" : "Custom dose",
+            source: "custom", kind: "numeric", repeating: grouped,
             unit: null, operations: ["mean", "median", "minimum", "maximum"] }
           : operational
           ? { id: "review.duration.response", label: "Response time", source: "operational-time",
@@ -62,7 +69,8 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
         population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
         freshness: { observedAt: "2026-10-02T08:00:00Z", targetSeconds: 300, status: "current",
           oldestBacklogSeconds: null, replicaLagSeconds: null },
-        groups: [{ group: null, denominator: 4, missing: 1, absent: 1,
+        groups: grouped ? [{ group: "A", denominator: 2, missing: 0, absent: 0,
+          summary: 15, values: [] }] : [{ group: null, denominator: 4, missing: 1, absent: 1,
           ...(operational ? { invalid: 1 } : {}),
           summary: repeated ? 120 : custom ? 2.5 : operational ? 12.5 : null,
           values: repeated || custom || operational ? [] : [{ value: "pain", count: 2, percentage: 50 }] }],
@@ -108,6 +116,17 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
   await expect(page.getByText("eTimes.06 → eTimes.09; elapsed min", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Transport time" }).click();
   await expect(page.getByText("eTimes.09 → eTimes.11; elapsed min", { exact: false })).toBeVisible();
+  await page.getByRole("combobox", { name: "Field", exact: true }).selectOption("55555555-5555-4555-8555-555555555555");
+  await page.getByLabel("Per-report value").selectOption("first");
+  await page.getByLabel("Group by").selectOption("66666666-6666-4666-8666-666666666666");
+  await page.getByLabel("Filter field").selectOption("66666666-6666-4666-8666-666666666666");
+  await page.getByLabel("Code").fill("A");
+  await page.getByRole("button", { name: "Run analysis" }).click();
+  await expect(page.getByRole("heading", { name: "A", exact: true })).toBeVisible();
+  await expect(page.getByText("Mean: 15", { exact: false })).toBeVisible();
+  expect(definition).toMatchObject({ fieldId: "55555555-5555-4555-8555-555555555555",
+    operation: "mean", reducer: "first", groupBy: "66666666-6666-4666-8666-666666666666",
+    filters: { field: { id: "66666666-6666-4666-8666-666666666666", value: "A" } } });
   await page.getByLabel("Dataset").selectOption("synthetic");
   await expect(page.getByRole("img", { name: "Distribution of coded values; exact values follow in the table" }))
     .toHaveCount(0);

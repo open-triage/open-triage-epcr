@@ -103,6 +103,18 @@ projector role before retiring the transition. Run the backfill separately for
 real and synthetic report dates as needed; the projector preserves each report's
 dataset classification.
 
+### Grouped custom transition (projector 1.3.0)
+
+Migration `20261002220000_review_custom_grouped_source.sql` includes grouped and
+repeated custom rows in the same API-only source as standalone rows. Run the
+bounded historical backfill above for every signed-report date range after the
+1.3.0 projector is deployed, then reconcile each range. This also rebuilds
+earlier grouped rows whose `is_custom` flag was introduced by 1.2.0. Replay
+deletes a report's prior long rows before inserting its effective occurrences
+in one transaction; custom analyses read that table once and never union with
+wide JSON additions. The projector version change makes older projections
+visible to reconciliation as stale.
+
 Use a unique, non-clinical job key and an inclusive date range. Each invocation is
 bounded by `ANALYTICS_PROJECTOR_BATCH_SIZE`; invoke it repeatedly until its run
 reports no additional work:

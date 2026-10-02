@@ -6,6 +6,11 @@ export interface RepeatedRow {
   parent_group_instance_id: string | null; group_ordinal: number | null; element_ordinal: number | null;
   clinical_time: Date | string | null; documented_time: Date | string | null;
   code: string | null; numeric_value: string | number | null; unit_code: string | null;
+  categorical_value?: string | null;
+  element_identity_id?: string; custom_definition_id?: string;
+  catalog_release_id?: string; effective_amendment_sequence?: number;
+  group_path?: string[]; instance_path?: string[];
+  correlation_id?: string | null; group_correlation_id?: string | null;
   absence_kind: string | null; absence_code: string | null;
   normalization_rule_id: string | null; quality_flags: string[] | null;
 }
@@ -28,33 +33,46 @@ function compareOccurrence(a: RepeatedRow, b: RepeatedRow, useClinicalTime: bool
 
 export function reduceRepeated(rows: RepeatedRow[], definition: ReviewAnalysisDefinition,
   unit: string | null): Pick<ReviewAnalysisResult, "groups" | "sources"> {
-  const reports = new Map<string, { group: string | null; rows: RepeatedRow[] }>();
+  const reports = new Map<string, { reportId: string; group: string | null; rows: RepeatedRow[] }>();
   for (const row of rows) {
-    const item = reports.get(row.report_id) ?? { group: row.group_value, rows: [] };
+    const key = JSON.stringify([row.report_id, row.group_value]);
+    const item = reports.get(key) ?? { reportId: row.report_id, group: row.group_value, rows: [] };
     if (row.occurrence_id) item.rows.push(row);
-    reports.set(row.report_id, item);
+    reports.set(key, item);
   }
   const groups = new Map<string | null, ReviewAnalysisResult["groups"][number]>();
   const numerics = new Map<string | null, number[]>();
   const sources: NonNullable<ReviewAnalysisResult["sources"]> = [];
-  for (const [reportId, report] of reports) {
+  for (const report of reports.values()) {
     const group = groups.get(report.group) ?? { group: report.group, denominator: 0, missing: 0,
       absent: 0, values: [], summary: null };
     group.denominator++;
     const relevant = report.rows.filter((row) => unit === null || row.unit_code === unit);
     const sourceValues = relevant.map((row) => ({ occurrenceId: row.occurrence_id!,
-      groupId: row.group_id!, groupInstanceId: row.group_instance_id!,
+      groupId: row.group_id, groupInstanceId: row.group_instance_id,
       parentGroupInstanceId: row.parent_group_instance_id,
-      value: definition.operation === "distribution" ? row.code :
+      value: definition.operation === "distribution" ? (row.categorical_value ?? row.code) :
         row.numeric_value === null ? null : Number(row.numeric_value), unit: row.unit_code,
       clinicalTime: instant(row.clinical_time), documentedTime: instant(row.documented_time),
       absenceKind: row.absence_kind, absenceCode: row.absence_code,
-      normalizationRuleId: row.normalization_rule_id, qualityFlags: row.quality_flags ?? [] }));
+      normalizationRuleId: row.normalization_rule_id, qualityFlags: row.quality_flags ?? [],
+      ...(row.element_identity_id ? { elementIdentityId: row.element_identity_id } : {}),
+      ...(row.custom_definition_id ? { customDefinitionId: row.custom_definition_id } : {}),
+      ...(row.catalog_release_id ? { catalogReleaseId: row.catalog_release_id } : {}),
+      ...(row.effective_amendment_sequence !== undefined
+        ? { effectiveAmendmentSequence: row.effective_amendment_sequence } : {}),
+      ...(row.group_path ? { groupPath: row.group_path } : {}),
+      ...(row.instance_path ? { instancePath: row.instance_path } : {}),
+      ...(row.group_ordinal !== null ? { groupOrdinal: row.group_ordinal } : {}),
+      ...(row.element_ordinal !== null ? { elementOrdinal: row.element_ordinal } : {}),
+      ...(row.correlation_id !== undefined ? { correlationId: row.correlation_id } : {}),
+      ...(row.group_correlation_id !== undefined ? { groupCorrelationId: row.group_correlation_id } : {}) }));
     let value: string[] | number | null = null;
     let selectedOccurrenceId: string | undefined;
     let orderMode: "clinical-time" | "occurrence-order" | undefined;
     if (definition.operation === "distribution") {
-      const categories = [...new Set(relevant.map((row) => row.code).filter((code): code is string => !!code))].sort();
+      const categories = [...new Set(relevant.map((row) => row.categorical_value ?? row.code)
+        .filter((code): code is string => !!code))].sort();
       value = categories;
       for (const category of categories) {
         const bucket = group.values.find((item) => item.value === category);
@@ -85,10 +103,11 @@ export function reduceRepeated(rows: RepeatedRow[], definition: ReviewAnalysisDe
         values.push(value); numerics.set(report.group, values);
       }
     }
-    sources.push({ reportId, group: report.group, value, unit,
+    sources.push({ reportId: report.reportId, group: report.group, value, unit,
       ...(selectedOccurrenceId ? { selectedOccurrenceId, orderMode } : {}),
       occurrenceIds: relevant.map((row) => row.occurrence_id!),
-      groupInstanceIds: [...new Set(relevant.map((row) => row.group_instance_id!))], sourceValues });
+      groupInstanceIds: [...new Set(relevant.map((row) => row.group_instance_id)
+        .filter((id): id is string => id !== null))], sourceValues });
     groups.set(report.group, group);
   }
   for (const group of groups.values()) {
