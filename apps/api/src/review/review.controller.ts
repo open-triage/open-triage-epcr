@@ -1,12 +1,11 @@
-import { Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Query, Res } from "@nestjs/common";
-import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult } from "@open-triage/contracts";
+import { Body, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
+import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 
 @Controller("review")
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
-
 
   @Get("queue")
   @Header("Cache-Control", "no-store, private")
@@ -21,6 +20,21 @@ export class ReviewController {
   backlog(@Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string) {
     return this.review.backlog(bearerToken(authorization, cookie), dataset);
+  }
+
+  @Get("analysis/fields")
+  @Header("Cache-Control", "no-store, private")
+  fields(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewAnalysisField[]> {
+    return this.review.analysisFields(bearerToken(authorization, cookie));
+  }
+
+  @Post("analysis")
+  @Header("Cache-Control", "no-store, private")
+  analysis(@Body() definition: ReviewAnalysisDefinition,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewAnalysisResult> {
+    return this.review.analysis(bearerToken(authorization, cookie), definition);
   }
 
   @Get("reports")

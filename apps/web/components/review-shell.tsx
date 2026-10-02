@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { ReviewVolumeChart } from "./review-volume-chart";
+import { ReviewAnalysisBuilder } from "./review-analysis-builder";
 
 function dateString(date: Date): string { return date.toISOString().slice(0, 10); }
 
@@ -155,7 +156,6 @@ export function ReviewShell({ session, language, online }: {
           </tr>)}</tbody></table>
         </>}
       </section>
-
       <section aria-labelledby="review-queue-heading">
         <h2 id="review-queue-heading">{t("review.queue")}</h2>
         <div className="review-controls">
@@ -192,7 +192,8 @@ export function ReviewShell({ session, language, online }: {
         {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
             {work.lastError && <p>{work.lastError}</p>}</li>)}</ul>}</section>}
-
+      <ReviewAnalysisBuilder key={`${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
+        from={from} to={to} language={language} refresh={refresh} />
       {error && <p role="alert">{t("review.unavailable")}</p>}
       {!result && !error && <p role="status">{t("review.loading")}</p>}
       {result && <>
