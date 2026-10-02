@@ -140,6 +140,28 @@ export interface CreateClinicianSessionCommand {
   password: string;
 }
 
+export interface ReviewQueueItem {
+  id: string;
+  reportId: string;
+  criterionId: string;
+  priority: "high" | "medium" | "low";
+  status: "new" | "in-review" | "resolved";
+  assigneeId: string | null;
+  firstMatchedAt: string;
+  reportingDate: string;
+  signedAt: string;
+  findings: import("./validation-rules.js").ValidationFinding[];
+}
+
+export interface ReviewQueueResponse {
+  dataset: "real" | "synthetic";
+  page: number;
+  pageSize: number;
+  total: number;
+  asOf: string;
+  items: ReviewQueueItem[];
+}
+
 export interface ReviewSignedReportSummary {
   id: string;
   reportingDate: string;

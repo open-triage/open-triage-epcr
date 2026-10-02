@@ -7,6 +7,22 @@ import { ReviewService } from "./review.service.js";
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
 
+
+  @Get("queue")
+  @Header("Cache-Control", "no-store, private")
+  queue(@Query() filters: { dataset?: string; criterion?: string; priority?: string; status?: string;
+      from?: string; to?: string; page?: string; pageSize?: string },
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
+    return this.review.queue(bearerToken(authorization, cookie), filters);
+  }
+
+  @Get("backlog")
+  @Header("Cache-Control", "no-store, private")
+  backlog(@Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string) {
+    return this.review.backlog(bearerToken(authorization, cookie), dataset);
+  }
+
   @Get("reports")
   @Header("Cache-Control", "no-store, private")
   reports(

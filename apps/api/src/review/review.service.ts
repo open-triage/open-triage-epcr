@@ -214,6 +214,72 @@ export class ReviewService implements OnModuleDestroy {
     });
   }
 
+
+  async queue(token: string, filters: { dataset?: string; criterion?: string; priority?: string;
+    status?: string; from?: string; to?: string; page?: string; pageSize?: string }) {
+    const scope = reviewScope(await this.sessions.get(token));
+    const dataset = this.dataset(filters.dataset, scope);
+    const page = positiveInteger(filters.page, 1, 1000000);
+    const pageSize = positiveInteger(filters.pageSize, 25, 100);
+    const offset = (page - 1) * pageSize;
+    if (!Number.isSafeInteger(offset)) throw new BadRequestException("Invalid Review pagination");
+    if (filters.criterion && !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(filters.criterion))
+      throw new BadRequestException("Invalid Review criterion");
+    if (filters.priority && !["high", "medium", "low"].includes(filters.priority))
+      throw new BadRequestException("Invalid Review priority");
+    if (filters.status && !["new", "in-review", "resolved"].includes(filters.status))
+      throw new BadRequestException("Invalid Review status");
+    for (const value of [filters.from, filters.to]) if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value))
+      throw new BadRequestException("Invalid Review date");
+    const params = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+      filters.criterion ?? null, filters.priority ?? null, filters.status ?? null,
+      filters.from ?? null, filters.to ?? null];
+    const where = `i.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+      and ($3::boolean or r.documenting_user_id=$4)
+      and ($5::uuid is null or i.criterion_id=$5) and ($6::text is null or i.priority=$6)
+      and ($7::text is null or i.status=$7)
+      and ($8::date is null or r.reporting_date >= $8)
+      and ($9::date is null or r.reporting_date <= $9)`;
+    const [counts, rows] = await Promise.all([
+      this.database.query<Array<{ total: string }>>(`select count(*)::text total from clinical.review_item i
+        join clinical.report r on r.id=i.report_id where ${where}`, params),
+      this.database.query<Array<{ id: string; report_id: string; criterion_id: string; priority: string;
+        status: string; assignee_id: string | null; first_matched_at: Date | string;
+        reporting_date: string; signed_at: Date | string; findings: unknown }>>(`
+        select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.first_matched_at,
+          r.reporting_date,s.signed_at,
+          (select e.findings from clinical.review_item_evidence e where e.item_id=i.id
+            order by e.recorded_at desc,e.id desc limit 1) findings
+        from clinical.review_item i join clinical.report r on r.id=i.report_id
+        join clinical.signed_snapshot s on s.report_id=r.id
+        where ${where} order by i.first_matched_at desc,i.id desc limit $10 offset $11`,
+      [...params, pageSize, offset]),
+    ]);
+    return { dataset, page, pageSize, total: Number(counts[0]?.total ?? 0),
+      asOf: new Date().toISOString(), items: rows.map((row) => ({
+        id: row.id, reportId: row.report_id, criterionId: row.criterion_id, priority: row.priority,
+        status: row.status, assigneeId: row.assignee_id, firstMatchedAt: new Date(row.first_matched_at).toISOString(),
+        reportingDate: row.reporting_date, signedAt: new Date(row.signed_at).toISOString(),
+        findings: row.findings ?? [],
+      })) };
+  }
+
+  async backlog(token: string, requestedDataset?: string) {
+    const scope = reviewScope(await this.sessions.get(token));
+    if (!scope.administrator) throw new ForbiddenException("Review administration is required");
+    const dataset = this.dataset(requestedDataset, scope);
+    const rows = await this.database.query<Array<{ id: string; report_id: string; state: string;
+      attempts: number; last_error: string | null; created_at: Date | string }>>(`
+      select w.id,w.report_id,w.state,w.attempts,w.last_error,w.created_at
+      from clinical.review_work w join clinical.report r on r.id=w.report_id
+      where w.organization_id=$1 and r.synthetic=$2 and w.state <> 'complete'
+      order by w.created_at desc limit 100`, [scope.organizationId, dataset === "synthetic"]);
+    return { dataset, asOf: new Date().toISOString(), work: rows.map((row) => ({
+      id: row.id, reportId: row.report_id, state: row.state, attempts: row.attempts,
+      lastError: row.last_error, createdAt: new Date(row.created_at).toISOString(),
+    })) };
+  }
+
   private presentValue(row: Record<string, unknown>, label: string, identifying: boolean): ReviewReportValue | null {
     const kind = String(row.value_kind ?? "");
     // A free-text field may contain a name even when its catalog flag is false.
@@ -250,3 +316,5 @@ export class ReviewService implements OnModuleDestroy {
     });
   }
 }
+
+// Review queue reads are deliberately scoped with the same boundary as report inspection.

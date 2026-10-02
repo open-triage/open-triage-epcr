@@ -925,3 +925,6 @@ input, select, textarea { touch-action: manipulation; }
 .review-detail img, .review-detail audio { display: block; max-width: 100%; margin-top: .75rem; }
 .review-volume-chart { display: block; width: 100%; max-width: 720px; height: auto; margin-block: 1rem; }
 .review-pagination { justify-content: flex-start; }
+.review-priority-high { border-left: 5px solid #b12c24; background: #fff4f1; }
+.review-priority-medium { border-left: 5px solid #ad7300; background: #fff9e9; }
+.review-priority-low { border-left: 5px solid #4e7560; }
