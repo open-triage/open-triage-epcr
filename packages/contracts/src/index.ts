@@ -481,6 +481,30 @@ export interface ReviewAnalysisReviewFilters {
   outcomes: Array<{ id: string; label: string }>;
 }
 
+export interface ReviewSavedAnalysis {
+  id: string;
+  name: string;
+  ownerId: string;
+  shared: boolean;
+  version: number;
+  updatedAt: string;
+  editable: boolean;
+}
+
+export interface SaveReviewAnalysisCommand {
+  commandId: string;
+  /** Present when revising an existing definition. */
+  expectedVersion?: number;
+  name: string;
+  shared: boolean;
+  definition: ReviewAnalysisDefinition;
+}
+
+export interface ReviewSavedAnalysisOpen {
+  saved: ReviewSavedAnalysis;
+  result: ReviewAnalysisResult;
+}
+
 export interface ReviewAnalysisResult {
   /** Fingerprint of the displayed aggregate, supplied by the API for coherent export. */
   exportRevision?: string;

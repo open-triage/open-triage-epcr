@@ -709,9 +709,11 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         <button type="button" disabled={workflowBusy || !outcomeLabel.trim() || !outcomeMeaning.trim()}
           onClick={() => void saveOutcome()}>{t("review.saveOutcome")}</button>
       </section>}
-      <ReviewAnalysisBuilder key={`${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
+      <ReviewAnalysisBuilder dataset={dataset}
         from={from} to={to} language={language} refresh={refresh}
-        csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
+        csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        administrator={session.capabilities?.includes("review:admin") &&
+          session.capabilities?.includes("review:all") || false} />
       <ReviewWorkloadBuilder key={`workload-${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
         from={from} to={to} language={language}
         csrfToken={session.csrfToken ?? session.accessToken ?? ""} />

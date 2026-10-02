@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 import { aggregateRevision, analysisCsv, underlyingCsv, volumeCsv, workloadCsv } from "./review-csv.js";
@@ -209,6 +209,40 @@ export class ReviewController {
       message: "Review workload changed; refresh before exporting",
       result: { ...result, exportRevision: current } });
     return sendCsv(response, "review-workload-records.csv", underlyingCsv(result));
+  }
+
+  @Get("analysis/saved")
+  @Header("Cache-Control", "no-store, private")
+  savedAnalyses(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewSavedAnalysis[]> {
+    return this.review.savedAnalyses(bearerToken(authorization, cookie));
+  }
+
+  @Post("analysis/saved")
+  @Header("Cache-Control", "no-store, private")
+  saveAnalysis(@Body() command: SaveReviewAnalysisCommand,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+    @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewSavedAnalysis> {
+    return this.review.saveAnalysis(bearerToken(authorization, cookie), undefined, command, csrfToken);
+  }
+
+  @Get("analysis/saved/:id")
+  @Header("Cache-Control", "no-store, private")
+  async openSavedAnalysis(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Query("dataset") dataset: "real" | "synthetic",
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewSavedAnalysisOpen> {
+    const opened = await this.review.openSavedAnalysis(bearerToken(authorization, cookie), id, dataset);
+    return { ...opened, result: { ...opened.result, exportRevision: aggregateRevision(opened.result) } };
+  }
+
+  @Post("analysis/saved/:id")
+  @Header("Cache-Control", "no-store, private")
+  updateSavedAnalysis(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: SaveReviewAnalysisCommand,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+    @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewSavedAnalysis> {
+    return this.review.saveAnalysis(bearerToken(authorization, cookie), id, command, csrfToken);
   }
 
   @Post("analysis")
