@@ -42,3 +42,33 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
   await context.setOffline(true);
   await expect(page.getByText("Review requires a connection.", { exact: false })).toBeVisible();
 });
+
+test("Review opens effective grouped signed content without identifying text", async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
+  const id = "123e4567-e89b-42d3-a456-426614174000";
+  const session = { csrfToken: "review-test", user: { id: "reviewer", displayName: "Reviewer" },
+    organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
+    expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all"], workspaceAvailable: true };
+  await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/installation") return route.fulfill({ json: { settings } });
+    if (path === "/api/sessions/current") return route.fulfill({ json: session });
+    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
+      identifying: false, administrator: false, page: 1, pageSize: 25, total: 1,
+      asOf: "2026-10-02T08:00:00Z", reports: [{ id, reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z" }] } });
+    if (path === `/api/review/reports/${id}`) return route.fulfill({ json: { id, reportingDate: "2026-10-02",
+      signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 1, identifying: false,
+      groups: [{ id: "entry-1", parentGroupInstanceId: null, groupId: "custom.entry", label: "Assessment entry", ordinal: 1 }],
+      values: [{ id: "score", elementId: "custom.score", label: "Score", groupInstanceId: "entry-1",
+        ordinal: 0, valueKind: "integer", value: 4 }], notes: [] } });
+    return route.fulfill({ status: 404 });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: id }).click();
+  await expect(page.getByRole("heading", { name: "Assessment entry #2" })).toBeVisible();
+  await expect(page.getByText("Score")).toBeVisible();
+  await expect(page.getByText("4", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 signed amendments")).toBeVisible();
+  await expect(page.getByText("Surname")).toHaveCount(0);
+});

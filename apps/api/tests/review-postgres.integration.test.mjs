@@ -35,3 +35,31 @@ integrationTest("Review signed-report list is scoped by current organization, au
     capabilities: ["review:all", "review:identifying"] };
   assert.equal((await service.signedReports("unused", dataset)).total, 0);
 });
+
+integrationTest("Review signed detail is server-redacted and directly scoped in PostgreSQL", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(() => client.end());
+  await client.query("set role open_triage_api_runtime");
+  const candidate = (await client.query(`select r.id, r.organization_id, r.documenting_user_id, r.synthetic
+    from clinical.report r join clinical.signed_snapshot s on s.report_id = r.id
+    where r.status = 'signed' limit 1`)).rows[0];
+  if (!candidate) return t.skip("No signed report is available in the local database");
+  let session = { user: { id: candidate.documenting_user_id }, organization: { id: candidate.organization_id },
+    capabilities: ["review:self"] };
+  const manager = { query: async (sql, params) => (await client.query(sql, params)).rows };
+  const service = new ReviewService({ transaction: async (level, work) =>
+    (typeof level === "function" ? level : work)(manager) }, { get: async () => session });
+  const dataset = candidate.synthetic ? "synthetic" : "real";
+  const limited = await service.report("unused", candidate.id, dataset);
+  assert.equal(limited.id, candidate.id);
+  assert.equal(limited.identifying, false);
+  assert.deepEqual(limited.notes, []);
+  assert.ok(limited.values.every(({ valueKind }) => !["text", "uri", "binary"].includes(valueKind)));
+  await assert.rejects(service.media("unused", candidate.id, "00000000-0000-4000-8000-000000000000", "photo", dataset),
+    { status: 403 });
+  session = { ...session, user: { id: "00000000-0000-4000-8000-000000000000" } };
+  await assert.rejects(service.report("unused", candidate.id, dataset), { status: 404 });
+  session = { ...session, user: { id: candidate.documenting_user_id }, capabilities: [] };
+  await assert.rejects(service.report("unused", candidate.id, dataset), { status: 403 });
+});

@@ -159,6 +159,37 @@ export interface ReviewSignedReportsResponse {
   reports: ReviewSignedReportSummary[];
 }
 
+export interface ReviewReportValue {
+  id: string;
+  elementId: string;
+  label: string;
+  groupInstanceId: string | null;
+  ordinal: number;
+  valueKind: string;
+  value: string | number | boolean | null;
+  codeDisplay?: string | null;
+  absenceDisplay?: string | null;
+}
+
+export interface ReviewReportGroup {
+  id: string;
+  parentGroupInstanceId: string | null;
+  groupId: string;
+  label: string;
+  ordinal: number;
+}
+
+export interface ReviewSignedReport {
+  id: string;
+  reportingDate: string;
+  signedAt: string;
+  amendmentSequence: number;
+  identifying: boolean;
+  groups: ReviewReportGroup[];
+  values: ReviewReportValue[];
+  notes: ReportNote[];
+}
+
 export interface ClinicianSession {
   /** Present only in the static, serverless demonstration build. */
   accessToken?: string;
