@@ -44,7 +44,7 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
           select w.*, s.signed_revision, r.catalog_release_id
           from clinical.review_work w join clinical.signed_snapshot s on s.id = w.signed_snapshot_id
           join clinical.report r on r.id = w.report_id
-          where w.state in ('pending', 'failed') and w.next_attempt_at <= now() and w.attempts < 12
+          where w.state in ('pending', 'failed') and w.next_attempt_at <= now()
           order by w.next_attempt_at, w.id limit 1 for update of w skip locked`))[0];
         if (!work) return false;
         const evaluationTime = new Date().toISOString();
@@ -85,7 +85,7 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
         [work.id, Number(work.attempts) + 1, work.organization_id, work.report_id, work.signed_snapshot_id, work.signed_revision,
           work.amendment_sequence, work.validation_version_id, version?.compiled_sha256 ?? '0'.repeat(64),
           evaluationTime, outcome, JSON.stringify(findings), JSON.stringify(failures)]))[0];
-        if (evaluation && version) {
+        if (evaluation && version && failures.length === 0) {
           const byCriterion = new Map<string, ValidationFinding[]>();
           for (const finding of findings) byCriterion.set(finding.ruleId,
             [...(byCriterion.get(finding.ruleId) ?? []), finding]);
@@ -99,9 +99,9 @@ export async function processReviewWork(database: DataSource, limit = 25): Promi
                 set priority=excluded.priority, updated_at=now() returning id`,
             [work.organization_id, work.report_id, criterionId, reviewPriorityOfRule(rule), evaluationTime]))[0]!;
             await manager.query(`insert into clinical.review_item_evidence
-              (organization_id,item_id,evaluation_id,findings) values ($1,$2,$3,$4::jsonb)
-              on conflict (item_id,evaluation_id) do nothing`,
-            [work.organization_id, item.id, evaluation.id, JSON.stringify(matches)]);
+              (organization_id,item_id,evaluation_id,work_id,findings) values ($1,$2,$3,$4,$5::jsonb)
+              on conflict (item_id,work_id) do nothing`,
+            [work.organization_id, item.id, evaluation.id, work.id, JSON.stringify(matches)]);
           }
         }
         await manager.query(`update clinical.review_work set state=$2, attempts=attempts+1,

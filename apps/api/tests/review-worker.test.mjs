@@ -59,7 +59,7 @@ test('bounded worker creates separate criterion items and immutable evidence onc
   assert.deepEqual(itemWrites.map(({ params }) => params[3]), ['high', 'low']);
   const evidenceWrites = value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_item_evidence'));
   assert.equal(evidenceWrites.length, 2);
-  assert.equal(JSON.parse(evidenceWrites[0].params[3]).length, 2);
+  assert.equal(JSON.parse(evidenceWrites[0].params[4]).length, 2);
   assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_evaluation')).length, 1);
   assert.deepEqual(await processReviewWork(value.database, 2), { processed: 0, failed: 0 });
 });
