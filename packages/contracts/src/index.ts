@@ -297,6 +297,8 @@ export interface ReviewVolumeDefinition {
 }
 
 export interface ReviewVolumeResult {
+  /** Fingerprint of the displayed aggregate, supplied by the API for coherent export. */
+  exportRevision?: string;
   definition: ReviewVolumeDefinition;
   population: {
     unit: "patient-report";
@@ -345,6 +347,8 @@ export interface ReviewAnalysisDefinition {
 }
 
 export interface ReviewAnalysisResult {
+  /** Fingerprint of the displayed aggregate, supplied by the API for coherent export. */
+  exportRevision?: string;
   definition: ReviewAnalysisDefinition;
   field: ReviewAnalysisField;
   population: ReviewVolumeResult["population"];

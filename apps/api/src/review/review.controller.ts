@@ -1,7 +1,25 @@
-import { Body, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
 import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
+import { aggregateRevision, analysisCsv, volumeCsv } from "./review-csv.js";
+
+type CsvResponse = { setHeader(name: string, value: string): unknown; send(body: string): unknown };
+
+function expectedRevision(value: unknown): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value))
+    throw new BadRequestException("Invalid Review export revision");
+  return value;
+}
+
+function sendCsv(response: CsvResponse, filename: string, value: string) {
+  response.setHeader("Content-Type", "text/csv; charset=utf-8");
+  response.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  response.setHeader("Content-Length", String(Buffer.byteLength(value, "utf8")));
+  response.setHeader("Cache-Control", "no-store, private");
+  response.setHeader("Pragma", "no-cache");
+  return response.send(value);
+}
 
 @Controller("review")
 export class ReviewController {
@@ -54,10 +72,25 @@ export class ReviewController {
 
   @Post("analysis")
   @Header("Cache-Control", "no-store, private")
-  analysis(@Body() definition: ReviewAnalysisDefinition,
+  async analysis(@Body() definition: ReviewAnalysisDefinition,
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string): Promise<ReviewAnalysisResult> {
-    return this.review.analysis(bearerToken(authorization, cookie), definition);
+    const result = await this.review.analysis(bearerToken(authorization, cookie), definition);
+    return { ...result, exportRevision: aggregateRevision(result) };
+  }
+
+  @Post("analysis/export")
+  async exportAnalysis(@Body() request: { definition: ReviewAnalysisDefinition; expectedRevision: string },
+    @Headers("authorization") authorization: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res() response: CsvResponse) {
+    const revision = expectedRevision(request?.expectedRevision);
+    const result = await this.review.analysis(bearerToken(authorization, cookie), request?.definition);
+    const current = aggregateRevision(result);
+    if (result.freshness.status !== "current" || current !== revision)
+      throw new ConflictException({ message: "Review aggregate changed; refresh before exporting",
+        result: { ...result, exportRevision: current } });
+    return sendCsv(response, "review-analysis.csv", analysisCsv(result));
   }
 
   @Get("reports")
@@ -100,14 +133,33 @@ export class ReviewController {
 
   @Get("volume")
   @Header("Cache-Control", "no-store, private")
-  volume(
+  async volume(
     @Query("dataset") dataset?: string,
     @Query("from") from?: string,
     @Query("to") to?: string,
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string,
   ): Promise<ReviewVolumeResult> {
-    return this.review.volume(bearerToken(authorization, cookie), dataset, from, to);
+    const result = await this.review.volume(bearerToken(authorization, cookie), dataset, from, to);
+    return { ...result, exportRevision: aggregateRevision(result) };
+  }
+
+  @Post("volume/export")
+  async exportVolume(@Body() request: { definition: ReviewVolumeResult["definition"]; expectedRevision: string },
+    @Headers("authorization") authorization: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res() response: CsvResponse) {
+    const revision = expectedRevision(request?.expectedRevision);
+    const definition = request?.definition;
+    if (definition?.measure !== "signed-report-count" || definition?.grouping !== "day")
+      throw new BadRequestException("Invalid Review volume definition");
+    const result = await this.review.volume(bearerToken(authorization, cookie),
+      definition.filters?.dataset, definition.filters?.from, definition.filters?.to);
+    const current = aggregateRevision(result);
+    if (result.freshness.status !== "current" || current !== revision)
+      throw new ConflictException({ message: "Review aggregate changed; refresh before exporting",
+        result: { ...result, exportRevision: current } });
+    return sendCsv(response, "review-volume.csv", volumeCsv(result));
   }
   @Get("items/:id")
   @Header("Cache-Control", "no-store, private")

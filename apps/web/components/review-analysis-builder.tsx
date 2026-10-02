@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { ReviewAnalysisChart } from "./review-analysis-chart";
+import { downloadReviewCsv } from "./review-csv-download";
 
 const starters = [
   { id: "eSituation.09", label: "review.analysisComplaint" },
@@ -29,6 +30,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   const [filterValue, setFilterValue] = useState("");
   const [result, setResult] = useState<ReviewAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
 
   useEffect(() => {
@@ -48,7 +51,7 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   const run = async () => {
     const url = apiRequestUrl("/api/review/analysis");
     if (!url) return;
-    setResult(null); setError(null);
+    setResult(null); setError(null); setExportNotice(null);
     const definition: ReviewAnalysisDefinition = { fieldId, operation,
       ...(field?.repeating && field.kind === "numeric" && reducer ? { reducer } : {}),
       ...(fieldId === "eMedications.05" && unit ? { unit: unit.trim() } : {}),
@@ -62,6 +65,18 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       if (!response.ok) throw new Error(String(response.status));
       setResult(await response.json() as ReviewAnalysisResult);
     } catch { setError(t("review.analysisUnavailable")); }
+  };
+
+  const exportCsv = async () => {
+    if (!result) return;
+    setExportBusy(true); setExportNotice(null);
+    const outcome = await downloadReviewCsv("analysis", result, csrfToken);
+    if (outcome.status === "refreshed") {
+      setResult(outcome.result); setExportNotice(t("review.csvRefreshed"));
+    } else if (outcome.status === "denied") {
+      setResult(null); setExportNotice(t("review.csvDenied"));
+    } else if (outcome.status === "error") setExportNotice(t("review.csvUnavailable"));
+    setExportBusy(false);
   };
 
   return <section aria-labelledby="review-analysis-heading">
@@ -118,8 +133,11 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         onClick={() => void run()}>{t("review.analysisRun")}</button>
     </div>
     {error && <p role="alert">{error}</p>}
+    {exportNotice && <p role="alert">{exportNotice}</p>}
     {result?.freshness.status === "stale" && <p role="alert">{t("review.volumeStale")}</p>}
     {result?.freshness.status === "current" && <>
+      {result.exportRevision && <button type="button" disabled={exportBusy}
+        onClick={() => void exportCsv()}>{t("review.csvDownload")}</button>}
       <p>{t("review.analysisScope", { scope: t(`review.scope.${result.population.scope}`) })}{" · "}
         {t("review.volumeFresh", { time: new Intl.DateTimeFormat(language, {
           dateStyle: "medium", timeStyle: "short" }).format(new Date(result.freshness.observedAt)) })}</p>
