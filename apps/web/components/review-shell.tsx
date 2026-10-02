@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClinicianSession, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
+import type { ClinicianSession, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
   ReviewEligibleReviewer, ReviewOutcomeOption, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
@@ -54,6 +54,9 @@ export function ReviewShell({ session, language, online }: {
   const [workflowError, setWorkflowError] = useState<"conflict" | "unavailable" | null>(null);
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
+  const [draftDetail, setDraftDetail] = useState<ReviewOverdueDraft | null>(null);
+  const [overduePolicy, setOverduePolicy] = useState<{ deadlineHours: number; version: number } | null>(null);
+  const [deadlineHours, setDeadlineHours] = useState(24);
   const [detailError, setDetailError] = useState(false);
   const [from, setFrom] = useState(() => dateString(new Date(Date.now() - 29 * 86400000)));
   const [to, setTo] = useState(() => dateString(new Date()));
@@ -109,7 +112,8 @@ export function ReviewShell({ session, language, online }: {
   }, [dataset, online, page, refresh]);
 
   useEffect(() => {
-    if (!online || !selected) return;
+    if (!online || !selected || (selectedItem?.kind === "overdue-unsigned" &&
+      selectedItem.status !== "completed")) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/reports/${selected}?dataset=${dataset}`);
     if (!url) return;
@@ -119,7 +123,33 @@ export function ReviewShell({ session, language, online }: {
       if (!controller.signal.aborted) { setDetail(next); setDetailError(false); }
     }).catch(() => { if (!controller.signal.aborted) { setDetail(null); setDetailError(true); } });
     return () => controller.abort();
-  }, [dataset, online, selected, refresh]);
+  }, [dataset, online, selected, selectedItem?.kind, selectedItem?.status, refresh]);
+
+  useEffect(() => {
+    if (!online || !selectedItemId || selectedItem?.kind !== "overdue-unsigned" ||
+      selectedItem.status === "completed") return;
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/items/${selectedItemId}/draft?dataset=${dataset}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      if (!controller.signal.aborted) { setDraftDetail(await response.json() as ReviewOverdueDraft); setDetailError(false); }
+    }).catch(() => { if (!controller.signal.aborted) { setDraftDetail(null); setDetailError(true); } });
+    return () => controller.abort();
+  }, [dataset, online, selectedItemId, selectedItem?.kind, selectedItem?.status, refresh]);
+
+  useEffect(() => {
+    if (!online || !session.capabilities?.includes("review:admin")) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl("/api/review/overdue-policy");
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const value = await response.json() as { deadlineHours: number; version: number };
+      if (!controller.signal.aborted) { setOverduePolicy(value); setDeadlineHours(value.deadlineHours); }
+    }).catch(() => { if (!controller.signal.aborted) setOverduePolicy(null); });
+    return () => controller.abort();
+  }, [online, refresh, session.capabilities]);
 
   useEffect(() => {
     if (!online || !selectedItemId) return;
@@ -250,6 +280,20 @@ export function ReviewShell({ session, language, online }: {
     finally { setWorkflowBusy(false); }
   }
 
+  async function saveOverduePolicy() {
+    if (!overduePolicy || !Number.isInteger(deadlineHours) || deadlineHours < 1 || deadlineHours > 720) return;
+    const url = apiRequestUrl("/api/review/overdue-policy");
+    if (!url) return;
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: overduePolicy.version,
+          deadlineHours }) }));
+      if (!response.ok) throw new Error(String(response.status));
+      setOverduePolicy(await response.json() as { deadlineHours: number; version: number });
+    } catch { setOverduePolicy(null); setRefresh((value) => value + 1); }
+  }
+
   async function claim(item: ReviewQueueItem) {
     const url = apiRequestUrl(`/api/review/items/${item.id}/claim`);
     if (!url || claiming) return;
@@ -295,6 +339,8 @@ export function ReviewShell({ session, language, online }: {
     setVolumeExportBusy(false);
   };
 
+  const viewDetail = detail ?? (draftDetail ? { ...draftDetail, amendmentSequence: 0,
+    reviewItems: [] as NonNullable<ReviewSignedReport["reviewItems"]> } : null);
   return <main className="review-shell" aria-labelledby="review-heading">
     <header className="review-heading">
       <div><p className="eyebrow">{t("review.online")}</p><h1 id="review-heading">{t("review.heading")}</h1></div>
@@ -305,7 +351,7 @@ export function ReviewShell({ session, language, online }: {
     {!online ? <p role="status">{t("review.offline")}</p> : <>
       <div className="review-controls">
         <label>{t("review.dataset")}{" "}<select value={dataset} onChange={(event) => {
-          setResult(null); setDetail(null); setSelected(null); setSelectedItem(null);
+          setResult(null); setDetail(null); setDraftDetail(null); setSelected(null); setSelectedItem(null);
           setVolume(null); setVolumeError(false); setQueue(null);
           setDataset(event.target.value as "real" | "synthetic"); setPage(1); setQueuePage(1);
         }}>
@@ -370,8 +416,9 @@ export function ReviewShell({ session, language, online }: {
             {queue.items.map((item) => <tr key={item.id} className={`review-priority-${item.priority}`}>
               <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
                 {item.outcome && <div>{item.outcome.label}</div>}</td>
-              <td><code>{item.criterionId}</code><div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
-              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); }}><code>{item.reportId}</code></button></td>
+              <td>{item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : <code>{item.criterionId}</code>}
+                <div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
+              <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); setDraftDetail(null); }}><code>{item.reportId}</code></button></td>
               <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
               <td>{item.recoveryReason && <span role="status">{t("review.recovered")} </span>}
                 {item.assigneeId ? (item.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{item.assigneeId}</code>) :
@@ -424,6 +471,14 @@ export function ReviewShell({ session, language, online }: {
             </li>;
           })}</ul>}
       </section>}
+      {session.capabilities?.includes("review:admin") && <section aria-labelledby="review-overdue-heading">
+        <h2 id="review-overdue-heading">{t("review.overdueSettings")}</h2>
+        <label>{t("review.overdueDeadlineHours")} <input type="number" min={1} max={720}
+          value={deadlineHours} onChange={(event) => setDeadlineHours(Number(event.target.value))} /></label>
+        <button type="button" disabled={!overduePolicy || deadlineHours === overduePolicy.deadlineHours ||
+          !Number.isInteger(deadlineHours) || deadlineHours < 1 || deadlineHours > 720}
+          onClick={() => void saveOverduePolicy()}>{t("review.saveOverdueDeadline")}</button>
+      </section>}
       {backlog && <section aria-labelledby="review-backlog-heading"><h2 id="review-backlog-heading">{t("review.backlog")}</h2>
         {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
@@ -459,7 +514,7 @@ export function ReviewShell({ session, language, online }: {
           <table><thead><tr><th>{t("review.report")}</th><th>{t("review.reportingDate")}</th>
             <th>{t("review.signedAt")}</th>{result.identifying && <th>{t("review.clinician")}</th>}</tr></thead>
             <tbody>{result.reports.map((report) => <tr key={report.id}>
-              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setItemDetail(null); setDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
+              <td><button type="button" onClick={() => { setSelected(report.id); setSelectedItem(null); setItemDetail(null); setDetail(null); setDraftDetail(null); setDetailError(false); }}><code>{report.id}</code></button></td><td>{report.reportingDate}</td>
               <td>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.signedAt))}</td>
               {result.identifying && <td>{report.documentingClinician ?? "—"}</td>}
             </tr>)}</tbody></table>}
@@ -471,14 +526,16 @@ export function ReviewShell({ session, language, online }: {
         </nav>
       </>}
       {selected && <section className="review-detail" aria-label={t("review.detail")}>
-        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setItemDetail(null); setDetail(null); }}>{t("review.close")}</button>
+        <button type="button" onClick={() => { setSelected(null); setSelectedItem(null); setItemDetail(null); setDetail(null); setDraftDetail(null); }}>{t("review.close")}</button>
         {detailError && <p role="alert">{t("review.detailUnavailable")}</p>}
-        {!detail && !detailError && <p role="status">{t("review.detailLoading")}</p>}
-        {detail && <>
-          <h2>{t("review.detail")}: <code>{detail.id}</code></h2>
-          <p>{t("review.amendments", { count: detail.amendmentSequence })}</p>
-          {!!detail.reviewItems?.length && <section><h3>{t("review.reportItems")}</h3><ul>
-            {detail.reviewItems.map((item) => <li key={item.id}><code>{item.criterionId}</code>: {t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
+        {!viewDetail && !detailError && <p role="status">{t("review.detailLoading")}</p>}
+        {viewDetail && <>
+          <h2>{draftDetail ? t("review.overdueDraft") : t("review.detail")}: <code>{viewDetail.id}</code></h2>
+          {draftDetail ? <p>{t("review.overdueDeadline")}: {new Intl.DateTimeFormat(language, {
+            dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p> :
+            <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
+          {!!viewDetail.reviewItems?.length && <section><h3>{t("review.reportItems")}</h3><ul>
+            {viewDetail.reviewItems.map((item) => <li key={item.id}><code>{item.criterionId}</code>: {t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
               {item.outcome && <> — {item.outcome.label}: {item.outcome.meaning}</>}</li>)}
           </ul></section>}
           {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
@@ -503,6 +560,10 @@ export function ReviewShell({ session, language, online }: {
                   {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.assignedAt))}: {t(`review.assignmentAction.${event.action ?? "claimed"}`)} {event.assigneeId === session.user.id ? t("review.assignedToYou") : event.assigneeId ? <code>{event.assigneeId}</code> : t("review.unassigned")}
                 </li>)}</ol>}</section>}
             {itemDetail && <><p>{t("review.status")}: {t(`review.${itemDetail.status === "in-review" ? "inReview" : itemDetail.status === "awaiting-clinician" ? "awaitingClinician" : itemDetail.status}`)}</p>
+              {itemDetail.resolutionReason === "resolved-by-signing" && <p>{t("review.resolvedBySigning")}</p>}
+              {!!itemDetail.overdueHistory?.length && <ol>{itemDetail.overdueHistory.map((event) =>
+                <li key={event.itemVersion}>{t(event.action === "detected" ? "review.overdueDetected" : "review.resolvedBySigning")}
+                  {" · "}{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}</li>)}</ol>}
               {itemDetail.outcome && <p>{t("review.outcomeChoice")}: {itemDetail.outcome.label} — {itemDetail.outcome.meaning}</p>}
               <section><h4>{t("review.progressHistory")}</h4>
                 {!itemDetail.progressHistory?.length ? <p>{t("review.noProgressHistory")}</p> :
@@ -518,7 +579,7 @@ export function ReviewShell({ session, language, online }: {
                   onClick={() => void progress(itemDetail, "awaiting-clinician")}>{t("review.awaitClinician")}</button>}
                 {itemDetail.status === "awaiting-clinician" && <button type="button" disabled={workflowBusy}
                   onClick={() => void progress(itemDetail, "in-review")}>{t("review.resumeReview")}</button>}
-                {["in-review", "awaiting-clinician", "completed"].includes(itemDetail.status) && <>
+                {itemDetail.kind !== "overdue-unsigned" && ["in-review", "awaiting-clinician", "completed"].includes(itemDetail.status) && <>
                   <label>{t("review.outcomeChoice")} <select value={completionOutcomeId}
                     onChange={(event) => setCompletionOutcomeId(event.target.value)}>
                     <option value="">{t("review.chooseOutcome")}</option>
@@ -535,14 +596,14 @@ export function ReviewShell({ session, language, online }: {
               {finding.message} — {finding.primaryTarget.elementId}
               {finding.primaryTarget.groupInstanceId && <code> / {finding.primaryTarget.groupInstanceId}</code>}
             </li>)}</ul></section>}
-          {detail.groups.map((group) => <section key={group.id}>
-            <h3>{group.parentGroupInstanceId ? `${detail.groups.find((item) => item.id === group.parentGroupInstanceId)?.label ?? ""} / ` : ""}
+          {viewDetail.groups.map((group) => <section key={group.id}>
+            <h3>{group.parentGroupInstanceId ? `${viewDetail.groups.find((item) => item.id === group.parentGroupInstanceId)?.label ?? ""} / ` : ""}
               {group.label} {group.ordinal > 0 ? `#${group.ordinal + 1}` : ""}</h3>
-            <ReviewValues values={detail.values.filter((value) => value.groupInstanceId === group.id)} />
+            <ReviewValues values={viewDetail.values.filter((value) => value.groupInstanceId === group.id)} />
           </section>)}
-          <ReviewValues values={detail.values.filter((value) => !value.groupInstanceId)} />
-          {detail.notes.length > 0 && <section><h3>{t("review.notes")}</h3>
-            {detail.notes.map((note) => <ReviewNote key={note.id} note={note} reportId={detail.id} dataset={dataset} language={language} />)}
+          <ReviewValues values={viewDetail.values.filter((value) => !value.groupInstanceId)} />
+          {viewDetail.notes.length > 0 && <section><h3>{t("review.notes")}</h3>
+            {viewDetail.notes.map((note) => <ReviewNote key={note.id} note={note} reportId={viewDetail.id} dataset={dataset} language={language} />)}
           </section>}
         </>}
       </section>}

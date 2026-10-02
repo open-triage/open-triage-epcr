@@ -25,6 +25,21 @@ function sendCsv(response: CsvResponse, filename: string, value: string) {
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
 
+  @Get("overdue-policy")
+  @Header("Cache-Control", "no-store, private")
+  overduePolicy(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string) {
+    return this.review.overduePolicy(bearerToken(authorization, cookie));
+  }
+
+  @Post("overdue-policy")
+  @Header("Cache-Control", "no-store, private")
+  configureOverduePolicy(@Body() command: { commandId: string; expectedVersion: number;
+    deadlineHours: number }, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string) {
+    return this.review.configureOverduePolicy(bearerToken(authorization, cookie), command, csrfToken);
+  }
+
   @Get("routes")
   @Header("Cache-Control", "no-store, private")
   routes(@Headers("authorization") authorization?: string,
@@ -167,6 +182,14 @@ export class ReviewController {
     @Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string): Promise<ReviewItemDetail> {
     return this.review.item(bearerToken(authorization, cookie), id, dataset);
+  }
+
+  @Get("items/:id/draft")
+  @Header("Cache-Control", "no-store, private")
+  overdueDraft(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Query("dataset") dataset?: string, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string) {
+    return this.review.overdueDraft(bearerToken(authorization, cookie), id, dataset);
   }
 
   @Post("items/:id/claim")

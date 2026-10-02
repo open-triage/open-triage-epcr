@@ -29,6 +29,7 @@ function fixture({ incompatible = false, route = 'unassigned', eligible = true, 
     calls.push({ sql, params });
     if (sql.includes('from app_identity.organization')) return [{ id: params[0] }];
     if (sql.includes('from clinical.review_criterion_route where route=')) return [];
+    if (sql.includes('from clinical.report r') && sql.includes('review_overdue_policy')) return [];
     if (sql.includes('from clinical.review_item i join clinical.report r') && sql.includes('eligibility_checked_at')) return [];
     if (sql.includes('from clinical.review_criterion_route where organization_id=')) return route === 'unassigned'
       ? [] : [{ route, named_user_id: route === 'named' ? namedReviewerId : null,
