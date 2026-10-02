@@ -453,10 +453,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     return () => controller.abort();
   }, [dataset, from, to, online, refresh]);
 
-  const exportVolumeCsv = async () => {
+  const exportVolumeCsv = async (records = false) => {
     if (!volume) return;
     setVolumeExportBusy(true); setVolumeExportNotice(null);
-    const outcome = await downloadReviewCsv("volume", volume, session.csrfToken ?? session.accessToken ?? "");
+    const outcome = await downloadReviewCsv("volume", volume, session.csrfToken ?? session.accessToken ?? "", records);
     if (outcome.status === "refreshed") {
       setVolume(outcome.result); setVolumeExportNotice(t("review.csvRefreshed"));
     } else if (outcome.status === "denied") {
@@ -504,6 +504,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         {volume?.freshness.status === "current" && <>
           {volume.exportRevision && <button type="button" disabled={volumeExportBusy}
             onClick={() => void exportVolumeCsv()}>{t("review.csvDownload")}</button>}
+          {volume.exportRevision && <button type="button" disabled={volumeExportBusy}
+            onClick={() => void exportVolumeCsv(true)}>{t("review.csvRecordsDownload")}</button>}
           <p>{t("review.volumeTotal", { count: volume.total ?? 0 })}{" · "}
             {t("review.volumeScope", { scope: t(`review.scope.${volume.population.scope}`) })}{" · "}
             {t("review.volumeFresh", { time: new Intl.DateTimeFormat(language, {

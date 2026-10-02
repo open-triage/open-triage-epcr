@@ -34,6 +34,17 @@ function validDate(value: string | undefined): value is string {
 const uuid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+async function attachReportingDates(database: EntityManager, organizationId: string,
+  sources: NonNullable<ReviewAnalysisResult["sources"]>): Promise<NonNullable<ReviewAnalysisResult["sources"]>> {
+  const ids = [...new Set(sources.map((source) => source.reportId))];
+  if (!ids.length) return sources;
+  const rows = await database.query<Array<{ report_id: string; reporting_date: string }>>(`
+    select report_id,reporting_date::text from analytics.review_volume_source
+    where organization_id=$1::uuid and report_id=any($2::uuid[])`, [organizationId, ids]);
+  const dates = new Map(rows.map((row) => [row.report_id, row.reporting_date]));
+  return sources.map((source) => ({ ...source, reportingDate: dates.get(source.reportId) }));
+}
+
 function reviewOutcome(row: { outcome_option_id: string | null; outcome_revision: number | null;
   outcome_label: string | null; outcome_meaning: string | null }): ReviewItemDetail["outcome"] {
   return row.outcome_option_id && row.outcome_revision !== null ? {
@@ -233,7 +244,8 @@ export class ReviewService implements OnModuleDestroy {
     return this.retrospectiveRun(token, id);
   }
 
-  async workload(token: string, input: ReviewWorkloadDefinition): Promise<ReviewWorkloadResult> {
+  async workload(token: string, input: ReviewWorkloadDefinition,
+    observedAt = new Date()): Promise<ReviewWorkloadResult> {
     const scope = reviewScope(await this.sessions.get(token));
     if (!input || !input.filters || !["criterion", "priority", "status", "age",
       "completion-duration", "exception-reason"].includes(input.groupBy) ||
@@ -247,7 +259,8 @@ export class ReviewService implements OnModuleDestroy {
     const definition: ReviewWorkloadDefinition = { groupBy: input.groupBy,
       filters: { from: input.filters.from, to: input.filters.to, dataset } };
     const rows = await this.database.query<WorkloadRow[]>(`
-      select i.id,i.criterion_id,i.priority,i.status,i.kind,r.status report_status,i.first_matched_at,
+      select i.id,i.report_id,r.reporting_date::text,i.criterion_id,i.priority,i.status,i.kind,
+        r.status report_status,i.first_matched_at,
         exists (select 1 from clinical.review_progress_history history
           where history.organization_id=i.organization_id and history.item_id=i.id
             and history.reason='relevant-amendment') reopened,
@@ -280,7 +293,7 @@ export class ReviewService implements OnModuleDestroy {
     [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
       definition.filters.from, definition.filters.to]);
     if (rows.length > 20000) throw new BadRequestException("Review workload exceeds the item limit");
-    return reduceWorkload(rows, definition, scope.reports, scope.organizationId);
+    return reduceWorkload(rows, definition, scope.reports, scope.organizationId, observedAt);
   }
 
   async analysisReviewFilters(token: string, requestedDataset?: string): Promise<ReviewAnalysisReviewFilters> {
@@ -394,7 +407,8 @@ export class ReviewService implements OnModuleDestroy {
         ...(reviewFilter ? { review: { ...(reviewFilter.criterionId ?
           { criterionId: reviewFilter.criterionId } : {}),
           ...(reviewFilter.outcomeOptionId ? { outcomeOptionId: reviewFilter.outcomeOptionId } : {}) } } : {}) } };
-    const database = await this.analyticsDatabase();
+    const analytics = await this.analyticsDatabase();
+    return analytics.transaction("REPEATABLE READ", async (database) => {
     const [health] = await database.query<Array<{
       observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
       persistent_failure_count: number; retrying_count: number; stale_run_count: number;
@@ -470,7 +484,8 @@ export class ReviewService implements OnModuleDestroy {
       if (field.id === "eMedications.05" && !unit)
         throw new BadRequestException("Select a medication dosage unit");
       const reduced = reduceRepeated(rows, definition, unit);
-      return { definition, field: { ...metadata, unit }, population, freshness, ...reduced };
+      return { definition, field: { ...metadata, unit }, population, freshness, ...reduced,
+        sources: await attachReportingDates(database, scope.organizationId, reduced.sources ?? []) };
     }
     if (field.source === "custom") {
       const reportRows = await database.query<CustomReportRow[]>(`
@@ -529,7 +544,8 @@ export class ReviewService implements OnModuleDestroy {
       if (occurrences.some((row) => row.categorical_value && row.categorical_value.length > 256))
         throw new BadRequestException("Custom category exceeds chart limits");
       const reduced = reduceCustom(reportRows, occurrences, definition, field, groupField, filterField);
-      return { definition, field: metadata, population, freshness, ...reduced };
+      return { definition, field: metadata, population, freshness, ...reduced,
+        sources: await attachReportingDates(database, scope.organizationId, reduced.sources ?? []) };
     }
     if (field.source === "operational-time") {
       // IDs come from the fixed allowlist; no client supplied SQL identifier is interpolated.
@@ -547,6 +563,42 @@ export class ReviewService implements OnModuleDestroy {
       const absent = `(${start} is null and interval_source.${startColumn}_absent)
         or (${end} is null and interval_source.${endColumn}_absent)`;
       const valid = `${start} is not null and ${end} is not null and ${end} >= ${start}`;
+      const sourceRows = await database.query<Array<{ report_id: string; reporting_date: string;
+        group_value: string | null; start_at: string | null; end_at: string | null;
+        start_absent: boolean; end_absent: boolean; minutes: string | null;
+        invalid: boolean; absent: boolean }>>(`
+        select source.report_id,source.reporting_date::text,
+          case when $7::text is null then null else source.field_values ->> $7::text end group_value,
+          ${start}::text start_at,${end}::text end_at,
+          interval_source.${startColumn}_absent start_absent,
+          interval_source.${endColumn}_absent end_absent,
+          case when ${valid} then (${interval})::text end minutes,
+          (${invalid}) invalid,(${absent}) absent
+        from analytics.review_field_source_with_identity source
+        join analytics.review_operational_time_source interval_source
+          on interval_source.report_id=source.report_id
+          and interval_source.reporting_date=source.reporting_date
+        where source.reporting_date between $1::date and $2::date
+          and source.organization_id=$3::uuid and source.synthetic=$4::boolean
+          and ($5::boolean or source.documenting_user_id=$6::uuid)
+          and ($8::text is null or ${filterField && "repeating" in filterField ?
+            `exists (select 1 from analytics.review_repeated_field_source f
+              where f.report_id=source.report_id and f.reporting_date=source.reporting_date
+                and f.element_id=$8::text and f.code=$9::text)` :
+            "source.field_values ->> $8::text = $9::text"})
+          and ($10::uuid[] is null or source.report_id=any($10::uuid[]))
+        order by source.report_id limit 20001`,
+      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+        groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null, permittedReportIds]);
+      if (sourceRows.length > 20000) throw new BadRequestException("Review export exceeds the report limit");
+      const sources: NonNullable<ReviewAnalysisResult["sources"]> = sourceRows.map((row) => ({
+        reportId: row.report_id, reportingDate: row.reporting_date, group: row.group_value,
+        value: row.minutes === null ? null : Number(row.minutes), unit: field.unit,
+        state: row.minutes !== null ? "valid" : row.invalid ? "missing" : row.absent ? "absent" : "missing",
+        operationalTime: { start: row.start_at, end: row.end_at,
+          startAbsent: row.start_absent, endAbsent: row.end_absent,
+          state: row.minutes !== null ? "valid" : row.invalid ? "invalid" : row.absent ? "absent" : "missing" },
+        occurrenceIds: [], groupInstanceIds: [], sourceValues: [] }));
       const rows = await database.query<Array<{ group_value: string | null; denominator: string;
         missing: string; absent: string; invalid: string; mean: string | null;
         median: string | null; minimum: string | null; maximum: string | null }>>(`
@@ -576,7 +628,7 @@ export class ReviewService implements OnModuleDestroy {
       [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
         groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null, permittedReportIds]);
       if (rows.length > 100) throw new BadRequestException("Review analysis has too many groups");
-      return { definition, field: metadata, population, freshness,
+      return { definition, field: metadata, population, freshness, sources,
         groups: rows.map((row) => ({ group: row.group_value, denominator: Number(row.denominator),
           missing: Number(row.missing), absent: Number(row.absent), invalid: Number(row.invalid),
           values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null
@@ -597,6 +649,19 @@ export class ReviewService implements OnModuleDestroy {
           "source.field_values ->> $9::text = $10::text"})
         and ($11::uuid[] is null or source.report_id=any($11::uuid[]))`;
     const group = `case when $8::text is null then null else source.field_values ->> $8::text end`;
+    const sourceRows = await database.query<Array<{ report_id: string; reporting_date: string;
+      group_value: string | null; field_value: string | null; absent: boolean }>>(`
+      select source.report_id,source.reporting_date::text,${group} as group_value,
+        source.field_values ->> $7::text as field_value,
+        source.field_absences ? $7::text as absent ${source}
+      order by source.report_id limit 20001`, params);
+    if (sourceRows.length > 20000) throw new BadRequestException("Review export exceeds the report limit");
+    const sources: NonNullable<ReviewAnalysisResult["sources"]> = sourceRows.map((row) => ({
+      reportId: row.report_id, reportingDate: row.reporting_date, group: row.group_value,
+      value: row.field_value === null ? null : field.kind === "categorical"
+        ? [row.field_value] : Number(row.field_value), unit: field.unit,
+      state: row.field_value !== null ? "valid" : row.absent ? "absent" : "missing",
+      occurrenceIds: [], groupInstanceIds: [], sourceValues: [] }));
     if (field.kind === "categorical") {
       const rows = await database.query<Array<{ group_value: string | null; field_value: string | null;
         absent: boolean; count: string }>>(`select ${group} as group_value,
@@ -617,7 +682,7 @@ export class ReviewService implements OnModuleDestroy {
       }
       for (const item of groups.values()) for (const value of item.values)
         value.percentage = item.denominator ? 100 * value.count / item.denominator : 0;
-      return { definition, field: metadata, population, freshness, groups: [...groups.values()] };
+      return { definition, field: metadata, population, freshness, groups: [...groups.values()], sources };
     }
     const rows = await database.query<Array<{ group_value: string | null; denominator: string;
       missing: string; absent: string; value_count: string; mean: string | null;
@@ -634,11 +699,12 @@ export class ReviewService implements OnModuleDestroy {
         max((source.field_values ->> $7::text)::numeric)::text as maximum
       ${source} group by 1 order by 1 nulls first limit 101`, params);
     if (rows.length > 100) throw new BadRequestException("Review analysis has too many groups");
-    return { definition, field: metadata, population, freshness,
+    return { definition, field: metadata, population, freshness, sources,
       groups: rows.map((row) => ({ group: row.group_value, denominator: Number(row.denominator),
         missing: Number(row.missing), absent: Number(row.absent),
         values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null ? null :
           Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) })) };
+    });
   }
 
   async volume(token: string, requestedDataset?: string,
@@ -650,7 +716,8 @@ export class ReviewService implements OnModuleDestroy {
       (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000 > 365) {
       throw new BadRequestException("Invalid Review date period");
     }
-    const database = await this.analyticsDatabase();
+    const analytics = await this.analyticsDatabase();
+    return analytics.transaction("REPEATABLE READ", async (database) => {
     const [health] = await database.query<Array<{
       observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
       persistent_failure_count: number; retrying_count: number;
@@ -687,8 +754,17 @@ export class ReviewService implements OnModuleDestroy {
       group by days.date order by days.date`,
     [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
     const points = rows.map((row) => ({ date: row.date, count: Number(row.count) }));
+    const sourceRows = await database.query<Array<{ report_id: string; reporting_date: string }>>(`
+      select report_id,reporting_date::text from analytics.review_volume_source
+      where reporting_date between $1::date and $2::date and organization_id=$3::uuid
+        and synthetic=$4::boolean and ($5::boolean or documenting_user_id=$6::uuid)
+      order by report_id limit 20001`,
+    [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
+    if (sourceRows.length > 20000) throw new BadRequestException("Review export exceeds the report limit");
     return { definition, population, freshness, points,
-      total: points.reduce((sum, point) => sum + point.count, 0) };
+      total: points.reduce((sum, point) => sum + point.count, 0),
+      sources: sourceRows.map((row) => ({ reportId: row.report_id, reportingDate: row.reporting_date })) };
+    });
   }
 
   async signedReports(token: string, requestedDataset?: string,

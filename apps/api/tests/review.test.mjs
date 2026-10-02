@@ -121,8 +121,9 @@ test("volume validates filters, binds both scope dimensions, and suppresses stal
       oldest_backlog_age_seconds: stale ? 301 : null, persistent_failure_count: 0, retrying_count: 0,
       stale_run_count: 0, last_run_status: partial ? "partial" : "succeeded", is_read_only_replica: false,
       replay_lag_seconds: null }];
+    if (sql.includes("select report_id,reporting_date::text")) return [];
     return [{ date: "2026-10-01", count: "2" }, { date: "2026-10-02", count: "0" }];
-  } };
+  }, async transaction(_isolation, run) { return run(this); } };
   const service = new ReviewService(database, { get: async () => current });
   const result = await service.volume("token", "real", "2026-10-01", "2026-10-02");
   assert.equal(result.total, 2);
@@ -136,7 +137,7 @@ test("volume validates filters, binds both scope dimensions, and suppresses stal
   current = session(["review:all", "clinical:demo"], "user-b", "org-b");
   const all = await service.volume("token", undefined, "2026-10-01", "2026-10-02");
   assert.equal(all.population.scope, "all");
-  assert.deepEqual(calls[3].params.slice(2), ["org-b", true, true, "user-b"]);
+  assert.deepEqual(calls[4].params.slice(2), ["org-b", true, true, "user-b"]);
   stale = true;
   const before = calls.length;
   const withheld = await service.volume("token", "real", "2026-10-01", "2026-10-02");

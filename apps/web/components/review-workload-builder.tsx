@@ -33,10 +33,10 @@ export function ReviewWorkloadBuilder({ dataset, from, to, language, csrfToken }
       setResult(await response.json() as ReviewWorkloadResult);
     } catch { setError(true); }
   };
-  const exportCsv = async () => {
+  const exportCsv = async (records = false) => {
     if (!result) return;
     setExportBusy(true); setExportNotice(null);
-    const outcome = await downloadReviewCsv("workload", result, csrfToken);
+    const outcome = await downloadReviewCsv("workload", result, csrfToken, records);
     if (outcome.status === "refreshed") {
       setResult(outcome.result); setExportNotice(t("review.csvRefreshed"));
     } else if (outcome.status === "denied") {
@@ -58,6 +58,8 @@ export function ReviewWorkloadBuilder({ dataset, from, to, language, csrfToken }
     {result && <>
       {result.exportRevision && <button type="button" disabled={exportBusy}
         onClick={() => void exportCsv()}>{t("review.csvDownload")}</button>}
+      {result.exportRevision && <button type="button" disabled={exportBusy}
+        onClick={() => void exportCsv(true)}>{t("review.csvRecordsDownload")}</button>}
       <p>{t("review.workloadItemUnit")}: {result.totalItems} · {t("review.workloadOpenUnsigned")}: {result.unsignedItems}
         {" · "}{t("review.workloadReopened")}: {result.reopenedItems}
         {" · "}{t("review.workloadExceptions")}: {result.exceptionallyClosedItems}</p>

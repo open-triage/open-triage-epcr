@@ -43,6 +43,8 @@ integrationTest("workload items and signed report filters retain distinct scoped
   if (!(await client.query(`select 1 from information_schema.columns
     where table_schema='analytics' and table_name='review_custom_dictionary' and column_name='grouped'`)).rowCount)
     await client.query(migration("20261002220000_review_custom_grouped_source"));
+  if (!(await client.query("select to_regclass('analytics.review_operational_time_source') relation")).rows[0].relation)
+    await client.query(migration("20261002230000_review_operational_time_source"));
   await grantRoleForTesting(client, "open_triage_api_runtime");
   const cohort = (await client.query(`select a.report_id,a.reporting_date::text reporting_date,
     a.organization_id,a.synthetic,a.documenting_user_id
@@ -116,8 +118,10 @@ integrationTest("workload items and signed report filters retain distinct scoped
   const health = { observed_at: new Date(), oldest_backlog_age_seconds: null,
     persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0,
     last_run_status: "succeeded", is_read_only_replica: false, replay_lag_seconds: null };
-  const service = new ReviewService({ query: async (sql, params) => sql.includes("projection_health")
-    ? [health] : (await client.query(sql, params)).rows }, { get: async () => session });
+  const database = { query: async (sql, params) => sql.includes("projection_health")
+    ? [health] : (await client.query(sql, params)).rows };
+  const service = new ReviewService({ ...database,
+    transaction: async (_isolation, run) => run(database) }, { get: async () => session });
   const dataset = first.synthetic ? "synthetic" : "real";
   const work = await service.workload("unused", { groupBy: "status",
     filters: { from: "2026-10-01", to: "2026-10-02", dataset } });
@@ -134,6 +138,18 @@ integrationTest("workload items and signed report filters retain distinct scoped
     filters: { from: first.reporting_date, to: first.reporting_date, dataset } };
   const base = await service.analysis("unused", analysis);
   assert.equal(base.groups.reduce((sum, group) => sum + group.denominator, 0), 2);
+  assert.equal(base.sources.length, 2);
+  assert.ok(base.sources.every((source) => source.reportingDate === first.reporting_date));
+  const volume = await service.volume("unused", dataset, first.reporting_date, first.reporting_date);
+  assert.equal(volume.total, 2);
+  assert.equal(volume.sources.length, volume.total);
+  const operational = await service.analysis("unused", { fieldId: "review.duration.response",
+    operation: "mean", filters: analysis.filters });
+  assert.equal(operational.sources.length, 2);
+  assert.ok(operational.sources.every((source) => source.operationalTime &&
+    source.operationalTime.state));
+  assert.equal(work.sources.length, 3, "several review items on one report remain one source row");
+  assert.equal(work.sources.find((source) => source.reportId === first.report_id)?.items.length, 2);
   const matching = await service.analysis("unused", { ...analysis,
     filters: { ...analysis.filters, review: { criterionId: criterionA, outcomeOptionId: outcomeId } } });
   assert.equal(matching.population.unit, "patient-report");

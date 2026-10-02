@@ -7,14 +7,17 @@ import { aggregateRevision, workloadCsv } from "../dist/review/review-csv.js";
 
 const now = new Date("2026-10-02T16:00:00Z");
 const rows = [
-  { id: "a", criterion_id: "criterion-a", priority: "high", status: "completed", kind: "criterion",
+  { id: "a", report_id: "report-1", reporting_date: "2026-10-01",
+    criterion_id: "criterion-a", priority: "high", status: "completed", kind: "criterion",
     report_status: "signed", first_matched_at: "2026-10-01T09:00:00Z", reopened: true,
     resolution_reason: null, exception_code: null, completion_at: "2026-10-02T13:00:00Z",
     reopened_at: "2026-10-02T11:00:00Z" },
-  { id: "b", criterion_id: "criterion-b", priority: "medium", status: "new", kind: "criterion",
+  { id: "b", report_id: "report-1", reporting_date: "2026-10-01",
+    criterion_id: "criterion-b", priority: "medium", status: "new", kind: "criterion",
     report_status: "signed", first_matched_at: "2026-10-02T08:00:00Z", reopened: false,
     resolution_reason: null, exception_code: null, completion_at: null, reopened_at: null },
-  { id: "c", criterion_id: "overdue", priority: "medium", status: "completed", kind: "overdue-unsigned",
+  { id: "c", report_id: "report-2", reporting_date: null,
+    criterion_id: "overdue", priority: "medium", status: "completed", kind: "overdue-unsigned",
     report_status: "draft", first_matched_at: "2026-10-01T08:00:00Z", reopened: false,
     resolution_reason: "closed-exceptionally", exception_code: "report-not-required",
     completion_at: "2026-10-02T10:00:00Z", reopened_at: null },
@@ -40,7 +43,7 @@ test("workload counts items once and uses the latest reopened cycle for duration
   const csv = workloadCsv(result);
   assert.match(csv, /"population_unit","review-item"/);
   assert.match(csv, /"includes_unsigned","true"/);
-  assert.equal(aggregateRevision(result), aggregateRevision({ ...result,
+  assert.notEqual(aggregateRevision(result), aggregateRevision({ ...result,
     freshness: { ...result.freshness, observedAt: "2026-10-02T16:00:01.000Z" } }));
 });
 

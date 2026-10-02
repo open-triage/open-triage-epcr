@@ -47,12 +47,19 @@ test("workload uses item counts while clinical Review filters retain signed repo
     }
     if (path === "/api/review/workload/export") {
       const request = route.request().postDataJSON() as { expectedRevision: string;
-        definition: { groupBy: string; filters: { dataset: string } } };
+        displayedObservedAt: string; definition: { groupBy: string; filters: { dataset: string } } };
       expect(request.expectedRevision).toBe("workload-v1");
+      expect(request.displayedObservedAt).toBe("2026-10-02T08:00:00Z");
       expect(request.definition.groupBy).toBe("status");
       expect(request.definition.filters.dataset).toBe("real");
       return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8" },
         body: '"population_unit","review-item"\r\n"completed","3"\r\n' });
+    }
+    if (path === "/api/review/workload/records/export") {
+      expect((route.request().postDataJSON() as { expectedRevision: string }).expectedRevision)
+        .toBe("workload-v1");
+      return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8" },
+        body: '"report_id","review_items_json"\r\n"report-a","[]"\r\n' });
     }
     return route.fulfill({ status: 404 });
   });
@@ -66,6 +73,9 @@ test("workload uses item counts while clinical Review filters retain signed repo
   const download = page.waitForEvent("download");
   await workload.getByRole("button", { name: "Download aggregate CSV" }).click();
   expect(await readFile(await (await download).path(), "utf8")).toContain('"review-item"');
+  const recordsDownload = page.waitForEvent("download");
+  await workload.getByRole("button", { name: "Download underlying records CSV" }).click();
+  expect(await readFile(await (await recordsDownload).path(), "utf8")).toContain("report-a");
   const clinical = page.locator('section[aria-labelledby="review-analysis-heading"]');
   await clinical.getByLabel("Matching Review criterion").selectOption(criterionId);
   await clinical.getByLabel("Recorded Review outcome").selectOption(outcomeId);

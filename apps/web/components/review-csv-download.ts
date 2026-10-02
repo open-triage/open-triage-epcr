@@ -7,13 +7,15 @@ export type ReviewCsvResult<T> = { status: "downloaded" } | { status: "refreshed
 /** The API rechecks authorization and the exact aggregate before sending CSV. */
 export async function downloadReviewCsv<T extends ReviewAnalysisResult | ReviewVolumeResult | ReviewWorkloadResult>(
   kind: "analysis" | "volume" | "workload", result: T, csrfToken: string,
+  records = false,
 ): Promise<ReviewCsvResult<T>> {
-  const url = apiRequestUrl(`/api/review/${kind}/export`);
+  const url = apiRequestUrl(`/api/review/${kind}/${records ? "records/" : ""}export`);
   if (!url || !result.exportRevision) return { status: "error" };
   try {
     const response = await fetch(url, browserRequestInit({ method: "POST",
       headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
-      body: JSON.stringify({ definition: result.definition, expectedRevision: result.exportRevision }) }));
+      body: JSON.stringify({ definition: result.definition, expectedRevision: result.exportRevision,
+        ...("totalItems" in result ? { displayedObservedAt: result.freshness.observedAt } : {}) }) }));
     // A previously displayed field can become undiscoverable after permission
     // loss; analysis validation then returns 400 for that old definition.
     if ([400, 401, 403].includes(response.status)) return { status: "denied" };
@@ -26,7 +28,7 @@ export async function downloadReviewCsv<T extends ReviewAnalysisResult | ReviewV
     const href = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = `review-${kind}.csv`;
+    anchor.download = `review-${kind}${records ? "-records" : ""}.csv`;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();

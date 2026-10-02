@@ -53,6 +53,11 @@ test("Review CSV refreshes changed volume and exports the displayed aggregates",
           "content-disposition": "attachment; filename=review-volume.csv" },
         body: `"date","count"\r\n"${request.definition.filters.from}","3"\r\n` });
     }
+    if (path === "/api/review/volume/records/export") {
+      expect((route.request().postDataJSON() as { expectedRevision: string }).expectedRevision).toBe("volume-v2");
+      return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8" },
+        body: '"report_id","reporting_date","dataset"\r\n"report-a","2026-10-01","real"\r\n' });
+    }
     if (path === "/api/review/analysis/fields") return route.fulfill({ json: [analysis.field] });
     if (path === "/api/review/analysis") return route.fulfill({ json: analysis });
     if (path === "/api/review/analysis/export") {
@@ -63,6 +68,11 @@ test("Review CSV refreshes changed volume and exports the displayed aggregates",
         headers: { "content-type": "text/csv; charset=utf-8",
           "content-disposition": "attachment; filename=review-analysis.csv" },
         body: '"group","denominator","value","count","percentage"\r\n"","4","pain","2","50"\r\n' });
+    }
+    if (path === "/api/review/analysis/records/export") {
+      expect((route.request().postDataJSON() as { expectedRevision: string }).expectedRevision).toBe("analysis-v1");
+      return route.fulfill({ status: 200, headers: { "content-type": "text/csv; charset=utf-8" },
+        body: '"report_id","group_values_json"\r\n"report-a","[]"\r\n' });
     }
     return route.fulfill({ status: 404 });
   });
@@ -76,11 +86,17 @@ test("Review CSV refreshes changed volume and exports the displayed aggregates",
   const volumeDownload = page.waitForEvent("download");
   await volumeSection.getByRole("button", { name: "Download aggregate CSV" }).click();
   expect(await readFile(await (await volumeDownload).path(), "utf8")).toContain('"3"');
+  const volumeRecords = page.waitForEvent("download");
+  await volumeSection.getByRole("button", { name: "Download underlying records CSV" }).click();
+  expect(await readFile(await (await volumeRecords).path(), "utf8")).toContain("report-a");
   await analysisSection.getByRole("button", { name: "Run analysis" }).click();
   await expect(analysisSection.getByRole("cell", { name: "50.0%" })).toBeVisible();
   const analysisDownload = page.waitForEvent("download");
   await analysisSection.getByRole("button", { name: "Download aggregate CSV" }).click();
   expect(await readFile(await (await analysisDownload).path(), "utf8")).toContain('"pain","2","50"');
+  const analysisRecords = page.waitForEvent("download");
+  await analysisSection.getByRole("button", { name: "Download underlying records CSV" }).click();
+  expect(await readFile(await (await analysisRecords).path(), "utf8")).toContain("report-a");
   denyAnalysis = true;
   await analysisSection.getByRole("button", { name: "Download aggregate CSV" }).click();
   await expect(page.getByText("Your Review access changed.", { exact: false })).toBeVisible();

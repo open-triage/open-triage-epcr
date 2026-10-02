@@ -116,6 +116,7 @@
   "review.analysisAbsent": "Dokumenterad frånvaro: {count}",
   "review.analysisInvalid": "Omvänt intervall: {count}",
   "review.csvDownload": "Ladda ned aggregerad CSV",
+  "review.csvRecordsDownload": "Ladda ned underliggande poster som CSV",
   "review.csvRefreshed": "Källan ändrades. Diagrammet visar nu det uppdaterade resultatet; ladda ned det igen.",
   "review.csvDenied": "Din åtkomst till granskning ändrades. Uppdatera arbetsytan för att fortsätta.",
   "review.csvUnavailable": "CSV-nedladdning är inte tillgänglig. Försök igen.",

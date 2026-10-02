@@ -1,6 +1,7 @@
 import type { ReviewWorkloadDefinition, ReviewWorkloadResult } from "@open-triage/contracts";
 
-export type WorkloadRow = { id: string; criterion_id: string; priority: string; status: string;
+export type WorkloadRow = { id: string; report_id: string; reporting_date: string | null;
+  criterion_id: string; priority: string; status: string;
   kind: string; report_status: string; first_matched_at: Date | string; reopened: boolean;
   resolution_reason: string | null; exception_code: string | null;
   completion_at: Date | string | null; reopened_at: Date | string | null };
@@ -18,6 +19,7 @@ export function reduceWorkload(rows: readonly WorkloadRow[], definition: ReviewW
   let reopenedItems = 0;
   let unsignedItems = 0;
   let exceptionallyClosedItems = 0;
+  const sources = new Map<string, NonNullable<ReviewWorkloadResult["sources"]>[number]>();
   for (const row of rows) {
     if (row.reopened) reopenedItems++;
     if (row.kind === "overdue-unsigned" && row.report_status === "draft") unsignedItems++;
@@ -39,9 +41,21 @@ export function reduceWorkload(rows: readonly WorkloadRow[], definition: ReviewW
         : bucket(durationHours, [[1, "under 1 hour"], [24, "1-24 hours"], [168, "1-7 days"]], "over 7 days")
       : row.exception_code ?? "no exception";
     groups.set(key, (groups.get(key) ?? 0) + 1);
+    const report = sources.get(row.report_id) ?? { reportId: row.report_id,
+      reportingDate: row.reporting_date, items: [] };
+    report.items.push({ itemId: row.id, criterionId: row.kind === "criterion" ? row.criterion_id : null,
+      group: key, priority: row.priority, status: row.status, kind: row.kind,
+      firstMatchedAt: new Date(row.first_matched_at).toISOString(),
+      completedAt: row.completion_at ? new Date(row.completion_at).toISOString() : null,
+      reopened: row.reopened, resolutionReason: row.resolution_reason,
+      exceptionCode: row.exception_code });
+    sources.set(row.report_id, report);
   }
   return { definition, population: { unit: "review-item", scope, organizationId, includesUnsigned: true },
     freshness: { source: "operational-primary", observedAt: observedAt.toISOString() },
     totalItems: rows.length, reopenedItems, unsignedItems, exceptionallyClosedItems,
-    groups: [...groups].map(([key, count]) => ({ key, count })).sort((a,b) => a.key.localeCompare(b.key)) };
+    groups: [...groups].map(([key, count]) => ({ key, count })).sort((a,b) => a.key.localeCompare(b.key)),
+    sources: [...sources.values()].map((report) => ({ ...report,
+      items: report.items.sort((a, b) => a.itemId.localeCompare(b.itemId)) }))
+      .sort((a, b) => a.reportId.localeCompare(b.reportId)) };
 }
