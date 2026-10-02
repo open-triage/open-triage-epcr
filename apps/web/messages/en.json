@@ -82,6 +82,7 @@
   "review.analysisAll": "All reports",
   "review.analysisRun": "Run analysis",
   "review.analysisUnavailable": "Analysis is unavailable. Check the field and try again.",
+  "review.analysisUnsupportedCustom": "This custom field has no supported chart operation, or its historical definitions differ.",
   "review.analysisEmpty": "No reports match this analysis.",
   "review.analysisScope": "Report scope: {scope}",
   "review.analysisDenominator": "Reports: {count}",

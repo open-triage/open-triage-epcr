@@ -267,6 +267,8 @@ export interface ReviewAnalysisField {
   unit: string | null;
   repeating?: boolean;
   operations: Array<"distribution" | "mean" | "median" | "minimum" | "maximum">;
+  source?: "custom";
+  unsupportedReason?: string;
 }
 
 export interface ReviewAnalysisDefinition {

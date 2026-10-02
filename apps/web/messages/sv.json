@@ -82,6 +82,7 @@
   "review.analysisAll": "Alla journaler",
   "review.analysisRun": "Kör analys",
   "review.analysisUnavailable": "Analysen är inte tillgänglig. Kontrollera fältet och försök igen.",
+  "review.analysisUnsupportedCustom": "Detta anpassade fält saknar en stödd diagramfunktion eller har olika historiska definitioner.",
   "review.analysisEmpty": "Inga journaler matchar analysen.",
   "review.analysisScope": "Journalomfattning: {scope}",
   "review.analysisDenominator": "Journaler: {count}",

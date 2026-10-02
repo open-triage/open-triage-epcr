@@ -73,8 +73,9 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       <label>{t("review.analysisField")}{" "}<select value={fieldId} onChange={(event) => {
         const next = fields.find((item) => item.id === event.target.value);
         setFieldId(event.target.value); setOperation(next?.operations[0] ?? "distribution");
-        setReducer(""); setUnit(""); setResult(null);
+        setReducer(""); setUnit(""); setGroupBy(""); setFilterId(""); setFilterValue(""); setResult(null);
       }}>{fields.map((item) => <option key={item.id} value={item.id}>{item.label} ({item.id})</option>)}</select></label>
+      {field?.unsupportedReason && <p role="note">{t("review.analysisUnsupportedCustom")}</p>}
       <label>{t("review.analysisOperation")}{" "}<select value={operation} onChange={(event) => {
         setOperation(event.target.value as ReviewAnalysisDefinition["operation"]); setResult(null);
       }}>{field?.operations.map((item) => <option key={item} value={item}>{t(`review.analysis.${item}`)}</option>)}</select></label>
@@ -89,18 +90,18 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       <label>{t("review.analysisGroup")}{" "}<select value={groupBy} onChange={(event) => {
         setGroupBy(event.target.value); setResult(null);
       }}><option value="">{t("review.analysisAll")}</option>
-        {fields.filter((item) => item.kind === "categorical" && !item.repeating).map((item) =>
+        {fields.filter((item) => item.kind === "categorical" && !item.repeating && !item.source && field?.source !== "custom").map((item) =>
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     </div>
     <div className="review-controls">
       <label>{t("review.analysisFilter")}{" "}<select value={filterId} onChange={(event) => {
         setFilterId(event.target.value); setFilterValue(""); setResult(null);
       }}><option value="">{t("review.analysisAll")}</option>
-        {fields.filter((item) => item.kind === "categorical").map((item) =>
+        {fields.filter((item) => item.kind === "categorical" && !item.source && field?.source !== "custom").map((item) =>
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       {filterId && <label>{t("review.analysisFilterValue")}{" "}<input value={filterValue}
         maxLength={256} onChange={(event) => { setFilterValue(event.target.value); setResult(null); }} /></label>}
-      <button type="button" disabled={!field || from > to || (filterId !== "" && !filterValue) ||
+      <button type="button" disabled={!field || field.operations.length === 0 || from > to || (filterId !== "" && !filterValue) ||
         (field.repeating && field.kind === "numeric" && !reducer) ||
         (fieldId === "eMedications.05" && !unit.trim())}
         onClick={() => void run()}>{t("review.analysisRun")}</button>
