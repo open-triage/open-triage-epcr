@@ -18,7 +18,7 @@ implemented behavior.
 | [Users and roles](users-roles.md) | Feature specification | Extracts the Users/Roles vertical slice and role-based Clinical Demo behavior from Admin Controls |
 | [Localization](localization.md) | Feature specification | Defines agency-wide language and regional settings, versioned definition translations, and the first Swedish translation pass; parent issue [#559](https://github.com/open-triage/open-triage-epcr/issues/559) |
 | [User feedback](user-feedback.md) | Feature specification | Defines safe bug reporting, feature requests, diagnostics, retention, and human-approved AI review |
-| [Review and basic analytics](review.md) | Feature specification | Defines scoped review queues, overdue-draft follow-up, basic BI and CSV exports, and custom-element long-table analytics |
+| [Review and basic analytics](review.md) | Feature specification | Defines scoped review queues, overdue-draft follow-up, basic BI and CSV exports, and custom-element long-table analytics; parent issue [#642](https://github.com/open-triage/open-triage-epcr/issues/642) |
 
 When a PRD is replaced, keep it here as design history and add a prominent
 supersession note linking to its replacement. New PRDs should use lowercase,
