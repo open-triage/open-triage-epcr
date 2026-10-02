@@ -1,12 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult } from "@open-triage/contracts";
+import type { ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { recordMediaAccess } from "../reports/report-note-collaboration.js";
 import { reviewScope } from "./review-scope.js";
 import type { ReviewScope } from "./review-scope.js";
+import { reviewFields } from "./review-fields.js";
 
 function positiveInteger(value: string | undefined, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -47,6 +48,119 @@ export class ReviewService implements OnModuleDestroy {
       });
     }
     return this.reportingInitialization;
+  }
+
+  analysisFields(token: string): Promise<ReviewAnalysisField[]> {
+    return this.sessions.get(token).then((session) => {
+      reviewScope(session);
+      return reviewFields.map((field) => ({ ...field,
+        operations: field.kind === "categorical" ? ["distribution"] :
+          ["mean", "median", "minimum", "maximum"] }));
+    });
+  }
+
+  async analysis(token: string, input: ReviewAnalysisDefinition): Promise<ReviewAnalysisResult> {
+    const scope = reviewScope(await this.sessions.get(token));
+    if (!input || typeof input !== "object" || !input.filters || typeof input.filters !== "object")
+      throw new BadRequestException("Invalid Review analysis definition");
+    const { from, to, dataset } = input.filters;
+    if (!validDate(from) || !validDate(to) || from > to ||
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000 > 365 ||
+      (dataset !== "real" && dataset !== "synthetic")) {
+      throw new BadRequestException("Invalid Review analysis period or dataset");
+    }
+    const field = reviewFields.find((candidate) => candidate.id === input.fieldId);
+    const groupField = input.groupBy ? reviewFields.find((candidate) => candidate.id === input.groupBy) : undefined;
+    const filter = input.filters.field;
+    const filterField = filter ? reviewFields.find((candidate) => candidate.id === filter.id) : undefined;
+    if (!field || (input.groupBy && (!groupField || groupField.kind !== "categorical")) ||
+      (filter && (!filterField || filterField.kind !== "categorical" ||
+        typeof filter.value !== "string" || !filter.value || filter.value.length > 256))) {
+      throw new BadRequestException("Review field is not permitted");
+    }
+    if (field.kind === "categorical" ? input.operation !== "distribution" :
+      !["mean", "median", "minimum", "maximum"].includes(input.operation)) {
+      throw new BadRequestException("Unsupported Review field operation");
+    }
+    const definition: ReviewAnalysisDefinition = { fieldId: field.id, operation: input.operation,
+      ...(groupField ? { groupBy: groupField.id } : {}),
+      filters: { from, to, dataset, ...(filter ? { field: { id: filter.id, value: filter.value } } : {}) } };
+    const database = await this.analyticsDatabase();
+    const [health] = await database.query<Array<{
+      observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
+      persistent_failure_count: number; retrying_count: number; stale_run_count: number;
+      last_run_status: string | null; is_read_only_replica: boolean; replay_lag_seconds: string | number | null;
+    }>>(`select h.observed_at, h.oldest_backlog_age_seconds,
+      h.persistent_failure_count, h.retrying_count, h.stale_run_count, h.last_run_status,
+      r.is_read_only_replica, r.replay_lag_seconds
+      from operations.projection_health h cross join operations.reporting_replica_health r`);
+    if (!health) throw new Error("Projection health is unavailable");
+    const backlog = health.oldest_backlog_age_seconds === null ? null : Number(health.oldest_backlog_age_seconds);
+    const lag = health.replay_lag_seconds === null ? null : Number(health.replay_lag_seconds);
+    const current = Number(health.persistent_failure_count) === 0 &&
+      Number(health.retrying_count) === 0 && Number(health.stale_run_count) === 0 &&
+      health.last_run_status !== "failed" && health.last_run_status !== "partial" &&
+      (backlog === null || backlog <= 300) &&
+      (!process.env.REVIEW_REPORTING_REPLICA_DATABASE_URL ||
+        (health.is_read_only_replica && lag !== null && lag <= 300));
+    const freshness = { observedAt: new Date(health.observed_at).toISOString(), targetSeconds: 300 as const,
+      status: current ? "current" as const : "stale" as const,
+      oldestBacklogSeconds: backlog, replicaLagSeconds: lag };
+    const metadata: ReviewAnalysisField = { ...field,
+      operations: field.kind === "categorical" ? ["distribution"] : ["mean", "median", "minimum", "maximum"] };
+    const population = { unit: "patient-report" as const, scope: scope.reports,
+      organizationId: scope.organizationId, signedOnly: true as const };
+    if (!current) return { definition, field: metadata, population, freshness, groups: [] };
+    const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
+      scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null];
+    const source = `from analytics.review_field_source source
+      where source.reporting_date between $1::date and $2::date
+        and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+        and ($5::boolean or source.documenting_user_id = $6::uuid)
+        and ($9::text is null or source.field_values ->> $9::text = $10::text)`;
+    const group = `case when $8::text is null then null else source.field_values ->> $8::text end`;
+    if (field.kind === "categorical") {
+      const rows = await database.query<Array<{ group_value: string | null; field_value: string | null;
+        absent: boolean; count: string }>>(`select ${group} as group_value,
+        source.field_values ->> $7::text as field_value,
+        source.field_absences ? $7::text as absent, count(*)::text as count
+        ${source} group by 1, 2, 3 order by 1 nulls first, 2 nulls first limit 501`, params);
+      if (rows.length > 500) throw new BadRequestException("Review analysis has too many categories");
+      const groups = new Map<string | null, ReviewAnalysisResult["groups"][number]>();
+      for (const row of rows) {
+        const item = groups.get(row.group_value) ?? { group: row.group_value, denominator: 0,
+          missing: 0, absent: 0, values: [], summary: null };
+        const count = Number(row.count);
+        item.denominator += count;
+        if (row.field_value === null) {
+          if (row.absent) item.absent += count; else item.missing += count;
+        } else item.values.push({ value: row.field_value, count, percentage: 0 });
+        groups.set(row.group_value, item);
+      }
+      for (const item of groups.values()) for (const value of item.values)
+        value.percentage = item.denominator ? 100 * value.count / item.denominator : 0;
+      return { definition, field: metadata, population, freshness, groups: [...groups.values()] };
+    }
+    const rows = await database.query<Array<{ group_value: string | null; denominator: string;
+      missing: string; absent: string; value_count: string; mean: string | null;
+      median: string | null; minimum: string | null; maximum: string | null }>>(`
+      select ${group} as group_value, count(*)::text as denominator,
+        count(*) filter (where source.field_values ->> $7::text is null
+          and not source.field_absences ? $7::text)::text as missing,
+        count(*) filter (where source.field_values ->> $7::text is null
+          and source.field_absences ? $7::text)::text as absent,
+        count(source.field_values ->> $7::text)::text as value_count,
+        avg((source.field_values ->> $7::text)::numeric)::text as mean,
+        percentile_cont(0.5) within group (order by (source.field_values ->> $7::text)::double precision)::text as median,
+        min((source.field_values ->> $7::text)::numeric)::text as minimum,
+        max((source.field_values ->> $7::text)::numeric)::text as maximum
+      ${source} group by 1 order by 1 nulls first limit 101`, params);
+    if (rows.length > 100) throw new BadRequestException("Review analysis has too many groups");
+    return { definition, field: metadata, population, freshness,
+      groups: rows.map((row) => ({ group: row.group_value, denominator: Number(row.denominator),
+        missing: Number(row.missing), absent: Number(row.absent),
+        values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null ? null :
+          Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) })) };
   }
 
   async volume(token: string, requestedDataset?: string,

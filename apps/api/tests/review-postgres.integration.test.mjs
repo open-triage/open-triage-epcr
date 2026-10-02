@@ -113,3 +113,70 @@ integrationTest("Review volume counts patient reports separately within incident
   session = { ...session, organization: { id: otherOrganizationId } };
   assert.equal((await volume()).total, 1);
 });
+
+integrationTest("Review basic analysis uses the scoped effective projection, preserves absence, and never mixes units", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  await client.query("select analytics_private.ensure_partitions(date '2026-10-01', date '2026-10-03')");
+  const privileges = (await client.query(`select
+    has_table_privilege('open_triage_api_runtime', 'analytics.review_field_source', 'select') api_source,
+    has_table_privilege('open_triage_analyst', 'analytics.review_field_source', 'select') analyst_source`)).rows[0];
+  assert.deepEqual(privileges, { api_source: true, analyst_source: false });
+  const organizationId = randomUUID();
+  const otherOrganizationId = randomUUID();
+  const userId = randomUUID();
+  const otherUserId = randomUUID();
+  for (const [index, org, user, synthetic, impression, weight, status] of [
+    [0, organizationId, userId, false, "A", 70, null],
+    [1, organizationId, userId, false, "A", 80, null],
+    [2, organizationId, userId, false, "B", null, { "eExam.01": { kind: "null", code: "not-known" } }],
+    [3, organizationId, otherUserId, false, "B", 90, null],
+    [4, otherOrganizationId, userId, false, "A", 100, null],
+    [5, organizationId, userId, true, "A", 120, null],
+  ]) await client.query(`insert into analytics_private.epcr
+    (reporting_date, reporting_date_source, report_id, incident_id, organization_id,
+     agency_demographic_version_id, patient_key, patient_key_version, form_version_id,
+     form_version, catalog_release_id, catalog_version, signed_snapshot_id,
+     signed_snapshot_sha256, signed_at, projector_version, projected_at,
+     documenting_user_id, synthetic, esituation_11, eexam_01, element_statuses)
+    values ('2026-10-01', 'signing-time', $1, $2, $3, $4, $5, 1, $6,
+      1, $7, '3.5.1', $8, repeat('a', 64), now(), '1.1.0', now(), $9, $10,
+      $11, $12, $13::jsonb)`, [randomUUID(), randomUUID(), org, randomUUID(),
+    `analysis-fixture-${index}`, randomUUID(), randomUUID(), randomUUID(), user,
+    synthetic, impression, weight, status ? JSON.stringify(status) : null]);
+  await client.query("set local role open_triage_api_runtime");
+  let session = { capabilities: ["review:self"], user: { id: userId },
+    organization: { id: organizationId } };
+  const service = new ReviewService({ query: async (sql, params) => sql.includes("projection_health")
+    ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
+      persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
+      is_read_only_replica: false, replay_lag_seconds: null }]
+    : (await client.query(sql, params)).rows }, { get: async () => session });
+  const filters = { from: "2026-10-01", to: "2026-10-02", dataset: "real" };
+  const distribution = await service.analysis("unused", { fieldId: "eSituation.11",
+    operation: "distribution", filters });
+  assert.deepEqual(distribution.groups[0].values.map(({ value, count }) => [value, count]),
+    [["A", 2], ["B", 1]]);
+  const summary = await service.analysis("unused", { fieldId: "eExam.01", operation: "mean", filters });
+  assert.equal(summary.field.unit, "kg");
+  assert.equal(summary.groups[0].summary, 75);
+  assert.equal(summary.groups[0].absent, 1);
+  const grouped = await service.analysis("unused", { fieldId: "eExam.01", operation: "median",
+    groupBy: "eSituation.11", filters });
+  assert.deepEqual(grouped.groups.map(({ group, summary, absent }) => [group, summary, absent]),
+    [["A", 75, 0], ["B", null, 1]]);
+  const filtered = await service.analysis("unused", { fieldId: "eSituation.11",
+    operation: "distribution", filters: { ...filters, field: { id: "eSituation.11", value: "B" } } });
+  assert.equal(filtered.groups[0].denominator, 1);
+  assert.deepEqual(filtered.groups[0].values.map(({ value, count }) => [value, count]), [["B", 1]]);
+  assert.equal((await service.analysis("unused", { fieldId: "eSituation.11",
+    operation: "distribution", filters: { ...filters, dataset: "synthetic" } })).groups[0].denominator, 1);
+  session = { ...session, capabilities: ["review:all"] };
+  assert.equal((await service.analysis("unused", { fieldId: "eExam.01", operation: "minimum", filters }))
+    .groups[0].denominator, 4);
+  session = { ...session, organization: { id: otherOrganizationId } };
+  assert.equal((await service.analysis("unused", { fieldId: "eExam.01", operation: "maximum", filters }))
+    .groups[0].summary, 100);
+});

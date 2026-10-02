@@ -241,6 +241,41 @@ export interface ReviewVolumeResult {
   points: Array<{ date: string; count: number }>;
 }
 
+export interface ReviewAnalysisField {
+  id: string;
+  label: string;
+  kind: "categorical" | "numeric";
+  unit: string | null;
+  operations: Array<"distribution" | "mean" | "median" | "minimum" | "maximum">;
+}
+
+export interface ReviewAnalysisDefinition {
+  fieldId: string;
+  operation: "distribution" | "mean" | "median" | "minimum" | "maximum";
+  groupBy?: string;
+  filters: {
+    from: string;
+    to: string;
+    dataset: "real" | "synthetic";
+    field?: { id: string; value: string };
+  };
+}
+
+export interface ReviewAnalysisResult {
+  definition: ReviewAnalysisDefinition;
+  field: ReviewAnalysisField;
+  population: ReviewVolumeResult["population"];
+  freshness: ReviewVolumeResult["freshness"];
+  groups: Array<{
+    group: string | null;
+    denominator: number;
+    missing: number;
+    absent: number;
+    values: Array<{ value: string | null; count: number; percentage: number }>;
+    summary: number | null;
+  }>;
+}
+
 export interface ClinicianSession {
   /** Present only in the static, serverless demonstration build. */
   accessToken?: string;
