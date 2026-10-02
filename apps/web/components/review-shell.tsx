@@ -193,7 +193,8 @@ export function ReviewShell({ session, language, online }: {
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
             {work.lastError && <p>{work.lastError}</p>}</li>)}</ul>}</section>}
       <ReviewAnalysisBuilder key={`${dataset}-${from}-${to}-${refresh}`} dataset={dataset}
-        from={from} to={to} language={language} refresh={refresh} />
+        from={from} to={to} language={language} refresh={refresh}
+        csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
       {error && <p role="alert">{t("review.unavailable")}</p>}
       {!result && !error && <p role="status">{t("review.loading")}</p>}
       {result && <>

@@ -24,6 +24,7 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
         operations: ["distribution"] },
     ] });
     if (path === "/api/review/analysis") {
+      expect(route.request().headers()["x-csrf-token"]).toBe(session.csrfToken);
       definition = route.request().postDataJSON() as Record<string, unknown>;
       return route.fulfill({ json: {
         definition, field: { id: "eSituation.09", label: "Primary Symptom", kind: "categorical",

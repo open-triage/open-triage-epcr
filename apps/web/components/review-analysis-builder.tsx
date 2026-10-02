@@ -12,9 +12,9 @@ const starters = [
   { id: "eDisposition.30", label: "review.analysisDisposition" },
 ] as const;
 
-export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh }: {
+export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, csrfToken }: {
   dataset: "real" | "synthetic"; from: string; to: string;
-  language: AgencyLanguage; refresh: number;
+  language: AgencyLanguage; refresh: number; csrfToken: string;
 }) {
   const [fields, setFields] = useState<ReviewAnalysisField[]>([]);
   const [fieldId, setFieldId] = useState("eSituation.09");
@@ -50,7 +50,8 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh }: 
         ...(filterId && filterValue ? { field: { id: filterId, value: filterValue } } : {}) } };
     try {
       const response = await fetch(url, browserRequestInit({ method: "POST",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify(definition) }));
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
+        body: JSON.stringify(definition) }));
       if (!response.ok) throw new Error(String(response.status));
       setResult(await response.json() as ReviewAnalysisResult);
     } catch { setError(t("review.analysisUnavailable")); }
