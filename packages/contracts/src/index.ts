@@ -70,8 +70,8 @@ export {
 
 export type FeedbackSubmissionType = "bug" | "feature";
 
-export type FeedbackDiagnosticMode = "mobile" | "stationary" | "admin";
-export type FeedbackDiagnosticScreen = "calls" | "encounter" | "admin";
+export type FeedbackDiagnosticMode = "mobile" | "stationary" | "admin" | "review";
+export type FeedbackDiagnosticScreen = "calls" | "encounter" | "admin" | "review";
 export type FeedbackBrowserFamily = "chromium" | "firefox" | "safari" | "other";
 export type FeedbackStructuralKind =
   | "main" | "header" | "footer" | "nav" | "section" | "article" | "aside"
@@ -81,6 +81,7 @@ export type FeedbackInteractionName =
   | "feedback.type.feature.selected" | "feedback.submit.attempted"
   | "session.refresh.requested" | "session.logout.requested"
   | "presentation.mobile.selected" | "presentation.stationary.selected" | "presentation.admin.selected"
+  | "presentation.review.selected"
   | "draft-sync.server-conflict" | "draft-sync.validation-rejected"
   | "draft-sync.recovered" | "draft-sync.retry-exhausted";
 
@@ -137,6 +138,25 @@ export {
 export interface CreateClinicianSessionCommand {
   username: string;
   password: string;
+}
+
+export interface ReviewSignedReportSummary {
+  id: string;
+  reportingDate: string;
+  signedAt: string;
+  documentingClinician?: string;
+}
+
+export interface ReviewSignedReportsResponse {
+  dataset: "real" | "synthetic";
+  scope: "own" | "all";
+  identifying: boolean;
+  administrator: boolean;
+  page: number;
+  pageSize: number;
+  total: number;
+  asOf: string;
+  reports: ReviewSignedReportSummary[];
 }
 
 export interface ClinicianSession {

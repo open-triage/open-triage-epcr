@@ -21,6 +21,7 @@ import { cacheOpenedReport, cacheReopenedReport, clearProtectedRuntimeReports } 
 import {
   hasAdminMode,
   hasClinicalMode,
+  hasReviewMode,
   loadPresentationMode,
   storePresentationMode,
   type PresentationMode
@@ -30,6 +31,7 @@ import { availableUiLanguages, resolveMessage, type AgencyLanguage } from "../ap
 import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { AdminShell } from "./admin-shell";
+import { ReviewShell } from "./review-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
@@ -289,7 +291,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function selectPresentationMode(mode: PresentationMode) {
-    if (mode === "admin" && activeReport) return;
+    if ((mode === "admin" || mode === "review") && (activeReport || openingCall)) return;
     setModeMessage(null);
     recordFeedbackInteraction(`presentation.${mode}.selected`);
     storePresentationMode(window.localStorage, mode);
@@ -373,7 +375,7 @@ export function ClinicianSessionGate({ children }: {
         }} />
         {browserRequestConfiguration().mode === "server" &&
           <FeedbackControl language={language} csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
-            screen={presentationMode === "admin" ? "admin" : activeReport ? "encounter" : "calls"} />}
+            screen={presentationMode === "admin" ? "admin" : presentationMode === "review" ? "review" : activeReport ? "encounter" : "calls"} />}
         <span className="session-identity">{t("navigation.signedInAs", { name: session.user.displayName })}</span>
         <div className="presentation-selector" role="group" aria-label={t("navigation.presentation")}>
           {hasClinicalMode(session.capabilities) && <>
@@ -383,6 +385,9 @@ export function ClinicianSessionGate({ children }: {
           {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"}
             disabled={activeReport !== null || openingCall !== null}
             onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
+          {hasReviewMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "review"}
+            disabled={activeReport !== null || openingCall !== null}
+            onClick={() => selectPresentationMode("review")}>{t("navigation.review")}</button>}
         </div>
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
@@ -421,7 +426,7 @@ export function ClinicianSessionGate({ children }: {
         <h1 ref={openingHeading} tabIndex={-1} id="call-opening-heading">{t("calls.openingCall", { call: openingCall.callNumber })}</h1>
         <LoadingStatus>{t("calls.preparingReport")}</LoadingStatus>
       </section>}
-      {presentationMode !== "admin" && <div hidden={activeReport !== null || openingCall !== null}>
+      {presentationMode !== "admin" && presentationMode !== "review" && <div hidden={activeReport !== null || openingCall !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
         <AssignedCalls session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
@@ -460,6 +465,7 @@ export function ClinicianSessionGate({ children }: {
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} />}
+      {presentationMode === "review" && !activeReport && <ReviewShell session={session} language={language} online={online} />}
     </div>
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>

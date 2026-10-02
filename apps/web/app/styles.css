@@ -912,3 +912,9 @@ input, select, textarea { touch-action: manipulation; }
 
 .call-opening { padding: 28px 20px; min-height: 220px; background: #f3f7f4; }
 .call-opening h1 { margin: 0 0 12px; font-size: var(--text-heading); }
+.review-shell { max-width: 80rem; margin: 0 auto; padding: 2rem; }
+.review-heading, .review-controls, .review-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.review-shell table { width: 100%; border-collapse: collapse; margin-block: 1rem; }
+.review-shell th, .review-shell td { text-align: left; padding: .75rem; border-bottom: 1px solid var(--border-color, #ced4da); }
+.review-shell code { overflow-wrap: anywhere; }
+.review-pagination { justify-content: flex-start; }
