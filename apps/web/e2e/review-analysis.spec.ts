@@ -22,18 +22,26 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
         operations: ["distribution"] },
       { id: "eDisposition.30", label: "Transport Disposition", kind: "categorical", unit: null,
         operations: ["distribution"] },
+      { id: "eMedications.03", label: "Medication Administered", kind: "categorical",
+        unit: null, repeating: true, operations: ["distribution"] },
+      { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric",
+        unit: "mm[Hg]", repeating: true, operations: ["mean", "median", "minimum", "maximum"] },
     ] });
     if (path === "/api/review/analysis") {
       expect(route.request().headers()["x-csrf-token"]).toBe(session.csrfToken);
       definition = route.request().postDataJSON() as Record<string, unknown>;
+      const repeated = definition.fieldId === "eVitals.06";
       return route.fulfill({ json: {
-        definition, field: { id: "eSituation.09", label: "Primary Symptom", kind: "categorical",
-          unit: null, operations: ["distribution"] },
+        definition, field: repeated
+          ? { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric",
+            unit: "mm[Hg]", repeating: true, operations: ["mean", "median", "minimum", "maximum"] }
+          : { id: "eSituation.09", label: "Primary Symptom", kind: "categorical",
+            unit: null, operations: ["distribution"] },
         population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
         freshness: { observedAt: "2026-10-02T08:00:00Z", targetSeconds: 300, status: "current",
           oldestBacklogSeconds: null, replicaLagSeconds: null },
-        groups: [{ group: null, denominator: 4, missing: 1, absent: 1, summary: null,
-          values: [{ value: "pain", count: 2, percentage: 50 }] }],
+        groups: [{ group: null, denominator: 4, missing: 1, absent: 1, summary: repeated ? 120 : null,
+          values: repeated ? [] : [{ value: "pain", count: 2, percentage: 50 }] }],
       } });
     }
     return route.fulfill({ status: 404 });
@@ -50,6 +58,13 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
   await expect(page.getByRole("cell", { name: "50.0%" })).toBeVisible();
   expect(definition).toMatchObject({ fieldId: "eSituation.09", operation: "distribution",
     filters: { dataset: "real", field: { id: "eDisposition.30", value: "transported" } } });
+  await page.getByRole("combobox", { name: "Field", exact: true }).selectOption("eVitals.06");
+  await expect(page.getByRole("button", { name: "Run analysis" })).toBeDisabled();
+  await page.getByLabel("Per-report value").selectOption("first");
+  await page.getByRole("button", { name: "Run analysis" }).click();
+  await expect(page.getByText("Per-report reduction: First.")).toBeVisible();
+  await expect(page.getByText("Mean: 120 mm[Hg]")).toBeVisible();
+  expect(definition).toMatchObject({ fieldId: "eVitals.06", operation: "mean", reducer: "first" });
   await page.getByLabel("Dataset").selectOption("synthetic");
   await expect(page.getByRole("img", { name: "Distribution of coded values; exact values follow in the table" }))
     .toHaveCount(0);

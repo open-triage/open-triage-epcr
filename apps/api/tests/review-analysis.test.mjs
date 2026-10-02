@@ -80,3 +80,42 @@ test("Review rejects prohibited fields, invalid operations, and unbounded dates"
     { get: async () => ({ ...session, capabilities: [] }) });
   await assert.rejects(noAccess.analysis("token", definition()), { status: 403 });
 });
+
+test("repeated numeric analysis requires a reducer and keeps the scoped source query", async () => {
+  const queries = [];
+  const service = new ReviewService({ query: async (sql, parameters) => {
+    queries.push({ sql, parameters });
+    if (sql.includes("projection_health")) return [health];
+    return [{ report_id: "r1", group_value: null, occurrence_id: "o1", group_id: "g", group_instance_id: "g1",
+      parent_group_instance_id: null,
+      group_ordinal: 1, element_ordinal: 1, clinical_time: null, documented_time: null,
+      code: null, numeric_value: "100", unit_code: "mm[Hg]", absence_kind: null,
+      absence_code: null, normalization_rule_id: null,
+      quality_flags: null }];
+  } }, { get: async () => session });
+  await assert.rejects(service.analysis("token", definition({ fieldId: "eVitals.06",
+    operation: "mean" })), { status: 400 });
+  const result = await service.analysis("token", definition({ fieldId: "eVitals.06",
+    operation: "mean", reducer: "first" }));
+  assert.equal(result.groups[0].summary, 100);
+  assert.equal(result.sources[0].sourceValues[0].occurrenceId, "o1");
+  assert.match(queries[1].sql, /source.organization_id = \$3::uuid/);
+  assert.match(queries[1].sql, /source.synthetic = \$4::boolean/);
+  assert.match(queries[1].sql, /source.documenting_user_id = \$6::uuid/);
+});
+
+test("a repeated category filter works for a wide-field measure without report fan-out", async () => {
+  const queries = [];
+  const service = new ReviewService({ query: async (sql) => {
+    queries.push(sql);
+    if (sql.includes("projection_health")) return [health];
+    return [{ group_value: null, field_value: "A", absent: false, count: "2" }];
+  } }, { get: async () => session });
+  const result = await service.analysis("token", definition({ filters: {
+    from: "2026-10-01", to: "2026-10-02", dataset: "real",
+    field: { id: "eMedications.03", value: "drug-A" },
+  } }));
+  assert.equal(result.groups[0].denominator, 2);
+  assert.match(queries[1], /from analytics.review_field_source_with_identity source/);
+  assert.match(queries[1], /exists \(select 1 from analytics.review_repeated_field_source f/);
+});
