@@ -8,6 +8,98 @@ import { reconcileReviewAssignments } from "../dist/review/review-assignment.js"
 
 const integrationTest = process.env.DATABASE_URL ? test : test.skip;
 
+async function ensureCustomReviewSource(client) {
+  if (!(await client.query("select to_regclass('analytics.review_field_source_with_identity') as relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002180000_review_repeated_field_source.sql", import.meta.url), "utf8"));
+  if (!(await client.query("select to_regclass('analytics.review_custom_dictionary') as relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002190000_review_custom_scalar_analytics.sql", import.meta.url), "utf8"));
+}
+
+integrationTest("Review operational time uses offset-aware signed endpoints and scoped denominators", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  await ensureCustomReviewSource(client);
+  if (!(await client.query("select to_regclass('analytics.review_operational_time_source') as relation")).rows[0].relation)
+    await client.query(readFileSync(new URL("../../../supabase/migrations/20261002230000_review_operational_time_source.sql", import.meta.url), "utf8"));
+  const privileges = (await client.query(`select
+    has_table_privilege('open_triage_api_runtime', 'analytics.review_operational_time_source', 'select') api_source,
+    has_table_privilege('open_triage_analyst', 'analytics.review_operational_time_source', 'select') analyst_source`)).rows[0];
+  assert.deepEqual(privileges, { api_source: true, analyst_source: false });
+  await client.query("select analytics_private.ensure_partitions(date '2026-10-01', date '2026-10-03')");
+  const organizationId = randomUUID();
+  const otherOrganizationId = randomUUID();
+  const userId = randomUUID();
+  const otherUserId = randomUUID();
+  const reportIds = [];
+  const fixtures = [
+    [organizationId, userId, false, "2026-10-01T12:00:00+02:00", "2026-10-01T10:12:00Z", null],
+    [organizationId, userId, false, "2026-10-01T10:00:00Z", "2026-10-01T10:18:00Z", null],
+    [organizationId, userId, false, "2026-10-01T10:00:00Z", null, null],
+    [organizationId, userId, false, "2026-10-01T10:00:00Z", null, { "eTimes.06": { kind: "null" } }],
+    [organizationId, userId, false, "2026-10-01T10:20:00Z", "2026-10-01T10:10:00Z", null],
+    [organizationId, otherUserId, false, "2026-10-01T10:00:00Z", "2026-10-01T10:30:00Z", null],
+    [otherOrganizationId, userId, false, "2026-10-01T10:00:00Z", "2026-10-01T10:45:00Z", null],
+    [organizationId, userId, true, "2026-10-01T10:00:00Z", "2026-10-01T10:50:00Z", null],
+  ];
+  for (const [index, [organization, user, synthetic, start, end, status]] of fixtures.entries()) {
+    const reportId = randomUUID();
+    reportIds.push(reportId);
+    await client.query(`insert into analytics_private.epcr
+      (reporting_date, reporting_date_source, report_id, incident_id, organization_id,
+       agency_demographic_version_id, patient_key, patient_key_version, form_version_id,
+       form_version, catalog_release_id, catalog_version, signed_snapshot_id,
+       signed_snapshot_sha256, signed_at, projector_version, projected_at,
+       documenting_user_id, synthetic, etimes_03, etimes_06, etimes_09, etimes_11,
+       esituation_11, element_statuses)
+      values ('2026-10-01', 'signing-time', $1, $2, $3, $4, $5, 1, $6,
+        1, $7, '3.5.1', $8, repeat('a', 64), now(), '1.1.0', now(), $9, $10,
+        $11::timestamptz, $12::timestamptz, $13::timestamptz, $14::timestamptz,
+        'A', $15::jsonb)`,
+    [reportId, randomUUID(), organization, randomUUID(), `time-fixture-${index}`,
+      randomUUID(), randomUUID(), randomUUID(), user, synthetic, start, end,
+      index < 2 ? "2026-10-01T10:40:00Z" : null,
+      index < 2 ? "2026-10-01T11:00:00Z" : null,
+      status ? JSON.stringify(status) : null]);
+  }
+  await client.query("set local role open_triage_api_runtime");
+  let session = { capabilities: ["review:self"], user: { id: userId },
+    organization: { id: organizationId } };
+  const service = new ReviewService({ query: async (sql, params) => sql.includes("projection_health")
+    ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
+      persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
+      is_read_only_replica: false, replay_lag_seconds: null }]
+    : (await client.query(sql, params)).rows }, { get: async () => session });
+  const definition = { fieldId: "review.duration.response", operation: "mean",
+    filters: { from: "2026-10-01", to: "2026-10-02", dataset: "real" } };
+  const own = await service.analysis("unused", definition);
+  assert.deepEqual(own.groups.map(({ denominator, missing, absent, invalid, summary }) =>
+    ({ denominator, missing, absent, invalid, summary })),
+  [{ denominator: 5, missing: 1, absent: 1, invalid: 1, summary: 15 }]);
+  const filtered = await service.analysis("unused", { ...definition, groupBy: "eSituation.11",
+    filters: { ...definition.filters, field: { id: "eSituation.11", value: "A" } } });
+  assert.equal(filtered.groups[0].denominator, 5);
+  assert.equal((await service.analysis("unused", { ...definition,
+    fieldId: "review.duration.scene" })).groups[0].summary, 25);
+  assert.equal((await service.analysis("unused", { ...definition,
+    fieldId: "review.duration.transport" })).groups[0].summary, 20);
+  session = { ...session, capabilities: ["review:all"] };
+  assert.equal((await service.analysis("unused", definition)).groups[0].denominator, 6);
+  session = { ...session, organization: { id: otherOrganizationId } };
+  assert.equal((await service.analysis("unused", definition)).groups[0].denominator, 1);
+  session = { ...session, capabilities: [] };
+  await assert.rejects(service.analysis("unused", definition), { status: 403 });
+  await client.query("reset role");
+  // A signed correction is reflected by the effective projection replacing its
+  // endpoint, without changing the stored signing snapshot or old source rows.
+  await client.query(`update analytics_private.epcr set etimes_06='2026-10-01T10:24:00Z',
+    effective_amendment_sequence=1 where report_id=$1`, [reportIds[0]]);
+  await client.query("set local role open_triage_api_runtime");
+  session = { ...session, capabilities: ["review:self"], organization: { id: organizationId } };
+  assert.equal((await service.analysis("unused", definition)).groups[0].summary, 21);
+});
+
 integrationTest("Review claim stores one versioned assignment and immutable history in PostgreSQL", async (t) => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -295,6 +387,7 @@ integrationTest("Review basic analysis uses the scoped effective projection, pre
   await client.connect();
   t.after(async () => { await client.query("rollback"); await client.end(); });
   await client.query("begin");
+  await ensureCustomReviewSource(client);
   await client.query("select analytics_private.ensure_partitions(date '2026-10-01', date '2026-10-03')");
   const privileges = (await client.query(`select
     has_table_privilege('open_triage_api_runtime', 'analytics.review_field_source', 'select') api_source,

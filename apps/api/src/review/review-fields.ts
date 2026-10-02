@@ -560,3 +560,15 @@ export const repeatedReviewFields = [
   { id: "eMedications.05", label: "Medication Dosage", kind: "numeric", unit: null, repeating: true },
   { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric", unit: "mm[Hg]", repeating: true },
 ] as const;
+
+// Elapsed wall-clock minutes between canonical NEMSIS instants. All selected
+// signed patient reports remain in the denominator, including reports without
+// transport or with incomplete timestamps.
+export const operationalTimeFields = [
+  { id: "review.duration.response", label: "Response time", kind: "numeric", unit: "min",
+    source: "operational-time", interval: { start: "eTimes.03", end: "eTimes.06", eligibility: "signed-patient-reports" } },
+  { id: "review.duration.scene", label: "Scene time", kind: "numeric", unit: "min",
+    source: "operational-time", interval: { start: "eTimes.06", end: "eTimes.09", eligibility: "signed-patient-reports" } },
+  { id: "review.duration.transport", label: "Transport time", kind: "numeric", unit: "min",
+    source: "operational-time", interval: { start: "eTimes.09", end: "eTimes.11", eligibility: "signed-patient-reports" } },
+] as const;

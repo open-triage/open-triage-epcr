@@ -7,7 +7,7 @@ import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { recordMediaAccess } from "../reports/report-note-collaboration.js";
 import { reviewScope } from "./review-scope.js";
 import type { ReviewScope } from "./review-scope.js";
-import { reviewFields, repeatedReviewFields } from "./review-fields.js";
+import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./review-fields.js";
 import { reduceRepeated, type RepeatedRow } from "./review-repeated.js";
 import { eligibleReviewer, eligibleReviewers } from "./review-assignment.js";
 
@@ -66,7 +66,7 @@ export class ReviewService implements OnModuleDestroy {
       from analytics.review_custom_dictionary
       where organization_id = $1::uuid and ($2::boolean or not identifying)
       order by title, custom_definition_id`, [scope.organizationId, scope.identifying]);
-    return [...[...reviewFields, ...repeatedReviewFields].map((field) => ({ ...field,
+    return [...[...reviewFields, ...repeatedReviewFields, ...operationalTimeFields].map((field) => ({ ...field,
       operations: field.kind === "categorical" ? ["distribution" as const] :
         ["mean" as const, "median" as const, "minimum" as const, "maximum" as const] })),
     ...custom.map((row): ReviewAnalysisField => {
@@ -241,6 +241,56 @@ export class ReviewService implements OnModuleDestroy {
         groups: [{ group: null, denominator: Number(row.denominator), missing: Number(row.missing),
           absent: Number(row.absent), values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null
             ? null : Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) }] };
+    }
+    if (field.source === "operational-time") {
+      // IDs come from the fixed allowlist; no client supplied SQL identifier is interpolated.
+      const endpoints = {
+        "review.duration.response": ["etimes_03", "etimes_06"],
+        "review.duration.scene": ["etimes_06", "etimes_09"],
+        "review.duration.transport": ["etimes_09", "etimes_11"],
+      }[field.id];
+      if (!endpoints) throw new BadRequestException("Unknown operational time measure");
+      const [startColumn, endColumn] = endpoints;
+      const start = `interval_source.${startColumn}`;
+      const end = `interval_source.${endColumn}`;
+      const interval = `extract(epoch from (${end} - ${start})) / 60`;
+      const invalid = `${start} is not null and ${end} is not null and ${end} < ${start}`;
+      const absent = `(${start} is null and interval_source.${startColumn}_absent)
+        or (${end} is null and interval_source.${endColumn}_absent)`;
+      const valid = `${start} is not null and ${end} is not null and ${end} >= ${start}`;
+      const rows = await database.query<Array<{ group_value: string | null; denominator: string;
+        missing: string; absent: string; invalid: string; mean: string | null;
+        median: string | null; minimum: string | null; maximum: string | null }>>(`
+        select case when $7::text is null then null else source.field_values ->> $7::text end as group_value,
+          count(*)::text as denominator,
+          count(*) filter (where not (${valid}) and not (${invalid}) and not (${absent}))::text as missing,
+          count(*) filter (where not (${valid}) and not (${invalid}) and (${absent}))::text as absent,
+          count(*) filter (where ${invalid})::text as invalid,
+          avg(case when ${valid} then ${interval} end)::text as mean,
+          percentile_cont(0.5) within group (order by case when ${valid} then (${interval})::double precision end)::text as median,
+          min(case when ${valid} then ${interval} end)::text as minimum,
+          max(case when ${valid} then ${interval} end)::text as maximum
+        from analytics.review_field_source_with_identity source
+        join analytics.review_operational_time_source interval_source
+          on interval_source.report_id = source.report_id
+          and interval_source.reporting_date = source.reporting_date
+        where source.reporting_date between $1::date and $2::date
+          and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+          and ($5::boolean or source.documenting_user_id = $6::uuid)
+          and ($8::text is null or ${filterField && "repeating" in filterField ?
+            `exists (select 1 from analytics.review_repeated_field_source f
+              where f.report_id = source.report_id and f.reporting_date = source.reporting_date
+                and f.element_id = $8::text and f.code = $9::text)` :
+            "source.field_values ->> $8::text = $9::text"})
+        group by 1 order by 1 nulls first limit 101`,
+      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+        groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null]);
+      if (rows.length > 100) throw new BadRequestException("Review analysis has too many groups");
+      return { definition, field: metadata, population, freshness,
+        groups: rows.map((row) => ({ group: row.group_value, denominator: Number(row.denominator),
+          missing: Number(row.missing), absent: Number(row.absent), invalid: Number(row.invalid),
+          values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null
+            ? null : Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) })) };
     }
     const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
       scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null];

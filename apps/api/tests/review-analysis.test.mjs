@@ -67,6 +67,38 @@ test("Review numeric summaries retain units and null values", async () => {
   }
 });
 
+test("operational time measures retain endpoint context, scope, and invalid denominators", async () => {
+  const queries = [];
+  const service = new ReviewService({ query: async (sql, parameters) => {
+    queries.push({ sql, parameters });
+    if (sql.includes("review_custom_dictionary")) return [];
+    if (sql.includes("projection_health")) return [health];
+    return [{ group_value: "A", denominator: "5", missing: "1", absent: "1", invalid: "1",
+      mean: "12.5", median: "12.5", minimum: "10", maximum: "15" }];
+  } }, { get: async () => session });
+  const fields = await service.analysisFields("token");
+  for (const [id, start, end] of [
+    ["review.duration.response", "eTimes.03", "eTimes.06"],
+    ["review.duration.scene", "eTimes.06", "eTimes.09"],
+    ["review.duration.transport", "eTimes.09", "eTimes.11"],
+  ]) assert.deepEqual(fields.find((field) => field.id === id)?.interval,
+    { start, end, eligibility: "signed-patient-reports" });
+  const result = await service.analysis("token", definition({ fieldId: "review.duration.response",
+    operation: "mean", groupBy: "eSituation.11", filters: { from: "2026-10-01",
+      to: "2026-10-02", dataset: "real", field: { id: "eDisposition.30", value: "transported" } } }));
+  assert.deepEqual(result.groups[0], { group: "A", denominator: 5, missing: 1,
+    absent: 1, invalid: 1, values: [], summary: 12.5 });
+  assert.equal(result.field.unit, "min");
+  assert.equal(result.population.scope, "own");
+  const query = queries.find(({ sql }) => sql.includes("review_operational_time_source"));
+  assert.deepEqual(query.parameters.slice(2), [session.organization.id, false, false,
+    session.user.id, "eSituation.11", "eDisposition.30", "transported"]);
+  assert.match(query.sql, /source.organization_id = \$3::uuid/);
+  assert.match(query.sql, /interval_source.etimes_06 >= interval_source.etimes_03/);
+  await assert.rejects(service.analysis("token", definition({ fieldId: "eTimes.03",
+    operation: "mean" })), { status: 400 });
+});
+
 test("Review rejects prohibited fields, invalid operations, and unbounded dates", async () => {
   const service = new ReviewService({ query: async () => [health] }, { get: async () => session });
   for (const invalid of [

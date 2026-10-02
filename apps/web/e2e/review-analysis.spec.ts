@@ -26,6 +26,15 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
         unit: null, repeating: true, operations: ["distribution"] },
       { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric",
         unit: "mm[Hg]", repeating: true, operations: ["mean", "median", "minimum", "maximum"] },
+      { id: "review.duration.response", label: "Response time", source: "operational-time", kind: "numeric",
+        unit: "min", interval: { start: "eTimes.03", end: "eTimes.06", eligibility: "signed-patient-reports" },
+        operations: ["mean", "median", "minimum", "maximum"] },
+      { id: "review.duration.scene", label: "Scene time", source: "operational-time", kind: "numeric",
+        unit: "min", interval: { start: "eTimes.06", end: "eTimes.09", eligibility: "signed-patient-reports" },
+        operations: ["mean", "median", "minimum", "maximum"] },
+      { id: "review.duration.transport", label: "Transport time", source: "operational-time", kind: "numeric",
+        unit: "min", interval: { start: "eTimes.09", end: "eTimes.11", eligibility: "signed-patient-reports" },
+        operations: ["mean", "median", "minimum", "maximum"] },
       { id: "33333333-3333-4333-8333-333333333333", label: "Custom dose", source: "custom",
         kind: "numeric", unit: null, operations: ["mean", "median", "minimum", "maximum"] },
       { id: "44444444-4444-4444-8444-444444444444", label: "Opaque custom note", source: "custom",
@@ -36,6 +45,7 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
       definition = route.request().postDataJSON() as Record<string, unknown>;
       const repeated = definition.fieldId === "eVitals.06";
       const custom = definition.fieldId === "33333333-3333-4333-8333-333333333333";
+      const operational = definition.fieldId === "review.duration.response";
       return route.fulfill({ json: {
         definition, field: repeated
           ? { id: "eVitals.06", label: "Systolic Blood Pressure", kind: "numeric",
@@ -43,14 +53,19 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
           : custom
           ? { id: definition.fieldId, label: "Custom dose", source: "custom", kind: "numeric",
             unit: null, operations: ["mean", "median", "minimum", "maximum"] }
+          : operational
+          ? { id: "review.duration.response", label: "Response time", source: "operational-time",
+            kind: "numeric", unit: "min", interval: { start: "eTimes.03", end: "eTimes.06",
+              eligibility: "signed-patient-reports" }, operations: ["mean", "median", "minimum", "maximum"] }
           : { id: "eSituation.09", label: "Primary Symptom", kind: "categorical",
             unit: null, operations: ["distribution"] },
         population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
         freshness: { observedAt: "2026-10-02T08:00:00Z", targetSeconds: 300, status: "current",
           oldestBacklogSeconds: null, replicaLagSeconds: null },
         groups: [{ group: null, denominator: 4, missing: 1, absent: 1,
-          summary: repeated ? 120 : custom ? 2.5 : null,
-          values: repeated || custom ? [] : [{ value: "pain", count: 2, percentage: 50 }] }],
+          ...(operational ? { invalid: 1 } : {}),
+          summary: repeated ? 120 : custom ? 2.5 : operational ? 12.5 : null,
+          values: repeated || custom || operational ? [] : [{ value: "pain", count: 2, percentage: 50 }] }],
       } });
     }
     return route.fulfill({ status: 404 });
@@ -83,6 +98,16 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
   await expect(page.getByText("Mean: 2.5", { exact: false })).toBeVisible();
   expect(definition).toMatchObject({ fieldId: "33333333-3333-4333-8333-333333333333",
     operation: "mean", filters: { dataset: "real" } });
+  await page.getByRole("button", { name: "Response time" }).click();
+  await expect(page.getByText("eTimes.03 → eTimes.06; elapsed min", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Run analysis" }).click();
+  await expect(page.getByText("Mean: 12.5 min")).toBeVisible();
+  await expect(page.getByText("Reversed interval: 1", { exact: false })).toBeVisible();
+  expect(definition).toMatchObject({ fieldId: "review.duration.response", operation: "mean" });
+  await page.getByRole("button", { name: "Scene time" }).click();
+  await expect(page.getByText("eTimes.06 → eTimes.09; elapsed min", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Transport time" }).click();
+  await expect(page.getByText("eTimes.09 → eTimes.11; elapsed min", { exact: false })).toBeVisible();
   await page.getByLabel("Dataset").selectOption("synthetic");
   await expect(page.getByRole("img", { name: "Distribution of coded values; exact values follow in the table" }))
     .toHaveCount(0);
