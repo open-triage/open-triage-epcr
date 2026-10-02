@@ -291,6 +291,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setQueue((previous) => previous ? { ...previous,
         items: previous.items.map((entry) => entry.id === item.id ? next : entry) } : previous);
       setAssignmentMessage(t("review.assignmentSaved"));
+      setRefresh((value) => value + 1);
     } catch { setAssignmentMessage(t("review.assignmentChanged")); setRefresh((value) => value + 1); }
   }
 
@@ -413,6 +414,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         items: previous.items.map((entry) => entry.id === item.id ? next : entry) } : previous);
       if (selectedItem?.id === item.id) { setSelectedItem(next); setItemDetail(next);
         setAssignmentTarget(next.assigneeId ?? ""); }
+      setRefresh((value) => value + 1);
     } catch { setClaimError("unavailable"); }
     finally { setClaiming(null); }
   }

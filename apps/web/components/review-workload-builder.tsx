@@ -4,6 +4,7 @@ import type { ReviewWorkloadDefinition, ReviewWorkloadResult } from "@open-triag
 import { useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
+import { reviewWorkloadLabel } from "../app/review-workload-label";
 import { ReviewAnalysisChart } from "./review-analysis-chart";
 import { downloadReviewCsv } from "./review-csv-download";
 
@@ -66,12 +67,12 @@ export function ReviewWorkloadBuilder({ dataset, from, to, language, csrfToken }
       <p>{t("review.workloadFreshness")}: {new Intl.DateTimeFormat(language, {
         dateStyle: "medium", timeStyle: "short" }).format(new Date(result.freshness.observedAt))}</p>
       <ReviewAnalysisChart title={t("review.workloadChart")}
-        values={result.groups.map((group) => ({ value: group.key === "overdue-unsigned"
-          ? t("review.overdueUnsigned") : group.key, count: group.count }))} />
+        values={result.groups.map((group) => ({ value: reviewWorkloadLabel(language,
+          result.definition.groupBy, group.key), count: group.count }))} />
       <table><caption>{t(`review.workload.${result.definition.groupBy}`)}</caption><thead><tr>
         <th>{t("review.analysisValue")}</th><th>{t("review.workloadItemCount")}</th>
       </tr></thead><tbody>{result.groups.map((group) => <tr key={group.key}>
-        <td>{group.key === "overdue-unsigned" ? t("review.overdueUnsigned") : group.key}</td>
+        <td>{reviewWorkloadLabel(language, result.definition.groupBy, group.key)}</td>
         <td>{group.count}</td></tr>)}</tbody></table>
     </>}
   </section>;
