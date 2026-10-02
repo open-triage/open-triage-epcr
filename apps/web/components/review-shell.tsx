@@ -2,7 +2,7 @@
 
 import type { ClinicianSession, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
-  ReviewEligibleReviewer, ReviewOutcomeOption, ReportNote } from "@open-triage/contracts";
+  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -47,6 +47,9 @@ export function ReviewShell({ session, language, online }: {
   const [assignmentTarget, setAssignmentTarget] = useState("");
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<ReviewOutcomeOption[]>([]);
+  const [amendmentPolicy, setAmendmentPolicy] = useState<ReviewAmendmentPolicy | null>(null);
+  const [clearanceDraft, setClearanceDraft] = useState<ReviewAmendmentPolicy["clearance"]>("confirm");
+  const [policyMessage, setPolicyMessage] = useState<string | null>(null);
   const [outcomeId, setOutcomeId] = useState("");
   const [completionOutcomeId, setCompletionOutcomeId] = useState("");
   const [outcomeLabel, setOutcomeLabel] = useState("");
@@ -183,6 +186,19 @@ export function ReviewShell({ session, language, online }: {
   }, [online, refresh, session.capabilities]);
 
   useEffect(() => {
+    if (!online || !session.capabilities?.includes("review:admin")) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl("/api/review/amendment-policy");
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const policy = await response.json() as ReviewAmendmentPolicy;
+      if (!controller.signal.aborted) { setAmendmentPolicy(policy); setClearanceDraft(policy.clearance); }
+    }).catch(() => { if (!controller.signal.aborted) setAmendmentPolicy(null); });
+    return () => controller.abort();
+  }, [online, refresh, session.capabilities]);
+
+  useEffect(() => {
     if (!online || !selectedItemId || !session.capabilities?.includes("review:admin")) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/eligible-reviewers?itemId=${selectedItemId}&dataset=${dataset}`);
@@ -213,6 +229,22 @@ export function ReviewShell({ session, language, online }: {
       setRouteDrafts((previous) => { const updated = { ...previous }; delete updated[route.criterionId]; return updated; });
       setAssignmentMessage(t("review.routingSaved"));
     } catch { setAssignmentMessage(t("review.assignmentChanged")); setRefresh((value) => value + 1); }
+  }
+
+  async function saveAmendmentPolicy() {
+    if (!amendmentPolicy || clearanceDraft === amendmentPolicy.clearance) return;
+    const url = apiRequestUrl("/api/review/amendment-policy");
+    if (!url) return;
+    setPolicyMessage(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: amendmentPolicy.version,
+          clearance: clearanceDraft }) }));
+      if (!response.ok) throw new Error(String(response.status));
+      setAmendmentPolicy(await response.json() as ReviewAmendmentPolicy);
+      setPolicyMessage(t("review.clearanceSaved"));
+    } catch { setPolicyMessage(t("review.clearanceConflict")); setRefresh((value) => value + 1); }
   }
 
   async function assign(item: ReviewItemDetail) {
@@ -418,6 +450,9 @@ export function ReviewShell({ session, language, online }: {
               <td>{t(`review.${item.priority}`)}</td><td>{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
                 {item.outcome && <div>{item.outcome.label}</div>}</td>
               <td>{item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : <code>{item.criterionId}</code>}
+                {item.reopened && <p role="status">{t("review.reopened")}</p>}
+                {item.clearancePending && <p role="status">{t("review.clearancePending")}</p>}
+                {item.closureReason && <p>{t("review.automaticClosure")}</p>}
                 <div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
               <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); setDraftDetail(null); }}><code>{item.reportId}</code></button></td>
               <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
@@ -484,6 +519,19 @@ export function ReviewShell({ session, language, online }: {
         dataset={dataset} language={language} online={online}
         csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         refresh={() => setRefresh((current) => current + 1)} />}
+      {session.capabilities?.includes("review:admin") && <section aria-labelledby="review-amendment-policy-heading">
+        <h2 id="review-amendment-policy-heading">{t("review.clearancePolicy")}</h2>
+        <p>{t("review.clearancePolicyHelp")}</p>
+        {amendmentPolicy ? <><label>{t("review.clearedCriterion")} <select value={clearanceDraft}
+          onChange={(event) => setClearanceDraft(event.target.value as ReviewAmendmentPolicy["clearance"])}>
+          <option value="confirm">{t("review.clearanceConfirm")}</option>
+          <option value="automatic">{t("review.clearanceAutomatic")}</option>
+        </select></label>
+          <button type="button" disabled={clearanceDraft === amendmentPolicy.clearance}
+            onClick={() => void saveAmendmentPolicy()}>{t("review.saveClearancePolicy")}</button></> :
+          <p role="status">{t("review.clearanceUnavailable")}</p>}
+        {policyMessage && <p role="status">{policyMessage}</p>}
+      </section>}
       {backlog && <section aria-labelledby="review-backlog-heading"><h2 id="review-backlog-heading">{t("review.backlog")}</h2>
         {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
@@ -541,7 +589,9 @@ export function ReviewShell({ session, language, online }: {
             <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
           {!!viewDetail.reviewItems?.length && <section><h3>{t("review.reportItems")}</h3><ul>
             {viewDetail.reviewItems.map((item) => <li key={item.id}><code>{item.criterionId}</code>: {t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
-              {item.outcome && <> — {item.outcome.label}: {item.outcome.meaning}</>}</li>)}
+              {item.outcome && <> — {item.outcome.label}: {item.outcome.meaning}</>}
+              {item.clearancePending && <> — {t("review.clearancePending")}</>}
+              {item.closureReason && <> — {t("review.automaticClosure")}</>}</li>)}
           </ul></section>}
           {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
             {itemDetail?.recoveryReason && <p role="alert">{t("review.recovered")}</p>}
@@ -569,14 +619,30 @@ export function ReviewShell({ session, language, online }: {
               {!!itemDetail.overdueHistory?.length && <ol>{itemDetail.overdueHistory.map((event) =>
                 <li key={event.itemVersion}>{t(event.action === "detected" ? "review.overdueDetected" : "review.resolvedBySigning")}
                   {" · "}{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}</li>)}</ol>}
+              {itemDetail.reopened && <p role="status">{t("review.reopened")}</p>}
+              {itemDetail.clearancePending && <p role="status">{t("review.clearancePending")}</p>}
+              {itemDetail.closureReason && <p>{t("review.automaticClosure")}</p>}
               {itemDetail.outcome && <p>{t("review.outcomeChoice")}: {itemDetail.outcome.label} — {itemDetail.outcome.meaning}</p>}
               <section><h4>{t("review.progressHistory")}</h4>
                 {!itemDetail.progressHistory?.length ? <p>{t("review.noProgressHistory")}</p> :
                   <ol>{itemDetail.progressHistory.map((event) => <li key={event.commandId}>
                     {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}: {t(`review.${event.status === "in-review" ? "inReview" : event.status === "awaiting-clinician" ? "awaitingClinician" : event.status}`)}
                     {event.outcome && <> — {event.outcome.label}: {event.outcome.meaning}</>}
-                    {" · "}<code>{event.actorId}</code>
+                    {event.reason && <> — {t(`review.progressReason.${event.reason}`)}</>}
+                    {" · "}{event.actorId ? <code>{event.actorId}</code> : t("review.systemActor")}
                   </li>)}</ol>}</section>
+              <section><h4>{t("review.amendmentHistory")}</h4>
+                {!itemDetail.amendmentHistory?.length ? <p>{t("review.noAmendmentHistory")}</p> :
+                  <ol>{itemDetail.amendmentHistory.map((event) => <li key={event.evaluationId}>
+                    {t("review.amendmentSequence", { sequence: event.amendmentSequence })}: {t(`review.amendmentAction.${event.action}`)}
+                    {" · "}{t("review.ruleVersion")}: <code>{event.validationVersionId}</code>
+                    {event.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}
+                    {event.changes.length > 0 && <ul>{event.changes.map((change, index) => <li key={index}>
+                      {t(`review.inputChange.${change.change}`)}: {change.elementId ?? t("review.groupMembership")}
+                      {change.groupInstanceId && <> / <code>{change.groupInstanceId}</code></>}
+                    </li>)}</ul>}
+                  </li>)}</ol>}
+              </section>
               {itemDetail.assigneeId === session.user.id && <div className="review-controls">
                 {itemDetail.status === "new" && <button type="button" disabled={workflowBusy}
                   onClick={() => void progress(itemDetail, "in-review")}>{t("review.startReview")}</button>}

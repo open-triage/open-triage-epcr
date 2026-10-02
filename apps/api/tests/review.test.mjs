@@ -158,7 +158,8 @@ test("review queue filters are scoped before pagination and report links", async
     return sql.includes("count(*)") ? [{ total: "1" }] : [{ id: "item-a", report_id: "report-a",
       criterion_id: "rule-a", priority: "high", status: "new", assignee_id: null, version: "0",
       first_matched_at: "2026-10-02T10:00:00Z", reporting_date: "2026-10-02",
-      signed_at: "2026-10-02T09:00:00Z", findings: [{ message: "Review" }] }];
+      signed_at: "2026-10-02T09:00:00Z", findings: [{ message: "Review",
+        primaryTarget: { elementId: "eVitals.06" } }] }];
   } };
   const service = new ReviewService(database, { get: async () => session(["review:self"]) });
   const result = await service.queue("token", { dataset: "real", priority: "high", status: "new",
@@ -200,6 +201,7 @@ test("claim requires review-all, CSRF, current unassigned version, and replays o
     await prior;
     try { return await work(manager); } finally { release(); }
   }, query: async (sql) =>
+    sql.includes("from clinical.review_amendment_decision") ? [] :
     sql.includes("from clinical.review_progress_history") ? [] :
     sql.includes("from clinical.review_assignment_history") ? history.map((event) => ({
       ...event, assigned_at: "2026-10-02T10:00:00Z" })) : [{ id: "item-a", report_id: "report-a",

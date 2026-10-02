@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 import { aggregateRevision, analysisCsv, volumeCsv } from "./review-csv.js";
@@ -85,6 +85,21 @@ export class ReviewController {
     @Headers("cookie") cookie?: string,
     @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewRetrospectiveRun> {
     return this.review.advanceRetrospective(bearerToken(authorization, cookie), id, body?.batchSize ?? 25, csrfToken);
+  }
+
+  @Get("amendment-policy")
+  @Header("Cache-Control", "no-store, private")
+  amendmentPolicy(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewAmendmentPolicy> {
+    return this.review.amendmentPolicy(bearerToken(authorization, cookie));
+  }
+
+  @Post("amendment-policy")
+  @Header("Cache-Control", "no-store, private")
+  configureAmendmentPolicy(@Body() command: ConfigureReviewAmendmentPolicyCommand,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+    @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewAmendmentPolicy> {
+    return this.review.configureAmendmentPolicy(bearerToken(authorization, cookie), command, csrfToken);
   }
 
   @Get("routes")

@@ -12,6 +12,7 @@ test("Review administrator configures routing and reassigns an item without vali
     expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:admin"], workspaceAvailable: true };
   let route = { criterionId, name: "Narrative check", route: "unassigned", namedUserId: null as string | null,
     independentReview: false, version: 0, recoveryReason: null };
+  let amendmentPolicy = { clearance: "confirm", version: 0 };
   let assigneeId: string | null = null;
   let version = 0;
   let history: Array<{ commandId: string; actorId: string; assigneeId: string | null;
@@ -27,6 +28,14 @@ test("Review administrator configures routing and reassigns an item without vali
     if (path === "/api/sessions/current") return request.fulfill({ json: session });
     if (path === "/api/review/routes" && request.request().method() === "GET")
       return request.fulfill({ json: [route] });
+    if (path === "/api/review/amendment-policy" && request.request().method() === "GET")
+      return request.fulfill({ json: amendmentPolicy });
+    if (path === "/api/review/amendment-policy" && request.request().method() === "POST") {
+      const body = request.request().postDataJSON() as { expectedVersion: number; clearance: "confirm" | "automatic" };
+      expect(body.expectedVersion).toBe(amendmentPolicy.version);
+      amendmentPolicy = { clearance: body.clearance, version: amendmentPolicy.version + 1 };
+      return request.fulfill({ json: amendmentPolicy });
+    }
     if (path === `/api/review/routes/${criterionId}`) {
       expect(request.request().headers()["x-csrf-token"]).toBe("review-admin-csrf");
       const body = request.request().postDataJSON() as { route: typeof route.route; namedUserId: string | null;
@@ -66,6 +75,10 @@ test("Review administrator configures routing and reassigns an item without vali
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Criterion routing" })).toBeVisible();
+  await page.getByLabel("When a criterion clears").selectOption("automatic");
+  await page.getByRole("button", { name: "Save clearance policy" }).click();
+  await expect(page.getByText("Clearance policy saved.")).toBeVisible();
+  expect(amendmentPolicy.clearance).toBe("automatic");
   await page.getByLabel("Route to").selectOption("named");
   await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
   await page.getByRole("button", { name: "Save route" }).click();
@@ -101,7 +114,8 @@ test("Review claim persists in the queue and item history, with recoverable stal
   let stale = true;
   const item = () => ({ id: itemId, reportId, criterionId: "123e4567-e89b-42d3-a456-426614174113",
     priority: "high", status: "new", assigneeId, version, firstMatchedAt: "2026-10-01T08:00:00Z",
-    reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", findings: [] });
+    reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", findings: [],
+    reopened: version > 0, clearancePending: false });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
@@ -111,7 +125,12 @@ test("Review claim persists in the queue and item history, with recoverable stal
       identifying: false, administrator: false, page: 1, pageSize: 25, total: 0, asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
-    if (url.pathname === `/api/review/items/${itemId}`) return route.fulfill({ json: { ...item(), assignmentHistory: history } });
+    if (url.pathname === `/api/review/items/${itemId}`) return route.fulfill({ json: {
+      ...item(), assignmentHistory: history,
+      amendmentHistory: version > 0 ? [{ evaluationId: "evaluation-1", amendmentSequence: 1,
+        validationVersionId: "rule-version-1", action: "reopened", findings: [],
+        changes: [{ elementId: "eVitals.06", groupInstanceId: "vitals-1", change: "changed" }] }] : [],
+    } });
     if (url.pathname === `/api/review/items/${itemId}/claim`) {
       expect(route.request().headers()["x-csrf-token"]).toBe("review-csrf");
       const command = route.request().postDataJSON() as { commandId: string; expectedVersion: number };
@@ -140,6 +159,9 @@ test("Review claim persists in the queue and item history, with recoverable stal
   await page.getByRole("button", { name: reportId }).first().click();
   await expect(page.getByRole("heading", { name: "Assignment history" })).toBeVisible();
   await expect(page.getByText("Assigned to you").last()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Amendment evaluation history" })).toBeVisible();
+  await expect(page.getByText("Returned for re-review after a relevant amendment").last()).toBeVisible();
+  await expect(page.getByText("eVitals.06").last()).toBeVisible();
 });
 
 test("Review-only account enters its scoped signed-report list and keeps datasets separate", async ({ page, context }) => {

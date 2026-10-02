@@ -151,6 +151,10 @@ export interface ReviewQueueItem {
   priority: "high" | "medium" | "low";
   status: "new" | "in-review" | "awaiting-clinician" | "completed";
   outcome: { optionId: string; revision: number; label: string; meaning: string } | null;
+  activeMatch: boolean;
+  clearancePending: boolean;
+  reopened: boolean;
+  closureReason: string | null;
   assigneeId: string | null;
   version: number;
   recoveryReason?: string | null;
@@ -205,8 +209,26 @@ export interface ReviewItemDetail extends ReviewQueueItem {
   overdueHistory?: Array<{ action: "detected" | "resolved-by-signing"; recordedAt: string;
     itemVersion: number }>;
   assignmentHistory: ReviewAssignmentEvent[];
-  progressHistory: Array<{ commandId: string; actorId: string; itemVersion: number;
-    status: ReviewQueueItem["status"]; outcome: ReviewQueueItem["outcome"]; recordedAt: string }>;
+  progressHistory: Array<{ commandId: string; actorId: string | null; itemVersion: number;
+    status: ReviewQueueItem["status"]; outcome: ReviewQueueItem["outcome"];
+    reason: string | null; evaluationId: string | null; recordedAt: string }>;
+  amendmentHistory: Array<{ evaluationId: string; amendmentSequence: number; matched: boolean;
+    action: "created" | "unchanged" | "reopened" | "confirmation-required" | "automatic-closure";
+    reason: string | null; policy: "confirm" | "automatic" | null; itemVersion: number;
+    validationVersionId: string; evaluatedAt: string; findings: import("./validation-rules.js").ValidationFinding[];
+    changes: Array<{ elementId: string | null; groupInstanceId: string;
+      occurrenceId: string | null; change: "added" | "removed" | "changed" }> }>;
+}
+
+export interface ReviewAmendmentPolicy {
+  clearance: "confirm" | "automatic";
+  version: number;
+}
+
+export interface ConfigureReviewAmendmentPolicyCommand {
+  commandId: string;
+  expectedVersion: number;
+  clearance: ReviewAmendmentPolicy["clearance"];
 }
 
 export interface ClaimReviewItemCommand {
@@ -291,7 +313,7 @@ export interface ReviewSignedReport {
   values: ReviewReportValue[];
   notes: ReportNote[];
   reviewItems?: Array<{ id: string; criterionId: string; status: ReviewQueueItem["status"];
-    outcome: ReviewQueueItem["outcome"] }>;
+    outcome: ReviewQueueItem["outcome"]; clearancePending: boolean; closureReason: string | null }>;
 }
 
 export interface ReviewOverdueDraft {

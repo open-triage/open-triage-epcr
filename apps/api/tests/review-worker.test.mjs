@@ -29,6 +29,10 @@ function fixture({ incompatible = false, route = 'unassigned', eligible = true, 
   const manager = { async query(sql, params = []) {
     calls.push({ sql, params });
     if (sql.includes('from app_identity.organization')) return [{ id: params[0] }];
+    if (sql.includes('from catalog.analytics_element_mapping')) return [];
+    if (sql.includes('from clinical.review_amendment_policy')) return [];
+    if (sql.includes('from clinical.review_item where organization_id=')) return [];
+    if (sql.includes('insert into clinical.review_amendment_decision')) return [];
     if (sql.includes('from clinical.review_criterion_route where route=')) return [];
     if (sql.includes('from clinical.report r') && sql.includes('review_overdue_policy')) return [];
     if (sql.includes('from clinical.review_item i join clinical.report r') && sql.includes('eligibility_checked_at')) return [];
@@ -109,12 +113,12 @@ test('ineligible configured reviewer leaves new work unassigned with an administ
   assert.ok(writes.every(({ params }) => params[5] === null && params[6] === 'configured-assignee-ineligible'));
 });
 
-test('retrospective worker evaluates only its selected criterion and skips prospective discovery', async () => {
+test('retrospective worker evaluates only its selected criterion without mutating live review items', async () => {
   const value = fixture({ retrospective: true });
   const runId = randomUUID();
   assert.deepEqual(await processReviewWork(value.database, 1, runId), { processed: 1, failed: 0 });
   const writes = value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql));
-  assert.deepEqual(writes.map(({ params }) => params[2]), [value.rules[0].ruleId]);
+  assert.equal(writes.length, 0);
   assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_work')).length, 0);
   const selection = value.calls.find(({ sql }) => sql.includes('from clinical.review_work w join'));
   assert.deepEqual(selection.params, [runId]);

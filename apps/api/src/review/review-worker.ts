@@ -1,10 +1,11 @@
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, reviewPriorityOfRule,
-  type CompiledValidationBundle, type ValidationFinding } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely,
+  type CompiledValidationBundle, type EncounterDocument, type ValidationFinding } from "@open-triage/contracts";
 import type { DataSource, EntityManager } from "typeorm";
 import { encounterDocument } from "../reports/encounter-document.persistence.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { eligibleReviewers, reconcileReviewAssignments } from "./review-assignment.js";
 import { discoverOverdueDrafts } from "./review-overdue.js";
+import { reconcileAmendedReview } from "./review-amendment.js";
 
 const MAX_BATCH = 100;
 type Work = { id: string; organization_id: string; report_id: string; signed_snapshot_id: string;
@@ -72,6 +73,7 @@ export async function processReviewWork(database: DataSource, limit = 25,
           where id = $1 and organization_id = $2 and status = 'published'`,
         [work.validation_version_id, work.organization_id]))[0];
         let findings: ValidationFinding[] = [];
+        let document: EncounterDocument | null = null;
         let failures: Array<{ validationVersionId: string; ruleId: string; executionTarget: 'review'; code: string; message: string }> = [];
         if (!version || version.catalog_release_id !== work.catalog_release_id ||
             version.compiled_bundle.catalogReleaseId !== work.catalog_release_id) {
@@ -87,7 +89,7 @@ export async function processReviewWork(database: DataSource, limit = 25,
             message: 'The selected review criterion is unavailable in this published version' }];
         } else {
           try {
-            const document = await encounterDocument(manager, work.report_id, true, Number(work.amendment_sequence));
+            document = await encounterDocument(manager, work.report_id, true, Number(work.amendment_sequence));
             const settings = await manager.query<Array<{ language: string }>>(
               `select language from app_identity.agency_settings where organization_id=$1`, [work.organization_id]);
             const bundle = work.selected_criterion_id ? { ...version.compiled_bundle,
@@ -112,45 +114,11 @@ export async function processReviewWork(database: DataSource, limit = 25,
         [work.id, Number(work.attempts) + 1, work.organization_id, work.report_id, work.signed_snapshot_id, work.signed_revision,
           work.amendment_sequence, work.validation_version_id, version?.compiled_sha256 ?? '0'.repeat(64),
           evaluationTime, outcome, JSON.stringify(findings), JSON.stringify(failures)]))[0];
-        if (evaluation && version && failures.length === 0) {
-          const byCriterion = new Map<string, ValidationFinding[]>();
-          for (const finding of findings) byCriterion.set(finding.ruleId,
-            [...(byCriterion.get(finding.ruleId) ?? []), finding]);
-          for (const [criterionId, matches] of byCriterion) {
-            const rule = version.compiled_bundle.rules.find((candidate) => candidate.ruleId === criterionId);
-            if (!rule) continue;
-            const route = (await manager.query<Array<{ route: string; named_user_id: string | null;
-              independent_review: boolean }>>(`select route,named_user_id,independent_review
-              from clinical.review_criterion_route where organization_id=$1 and criterion_id=$2`,
-            [work.organization_id, criterionId]))[0];
-            const proposed = route?.route === 'author' ? work.documenting_user_id
-              : route?.route === 'named' ? route.named_user_id : null;
-            const candidates = proposed ? await eligibleReviewers(manager, work.organization_id,
-              work.documenting_user_id, route?.independent_review ?? false, proposed) : [];
-            const assignee = candidates[0] && (route?.route !== 'named' || candidates[0].all_access)
-              ? proposed : null;
-            const recoveryReason = proposed && !assignee ? 'configured-assignee-ineligible' : null;
-            const inserted = mutationRows<{ id: string }>(await manager.query(`
-              insert into clinical.review_item
-                (organization_id,report_id,criterion_id,priority,first_matched_at,assignee_id,version,recovery_reason)
-              values ($1,$2,$3,$4,$5,$6,case when $6::uuid is null then 0 else 1 end,$7)
-              on conflict (organization_id,report_id,criterion_id) do nothing returning id`,
-            [work.organization_id, work.report_id, criterionId, reviewPriorityOfRule(rule), evaluationTime,
-              assignee, recoveryReason]))[0];
-            const item = inserted ?? mutationRows<{ id: string }>(await manager.query(`
-              update clinical.review_item set priority=$4,updated_at=now()
-              where organization_id=$1 and report_id=$2 and criterion_id=$3 returning id`,
-            [work.organization_id, work.report_id, criterionId, reviewPriorityOfRule(rule)]))[0]!;
-            if (inserted && assignee) await manager.query(`insert into clinical.review_assignment_history
-              (organization_id,item_id,command_id,actor_id,assignee_id,item_version,action,reason)
-              values ($1,$2,gen_random_uuid(),null,$3,1,'routed',$4)`,
-            [work.organization_id, item.id, assignee, route!.route]);
-            await manager.query(`insert into clinical.review_item_evidence
-              (organization_id,item_id,evaluation_id,work_id,findings) values ($1,$2,$3,$4,$5::jsonb)
-              on conflict (item_id,work_id) do nothing`,
-            [work.organization_id, item.id, evaluation.id, work.id, JSON.stringify(matches)]);
-          }
-        }
+        // Retrospective evaluations have their own run history and must never
+        // change the live report-criterion item's clinical review state.
+        if (!retrospectiveRunId && evaluation && version && document && failures.length === 0)
+          await reconcileAmendedReview(manager, work, version.compiled_bundle, document,
+            evaluation.id, findings, evaluationTime);
         await manager.query(`update clinical.review_work set state=$2, attempts=attempts+1,
           last_error=$3, completed_at=$4, next_attempt_at=case when $2='failed'
             then now()+interval '5 minutes' else next_attempt_at end where id=$1`,

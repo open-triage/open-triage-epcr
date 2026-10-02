@@ -21,6 +21,10 @@ integrationTest("assigned reviewer completes one item with pinned outcome and re
     await client.query(migration("20261002200000_review_assignment_routing"));
   if (!(await client.query("select to_regclass('clinical.review_outcome_option') relation")).rows[0].relation)
     await client.query(migration("20261002210000_review_completion"));
+  if (!(await client.query("select to_regclass('clinical.review_overdue_policy') relation")).rows[0].relation)
+    await client.query(migration("20261002250000_review_overdue_drafts"));
+  if (!(await client.query("select to_regclass('clinical.review_amendment_decision') relation")).rows[0].relation)
+    await client.query(migration("20261002270000_review_amendment_rereview"));
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     where r.status='signed' limit 1`)).rows[0];
@@ -92,6 +96,10 @@ integrationTest("independent review rejects the author after configuration chang
     await client.query(migration("20261002200000_review_assignment_routing"));
   if (!(await client.query("select to_regclass('clinical.review_outcome_option') relation")).rows[0].relation)
     await client.query(migration("20261002210000_review_completion"));
+  if (!(await client.query("select to_regclass('clinical.review_overdue_policy') relation")).rows[0].relation)
+    await client.query(migration("20261002250000_review_overdue_drafts"));
+  if (!(await client.query("select to_regclass('clinical.review_amendment_decision') relation")).rows[0].relation)
+    await client.query(migration("20261002270000_review_amendment_rereview"));
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic,
     owner.user_id reviewer_id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     join app_identity.installation_owner owner on owner.organization_id=r.organization_id
