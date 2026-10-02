@@ -1,7 +1,8 @@
 "use client";
 
 import type { ClinicianSession, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
-  ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReportNote } from "@open-triage/contracts";
+  ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
+  ReviewEligibleReviewer, ReportNote } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -36,6 +37,12 @@ export function ReviewShell({ session, language, online }: {
   const [itemDetail, setItemDetail] = useState<ReviewItemDetail | null>(null);
   const [claimError, setClaimError] = useState<"conflict" | "unavailable" | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [routes, setRoutes] = useState<ReviewCriterionRoute[] | null>(null);
+  const [reviewers, setReviewers] = useState<ReviewEligibleReviewer[]>([]);
+  const [itemReviewers, setItemReviewers] = useState<ReviewEligibleReviewer[]>([]);
+  const [routeDrafts, setRouteDrafts] = useState<Record<string, { route: ReviewCriterionRoute["route"]; namedUserId: string | null }>>({});
+  const [assignmentTarget, setAssignmentTarget] = useState("");
+  const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [from, setFrom] = useState(() => dateString(new Date(Date.now() - 29 * 86400000)));
@@ -110,10 +117,76 @@ export function ReviewShell({ session, language, online }: {
     void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
       if (!response.ok) throw new Error(String(response.status));
       const next = await response.json() as ReviewItemDetail;
-      if (!controller.signal.aborted) setItemDetail(next);
+      if (!controller.signal.aborted) { setItemDetail(next); setAssignmentTarget(next.assigneeId ?? ""); }
     }).catch(() => { if (!controller.signal.aborted) setItemDetail(null); });
     return () => controller.abort();
   }, [dataset, online, selectedItemId, refresh]);
+
+  useEffect(() => {
+    if (!online || !session.capabilities?.includes("review:admin")) return;
+    const controller = new AbortController();
+    const routeUrl = apiRequestUrl("/api/review/routes");
+    const reviewersUrl = apiRequestUrl("/api/review/eligible-reviewers");
+    if (!routeUrl || !reviewersUrl) return;
+    void Promise.all([fetch(routeUrl, browserRequestInit({ signal: controller.signal })),
+      fetch(reviewersUrl, browserRequestInit({ signal: controller.signal }))]).then(async ([routeResponse, reviewerResponse]) => {
+      if (!routeResponse.ok || !reviewerResponse.ok) throw new Error("Review routing is unavailable");
+      const [configured, eligible] = await Promise.all([
+        routeResponse.json() as Promise<ReviewCriterionRoute[]>,
+        reviewerResponse.json() as Promise<ReviewEligibleReviewer[]>]);
+      if (!controller.signal.aborted) { setRoutes(configured); setReviewers(eligible); }
+    }).catch(() => { if (!controller.signal.aborted) setRoutes(null); });
+    return () => controller.abort();
+  }, [online, refresh, session.capabilities]);
+
+  useEffect(() => {
+    if (!online || !selectedItemId || !session.capabilities?.includes("review:admin")) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/eligible-reviewers?itemId=${selectedItemId}&dataset=${dataset}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const eligible = await response.json() as ReviewEligibleReviewer[];
+      if (!controller.signal.aborted) setItemReviewers(eligible);
+    }).catch(() => { if (!controller.signal.aborted) setItemReviewers([]); });
+    return () => controller.abort();
+  }, [online, selectedItemId, dataset, refresh, session.capabilities]);
+
+  async function saveRoute(route: ReviewCriterionRoute) {
+    const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId };
+    const url = apiRequestUrl(`/api/review/routes/${route.criterionId}`);
+    if (!url) return;
+    setAssignmentMessage(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: route.version,
+          route: draft.route, namedUserId: draft.route === "named" ? draft.namedUserId : null }) }));
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewCriterionRoute;
+      setRoutes((previous) => previous?.map((entry) => entry.criterionId === next.criterionId ? next : entry) ?? null);
+      setRouteDrafts((previous) => { const updated = { ...previous }; delete updated[route.criterionId]; return updated; });
+      setAssignmentMessage(t("review.routingSaved"));
+    } catch { setAssignmentMessage(t("review.assignmentChanged")); setRefresh((value) => value + 1); }
+  }
+
+  async function assign(item: ReviewItemDetail) {
+    const url = apiRequestUrl(`/api/review/items/${item.id}/assign`);
+    if (!url) return;
+    setAssignmentMessage(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
+        body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: item.version,
+          dataset, assigneeId: assignmentTarget || null }) }));
+      if (!response.ok) throw new Error(String(response.status));
+      const next = await response.json() as ReviewItemDetail;
+      setItemDetail(next); setSelectedItem(next);
+      setQueue((previous) => previous ? { ...previous,
+        items: previous.items.map((entry) => entry.id === item.id ? next : entry) } : previous);
+      setAssignmentMessage(t("review.assignmentSaved"));
+    } catch { setAssignmentMessage(t("review.assignmentChanged")); setRefresh((value) => value + 1); }
+  }
 
   async function claim(item: ReviewQueueItem) {
     const url = apiRequestUrl(`/api/review/items/${item.id}/claim`);
@@ -129,7 +202,8 @@ export function ReviewShell({ session, language, online }: {
       const next = await response.json() as ReviewItemDetail;
       setQueue((previous) => previous ? { ...previous,
         items: previous.items.map((entry) => entry.id === item.id ? next : entry) } : previous);
-      if (selectedItem?.id === item.id) { setSelectedItem(next); setItemDetail(next); }
+      if (selectedItem?.id === item.id) { setSelectedItem(next); setItemDetail(next);
+        setAssignmentTarget(next.assigneeId ?? ""); }
     } catch { setClaimError("unavailable"); }
     finally { setClaiming(null); }
   }
@@ -218,7 +292,8 @@ export function ReviewShell({ session, language, online }: {
               <td><code>{item.criterionId}</code><div>{item.findings.map((finding, index) => <p key={index}>{finding.message}</p>)}</div></td>
               <td><button type="button" onClick={() => { setSelected(item.reportId); setSelectedItem(item); setItemDetail(null); setDetail(null); }}><code>{item.reportId}</code></button></td>
               <td>{t("review.ageDays", { count: Math.max(0, Math.floor((Date.parse(queue.asOf) - Date.parse(item.firstMatchedAt)) / 86400000)) })}</td>
-              <td>{item.assigneeId ? (item.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{item.assigneeId}</code>) :
+              <td>{item.recoveryReason && <span role="status">{t("review.recovered")} </span>}
+                {item.assigneeId ? (item.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{item.assigneeId}</code>) :
                 session.capabilities?.includes("review:all") && item.status === "new" ?
                   <button type="button" disabled={!!claiming} onClick={() => void claim(item)}>{t("review.claim")}</button> : t("review.unassigned")}</td>
             </tr>)}</tbody></table>}
@@ -228,6 +303,34 @@ export function ReviewShell({ session, language, online }: {
             <button type="button" disabled={queuePage * queue.pageSize >= queue.total} onClick={() => setQueuePage(queuePage + 1)}>{t("review.next")}</button>
           </nav></>}
       </section>
+      {session.capabilities?.includes("review:admin") && <section aria-labelledby="review-routing-heading">
+        <h2 id="review-routing-heading">{t("review.routingHeading")}</h2>
+        <p>{t("review.routingHelp")}</p>
+        {assignmentMessage && <p role="status">{assignmentMessage}</p>}
+        {routes === null ? <p role="status">{t("review.routingUnavailable")}</p> :
+          routes.length === 0 ? <p>{t("review.noRoutes")}</p> : <ul>{routes.map((route) => {
+            const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId };
+            return <li key={route.criterionId}>
+              <strong>{route.name}</strong> <code>{route.criterionId}</code>
+              {route.recoveryReason && <p role="alert">{t("review.routeRecovered")}</p>}
+              <label>{t("review.routeMode")}{" "}<select value={draft.route} onChange={(event) =>
+                setRouteDrafts((previous) => ({ ...previous, [route.criterionId]: {
+                  route: event.target.value as ReviewCriterionRoute["route"], namedUserId: null } }))}>
+                <option value="unassigned">{t("review.routeUnassigned")}</option>
+                <option value="author">{t("review.routeAuthor")}</option>
+                <option value="named">{t("review.routeNamed")}</option>
+              </select></label>
+              {draft.route === "named" && <label>{t("review.namedReviewer")}{" "}<select value={draft.namedUserId ?? ""}
+                onChange={(event) => setRouteDrafts((previous) => ({ ...previous,
+                  [route.criterionId]: { route: "named", namedUserId: event.target.value || null } }))}>
+                <option value="">{t("review.chooseReviewer")}</option>
+                {reviewers.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}
+              </select></label>}
+              <button type="button" disabled={draft.route === "named" && !draft.namedUserId}
+                onClick={() => void saveRoute(route)}>{t("review.saveRoute")}</button>
+            </li>;
+          })}</ul>}
+      </section>}
       {backlog && <section aria-labelledby="review-backlog-heading"><h2 id="review-backlog-heading">{t("review.backlog")}</h2>
         {backlog.length === 0 ? <p>{t("review.backlogEmpty")}</p> : <ul>{backlog.map((work) =>
           <li key={work.reportId}><code>{work.reportId}</code> — {work.state}, {work.attempts} {t("review.attempts")}
@@ -262,14 +365,25 @@ export function ReviewShell({ session, language, online }: {
           <h2>{t("review.detail")}: <code>{detail.id}</code></h2>
           <p>{t("review.amendments", { count: detail.amendmentSequence })}</p>
           {selectedItem && <section aria-label={t("review.findings")}><h3>{t("review.findings")}</h3>
+            {itemDetail?.recoveryReason && <p role="alert">{t("review.recovered")}</p>}
             <p>{t("review.assignee")}: {itemDetail?.assigneeId ?
               (itemDetail.assigneeId === session.user.id ? t("review.assignedToYou") : <code>{itemDetail.assigneeId}</code>) : t("review.unassigned")}</p>
             {itemDetail && !itemDetail.assigneeId && itemDetail.status === "new" && session.capabilities?.includes("review:all") &&
               <button type="button" disabled={!!claiming} onClick={() => void claim(itemDetail)}>{t("review.claim")}</button>}
+            {itemDetail && session.capabilities?.includes("review:admin") && <div>
+              <label>{t("review.assignReviewer")}{" "}<select value={assignmentTarget}
+                onChange={(event) => setAssignmentTarget(event.target.value)}>
+                <option value="">{t("review.unassigned")}</option>
+                {itemReviewers.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}
+              </select></label>
+              <button type="button" disabled={assignmentTarget === (itemDetail.assigneeId ?? "")}
+                onClick={() => void assign(itemDetail)}>{t("review.saveAssignment")}</button>
+              {assignmentMessage && <p role="status">{assignmentMessage}</p>}
+            </div>}
             {itemDetail && <section><h4>{t("review.assignmentHistory")}</h4>
               {itemDetail.assignmentHistory.length === 0 ? <p>{t("review.noAssignmentHistory")}</p> :
                 <ol>{itemDetail.assignmentHistory.map((event) => <li key={event.commandId}>
-                  {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.assignedAt))}: {event.actorId === session.user.id ? t("review.assignedToYou") : <code>{event.assigneeId}</code>}
+                  {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.assignedAt))}: {t(`review.assignmentAction.${event.action ?? "claimed"}`)} {event.assigneeId === session.user.id ? t("review.assignedToYou") : event.assigneeId ? <code>{event.assigneeId}</code> : t("review.unassigned")}
                 </li>)}</ol>}</section>}
             <p>{t("review.criterion")}: <code>{selectedItem.criterionId}</code></p>
             <ul>{selectedItem.findings.map((finding, index) => <li key={index}>
