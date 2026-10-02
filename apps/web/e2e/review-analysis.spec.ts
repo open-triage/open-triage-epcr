@@ -131,3 +131,82 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
   await expect(page.getByRole("img", { name: "Distribution of coded values; exact values follow in the table" }))
     .toHaveCount(0);
 });
+
+test("Review saves, revises, publishes, and reopens a definition under the selected dataset", async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed mock API configuration.");
+  const id = "123e4567-e89b-42d3-a456-426614174199";
+  const session = { csrfToken: "saved-analysis-csrf", user: { id: "review-admin", displayName: "Admin" },
+    organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
+    expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:admin"], workspaceAvailable: true };
+  const field = { id: "eSituation.09", label: "Primary Symptom", kind: "categorical",
+    unit: null, operations: ["distribution"] };
+  let saved: { id: string; name: string; ownerId: string; shared: boolean; version: number;
+    updatedAt: string; editable: boolean } | null = null;
+  let definition: Record<string, unknown> | null = null;
+  let opens = 0;
+  await page.addInitScript((value) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(value)), session);
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (path === "/api/installation") return route.fulfill({ json: { settings } });
+    if (path === "/api/sessions/current") return route.fulfill({ json: session });
+    if (path === "/api/review/analysis/fields") return route.fulfill({ json: [field] });
+    if (path === "/api/review/analysis/review-filters") return route.fulfill({ json: {
+      criteria: [{ id: "criterion-one", label: "Clinical criterion" }], outcomes: [] } });
+    if (path === "/api/review/analysis/saved" && route.request().method() === "GET")
+      return route.fulfill({ json: saved ? [saved] : [] });
+    if (path === "/api/review/analysis/saved" || path === `/api/review/analysis/saved/${id}` &&
+      route.request().method() === "POST") {
+      expect(route.request().headers()["x-csrf-token"]).toBe(session.csrfToken);
+      const body = route.request().postDataJSON() as { name: string; shared: boolean;
+        expectedVersion?: number; definition: Record<string, unknown> };
+      if (saved) expect(body.expectedVersion).toBe(saved.version);
+      definition = body.definition;
+      saved = { id, name: body.name, shared: body.shared, ownerId: session.user.id,
+        version: (saved?.version ?? 0) + 1, updatedAt: "2026-10-02T08:00:00Z", editable: true };
+      return route.fulfill({ json: saved });
+    }
+    if (path === `/api/review/analysis/saved/${id}`) {
+      opens++;
+      expect(definition).not.toBeNull();
+      const dataset = url.searchParams.get("dataset");
+      const current = { ...definition, filters: { ...(definition?.filters as object), dataset } };
+      return route.fulfill({ json: { saved, result: { definition: current, field,
+        population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
+        freshness: { observedAt: "2026-10-02T08:00:00Z", targetSeconds: 300, status: "current",
+          oldestBacklogSeconds: null, replicaLagSeconds: null },
+        groups: [{ group: null, denominator: dataset === "synthetic" ? 3 : 2,
+          missing: 0, absent: 0, summary: null,
+          values: [{ value: "pain", count: dataset === "synthetic" ? 3 : 2, percentage: 100 }] }],
+      } } });
+    }
+    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
+      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
+      asOf: "2026-10-02T08:00:00Z", reports: [] } });
+    if (path === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
+      pageSize: 25, total: 0, asOf: "2026-10-02T08:00:00Z", items: [] } });
+    if (path === "/api/review/backlog") return route.fulfill({ json: { work: [] } });
+    return route.fulfill({ status: 404 });
+  });
+  await page.goto("/");
+  await page.getByLabel("Matching Review criterion").selectOption("criterion-one");
+  await page.getByLabel("Analysis name").fill("Case mix");
+  await page.getByRole("button", { name: "Save as new" }).click();
+  await expect(page.getByText("Saved version 1")).toBeVisible();
+  await expect(page.getByLabel("Matching Review criterion")).toHaveValue("criterion-one");
+  await expect(page.getByText("Reports: 2", { exact: false })).toBeVisible();
+  await page.getByLabel("Analysis name").fill("Case mix revised");
+  await page.getByLabel("Publish to Review users").check();
+  await page.getByRole("button", { name: "Update saved analysis" }).click();
+  await expect(page.getByText("Saved version 2")).toBeVisible();
+  expect(saved).toEqual(expect.objectContaining({ shared: true }));
+  expect(definition).toEqual(expect.objectContaining({ filters: expect.objectContaining({
+    review: expect.objectContaining({ criterionId: "criterion-one" }),
+  }) }));
+  await page.getByLabel("Dataset").selectOption("synthetic");
+  await expect(page.getByText("Reports: 3", { exact: false })).toBeVisible();
+  const beforeRefresh = opens;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => opens).toBeGreaterThan(beforeRefresh);
+  await expect(page.getByText("Reports: 3", { exact: false })).toBeVisible();
+});

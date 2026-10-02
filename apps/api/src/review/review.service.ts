@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult } from "@open-triage/contracts";
+import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -73,6 +73,16 @@ const outstandingResponse = `r.documenting_user_id=$4 and i.status='awaiting-cli
         select max(progress.item_version) from clinical.review_progress_history progress
         where progress.item_id=i.id and progress.organization_id=i.organization_id
           and progress.status='awaiting-clinician'),0))`;
+
+type SavedAnalysisRow = { id: string; owner_id: string; name: string;
+  definition: ReviewAnalysisDefinition; shared: boolean; version: string;
+  updated_at: Date | string };
+
+function savedAnalysis(row: SavedAnalysisRow, scope: ReviewScope): ReviewSavedAnalysis {
+  return { id: row.id, name: row.name, ownerId: row.owner_id, shared: row.shared,
+    version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString(),
+    editable: row.shared ? scope.administrator : row.owner_id === scope.userId };
+}
 
 @Injectable()
 export class ReviewService implements OnModuleDestroy {
@@ -353,6 +363,116 @@ export class ReviewService implements OnModuleDestroy {
     })];
   }
 
+  async savedAnalyses(token: string): Promise<ReviewSavedAnalysis[]> {
+    const scope = reviewScope(await this.sessions.get(token));
+    const rows = await this.database.query<SavedAnalysisRow[]>(`
+      select id,owner_id,name,shared,version,updated_at
+      from clinical.review_saved_analysis
+      where organization_id=$1 and (owner_id=$2 or shared)
+      order by shared desc,updated_at desc,id`, [scope.organizationId, scope.userId]);
+    return rows.map((row) => savedAnalysis(row, scope));
+  }
+
+  async openSavedAnalysis(token: string, id: string,
+    dataset: "real" | "synthetic"): Promise<ReviewSavedAnalysisOpen> {
+    if (!uuid(id) || (dataset !== "real" && dataset !== "synthetic"))
+      throw new BadRequestException("Choose a valid saved analysis and dataset");
+    const scope = reviewScope(await this.sessions.get(token));
+    const row = (await this.database.query<SavedAnalysisRow[]>(`
+      select id,owner_id,name,definition,shared,version,updated_at
+      from clinical.review_saved_analysis
+      where id=$1 and organization_id=$2 and (owner_id=$3 or shared)`,
+    [id, scope.organizationId, scope.userId]))[0];
+    if (!row) throw new NotFoundException("Saved analysis is not available in your organization");
+    // The stored definition is a template. Every open computes fresh rows with
+    // the viewer's present role, identifying access, and explicit dataset.
+    const result = await this.analysis(token, { ...row.definition,
+      filters: { ...row.definition.filters, dataset } });
+    return { saved: savedAnalysis(row, scope), result };
+  }
+
+  async saveAnalysis(token: string, id: string | undefined, command: SaveReviewAnalysisCommand,
+    csrfToken?: string): Promise<ReviewSavedAnalysis> {
+    if ((id !== undefined && !uuid(id)) || !command || !uuid(command.commandId) ||
+      typeof command.name !== "string" || !command.name.trim() || command.name.trim().length > 120 ||
+      typeof command.shared !== "boolean" || !command.definition ||
+      (id === undefined ? command.expectedVersion !== undefined :
+        !Number.isSafeInteger(command.expectedVersion) || command.expectedVersion! < 1))
+      throw new BadRequestException("Invalid saved Review analysis command");
+    const initial = reviewScope(await this.sessions.get(token));
+    await this.sessions.assertCsrf(token, csrfToken);
+    const requested = JSON.stringify(command.definition);
+    const name = command.name.trim();
+    const replay = async (manager: Pick<EntityManager, "query">, scope: ReviewScope) => {
+      const previous = (await manager.query<Array<SavedAnalysisRow & { actor_id: string;
+        action: "created" | "updated"; same_definition: boolean }>>(`
+        select h.analysis_id id,a.owner_id,h.name,h.definition,h.shared,h.version,
+          h.recorded_at updated_at,h.actor_id,h.action,
+          h.requested_definition=$3::jsonb same_definition
+        from clinical.review_saved_analysis_history h
+        join clinical.review_saved_analysis a on a.id=h.analysis_id and a.organization_id=h.organization_id
+        where h.organization_id=$1 and h.command_id=$2`,
+      [scope.organizationId, command.commandId, requested]))[0];
+      if (!previous) return null;
+      if (previous.actor_id !== scope.userId || previous.action !== (id ? "updated" : "created") ||
+        (id && previous.id !== id) || previous.name !== name ||
+        previous.shared !== command.shared || !previous.same_definition)
+        throw new ConflictException("Saved analysis command has already been used");
+      return savedAnalysis(previous, scope);
+    };
+    const prior = await replay(this.database.manager, initial);
+    if (prior) return prior;
+    if (command.shared && !initial.administrator)
+      throw new ForbiddenException("Review administration is required to publish shared analyses");
+    // Validate all supported builder choices under the writer's current scope.
+    // Only the normalized definition is stored; aggregate rows are discarded.
+    const normalized = (await this.analysis(token, command.definition)).definition;
+    return this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      if (scope.organizationId !== initial.organizationId || scope.userId !== initial.userId ||
+        scope.reports !== initial.reports || scope.identifying !== initial.identifying ||
+        scope.administrator !== initial.administrator)
+        throw new ConflictException("Review access changed; refresh before saving");
+      await manager.query(`select id from app_identity.organization where id=$1 for update`,
+        [scope.organizationId]);
+      const previous = await replay(manager, scope);
+      if (previous) return previous;
+      let row: SavedAnalysisRow;
+      if (id) {
+        const current = (await manager.query<SavedAnalysisRow[]>(`
+          select id,owner_id,name,definition,shared,version,updated_at
+          from clinical.review_saved_analysis where id=$1 and organization_id=$2 for update`,
+        [id, scope.organizationId]))[0];
+        if (!current || (!current.shared && current.owner_id !== scope.userId))
+          throw new NotFoundException("Saved analysis is not available in your organization");
+        if ((current.shared || command.shared) && !scope.administrator)
+          throw new ForbiddenException("Review administration is required to manage shared analyses");
+        if (Number(current.version) !== command.expectedVersion)
+          throw new ConflictException("Saved analysis changed; reopen it before editing");
+        row = mutationRows<SavedAnalysisRow>(await manager.query(`
+          update clinical.review_saved_analysis set name=$3,definition=$4::jsonb,
+            shared=$5,version=version+1,updated_at=now()
+          where id=$1 and organization_id=$2
+          returning id,owner_id,name,definition,shared,version,updated_at`,
+        [id,scope.organizationId,name,JSON.stringify(normalized),command.shared]))[0]!;
+      } else {
+        row = mutationRows<SavedAnalysisRow>(await manager.query(`
+          insert into clinical.review_saved_analysis (organization_id,owner_id,name,definition,shared)
+          values ($1,$2,$3,$4::jsonb,$5)
+          returning id,owner_id,name,definition,shared,version,updated_at`,
+        [scope.organizationId,scope.userId,name,JSON.stringify(normalized),command.shared]))[0]!;
+      }
+      await manager.query(`insert into clinical.review_saved_analysis_history
+        (organization_id,analysis_id,command_id,actor_id,version,action,name,definition,
+         requested_definition,shared)
+        values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10)`,
+      [scope.organizationId,row.id,command.commandId,scope.userId,row.version,
+        id ? "updated" : "created",name,JSON.stringify(normalized),requested,command.shared]);
+      return savedAnalysis(row, scope);
+    });
+  }
+
   async analysis(token: string, input: ReviewAnalysisDefinition): Promise<ReviewAnalysisResult> {
     const scope = reviewScope(await this.sessions.get(token));
     if (!input || typeof input !== "object" || !input.filters || typeof input.filters !== "object")
@@ -526,7 +646,7 @@ export class ReviewService implements OnModuleDestroy {
           coalesce(c.normalized_unit_code, c.source_unit_code) as unit_code,
           coalesce(c.absence_kind, case when c.not_value_code is not null then 'null'
             when c.pertinent_negative_code is not null then 'pertinent-negative' end) as absence_kind,
-          coalesce(c.absence_code, c.not_value_code, c.pertinent_negative_code) as absence_code,
+          coalesce(c.not_value_code, c.pertinent_negative_code) as absence_code,
           c.normalization_rule_id, c.quality_flags
         from analytics.review_custom_field_source c
         join analytics.review_volume_source report on report.report_id=c.report_id

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult,
-  ReviewAnalysisReviewFilters } from "@open-triage/contracts";
+  ReviewAnalysisReviewFilters, ReviewSavedAnalysis, ReviewSavedAnalysisOpen } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -17,9 +17,9 @@ const starters = [
   { id: "review.duration.transport", label: "review.analysisTransport" },
 ] as const;
 
-export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, csrfToken }: {
+export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, csrfToken, administrator }: {
   dataset: "real" | "synthetic"; from: string; to: string;
-  language: AgencyLanguage; refresh: number; csrfToken: string;
+  language: AgencyLanguage; refresh: number; csrfToken: string; administrator: boolean;
 }) {
   const [fields, setFields] = useState<ReviewAnalysisField[]>([]);
   const [fieldId, setFieldId] = useState("eSituation.09");
@@ -32,6 +32,17 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   const [reviewFilters, setReviewFilters] = useState<ReviewAnalysisReviewFilters>({ criteria: [], outcomes: [] });
   const [reviewCriterionId, setReviewCriterionId] = useState("");
   const [reviewOutcomeId, setReviewOutcomeId] = useState("");
+  const [analysisFrom, setAnalysisFrom] = useState(from);
+  const [analysisTo, setAnalysisTo] = useState(to);
+  const [saved, setSaved] = useState<ReviewSavedAnalysis[]>([]);
+  const [selectedSavedId, setSelectedSavedId] = useState("");
+  const [activeSavedId, setActiveSavedId] = useState("");
+  const [savedMeta, setSavedMeta] = useState<ReviewSavedAnalysis | null>(null);
+  const [savedName, setSavedName] = useState("");
+  const [shareDraft, setShareDraft] = useState(false);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [savedBusy, setSavedBusy] = useState(false);
+  const [openSequence, setOpenSequence] = useState(0);
   const [result, setResult] = useState<ReviewAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
@@ -61,28 +72,92 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     }).catch(() => { if (!controller.signal.aborted) setReviewFilters({ criteria: [], outcomes: [] }); });
     return () => controller.abort();
   }, [dataset, refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const url = apiRequestUrl("/api/review/analysis/saved");
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      if (!controller.signal.aborted) setSaved(await response.json() as ReviewSavedAnalysis[]);
+    }).catch(() => { if (!controller.signal.aborted) setSaved([]); });
+    return () => controller.abort();
+  }, [refresh, openSequence]);
+
+  useEffect(() => {
+    if (!activeSavedId) return;
+    const controller = new AbortController();
+    const url = apiRequestUrl(`/api/review/analysis/saved/${activeSavedId}?dataset=${dataset}`);
+    if (!url) return;
+    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
+      if (!response.ok) throw new Error(String(response.status));
+      const opened = await response.json() as ReviewSavedAnalysisOpen;
+      if (controller.signal.aborted) return;
+      const definition = opened.result.definition;
+      setSavedMeta(opened.saved); setSavedName(opened.saved.name); setShareDraft(opened.saved.shared);
+      setFieldId(definition.fieldId); setOperation(definition.operation);
+      setReducer(definition.reducer ?? ""); setUnit(definition.unit ?? "");
+      setGroupBy(definition.groupBy ?? ""); setFilterId(definition.filters.field?.id ?? "");
+      setFilterValue(definition.filters.field?.value ?? "");
+      setReviewCriterionId(definition.filters.review?.criterionId ?? "");
+      setReviewOutcomeId(definition.filters.review?.outcomeOptionId ?? "");
+      setAnalysisFrom(definition.filters.from); setAnalysisTo(definition.filters.to);
+      setResult(opened.result); setSavedError(null); setError(null);
+    }).catch((cause) => {
+      if (!controller.signal.aborted) { setResult(null); setSavedMeta(null);
+        setSavedError(t(cause instanceof Error && cause.message === "403" ? "review.savedAccessChanged" :
+          cause instanceof Error && cause.message === "404" ? "review.savedUnavailable" :
+            "review.savedDefinitionUnavailable")); }
+    });
+    return () => controller.abort();
+  // Saved views are deliberately re-evaluated on workspace refresh and dataset changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSavedId, dataset, refresh, openSequence]);
 
   const field = fields.find((item) => item.id === fieldId);
+  const definition = (): ReviewAnalysisDefinition => ({ fieldId, operation,
+    ...(field?.repeating && field.kind === "numeric" && reducer ? { reducer } : {}),
+    ...(fieldId === "eMedications.05" && unit ? { unit: unit.trim() } : {}),
+    ...(groupBy ? { groupBy } : {}),
+    filters: { from: analysisFrom, to: analysisTo, dataset,
+      ...(filterId && filterValue ? { field: { id: filterId, value: filterValue } } : {}),
+      ...(reviewCriterionId || reviewOutcomeId ? { review: {
+        ...(reviewCriterionId ? { criterionId: reviewCriterionId } : {}),
+        ...(reviewOutcomeId ? { outcomeOptionId: reviewOutcomeId } : {}) } } : {}) } });
   const run = async () => {
     const url = apiRequestUrl("/api/review/analysis");
     if (!url) return;
     setResult(null); setError(null); setExportNotice(null);
-    const definition: ReviewAnalysisDefinition = { fieldId, operation,
-      ...(field?.repeating && field.kind === "numeric" && reducer ? { reducer } : {}),
-      ...(fieldId === "eMedications.05" && unit ? { unit: unit.trim() } : {}),
-      ...(groupBy ? { groupBy } : {}),
-      filters: { from, to, dataset,
-        ...(filterId && filterValue ? { field: { id: filterId, value: filterValue } } : {}),
-        ...(reviewCriterionId || reviewOutcomeId ? { review: {
-          ...(reviewCriterionId ? { criterionId: reviewCriterionId } : {}),
-          ...(reviewOutcomeId ? { outcomeOptionId: reviewOutcomeId } : {}) } } : {}) } };
+    const current = definition();
     try {
       const response = await fetch(url, browserRequestInit({ method: "POST",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
-        body: JSON.stringify(definition) }));
+        body: JSON.stringify(current) }));
       if (!response.ok) throw new Error(String(response.status));
       setResult(await response.json() as ReviewAnalysisResult);
     } catch { setError(t("review.analysisUnavailable")); }
+  };
+
+  const save = async (update: boolean) => {
+    if (!savedName.trim() || savedBusy || (update && (!savedMeta || !savedMeta.editable))) return;
+    const url = apiRequestUrl(`/api/review/analysis/saved${update ? `/${savedMeta!.id}` : ""}`);
+    if (!url) return;
+    setSavedBusy(true); setSavedError(null);
+    try {
+      const response = await fetch(url, browserRequestInit({ method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
+        body: JSON.stringify({ commandId: crypto.randomUUID(),
+          ...(update ? { expectedVersion: savedMeta!.version } : {}),
+          name: savedName.trim(), shared: administrator && shareDraft,
+          definition: definition() }) }));
+      if (!response.ok) throw new Error(String(response.status));
+      const value = await response.json() as ReviewSavedAnalysis;
+      setSavedMeta(value); setSelectedSavedId(value.id); setActiveSavedId(value.id);
+      setOpenSequence((current) => current + 1);
+    } catch (cause) {
+      setSavedError(t(cause instanceof Error && cause.message === "409" ? "review.savedConflict" :
+        cause instanceof Error && cause.message === "403" ? "review.savedAccessChanged" :
+          "review.savedDefinitionUnavailable"));
+    } finally { setSavedBusy(false); }
   };
 
   const exportCsv = async (records = false) => {
@@ -100,6 +175,32 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   return <section aria-labelledby="review-analysis-heading">
     <h2 id="review-analysis-heading">{t("review.analysisHeading")}</h2>
     <p>{t("review.analysisHelp")}</p>
+    <section aria-labelledby="review-saved-heading">
+      <h3 id="review-saved-heading">{t("review.savedHeading")}</h3>
+      <div className="review-controls">
+        <label>{t("review.savedChoose")} <select value={selectedSavedId}
+          onChange={(event) => setSelectedSavedId(event.target.value)}>
+          <option value="">{t("review.savedChoosePlaceholder")}</option>
+          {saved.map((entry) => <option key={entry.id} value={entry.id}>
+            {entry.name}{entry.shared ? ` (${t("review.savedShared")})` : ""}
+          </option>)}</select></label>
+        <button type="button" disabled={!selectedSavedId || savedBusy}
+          onClick={() => { setActiveSavedId(selectedSavedId);
+            setOpenSequence((current) => current + 1); }}>{t("review.savedOpen")}</button>
+      </div>
+      <div className="review-controls">
+        <label>{t("review.savedName")} <input value={savedName} maxLength={120}
+          onChange={(event) => setSavedName(event.target.value)} /></label>
+        {administrator && <label><input type="checkbox" checked={shareDraft}
+          onChange={(event) => setShareDraft(event.target.checked)} />{t("review.savedPublish")}</label>}
+        <button type="button" disabled={!savedName.trim() || savedBusy}
+          onClick={() => void save(false)}>{t("review.savedCreate")}</button>
+        <button type="button" disabled={!savedMeta?.editable || !savedName.trim() || savedBusy}
+          onClick={() => void save(true)}>{t("review.savedUpdate")}</button>
+      </div>
+      {savedMeta && <p>{t("review.savedVersion", { version: savedMeta.version })}</p>}
+      {savedError && <p role="alert">{savedError}</p>}
+    </section>
     <div className="review-controls">{starters.map((starter) =>
       <button key={starter.id} type="button" disabled={!fields.some((item) => item.id === starter.id)}
         onClick={() => { const next = fields.find((item) => item.id === starter.id);
@@ -136,6 +237,10 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
           <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     </div>
     <div className="review-controls">
+      <label>{t("review.from")} <input type="date" value={analysisFrom}
+        onChange={(event) => { setAnalysisFrom(event.target.value); setResult(null); }} /></label>
+      <label>{t("review.to")} <input type="date" value={analysisTo}
+        onChange={(event) => { setAnalysisTo(event.target.value); setResult(null); }} /></label>
       <label>{t("review.analysisFilter")}{" "}<select value={filterId} onChange={(event) => {
         setFilterId(event.target.value); setFilterValue(""); setResult(null);
       }}><option value="">{t("review.analysisAll")}</option>
@@ -155,7 +260,7 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         <option value="">{t("review.analysisAll")}</option>
         {reviewFilters.outcomes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select></label>
-      <button type="button" disabled={!field || field.operations.length === 0 || from > to || (filterId !== "" && !filterValue) ||
+      <button type="button" disabled={!field || field.operations.length === 0 || analysisFrom > analysisTo || (filterId !== "" && !filterValue) ||
         (field.repeating && field.kind === "numeric" && !reducer) ||
         (fieldId === "eMedications.05" && !unit.trim())}
         onClick={() => void run()}>{t("review.analysisRun")}</button>
