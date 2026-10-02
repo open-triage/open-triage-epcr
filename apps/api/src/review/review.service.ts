@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -815,12 +815,12 @@ export class ReviewService implements OnModuleDestroy {
         catalog_release_id: string;
         first_matched_at: Date | string; kind: ReviewItemDetail["kind"];
         deadline_at: Date | string | null; deadline_source: ReviewItemDetail["deadlineSource"];
-        resolution_reason: string | null;
+        resolution_reason: string | null; exception_code: ReviewOverdueExceptionCode | null;
         reporting_date: string | null; signed_at: Date | string | null; findings: unknown;
         outcome_option_id: string | null; outcome_revision: number | null;
         outcome_label: string | null; outcome_meaning: string | null }>>(`
         select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
-          i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,
+          i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,i.exception_code,
           r.reporting_date,r.catalog_release_id,s.signed_at,i.outcome_option_id,i.outcome_revision,
           outcome.label as outcome_label,outcome.meaning as outcome_meaning,
           case when i.active_match then (select e.findings from clinical.review_item_evidence e
@@ -847,6 +847,7 @@ export class ReviewService implements OnModuleDestroy {
         id: row.id, reportId: row.report_id, criterionId: row.criterion_id, priority: row.priority,
         kind: row.kind, deadlineAt: row.deadline_at ? new Date(row.deadline_at).toISOString() : null,
         deadlineSource: row.deadline_source, resolutionReason: row.resolution_reason,
+        exceptionCode: row.exception_code,
         status: row.status, outcome: reviewOutcome(row), activeMatch: row.active_match,
         clearancePending: row.clearance_pending, reopened: row.reopened, closureReason: row.closure_reason, assigneeId: row.assignee_id, version: Number(row.version),
         recoveryReason: row.recovery_reason,
@@ -867,12 +868,12 @@ export class ReviewService implements OnModuleDestroy {
         catalog_release_id: string;
         first_matched_at: Date | string; kind: ReviewItemDetail["kind"];
       deadline_at: Date | string | null; deadline_source: ReviewItemDetail["deadlineSource"];
-      resolution_reason: string | null;
+      resolution_reason: string | null; exception_code: ReviewOverdueExceptionCode | null;
       reporting_date: string | null; signed_at: Date | string | null; findings: ReviewItemDetail["findings"];
       outcome_option_id: string | null; outcome_revision: number | null;
       outcome_label: string | null; outcome_meaning: string | null }>>(`
       select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
-        i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,
+        i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,i.exception_code,
         r.reporting_date,r.catalog_release_id,s.signed_at,i.outcome_option_id,i.outcome_revision,
         outcome.label as outcome_label,outcome.meaning as outcome_meaning,
         case when i.active_match then (select e.findings from clinical.review_item_evidence e
@@ -905,8 +906,10 @@ export class ReviewService implements OnModuleDestroy {
         on o.option_id=h.outcome_option_id and o.revision=h.outcome_revision
       where h.item_id=$1 and h.organization_id=$2 order by h.item_version`, [id, scope.organizationId]);
     const overdueHistory = row.kind === "overdue-unsigned" ? await this.database.query<Array<{
-      action: "detected" | "resolved-by-signing"; item_version: string;
-      recorded_at: Date | string }>>(`select action,item_version,recorded_at
+      action: "detected" | "resolved-by-signing" | "closed-exceptionally" | "signed-after-exception";
+      item_version: string;
+      actor_id: string | null; reason_code: ReviewOverdueExceptionCode | null;
+      recorded_at: Date | string }>>(`select action,item_version,recorded_at,actor_id,reason_code
       from clinical.review_overdue_history where item_id=$1 and organization_id=$2
       order by item_version`, [id, scope.organizationId]) : [];
     const decisions = await this.database.query<Array<{ evaluation_id: string;
@@ -940,6 +943,7 @@ export class ReviewService implements OnModuleDestroy {
     return { id: row.id, reportId: row.report_id, criterionId: row.criterion_id,
       kind: row.kind, deadlineAt: row.deadline_at ? new Date(row.deadline_at).toISOString() : null,
       deadlineSource: row.deadline_source, resolutionReason: row.resolution_reason,
+      exceptionCode: row.exception_code,
       priority: row.priority, status: row.status, outcome: reviewOutcome(row),
       activeMatch: row.active_match, clearancePending: row.clearance_pending,
       reopened: row.reopened, closureReason: row.closure_reason, assigneeId: row.assignee_id,
@@ -954,7 +958,8 @@ export class ReviewService implements OnModuleDestroy {
         actorId: event.actor_id, itemVersion: Number(event.item_version), status: event.status,
         outcome: reviewOutcome(event), reason: event.reason, evaluationId: event.evaluation_id, recordedAt: new Date(event.recorded_at).toISOString() })),
       overdueHistory: overdueHistory.map((event) => ({ action: event.action,
-        itemVersion: Number(event.item_version), recordedAt: new Date(event.recorded_at).toISOString() })),
+        itemVersion: Number(event.item_version), recordedAt: new Date(event.recorded_at).toISOString(),
+        actorId: event.actor_id, reasonCode: event.reason_code })),
       amendmentHistory: decisions.map((decision) => ({ evaluationId: decision.evaluation_id,
         amendmentSequence: Number(decision.amendment_sequence), matched: decision.matched,
         action: decision.action, reason: decision.reason, policy: decision.policy,
@@ -964,6 +969,59 @@ export class ReviewService implements OnModuleDestroy {
         changes: decision.changes.filter((change) => scope.identifying || !change.identifying)
           .map(({ elementId, groupInstanceId, occurrenceId, change }) =>
             ({ elementId, groupInstanceId, occurrenceId, change })) })) };
+
+  }
+
+  async closeOverdueException(token: string, id: string, command: CloseReviewOverdueCommand,
+    csrfToken?: string): Promise<ReviewItemDetail> {
+    if (!uuid(id) || !command || !uuid(command.commandId) ||
+      !Number.isSafeInteger(command.expectedVersion) || command.expectedVersion < 0 ||
+      !["duplicate-follow-up", "report-not-required", "administrative-exception"].includes(command.reasonCode))
+      throw new BadRequestException("A valid overdue exception reason is required");
+    await this.database.transaction(async (manager) => {
+      await this.sessions.assertCsrf(token, csrfToken, manager);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      if (!scope.administrator) throw new ForbiddenException("Review administration is required");
+      const dataset = this.dataset(command.dataset, scope);
+      // Match the signing path's report -> item lock order.
+      const reports = await manager.query<Array<{ status: string; kind: string }>>(`
+        select r.status,i.kind from clinical.report r
+        join clinical.review_item i on i.report_id=r.id and i.organization_id=r.organization_id
+        where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
+          and r.synthetic=$3 and ($4::boolean or r.documenting_user_id=$5)
+        for update of r`, [id, scope.organizationId, dataset === "synthetic",
+        scope.reports === "all", scope.userId]);
+      if (!reports[0]) throw new NotFoundException("Review item was not found in scope");
+      if (reports[0].kind !== "overdue-unsigned")
+        throw new ConflictException("Only overdue unsigned follow-ups can be closed exceptionally");
+      const items = await manager.query<Array<{ status: string; version: string }>>(`
+        select status,version from clinical.review_item
+        where id=$1 and organization_id=$2 for update`, [id, scope.organizationId]);
+      const previous = await manager.query<Array<{ item_id: string; actor_id: string;
+        item_version: string; reason_code: string }>>(`
+        select item_id,actor_id,item_version,reason_code from clinical.review_overdue_history
+        where organization_id=$1 and command_id=$2`, [scope.organizationId, command.commandId]);
+      if (previous[0]) {
+        if (previous[0].item_id !== id || previous[0].actor_id !== scope.userId ||
+          previous[0].reason_code !== command.reasonCode ||
+          Number(previous[0].item_version) !== command.expectedVersion + 1)
+          throw new ConflictException("Overdue exception command has already been used");
+        return;
+      }
+      if (reports[0].status !== "draft" || items[0]?.status === "completed")
+        throw new ConflictException("Overdue follow-up is already resolved");
+      if (Number(items[0]?.version) !== command.expectedVersion)
+        throw new ConflictException("Review item changed; refresh and try again");
+      await manager.query(`update clinical.review_item set status='completed',
+        resolution_reason='closed-exceptionally',exception_code=$3,version=version+1,updated_at=now()
+        where id=$1 and organization_id=$2`, [id, scope.organizationId, command.reasonCode]);
+      await manager.query(`insert into clinical.review_overdue_history
+        (organization_id,item_id,item_version,action,command_id,actor_id,reason_code)
+        values ($1,$2,$3,'closed-exceptionally',$4,$5,$6)`,
+      [scope.organizationId,id,command.expectedVersion + 1,command.commandId,scope.userId,
+        command.reasonCode]);
+    });
+    return this.item(token, id, command.dataset);
   }
 
   async claim(token: string, id: string, command: ClaimReviewItemCommand, csrfToken?: string): Promise<ReviewItemDetail> {
