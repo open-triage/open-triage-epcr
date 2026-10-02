@@ -6,7 +6,7 @@ import {
 } from "@open-triage/contracts/quality-rules";
 
 const databaseUrl = process.env.DATABASE_URL;
-const PROJECTOR_VERSION = "1.3.0";
+const PROJECTOR_VERSION = "1.3.1";
 const BATCH_SIZE = Number.parseInt(process.env.ANALYTICS_PROJECTOR_BATCH_SIZE ?? "100", 10);
 const MAX_ATTEMPTS = Number.parseInt(process.env.ANALYTICS_PROJECTOR_MAX_ATTEMPTS ?? "12", 10);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -492,15 +492,15 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       continue;
     }
 
-    if (!element.group_instance_id && !customDefinition) {
-      throw new Error(`Repeatable occurrence ${element.id} has no group instance`);
-    }
+    // Older signed records may lack group links. Preserve each occurrence and flag
+    // the missing context instead of blocking every report-volume projection.
+    const missingGroup = !element.group_instance_id && !customDefinition;
     const clinicalGroup = element.group_instance_id ? groupById.get(element.group_instance_id) : null;
     if (element.group_instance_id && !clinicalGroup) throw new Error(`Occurrence ${element.id} references missing group ${element.group_instance_id}`);
     // The clinical report root is a storage container, not an analytical recurrence.
     const reportLevel = !!customDefinition && !customDefinition.correlatesTo && !customDefinition.groupDefinitionId;
     const group = reportLevel ? null : clinicalGroup;
-    if (!group && !reportLevel) throw new Error(`Occurrence ${element.id} has no analytical group`);
+    if (!group && !reportLevel && !missingGroup) throw new Error(`Occurrence ${element.id} has no analytical group`);
     const analyticalGroupPath = mapping?.groupPath ?? (group ? [group.group_id] : []);
     const mappedGroup = [...analyticalGroupPath].reverse().find((groupId) => timeByGroup.has(groupId));
     const timeMapping = mappedGroup ? timeByGroup.get(mappedGroup) : null;
@@ -519,7 +519,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       element_identity_id: element.element_identity_id,
       element_id: element.element_id,
       element_occurrence_id: element.id,
-      group_id: group?.group_id ?? null,
+      group_id: group?.group_id ?? (missingGroup ? mapping.groupPath.at(-1) : null),
       group_instance_id: group?.id ?? null,
       parent_group_instance_id: group?.parent_group_instance_id ?? null,
       group_path: analyticalGroupPath,
@@ -570,7 +570,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       normalization_rule_id: elementDerived?.ruleId ?? null,
       normalization_rule_version: elementDerived?.ruleVersion ?? null,
       source_attributes: element.source_attributes,
-      quality_flags: elementFindings.length ? elementFindings.map((finding) => finding.code) : null,
+      quality_flags: missingGroup ? [...elementFindings.map((finding) => finding.code), "missing-group-instance"]
+        : elementFindings.length ? elementFindings.map((finding) => finding.code) : null,
       quality_rule_version: elementFindings.length ? QUALITY_RULE_VERSION : null,
       quality_findings: elementFindings.length ? JSON.stringify(elementFindings) : null,
       is_identifying: mapping?.identifying ?? element.identifying

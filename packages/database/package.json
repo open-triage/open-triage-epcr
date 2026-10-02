@@ -18,6 +18,7 @@
     "seed:install-definitions": "npm run build -w @open-triage/api && node scripts/seed-install-definitions.mjs",
     "reset:unsigned-clinical": "node scripts/reset-unsigned-clinical-work.mjs",
     "project": "node scripts/project-analytics.mjs",
+    "project:watch": "node --env-file-if-exists=../../.env.local scripts/watch-analytics.mjs",
     "rotate:patient-keys": "node scripts/rotate-patient-keys.mjs",
     "rotate:offline-recovery-keys": "node scripts/rotate-offline-recovery-keys.mjs",
     "project:health": "node scripts/projection-health.mjs",
