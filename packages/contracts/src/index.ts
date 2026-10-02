@@ -399,6 +399,59 @@ export interface ReviewAnalysisResult {
   }>;
 }
 
+export interface ReviewRetrospectiveDefinition {
+  criterionId: string;
+  validationVersionId: string;
+  from: string;
+  to: string;
+  dataset: "real" | "synthetic";
+}
+
+export interface ReviewRetrospectiveVersion {
+  criterionId: string;
+  validationVersionId: string;
+  name: string;
+  version: number;
+  catalogReleaseId: string;
+  publishedAt: string;
+}
+
+export interface ReviewRetrospectivePreview {
+  definition: ReviewRetrospectiveDefinition;
+  scope: { organizationId: string; reports: "all" };
+  revision: string;
+  sourceRevision: string;
+  total: number;
+  matches: number;
+  newItems: number;
+  existingItems: number;
+  failed: number;
+  incompatible: number;
+  reports: Array<{ reportId: string; reportingDate: string;
+    outcome: "match" | "no-match" | "failed" | "incompatible";
+    existing: boolean; findingCount: number; failureCode: string | null }>;
+}
+
+export interface ReviewRetrospectiveRun {
+  id: string;
+  definition: ReviewRetrospectiveDefinition;
+  createdAt: string;
+  total: number;
+  complete: number;
+  pending: number;
+  failed: number;
+  incompatible: number;
+  matches: number;
+  existingItems: number;
+  newItems: number;
+}
+
+export interface StartReviewRetrospectiveCommand {
+  commandId: string;
+  definition: ReviewRetrospectiveDefinition;
+  expectedRevision: string;
+}
+
 export interface ClinicianSession {
   /** Present only in the static, serverless demonstration build. */
   accessToken?: string;

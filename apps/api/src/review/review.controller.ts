@@ -1,5 +1,5 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
-import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
+import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { ReviewService } from "./review.service.js";
 import { aggregateRevision, analysisCsv, volumeCsv } from "./review-csv.js";
@@ -38,6 +38,53 @@ export class ReviewController {
     deadlineHours: number }, @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string) {
     return this.review.configureOverduePolicy(bearerToken(authorization, cookie), command, csrfToken);
+  }
+
+  @Get("retrospective/versions")
+  @Header("Cache-Control", "no-store, private")
+  retrospectiveVersions(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewRetrospectiveVersion[]> {
+    return this.review.retrospectiveVersions(bearerToken(authorization, cookie));
+  }
+
+  @Post("retrospective/preview")
+  @Header("Cache-Control", "no-store, private")
+  retrospectivePreview(@Body() definition: ReviewRetrospectiveDefinition,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewRetrospectivePreview> {
+    return this.review.retrospectivePreview(bearerToken(authorization, cookie), definition);
+  }
+
+  @Get("retrospective/runs")
+  @Header("Cache-Control", "no-store, private")
+  retrospectiveRuns(@Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewRetrospectiveRun[]> {
+    return this.review.retrospectiveRuns(bearerToken(authorization, cookie));
+  }
+
+  @Post("retrospective/runs")
+  @Header("Cache-Control", "no-store, private")
+  startRetrospective(@Body() command: StartReviewRetrospectiveCommand,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+    @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewRetrospectiveRun> {
+    return this.review.startRetrospective(bearerToken(authorization, cookie), command, csrfToken);
+  }
+
+  @Get("retrospective/runs/:id")
+  @Header("Cache-Control", "no-store, private")
+  retrospectiveRun(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string): Promise<ReviewRetrospectiveRun> {
+    return this.review.retrospectiveRun(bearerToken(authorization, cookie), id);
+  }
+
+  @Post("retrospective/runs/:id/advance")
+  @Header("Cache-Control", "no-store, private")
+  advanceRetrospective(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() body: { batchSize?: number }, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+    @Headers("x-csrf-token") csrfToken?: string): Promise<ReviewRetrospectiveRun> {
+    return this.review.advanceRetrospective(bearerToken(authorization, cookie), id, body?.batchSize ?? 25, csrfToken);
   }
 
   @Get("routes")

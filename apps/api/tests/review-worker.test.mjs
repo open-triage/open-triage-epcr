@@ -5,7 +5,7 @@ import { compiledValidationBundleSha256 } from '@open-triage/contracts';
 import { processReviewWork } from '../dist/review/review-worker.js';
 
 function fixture({ incompatible = false, route = 'unassigned', eligible = true, allAccess = true,
-  independent = false } = {}) {
+  independent = false, retrospective = false } = {}) {
   const organization = randomUUID(), report = randomUUID(), snapshot = randomUUID();
   const version = randomUUID(), catalog = randomUUID(), workId = randomUUID();
   const rules = [randomUUID(), randomUUID()].map((ruleId, index) => ({
@@ -21,7 +21,8 @@ function fixture({ incompatible = false, route = 'unassigned', eligible = true, 
   const work = { id: workId, organization_id: organization, report_id: report,
     documenting_user_id: randomUUID(),
     signed_snapshot_id: snapshot, signed_revision: 3, amendment_sequence: 0,
-    validation_version_id: version, catalog_release_id: catalog, attempts: 0 };
+    validation_version_id: version, catalog_release_id: catalog, attempts: 0,
+    selected_criterion_id: retrospective ? rules[0].ruleId : null };
   const calls = [];
   const namedReviewerId = randomUUID();
   let state = 'pending';
@@ -106,6 +107,17 @@ test('ineligible configured reviewer leaves new work unassigned with an administ
   await processReviewWork(value.database, 1);
   const writes = value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql));
   assert.ok(writes.every(({ params }) => params[5] === null && params[6] === 'configured-assignee-ineligible'));
+});
+
+test('retrospective worker evaluates only its selected criterion and skips prospective discovery', async () => {
+  const value = fixture({ retrospective: true });
+  const runId = randomUUID();
+  assert.deepEqual(await processReviewWork(value.database, 1, runId), { processed: 1, failed: 0 });
+  const writes = value.calls.filter(({ sql }) => /insert into clinical\.review_item\s*\(/.test(sql));
+  assert.deepEqual(writes.map(({ params }) => params[2]), [value.rules[0].ruleId]);
+  assert.equal(value.calls.filter(({ sql }) => sql.includes('insert into clinical.review_work')).length, 0);
+  const selection = value.calls.find(({ sql }) => sql.includes('from clinical.review_work w join'));
+  assert.deepEqual(selection.params, [runId]);
 });
 
 test('author routing accepts review-self while named routing requires organization-wide access', async () => {
