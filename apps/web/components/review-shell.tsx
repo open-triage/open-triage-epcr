@@ -41,7 +41,8 @@ export function ReviewShell({ session, language, online }: {
   const [routes, setRoutes] = useState<ReviewCriterionRoute[] | null>(null);
   const [reviewers, setReviewers] = useState<ReviewEligibleReviewer[]>([]);
   const [itemReviewers, setItemReviewers] = useState<ReviewEligibleReviewer[]>([]);
-  const [routeDrafts, setRouteDrafts] = useState<Record<string, { route: ReviewCriterionRoute["route"]; namedUserId: string | null }>>({});
+  const [routeDrafts, setRouteDrafts] = useState<Record<string, { route: ReviewCriterionRoute["route"];
+    namedUserId: string | null; independentReview: boolean }>>({});
   const [assignmentTarget, setAssignmentTarget] = useState("");
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<ReviewOutcomeOption[]>([]);
@@ -164,7 +165,8 @@ export function ReviewShell({ session, language, online }: {
   }, [online, selectedItemId, dataset, refresh, session.capabilities]);
 
   async function saveRoute(route: ReviewCriterionRoute) {
-    const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId };
+    const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId,
+      independentReview: route.independentReview };
     const url = apiRequestUrl(`/api/review/routes/${route.criterionId}`);
     if (!url) return;
     setAssignmentMessage(null);
@@ -172,7 +174,8 @@ export function ReviewShell({ session, language, online }: {
       const response = await fetch(url, browserRequestInit({ method: "POST",
         headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
         body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: route.version,
-          route: draft.route, namedUserId: draft.route === "named" ? draft.namedUserId : null }) }));
+          route: draft.route, namedUserId: draft.route === "named" ? draft.namedUserId : null,
+          independentReview: draft.independentReview }) }));
       if (!response.ok) throw new Error(String(response.status));
       const next = await response.json() as ReviewCriterionRoute;
       setRoutes((previous) => previous?.map((entry) => entry.criterionId === next.criterionId ? next : entry) ?? null);
@@ -387,24 +390,36 @@ export function ReviewShell({ session, language, online }: {
         {assignmentMessage && <p role="status">{assignmentMessage}</p>}
         {routes === null ? <p role="status">{t("review.routingUnavailable")}</p> :
           routes.length === 0 ? <p>{t("review.noRoutes")}</p> : <ul>{routes.map((route) => {
-            const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId };
+            const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId,
+              independentReview: route.independentReview };
             return <li key={route.criterionId}>
               <strong>{route.name}</strong> <code>{route.criterionId}</code>
               {route.recoveryReason && <p role="alert">{t("review.routeRecovered")}</p>}
               <label>{t("review.routeMode")}{" "}<select value={draft.route} onChange={(event) =>
                 setRouteDrafts((previous) => ({ ...previous, [route.criterionId]: {
-                  route: event.target.value as ReviewCriterionRoute["route"], namedUserId: null } }))}>
+                  route: event.target.value as ReviewCriterionRoute["route"], namedUserId: null,
+                  independentReview: draft.independentReview } }))}>
                 <option value="unassigned">{t("review.routeUnassigned")}</option>
                 <option value="author">{t("review.routeAuthor")}</option>
                 <option value="named">{t("review.routeNamed")}</option>
               </select></label>
               {draft.route === "named" && <label>{t("review.namedReviewer")}{" "}<select value={draft.namedUserId ?? ""}
                 onChange={(event) => setRouteDrafts((previous) => ({ ...previous,
-                  [route.criterionId]: { route: "named", namedUserId: event.target.value || null } }))}>
+                  [route.criterionId]: { route: "named", namedUserId: event.target.value || null,
+                    independentReview: draft.independentReview } }))}>
                 <option value="">{t("review.chooseReviewer")}</option>
                 {reviewers.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}
               </select></label>}
-              <button type="button" disabled={draft.route === "named" && !draft.namedUserId}
+              <label><input type="checkbox" checked={draft.independentReview}
+                onChange={(event) => setRouteDrafts((previous) => ({ ...previous,
+                  [route.criterionId]: { ...draft, independentReview: event.target.checked } }))} />
+                {t("review.independentReview")}</label>
+              {draft.independentReview && draft.route === "author" &&
+                <p role="alert">{t("review.independentAuthorRoute")}</p>}
+              {draft.independentReview && draft.route === "named" &&
+                <p>{t("review.independentNamedRoute")}</p>}
+              <button type="button" disabled={(draft.route === "named" && !draft.namedUserId) ||
+                (draft.independentReview && draft.route === "author")}
                 onClick={() => void saveRoute(route)}>{t("review.saveRoute")}</button>
             </li>;
           })}</ul>}

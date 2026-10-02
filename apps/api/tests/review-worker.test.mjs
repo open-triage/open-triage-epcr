@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { compiledValidationBundleSha256 } from '@open-triage/contracts';
 import { processReviewWork } from '../dist/review/review-worker.js';
 
-function fixture({ incompatible = false, route = 'unassigned', eligible = true, allAccess = true } = {}) {
+function fixture({ incompatible = false, route = 'unassigned', eligible = true, allAccess = true,
+  independent = false } = {}) {
   const organization = randomUUID(), report = randomUUID(), snapshot = randomUUID();
   const version = randomUUID(), catalog = randomUUID(), workId = randomUUID();
   const rules = [randomUUID(), randomUUID()].map((ruleId, index) => ({
@@ -26,10 +27,12 @@ function fixture({ incompatible = false, route = 'unassigned', eligible = true, 
   let state = 'pending';
   const manager = { async query(sql, params = []) {
     calls.push({ sql, params });
+    if (sql.includes('from app_identity.organization')) return [{ id: params[0] }];
     if (sql.includes('from clinical.review_criterion_route where route=')) return [];
     if (sql.includes('from clinical.review_item i join clinical.report r') && sql.includes('eligibility_checked_at')) return [];
     if (sql.includes('from clinical.review_criterion_route where organization_id=')) return route === 'unassigned'
-      ? [] : [{ route, named_user_id: route === 'named' ? namedReviewerId : null, independent_review: false }];
+      ? [] : [{ route, named_user_id: route === 'named' ? namedReviewerId : null,
+        independent_review: independent }];
     if (sql.includes('from app_identity.app_user u')) return eligible
       ? [{ id: params[1], display_name: 'Reviewer', all_access: allAccess, self_access: true }] : [];
     if (sql.includes('insert into clinical.review_work')) return [{ id: workId }];

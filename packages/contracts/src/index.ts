@@ -172,6 +172,7 @@ export interface ReviewCriterionRoute {
   name: string;
   route: "unassigned" | "author" | "named";
   namedUserId: string | null;
+  independentReview: boolean;
   version: number;
   recoveryReason: string | null;
 }
@@ -186,6 +187,7 @@ export interface ConfigureReviewRouteCommand {
   expectedVersion: number;
   route: "unassigned" | "author" | "named";
   namedUserId: string | null;
+  independentReview: boolean;
 }
 
 export interface AssignReviewItemCommand {

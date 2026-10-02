@@ -179,6 +179,7 @@ test("claim requires review-all, CSRF, current unassigned version, and replays o
   const item = { version: 0, status: "new", assignee_id: null };
   const history = [];
   const manager = { async query(sql, params) {
+    if (sql.includes("from app_identity.organization")) return [{ id: params[0] }];
     if (sql.includes("from clinical.review_item i") && sql.includes("for update")) return [{ ...item }];
     if (sql.includes("from clinical.review_assignment_history where item_id"))
       return history.filter((event) => event.command_id === params[1]);
@@ -248,9 +249,10 @@ test("Review routing is admin-only, versioned, replay-safe, and validates named 
   const namedId = "123e4567-e89b-42d3-a456-426614174022";
   let current = session(["review:all"]);
   let eligible = true;
-  const state = { route: "unassigned", named_user_id: null, version: 0 };
+  const state = { route: "unassigned", named_user_id: null, independent_review: false, version: 0 };
   const history = [];
   const manager = { async query(sql, params) {
+    if (sql.includes("from app_identity.organization")) return [{ id: params[0] }];
     if (sql.includes("from validation.version v")) return [{ id: "published" }];
     if (sql.includes("insert into clinical.review_criterion_route (")) return [];
     if (sql.includes("select version from clinical.review_criterion_route")) return [{ version: String(state.version) }];
@@ -259,21 +261,23 @@ test("Review routing is admin-only, versioned, replay-safe, and validates named 
     if (sql.includes("from app_identity.app_user u")) return eligible ? [{ id: namedId,
       display_name: "Reviewer", all_access: true, self_access: false }] : [];
     if (sql.includes("update clinical.review_criterion_route set")) {
-      state.route = params[2]; state.named_user_id = params[3]; state.version++; return [];
+      state.route = params[2]; state.named_user_id = params[3];
+      state.independent_review = params[4]; state.version++; return [];
     }
     if (sql.includes("insert into clinical.review_criterion_route_history")) {
       history.push({ command_id: params[2], actor_id: params[3], route: params[4],
-        named_user_id: params[5], route_version: params[6] }); return [];
+        named_user_id: params[5], independent_review: params[6], route_version: params[7] }); return [];
     }
     throw new Error(`Unexpected query ${sql}`);
   } };
   const database = { transaction: async (work) => work(manager), query: async () => [{
     criterion_id: criterionId, name: "Criterion", route: state.route,
-    named_user_id: state.named_user_id, version: String(state.version), recovery_reason: null,
+    named_user_id: state.named_user_id, independent_review: state.independent_review,
+    version: String(state.version), recovery_reason: null,
   }] };
   const service = new ReviewService(database, { get: async () => current, assertCsrf: async () => {} });
   const command = { commandId: "123e4567-e89b-42d3-a456-426614174023",
-    expectedVersion: 0, route: "named", namedUserId: namedId };
+    expectedVersion: 0, route: "named", namedUserId: namedId, independentReview: false };
   await assert.rejects(service.configureRoute("token", criterionId, command, "valid"), { status: 403 });
   await assert.rejects(service.routes("token"), { status: 403 });
   current = session(["review:all", "review:admin"]);
@@ -282,11 +286,20 @@ test("Review routing is admin-only, versioned, replay-safe, and validates named 
   assert.equal(history.length, 1);
   assert.equal((await service.configureRoute("token", criterionId, command, "valid")).version, 1);
   assert.equal(history.length, 1);
+  await assert.rejects(service.configureRoute("token", criterionId, { ...command,
+    commandId: "123e4567-e89b-42d3-a456-426614174030", expectedVersion: 1,
+    route: "author", namedUserId: null, independentReview: true }, "valid"),
+  { status: 400, message: /documenting clinician/ });
+  const independent = await service.configureRoute("token", criterionId, { ...command,
+    commandId: "123e4567-e89b-42d3-a456-426614174031", expectedVersion: 1,
+    independentReview: true }, "valid");
+  assert.equal(independent.independentReview, true);
+  assert.equal(history.at(-1).independent_review, true);
   await assert.rejects(service.configureRoute("token", criterionId,
     { ...command, commandId: "123e4567-e89b-42d3-a456-426614174024" }, "valid"), { status: 409 });
   eligible = false;
   await assert.rejects(service.configureRoute("token", criterionId,
-    { ...command, expectedVersion: 1, commandId: "123e4567-e89b-42d3-a456-426614174025" }, "valid"),
+    { ...command, expectedVersion: 2, commandId: "123e4567-e89b-42d3-a456-426614174025" }, "valid"),
   { status: 400 });
-  assert.equal(history.length, 1);
+  assert.equal(history.length, 2);
 });

@@ -78,3 +78,74 @@ integrationTest("assigned reviewer completes one item with pinned outcome and re
   assert.equal((await client.query(`select count(*)::integer n from clinical.review_progress_history
     where item_id=$1`, [itemId])).rows[0].n, 5);
 });
+
+integrationTest("independent review rejects the author after configuration changes and permits another reviewer", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  if (!(await client.query("select to_regclass('clinical.review_item') relation")).rows[0].relation)
+    await client.query(migration("20261002160000_review_sign_to_queue"));
+  if (!(await client.query("select to_regclass('clinical.review_assignment_history') relation")).rows[0].relation)
+    await client.query(migration("20261002170000_review_claim_item"));
+  if (!(await client.query("select to_regclass('clinical.review_criterion_route') relation")).rows[0].relation)
+    await client.query(migration("20261002200000_review_assignment_routing"));
+  if (!(await client.query("select to_regclass('clinical.review_outcome_option') relation")).rows[0].relation)
+    await client.query(migration("20261002210000_review_completion"));
+  const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic,
+    owner.user_id reviewer_id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
+    join app_identity.installation_owner owner on owner.organization_id=r.organization_id
+      and owner.user_id<>r.documenting_user_id
+    where r.status='signed' limit 1`)).rows[0];
+  if (!candidate) return t.skip("No signed report with a different installation owner is available");
+  const criterionId = randomUUID();
+  const secondCriterionId = randomUUID();
+  const itemId = randomUUID();
+  const secondItemId = randomUUID();
+  for (const id of [criterionId, secondCriterionId])
+    await client.query(`insert into validation.rule_identity (id,organization_id,created_by)
+      values ($1,$2,$3)`, [id, candidate.organization_id, candidate.documenting_user_id]);
+  await client.query(`insert into clinical.review_criterion_route
+    (organization_id,criterion_id,route,independent_review) values ($1,$2,'unassigned',false),
+    ($1,$3,'unassigned',true)`, [candidate.organization_id, criterionId, secondCriterionId]);
+  await client.query(`insert into clinical.review_item
+    (id,organization_id,report_id,criterion_id,priority,first_matched_at,assignee_id,version)
+    values ($1,$3,$4,$5,'low',now(),$6,1),($2,$3,$4,$7,'high',now(),null,0)`,
+  [itemId, secondItemId, candidate.organization_id, candidate.id, criterionId,
+    candidate.documenting_user_id, secondCriterionId]);
+  await client.query("set local role open_triage_api_runtime");
+  let session = { user: { id: candidate.documenting_user_id },
+    organization: { id: candidate.organization_id }, capabilities: ["review:all", "review:admin"] };
+  const query = async (sql, params) => (await client.query(sql, params)).rows;
+  const service = new ReviewService({ manager: { query }, query,
+    transaction: async (level, work) => (typeof level === "function" ? level : work)({ query }) },
+  { get: async () => session, assertCsrf: async () => {} });
+  const dataset = candidate.synthetic ? "synthetic" : "real";
+  const outcome = await service.configureOutcome("unused", { commandId: randomUUID(),
+    label: "Reviewed", meaning: "Independent review complete", active: true }, "valid");
+  assert.equal((await service.progress("unused", itemId, { commandId: randomUUID(),
+    expectedVersion: 1, dataset, status: "in-review" }, "valid")).priority, "low");
+  await client.query(`update clinical.review_criterion_route set independent_review=true,version=version+1
+    where organization_id=$1 and criterion_id=$2`, [candidate.organization_id, criterionId]);
+  await assert.rejects(service.claim("unused", secondItemId, { commandId: randomUUID(),
+    expectedVersion: 0, dataset }, "valid"), { status: 403 });
+  await assert.rejects(service.progress("unused", itemId, { commandId: randomUUID(),
+    expectedVersion: 2, dataset, status: "completed", outcomeOptionId: outcome.id }, "valid"),
+  { status: 403 });
+  await assert.rejects(service.assign("unused", secondItemId, { commandId: randomUUID(),
+    expectedVersion: 0, dataset, assigneeId: candidate.documenting_user_id }, "valid"),
+  { status: 400 });
+  const reassigned = await service.assign("unused", itemId, { commandId: randomUUID(),
+    expectedVersion: 2, dataset, assigneeId: candidate.reviewer_id }, "valid");
+  assert.equal(reassigned.assigneeId, candidate.reviewer_id);
+  session = { ...session, user: { id: candidate.reviewer_id }, capabilities: ["review:all"] };
+  const completed = await service.progress("unused", itemId, { commandId: randomUUID(),
+    expectedVersion: 3, dataset, status: "completed", outcomeOptionId: outcome.id }, "valid");
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.priority, "low");
+  assert.equal((await service.claim("unused", secondItemId, { commandId: randomUUID(),
+    expectedVersion: 0, dataset }, "valid")).assigneeId, candidate.reviewer_id);
+  session = { ...session, user: { id: candidate.documenting_user_id }, capabilities: ["review:self"] };
+  assert.equal((await service.report("unused", candidate.id, dataset)).reviewItems
+    .find((item) => item.id === itemId)?.status, "completed");
+});
