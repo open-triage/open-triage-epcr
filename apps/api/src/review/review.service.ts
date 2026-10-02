@@ -3,6 +3,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { AssignReviewItemCommand, ClaimReviewItemCommand, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { mutationRows } from "../database/mutation-result.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { recordMediaAccess } from "../reports/report-note-collaboration.js";
 import { reviewScope } from "./review-scope.js";
@@ -903,9 +904,9 @@ export class ReviewService implements OnModuleDestroy {
         await manager.query(`update clinical.review_outcome_option set current_revision=$3
           where id=$1 and organization_id=$2`, [id, scope.organizationId, revision]);
       } else {
-        const created = await manager.query<Array<{ id: string }>>(`
+        const created = mutationRows<{ id: string }>(await manager.query(`
           insert into clinical.review_outcome_option (organization_id)
-          values ($1) returning id`, [scope.organizationId]);
+          values ($1) returning id`, [scope.organizationId]));
         id = created[0]!.id;
       }
       await manager.query(`insert into clinical.review_outcome_revision

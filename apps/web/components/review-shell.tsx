@@ -8,6 +8,7 @@ import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { ReviewVolumeChart } from "./review-volume-chart";
 import { ReviewAnalysisBuilder } from "./review-analysis-builder";
+import { downloadReviewCsv } from "./review-csv-download";
 
 function dateString(date: Date): string { return date.toISOString().slice(0, 10); }
 
@@ -57,6 +58,8 @@ export function ReviewShell({ session, language, online }: {
   const [to, setTo] = useState(() => dateString(new Date()));
   const [volume, setVolume] = useState<ReviewVolumeResult | null>(null);
   const [volumeError, setVolumeError] = useState(false);
+  const [volumeExportBusy, setVolumeExportBusy] = useState(false);
+  const [volumeExportNotice, setVolumeExportNotice] = useState<string | null>(null);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
 
   useEffect(() => {
@@ -277,6 +280,18 @@ export function ReviewShell({ session, language, online }: {
     return () => controller.abort();
   }, [dataset, from, to, online, refresh]);
 
+  const exportVolumeCsv = async () => {
+    if (!volume) return;
+    setVolumeExportBusy(true); setVolumeExportNotice(null);
+    const outcome = await downloadReviewCsv("volume", volume, session.csrfToken ?? session.accessToken ?? "");
+    if (outcome.status === "refreshed") {
+      setVolume(outcome.result); setVolumeExportNotice(t("review.csvRefreshed"));
+    } else if (outcome.status === "denied") {
+      setVolume(null); setVolumeExportNotice(t("review.csvDenied"));
+    } else if (outcome.status === "error") setVolumeExportNotice(t("review.csvUnavailable"));
+    setVolumeExportBusy(false);
+  };
+
   return <main className="review-shell" aria-labelledby="review-heading">
     <header className="review-heading">
       <div><p className="eyebrow">{t("review.online")}</p><h1 id="review-heading">{t("review.heading")}</h1></div>
@@ -307,9 +322,12 @@ export function ReviewShell({ session, language, online }: {
         </div>
         <p>{t("review.volumeUnit")}</p>
         {volumeError && <p role="alert">{t("review.volumeUnavailable")}</p>}
+        {volumeExportNotice && <p role="alert">{volumeExportNotice}</p>}
         {!volume && !volumeError && <p role="status">{t("review.volumeLoading")}</p>}
         {volume?.freshness.status === "stale" && <p role="alert">{t("review.volumeStale")}</p>}
         {volume?.freshness.status === "current" && <>
+          {volume.exportRevision && <button type="button" disabled={volumeExportBusy}
+            onClick={() => void exportVolumeCsv()}>{t("review.csvDownload")}</button>}
           <p>{t("review.volumeTotal", { count: volume.total ?? 0 })}{" · "}
             {t("review.volumeScope", { scope: t(`review.scope.${volume.population.scope}`) })}{" · "}
             {t("review.volumeFresh", { time: new Intl.DateTimeFormat(language, {
