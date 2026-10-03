@@ -91,3 +91,15 @@ test("Validation navigation requires dedicated read authority", async () => {
   assert.deepEqual(contexts[0].panels, ["catalog"]);
   assert.deepEqual(contexts[1].panels, ["validation"]);
 });
+
+ test("Review administrators receive their settings panel without dashboard or configuration access", async () => {
+  const service = new AdminService({ query: async () => assert.fail("Review settings must not read dashboard data") }, {
+    get: async () => ({ ...session, capabilities: ["review:all", "review:admin"] })
+  });
+  const context = await service.context("opaque-session");
+  assert.deepEqual(context.panels, ["review-settings"]);
+  assert.equal(context.dashboard, null);
+  assert.equal(context.activeConfiguration, null);
+  const reviewer = new AdminService({}, { get: async () => ({ ...session, capabilities: ["review:all"] }) });
+  await assert.rejects(reviewer.context("opaque-session"), UnauthorizedException);
+});

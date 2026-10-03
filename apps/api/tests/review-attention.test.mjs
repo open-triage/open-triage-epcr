@@ -11,7 +11,7 @@ test('attention counts are request-time scoped, dataset separated, and administr
   let current = session(['review:self', 'review:identifying']);
   const database = { async query(sql, params) {
     calls.push({ sql, params });
-    if (sql.includes('unavailable_assignees')) return [{ assignments: '1', responses: '2',
+    if (sql.includes('unavailable_assignees')) return [{ total: '4', assignments: '1', responses: '2',
       reopened: '3', unavailable_assignees: '4' }];
     if (sql.includes('from clinical.review_criterion_route where')) return [{ total: '5' }];
     if (sql.includes('count(distinct failures.report_id)')) return [{ total: '6' }];
@@ -19,6 +19,7 @@ test('attention counts are request-time scoped, dataset separated, and administr
   } };
   const service = new ReviewService(database, { get: async () => current });
   const own = await service.attention('token', 'real');
+  assert.equal(own.total, 4);
   assert.equal(own.assignments, 1);
   assert.equal(own.responses, 2);
   assert.equal(own.reopened, 3);

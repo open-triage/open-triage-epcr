@@ -10,7 +10,7 @@ const signedAt = '2026-10-02T08:00:00Z';
 function fixture() {
   const item = { version: 2, status: 'awaiting-clinician', assignee_id: reviewer,
     documenting_user_id: clinician, independent_review: true };
-  const comments = [];
+  const comments = [], progress = [];
   const queries = [];
   let session = { user: { id: reviewer }, organization: { id: organization },
     capabilities: ['review:all', 'review:identifying'] };
@@ -26,8 +26,11 @@ function fixture() {
     if (sql.includes('from clinical.review_comment') && sql.includes('command_id=$2'))
       return comments.filter((entry) => entry.command_id === params[1]);
     if (sql.includes('update clinical.review_item set version=version+1')) {
-      item.version++; return [];
+      item.version++;
+      if (sql.includes("status='in-review'")) item.status = 'in-review';
+      return [];
     }
+    if (sql.includes('insert into clinical.review_progress_history')) { progress.push(params); return []; }
     if (sql.includes('insert into clinical.review_comment')) {
       comments.push({ id: randomUUID(), item_id: params[1], command_id: params[2],
         actor_id: params[3], item_version: params[4], body: params[5], kind: params[6] }); return [];
@@ -46,7 +49,7 @@ function fixture() {
     assertCsrf: async (_token, csrf) => { if (csrf !== 'csrf') throw Error('CSRF'); } });
   service.item = async () => ({ version: item.version, status: item.status, assigneeId: item.assignee_id,
     comments: comments.map((entry) => ({ body: entry.body, actorId: entry.actor_id })) });
-  return { service, item, comments, queries,
+  return { service, item, comments, progress, queries,
     session(value) { session = value; }, eligible(value) { eligible = value; } };
 }
 
@@ -55,7 +58,7 @@ test('assigned reviewer and clinician exchange attributable comments without wor
   const reviewerCommand = { commandId: randomUUID(), expectedVersion: 2, dataset: 'real',
     body: 'Please clarify the timeline.' };
   const requested = await value.service.addComment('token', itemId, reviewerCommand, 'csrf');
-  assert.equal(requested.status, 'awaiting-clinician');
+  assert.equal(requested.status, 'in-review');
   assert.equal(requested.version, 3);
   assert.equal(requested.assigneeId, reviewer);
   assert.deepEqual(requested.comments, [{ body: reviewerCommand.body, actorId: reviewer }]);
@@ -64,7 +67,7 @@ test('assigned reviewer and clinician exchange attributable comments without wor
   const response = await value.service.addComment('token', itemId, { commandId: randomUUID(),
     expectedVersion: 3, dataset: 'real', body: 'The event occurred after arrival.' }, 'csrf');
   assert.deepEqual(response.comments.map((entry) => entry.actorId), [reviewer, clinician]);
-  assert.equal(response.status, 'awaiting-clinician');
+  assert.equal(response.status, 'in-review');
   assert.equal(value.comments.length, 2);
   assert.equal(value.queries.filter(({ sql }) => sql.includes('insert into clinical.review_comment')).length, 2);
 });
@@ -152,3 +155,17 @@ test('findings remain distinct from comments and command replay includes the ent
   await assert.rejects(value.service.addComment('token', itemId, { ...command, kind: 'comment' }, 'csrf'), { status: 409 });
   await assert.rejects(value.service.addComment('token', itemId, { ...command, kind: 'unknown' }, 'csrf'), { status: 400 });
 });
+
+for (const kind of ['comment', 'finding']) for (const status of ['new', 'awaiting-clinician', 'in-review', 'completed']) {
+  test(`${kind} starts active ${status} work while preserving completed outcomes`, async () => {
+    const value = fixture(); value.item.status = status;
+    const command = { commandId: randomUUID(), expectedVersion: 2, dataset: 'real', kind, body: 'Timeline checked.' };
+    const result = await value.service.addComment('token', itemId, command, 'csrf');
+    assert.equal(result.status, status === 'completed' ? 'completed' : 'in-review');
+    assert.equal(result.version, 3);
+    assert.equal(value.progress.length, ['new', 'awaiting-clinician'].includes(status) ? 1 : 0);
+    await value.service.addComment('token', itemId, command, 'csrf');
+    assert.equal(value.item.version, 3); assert.equal(value.comments.length, 1);
+    assert.equal(value.progress.length, ['new', 'awaiting-clinician'].includes(status) ? 1 : 0);
+  });
+}

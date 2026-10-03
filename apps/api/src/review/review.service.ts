@@ -76,6 +76,11 @@ const outstandingResponse = `r.documenting_user_id=$4 and i.status='awaiting-cli
         where progress.item_id=i.id and progress.organization_id=i.organization_id
           and progress.status='awaiting-clinician'),0))`;
 
+const reopenedAssignment = `i.assignee_id=$4 and i.reopened and i.status<>'completed'
+  and not exists (select 1 from clinical.review_criterion_route route
+    where route.organization_id=i.organization_id and route.criterion_id=i.criterion_id
+      and route.independent_review and r.documenting_user_id=$4)`;
+
 type SavedAnalysisRow = { id: string; owner_id: string; name: string;
   definition: ReviewAnalysisDefinition; shared: boolean; version: string;
   updated_at: Date | string };
@@ -307,7 +312,7 @@ export class ReviewService implements OnModuleDestroy {
       left join lateral (
         select max(h.recorded_at) recorded_at from clinical.review_progress_history h
         where h.organization_id=i.organization_id and h.item_id=i.id
-          and h.reason='relevant-amendment'
+          and h.reason in ('relevant-amendment','reopened-by-assignment')
           and h.item_version < completion.item_version
       ) reopening on true
       where i.organization_id=$1 and r.synthetic=$2
@@ -1125,14 +1130,14 @@ export class ReviewService implements OnModuleDestroy {
     const scope = reviewScope(await this.sessions.get(token));
     const dataset = this.dataset(requestedDataset, scope);
     const parameters = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId];
-    const [counts] = await this.database.query<Array<{ assignments: string; responses: string;
+    const responseWhere = scope.identifying ? outstandingResponse : "false";
+    const [counts] = await this.database.query<Array<{ total: string; assignments: string; responses: string;
       reopened: string; unavailable_assignees: string }>>(`
-      select count(*) filter (where ${newAssignment})::text assignments,
-        count(*) filter (where ${scope.identifying ? outstandingResponse : "false"})::text responses,
-        count(*) filter (where i.assignee_id=$4 and i.reopened and i.status<>'completed'
-          and not exists (select 1 from clinical.review_criterion_route route
-            where route.organization_id=i.organization_id and route.criterion_id=i.criterion_id
-              and route.independent_review and r.documenting_user_id=$4))::text reopened,
+      select count(*) filter (where (${newAssignment}) or (${responseWhere})
+          or (${reopenedAssignment}))::text total,
+        count(*) filter (where ${newAssignment})::text assignments,
+        count(*) filter (where ${responseWhere})::text responses,
+        count(*) filter (where ${reopenedAssignment})::text reopened,
         count(*) filter (where i.assignee_id is null and i.recovery_reason is not null
           and i.status<>'completed')::text unavailable_assignees
       from clinical.review_item i join clinical.report r on r.id=i.report_id
@@ -1140,6 +1145,7 @@ export class ReviewService implements OnModuleDestroy {
         and ((i.kind='criterion' and r.status='signed') or i.kind='overdue-unsigned')
         and ($3::boolean or r.documenting_user_id=$4)`, parameters);
     const summary: ReviewAttentionResponse = { dataset, asOf: new Date().toISOString(),
+      total: Number(counts?.total ?? 0),
       assignments: Number(counts?.assignments ?? 0), responses: Number(counts?.responses ?? 0),
       reopened: Number(counts?.reopened ?? 0) };
     if (!scope.administrator) return summary;
@@ -1174,7 +1180,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review criterion");
     if (filters.priority && !["high", "medium", "low"].includes(filters.priority))
       throw new BadRequestException("Invalid Review priority");
-    if (filters.status && !["new", "in-review", "awaiting-clinician", "completed"].includes(filters.status))
+    if (filters.status && !["incomplete", "new", "in-review", "awaiting-clinician", "completed"].includes(filters.status))
       throw new BadRequestException("Invalid Review status");
     if (filters.assignment && !["all", "mine", "unassigned"].includes(filters.assignment))
       throw new BadRequestException("Invalid Review assignment filter");
@@ -1183,7 +1189,7 @@ export class ReviewService implements OnModuleDestroy {
     const attentionWhere: Record<ReviewAttentionKind, string> = {
       assignments: newAssignment,
       responses: scope.identifying ? outstandingResponse : "false",
-      reopened: "i.assignee_id=$4 and i.reopened and i.status<>'completed' and not exists (select 1 from clinical.review_criterion_route route where route.organization_id=i.organization_id and route.criterion_id=i.criterion_id and route.independent_review and r.documenting_user_id=$4)",
+      reopened: reopenedAssignment,
       "unavailable-assignees": "i.assignee_id is null and i.recovery_reason is not null and i.status<>'completed'",
     };
     if (filters.attention && !Object.hasOwn(attentionWhere, filters.attention))
@@ -1200,7 +1206,7 @@ export class ReviewService implements OnModuleDestroy {
       and ((i.kind='criterion' and r.status='signed') or i.kind='overdue-unsigned')
       and ($3::boolean or r.documenting_user_id=$4)
       and ($5::uuid is null or i.criterion_id=$5) and ($6::text is null or i.priority=$6)
-      and ($7::text is null or i.status=$7)
+      and ($7::text is null or ($7='incomplete' and i.status<>'completed') or i.status=$7)
       and ($8::date is null or coalesce(r.reporting_date,i.deadline_basis_at::date) >= $8)
       and ($9::date is null or coalesce(r.reporting_date,i.deadline_basis_at::date) <= $9)
       ${filters.attention ? `and (${attentionWhere[filters.attention]})` : ""}
@@ -1493,7 +1499,7 @@ export class ReviewService implements OnModuleDestroy {
             Number(previous[0].item_version) !== command.expectedVersion + 1)
           throw new ConflictException("Review claim command has already been used");
       } else {
-        if (Number(item.version) !== command.expectedVersion || item.status !== "new" || item.assignee_id !== null)
+        if (Number(item.version) !== command.expectedVersion || !["new", "in-review"].includes(item.status) || item.assignee_id !== null)
           throw new ConflictException("Review item changed; refresh and try again");
         if (item.independent_review && item.documenting_user_id === scope.userId)
           throw new ForbiddenException("Reviewer is not eligible for this item");
@@ -1664,7 +1670,8 @@ export class ReviewService implements OnModuleDestroy {
     }
     const rows = await eligibleReviewers(this.database.manager, scope.organizationId, authorId, independent);
     return rows.filter((row) => itemId || row.all_access).map((row) =>
-      ({ id: row.id, displayName: row.display_name }));
+      ({ id: row.id, displayName: row.display_name,
+        ...(row.id === authorId ? { documentingClinician: true } : {}) }));
   }
 
   async configureRoute(token: string, criterionId: string, command: ConfigureReviewRouteCommand,
@@ -1781,24 +1788,27 @@ export class ReviewService implements OnModuleDestroy {
         throw new ForbiddenException("Current Review eligibility is required to forward a review");
       if (forwarding && (!command.assigneeId || command.assigneeId === scope.userId))
         throw new BadRequestException("Choose another eligible reviewer");
-      if (Number(item.version) !== command.expectedVersion || item.assignee_id === command.assigneeId)
+      const reopening = !forwarding && item.status === "completed" && command.assigneeId !== null;
+      if (Number(item.version) !== command.expectedVersion || (!reopening && item.assignee_id === command.assigneeId))
         throw new ConflictException("Review item changed; refresh and try again");
       if (command.assigneeId && !await eligibleReviewer(manager, scope.organizationId,
         item.documenting_user_id, command.assigneeId, item.independent_review))
         throw new BadRequestException("Assignee needs current report access and active Review eligibility");
       await manager.query(`update clinical.review_item set assignee_id=$2,version=version+1,
         recovery_reason=null,updated_at=now(),eligibility_checked_at=null
-        ${forwarding ? ",status='new',outcome_option_id=null,outcome_revision=null" : ""}
+        ${command.assigneeId ? ",status='in-review',outcome_option_id=null,outcome_revision=null" : ""}
+        ${reopening ? ",reopened=true,clearance_pending=false,closure_reason=null,resolution_reason=null,exception_code=null" : ""}
         where id=$1 and organization_id=$3`, [itemId, command.assigneeId, scope.organizationId]);
       await manager.query(`insert into clinical.review_assignment_history
         (organization_id,item_id,command_id,actor_id,assignee_id,previous_assignee_id,item_version,action,reason)
         values ($1,$2,$3,$4,$5,$6,$7,'assigned',$8)`,
       [scope.organizationId, itemId, command.commandId, scope.userId,
         command.assigneeId, item.assignee_id, command.expectedVersion + 1, forwarding ? "forwarded-for-review" : null]);
-      if (forwarding) await manager.query(`insert into clinical.review_progress_history
+      if (command.assigneeId && item.status !== "in-review") await manager.query(`insert into clinical.review_progress_history
         (organization_id,item_id,command_id,actor_id,item_version,status,reason)
-        values ($1,$2,$3,$4,$5,'new','forwarded-for-review')`,
-        [scope.organizationId,itemId,command.commandId,scope.userId,command.expectedVersion+1]);
+        values ($1,$2,$3,$4,$5,'in-review',$6)`,
+        [scope.organizationId,itemId,command.commandId,scope.userId,command.expectedVersion+1,
+          reopening ? 'reopened-by-assignment' : forwarding ? 'forwarded-for-review' : null]);
     });
     return this.item(token, itemId, command.dataset);
   }
@@ -1888,9 +1898,9 @@ export class ReviewService implements OnModuleDestroy {
       if (!scope.identifying)
         throw new ForbiddenException("Review identifying access is required for unrestricted discussion");
       const dataset = this.dataset(command.dataset, scope);
-      const [item] = await manager.query<Array<{ version: string; assignee_id: string | null;
+      const [item] = await manager.query<Array<{ version: string; status: string; assignee_id: string | null;
         documenting_user_id: string; independent_review: boolean }>>(`
-        select i.version,i.assignee_id,r.documenting_user_id,
+        select i.version,i.status,i.assignee_id,r.documenting_user_id,
           coalesce(route.independent_review,false) independent_review
         from clinical.review_item i join clinical.report r on r.id=i.report_id
         left join clinical.review_criterion_route route on route.organization_id=i.organization_id
@@ -1920,12 +1930,18 @@ export class ReviewService implements OnModuleDestroy {
       }
       if (Number(item.version) !== command.expectedVersion)
         throw new ConflictException("Review item changed; refresh and try again");
+      const startingReview = ["new", "awaiting-clinician"].includes(item.status);
       await manager.query(`update clinical.review_item set version=version+1,updated_at=now()
+        ${startingReview ? ",status='in-review'" : ""}
         where id=$1 and organization_id=$2`, [id, scope.organizationId]);
       await manager.query(`insert into clinical.review_comment
         (organization_id,item_id,command_id,actor_id,item_version,body,kind)
         values ($1,$2,$3,$4,$5,$6,$7)`, [scope.organizationId, id, command.commandId,
         scope.userId, command.expectedVersion + 1, command.body.trim(), command.kind ?? "comment"]);
+      if (startingReview) await manager.query(`insert into clinical.review_progress_history
+        (organization_id,item_id,command_id,actor_id,item_version,status)
+        values ($1,$2,$3,$4,$5,'in-review')`,
+      [scope.organizationId, id, command.commandId, scope.userId, command.expectedVersion + 1]);
     });
     return this.item(token, id, command.dataset);
   }
@@ -1978,7 +1994,7 @@ export class ReviewService implements OnModuleDestroy {
         return;
       }
       if (Number(item.version) !== command.expectedVersion) throw new ConflictException("Review item changed; refresh and try again");
-      const transitions: Record<string, string[]> = { new: ["in-review"],
+      const transitions: Record<string, string[]> = { new: ["in-review", "awaiting-clinician", "completed"],
         "in-review": ["awaiting-clinician", "completed"],
         "awaiting-clinician": ["in-review", "completed"], completed: ["completed"] };
       if (!transitions[item.status]?.includes(command.status))

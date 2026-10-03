@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Use the production worker in bounded, sequential batches during local development.
 export function watchReviewWorker({
   workerPath = fileURLToPath(new URL("../dist/review/review-worker.entry.js", import.meta.url)),
-  intervalMs = 5_000,
+  intervalMs = 1_000,
 } = {}) {
   let child;
   let timer;

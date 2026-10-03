@@ -158,6 +158,16 @@ test("review queue filters are scoped before pagination and report links", async
   assert.match(calls[1].sql, /limit \$11 offset \$12/);
   assert.deepEqual(calls[1].params.slice(9), [null, 10, 10]);
   await assert.rejects(service.queue("token", { priority: "critical" }), BadRequestException);
+  calls.length = 0;
+  await service.queue("token", { status: "incomplete", page: "2", pageSize: "10" });
+  for (const call of calls.slice(0, 3)) {
+    assert.equal(call.params[6], "incomplete");
+    assert.match(call.sql, /\(\$7='incomplete' and i\.status<>'completed'\)/);
+    assert.match(call.sql, /i\.status=\$7/);
+    assert.match(call.sql, /r\.documenting_user_id=\$4/);
+  }
+  assert.deepEqual(calls[1].params.slice(-2), [10, 10]);
+  await assert.rejects(service.queue("token", { status: "unknown" }), BadRequestException);
 });
 
 test("claim requires review-all, CSRF, current unassigned version, and replays once", async () => {
@@ -209,7 +219,7 @@ test("claim requires review-all, CSRF, current unassigned version, and replays o
   current = session(["review:all"], "user-b");
   await assert.rejects(service.claim("token", "item-a", command, "valid"), { status: 409 });
   assert.equal(history.length, 1);
-  item.version = 0; item.assignee_id = null; history.length = 0;
+  item.version = 0; item.assignee_id = null; item.status = "in-review"; history.length = 0;
   const contenders = ["user-a", "user-b"].map((userId, index) => {
     const contender = new ReviewService(database, { get: async () => session(["review:all"], userId),
       assertCsrf: async () => {} });
