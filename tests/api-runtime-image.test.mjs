@@ -83,7 +83,7 @@ test("CI boots and inspects the pruned image before it can pass the deployment g
 
   assert.match(validation, /docker build -f deploy\/docker\/api\.Dockerfile/);
   assert.match(validation, /npm run migrate:runtime -w @open-triage\/database/);
-  assert.doesNotMatch(validation, /npm run load:catalog -w @open-triage\/database/);
+  assert.match(validation, /npm run load:catalog -w @open-triage\/database/);
   assert.match(validation, /insert into app_identity\.organization/);
   assert.match(validation, /npm run bootstrap:synthetic:runtime -w @open-triage\/database/);
   assert.match(validation, /curl --fail --silent http:\/\/127\.0\.0\.1:3001\/api\/health/);

@@ -11,6 +11,8 @@ RUN npm ci
 COPY apps/api apps/api
 COPY apps/web/messages apps/web/messages
 COPY packages/contracts packages/contracts
+COPY packages/database/scripts/lib packages/database/scripts/lib
+COPY defines/catalog defines/catalog
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
 
 FROM node:22-bookworm-slim AS runtime
