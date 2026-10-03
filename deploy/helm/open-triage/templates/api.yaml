@@ -13,6 +13,8 @@ spec:
     metadata:
       labels: { app.kubernetes.io/component: api, app.kubernetes.io/instance: {{ .Release.Name }} }
     spec:
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       topologySpreadConstraints:
         - maxSkew: 1
@@ -22,8 +24,9 @@ spec:
             matchLabels: { app.kubernetes.io/component: api, app.kubernetes.io/instance: {{ .Release.Name }} }
       containers:
         - name: api
-          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          image: {{ include "open-triage.image" .Values.api.image | quote }}
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.api.securityContext | nindent 12 }}
           ports: [{ name: http, containerPort: 3001 }]
           env:
             - name: NODE_ENV
@@ -31,9 +34,9 @@ spec:
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: DATABASE_URL } }
             - name: SUPABASE_URL
-              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: SUPABASE_URL } }
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: SUPABASE_URL, optional: true } }
             - name: SUPABASE_SECRET_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: SUPABASE_SECRET_KEY } }
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: SUPABASE_SECRET_KEY, optional: true } }
             - name: PATIENT_KEY_INSTALLATION_ID
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_INSTALLATION_ID } }
             - name: PATIENT_KEY_VERSION
@@ -54,6 +57,10 @@ spec:
               value: "https://{{ .Values.web.host }}"
           readinessProbe:
             httpGet: { path: /api/health, port: http }
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 5
+            failureThreshold: 24
           livenessProbe:
             httpGet: { path: /api/health, port: http }
           resources: {{- toYaml .Values.api.resources | nindent 12 }}

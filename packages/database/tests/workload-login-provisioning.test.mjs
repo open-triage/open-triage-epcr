@@ -42,6 +42,15 @@ test("accepts only isolated installation logins with strong passwords", () => {
     /installation-specific login/);
   assert.throws(() => workloadCredentials({ ...environment, API_DATABASE_PASSWORD: "short" }),
     /at least 32 characters/);
+  assert.throws(() => workloadCredentials({ ...environment,
+    ANALYTICS_HEALTH_DATABASE_LOGIN: environment.API_DATABASE_LOGIN }), /distinct database login/);
+});
+
+test("production installations use the same isolated role contracts without demo login names", () => {
+  const production = Object.fromEntries(Object.entries(environment).map(([key, value]) => [key,
+    key.endsWith("_LOGIN") ? value.replace("_demo_", "_prod_") : value]));
+  assert.equal(workloadCredentials(production).length, 5);
+  assert.throws(() => workloadCredentials({ ...production, API_DATABASE_LOGIN: `open_triage_${"a".repeat(60)}_012345abcdef` }), /installation-specific login/);
 });
 
 test("creates constrained logins and grants exactly one portable contract", async () => {

@@ -18,10 +18,10 @@ function quoteLiteral(value) {
 }
 
 export function workloadCredentials(environment = process.env) {
-  return workloadContracts.map((contract) => {
+  const credentials = workloadContracts.map((contract) => {
     const login = environment[`${contract.key}_DATABASE_LOGIN`];
     const password = environment[`${contract.key}_DATABASE_PASSWORD`];
-    if (!login || !/^open_triage_demo_[a-z_]+_[a-f0-9]{12}$/.test(login)) {
+    if (!login || login.length > 63 || !/^open_triage_[a-z][a-z0-9_]*_[a-f0-9]{12}$/.test(login)) {
       throw new Error(`${contract.key}_DATABASE_LOGIN must be an installation-specific login name`);
     }
     if (!password || password.length < 32) {
@@ -29,6 +29,10 @@ export function workloadCredentials(environment = process.env) {
     }
     return { ...contract, login, password };
   });
+  if (new Set(credentials.map(({ login }) => login)).size !== credentials.length) {
+    throw new Error("Each workload contract must use a distinct database login");
+  }
+  return credentials;
 }
 
 export async function provisionWorkloadLogins({
