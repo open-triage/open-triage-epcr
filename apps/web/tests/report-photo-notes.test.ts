@@ -52,7 +52,7 @@ test("live camera controls retain capture controls and use the shared cancel act
   assert.match(component, /camera-control-row[\s\S]+noteUi.rotate.counterclockwise.90[\s\S]+noteUi.cycle.camera[\s\S]+noteUi.rotate.clockwise.90/);
   assert.match(component, /camera-capture-row[\s\S]+camera-capture-button[\s\S]+noteUi.take.photo[\s\S]+note-dialog-actions[\s\S]+DialogCancelButton/);
   assert.match(styles, /\.camera-control-row\s*{[^}]*grid-template-columns:\s*56px minmax\(120px, 1fr\) 56px/);
-  assert.match(styles, /\.camera-capture-row \.camera-capture-button\s*{[^}]*min-height:\s*64px[^}]*background:\s*var\(--green\)/);
+  assert.match(styles, /\.camera-capture-row \.camera-capture-button\s*{[^}]*min-height:\s*64px/);
 });
 
 test("live and captured photos rotate inside square frames without overlapping controls", async () => {

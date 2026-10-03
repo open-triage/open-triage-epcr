@@ -73,7 +73,7 @@ export function CustomGroupFields({ document, fields, definitions, groups, langu
             <h5>{title} {index + 1}</h5>
             <RepeatedCustomFields document={document} fields={memberFields} definitions={definitions} language={language}
               targetGroupId={groupId} targetInstanceId={instance.instanceId} onDocumentChange={onDocumentChange} />
-            <button type="button" onClick={() => onDocumentChange(removeCustomGroupInstance(document, definition, instance.instanceId))}>
+            <button className="button-danger" type="button" onClick={() => onDocumentChange(removeCustomGroupInstance(document, definition, instance.instanceId))}>
               {language === "sv" ? "Ta bort grupp" : "Remove group"}</button>
           </div>)}
           {(definition.recurrence === "multiple" || instances.length === 0) && <button type="button" onClick={() =>

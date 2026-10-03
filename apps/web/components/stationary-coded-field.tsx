@@ -39,8 +39,8 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
   return <div className="stationary-coded-picker-row" data-occurrence-id={value?.occurrenceId}>
     <div className="stationary-coded-main-control">
       <ClinicalSearchableSelect label={field.label} value={currentKey} options={[
-        ...configured,
         ...(value ? [{ key: "", label: swedish ? "Ta bort" : "Delete" }] : []),
+        ...configured,
       ]} placeholder={coded?.display ?? exceptionalLabel ?? (swedish ? "Välj ett värde" : "Choose a value")}
         disabled={disabled} onChange={(selected) => {
         const option = selected.startsWith("code:") ? field.options[Number(selected.slice(5))]
@@ -59,11 +59,11 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
         onClick={() => setExceptionalOpen((open) => !open)}
       >×</button>
       {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${field.label} unavailable or pertinent-negative values`}>
+        {exceptionalKey && <button type="button" role="menuitem" onClick={() => { onChange(undefined); setExceptionalOpen(false); }}>Clear exceptional value</button>}
         {exceptionalChoices.map((choice) => <button key={choice.key} type="button" role="menuitem" onClick={() => {
           onChange(exceptionalSelection(field, choice.key));
           setExceptionalOpen(false);
         }}>{choice.label}</button>)}
-        {exceptionalKey && <button type="button" role="menuitem" onClick={() => { onChange(undefined); setExceptionalOpen(false); }}>Clear exceptional value</button>}
       </div>}
     </div>}
   </div>;
@@ -126,12 +126,12 @@ export function StationaryCodedOccurrencesField({ field, values, disabled = fals
         aria-label={`Set unavailable or pertinent-negative value for ${field.label}`} aria-expanded={exceptionalOpen}
         disabled={disabled || (values.length > 0 && !hasExceptional)} onClick={() => setExceptionalOpen((open) => !open)}>×</button>
       {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${field.label} unavailable or pertinent-negative values`}>
-        {field.exceptionalChoices.map((choice) => <button key={choice.key} type="button" role="menuitem" onClick={() => {
-          onChange(exceptionalValue, exceptionalSelection(field, choice.key)); setExceptionalOpen(false);
-        }}>{choice.label}</button>)}
         {exceptionalValue && <button type="button" role="menuitem" onClick={() => {
           onChange(exceptionalValue, undefined); setExceptionalOpen(false);
         }}>Clear exceptional value</button>}
+        {field.exceptionalChoices.map((choice) => <button key={choice.key} type="button" role="menuitem" onClick={() => {
+          onChange(exceptionalValue, exceptionalSelection(field, choice.key)); setExceptionalOpen(false);
+        }}>{choice.label}</button>)}
       </div>}
     </div>}
     </div>

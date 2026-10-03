@@ -19,6 +19,8 @@ const agencySettings = {
   appearance: {
     brandText: "Example EMS", helperText: "Use your agency-issued credentials.", logoPngDataUrl: null,
     accentColor: "#00783a", accentDarkColor: "#006b34", browserThemeColor: "#00783a",
+    destructiveColor: "#b42318",
+    inactiveButtonColor: "#ffffff", textColor: "#1a1c1a",
     pwaBackgroundColor: "#dfe5df", pwaName: "Example EMS", pwaShortName: "EMS",
   },
   demographics: {
@@ -855,4 +857,63 @@ test("Swedish agency administration keeps authored names and role permissions", 
   await expect(page.getByRole("search", { name: "Sök användare" })).toBeVisible();
   await expect(page.getByRole("row", { name: /Anna Medic/ })).toContainText("Clinical Lead");
   await expect(page.getByRole("button", { name: "Skapa användare" })).toHaveCount(0);
+});
+
+test("agency button and text colors preview, save, and style controls after reload", async ({ page }) => {
+  const capabilities = ["settings:read", "settings:write", "catalog:read", "catalog:write"];
+  let savedSettings = { ...agencySettings, imageMediaLimitBytes: 10 * 1024 * 1024,
+    defaultImageMediaLimitBytes: 10 * 1024 * 1024, regionalFormat: null, timeZone: null };
+  await page.route("**/api/installation", (route) => route.fulfill({ json: {
+    settings: productionSettings, appearance: savedSettings.appearance,
+  } }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", (route) => route.fulfill({ json: {
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["settings", "catalog"],
+    capabilities, activeConfiguration: null, dashboard: null,
+  } }));
+  await page.route("**/api/admin/agency-settings", (route) => {
+    if (route.request().method() === "PUT") {
+      const command = route.request().postDataJSON();
+      expect(command.expectedRevision).toBe(savedSettings.revision);
+      expect(command.appearance.destructiveColor).toBe("#9f241d");
+      expect(command.appearance.inactiveButtonColor).toBe("#f2f5f3");
+      expect(command.appearance.textColor).toBe("#202520");
+      savedSettings = { ...savedSettings, appearance: command.appearance, revision: savedSettings.revision + 1 };
+    }
+    return route.fulfill({ json: savedSettings });
+  });
+  await page.route("**/api/admin/catalog-draft", (route) => route.fulfill({ json: catalogDraft }));
+  await page.route("**/api/admin/catalog-versions", (route) => route.fulfill({ json: [] }));
+  await signInAsCombinedOwner(page, capabilities);
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByRole("button", { name: "Agency Settings", exact: true }).click();
+  const picker = page.getByLabel("Destructive button color", { exact: true });
+  await expect(picker).toHaveValue("#b42318");
+  await picker.evaluate((input) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "#9f241d");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.locator(".agency-destructive-preview")).toHaveCSS("background-color", "rgb(159, 36, 29)");
+  await expect(page.locator(".agency-dark-accent-preview")).toHaveCSS("background-color", "rgb(0, 107, 52)");
+  for (const [label, color] of [["Inactive button color", "#f2f5f3"], ["Text color", "#202520"]] as const) {
+    await page.getByLabel(label, { exact: true }).evaluate((input, value) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, color);
+  }
+  await expect(page.locator(".agency-inactive-button-preview")).toHaveCSS("background-color", "rgb(242, 245, 243)");
+  await expect(page.locator(".agency-inactive-button-preview")).toHaveCSS("color", "rgb(32, 37, 32)");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator(".agency-settings-notice")).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByRole("button", { name: "Agency Settings", exact: true }).click();
+  await expect(picker).toHaveValue("#9f241d");
+  await expect(page.getByLabel("Inactive button color", { exact: true })).toHaveValue("#f2f5f3");
+  await expect(page.getByLabel("Text color", { exact: true })).toHaveValue("#202520");
+  await page.getByRole("button", { name: "Element catalog", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Delete catalog draft", exact: true })).toHaveCSS("background-color", "rgb(159, 36, 29)");
+  await expect(page.getByRole("button", { name: "Save draft", exact: true })).toHaveCSS("background-color", "rgb(0, 120, 58)");
 });

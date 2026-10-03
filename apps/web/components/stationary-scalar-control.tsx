@@ -58,12 +58,12 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
       aria-label={`Set unavailable value for ${presentation.label}`} aria-expanded={exceptionalOpen}
       disabled={disabled} onClick={() => setExceptionalOpen((open) => !open)}>×</button>
     {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${presentation.label} unavailable values`}>
-      {exceptionalChoices.map(({ code, label }) => <button type="button" role="menuitem" key={code} onClick={() => {
-        onExceptionalChange(code); setExceptionalOpen(false);
-      }}>{label}</button>)}
       {exceptionalValue && <button type="button" role="menuitem" onClick={() => {
         onExceptionalChange(undefined); setExceptionalOpen(false);
       }}>Clear unavailable value</button>}
+      {exceptionalChoices.map(({ code, label }) => <button type="button" role="menuitem" key={code} onClick={() => {
+        onExceptionalChange(code); setExceptionalOpen(false);
+      }}>{label}</button>)}
     </div>}
   </div> : exceptionalValue ? <output>{exceptionalValue.notValue?.display ?? exceptionalValue.notValue?.code}</output> : null;
   if (presentation.family === "datetime") {

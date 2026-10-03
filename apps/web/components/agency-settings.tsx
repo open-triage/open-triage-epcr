@@ -191,6 +191,12 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
             onChange={(event) => changeAppearance("accentColor", event.target.value)} /></label>
           <label><AdminText messageKey="admin.darkAccentColor" /><input type="color" value={draft.appearance.accentDarkColor}
             onChange={(event) => changeAppearance("accentDarkColor", event.target.value)} /></label>
+          <label><AdminText messageKey="admin.destructiveColor" /><input type="color" value={draft.appearance.destructiveColor}
+            onChange={(event) => changeAppearance("destructiveColor", event.target.value)} /></label>
+          <label><AdminText messageKey="admin.inactiveButtonColor" /><input type="color" value={draft.appearance.inactiveButtonColor}
+            onChange={(event) => changeAppearance("inactiveButtonColor", event.target.value)} /></label>
+          <label><AdminText messageKey="admin.textColor" /><input type="color" value={draft.appearance.textColor}
+            onChange={(event) => changeAppearance("textColor", event.target.value)} /></label>
           <label><AdminText messageKey="admin.browserThemeColor" /><input type="color" value={draft.appearance.browserThemeColor}
             onChange={(event) => changeAppearance("browserThemeColor", event.target.value)} /></label>
           <label><AdminText messageKey="admin.pwaBackgroundColor" /><input type="color" value={draft.appearance.pwaBackgroundColor}
@@ -198,7 +204,9 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
         </div>
         <p className="agency-appearance-preview">
           <span><AdminText messageKey="admin.accessibleAccentPreview" /></span>
-          <span><AdminText messageKey="admin.darkAccentPreview" /></span>
+          <span className="agency-dark-accent-preview"><AdminText messageKey="admin.darkAccentPreview" /></span>
+          <span className="agency-destructive-preview"><AdminText messageKey="admin.destructivePreview" /></span>
+          <span className="agency-inactive-button-preview"><AdminText messageKey="admin.inactiveButtonPreview" /></span>
         </p>
         <label><AdminText messageKey="admin.pwaName" /><input maxLength={100} required value={draft.appearance.pwaName}
           onChange={(event) => changeAppearance("pwaName", event.target.value)} /></label>

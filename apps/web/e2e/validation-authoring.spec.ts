@@ -65,9 +65,16 @@ for (const newlyPublished of [false, true]) {
     });
     await page.goto("/__validation-harness");
     if (newlyPublished) {
-      await page.getByRole("button", { name: "Validate draft", exact: true }).click();
+      const publish = page.getByRole("button", { name: "Publish immutable Validation version", exact: true });
+      await expect(publish).toBeDisabled();
+      await expect(publish).toHaveAccessibleDescription("Click Validate draft before publishing. Enter a publication note to enable publishing.");
       await page.getByLabel("Publication note", { exact: true }).fill("Publish NEMSIS rules");
-      await page.getByRole("button", { name: "Publish immutable Validation version", exact: true }).click();
+      await expect(publish).toBeDisabled();
+      await expect(publish).toHaveAccessibleDescription("Click Validate draft before publishing.");
+      await page.getByRole("button", { name: "Validate draft", exact: true }).click();
+      await expect(publish).toBeEnabled();
+      await expect(publish).not.toHaveAttribute("aria-describedby");
+      await publish.click();
     } else {
       await page.getByLabel("Version", { exact: true }).selectOption(candidate.id);
     }
@@ -155,13 +162,25 @@ test("validation rule creation, language, severity, targets, source, save, and v
   await editor.getByLabel("Rule source").fill('require present("ePatient.02")');
   await expect(page.getByRole("alert", { name: "Inline rule diagnostics" })).toHaveCount(0);
   await page.getByRole("button", { name: "Save validation draft" }).click();
+  const publish = page.getByRole("button", { name: "Publish immutable Validation version", exact: true });
+  await expect(publish).toBeDisabled();
+  await expect(publish).toHaveAccessibleDescription("Click Validate draft before publishing. Enter a publication note to enable publishing.");
   await expect(page.getByRole("button", { name: "Validate draft" })).toBeEnabled();
   await page.getByRole("button", { name: "Validate draft" }).click();
   await expect(page.locator(".validation-result")).toContainText("Validation passed");
+  await expect(publish).toBeDisabled();
+  await expect(publish).toHaveAccessibleDescription("Enter a publication note to enable publishing.");
+  await page.getByLabel("Publication note", { exact: true }).fill("Reviewed agency rules");
+  await expect(publish).toBeEnabled();
   expect(draft.rules[0]).toMatchObject({ name: "Require patient name", severity: "none", reviewPriority: "high",
     executionTargets: ["live", "sign", "review"], source: 'require present("ePatient.02")',
     localization: { sv: { name: "Ange patientnamn", message: "Ange patientens namn" } } });
   expect(requests.some(({ path, method }) => path === "validation-drafts/draft" && method === "PUT")).toBe(true);
+  await editor.getByLabel("Message (sv)").fill("Dokumentera patientens namn");
+  await expect(publish).toBeDisabled();
+  await expect(publish).toHaveAccessibleDescription("Save your changes, then click Validate draft before publishing.");
+  await page.getByRole("button", { name: "Save validation draft" }).click();
+  await expect(publish).toHaveAccessibleDescription("Click Validate draft before publishing.");
   await page.reload();
   await expect(page.locator(".validation-rule-editor").getByLabel("Name (en)")).toHaveValue("Require patient name");
   await expect(page.locator(".validation-rule-editor").getByLabel("Documentation severity", { exact: true })).toHaveValue("none");

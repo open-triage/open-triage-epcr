@@ -13,9 +13,18 @@
 }
 
 .authenticated-shell .encounter-header {
-  scroll-margin-top: calc(var(--session-bar-height, 98px) + 8px);
+  scroll-margin-top: calc(var(--session-bar-height, 98px) + var(--clinical-demo-banner-height, 0px) + 8px);
+}
+
+.authenticated-shell .clinical-demo-banner {
+  position: sticky;
+  top: var(--session-bar-height, 98px);
+}
+
+.authenticated-shell .stationary-presentation {
+  --stationary-top-bars: calc(var(--session-bar-height, 98px) + var(--clinical-demo-banner-height, 0px));
 }
 
 .authenticated-shell.mobile-shell .quick-actions {
-  top: var(--session-bar-height, 98px);
+  top: calc(var(--session-bar-height, 98px) + var(--clinical-demo-banner-height, 0px));
 }

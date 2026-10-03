@@ -751,7 +751,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       {canEdit && authoringDraft && <button type="button" disabled={busy} onClick={() => action(async () => {
         const saved = await saveCatalogDraft(csrfToken, authoringDraft); setDraft(saved); setDirty(false); setStatus(`Saved revision ${saved.revision}.`);
       })}><AdminText messageKey="admin.saveDraft" /></button>}
-      {canEdit && authoringDraft && <button type="button" disabled={busy} onClick={() => {
+      {canEdit && authoringDraft && <button className="button-danger" type="button" disabled={busy} onClick={() => {
         if (!window.confirm(t("admin.deleteCatalogDraftConfirm"))) return;
         void action(async () => {
           await deleteCatalogDraft(csrfToken, authoringDraft);

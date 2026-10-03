@@ -283,7 +283,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         const saved = await saveStationaryFormDraft(csrfToken, draft);
         setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);
       })}><AdminText messageKey="admin.saveFormDraft" /></button>}
-      {canWrite && <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
+      {canWrite && <button className="button-danger" type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
         if (!window.confirm(`Delete form draft revision ${draft.revision}? This cannot be undone.`)) return;
         void action(async () => {
           await deleteStationaryFormDraft(csrfToken, draft);
@@ -316,7 +316,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       <h3 id="remove-section-heading">{t("admin.removeKey", { key: draft.definition.sections[pendingRemoval]!.key })}</h3>
       <p id="remove-section-description">{t("admin.removeSectionAffectedFields", { count: affectedFieldNames(draft.definition.sections[pendingRemoval]!).length })}</p>
       <ul>{affectedFieldNames(draft.definition.sections[pendingRemoval]!).map((field) => <li key={field}>{field}</li>)}</ul>
-      <div><button type="button" onClick={() => {
+      <div><button className="button-danger" type="button" onClick={() => {
         const index = pendingRemoval;
         const section = draft.definition.sections[index]!; const affected = affectedFieldNames(section);
         change(removeFormSection(draft.definition, index),

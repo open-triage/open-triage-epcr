@@ -171,7 +171,7 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
                 onChange={(event) => { if (event.target.value) update({ kind: "scalar", occurrenceId: value.occurrenceId,
                   value: definition.datatype === "number" ? Number(event.target.value) : new Date(event.target.value).toISOString() }); }} />}
               {findings.length > 0 && <ul>{findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}
-              <button type="button" onClick={() => update(undefined)}>{isPending ? language === "sv" ? "Avbryt" : "Cancel"
+              <button className={isPending ? undefined : "button-danger"} type="button" onClick={() => update(undefined)}>{isPending ? language === "sv" ? "Avbryt" : "Cancel"
                 : language === "sv" ? "Ta bort värde" : "Remove value"}</button>
             </div>;
           })}

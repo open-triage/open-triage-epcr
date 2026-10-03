@@ -81,6 +81,8 @@ test("agency appearance activates accessible colors, browser chrome, and PWA nam
   } as unknown as Document;
   const configured = { ...DEFAULT_AGENCY_APPEARANCE, brandText: "County EMS",
     helperText: "Use agency-issued credentials.", accentColor: "#005ea8", accentDarkColor: "#004578",
+    destructiveColor: "#9f241d",
+    inactiveButtonColor: "#f2f5f3", textColor: "#202520",
     browserThemeColor: "#005ea8", pwaBackgroundColor: "#eef5fb",
     pwaName: "County EMS ePCR", pwaShortName: "County EMS" };
 
@@ -90,6 +92,9 @@ test("agency appearance activates accessible colors, browser chrome, and PWA nam
   assert.equal(theme.content, "#005ea8");
   assert.equal(declarations.get("--green"), "#005ea8");
   assert.equal(declarations.get("--green-dark"), "#004578");
+  assert.equal(declarations.get("--destructive"), "#9f241d");
+  assert.equal(declarations.get("--inactive-button"), "#f2f5f3");
+  assert.equal(declarations.get("--text-color"), "#202520");
   assert.equal(declarations.get("--agency-pwa-background"), "#eef5fb");
   assert.equal(rules.length, 1);
   assert.equal(rules[0], rootRule, "appearance activation must not delete the global typography rule");
@@ -143,6 +148,46 @@ test("offline startup uses only the last validated configuration for the same in
     }
     process.env.NEXT_PUBLIC_API_URL = "https://another.example.test";
     await assert.rejects(loadInstallationConfiguration(unavailable, storage), /network unavailable/);
+  } finally {
+    if (oldApiUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
+    else process.env.NEXT_PUBLIC_API_URL = oldApiUrl;
+    if (oldLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = oldLocalDemo;
+    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    else Reflect.deleteProperty(globalThis, "navigator");
+  }
+});
+
+test("older appearance configurations acquire default button and text colors online and offline", async () => {
+  const oldApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const oldLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: false } });
+  const bytes = new Map<string, string>();
+  const storage = {
+    getItem(key: string) { return bytes.get(key) ?? null; },
+    setItem(key: string, value: string) { bytes.set(key, value); },
+  };
+  try {
+    delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    process.env.NEXT_PUBLIC_API_URL = "https://api.example.test";
+    const oldAppearance = { ...DEFAULT_AGENCY_APPEARANCE };
+    Reflect.deleteProperty(oldAppearance, "destructiveColor");
+    Reflect.deleteProperty(oldAppearance, "inactiveButtonColor");
+    Reflect.deleteProperty(oldAppearance, "textColor");
+    const online = await loadInstallationConfiguration(async () => Response.json({ settings: production, appearance: oldAppearance }), storage);
+    assert.equal(online.appearance.destructiveColor, "#b42318");
+    assert.equal(online.appearance.inactiveButtonColor, "#ffffff");
+    assert.equal(online.appearance.textColor, "#1a1c1a");
+    const cached = JSON.parse(bytes.values().next().value!);
+    delete cached.configuration.appearance.destructiveColor;
+    delete cached.configuration.appearance.inactiveButtonColor;
+    delete cached.configuration.appearance.textColor;
+    bytes.set([...bytes.keys()][0]!, JSON.stringify(cached));
+    const offline = await loadInstallationConfiguration(async () => { throw new TypeError("offline"); }, storage);
+    assert.equal(offline.appearance.destructiveColor, "#b42318");
+    assert.equal(offline.appearance.inactiveButtonColor, "#ffffff");
+    assert.equal(offline.appearance.textColor, "#1a1c1a");
   } finally {
     if (oldApiUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
     else process.env.NEXT_PUBLIC_API_URL = oldApiUrl;

@@ -2175,3 +2175,53 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
   });
 });
+
+integrationTest("agency button and text colors default, persist, and audit under the API runtime role", async () => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  await client.query("begin");
+  try {
+    const organizationId = randomUUID();
+    const actorId = randomUUID();
+    await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+      values ($1, 'Destructive color integration', 'UTC')`, [organizationId]);
+    await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+      values ($1, $2, 'Settings administrator')`, [actorId, organizationId]);
+    await client.query("set local role open_triage_api_runtime");
+    const initial = (await client.query(`select destructive_color, inactive_button_color, text_color from app_identity.agency_settings
+      where organization_id = $1`, [organizationId])).rows[0];
+    assert.deepEqual(initial, { destructive_color: "#b42318", inactive_button_color: "#ffffff", text_color: "#1a1c1a" });
+    await rejectsSql(client, `update app_identity.agency_settings set destructive_color = 'red'
+      where organization_id = $1`, [organizationId], "23514");
+    await rejectsSql(client, `update app_identity.agency_settings set destructive_color = null
+      where organization_id = $1`, [organizationId], "23502");
+    for (const column of ["inactive_button_color", "text_color"]) {
+      await rejectsSql(client, `update app_identity.agency_settings set ${column} = 'invalid'
+        where organization_id = $1`, [organizationId], "23514");
+      await rejectsSql(client, `update app_identity.agency_settings set ${column} = null
+        where organization_id = $1`, [organizationId], "23502");
+    }
+    const saved = (await client.query(`update app_identity.agency_settings set destructive_color = $2,
+      inactive_button_color = $4, text_color = $5,
+      revision = revision + 1, updated_by = $3 where organization_id = $1 and revision = 1
+      returning destructive_color, inactive_button_color, text_color, revision`,
+      [organizationId, "#9f241d", actorId, "#f2f5f3", "#202520"])).rows[0];
+    assert.deepEqual(saved, { destructive_color: "#9f241d", inactive_button_color: "#f2f5f3", text_color: "#202520", revision: "2" });
+    await client.query(`insert into app_identity.agency_settings_change_event
+      (organization_id, actor_id, prior_revision, revision,
+       old_report_media_allowance_bytes, new_report_media_allowance_bytes,
+       old_image_media_limit_bytes, new_image_media_limit_bytes, old_destructive_color, new_destructive_color,
+       old_inactive_button_color, new_inactive_button_color, old_text_color, new_text_color)
+      values ($1, $2, 1, 2, 52428800, 52428800, 10485760, 10485760, '#b42318', '#9f241d',
+        '#ffffff', '#f2f5f3', '#1a1c1a', '#202520')`,
+      [organizationId, actorId]);
+    const audit = (await client.query(`select old_destructive_color, new_destructive_color,
+      old_inactive_button_color, new_inactive_button_color, old_text_color, new_text_color
+      from app_identity.agency_settings_change_event where organization_id = $1`, [organizationId])).rows[0];
+    assert.deepEqual(audit, { old_destructive_color: "#b42318", new_destructive_color: "#9f241d",
+      old_inactive_button_color: "#ffffff", new_inactive_button_color: "#f2f5f3", old_text_color: "#1a1c1a", new_text_color: "#202520" });
+  } finally {
+    await client.query("rollback");
+    await client.end();
+  }
+});

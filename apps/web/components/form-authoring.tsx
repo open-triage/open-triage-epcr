@@ -196,7 +196,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
         </button>
         {onMoveSection && onRequestRemoveSection && <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
           {sectionHandle}
-          <button type="button" disabled={busy || definition.sections.length === 1} aria-label={`Remove ${section.key}`}
+          <button className="button-danger" type="button" disabled={busy || definition.sections.length === 1} aria-label={`Remove ${section.key}`}
             onClick={() => onRequestRemoveSection(sectionIndex)}><AdminText messageKey="admin.removeSection" /></button>
         </div>}
       </header>
@@ -271,7 +271,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
               </label>
               <small>{t("admin.dataBinding")}: {field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.groupPath.join(" / ") : field.source.groupDefinitionId ?? field.source.elementDefinitionId}</small>
               {fieldHandle}
-              <button type="button" disabled={busy} aria-label={`Remove ${label}`} onClick={() => {
+              <button className="button-danger" type="button" disabled={busy} aria-label={`Remove ${label}`} onClick={() => {
                 if (window.confirm(`Remove ${label} from ${section.key}?`))
                   onChange(removeFormElement(definition, section.key, field.key), `Removed ${label}.`);
               }}><AdminText messageKey="admin.remove" /></button>

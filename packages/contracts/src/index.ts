@@ -714,6 +714,9 @@ export interface AgencyAppearance {
   logoPngDataUrl: string | null;
   accentColor: string;
   accentDarkColor: string;
+  destructiveColor: string;
+  inactiveButtonColor: string;
+  textColor: string;
   browserThemeColor: string;
   pwaBackgroundColor: string;
   pwaName: string;
@@ -726,6 +729,9 @@ export const DEFAULT_AGENCY_APPEARANCE: Readonly<AgencyAppearance> = Object.free
   logoPngDataUrl: null,
   accentColor: "#00783a",
   accentDarkColor: "#006b34",
+  destructiveColor: "#b42318",
+  inactiveButtonColor: "#ffffff",
+  textColor: "#1a1c1a",
   browserThemeColor: "#00783a",
   pwaBackgroundColor: "#dfe5df",
   pwaName: "OpenTriage",

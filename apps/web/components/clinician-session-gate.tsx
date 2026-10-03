@@ -399,7 +399,7 @@ export function ClinicianSessionGate({ children }: {
   return (
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
-    <div className={`authenticated-shell ${presentationMode}-shell`}>
+    <div className={`authenticated-shell ${presentationMode}-shell${presentationMode !== "mobile" ? " desktop-shell" : ""}`}>
       <header ref={sessionBar} className="session-bar">
         <LanguageSelector language={language} onChange={(selected) => {
           setPreferredLanguage(selected);

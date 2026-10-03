@@ -516,7 +516,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       {canWrite && <button type="button" disabled={busy || !dirty} onClick={() => action(async () => {
         const saved = await saveValidationDraft(csrfToken, draft); setDraft(saved); setDirty(false); setStatus(`Saved draft revision ${saved.revision}.`);
       })}><AdminText messageKey="admin.saveValidationDraft" /></button>}
-      {canWrite && <button type="button" disabled={busy} onClick={() => {
+      {canWrite && <button className="button-danger" type="button" disabled={busy} onClick={() => {
         if (!window.confirm(`Delete Validation draft ${draft.displayName}? This cannot be undone.`)) return;
         void action(async () => {
           await deleteValidationDraft(csrfToken, draft);
@@ -534,6 +534,11 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <p><AdminText messageKey="admin.publicationCreatesImmutable" /></p>
       <AuthoringLifecycleAction title="Validation rules" kind="publish" note={changeNote}
         onNoteChange={setChangeNote} disabled={busy || dirty || !validation?.valid}
+        disabledReason={[
+          dirty ? t("admin.publicationSaveFirst") : !validation ? t("admin.publicationValidateFirst")
+            : !validation.valid ? t("admin.publicationResolveErrors") : "",
+          !changeNote.trim() ? t("admin.publicationNoteRequired") : "",
+        ].filter(Boolean).join(" ")}
         buttonLabel="Publish immutable Validation version" onSubmit={() => action(async () => {
         const result = await publishValidationDraft(csrfToken, draft, changeNote);
         setPublished(result); setSelectedVersionId(result.id); setVersions(await loadValidationVersions());

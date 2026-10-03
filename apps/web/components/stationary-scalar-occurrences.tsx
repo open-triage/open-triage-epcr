@@ -62,7 +62,7 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
             onBlur={(input) => apply(value.occurrenceId, input)} />
           {presentation.repeatable && <div className="stationary-occurrence-actions" aria-label={`${presentation.label} occurrence actions`}>
             {handle}
-            <button type="button" disabled={disabled} onClick={() => {
+            <button className="button-danger" type="button" disabled={disabled} onClick={() => {
               const result = removeScalarOccurrence(document, presentation.groupId, groupInstanceId, presentation.elementId, value.occurrenceId);
               if (result.ok) onDocumentChange(result.document);
               else setFindings((current) => ({ ...current, [value.occurrenceId]: result.findings }));

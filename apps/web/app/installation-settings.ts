@@ -24,13 +24,16 @@ function cachedConfiguration(storage: ConfigurationStorage | undefined, endpoint
     } | null;
     if (envelope?.endpoint !== endpoint || !envelope.configuration) return null;
     return { settings: parseInstallationSettings(envelope.configuration.settings),
-      appearance: envelope.configuration.appearance ?? { ...DEFAULT_AGENCY_APPEARANCE } };
+      appearance: { ...DEFAULT_AGENCY_APPEARANCE, ...envelope.configuration.appearance } };
   } catch { return null; }
 }
 
 export function applyAgencyColors(appearance: AgencyAppearance, document: Document): void {
   document.documentElement.style.setProperty("--green", appearance.accentColor);
   document.documentElement.style.setProperty("--green-dark", appearance.accentDarkColor);
+  document.documentElement.style.setProperty("--destructive", appearance.destructiveColor ?? DEFAULT_AGENCY_APPEARANCE.destructiveColor);
+  document.documentElement.style.setProperty("--inactive-button", appearance.inactiveButtonColor ?? DEFAULT_AGENCY_APPEARANCE.inactiveButtonColor);
+  document.documentElement.style.setProperty("--text-color", appearance.textColor ?? DEFAULT_AGENCY_APPEARANCE.textColor);
   document.documentElement.style.setProperty("--agency-pwa-background", appearance.pwaBackgroundColor);
 }
 
@@ -68,7 +71,7 @@ export async function loadInstallationConfiguration(
     if (!response.ok) throw new Error("Installation configuration is unavailable.");
     const result = await response.json() as PublicInstallationConfiguration;
     const configuration = { ...result, settings: parseInstallationSettings(result.settings),
-      appearance: result.appearance ?? { ...DEFAULT_AGENCY_APPEARANCE } };
+      appearance: { ...DEFAULT_AGENCY_APPEARANCE, ...result.appearance } };
     try { storage?.setItem(INSTALLATION_CONFIGURATION_STORAGE_KEY, JSON.stringify({ endpoint: url, configuration })); }
     catch { /* Browsers with unavailable storage can still use the online configuration. */ }
     return configuration;
