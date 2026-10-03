@@ -2120,8 +2120,16 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await client.query("select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
         [batch, `${destination}${batch}.ndjson`, archive.archive_sha256]);
 
+      const ordinaryClinicianId = randomUUID();
+      await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+        values ($1, $2, 'Ordinary retention test clinician')`, [ordinaryClinicianId, organizationId]);
+      await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note)
+        select $1, $2, id, $3, 'Verify ordinary clinician cannot delete archives'
+        from app_identity.role where organization_id=$1 and system_key='clinician'`,
+      [organizationId, ordinaryClinicianId, administratorId]);
       await assert.rejects(
-        client.query("select retention.delete_verified_batch($1, $2)", [batch, clinicianId]),
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, ordinaryClinicianId]),
         /active installation administrator/
       );
 
