@@ -39,7 +39,7 @@ export function AuthoringVersionWorkspace({ title, versions, selectedId, onSelec
       <label htmlFor={`${title.replaceAll(" ", "-").toLowerCase()}-draft-name`}><AdminText messageKey="admin.newDraft" /></label>
       <input id={`${title.replaceAll(" ", "-").toLowerCase()}-draft-name`} maxLength={120}
         placeholder={t("admin.titleVersionName", { title: t(title) })} value={draftName} onChange={(event) => onDraftNameChange(event.target.value)} />
-      <button type="button" disabled={busy || !draftName.trim()} onClick={onCreateDraft}>
+      <button className="button-primary" type="button" disabled={busy || !draftName.trim()} onClick={onCreateDraft}>
         {t(selected ? "Create draft from selected" : "Create draft")}</button>
     </div>}
     {hasDraft && <p role="status"><AdminText messageKey="admin.draftInProgress" /></p>}
@@ -48,7 +48,7 @@ export function AuthoringVersionWorkspace({ title, versions, selectedId, onSelec
 }
 
 export function AuthoringLifecycleAction({ title, kind, note, onNoteChange, onSubmit, disabled = false,
-  detail, buttonLabel }: {
+  detail, buttonLabel, disabledReason }: {
   readonly title: string;
   readonly kind: "publish" | "activate";
   readonly note: string;
@@ -57,6 +57,7 @@ export function AuthoringLifecycleAction({ title, kind, note, onNoteChange, onSu
   readonly disabled?: boolean;
   readonly detail?: string;
   readonly buttonLabel?: string;
+  readonly disabledReason?: string;
 }) {
   const t = useAdminText();
   const id = `${title.replaceAll(" ", "-").toLowerCase()}-${kind}-note`;
@@ -64,9 +65,11 @@ export function AuthoringLifecycleAction({ title, kind, note, onNoteChange, onSu
     {detail && <p>{t(detail)}</p>}
     <div className="authoring-version-row"><label htmlFor={id}>{t(kind === "publish" ? "Publication note" : "Activation note")}</label>
       <textarea id={id} value={note} onChange={(event) => onNoteChange(event.target.value)} />
-      <button type="button" disabled={disabled || !note.trim()} onClick={onSubmit}>
+      <button className="button-primary" type="button" disabled={disabled || !note.trim()} onClick={onSubmit}
+        aria-describedby={disabledReason ? `${id}-requirements` : undefined}>
         {t(buttonLabel ?? (kind === "publish" ? "Publish version" : "Activate version"))}
       </button>
     </div>
+    {disabledReason && <p id={`${id}-requirements`} role="status" aria-live="polite">{disabledReason}</p>}
   </section>;
 }

@@ -26,8 +26,34 @@ import {
   updateReportTextNote,
 } from "../app/draft-report";
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
+import { removeRepeatingGroupOccurrence } from "../app/stationary-repeating-group";
+import { populateStationaryDemoData } from "../app/stationary-demo-data";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("removing a populated vital set yields authorized clear mutations, including after recovery", () => {
+  const populated = populateStationaryDemoData(INITIAL_SHELL_STATE.encounter.document);
+  const vital = populated.groups.find(({ id }) => id === "eVitals.VitalGroup")?.instances[0];
+  assert.ok(vital);
+  const removed = removeRepeatingGroupOccurrence(populated, "eVitals.VitalGroup", vital.instanceId);
+  assert.equal(removed.ok, true);
+  const baseline = encounterDocumentToDraftMutations(reportId, populated);
+  const projected = encounterDocumentToDraftMutations(reportId, removed.document, baseline);
+  const delta = draftMutationDelta(projected, baseline);
+  const batches = recoveryMutationBatches(delta, baseline);
+  const clear = batches.find(({ demoAction }) => demoAction === "clear");
+  assert.ok(clear);
+  assert.ok(clear.groups.some(({ groupId }) => groupId === "eVitals.VitalGroup"));
+  assert.ok(clear.occurrences.some(({ elementId }) => elementId === "eVitals.01"));
+  assert.ok(clear.groups.every(({ tombstone }) => tombstone));
+  assert.ok(clear.occurrences.every(({ tombstone }) => tombstone));
+  assert.ok(batches.filter(({ demoAction }) => !demoAction).every(({ groups }) =>
+    groups.every(({ correlationId }) => !correlationId?.startsWith("demo:"))));
+  const saved = batches.reduce(applyDraftMutationDelta, baseline);
+  assert.ok(!saved.groups.some(({ id }) => clear.groups.some((group) => group.id === id)));
+  assert.deepEqual(draftMutationDelta(encounterDocumentToDraftMutations(reportId, removed.document, saved), saved),
+    { groups: [], occurrences: [] });
+});
 
 test("recovery sends missing manual parent groups before their populated demo values", () => {
   const manual = { id: "manual-parent", groupId: "eVitals.VitalGroup", ordinal: 0 };

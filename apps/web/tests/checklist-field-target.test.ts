@@ -1,18 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClinicalFormConfiguration } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
 import { checklistFieldTarget } from "../app/checklist-field-target";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { validateStationaryRecord } from "../app/stationary-validation";
 import { editScalarNotValue, editScalarOccurrence } from "../app/stationary-scalar";
 import { encounterDocumentToDraftMutations } from "../app/draft-report";
 
+const compiled = compileValidationRule({ id: "first-name-required", name: "First name", enabled: true,
+  severity: "error", executionTargets: ["live", "sign"], primaryTargetElementId: "ePatient.02",
+  message: "Record the first name.", source: 'for each("ePatient.PatientNameGroup")\nrequire minimum("ePatient.02", 1)',
+}, "validation-version", new Set(["ePatient.02"]));
+assert.deepEqual(compiled.diagnostics, []);
+const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+  validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [compiled.compiled!] };
 const form: ClinicalFormConfiguration = {
   definition: { schemaVersion: 1, sections: [{ key: "patient", fields: [
     { key: "first-name", required: true, source: { kind: "nemsis", elementId: "ePatient.02" } },
     { key: "gender", source: { kind: "nemsis", elementId: "ePatient.13" } },
   ] }] },
   catalogFields: {},
+  validation: { versionId: bundle.validationVersionId, compiledSha256: compiledValidationBundleSha256(bundle), bundle },
 };
 
 test("only a uniquely targeted flagged configured field opens an inline control", () => {

@@ -16,11 +16,14 @@ spec:
       template:
         spec:
           imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 12 }}
+          automountServiceAccountToken: false
+          securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
           restartPolicy: Never
           containers:
             - name: synthetic-expiry
-              image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+              image: {{ include "open-triage.image" .Values.api.image | quote }}
               imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+              securityContext: {{- toYaml .Values.api.securityContext | nindent 16 }}
               command: ["npm", "run", "purge:synthetic", "-w", "@open-triage/database"]
               env:
                 - name: DATABASE_URL

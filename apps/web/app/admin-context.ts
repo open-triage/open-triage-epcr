@@ -103,9 +103,10 @@ export const publishValidationDraft = (csrfToken: string, draft: ValidationDraft
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, changeNote })
   });
 export const activateValidationVersion = (csrfToken: string, id: string, formVersionId: string,
-  catalogReleaseId: string, changeNote: string) =>
+  catalogReleaseId: string, changeNote: string, removeImpactedRuleIds?: readonly string[]) =>
   catalogRequest<ValidationActivation>(`validation-versions/${id}/activate`, csrfToken, {
-    method: "POST", body: JSON.stringify({ formVersionId, catalogReleaseId, changeNote })
+    method: "POST", body: JSON.stringify({ formVersionId, catalogReleaseId, changeNote,
+      ...(removeImpactedRuleIds ? { removeImpactedRuleIds } : {}) })
   });
 
 export async function loadAdminContext(): Promise<AdminContext> {
@@ -200,9 +201,14 @@ export const cancelOwnershipTransfer = (csrfToken: string, command: CancelOwners
   catalogRequest<OwnershipTransferState>("ownership-transfer", csrfToken,
     { method: "DELETE", body: JSON.stringify(command) });
 
-export type CanonicalFile = { file: string; package?: { name?: string; version?: string; sha256?: string }; error?: string; compatible: boolean; installed?: boolean };
+export type CanonicalFile = { file: string; package?: { name?: string; version?: string; sha256?: string }; error?: string; compatible: boolean };
 export const loadCanonicalFiles = (kind: string) => catalogRequest<CanonicalFile[]>(`canonical/${kind}`);
 export const importCanonicalFile = (csrfToken: string, kind: string, content: unknown) =>
   catalogRequest<{ id: string }>(`canonical/${kind}/import`, csrfToken, { method: "POST", body: JSON.stringify(content) });
 export const exportCanonicalFile = (csrfToken: string, kind: string, id: string) =>
   catalogRequest<unknown>(`canonical/${kind}/${id}/export`, csrfToken, { method: "POST" });
+
+export const importCanonicalDefinitionFile = (csrfToken: string, kind: string, file: string, catalogReleaseId?: string) =>
+  catalogRequest<{ id: string }>(`canonical/${kind}/import-file`, csrfToken, {
+    method: "POST", body: JSON.stringify({ file, catalogReleaseId })
+  });

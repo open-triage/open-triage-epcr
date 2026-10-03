@@ -11,6 +11,8 @@ RUN npm ci
 COPY apps/api apps/api
 COPY apps/web/messages apps/web/messages
 COPY packages/contracts packages/contracts
+COPY packages/database/scripts/lib packages/database/scripts/lib
+COPY defines/catalog defines/catalog
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
 
 FROM node:22-bookworm-slim AS runtime
@@ -41,7 +43,7 @@ COPY --from=build /workspace/packages/contracts/dist packages/contracts/dist
 COPY packages/contracts/config packages/contracts/config
 COPY packages/contracts/catalog.schema-1.0.0.json packages/contracts/
 COPY packages/contracts/examples/dispatch packages/contracts/examples/dispatch
-COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs packages/contracts/quality-normalization-policy.json packages/contracts/
+COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs packages/contracts/validation-group-scope.mjs packages/contracts/quality-normalization-policy.json packages/contracts/
 
 # Assets intentionally retained for deployment jobs and operator runbooks.
 COPY packages/database/scripts/bootstrap-synthetic-installation.mjs packages/database/scripts/

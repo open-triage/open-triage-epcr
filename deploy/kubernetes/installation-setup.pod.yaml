@@ -1,0 +1,33 @@
+# One-time administrator maintenance pod; substitute the approved API image.
+# Create its Secrets in the workload namespace before applying this file.
+# Delete this pod and its bootstrap Secret promptly after commissioning.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: open-triage-installation-setup
+spec:
+  activeDeadlineSeconds: 3600
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile: { type: RuntimeDefault }
+  imagePullSecrets:
+    - name: registry-pull
+  containers:
+    - name: setup
+      image: harbor.example.com/open-triage/api:REPLACE_WITH_RELEASE_TAG
+      command: ["node", "-e", "setInterval(() => {}, 60000)"]
+      securityContext:
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        capabilities: { drop: [ALL] }
+      env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef: { name: open-triage-migration-database, key: DATABASE_URL }
+      envFrom:
+        - secretRef: { name: open-triage-workload-bootstrap, optional: true }
+      resources:
+        requests: { cpu: 100m, memory: 128Mi }
+        limits: { cpu: 500m, memory: 512Mi }

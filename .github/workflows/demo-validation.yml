@@ -135,6 +135,12 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c
           "insert into app_identity.organization (id, name, deployment_timezone)
           values ('32000000-0000-4000-8000-000000000001', 'Demonstration EMS', 'UTC')"
+      - name: Explicitly load the fixture catalog from the runtime image
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL
+          "$API_RUNTIME_IMAGE"
+          npm run load:catalog -w @open-triage/database
       - name: Run the fixture account bootstrap from the runtime image
         run: >-
           docker run --rm --network host

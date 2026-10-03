@@ -31,7 +31,7 @@ test("Stationary record information and actions stay separate as the viewport na
   await page.getByRole("button", { name: "Open call", exact: true }).first().click();
   await page.getByRole("button", { name: "Stationary", exact: true }).click();
   await expect(page.locator(".encounter-summary")).toBeVisible();
-  for (const width of [320, 360, 390, 620, 768, 1024, 1280, 390]) {
+  for (const width of [320, 360, 390, 620, 768, 1024, 1280, 1920, 2560, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await expect.poll(() => page.evaluate(() => {
       const header = document.querySelector<HTMLElement>(".encounter-header")!;
@@ -45,6 +45,7 @@ test("Stationary record information and actions stay separate as the viewport na
       });
       return noOverlap && a.right <= h.right + 1 && header.scrollWidth <= header.clientWidth + 1;
     }), { message: `Header actions must not overlap record information at ${width}px` }).toBe(true);
+    await expect.poll(() => page.locator(".authenticated-shell").evaluate((element) => element.clientWidth)).toBe(width);
     const timeline = page.locator(".timeline-toggle-action");
     if (await timeline.getAttribute("aria-expanded") !== "true") await timeline.click();
     await page.evaluate(() => window.scrollTo(0, 600));

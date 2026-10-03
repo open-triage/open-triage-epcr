@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { compileValidationRule, compiledValidationBundleSha256, NEMSIS_351_EMS_MESSAGE_REPAIRS, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
-import { displayValidationRuleMessage, validateStationaryRecord } from "../app/stationary-validation";
+import { actionableStationaryFindings, displayValidationRuleMessage, validateStationaryRecord } from "../app/stationary-validation";
 
 const evaluationTimestamp = "2026-01-01T00:00:00.000Z";
 import { syntheticEncounter } from "../app/standard-encounter";
-import { stationaryDialogFindings } from "../components/stationary-repeating-groups";
+import { RepeatingGroupTable, stationaryDialogFindings, stationaryGroupValidationFindings } from "../components/stationary-repeating-groups";
+import { configuredRepeatingGroups, ensureNestedSingleGroupOccurrence, repeatingDialogPath } from "../app/stationary-repeating-group";
 
 test("report validation does not require fields from agency demographics", () => {
   const document = { ...syntheticEncounter.document, groups: [
@@ -100,7 +103,19 @@ function withGroupInstances(document: typeof syntheticEncounter.document, groupI
 }
 
 test("complete-record validation associates required findings with stable navigable targets", () => {
-  const findings = validateStationaryRecord(syntheticEncounter.document, undefined, evaluationTimestamp);
+  const elementId = "ePatient.07";
+  const compiled = compileValidationRule({ id: "required-patient", name: "Patient", enabled: true,
+    severity: "error", executionTargets: ["live", "sign"], primaryTargetElementId: elementId,
+    message: "Record patient weight.", source: 'for each("ePatientSection")\nrequire minimum("ePatient.07", 1)',
+  }, "validation-version", new Set([elementId]));
+  assert.deepEqual(compiled.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [compiled.compiled!] };
+  const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
+    { key: elementId, source: { kind: "nemsis" as const, elementId } },
+  ] }] }, catalogFields: {}, validation: { versionId: bundle.validationVersionId,
+    compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+  const findings = validateStationaryRecord(syntheticEncounter.document, form, evaluationTimestamp);
   const patient = findings.find(({ target }) => target.fieldId === "ePatient.07");
   assert.ok(patient);
   assert.equal(patient.target.sectionId, "ePatientSection");
@@ -108,7 +123,69 @@ test("complete-record validation associates required findings with stable naviga
   assert.equal(patient.target.groupInstanceId, "synthetic-patient-1");
   assert.equal(patient.target.fieldId, "ePatient.07");
   assert.equal(patient.severity, "error");
-  assert.match(patient.id, /^stationary:field\.minimum:/);
+  assert.match(patient.id, /^validation:/);
+});
+
+test("stationary validation skips absent groups in older pinned generated requirements", () => {
+  const rules = [
+    { elementId: "eVitals.06", groupId: "eVitals.VitalGroup", label: "SBP (Systolic Blood Pressure)" },
+    { elementId: "eMedications.05", groupId: "eMedications.MedicationGroup", label: "Medication Dosage" },
+  ].map(({ elementId, groupId, label }) => ({ groupId, rule: compileValidationRule({
+    id: elementId, name: `${label} documented minimum`, enabled: true, severity: "error", sourceKind: "catalog",
+    executionTargets: ["live", "sign"], primaryTargetElementId: elementId,
+    message: `${label} requires at least 1 documented occurrence(s)`, source: `require minimum("${elementId}", 1)`,
+  }, "legacy", new Set([elementId])).compiled! }));
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "legacy",
+    catalogReleaseId: "catalog", rules: rules.map(({ rule }) => rule) };
+  const hash = compiledValidationBundleSha256(bundle);
+  const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "care", fields: rules.map(({ rule }) => ({
+    key: rule.ruleId, source: { kind: "nemsis" as const, elementId: rule.primaryTarget.elementId },
+  })) }] }, catalogFields: {}, validation: { versionId: "legacy", compiledSha256: hash, bundle } };
+  const empty = { ...syntheticEncounter.document, groups: [] };
+  assert.deepEqual(validateStationaryRecord(empty, form, evaluationTimestamp), []);
+  const documented = { ...empty, groups: rules.map(({ groupId }) => ({ id: groupId,
+    instances: [{ instanceId: groupId, elements: [] }] })) };
+  assert.deepEqual(validateStationaryRecord(documented, form, evaluationTimestamp).map(({ target }) => target.groupInstanceId),
+    rules.map(({ groupId }) => groupId));
+  assert.equal(compiledValidationBundleSha256(bundle), hash);
+});
+
+test("a medication row requires dosage before its mandatory child exists and routes the error to that row", () => {
+  const elementId = "eMedications.05";
+  for (const prefix of ['', 'for each("eMedications.DosageGroup")\n', 'for each("eMedications.MedicationGroup")\n']) {
+    const compiled = compileValidationRule({ id: "dosage", name: "Medication Dosage documented minimum", enabled: true,
+      severity: "error", sourceKind: "catalog", executionTargets: ["live", "sign"], primaryTargetElementId: elementId,
+      message: "Medication Dosage requires at least 1 documented occurrence(s)", source: `${prefix}require minimum("${elementId}", 1)`,
+    }, "dosage", new Set([elementId])).compiled!;
+    const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "dosage",
+      catalogReleaseId: "catalog", rules: [compiled] };
+    const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "medications", fields: [
+      { key: elementId, source: { kind: "nemsis" as const, elementId } },
+    ] }] }, catalogFields: {}, validation: { versionId: "dosage", compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+    const document = { ...syntheticEncounter.document, groups: [{ id: "eMedications.MedicationGroup", instances: [
+      { instanceId: "med-one", elements: [] }, { instanceId: "med-two", elements: [] },
+    ] }] };
+    const findings = actionableStationaryFindings(validateStationaryRecord(document, form, evaluationTimestamp));
+    assert.deepEqual(findings.map(({ target }) => target.groupInstanceId), ["med-one", "med-two"]);
+    assert.deepEqual(repeatingDialogPath(document, "eMedications.DosageGroup", "med-one"),
+      [{ groupId: "eMedications.MedicationGroup", instanceId: "med-one" }]);
+    const prepared = ensureNestedSingleGroupOccurrence(document, "eMedications.DosageGroup", "med-one", () => "dose-one");
+    assert.equal(prepared.ok, true);
+    if (!prepared.ok) return;
+    const inline = stationaryGroupValidationFindings(prepared.document, findings, "eMedications.DosageGroup", prepared.instanceId);
+    assert.equal(inline.length, 1);
+    assert.equal(inline[0]?.target.groupInstanceId, "dose-one", "the error attaches to the detached dose control");
+    const edited = editScalarOccurrence(prepared.document, { groupId: "eMedications.DosageGroup", groupInstanceId: "dose-one",
+      elementId, input: "5" });
+    assert.equal(edited.ok, true);
+    const remaining = actionableStationaryFindings(validateStationaryRecord(edited.document, form, evaluationTimestamp));
+    assert.deepEqual(remaining.map(({ target }) => target.groupInstanceId), ["med-two"]);
+    const placement = configuredRepeatingGroups().find(({ id }) => id === "eMedications.MedicationGroup")!;
+    const html = renderToStaticMarkup(React.createElement(RepeatingGroupTable, { document: edited.document, placement,
+      findings: remaining, clinicalForm: form, onDocumentChange() {} }));
+    assert.match(html, /data-group-instance-id="med-two" class="stationary-validation-state error"/);
+    assert.doesNotMatch(html, /data-group-instance-id="med-one" class="stationary-validation-state error"/);
+  }
 });
 
 test("Populate produces a catalog-valid complete stationary record", () => {
@@ -138,7 +215,7 @@ test("invalid scalar findings retain group, occurrence, and field identity", () 
   });
 });
 
-test("report-pinned form requiredness and configured choices define clinical validation", () => {
+test("legacy form required flags do not create documentation findings", () => {
   const document = structuredClone(syntheticEncounter.document);
   const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
   Object.assign(patient, { elements: patient.elements.filter(({ id }) => id !== "ePatient.25") });
@@ -153,12 +230,12 @@ test("report-pinned form requiredness and configured choices define clinical val
     } },
   };
   const missing = validateStationaryRecord(document, clinicalForm, evaluationTimestamp);
-  assert.deepEqual(missing.filter(({ target }) => target.fieldId === "ePatient.25").map(({ id }) => id.split(":")[1]), ["field.minimum"]);
+  assert.deepEqual(missing.filter(({ target }) => target.fieldId === "ePatient.25").map(({ id }) => id.split(":")[1]), []);
   assert.equal(missing.some(({ target }) => target.fieldId && target.fieldId !== "ePatient.25"), false,
     "fields removed from the form do not block completion");
 });
 
-test("custom completion is scoped to its pinned form and accepts documented exceptional values", () => {
+test("custom completion comes from pinned rules and accepts documented exceptional values", () => {
   const definition = { namespace: "agency", slug: "response", title: "Response", usage: "Optional",
     datatype: "coded", codeSystem: "agency", choices: [{ code: "A", label: "A" }],
     permittedNotValues: ["NV"], permittedPertinentNegatives: [] };
@@ -166,9 +243,18 @@ test("custom completion is scoped to its pinned form and accepts documented exce
     allowedAbsenceStates: ["NV"] };
   const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "care", fields: [field] }] },
     catalogFields: {}, customFields: { "custom-id": definition } } as unknown as ClinicalFormConfiguration;
+  const compiled = compileValidationRule({ id: "required-custom", name: "Response", enabled: true,
+    severity: "error", executionTargets: ["live", "sign"], primaryTargetElementId: "agency.response",
+    message: "Record response.", source: 'require minimum("agency.response", 1)',
+  }, "validation-version", new Set(["agency.response"]));
+  assert.deepEqual(compiled.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [compiled.compiled!] };
+  const authoredForm = { ...form, validation: { versionId: bundle.validationVersionId,
+    compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
   const optional = { ...form, definition: { ...form.definition, sections: [{ key: "care", fields: [{ ...field, required: false }] }] } };
   const document = structuredClone(syntheticEncounter.document);
-  assert.equal(validateStationaryRecord(document, form, evaluationTimestamp)
+  assert.equal(validateStationaryRecord(document, authoredForm, evaluationTimestamp)
     .some(({ target }) => target.fieldId === "agency.response"), true);
   assert.equal(validateStationaryRecord(document, optional, evaluationTimestamp)
     .some(({ target }) => target.fieldId === "agency.response"), false);
@@ -177,11 +263,11 @@ test("custom completion is scoped to its pinned form and accepts documented exce
       elements: [...instance.elements, { id: "agency.response", values: [{ kind: "null" as const,
         occurrenceId: "custom-not", notValue: { code: "NV" } }] }] }),
   }) };
-  assert.equal(validateStationaryRecord(complete, form, evaluationTimestamp)
+  assert.equal(validateStationaryRecord(complete, authoredForm, evaluationTimestamp)
     .some(({ target }) => target.fieldId === "agency.response"), false);
 });
 
-test("a pinned Validation bundle preserves a stronger form completion requirement", () => {
+test("empty pinned rules do not enforce form or catalog completion requirements", () => {
   const document = structuredClone(syntheticEncounter.document);
   const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
   Object.assign(patient, { elements: patient.elements.filter(({ id }) => id !== "ePatient.25") });
@@ -196,7 +282,7 @@ test("a pinned Validation bundle preserves a stronger form completion requiremen
     validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(bundle), bundle },
   };
   assert.equal(validateStationaryRecord(document, clinicalForm, evaluationTimestamp)
-    .some(({ id, target }) => id.includes("field.minimum") && target.fieldId === "ePatient.25"), true);
+    .some(({ id, target }) => id.includes("field.minimum") && target.fieldId === "ePatient.25"), false);
 });
 
 test("Software Version has one finding when the pinned minimum rule owns the same requirement", () => {
@@ -226,7 +312,7 @@ test("Software Version has one finding when the pinned minimum rule owns the sam
   const disabledForm = { ...clinicalForm, validation: { ...clinicalForm.validation,
     compiledSha256: compiledValidationBundleSha256(disabledBundle), bundle: disabledBundle } };
   assert.deepEqual(validateStationaryRecord(document, disabledForm, evaluationTimestamp)
-    .filter(({ target }) => target.fieldId === elementId).map(({ id }) => id.split(":")[1]), ["field.minimum"]);
+    .filter(({ target }) => target.fieldId === elementId).map(({ id }) => id.split(":")[1]), []);
 });
 
 test("absent optional repeating records do not promote child minima to report-level findings", () => {
@@ -236,18 +322,15 @@ test("absent optional repeating records do not promote child minima to report-le
   }
 });
 
-test("an existing repeating occurrence activates its required child fields", () => {
+test("an existing repeating occurrence does not impose catalog child minima", () => {
   const document = withGroupInstances(syntheticEncounter.document, "eMedications.MedicationGroup", [
     { instanceId: "medication-one", elements: [] },
   ]);
   const findings = validateStationaryRecord(document, undefined, evaluationTimestamp).filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
-  assert.ok(findings.some(({ target, id }) => target.groupInstanceId === "medication-one"
-    && target.fieldId === "eMedications.03" && id.includes("field.minimum")));
-  assert.ok(findings.every(({ target }) => target.groupInstanceId === "medication-one"),
-    "child findings stay scoped to the occurrence that exists");
+  assert.deepEqual(findings, []);
 });
 
-test("a pinned form can explicitly require an otherwise optional repeating record", () => {
+test("a legacy required flag does not impose a repeating record minimum", () => {
   const clinicalForm = {
     definition: { schemaVersion: 1 as const, sections: [{ key: "medications", fields: [
       { key: "medication", source: { kind: "nemsis" as const, elementId: "eMedications.03" }, required: true },
@@ -259,13 +342,10 @@ test("a pinned form can explicitly require an otherwise optional repeating recor
   };
   const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm, evaluationTimestamp);
   const missingRecord = findings.filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
-  assert.equal(missingRecord.length, 1);
-  assert.match(missingRecord[0]!.id, /group\.minimum/);
-  assert.equal(missingRecord[0]!.target.fieldId, undefined,
-    "the missing record is reported once instead of once for every required child");
+  assert.deepEqual(missingRecord, []);
 });
 
-test("nested validation is isolated across multiple repeating parent occurrences", () => {
+test("nested catalog cardinality does not create documentation findings", () => {
   let document = withGroupInstances(syntheticEncounter.document, "eVitals.VitalGroup", [
     { instanceId: "vital-one", elements: [] },
     { instanceId: "vital-two", elements: [] },
@@ -274,13 +354,7 @@ test("nested validation is isolated across multiple repeating parent occurrences
     { instanceId: "pressure-one", parentInstanceId: "vital-one", elements: [] },
   ]);
   const findings = validateStationaryRecord(document, undefined, evaluationTimestamp).filter(({ target }) => target.groupId === "eVitals.BloodPressureGroup");
-  assert.ok(findings.some(({ target, id }) => target.groupInstanceId === "pressure-one"
-    && target.fieldId === "eVitals.06" && id.includes("field.minimum")));
-  assert.ok(findings.some(({ target, id }) => target.parentGroupInstanceId === "vital-two"
-    && target.groupInstanceId === undefined && id.includes("group.minimum")));
-  assert.equal(findings.some(({ target }) => target.groupInstanceId === "pressure-one"
-    && target.parentGroupInstanceId === "vital-two"), false,
-    "child-field findings do not leak from one repeating parent occurrence to another");
+  assert.deepEqual(findings, []);
 });
 
 test("authored repeated-group findings retain the exact row and occurrence used by stationary navigation", () => {

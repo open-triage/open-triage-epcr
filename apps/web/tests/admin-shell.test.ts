@@ -123,13 +123,17 @@ test("Validation rule-library filters expose an accessible search landmark and e
     search: "", element: "", source: "", severity: "", executionTarget: "", enabled: "", validity: "",
   }, onChange() {} }));
   assert.match(markup, /role="search" aria-label="Filter Validation rules"/);
-  for (const label of ["Search", "Element", "Source", "Severity", "Target", "State", "Validity"]) {
+  for (const label of ["Search", "Element", "Source", "Documentation severity", "Target", "State", "Validity"]) {
     assert.match(markup, new RegExp(`>${label}(?:<| )`));
   }
   assert.match(markup, /type="search"/);
   assert.match(markup, />NEMSIS<\/option>/);
   assert.match(markup, />Disabled<\/option>/);
   assert.match(markup, />Invalid<\/option>/);
+  assert.match(markup, /value="warning">Warning<\/option>/);
+  assert.match(markup, /value="wording">Wording issues<\/option>/);
+  assert.match(markup, /value="missing-english">Missing English<\/option>/);
+  assert.match(markup, /value="missing-swedish">Missing Swedish<\/option>/);
   assert.match(markup, /Element <select/);
   assert.doesNotMatch(markup, /validation-element-references/);
 });
@@ -471,8 +475,9 @@ test("live form section controls expose named keyboard-operable move and removal
   assert.doesNotMatch(markup, /Loading Stationary form draft/);
   const controls = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition,
     onChange: () => {}, onMoveSection: () => {}, onRequestRemoveSection: () => {} }));
-  assert.match(controls, /aria-label="Move patient down"/);
-  assert.match(controls, /aria-label="Move assessment up"/);
+  assert.match(controls, /aria-label="Reorder patient"/);
+  assert.match(controls, /aria-label="Reorder assessment"/);
+  assert.match(controls, /press Space, use arrow keys, then Space to drop/);
   assert.match(controls, /aria-label="Remove patient"/);
   assert.match(controls, /aria-label="Remove assessment"/);
 });
@@ -521,7 +526,7 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
 });
 
-test("preview validation preserves the catalog minimum despite an invalid optional override", () => {
+test("form preview leaves documentation minimums to the separately authored validation rules", () => {
   const document = createStationaryPreviewDocument();
   const groups = document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
     ...instance,
@@ -531,7 +536,7 @@ test("preview validation preserves the catalog minimum despite an invalid option
     revision: 4, definitionSha256: "a".repeat(64), definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
       { key: "age", source: { kind: "nemsis" as const, elementId: "ePatient.15" }, required: false }
     ] }] }, diagnostics: [], updatedAt: "2026-09-07T01:00:00.000Z" };
-  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), true);
+  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), false);
 });
 
 test("form saves send section order with the current revision and CSRF proof", async (t) => {
@@ -632,7 +637,7 @@ test("Validation reference assistance shows mutable labels while retaining stabl
 test("form catalog picker is searchable, labels duplicates, and exposes an add control", () => {
   const markup = renderToStaticMarkup(createElement(FormElementPicker, { definition: formDefinition,
     results: [catalogElement, { ...catalogElement, elementId: "ePatient.02", name: "Last Name" }], query: "patient",
-    targetSection: "patient", onQueryChange() {}, onSectionChange() {}, onAdd() {} }));
+    onQueryChange() {}, onAdd() {} }));
   assert.match(markup, /type="search"/);
   assert.match(markup, /aria-label="Add ePatient.01"/);
   assert.match(markup, /ePatient.02 is already in the form/);
@@ -649,7 +654,7 @@ test("form editor initially renders one section and bounds search result rows", 
   assert.equal(formSectionLabel({ key: "eResponseSection", fields: [] }), "Response");
   const props = { definition: formDefinition, results: Array.from({ length: 100 }, (_, index) => ({
     ...catalogElement, elementId: `eTest.${index}`,
-  })), targetSection: "patient", onQueryChange() {}, onSectionChange() {}, onAdd() {} };
+  })), onQueryChange() {}, onAdd() {} };
   const blank = renderToStaticMarkup(createElement(FormElementPicker, { ...props, query: "" }));
   assert.match(blank, /Search the catalog to add an element/);
   assert.doesNotMatch(blank, /<li>/);
@@ -672,8 +677,9 @@ test("form element helpers prevent duplicates and add, remove, and reorder immut
 
 test("form element rows provide keyboard-operable move and confirmed remove controls", () => {
   const markup = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition, onChange() {} }));
-  assert.match(markup, /aria-label="Move ePatient.02 up"/);
-  assert.match(markup, /aria-label="Move ePatient.15 down"/);
+  assert.match(markup, /aria-label="Reorder ePatient.02"/);
+  assert.match(markup, /aria-label="Reorder ePatient.15"/);
+  assert.match(markup, /press Space, use arrow keys, then Space to drop/);
   assert.match(markup, /aria-label="Remove ePatient.02"/);
   assert.match(markup, /aria-expanded="true"/);
   assert.match(markup, /<small>Last Name<\/small>/);

@@ -317,28 +317,30 @@ export function useReportWorkspace({
       return;
     }
     const demoAction = pendingDemoAction.current ?? undefined;
-    const last = pendingChanges.at(-1);
-    const existing = last && !last.attempted && last.command.demoAction === demoAction ? last : undefined;
-    const mutations = demoAction
-      ? demoActionMutationDelta(demoAction, unscopedMutations, optimisticDraft)
-      : unscopedMutations;
-    if (!mutations.groups.length && !mutations.occurrences.length) {
+    const batches = demoAction
+      ? [{ ...demoActionMutationDelta(demoAction, unscopedMutations, optimisticDraft), demoAction }]
+      : recoveryMutationBatches(unscopedMutations, optimisticDraft);
+    const changes = batches.filter(({ groups, occurrences }) => groups.length || occurrences.length);
+    if (!changes.length) {
       pendingDemoAction.current = null;
       return;
     }
     queueInitialSnapshot.current = false;
-    queueDraftChange(window.localStorage, report.id, {
-      commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
-      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current, demoAction),
-      authorId: session.user.id,
-      // Presentation is a view choice, not a synchronization identity. Keeping
-      // this stable prevents mobile/stationary switches from looking like a new
-      // target writer while the report remains open.
-      deviceId: `web:${report.id}`,
-      clientTime: existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString(),
-      ...(demoAction ? { demoAction } : {}),
-      ...mutations,
-    });
+    for (const mutations of changes) {
+      const last = queuedDraftChanges(window.localStorage, report.id).at(-1);
+      const existing = last && !last.attempted && last.command.demoAction === mutations.demoAction ? last : undefined;
+      queueDraftChange(window.localStorage, report.id, {
+        commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
+        expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current, mutations.demoAction),
+        authorId: session.user.id,
+        // Presentation is a view choice, not a synchronization identity. Keeping
+        // this stable prevents mobile/stationary switches from looking like a new
+        // target writer while the report remains open.
+        deviceId: `web:${report.id}`,
+        clientTime: existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString(),
+        ...mutations,
+      });
+    }
     pendingDemoAction.current = null;
     queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -417,7 +419,7 @@ export function useReportWorkspace({
         revision.current = response.resource.reportRevision;
         if (queued) {
           if (recoverConflictingQueue.current) {
-            const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged, undefined, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
+            const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged, serverDraft, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
             recoverConflictingQueue.current = false;

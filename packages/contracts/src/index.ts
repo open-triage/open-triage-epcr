@@ -19,7 +19,10 @@ export {
   isNemsisDemographicElementId,
   minimumRuleCoversRequirement,
   repairNemsisImportedMessage,
+  reviewPriorityOfRule,
   validationRuleText,
+  validationRuleWordingStatuses,
+  validationRuleValidity,
   type CompiledValidationBundle,
   type CompiledValidationExpression,
   type CompiledValidationRule,
@@ -37,6 +40,7 @@ export {
   type ValidationRuleProvenance,
   type ValidationRuleSourceKind,
   type ValidationSeverity,
+  type ValidationReviewPriority,
   ValidationCompatibilityError,
   ValidationResourceLimitError,
 } from "./validation-rules.js";
@@ -68,8 +72,8 @@ export {
 
 export type FeedbackSubmissionType = "bug" | "feature";
 
-export type FeedbackDiagnosticMode = "mobile" | "stationary" | "admin";
-export type FeedbackDiagnosticScreen = "calls" | "encounter" | "admin";
+export type FeedbackDiagnosticMode = "mobile" | "stationary" | "admin" | "review";
+export type FeedbackDiagnosticScreen = "calls" | "encounter" | "admin" | "review";
 export type FeedbackBrowserFamily = "chromium" | "firefox" | "safari" | "other";
 export type FeedbackStructuralKind =
   | "main" | "header" | "footer" | "nav" | "section" | "article" | "aside"
@@ -79,6 +83,7 @@ export type FeedbackInteractionName =
   | "feedback.type.feature.selected" | "feedback.submit.attempted"
   | "session.refresh.requested" | "session.logout.requested"
   | "presentation.mobile.selected" | "presentation.stationary.selected" | "presentation.admin.selected"
+  | "presentation.review.selected"
   | "draft-sync.server-conflict" | "draft-sync.validation-rejected"
   | "draft-sync.recovered" | "draft-sync.retry-exhausted";
 
@@ -135,6 +140,455 @@ export {
 export interface CreateClinicianSessionCommand {
   username: string;
   password: string;
+}
+
+export interface ReviewQueueItem {
+  id: string;
+  reportId: string;
+  reportNumber?: string | null;
+  criterionName?: string | null;
+  criterionDescription?: string | null;
+  assigneeName?: string | null;
+  criterionId: string;
+  kind?: "criterion" | "overdue-unsigned";
+  deadlineAt?: string | null;
+  deadlineSource?: "call-completed" | "report-created" | null;
+  resolutionReason?: string | null;
+  exceptionCode?: ReviewOverdueExceptionCode | null;
+  priority: "high" | "medium" | "low";
+  status: "new" | "in-review" | "awaiting-clinician" | "completed";
+  outcome: { optionId: string; revision: number; label: string; meaning: string } | null;
+  activeMatch: boolean;
+  clearancePending: boolean;
+  reopened: boolean;
+  closureReason: string | null;
+  assigneeId: string | null;
+  version: number;
+  recoveryReason?: string | null;
+  firstMatchedAt: string;
+  reportingDate: string | null;
+  signedAt: string | null;
+  findings: import("./validation-rules.js").ValidationFinding[];
+}
+
+export interface ReviewAssignmentEvent {
+  commandId: string;
+  actorId: string | null;
+  assigneeId: string | null;
+  previousAssigneeId?: string | null;
+  action?: "claimed" | "assigned" | "routed" | "recovered";
+  reason?: string | null;
+  itemVersion: number;
+  assignedAt: string;
+}
+
+export interface ReviewCriterionRoute {
+  criterionId: string;
+  name: string;
+  route: "unassigned" | "author" | "named";
+  namedUserId: string | null;
+  independentReview: boolean;
+  version: number;
+  recoveryReason: string | null;
+}
+
+export interface ReviewEligibleReviewer {
+  id: string;
+  displayName: string;
+  documentingClinician?: boolean;
+}
+
+export interface ConfigureReviewRouteCommand {
+  commandId: string;
+  expectedVersion: number;
+  route: "unassigned" | "author" | "named";
+  namedUserId: string | null;
+  independentReview: boolean;
+}
+
+export interface AssignReviewItemCommand {
+  commandId: string;
+  expectedVersion: number;
+  dataset: "real" | "synthetic";
+  assigneeId: string | null;
+}
+
+export interface ReviewBulkSelection {
+  itemId: string;
+  commandId: string;
+  expectedVersion: number;
+}
+
+export interface ReviewBulkClaimCommand {
+  dataset: "real" | "synthetic";
+  selections: ReviewBulkSelection[];
+}
+
+export interface ReviewBulkAssignCommand extends ReviewBulkClaimCommand {
+  assigneeId: string | null;
+}
+
+export interface ReviewBulkResult {
+  results: Array<{ itemId: string; status: "succeeded" | "failed";
+    reason?: "conflict" | "ineligible" | "out-of-scope";
+    item?: ReviewItemDetail }>;
+}
+
+export interface ReviewItemDetail extends ReviewQueueItem {
+  overdueHistory?: Array<{ action: "detected" | "resolved-by-signing" | "closed-exceptionally" |
+    "signed-after-exception"; recordedAt: string; itemVersion: number;
+    actorId: string | null; reasonCode: ReviewOverdueExceptionCode | null }>;
+  assignmentHistory: ReviewAssignmentEvent[];
+  progressHistory: Array<{ commandId: string; actorId: string | null; itemVersion: number;
+    status: ReviewQueueItem["status"]; outcome: ReviewQueueItem["outcome"];
+    reason: string | null; evaluationId: string | null; recordedAt: string }>;
+  amendmentHistory: Array<{ evaluationId: string; amendmentSequence: number; matched: boolean;
+    action: "created" | "unchanged" | "reopened" | "confirmation-required" | "automatic-closure";
+    reason: string | null; policy: "confirm" | "automatic" | null; itemVersion: number;
+    validationVersionId: string; evaluatedAt: string; findings: import("./validation-rules.js").ValidationFinding[];
+    changes: Array<{ elementId: string | null; groupInstanceId: string;
+      occurrenceId: string | null; change: "added" | "removed" | "changed" }> }>;
+  comments: ReviewComment[];
+  commentsRestricted: boolean;
+  canComment: boolean;
+}
+
+export interface ReviewAmendmentPolicy {
+  clearance: "confirm" | "automatic";
+  version: number;
+}
+
+export interface ConfigureReviewAmendmentPolicyCommand {
+  commandId: string;
+  expectedVersion: number;
+  clearance: ReviewAmendmentPolicy["clearance"];
+}
+
+export interface ReviewComment {
+  kind?: "comment" | "finding";
+  id: string;
+  actorId: string;
+  actorName: string;
+  body: string;
+  itemVersion: number;
+  recordedAt: string;
+}
+
+export interface AddReviewCommentCommand {
+  kind?: "comment" | "finding";
+  commandId: string;
+  expectedVersion: number;
+  dataset: "real" | "synthetic";
+  body: string;
+}
+
+export interface ClaimReviewItemCommand {
+  commandId: string;
+  expectedVersion: number;
+  dataset: "real" | "synthetic";
+}
+
+export type ReviewOverdueExceptionCode = "duplicate-follow-up" | "report-not-required" |
+  "administrative-exception";
+
+export interface CloseReviewOverdueCommand extends ClaimReviewItemCommand {
+  reasonCode: ReviewOverdueExceptionCode;
+}
+
+export interface ReviewProgressCommand extends ClaimReviewItemCommand {
+  status: "in-review" | "awaiting-clinician" | "completed";
+  outcomeOptionId?: string;
+}
+
+export interface ReviewOutcomeOption {
+  id: string; revision: number; label: string; meaning: string; active: boolean;
+}
+
+export interface ReviewOutcomeCommand {
+  commandId: string;
+  optionId?: string;
+  expectedRevision?: number;
+  label: string;
+  meaning: string;
+  active: boolean;
+}
+
+export interface ReviewQueueResponse {
+  assignmentCounts?: { all: number; mine: number; unassigned: number };
+  dataset: "real" | "synthetic";
+  page: number;
+  pageSize: number;
+  total: number;
+  asOf: string;
+  items: ReviewQueueItem[];
+}
+
+export type ReviewAttentionKind = "assignments" | "responses" | "reopened" | "unavailable-assignees";
+
+export interface ReviewAttentionResponse {
+  dataset: "real" | "synthetic";
+  asOf: string;
+  /** Review items needing personal attention, counted once across overlapping categories. */
+  total: number;
+  assignments: number;
+  responses: number;
+  reopened: number;
+  unavailableAssignees?: number;
+  unavailableRoutes?: number;
+  processingFailures?: number;
+}
+
+export interface ReviewReportValue {
+  id: string;
+  elementId: string;
+  label: string;
+  groupInstanceId: string | null;
+  ordinal: number;
+  valueKind: string;
+  value: string | number | boolean | null;
+  codeDisplay?: string | null;
+  absenceDisplay?: string | null;
+}
+
+export interface ReviewReportGroup {
+  id: string;
+  parentGroupInstanceId: string | null;
+  groupId: string;
+  label: string;
+  ordinal: number;
+}
+
+export interface ReviewSignedReport {
+  document?: EncounterDocument;
+  clinicalForm?: ClinicalFormConfiguration;
+  id: string;
+  reportingDate: string;
+  signedAt: string;
+  amendmentSequence: number;
+  identifying: boolean;
+  groups: ReviewReportGroup[];
+  values: ReviewReportValue[];
+  notes: ReportNote[];
+  reviewItems?: Array<{ id: string; criterionId: string; criterionName?: string; status: ReviewQueueItem["status"];
+    outcome: ReviewQueueItem["outcome"]; clearancePending: boolean; closureReason: string | null }>;
+}
+
+export interface ReviewOverdueDraft {
+  document?: EncounterDocument;
+  clinicalForm?: ClinicalFormConfiguration;
+  id: string;
+  itemId: string;
+  createdAt: string;
+  deadlineAt: string;
+  deadlineSource: "call-completed" | "report-created";
+  identifying: boolean;
+  groups: ReviewReportGroup[];
+  values: ReviewReportValue[];
+  notes: readonly ReportNote[];
+}
+
+export interface ReviewVolumeDefinition {
+  measure: "signed-report-count";
+  grouping: "day";
+  filters: {
+    from: string;
+    to: string;
+    dataset: "real" | "synthetic";
+  };
+}
+
+export interface ReviewVolumeResult {
+  /** Fingerprint of the displayed aggregate, supplied by the API for coherent export. */
+  exportRevision?: string;
+  definition: ReviewVolumeDefinition;
+  population: {
+    unit: "patient-report";
+    scope: "own" | "all";
+    organizationId: string;
+    signedOnly: true;
+  };
+  freshness: {
+    observedAt: string;
+    targetSeconds: 300;
+    status: "current" | "stale";
+    oldestBacklogSeconds: number | null;
+    replicaLagSeconds: number | null;
+  };
+  total: number | null;
+  points: Array<{ date: string; count: number }>;
+  sources?: Array<{ reportId: string; reportingDate: string }>;
+}
+
+export interface ReviewAnalysisField {
+  id: string;
+  label: string;
+  kind: "categorical" | "numeric";
+  unit: string | null;
+  repeating?: boolean;
+  operations: Array<"distribution" | "mean" | "median" | "minimum" | "maximum">;
+  source?: "custom" | "operational-time";
+  /** Canonical signed ePCR timestamps. Duration is computed in elapsed minutes. */
+  interval?: { start: string; end: string; eligibility: "signed-patient-reports" };
+  unsupportedReason?: string;
+}
+
+export interface ReviewAnalysisDefinition {
+  fieldId: string;
+  operation: "distribution" | "mean" | "median" | "minimum" | "maximum";
+  groupBy?: string;
+  /** Required for repeated numeric fields. */
+  reducer?: "first" | "last" | "minimum" | "maximum";
+  /** Unit code for repeated medication dosage; no cross-unit arithmetic. */
+  unit?: string;
+  filters: {
+    from: string;
+    to: string;
+    dataset: "real" | "synthetic";
+    field?: { id: string; value: string };
+    review?: { criterionId?: string; outcomeOptionId?: string };
+  };
+}
+
+export interface ReviewWorkloadDefinition {
+  groupBy: "criterion" | "priority" | "status" | "age" | "completion-duration" | "exception-reason";
+  filters: { from: string; to: string; dataset: "real" | "synthetic" };
+}
+
+export interface ReviewWorkloadResult {
+  exportRevision?: string;
+  definition: ReviewWorkloadDefinition;
+  population: { unit: "review-item"; scope: "own" | "all"; organizationId: string;
+    includesUnsigned: true };
+  freshness: { source: "operational-primary"; observedAt: string };
+  totalItems: number;
+  reopenedItems: number;
+  unsignedItems: number;
+  exceptionallyClosedItems: number;
+  groups: Array<{ key: string; count: number }>;
+  /** Permitted structured contributors. One CSV cell per report contains its item list. */
+  sources?: Array<{ reportId: string; reportingDate: string | null; items: Array<{
+    itemId: string; criterionId: string | null; group: string; priority: string;
+    status: string; kind: string; firstMatchedAt: string; completedAt: string | null;
+    reopened: boolean; resolutionReason: string | null; exceptionCode: string | null;
+  }> }>;
+}
+
+export interface ReviewAnalysisReviewFilters {
+  criteria: Array<{ id: string; label: string }>;
+  outcomes: Array<{ id: string; label: string }>;
+}
+
+export interface ReviewSavedAnalysis {
+  id: string;
+  name: string;
+  ownerId: string;
+  shared: boolean;
+  version: number;
+  updatedAt: string;
+  editable: boolean;
+}
+
+export interface SaveReviewAnalysisCommand {
+  commandId: string;
+  /** Present when revising an existing definition. */
+  expectedVersion?: number;
+  name: string;
+  shared: boolean;
+  definition: ReviewAnalysisDefinition;
+}
+
+export interface ReviewSavedAnalysisOpen {
+  saved: ReviewSavedAnalysis;
+  result: ReviewAnalysisResult;
+}
+
+export interface ReviewAnalysisResult {
+  /** Fingerprint of the displayed aggregate, supplied by the API for coherent export. */
+  exportRevision?: string;
+  definition: ReviewAnalysisDefinition;
+  field: ReviewAnalysisField;
+  population: ReviewVolumeResult["population"];
+  freshness: ReviewVolumeResult["freshness"];
+  /** Effective occurrence values and identity retained for an eventual underlying-record export. */
+  sources?: Array<{ reportId: string; group: string | null; value: string[] | number | null;
+    reportingDate?: string; operationalTime?: { start: string | null; end: string | null;
+      startAbsent: boolean; endAbsent: boolean; state: "valid" | "invalid" | "absent" | "missing" };
+    state?: "valid" | "absent" | "missing";
+    unit: string | null; occurrenceIds: string[]; groupInstanceIds: string[];
+    selectedOccurrenceId?: string; orderMode?: "clinical-time" | "occurrence-order";
+    sourceValues: Array<{ occurrenceId: string; groupId: string | null; groupInstanceId: string | null;
+      parentGroupInstanceId: string | null; value: string | number | null;
+      unit: string | null; clinicalTime: string | null; documentedTime: string | null;
+      absenceKind: string | null; absenceCode: string | null;
+      normalizationRuleId: string | null; qualityFlags: string[];
+      elementIdentityId?: string; customDefinitionId?: string;
+      catalogReleaseId?: string; effectiveAmendmentSequence?: number;
+      groupPath?: string[]; instancePath?: string[];
+      groupOrdinal?: number | null; elementOrdinal?: number | null;
+      correlationId?: string | null; groupCorrelationId?: string | null }> }>;
+  groups: Array<{
+    group: string | null;
+    denominator: number;
+    missing: number;
+    absent: number;
+    /** Present for operational time: both endpoints exist but end precedes start. */
+    invalid?: number;
+    values: Array<{ value: string | null; count: number; percentage: number }>;
+    summary: number | null;
+  }>;
+}
+
+export interface ReviewRetrospectiveDefinition {
+  criterionId: string;
+  validationVersionId: string;
+  from: string;
+  to: string;
+  dataset: "real" | "synthetic";
+}
+
+export interface ReviewRetrospectiveVersion {
+  criterionId: string;
+  validationVersionId: string;
+  name: string;
+  version: number;
+  catalogReleaseId: string;
+  publishedAt: string;
+}
+
+export interface ReviewRetrospectivePreview {
+  definition: ReviewRetrospectiveDefinition;
+  scope: { organizationId: string; reports: "all" };
+  revision: string;
+  sourceRevision: string;
+  total: number;
+  matches: number;
+  newItems: number;
+  existingItems: number;
+  failed: number;
+  incompatible: number;
+  reports: Array<{ reportId: string; reportingDate: string;
+    outcome: "match" | "no-match" | "failed" | "incompatible";
+    existing: boolean; findingCount: number; failureCode: string | null }>;
+}
+
+export interface ReviewRetrospectiveRun {
+  id: string;
+  definition: ReviewRetrospectiveDefinition;
+  createdAt: string;
+  total: number;
+  complete: number;
+  pending: number;
+  failed: number;
+  incompatible: number;
+  matches: number;
+  existingItems: number;
+  newItems: number;
+}
+
+export interface StartReviewRetrospectiveCommand {
+  commandId: string;
+  definition: ReviewRetrospectiveDefinition;
+  expectedRevision: string;
 }
 
 export interface ClinicianSession {
@@ -245,6 +699,9 @@ export interface AgencyAppearance {
   logoPngDataUrl: string | null;
   accentColor: string;
   accentDarkColor: string;
+  destructiveColor: string;
+  inactiveButtonColor: string;
+  textColor: string;
   browserThemeColor: string;
   pwaBackgroundColor: string;
   pwaName: string;
@@ -257,6 +714,9 @@ export const DEFAULT_AGENCY_APPEARANCE: Readonly<AgencyAppearance> = Object.free
   logoPngDataUrl: null,
   accentColor: "#00783a",
   accentDarkColor: "#006b34",
+  destructiveColor: "#b42318",
+  inactiveButtonColor: "#ffffff",
+  textColor: "#1a1c1a",
   browserThemeColor: "#00783a",
   pwaBackgroundColor: "#dfe5df",
   pwaName: "OpenTriage",
@@ -378,7 +838,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings";
 
 export interface AdminRoleSummary {
   id: string;
@@ -820,7 +1280,7 @@ export interface ValidationDraftResult {
 export interface ValidationRuleLibraryItem {
   rule: import("./validation-rules.js").ValidationRuleSource;
   source: import("./validation-rules.js").ValidationRuleSourceKind;
-  validity: "valid" | "invalid";
+  validity: "valid" | "warning" | "invalid";
   diagnostics: import("./validation-rules.js").ValidationDiagnostic[];
 }
 

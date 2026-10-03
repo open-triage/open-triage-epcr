@@ -4,6 +4,7 @@ import {
   defaultPresentationMode,
   hasAdminMode,
   hasClinicalMode,
+  hasReviewMode,
   loadPresentationMode,
   PRESENTATION_MODE_STORAGE_KEY,
   storePresentationMode
@@ -36,4 +37,18 @@ test("capabilities control available modes and safe session defaults", () => {
   assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["admin-dashboard:read"]), "admin");
   assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["clinical:document"]), "stationary");
   assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["admin-dashboard:read"]), "admin");
+  assert.equal(hasReviewMode(["review:identifying"]), false);
+  assert.equal(hasReviewMode(["review:self"]), true);
+  assert.equal(hasAdminMode(["review:all", "review:admin"]), true);
+  assert.equal(defaultPresentationMode(["review:all"]), "review");
+  assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["review:all"]), "review");
+  assert.equal(loadPresentationMode({ getItem: () => "review" }, ["review:all"]), "review");
+  assert.equal(loadPresentationMode({ getItem: () => "review" }, ["review:identifying"]), "mobile");
+});
+
+ test("Review administration can open Admin without other administrative capabilities", () => {
+  assert.equal(hasAdminMode(["review:self"]), false);
+  assert.equal(hasAdminMode(["review:identifying"]), false);
+  assert.equal(defaultPresentationMode(["review:admin"]), "admin");
+  assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["review:all", "review:admin"]), "admin");
 });

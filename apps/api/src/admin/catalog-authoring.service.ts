@@ -11,6 +11,7 @@ import { mutationRows } from "../database/mutation-result.js";
 import { customTextDefinitionFindings } from "./custom-text-definition.js";
 import { customGroupDefinitionFindings } from "./custom-group-definition.js";
 import { releaseCustomDefinitions } from "./custom-definition-version.js";
+import type { BaseCatalogBundle } from "../../../../packages/database/scripts/lib/base-catalog.mjs";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -95,14 +96,16 @@ export class CatalogAuthoringService {
     `, [session.organization.id]);
     const release = rows[0];
     if (!release) return null;
-    return { id: release.id, displayName: release.display_name, version: release.version, status: "active",
+    return { id: release.id, displayName: release.display_name, version: (await this.versions(sessionToken)).find(({ id }) => id === release.id)?.version?.toString() ?? release.version, status: "active",
       definition: await this.cloneDefinition(this.dataSource.manager, release.id) };
   }
 
   async versions(sessionToken: string): Promise<AuthoringVersionOption[]> {
     const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<Array<{ id: string; display_name: string; version: string; active: boolean }>>(`
-      select cr.id,coalesce(cr.display_name,cr.standard || ' ' || cr.version) as display_name,cr.version,
+      select cr.id,coalesce(cr.display_name,cr.standard || ' ' || cr.version) as display_name,
+        coalesce(cr.provenance->>'agencyVersion',
+          (row_number() over(order by cr.loaded_at,cr.id))::text) as version,
         exists(select 1 from app_identity.active_configuration_bundle active
           where active.organization_id=$1 and active.catalog_release_id=cr.id) as active
       from catalog.release cr where cr.sealed and (
@@ -248,6 +251,7 @@ export class CatalogAuthoringService {
     const session = await this.authorize(sessionToken, "catalog:publish");
     const body = this.publishBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${session.organization.id}`]);
       const rows = await manager.query<DraftRow[]>(`
         select * from catalog.authoring_draft where id = $1 and organization_id = $2 and created_by = $3 for update
       `, [draftId, session.organization.id, session.user.id]);
@@ -273,12 +277,14 @@ export class CatalogAuthoringService {
         where source.id=$1
       `, [draft.source_release_id]))[0]!;
       const releaseId = randomUUID();
+      const agencyVersion = await this.nextAgencyVersion(manager, session.organization.id);
       const version = `${source.version}-agency-${draft.id.replaceAll("-", "").slice(0, 12)}`;
       await manager.query(`insert into catalog.release
         (id, standard, version, dataset, artifact_schema_version, artifact_sha256, provenance, sealed, display_name)
         values ($1,$2,$3,$4,$5,$6,$7::jsonb,false,$8)`, [releaseId, source.standard, version, source.dataset,
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
           dataModelVersion: source.data_model_version,
+          agencyVersion,
           organizationId: session.organization.id, changeNote: body.changeNote,
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
           customElementIds: (draft.canonical_definition.customElements ?? []).map((element) => element.id),
@@ -385,8 +391,65 @@ export class CatalogAuthoringService {
         (organization_id, actor_id, draft_id, release_id, result, change_note, definition_sha256)
         values ($1,$2,$3,$4,'succeeded',$5,$6)`, [session.organization.id, session.user.id, draft.id, releaseId,
         body.changeNote, validation.definitionSha256]);
-      return { id: releaseId, displayName: body.displayName, status: "published", version, definitionSha256: validation.definitionSha256,
+      return { id: releaseId, displayName: body.displayName, status: "published", version: String(agencyVersion), definitionSha256: validation.definitionSha256,
         publishedAt: new Date(published[0].published_at).toISOString(), projectionsVerified: true };
+    });
+  }
+
+  private async nextAgencyVersion(manager: Pick<EntityManager, "query">, organizationId: string): Promise<number> {
+    const rows = await manager.query<Array<{ next_version: number }>>(`select
+      greatest(count(*)::integer,coalesce(max((cr.provenance->>'agencyVersion')::integer),0))+1 as next_version
+      from catalog.release cr where cr.sealed and (
+        exists(select 1 from catalog.authoring_draft d where d.organization_id=$1 and d.published_release_id=cr.id)
+        or exists(select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
+          where f.organization_id=$1 and fv.catalog_release_id=cr.id and fv.status='published'))`, [organizationId]);
+    return Number(rows[0]?.next_version ?? 1);
+  }
+
+  /** Publish the complete supported base file, without modifying a sealed predecessor. */
+  async importBase(token: string, bundle: BaseCatalogBundle, changeNote: string): Promise<PublishedCatalog> {
+    const session = await this.authorize(token, "catalog:publish");
+    await this.authorize(token, "catalog:write");
+    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${session.organization.id}`]);
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}:${session.user.id}`]);
+      const drafts = await manager.query(`select id from catalog.authoring_draft
+        where organization_id=$1 and published_release_id is null limit 1`, [session.organization.id]);
+      if (drafts.length) throw new ConflictException("Publish or discard the existing draft before importing");
+      const available = await this.versions(token);
+      const demographicSource = available.find(({ status }) => status === "active") ?? available[0];
+      const agencyVersion = await this.nextAgencyVersion(manager, session.organization.id);
+      const id = randomUUID();
+      const displayName = `NEMSIS ${bundle.catalog.release}`;
+      const version = `${bundle.catalog.release}-agency-${id.replaceAll("-", "").slice(0, 12)}`;
+      const { elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization, seedSha256 } = bundle.localization;
+      await manager.query(`insert into catalog.release
+        (id,standard,version,dataset,artifact_schema_version,artifact_sha256,provenance,sealed,display_name)
+        values ($1,'NEMSIS',$2,$3,$4,$5,$6::jsonb,false,$7)`, [id, version, bundle.catalog.dataset,
+        bundle.catalog.schemaVersion, bundle.artifactSha256, JSON.stringify({ ...bundle.catalog.provenance,
+          organizationId: session.organization.id, agencyVersion, dataModelVersion: bundle.catalog.release,
+          catalogSourceSha256: bundle.catalogSourceSha256, changeNote,
+          elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization,
+          localizationSeedSha256: seedSha256 }), displayName]);
+      const { materializeBaseCatalog } = await import("../../../../packages/database/scripts/lib/base-catalog.mjs");
+      await materializeBaseCatalog(manager, { ...bundle, releaseId: id });
+      const definition = await this.cloneDefinition(manager, id);
+      const validation = await this.validateDefinition(manager, id, definition);
+      if (!validation.valid || !validation.projectionsVerified)
+        throw new UnprocessableEntityException({ message: "Base catalog validation failed", findings: validation.findings });
+      const published = mutationRows<{ id: string; published_at: Date | string }>(await manager.query(`insert into catalog.authoring_draft
+        (organization_id,source_release_id,canonical_definition,definition_sha256,created_by,display_name,published_release_id,published_at)
+        values ($1,$2,$3::jsonb,$4,$5,$6,$2,now()) returning id,published_at`,
+      [session.organization.id, id, JSON.stringify(definition), validation.definitionSha256, session.user.id, displayName]));
+      await manager.query(`insert into catalog.publication_event
+        (organization_id,actor_id,draft_id,release_id,result,change_note,definition_sha256)
+        values ($1,$2,$3,$4,'succeeded',$5,$6)`, [session.organization.id, session.user.id,
+        published[0]!.id, id, changeNote, validation.definitionSha256]);
+      if (demographicSource) await this.cloneAgencyDemographics(manager, session.organization.id,
+        demographicSource.id, id, session.user.id);
+      return { id, displayName, status: "published", version: String(agencyVersion),
+        definitionSha256: validation.definitionSha256, projectionsVerified: true,
+        publishedAt: new Date(published[0]!.published_at).toISOString() };
     });
   }
 

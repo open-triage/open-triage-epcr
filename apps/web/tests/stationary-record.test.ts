@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { EncounterDocument } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, type CompiledValidationBundle, type EncounterDocument } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
 import { NEMSIS_DATA_MODEL } from "../app/nemsis-data-model";
 import {
@@ -18,9 +18,41 @@ import { StationaryRecord } from "../components/stationary-record";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
 import { INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
-import { stationaryReviewFindings } from "../app/stationary-validation";
+import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
+import { editNonRepeatingScalarValue } from "../app/stationary-non-repeating";
 
 const document = structuredClone(synthetic) as EncounterDocument;
+
+test("main report displays and clears report-scoped errors for missing mandatory inline ancestry", () => {
+  const elementIds = ["eResponse.03", "ePatient.15"];
+  const rules = elementIds.map((elementId) => compileValidationRule({
+    id: elementId, name: `Required ${elementId}`, enabled: true, severity: "error", executionTargets: ["live", "sign"],
+    primaryTargetElementId: elementId, message: `Document ${elementId}`,
+    source: `for each("PatientCareReportGroup")\nrequire minimum("${elementId}", 1)`,
+  }, "main-report", new Set(elementIds)).compiled!);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "main-report",
+    catalogReleaseId: "catalog", rules };
+  const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "report", fields: elementIds.map((elementId) => ({
+    key: elementId, source: { kind: "nemsis" as const, elementId },
+  })) }] }, catalogFields: {}, validation: { versionId: "main-report", compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+  const empty = { ...document, groups: [{ id: "PatientCareReportGroup", instances: [{ instanceId: "report-one", elements: [] }] }] };
+  const render = (record: EncounterDocument) => {
+    const findings = actionableStationaryFindings(validateStationaryRecord(record, form, "2026-10-03T00:00:00Z"));
+    return renderToStaticMarkup(createElement(StationaryRecord, { document: record, formDefinition: form.definition,
+      findings, validation: form.validation, onDocumentChange() {} }));
+  };
+  const before = render(empty);
+  for (const elementId of elementIds) assert.ok(before.includes(`Document ${elementId}`), `${elementId} must show its field error`);
+  assert.equal((before.match(/stationary-field-shell stationary-validation-state error/g) ?? []).length, 2);
+  assert.match(before, /data-section-status="error"/);
+  const incident = editNonRepeatingScalarValue(empty, { groupId: "eResponseSection", elementId: "eResponse.03" }, "INCIDENT-1");
+  assert.equal(incident.ok, true);
+  assert.doesNotMatch(render(incident.document), /Document eResponse\.03/);
+  assert.match(render(incident.document), /Document ePatient\.15/);
+  const age = editNonRepeatingScalarValue(incident.document, { groupId: "ePatient.AgeGroup", elementId: "ePatient.15" }, "35");
+  assert.equal(age.ok, true);
+  assert.doesNotMatch(render(age.document), /stationary-validation-message error/);
+});
 
 test("technical section and group identifiers become concise display labels", () => {
   assert.equal(stationaryDisplayLabel("eResponse"), "Response");
@@ -164,7 +196,7 @@ test("encounter-review warnings contribute to section badges without becoming in
   assert.match(preview, /vitals: 0 errors, 1 warning/i);
 });
 
-test("populated vital review warnings appear in the stationary section rail", () => {
+test("pinned documentation excludes legacy code-backed clinical warnings", () => {
   let populated = populateStationaryDemoData(document);
   for (const elementId of ["eVitals.06", "eVitals.10", "eVitals.12", "eVitals.14"]) {
     const groupId = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === elementId)!.groupPath.at(-1)!;
@@ -185,13 +217,13 @@ test("populated vital review warnings appear in the stationary section rail", ()
     })),
   ] }] };
   const visible = stationaryReviewFindings(vitalFindings, { definition: formDefinition, catalogFields: {} });
-  assert.equal(visible.length, 4);
+  assert.equal(visible.length, 0);
   const fullHtml = renderToStaticMarkup(createElement(StationaryRecord, { document: populated,
     sectionFindings: visible, onDocumentChange() {} }));
-  assert.match(fullHtml, /Vitals: 0 errors, 4 warnings/);
+  assert.doesNotMatch(fullHtml, /4 warnings/);
   const html = renderToStaticMarkup(createElement(StationaryRecord, { document: populated, formDefinition,
     sectionFindings: visible, onDocumentChange() {} }));
-  assert.match(html, /vitals: 0 errors, 4 warnings/i);
+  assert.doesNotMatch(html, /4 warnings/i);
 });
 
 test("a warning on a vital field highlights its table row", () => {

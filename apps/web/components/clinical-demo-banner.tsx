@@ -3,7 +3,7 @@
 import { AdminText, useAdminText } from "../app/admin-localization";
 
 import type { ClinicianSession, SyntheticCallGenerationContext } from "@open-triage/contracts";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { fetchSyntheticCallGenerationContext, generateSyntheticCall } from "../app/assigned-calls";
 import { sessionRequestToken } from "../app/clinician-session";
 import { canGenerateSyntheticCall, canUseClinicalDemoDraftActions, selectedClinicalDemoUnit } from "../app/clinical-demo";
@@ -36,6 +36,7 @@ export function ClinicalDemoBanner({
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const banner = useRef<HTMLElement>(null);
   const protectedStatus = useSyncExternalStore(
     useCallback((changed) => subscribeProtectedStorageStatus((reportId) => {
       if (reportId === activeReport?.id) changed();
@@ -60,6 +61,20 @@ export function ClinicalDemoBanner({
     });
     return () => { current = false; };
   }, [activeReport?.id, refreshRequest]);
+
+  useEffect(() => {
+    const strip = banner.current;
+    const shell = strip?.parentElement;
+    if (!strip || !shell) return;
+    const measure = () => shell.style.setProperty("--clinical-demo-banner-height", `${strip.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    return () => {
+      observer.disconnect();
+      shell.style.removeProperty("--clinical-demo-banner-height");
+    };
+  }, [authorized]);
 
   if (!authorized || !context) return null;
   const canGenerate = canGenerateSyntheticCall(activeReport !== null, context);
@@ -100,7 +115,7 @@ export function ClinicalDemoBanner({
     }
   }
 
-  return <aside className="safety-notice clinical-demo-banner" role="note" aria-label={t("admin.clinicalDemoTools")}>
+  return <aside ref={banner} className="safety-notice clinical-demo-banner" role="note" aria-label={t("admin.clinicalDemoTools")}>
     <strong><AdminText messageKey="admin.clinicalDemo" /></strong>
     {protectedStatus.mode === "best-effort" && <span className="demo-storage-note"
       aria-label={`${t("admin.bestEffortOffline")}. ${protectedStatus.explanation ?? ""}`}

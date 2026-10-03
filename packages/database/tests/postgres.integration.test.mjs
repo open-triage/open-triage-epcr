@@ -132,9 +132,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     try {
       await client.query("set local role open_triage_api_runtime");
       await client.query("select * from clinical.report limit 0");
+      await client.query("select * from operations.projection_health limit 0");
       for (const sql of [
         "select * from analytics_private.epcr limit 0",
-        "select * from operations.projection_health limit 0",
         "create schema api_escape",
         "create table public.api_escape (id integer)",
         "create function public.api_escape() returns integer language sql as 'select 1'",
@@ -162,6 +162,14 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     try {
       await client.query("set local role open_triage_analytics_projector");
       await client.query("select * from clinical.signed_snapshot limit 0");
+      assert.equal((await client.query(`select analytics_private.report_projection_is_current(
+        '00000000-0000-4000-8000-000000000000', current_date,
+        '00000000-0000-4000-8000-000000000000', 0, '1.3.1', 0,
+        '00000000-0000-4000-8000-000000000000', false
+      ) as current`)).rows[0].current, false);
+      await client.query(`select analytics_private.delete_report_projection(
+        '00000000-0000-4000-8000-000000000000'
+      )`);
       await rejectsSql(client, "select * from app_identity.local_credential limit 0", [], "42501");
       await client.query("rollback");
     } catch (error) {
@@ -200,7 +208,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.deepEqual(capabilityKeys, [
       "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
       "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
-      "forms:read", "forms:write", "roles:assign", "roles:read", "roles:write",
+      "forms:read", "forms:write", "review:admin", "review:all", "review:identifying",
+      "review:self", "roles:assign", "roles:read", "roles:write",
       "sessions:read", "sessions:revoke", "settings:read", "settings:write",
       "users:read", "users:write",
       "validation:publish", "validation:read", "validation:write"
@@ -230,18 +239,22 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         left join app_identity.role_version_capability rvc on rvc.role_version_id = rv.id
         where r.organization_id = $1 and r.protected
         group by r.id order by r.system_key`, [organizationId]);
-      assert.equal(protectedRoles.rows.length, 3);
+      assert.equal(protectedRoles.rows.length, 5);
+      assert.deepEqual(protectedRoles.rows.find(({ system_key }) => system_key === "clinician").capabilities,
+        ["clinical:document", "review:self"]);
+      assert.deepEqual(protectedRoles.rows.find(({ system_key }) => system_key === "reviewer").capabilities,
+        ["review:all"]);
+      assert.deepEqual(protectedRoles.rows.find(({ system_key }) => system_key === "review-administrator").capabilities,
+        ["review:admin", "review:all"]);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), true);
-      assert.equal(administrator.capabilities.length, 21);
+      assert.deepEqual(administrator.capabilities, capabilityKeys);
       assert.equal(administrator.capabilities.includes("settings:read"), true);
       assert.equal(administrator.capabilities.includes("settings:write"), true);
       assert.equal(administrator.capabilities.includes("validation:publish"), true);
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
-      assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
-        "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-        "forms:read", "forms:write", "roles:read", "settings:read", "users:read", "validation:read", "validation:write"
-      ] });
+      assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true,
+        capabilities: capabilityKeys.filter(key => !key.endsWith(":publish")) });
       await client.query(`insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by, note)
         select $1, $2, id, $2, 'Authorization test owner'
@@ -447,7 +460,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
-  assert.match(firstLoad.stdout, /already loaded with the expected checksum/);
+  assert.match(firstLoad.stdout, /Loaded NEMSIS 3.5.1|already loaded with the expected checksum/);
 
   const identitiesBeforeReplay = await client.query(
     "select canonical_key, id from catalog.element_identity where namespace = 'NEMSIS' order by canonical_key"
@@ -726,6 +739,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_identified_analyst', 'analytics.epcr_identified', 'select') as identified_view,
         has_table_privilege('open_triage_projector', 'analytics_private.epcr', 'insert') as projector_insert,
         has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
+        has_function_privilege('open_triage_analytics_projector',
+          'analytics_private.delete_report_projection(uuid)', 'execute') as projector_delete_projection,
+        not has_function_privilege('open_triage_api_runtime',
+          'analytics_private.delete_report_projection(uuid)', 'execute') as no_api_delete_projection,
+        not has_function_privilege('open_triage_analyst',
+          'analytics_private.report_projection_is_current(uuid,date,uuid,integer,text,integer,uuid,boolean)',
+          'execute') as no_analyst_projection_status,
         has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
         has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
         not has_table_privilege('open_triage_analyst', 'clinical.dispatch_receipt', 'select') as no_analyst_receipt,
@@ -739,6 +759,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       identified_view: true,
       projector_insert: true,
       projector_run_insert: true,
+      projector_delete_projection: true,
+      no_api_delete_projection: true,
+      no_analyst_projection_status: true,
       operational_health: true,
       operational_failures: true,
       no_analyst_receipt: true,
@@ -1576,7 +1599,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(wide.rows[0].catalog_version, "3.5.1");
     assert.equal(wide.rows[0].amendment_count, 0);
     assert.equal(wide.rows[0].effective_amendment_sequence, 0);
-    assert.equal(wide.rows[0].projector_version, "1.0.0");
+    assert.equal(wide.rows[0].projector_version, "1.3.1");
     assert.deepEqual(wide.rows[0].quality_flags, ["vital.etco2.unusual"]);
     assert.equal(wide.rows[0].quality_rule_version, "clinical-quality-1.0.0");
     assert.equal(wide.rows[0].quality_findings[0].observedNumeric, 14);
@@ -1678,7 +1701,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.ok(repeatable.rows.every((row) => row.partition === "analytics_private.epcr_repeatable_element_m204202"));
     assert.ok(repeatable.rows.every((row) => row.signed_snapshot_id === ids.snapshot));
     assert.ok(repeatable.rows.every((row) => row.catalog_version === "3.5.1"));
-    assert.ok(repeatable.rows.every((row) => row.projector_version === "1.0.0"));
+    assert.ok(repeatable.rows.every((row) => row.projector_version === "1.3.1"));
     const repeatById = new Map(repeatable.rows.map((row) => [row.element_id, row]));
     assert.equal(repeatById.get("eHistory.01").value_text, "Language barrier");
     assert.equal(repeatById.get("eVitals.06").value_integer, "118");
@@ -2115,8 +2138,16 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await client.query("select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
         [batch, `${destination}${batch}.ndjson`, archive.archive_sha256]);
 
+      const ordinaryClinicianId = randomUUID();
+      await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+        values ($1, $2, 'Ordinary retention test clinician')`, [ordinaryClinicianId, organizationId]);
+      await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note)
+        select $1, $2, id, $3, 'Verify ordinary clinician cannot delete archives'
+        from app_identity.role where organization_id=$1 and system_key='clinician'`,
+      [organizationId, ordinaryClinicianId, administratorId]);
       await assert.rejects(
-        client.query("select retention.delete_verified_batch($1, $2)", [batch, clinicianId]),
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, ordinaryClinicianId]),
         /active installation administrator/
       );
 
@@ -2166,4 +2197,54 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal(hold.rowCount, 1);
     });
   });
+});
+
+integrationTest("agency button and text colors default, persist, and audit under the API runtime role", async () => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  await client.query("begin");
+  try {
+    const organizationId = randomUUID();
+    const actorId = randomUUID();
+    await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+      values ($1, 'Destructive color integration', 'UTC')`, [organizationId]);
+    await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+      values ($1, $2, 'Settings administrator')`, [actorId, organizationId]);
+    await client.query("set local role open_triage_api_runtime");
+    const initial = (await client.query(`select destructive_color, inactive_button_color, text_color from app_identity.agency_settings
+      where organization_id = $1`, [organizationId])).rows[0];
+    assert.deepEqual(initial, { destructive_color: "#b42318", inactive_button_color: "#ffffff", text_color: "#1a1c1a" });
+    await rejectsSql(client, `update app_identity.agency_settings set destructive_color = 'red'
+      where organization_id = $1`, [organizationId], "23514");
+    await rejectsSql(client, `update app_identity.agency_settings set destructive_color = null
+      where organization_id = $1`, [organizationId], "23502");
+    for (const column of ["inactive_button_color", "text_color"]) {
+      await rejectsSql(client, `update app_identity.agency_settings set ${column} = 'invalid'
+        where organization_id = $1`, [organizationId], "23514");
+      await rejectsSql(client, `update app_identity.agency_settings set ${column} = null
+        where organization_id = $1`, [organizationId], "23502");
+    }
+    const saved = (await client.query(`update app_identity.agency_settings set destructive_color = $2,
+      inactive_button_color = $4, text_color = $5,
+      revision = revision + 1, updated_by = $3 where organization_id = $1 and revision = 1
+      returning destructive_color, inactive_button_color, text_color, revision`,
+      [organizationId, "#9f241d", actorId, "#f2f5f3", "#202520"])).rows[0];
+    assert.deepEqual(saved, { destructive_color: "#9f241d", inactive_button_color: "#f2f5f3", text_color: "#202520", revision: "2" });
+    await client.query(`insert into app_identity.agency_settings_change_event
+      (organization_id, actor_id, prior_revision, revision,
+       old_report_media_allowance_bytes, new_report_media_allowance_bytes,
+       old_image_media_limit_bytes, new_image_media_limit_bytes, old_destructive_color, new_destructive_color,
+       old_inactive_button_color, new_inactive_button_color, old_text_color, new_text_color)
+      values ($1, $2, 1, 2, 52428800, 52428800, 10485760, 10485760, '#b42318', '#9f241d',
+        '#ffffff', '#f2f5f3', '#1a1c1a', '#202520')`,
+      [organizationId, actorId]);
+    const audit = (await client.query(`select old_destructive_color, new_destructive_color,
+      old_inactive_button_color, new_inactive_button_color, old_text_color, new_text_color
+      from app_identity.agency_settings_change_event where organization_id = $1`, [organizationId])).rows[0];
+    assert.deepEqual(audit, { old_destructive_color: "#b42318", new_destructive_color: "#9f241d",
+      old_inactive_button_color: "#ffffff", new_inactive_button_color: "#f2f5f3", old_text_color: "#1a1c1a", new_text_color: "#202520" });
+  } finally {
+    await client.query("rollback");
+    await client.end();
+  }
 });

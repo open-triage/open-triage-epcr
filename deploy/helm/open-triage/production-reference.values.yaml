@@ -1,0 +1,39 @@
+# Copy outside the repository and replace example hosts, repositories, and tags.
+# The preflight rejects example.com/REPLACE hosts and unpinned latest images.
+web:
+  strategy: RollingUpdate
+  replicas: 2
+  host: epcr.example.com
+  image:
+    repository: harbor.example.com/open-triage/web
+    tag: REPLACE_WITH_RELEASE_TAG
+api:
+  strategy: RollingUpdate
+  replicas: 2
+  host: api.epcr.example.com
+  # Verify this for your load balancer / ingress topology; never trust arbitrary hops.
+  trustProxyHops: 1
+  image:
+    repository: harbor.example.com/open-triage/api
+    tag: REPLACE_WITH_RELEASE_TAG
+migration:
+  enabled: true
+  bootstrapSynthetic: false
+  pgOptions: "-c lock_timeout=45s -c statement_timeout=8min"
+imagePullSecrets:
+  - name: registry-pull
+ingress:
+  controller: contour
+  className: contour
+  annotations: {}
+  # nginx annotations are ignored by Contour. Configure edge network rate limits
+  # through your platform; API credential throttling remains enabled independently.
+  authenticationRateLimit:
+    enabled: false
+  tls:
+    - secretName: open-triage-tls
+      hosts:
+        - epcr.example.com
+        - api.epcr.example.com
+# Database Secrets are cluster-owned. The defaults name one distinct Secret per
+# workload; retain these names or override secrets.<workload>.existingSecret.

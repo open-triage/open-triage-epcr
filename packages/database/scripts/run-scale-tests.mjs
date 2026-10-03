@@ -171,7 +171,7 @@ async function loadProductionWorkload() {
        agency_demographic_version_id, patient_key, patient_key_version, form_version_id, form_version,
        catalog_release_id, catalog_version, signed_snapshot_id, signed_snapshot_sha256, signed_at,
        amendment_count, effective_amendment_sequence, projector_version, projected_at,
-       normalization_rule_version, eresponse_01)
+       normalization_rule_version, eresponse_01, documenting_user_id, synthetic)
       select make_date($2,1,1) + ((n * 37) % ($3 * 365))::integer, 'service-date',
         pg_temp.scale_uuid('bulk-report-' || n), pg_temp.scale_uuid('bulk-incident-' || n), $4, $5,
         md5('patient-' || (n % greatest(1, ($1 / 3)))::text) ||
@@ -179,10 +179,10 @@ async function loadProductionWorkload() {
         1, $6, $7, $8, $9, pg_temp.scale_uuid('bulk-snapshot-' || n), repeat('a', 64),
         timestamptz '2026-01-01 00:00:00+00' + n * interval '1 second', 0, 0,
         'scale-production-schema', clock_timestamp(), 'clinical-normalization-1.0.0',
-        'AGENCY-' || (n % 100)::text
+        'AGENCY-' || (n % 100)::text, $10, true
       from generate_series(1, $1) n`, [bulkCount, baseYear, profile.years, fixture.organization_id,
       fixture.agency_demographic_version_id, fixture.form_version_id, fixture.form_version,
-      fixture.catalog_release_id, fixture.catalog_version]);
+      fixture.catalog_release_id, fixture.catalog_version, fixture.documenting_user_id]);
     await client.query(`insert into analytics_private.epcr_repeatable_element
       (reporting_date, reporting_date_source, report_id, incident_id, organization_id,
        agency_demographic_version_id, patient_key, patient_key_version, form_version_id,

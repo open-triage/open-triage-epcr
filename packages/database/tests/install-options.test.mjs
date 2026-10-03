@@ -50,7 +50,7 @@ test("Sweden offers a NEMSIS-compatible form and only rules supported by that fo
   "seeded NEMSIS messages retain all referenced element names");
 });
 
-test("installation seeding publishes options without activation and runs after baseline seeding", () => {
+test("explicit fixture seeding publishes options without activation; migrations never import definitions", () => {
   assert.match(script, /"already-available" : "existing-version-preserved"/);
   assert.match(script, /status: "draft-in-progress"/);
   assert.match(script, /activated: false/);
@@ -58,6 +58,6 @@ test("installation seeding publishes options without activation and runs after b
   assert.doesNotMatch(script, /insert into forms\.agency_stationary_default/);
   assert.doesNotMatch(script, /CatalogAuthoringService|catalog\.authoring_draft/);
   assert.match(script, /readInstallDefinitions\(root\)/);
-  assert.match(migrate, /await seedInitialValidationVersions\(\);[\s\S]*await seedInstallDefinitions\(\);/);
+  assert.doesNotMatch(migrate, /seedInitialValidationVersions|seedInstallDefinitions|load-nemsis-catalog/);
   assert.match(packageJson.scripts["bootstrap:synthetic"], /seed:validation && npm run seed:install-definitions/);
 });

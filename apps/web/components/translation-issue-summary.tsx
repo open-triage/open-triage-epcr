@@ -20,8 +20,11 @@ export function TranslationIssueSummary({ issues, filter, onFilter, onNavigate }
       <option value="all"><AdminText messageKey="admin.allIssues" /></option><option value="english"><AdminText messageKey="admin.missingEnglish" /></option>
       <option value="agency"><AdminText messageKey="admin.missingSwedish" /></option>
     </select></label>
-    {visible.length > 0 && <ul>{visible.slice(0, limit).map((issue, index) => <li key={`${issue.id}:${issue.field}:${issue.kind}:${index}`}>
-      <button type="button" onClick={() => onNavigate(issue)}>{issue.id} · {issue.field}: {t(issue.message)}</button>
+    {visible.length > 0 && <ul>{visible.slice(0, limit).map((issue, index) => <li key={`${issue.id}:${issue.field}:${issue.kind}:${index}`} onClick={(event) => {
+      if (!(event.target as HTMLElement).closest("button, a")) onNavigate(issue);
+    }}>
+      <span>{issue.id} · {issue.field}: {t(issue.message)}</span>{" "}
+      <button type="button" aria-label={`${t("admin.viewDetails")} ${issue.id} · ${issue.field}`} onClick={() => onNavigate(issue)}>{t("admin.viewDetails")}</button>
     </li>)}</ul>}
     {visible.length > limit && <button type="button" onClick={() => setLimit((current) => current + 50)}>{t("admin.showMoreIssues", { count: visible.length - limit })}</button>}
   </section>;

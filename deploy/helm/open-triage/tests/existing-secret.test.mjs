@@ -16,7 +16,8 @@ test("existing-Secret mode mounts one database credential per workload", () => {
     "open-triage-analytics-projector-database", "open-triage-analytics-health-database",
     "open-triage-retention-database"
   ]) assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
-  assert.equal(output.match(/key: DATABASE_URL/g)?.length, 5);
+  assert.equal(output.match(/key: DATABASE_URL/g)?.length, 6,
+    "the review worker uses a second reference to the API role contract");
   assert.match(output, /key: AUTH_RATE_LIMIT_SECRET_BASE64/);
   assert.match(output, /key: OFFLINE_RECOVERY_KEY_VERSION/);
   assert.match(output, /key: OFFLINE_RECOVERY_SECRET_BASE64/);

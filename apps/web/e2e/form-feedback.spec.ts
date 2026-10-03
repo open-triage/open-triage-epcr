@@ -25,7 +25,7 @@ async function editor(page: import("@playwright/test").Page) {
     updatedAt: "2026-09-29T12:00:00Z", definition: { schemaVersion: 1, sections: [{ key: "patient", fields: [
       { key: "name", source: { kind: "nemsis", elementId: "ePatient.02" } },
       { key: "age", source: { kind: "nemsis", elementId: "ePatient.15" } },
-    ] }] } };
+    ] }, { key: "assessment", fields: [] }] } };
   const requests: Record<string, unknown>[] = [];
   let loads = 0;
   await page.route("**/__feedback-harness", (route) => route.fulfill({ contentType: "text/html",
@@ -39,6 +39,9 @@ async function editor(page: import("@playwright/test").Page) {
       draft = { ...draft, ...body, revision: draft.revision + 1 };
       return route.fulfill({ json: draft });
     }
+    if (pathname.endsWith("/catalog-elements")) return route.fulfill({ json: { items: [
+      { elementId: "ePatient.01", name: "Patient ID", baseDatatype: "string", groupPath: ["ePatient"] },
+    ], nextCursor: null } });
     if (pathname.endsWith("/form-versions")) return route.fulfill({ json: [
       { id: "published", displayName: "Reduced form", status: "published", version: 2, catalogReleaseId: "catalog" },
     ] });
@@ -63,6 +66,8 @@ async function editor(page: import("@playwright/test").Page) {
 
 test("field removal survives language changes and save/reload", async ({ page }) => {
   const state = await editor(page);
+  await expect(page.getByText("Required on this form", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Required by the catalog", { exact: true })).toHaveCount(0);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Remove ePatient.02", exact: true }).click();
   await expect(page.getByRole("button", { name: "Remove ePatient.02", exact: true })).toHaveCount(0);
@@ -77,6 +82,29 @@ test("field removal survives language changes and save/reload", async ({ page })
   await page.reload();
   await expect(page.getByRole("button", { name: "Remove ePatient.15", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove ePatient.02", exact: true })).toHaveCount(0);
+});
+
+test("row actions preserve renamed groups and additions through save/reload", async ({ page }) => {
+  await editor(page);
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
+  const actions = page.getByRole("group", { name: "Actions for assessment", exact: true });
+  await actions.getByRole("button", { name: "Rename", exact: true }).click();
+  await page.getByLabel("Section name", { exact: true }).fill("Initial assessment");
+  await actions.getByRole("button", { name: "Done", exact: true }).click();
+  await actions.getByRole("button", { name: "Add elements", exact: true }).click();
+  await page.getByRole("searchbox").fill("patient id");
+  await page.getByRole("button", { name: "Add ePatient.01", exact: true }).click();
+  await expect(page.getByRole("list", { name: "assessment form elements" })).toContainText("ePatient.01");
+  await page.getByRole("button", { name: "Save form draft", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save form draft", exact: true })).toBeDisabled();
+  await page.reload();
+  await page.getByLabel("Go to section").selectOption("assessment");
+  await expect(page.locator(".form-section-heading").filter({ hasText: "Initial assessment" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "assessment form elements" })).toContainText("ePatient.01");
+  await page.getByLabel("Go to section").selectOption("patient");
+  const fields = page.getByRole("list", { name: "patient form elements" });
+  await expect(fields).toContainText("ePatient.02");
+  await expect(fields).not.toContainText("ePatient.01");
 });
 
 test("activation lists affected rules and requires explicit agreement after cancel", async ({ page }) => {

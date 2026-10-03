@@ -8,6 +8,8 @@ import { AgencySettingsPanel, showsStorageGrowthWarning } from "../components/ag
 const appearance = {
   brandText: "County EMS", helperText: "Use your agency-issued credentials.", logoPngDataUrl: null,
   accentColor: "#00783a", accentDarkColor: "#006b34", browserThemeColor: "#00783a",
+  destructiveColor: "#9f241d",
+  inactiveButtonColor: "#f2f5f3", textColor: "#202520",
   pwaBackgroundColor: "#dfe5df", pwaName: "County EMS", pwaShortName: "EMS",
 };
 const demographics = { agencyUniqueStateId: "STATE-1", agencyNumber: "AGENCY-1", stateCode: "36",
@@ -45,6 +47,7 @@ test("Agency Settings uses an explicit revisioned save with CSRF proof", async (
   assert.equal(result.revision, 5);
   assert.equal(result.language, "sv");
   assert.equal(result.storageGrowthWarning, true);
+  assert.equal(result.appearance.destructiveColor, appearance.destructiveColor);
 });
 
 test("the Postgres storage-growth warning starts above the 50 MB default", () => {

@@ -6,7 +6,7 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, minimumRuleCoversRequirement, type CompiledValidationBundle } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, type CompiledValidationBundle } from "@open-triage/contracts";
 import {
   evaluateQualityAndNormalization,
   NORMALIZATION_RULE_VERSION,
@@ -206,7 +206,7 @@ export class SignReportService {
         }
 
         const authored = await this.evaluateAuthoredRules(manager, report, evaluationTimestamp);
-        const findings = await this.validateSemantics(manager, report, authored.bundle);
+        const findings = await this.validateSemantics(manager, report);
         findings.push(...authored.findings);
         const unresolvedDispatch = await manager.query<Array<{ id: string; element_id: string }>>(`
           select id, element_id from clinical.dispatch_conflict
@@ -394,8 +394,7 @@ export class SignReportService {
     }))] };
   }
 
-  private async validateSemantics(manager: EntityManager, report: ReportRow,
-    authoredBundle?: CompiledValidationBundle): Promise<SigningFinding[]> {
+  private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
     const findings: SigningFinding[] = [];
     const form = await manager.query<Array<{ status: string; catalog_release_id: string;
       canonical_definition: import("@open-triage/contracts").FormDraftDefinition }>>(`
@@ -478,33 +477,9 @@ export class SignReportService {
     const byField = new Map(fields.map((field) => [field.stable_key,
       occurrences.filter((item) => item.form_field_id === field.id ||
         (!item.form_field_id && item.element_identity_id === (field.catalog_element_identity_id ?? field.custom_element_definition_id)))]));
-    for (const field of fields) {
-      const values = byField.get(field.stable_key)!;
-      // NEMSIS agency/configuration metadata can appear in a complete form for
-      // reference, but it is supplied by the pinned configuration rather than
-      // stored as clinician-authored element occurrences on the report.
-      if (!field.clinically_stored) continue;
-      const minimum = Math.max(field.required || field.agency_required ? 1 : 0, field.min_occurs ?? 0);
-      if (values.length >= minimum) continue;
-      const severity = field.required || (field.min_occurs ?? 0) > 0 ? "error" : field.agency_required_severity ?? "error";
-      if (minimumRuleCoversRequirement(authoredBundle, field.element_id ?? field.stable_key,
-        minimum, severity, "sign")) continue;
-      if (minimum > 1) findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
-        `Field ${field.stable_key} requires at least ${minimum} occurrence(s); found ${values.length}`));
-      else if (field.required) findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
-        `Required form field ${field.stable_key} has no value`));
-      else if (field.agency_required) findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
-        `Agency-required field ${field.stable_key} has no value`, severity));
-      else findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
-        `Field ${field.stable_key} requires at least ${minimum} occurrence(s); found ${values.length}`));
-    }
     for (const rule of rules) {
       const applies = this.evaluateRule(rule.expression, byField);
       const target = byField.get(rule.target_key) ?? [];
-      if (rule.rule_kind === "requiredness" && applies && target.length === 0) {
-        findings.push(this.finding("form.conditional-required", `$.fields.${rule.target_key}`,
-          `Field ${rule.target_key} is required by its current form condition`));
-      }
       if (rule.rule_kind === "visibility" && !applies && target.length > 0) {
         findings.push(this.finding("form.conditional-hidden", `$.fields.${rule.target_key}`,
           `Field ${rule.target_key} has a value while its visibility condition is false`));
@@ -623,18 +598,6 @@ export class SignReportService {
           `Code ${occurrence.code} is not in the exhaustive inline value set for ${occurrence.element_id}`));
         if (validation?.exhaustive_value_set_ids) findings.push(this.finding("catalog.value-set", path,
           `Code ${occurrence.code} is not in exhaustive value set(s) ${validation.exhaustive_value_set_ids} for ${occurrence.element_id}`));
-      }
-    }
-    const byElementAndParent = new Map<string, OccurrenceRow[]>();
-    for (const occurrence of occurrences) {
-      const key = `${occurrence.element_id}:${occurrence.group_instance_id ?? "root"}`;
-      byElementAndParent.set(key, [...(byElementAndParent.get(key) ?? []), occurrence]);
-    }
-    for (const values of byElementAndParent.values()) {
-      const first = values[0]!;
-      if (!report.validation_version_id && first.max_occurs !== null && values.length > first.max_occurs) {
-        findings.push(this.finding("catalog.cardinality", `$.elements.${first.element_id}`,
-          `${first.element_id} permits at most ${first.max_occurs} occurrence(s) in this group; found ${values.length}`));
       }
     }
     return findings;

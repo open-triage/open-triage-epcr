@@ -67,8 +67,8 @@ export function CustomCodedFields({ document, fields, definitions = {}, language
       <div id={id} aria-describedby={`${id}-help`}>
         <ClinicalSearchableSelect label={label} value={selectedIdentity(value)}
           placeholder={language === "sv" ? "Välj ett värde" : "Choose a value"}
-          options={customCodedChoices(field, definition, language)
-            .concat(value ? [{ key: "", label: language === "sv" ? "Ta bort" : "Delete" }] : [])}
+          options={[...(value ? [{ key: "", label: language === "sv" ? "Ta bort" : "Delete" }] : []),
+            ...customCodedChoices(field, definition, language)]}
           onChange={(key) => {
           const occurrenceId = value?.occurrenceId ?? crypto.randomUUID();
           const choice = definition.choices.find((candidate) => key === `code:${definition.codeSystem}:${candidate.code}`);

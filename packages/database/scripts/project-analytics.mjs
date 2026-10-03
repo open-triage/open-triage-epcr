@@ -6,7 +6,7 @@ import {
 } from "@open-triage/contracts/quality-rules";
 
 const databaseUrl = process.env.DATABASE_URL;
-const PROJECTOR_VERSION = "1.0.0";
+const PROJECTOR_VERSION = "1.3.1";
 const BATCH_SIZE = Number.parseInt(process.env.ANALYTICS_PROJECTOR_BATCH_SIZE ?? "100", 10);
 const MAX_ATTEMPTS = Number.parseInt(process.env.ANALYTICS_PROJECTOR_MAX_ATTEMPTS ?? "12", 10);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,6 +23,7 @@ const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
 const analyticsMappingByRelease = new Map();
 const repeatingGroupTimeMappingByRelease = new Map();
+const customDefinitionsByRelease = new Map();
 
 function parseArguments(args) {
   const options = { mode: "queue" };
@@ -151,6 +152,19 @@ async function repeatingGroupTimeMappings(releaseId, organizationId, groups) {
     [organizationId]
   )).rows;
   return [...standardMappings, ...customMappings];
+}
+
+async function pinnedCustomDefinitions(releaseId) {
+  if (customDefinitionsByRelease.has(releaseId)) return customDefinitionsByRelease.get(releaseId);
+  const result = await client.query(
+    "select provenance->'customElementDefinitions' as definitions from catalog.release where id=$1",
+    [releaseId]
+  );
+  const definitions = new Map((Array.isArray(result.rows[0]?.definitions)
+    ? result.rows[0].definitions : []).map((definition) => [definition.id, definition]));
+  // Signed reports pin sealed releases, so custom definitions are immutable too.
+  customDefinitionsByRelease.set(releaseId, definitions);
+  return definitions;
 }
 
 function valuePayload(row) {
@@ -323,6 +337,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        coalesce(date_correction.reporting_date_source, r.reporting_date_source) as reporting_date_source,
        r.incident_id,
        r.organization_id,
+       r.documenting_user_id,
+       r.synthetic,
        r.agency_demographic_version_id,
        r.catalog_release_id,
        p.pseudonymous_key as patient_key,
@@ -333,14 +349,17 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        ss.id as signed_snapshot_id,
        ss.canonical_sha256 as signed_snapshot_sha256,
        ss.signed_at,
-       coalesce(max(a.sequence), 0)::integer as amendment_count,
-       max(a.signed_at) as last_amended_at
+       coalesce(amendment_summary.amendment_count, 0)::integer as amendment_count,
+       amendment_summary.last_amended_at
      from clinical.report r
      join clinical.patient p on p.id = r.patient_id
      join forms.form_version fv on fv.id = r.form_version_id
      join catalog.release cr on cr.id = r.catalog_release_id
      join clinical.signed_snapshot ss on ss.report_id = r.id
-     left join clinical.amendment a on a.report_id = r.id
+     left join lateral (
+       select max(a.sequence) as amendment_count, max(a.signed_at) as last_amended_at
+       from clinical.amendment a where a.report_id = r.id
+     ) amendment_summary on true
      left join lateral (
        select correction.reporting_date, correction.reporting_date_source
        from clinical.amendment correction
@@ -348,15 +367,13 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        order by correction.sequence desc
        limit 1
      ) date_correction on true
-     where r.id = $1 and r.status = 'signed'
-     group by r.id, p.pseudonymous_key, p.pseudonymous_key_version, fv.id, cr.version, ss.id,
-       date_correction.reporting_date, date_correction.reporting_date_source`,
+     where r.id = $1 and r.status = 'signed'`,
     [reportId]
   );
   if (reportResult.rowCount === 0) throw new Error(`Signed report ${reportId} was not found`);
   const report = reportResult.rows[0];
 
-  const [elementResult, groupResult, mappingByElement, amendmentResult] = await Promise.all([
+  const [elementResult, groupResult, mappingByElement, amendmentResult, customDefinitions] = await Promise.all([
     client.query(
       `select * from clinical.element_occurrence
        where report_id = $1 and tombstoned_at is null
@@ -376,7 +393,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        where a.report_id = $1
        order by a.sequence, ac.id`,
       [reportId]
-    )
+    ),
+    pinnedCustomDefinitions(report.catalog_release_id)
   ]);
   const timeMappings = await repeatingGroupTimeMappings(
     report.catalog_release_id,
@@ -444,6 +462,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   };
   const wide = {
     ...common,
+    documenting_user_id: report.documenting_user_id,
+    synthetic: report.synthetic,
     form_version: report.form_version,
     signed_at: report.signed_at,
     last_amended_at: report.last_amended_at,
@@ -459,8 +479,10 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
     const elementFindings = findingsByOccurrence.get(element.id) ?? [];
     const elementDerived = derivedByOccurrence.get(element.id) ?? null;
     const mapping = mappingByElement.get(element.element_id);
+    const customDefinition = customDefinitions.get(element.element_identity_id);
+    if (!mapping && !customDefinition) throw new Error(`Unmapped element ${element.element_id} has no pinned custom definition`);
     const repeatable = mapping?.analyticalLocation === "repeatable" || (!mapping && element.analytical_repeatable);
-    if (!repeatable) {
+    if (!repeatable && !customDefinition) {
       if (seenWide.has(element.element_id)) throw new Error(`Non-repeatable element ${element.element_id} occurs more than once`);
       seenWide.add(element.element_id);
       if (["null", "pertinent-negative", "absent"].includes(element.value_kind)
@@ -483,12 +505,16 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       continue;
     }
 
-    if (!element.group_instance_id) {
-      throw new Error(`Repeatable occurrence ${element.id} has no group instance`);
-    }
-    const group = groupById.get(element.group_instance_id);
-    if (!group) throw new Error(`Occurrence ${element.id} references missing group ${element.group_instance_id}`);
-    const analyticalGroupPath = mapping?.groupPath ?? [group.group_id];
+    // Older signed records may lack group links. Preserve each occurrence and flag
+    // the missing context instead of blocking every report-volume projection.
+    const missingGroup = !element.group_instance_id && !customDefinition;
+    const clinicalGroup = element.group_instance_id ? groupById.get(element.group_instance_id) : null;
+    if (element.group_instance_id && !clinicalGroup) throw new Error(`Occurrence ${element.id} references missing group ${element.group_instance_id}`);
+    // The clinical report root is a storage container, not an analytical recurrence.
+    const reportLevel = !!customDefinition && !customDefinition.correlatesTo && !customDefinition.groupDefinitionId;
+    const group = reportLevel ? null : clinicalGroup;
+    if (!group && !reportLevel && !missingGroup) throw new Error(`Occurrence ${element.id} has no analytical group`);
+    const analyticalGroupPath = mapping?.groupPath ?? (group ? [group.group_id] : []);
     const mappedGroup = [...analyticalGroupPath].reverse().find((groupId) => timeByGroup.has(groupId));
     const timeMapping = mappedGroup ? timeByGroup.get(mappedGroup) : null;
     const sourceGroupId =
@@ -506,15 +532,18 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       element_identity_id: element.element_identity_id,
       element_id: element.element_id,
       element_occurrence_id: element.id,
-      group_id: group.group_id,
-      group_instance_id: group.id,
-      parent_group_instance_id: group.parent_group_instance_id,
+      group_id: group?.group_id ?? (missingGroup ? mapping.groupPath.at(-1) : null),
+      group_instance_id: group?.id ?? null,
+      parent_group_instance_id: group?.parent_group_instance_id ?? null,
       group_path: analyticalGroupPath,
-      instance_path: instancePath(groupById, group.id),
-      group_ordinal: group.ordinal,
+      instance_path: group ? instancePath(groupById, group.id) : [],
+      group_ordinal: group?.ordinal ?? null,
       element_ordinal: element.ordinal,
       correlation_id: element.correlation_id,
-      group_correlation_id: group.correlation_id,
+      group_correlation_id: group?.correlation_id ?? null,
+      is_custom: !!customDefinition,
+      custom_definition_id: customDefinition ? element.element_identity_id : null,
+      custom_definition: customDefinition ? JSON.stringify(customDefinition) : null,
       value_kind: element.value_kind,
       value_text: element.value_text,
       value_integer: element.value_integer,
@@ -543,9 +572,9 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       clinical_time_element_id: timeElement?.element_id ?? null,
       clinical_utc_offset_minutes: timeElement?.value_utc_offset_minutes ?? null,
       clinical_time_precision: timeElement?.value_precision ?? null,
-      documented_time: element.documented_time ?? group.documented_time,
+      documented_time: element.documented_time ?? group?.documented_time ?? null,
       documented_utc_offset_minutes:
-        element.documented_utc_offset_minutes ?? group.documented_utc_offset_minutes,
+        element.documented_utc_offset_minutes ?? group?.documented_utc_offset_minutes ?? null,
       documented_time_precision: element.documented_precision,
       server_received_time: element.server_received_time,
       normalized_numeric: elementDerived?.derivedNumeric ?? null,
@@ -554,7 +583,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       normalization_rule_id: elementDerived?.ruleId ?? null,
       normalization_rule_version: elementDerived?.ruleVersion ?? null,
       source_attributes: element.source_attributes,
-      quality_flags: elementFindings.length ? elementFindings.map((finding) => finding.code) : null,
+      quality_flags: missingGroup ? [...elementFindings.map((finding) => finding.code), "missing-group-instance"]
+        : elementFindings.length ? elementFindings.map((finding) => finding.code) : null,
       quality_rule_version: elementFindings.length ? QUALITY_RULE_VERSION : null,
       quality_findings: elementFindings.length ? JSON.stringify(elementFindings) : null,
       is_identifying: mapping?.identifying ?? element.identifying
@@ -578,19 +608,13 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
 
   if (onlyIfStale) {
     const status = (await client.query(
-      `select
-        (select count(*) = 1 and bool_and(
-           reporting_date = $2::date and signed_snapshot_id = $3
-           and effective_amendment_sequence = $4 and projector_version = $5)
-         from analytics_private.epcr where report_id = $1) as wide_current,
-        (select count(*) = $6 and coalesce(bool_and(
-           reporting_date = $2::date and signed_snapshot_id = $3
-           and effective_amendment_sequence = $4 and projector_version = $5), true)
-         from analytics_private.epcr_repeatable_element where report_id = $1) as repeatable_current`,
+      `select analytics_private.report_projection_is_current(
+         $1, $2::date, $3, $4, $5, $6, $7, $8
+       ) as current`,
       [reportId, report.reporting_date, report.signed_snapshot_id, report.amendment_count,
-        PROJECTOR_VERSION, repeatRows.length]
+        PROJECTOR_VERSION, repeatRows.length, report.documenting_user_id, report.synthetic]
     )).rows[0];
-    if (status.wide_current && status.repeatable_current) {
+    if (status.current) {
       return { report, repeatableCount: repeatRows.length, repaired: false };
     }
   }
@@ -598,8 +622,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   await client.query("select analytics_private.ensure_partitions($1::date, ($1::date + interval '1 day')::date)", [
     report.reporting_date
   ]);
-  await client.query("delete from analytics_private.epcr_repeatable_element where report_id = $1", [reportId]);
-  await client.query("delete from analytics_private.epcr where report_id = $1", [reportId]);
+  await client.query("select analytics_private.delete_report_projection($1)", [reportId]);
   if (process.env.ANALYTICS_PROJECTOR_FAIL_AFTER_DELETE === "1") {
     throw new Error("Injected analytical projection failure after delete");
   }

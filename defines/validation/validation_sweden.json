@@ -8,7 +8,7 @@
     {
       "id": "80325135-e884-498c-aed3-8f2946135963",
       "name": "Cardiac Arrest documented minimum",
-      "source": "require minimum(\"eArrest.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.01\", 1)",
       "enabled": true,
       "message": "Cardiac Arrest requires at least 1 documented occurrence(s)",
       "localization": {
@@ -34,7 +34,7 @@
     {
       "id": "3e24a554-4e89-454e-a6b7-aed896c65c9f",
       "name": "Cardiac Arrest documented maximum",
-      "source": "require maximum(\"eArrest.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.01\", 1)",
       "enabled": true,
       "message": "Cardiac Arrest permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -48,7 +48,7 @@
     {
       "id": "099ad4b0-d6f5-43d8-ac16-a5b76b0b045c",
       "name": "Cardiac Arrest Etiology documented minimum",
-      "source": "require minimum(\"eArrest.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.02\", 1)",
       "enabled": true,
       "message": "Cardiac Arrest Etiology requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -62,7 +62,7 @@
     {
       "id": "a49b7680-7890-45e0-a95b-1dcd6044b8dd",
       "name": "Cardiac Arrest Etiology documented maximum",
-      "source": "require maximum(\"eArrest.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.02\", 1)",
       "enabled": true,
       "message": "Cardiac Arrest Etiology permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -76,7 +76,7 @@
     {
       "id": "d2d70d54-7df4-41bb-ae05-d85304892090",
       "name": "Resuscitation Attempted By EMS documented minimum",
-      "source": "require minimum(\"eArrest.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.03\", 1)",
       "enabled": true,
       "message": "Resuscitation Attempted By EMS requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -90,7 +90,7 @@
     {
       "id": "795c605e-5a52-41aa-a135-c18bddde5070",
       "name": "Arrest Witnessed By documented minimum",
-      "source": "require minimum(\"eArrest.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.04\", 1)",
       "enabled": true,
       "message": "Arrest Witnessed By requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -104,7 +104,7 @@
     {
       "id": "2293a7d3-94cc-4d84-a9d5-ab04a79b177a",
       "name": "AED Use Prior to EMS Arrival documented minimum",
-      "source": "require minimum(\"eArrest.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.07\", 1)",
       "enabled": true,
       "message": "AED Use Prior to EMS Arrival requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -118,7 +118,7 @@
     {
       "id": "d7027b4e-d6a5-46ce-a962-7814866b8233",
       "name": "AED Use Prior to EMS Arrival documented maximum",
-      "source": "require maximum(\"eArrest.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.07\", 1)",
       "enabled": true,
       "message": "AED Use Prior to EMS Arrival permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -132,7 +132,7 @@
     {
       "id": "c53df177-865d-406d-adf3-603bd78133f7",
       "name": "Type of CPR Provided documented minimum",
-      "source": "require minimum(\"eArrest.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.09\", 1)",
       "enabled": true,
       "message": "Type of CPR Provided requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -146,7 +146,7 @@
     {
       "id": "29d96b11-59c2-4af2-a9f7-35250a7c828f",
       "name": "Therapeutic Hypothermia by EMS documented maximum",
-      "source": "require maximum(\"eArrest.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.10\", 1)",
       "enabled": true,
       "message": "Therapeutic Hypothermia by EMS permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -160,7 +160,7 @@
     {
       "id": "6b09965e-76dd-4f19-a3c0-08c85df233e4",
       "name": "First Monitored Arrest Rhythm of the Patient documented minimum",
-      "source": "require minimum(\"eArrest.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.11\", 1)",
       "enabled": true,
       "message": "First Monitored Arrest Rhythm of the Patient requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -174,7 +174,7 @@
     {
       "id": "b3f55aa6-8bf3-46a7-acf9-bf7a0dbb7b19",
       "name": "First Monitored Arrest Rhythm of the Patient documented maximum",
-      "source": "require maximum(\"eArrest.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.11\", 1)",
       "enabled": true,
       "message": "First Monitored Arrest Rhythm of the Patient permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -188,7 +188,7 @@
     {
       "id": "38de52f9-e46b-40f4-a527-f354a5595cfb",
       "name": "Any Return of Spontaneous Circulation documented minimum",
-      "source": "require minimum(\"eArrest.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.12\", 1)",
       "enabled": true,
       "message": "Any Return of Spontaneous Circulation requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -202,7 +202,7 @@
     {
       "id": "10ede987-d633-45c1-ae2d-65bee381cba5",
       "name": "Neurological Outcome at Hospital Discharge documented maximum",
-      "source": "require maximum(\"eArrest.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.13\", 1)",
       "enabled": true,
       "message": "Neurological Outcome at Hospital Discharge permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -216,7 +216,7 @@
     {
       "id": "bc7f97c6-e102-4b86-a05b-6e09e9a9960a",
       "name": "Date/Time of Cardiac Arrest documented minimum",
-      "source": "require minimum(\"eArrest.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.14\", 1)",
       "enabled": true,
       "message": "Date/Time of Cardiac Arrest requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -230,7 +230,7 @@
     {
       "id": "3d632424-84b7-4a6e-afa4-dbe8f97e94aa",
       "name": "Date/Time of Cardiac Arrest documented maximum",
-      "source": "require maximum(\"eArrest.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.14\", 1)",
       "enabled": true,
       "message": "Date/Time of Cardiac Arrest permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -244,7 +244,7 @@
     {
       "id": "7ee13242-3231-4de7-a584-6b972480fb4b",
       "name": "Date/Time Resuscitation Discontinued documented maximum",
-      "source": "require maximum(\"eArrest.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.15\", 1)",
       "enabled": true,
       "message": "Date/Time Resuscitation Discontinued permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -258,7 +258,7 @@
     {
       "id": "56f2a8aa-4675-4729-a204-c8f955114ae7",
       "name": "Reason CPR/Resuscitation Discontinued documented minimum",
-      "source": "require minimum(\"eArrest.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.16\", 1)",
       "enabled": true,
       "message": "Reason CPR/Resuscitation Discontinued requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -272,7 +272,7 @@
     {
       "id": "06f5fb85-c75c-434c-ac8d-5496311c7c07",
       "name": "Reason CPR/Resuscitation Discontinued documented maximum",
-      "source": "require maximum(\"eArrest.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.16\", 1)",
       "enabled": true,
       "message": "Reason CPR/Resuscitation Discontinued permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -286,7 +286,7 @@
     {
       "id": "ac2f4a8d-1e9c-4e2e-ac34-9a574e17e504",
       "name": "Cardiac Rhythm on Arrival at Destination documented minimum",
-      "source": "require minimum(\"eArrest.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.17\", 1)",
       "enabled": true,
       "message": "Cardiac Rhythm on Arrival at Destination requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -300,7 +300,7 @@
     {
       "id": "38c18681-e239-481f-a5d9-eadb7c3f71c9",
       "name": "End of EMS Cardiac Arrest Event documented minimum",
-      "source": "require minimum(\"eArrest.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.18\", 1)",
       "enabled": true,
       "message": "End of EMS Cardiac Arrest Event requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -314,7 +314,7 @@
     {
       "id": "74bd0d05-afdd-4bba-a133-b81eb25f301d",
       "name": "End of EMS Cardiac Arrest Event documented maximum",
-      "source": "require maximum(\"eArrest.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.18\", 1)",
       "enabled": true,
       "message": "End of EMS Cardiac Arrest Event permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -328,7 +328,7 @@
     {
       "id": "4f073b28-ba39-4f05-a156-b768d5af4b5d",
       "name": "Date/Time of Initial CPR documented maximum",
-      "source": "require maximum(\"eArrest.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.19\", 1)",
       "enabled": true,
       "message": "Date/Time of Initial CPR permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -342,7 +342,7 @@
     {
       "id": "1b941c32-2798-4bbb-a489-0c74b6cfb543",
       "name": "Who First Initiated CPR documented minimum",
-      "source": "require minimum(\"eArrest.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.20\", 1)",
       "enabled": true,
       "message": "Who First Initiated CPR requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -356,7 +356,7 @@
     {
       "id": "198e715e-d29f-434f-a867-44ab515bfaa3",
       "name": "Who First Initiated CPR documented maximum",
-      "source": "require maximum(\"eArrest.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.20\", 1)",
       "enabled": true,
       "message": "Who First Initiated CPR permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -370,7 +370,7 @@
     {
       "id": "bfb48322-5463-4e07-a983-cf855cd6a36f",
       "name": "Who First Applied the AED documented minimum",
-      "source": "require minimum(\"eArrest.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.21\", 1)",
       "enabled": true,
       "message": "Who First Applied the AED requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -384,7 +384,7 @@
     {
       "id": "cb56cd46-7de1-4c01-a88e-1ed1b9413b1a",
       "name": "Who First Applied the AED documented maximum",
-      "source": "require maximum(\"eArrest.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.21\", 1)",
       "enabled": true,
       "message": "Who First Applied the AED permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -398,7 +398,7 @@
     {
       "id": "49e77d77-7d1d-4793-aedc-3a40bb1712c4",
       "name": "Who First Defibrillated the Patient documented minimum",
-      "source": "require minimum(\"eArrest.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.22\", 1)",
       "enabled": true,
       "message": "Who First Defibrillated the Patient requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -412,7 +412,7 @@
     {
       "id": "706d2415-62e1-4756-a3b8-c7355ea4a686",
       "name": "Who First Defibrillated the Patient documented maximum",
-      "source": "require maximum(\"eArrest.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.22\", 1)",
       "enabled": true,
       "message": "Who First Defibrillated the Patient permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -454,7 +454,7 @@
     {
       "id": "452584cb-cd57-4fa2-a2ad-e9a525127c36",
       "name": "Dispatch Reason documented minimum",
-      "source": "require minimum(\"eDispatch.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDispatch.01\", 1)",
       "enabled": true,
       "message": "Dispatch Reason requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -468,7 +468,7 @@
     {
       "id": "a7fcf569-50c4-4f43-aa26-b7110f0d8b62",
       "name": "Dispatch Reason documented maximum",
-      "source": "require maximum(\"eDispatch.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.01\", 1)",
       "enabled": true,
       "message": "Dispatch Reason permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -482,7 +482,7 @@
     {
       "id": "c011c75b-e1d7-4b3e-a8ea-d7ac7e7898a9",
       "name": "EMD Performed documented minimum",
-      "source": "require minimum(\"eDispatch.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDispatch.02\", 1)",
       "enabled": true,
       "message": "EMD Performed requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -496,7 +496,7 @@
     {
       "id": "495bbfc0-5a1c-466b-a479-f15de2b55e31",
       "name": "EMD Performed documented maximum",
-      "source": "require maximum(\"eDispatch.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.02\", 1)",
       "enabled": true,
       "message": "EMD Performed permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -510,7 +510,7 @@
     {
       "id": "fce7c67d-71e4-4770-ad2a-2a51cea61393",
       "name": "EMD Determinant Code documented maximum",
-      "source": "require maximum(\"eDispatch.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.03\", 1)",
       "enabled": true,
       "message": "EMD Determinant Code permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -524,7 +524,7 @@
     {
       "id": "7555814a-5ba3-4575-a16d-ec57d502fcce",
       "name": "Dispatch Center Name or ID documented maximum",
-      "source": "require maximum(\"eDispatch.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.04\", 1)",
       "enabled": true,
       "message": "Dispatch Center Name or ID permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -538,7 +538,7 @@
     {
       "id": "2d11f958-a039-440a-aaae-e5a3c026063c",
       "name": "Dispatch Priority (Patient Acuity) documented maximum",
-      "source": "require maximum(\"eDispatch.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.05\", 1)",
       "enabled": true,
       "message": "Dispatch Priority (Patient Acuity) permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -552,7 +552,7 @@
     {
       "id": "ac0e7063-e3cb-4597-acf7-094b47f999c8",
       "name": "Unit Dispatched CAD Record ID documented maximum",
-      "source": "require maximum(\"eDispatch.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.06\", 1)",
       "enabled": true,
       "message": "Unit Dispatched CAD Record ID permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -566,7 +566,7 @@
     {
       "id": "e19bf107-2454-4be6-a54e-47631870ff54",
       "name": "Destination/Transferred To, Name documented maximum",
-      "source": "require maximum(\"eDisposition.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.01\", 1)",
       "enabled": true,
       "message": "Destination/Transferred To, Name permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -580,7 +580,7 @@
     {
       "id": "aa47bc8c-e4af-436c-a827-38e2691696d7",
       "name": "Transport Mode from Scene documented minimum",
-      "source": "require minimum(\"eDisposition.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.17\", 1)",
       "enabled": true,
       "message": "Transport Mode from Scene requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -594,7 +594,7 @@
     {
       "id": "2a30d096-ed1d-4404-a07f-76b08c8a7a56",
       "name": "Transport Mode from Scene documented maximum",
-      "source": "require maximum(\"eDisposition.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.17\", 1)",
       "enabled": true,
       "message": "Transport Mode from Scene permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -608,7 +608,7 @@
     {
       "id": "4928c65d-726c-4039-a3ab-c029ea8a759e",
       "name": "Acuity Upon EMS Release of Patient documented minimum",
-      "source": "require minimum(\"eDisposition.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.19\", 1)",
       "enabled": true,
       "message": "Acuity Upon EMS Release of Patient requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -622,7 +622,7 @@
     {
       "id": "23d23926-b896-4e29-a6e6-d48ae5a1b1a8",
       "name": "Acuity Upon EMS Release of Patient documented maximum",
-      "source": "require maximum(\"eDisposition.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.19\", 1)",
       "enabled": true,
       "message": "Acuity Upon EMS Release of Patient permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -664,7 +664,7 @@
     {
       "id": "249f8791-c603-41cd-a80e-88de41d3b54e",
       "name": "Transport Disposition documented minimum",
-      "source": "require minimum(\"eDisposition.30\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.30\", 1)",
       "enabled": true,
       "message": "Transport Disposition requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -678,7 +678,7 @@
     {
       "id": "fe44b9b3-3d77-4822-a615-de95b2667299",
       "name": "Transport Disposition documented maximum",
-      "source": "require maximum(\"eDisposition.30\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.30\", 1)",
       "enabled": true,
       "message": "Transport Disposition permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -692,7 +692,7 @@
     {
       "id": "df915de3-ad05-44e8-a3d8-b5a97f9f7272",
       "name": "Estimated Body Weight in Kilograms documented maximum",
-      "source": "require maximum(\"eExam.01\", 1)",
+      "source": "for each(\"eExamSection\")\nrequire maximum(\"eExam.01\", 1)",
       "enabled": true,
       "message": "Estimated Body Weight in Kilograms permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -706,7 +706,7 @@
     {
       "id": "6c59ee37-d4c6-4689-acda-5ac07bc97d79",
       "name": "Length Based Tape Measure documented maximum",
-      "source": "require maximum(\"eExam.02\", 1)",
+      "source": "for each(\"eExamSection\")\nrequire maximum(\"eExam.02\", 1)",
       "enabled": true,
       "message": "Length Based Tape Measure permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -790,7 +790,7 @@
     {
       "id": "7a67c673-6b3d-4968-a863-b6ac2c12a3d1",
       "name": "Stroke/CVA Symptoms Resolved documented maximum",
-      "source": "require maximum(\"eExam.21\", 1)",
+      "source": "for each(\"eExamSection\")\nrequire maximum(\"eExam.21\", 1)",
       "enabled": true,
       "message": "Stroke/CVA Symptoms Resolved permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -832,7 +832,7 @@
     {
       "id": "8a5cecc9-d0db-4748-ab5d-45ad7b51fdfe",
       "name": "Barriers to Patient Care documented minimum",
-      "source": "require minimum(\"eHistory.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eHistory.01\", 1)",
       "enabled": true,
       "message": "Barriers to Patient Care requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -972,7 +972,7 @@
     {
       "id": "2d6ef2e8-588d-43b0-a089-ef8d4407aee9",
       "name": "Presence of Emergency Information Form documented maximum",
-      "source": "require maximum(\"eHistory.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eHistory.16\", 1)",
       "enabled": true,
       "message": "Presence of Emergency Information Form permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -986,7 +986,7 @@
     {
       "id": "f0e042df-bcf2-4c35-afd1-8e753b23523c",
       "name": "Alcohol/Drug Use Indicators documented minimum",
-      "source": "require minimum(\"eHistory.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eHistory.17\", 1)",
       "enabled": true,
       "message": "Alcohol/Drug Use Indicators requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1000,7 +1000,7 @@
     {
       "id": "d01ea1d5-302d-46d2-aec1-1416f7ba7baa",
       "name": "Pregnancy documented maximum",
-      "source": "require maximum(\"eHistory.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eHistory.18\", 1)",
       "enabled": true,
       "message": "Pregnancy permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1014,7 +1014,7 @@
     {
       "id": "9432460d-8311-4c33-a162-857fe9725bf0",
       "name": "Last Oral Intake documented maximum",
-      "source": "require maximum(\"eHistory.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eHistory.19\", 1)",
       "enabled": true,
       "message": "Last Oral Intake permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1168,7 +1168,7 @@
     {
       "id": "07e00fbb-c24a-47ff-a670-50d8af5a6bee",
       "name": "Medication Dosage documented maximum",
-      "source": "require maximum(\"eMedications.05\", 1)",
+      "source": "for each(\"eMedications.MedicationGroup\")\nrequire maximum(\"eMedications.05\", 1)",
       "enabled": true,
       "message": "Medication Dosage permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1196,7 +1196,7 @@
     {
       "id": "6d0dc659-e313-48fd-aaab-e7c74709aee8",
       "name": "Medication Dosage Units documented maximum",
-      "source": "require maximum(\"eMedications.06\", 1)",
+      "source": "for each(\"eMedications.MedicationGroup\")\nrequire maximum(\"eMedications.06\", 1)",
       "enabled": true,
       "message": "Medication Dosage Units permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1308,7 +1308,7 @@
     {
       "id": "659eb320-2ccc-4c1a-aada-315984a9d25f",
       "name": "Patient Care Report Narrative documented maximum",
-      "source": "require maximum(\"eNarrative.01\", 1)",
+      "source": "for each(\"eNarrativeSection\")\nrequire maximum(\"eNarrative.01\", 1)",
       "enabled": true,
       "message": "Patient Care Report Narrative permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1322,7 +1322,7 @@
     {
       "id": "21f4bed7-eb7d-4cd9-afe8-4322aa0858f9",
       "name": "EMS Patient ID documented maximum",
-      "source": "require maximum(\"ePatient.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.01\", 1)",
       "enabled": true,
       "message": "EMS Patient ID permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1336,7 +1336,7 @@
     {
       "id": "d062e866-6d09-4261-abc1-2bc638722319",
       "name": "Last Name documented maximum",
-      "source": "require maximum(\"ePatient.02\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.02\", 1)",
       "enabled": true,
       "message": "Last Name permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1350,7 +1350,7 @@
     {
       "id": "c719beb4-9d97-49e2-aa35-0cf0372b73b8",
       "name": "First Name documented maximum",
-      "source": "require maximum(\"ePatient.03\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.03\", 1)",
       "enabled": true,
       "message": "First Name permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1364,7 +1364,7 @@
     {
       "id": "21de229f-e33d-46f9-a547-7b6ab518c445",
       "name": "Middle Initial/Name documented maximum",
-      "source": "require maximum(\"ePatient.04\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.04\", 1)",
       "enabled": true,
       "message": "Middle Initial/Name permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1378,7 +1378,7 @@
     {
       "id": "d3e3fa7d-ffe1-4399-aa5f-88465fd3b970",
       "name": "Patient's Home Address documented maximum",
-      "source": "require maximum(\"ePatient.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.05\", 1)",
       "enabled": true,
       "message": "Patient's Home Address permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1392,7 +1392,7 @@
     {
       "id": "a2824c05-a0eb-4bed-a3a2-38e64c702526",
       "name": "Patient's Home City documented maximum",
-      "source": "require maximum(\"ePatient.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.06\", 1)",
       "enabled": true,
       "message": "Patient's Home City permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1406,7 +1406,7 @@
     {
       "id": "ef4b46b0-57d3-472a-af90-2ab8f0fc37c2",
       "name": "Patient's Home County documented minimum",
-      "source": "require minimum(\"ePatient.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.07\", 1)",
       "enabled": true,
       "message": "Patient's Home County requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1420,7 +1420,7 @@
     {
       "id": "96805170-4d31-4cb7-a04c-263f4e0afc0c",
       "name": "Patient's Home County documented maximum",
-      "source": "require maximum(\"ePatient.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.07\", 1)",
       "enabled": true,
       "message": "Patient's Home County permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1434,7 +1434,7 @@
     {
       "id": "7a04d914-c480-432b-a03b-ecbf5aa81f5a",
       "name": "Patient's Home State documented minimum",
-      "source": "require minimum(\"ePatient.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.08\", 1)",
       "enabled": true,
       "message": "Patient's Home State requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1448,7 +1448,7 @@
     {
       "id": "7215e584-e42b-429a-a79c-15f92e392528",
       "name": "Patient's Home State documented maximum",
-      "source": "require maximum(\"ePatient.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.08\", 1)",
       "enabled": true,
       "message": "Patient's Home State permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1462,7 +1462,7 @@
     {
       "id": "c175a3ac-9c90-4490-a9e1-b7796debf291",
       "name": "Patient's Home ZIP Code documented minimum",
-      "source": "require minimum(\"ePatient.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.09\", 1)",
       "enabled": true,
       "message": "Patient's Home ZIP Code requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1476,7 +1476,7 @@
     {
       "id": "659da3ce-4c59-4aea-a6f2-f4d5ded39d06",
       "name": "Patient's Home ZIP Code documented maximum",
-      "source": "require maximum(\"ePatient.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.09\", 1)",
       "enabled": true,
       "message": "Patient's Home ZIP Code permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1490,7 +1490,7 @@
     {
       "id": "a0c0df30-6c6a-4157-a637-8069a47b0d9f",
       "name": "Patient's Country of Residence documented maximum",
-      "source": "require maximum(\"ePatient.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.10\", 1)",
       "enabled": true,
       "message": "Patient's Country of Residence permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1504,7 +1504,7 @@
     {
       "id": "12e73839-f364-417e-a2f8-48af9ed42f3c",
       "name": "Patient Home Census Tract documented maximum",
-      "source": "require maximum(\"ePatient.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.11\", 1)",
       "enabled": true,
       "message": "Patient Home Census Tract permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1518,7 +1518,7 @@
     {
       "id": "d90fa85a-b429-42e5-acc1-9afa22202f22",
       "name": "Social Security Number documented maximum",
-      "source": "require maximum(\"ePatient.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.12\", 1)",
       "enabled": true,
       "message": "Social Security Number permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1532,7 +1532,7 @@
     {
       "id": "14683081-aa25-41a3-ac48-5a4e3accdecf",
       "name": "Age documented minimum",
-      "source": "require minimum(\"ePatient.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.15\", 1)",
       "enabled": true,
       "message": "Age requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1546,7 +1546,7 @@
     {
       "id": "01f1323b-11d8-4004-ad18-01c10a7beeb7",
       "name": "Age documented maximum",
-      "source": "require maximum(\"ePatient.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.15\", 1)",
       "enabled": true,
       "message": "Age permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1560,7 +1560,7 @@
     {
       "id": "5e8301d5-776e-4e88-ac78-0b08cc987310",
       "name": "Age Units documented minimum",
-      "source": "require minimum(\"ePatient.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.16\", 1)",
       "enabled": true,
       "message": "Age Units requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1574,7 +1574,7 @@
     {
       "id": "fe226b20-f3a8-462b-a462-9f9d5baa8969",
       "name": "Age Units documented maximum",
-      "source": "require maximum(\"ePatient.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.16\", 1)",
       "enabled": true,
       "message": "Age Units permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1588,7 +1588,7 @@
     {
       "id": "2f5996ff-6df5-4d43-ac7f-50c86f1a6f53",
       "name": "Date of Birth documented maximum",
-      "source": "require maximum(\"ePatient.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.17\", 1)",
       "enabled": true,
       "message": "Date of Birth permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1602,7 +1602,7 @@
     {
       "id": "07a55074-cdeb-46a5-a53a-9ade9b52eda6",
       "name": "State Issuing Driver's License documented maximum",
-      "source": "require maximum(\"ePatient.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.20\", 1)",
       "enabled": true,
       "message": "State Issuing Driver's License permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1616,7 +1616,7 @@
     {
       "id": "ead11294-cfc0-4f08-a979-9fdc8ddfdb21",
       "name": "Driver's License Number documented maximum",
-      "source": "require maximum(\"ePatient.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.21\", 1)",
       "enabled": true,
       "message": "Driver's License Number permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1630,7 +1630,7 @@
     {
       "id": "8b3b1ad4-fbca-41ac-a10c-82ab7d92c744",
       "name": "Alternate Home Residence documented maximum",
-      "source": "require maximum(\"ePatient.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.22\", 1)",
       "enabled": true,
       "message": "Alternate Home Residence permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1644,7 +1644,7 @@
     {
       "id": "3ebe0e79-7781-47cc-ab84-d03461b69591",
       "name": "Name Suffix documented maximum",
-      "source": "require maximum(\"ePatient.23\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.23\", 1)",
       "enabled": true,
       "message": "Name Suffix permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -1658,7 +1658,7 @@
     {
       "id": "9b8e3281-4ca9-4fd5-ac28-ea15598ce714",
       "name": "Sex documented minimum",
-      "source": "require minimum(\"ePatient.25\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.25\", 1)",
       "enabled": true,
       "message": "Sex requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -1672,7 +1672,7 @@
     {
       "id": "3aba7a5c-b6b5-4a64-a279-3c41b5d491d9",
       "name": "Sex documented maximum",
-      "source": "require maximum(\"ePatient.25\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.25\", 1)",
       "enabled": true,
       "message": "Sex permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2008,7 +2008,7 @@
     {
       "id": "dce927b6-5809-4604-a5a8-d7c9b864f3cc",
       "name": "Incident Number documented minimum",
-      "source": "require minimum(\"eResponse.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.03\", 1)",
       "enabled": true,
       "message": "Incident Number requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2022,7 +2022,7 @@
     {
       "id": "4dbeda9d-8bb1-45d5-ad1e-370d739a4c9d",
       "name": "Incident Number documented maximum",
-      "source": "require maximum(\"eResponse.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.03\", 1)",
       "enabled": true,
       "message": "Incident Number permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2036,7 +2036,7 @@
     {
       "id": "5a14f084-2868-4034-a1cb-4dbdd673f6ff",
       "name": "EMS Response Number documented minimum",
-      "source": "require minimum(\"eResponse.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.04\", 1)",
       "enabled": true,
       "message": "EMS Response Number requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2050,7 +2050,7 @@
     {
       "id": "f041b7c4-bbd9-49e8-a3a4-5a61300cd8fd",
       "name": "EMS Response Number documented maximum",
-      "source": "require maximum(\"eResponse.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.04\", 1)",
       "enabled": true,
       "message": "EMS Response Number permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2064,7 +2064,7 @@
     {
       "id": "9f859937-a6f7-46dd-ab25-d411d4dae662",
       "name": "Type of Service Requested documented minimum",
-      "source": "require minimum(\"eResponse.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.05\", 1)",
       "enabled": true,
       "message": "Type of Service Requested requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2078,7 +2078,7 @@
     {
       "id": "78f56397-ab7f-43c5-af9e-706e309ff71e",
       "name": "Type of Service Requested documented maximum",
-      "source": "require maximum(\"eResponse.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.05\", 1)",
       "enabled": true,
       "message": "Type of Service Requested permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2092,7 +2092,7 @@
     {
       "id": "3770a10f-22fa-4264-ab28-e29ebd68148d",
       "name": "Type of Dispatch Delay documented minimum",
-      "source": "require minimum(\"eResponse.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.08\", 1)",
       "enabled": true,
       "message": "Type of Dispatch Delay requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2106,7 +2106,7 @@
     {
       "id": "5e64d741-f19e-46f3-a0d3-a1987b3458a3",
       "name": "Type of Response Delay documented minimum",
-      "source": "require minimum(\"eResponse.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.09\", 1)",
       "enabled": true,
       "message": "Type of Response Delay requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2120,7 +2120,7 @@
     {
       "id": "5002d3d0-afb3-4242-ad73-25edf18186d0",
       "name": "Type of Scene Delay documented minimum",
-      "source": "require minimum(\"eResponse.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.10\", 1)",
       "enabled": true,
       "message": "Type of Scene Delay requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2134,7 +2134,7 @@
     {
       "id": "4d666087-c8d3-4aa1-aaa3-2d15c8d3cc3f",
       "name": "Type of Transport Delay documented minimum",
-      "source": "require minimum(\"eResponse.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.11\", 1)",
       "enabled": true,
       "message": "Type of Transport Delay requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2148,7 +2148,7 @@
     {
       "id": "c9c64dfa-450a-4164-a955-0f615e7b18ce",
       "name": "Type of Turn-Around Delay documented minimum",
-      "source": "require minimum(\"eResponse.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.12\", 1)",
       "enabled": true,
       "message": "Type of Turn-Around Delay requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2162,7 +2162,7 @@
     {
       "id": "5e4d086b-b322-4ad3-a1b9-c2d3b5186389",
       "name": "EMS Unit Call Sign documented minimum",
-      "source": "require minimum(\"eResponse.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.14\", 1)",
       "enabled": true,
       "message": "EMS Unit Call Sign requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2176,7 +2176,7 @@
     {
       "id": "9a0e2025-4d09-4e08-a743-b8a26636acd4",
       "name": "EMS Unit Call Sign documented maximum",
-      "source": "require maximum(\"eResponse.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.14\", 1)",
       "enabled": true,
       "message": "EMS Unit Call Sign permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2190,7 +2190,7 @@
     {
       "id": "1e48576a-685b-4888-a08f-5f9018e174ff",
       "name": "Vehicle Dispatch Location documented maximum",
-      "source": "require maximum(\"eResponse.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.16\", 1)",
       "enabled": true,
       "message": "Vehicle Dispatch Location permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2204,7 +2204,7 @@
     {
       "id": "b008dc8f-0afb-4805-a8d2-0c4d9dae067d",
       "name": "Vehicle Dispatch GPS Location documented maximum",
-      "source": "require maximum(\"eResponse.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.17\", 1)",
       "enabled": true,
       "message": "Vehicle Dispatch GPS Location permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2218,7 +2218,7 @@
     {
       "id": "8d2cc3f2-861a-4b05-af11-6b4fd920c1f9",
       "name": "Response Mode to Scene documented minimum",
-      "source": "require minimum(\"eResponse.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.23\", 1)",
       "enabled": true,
       "message": "Response Mode to Scene requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2232,7 +2232,7 @@
     {
       "id": "932411ed-27f7-4610-a878-1fe43b7ba22d",
       "name": "Response Mode to Scene documented maximum",
-      "source": "require maximum(\"eResponse.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.23\", 1)",
       "enabled": true,
       "message": "Response Mode to Scene permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2246,7 +2246,7 @@
     {
       "id": "7b973cc3-d173-4877-af7b-982dca377b3d",
       "name": "First EMS Unit on Scene documented minimum",
-      "source": "require minimum(\"eScene.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.01\", 1)",
       "enabled": true,
       "message": "First EMS Unit on Scene requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2260,7 +2260,7 @@
     {
       "id": "aa163f7f-b1f8-438b-a3d8-12fff9bdfe13",
       "name": "First EMS Unit on Scene documented maximum",
-      "source": "require maximum(\"eScene.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.01\", 1)",
       "enabled": true,
       "message": "First EMS Unit on Scene permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2302,7 +2302,7 @@
     {
       "id": "a1ad0e29-0b0a-4ed1-ab67-9eb800b72d6e",
       "name": "Date/Time Initial Responder Arrived on Scene documented maximum",
-      "source": "require maximum(\"eScene.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.05\", 1)",
       "enabled": true,
       "message": "Date/Time Initial Responder Arrived on Scene permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2316,7 +2316,7 @@
     {
       "id": "3c13bd4d-7e40-4e92-aab1-7f1db9b4c5dc",
       "name": "Number of Patients at Scene documented minimum",
-      "source": "require minimum(\"eScene.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.06\", 1)",
       "enabled": true,
       "message": "Number of Patients at Scene requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2330,7 +2330,7 @@
     {
       "id": "3a78bc6a-8025-4ee0-a7f5-37d19093dda3",
       "name": "Number of Patients at Scene documented maximum",
-      "source": "require maximum(\"eScene.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.06\", 1)",
       "enabled": true,
       "message": "Number of Patients at Scene permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2344,7 +2344,7 @@
     {
       "id": "d581fca5-387b-4a78-a182-0df48f6d2fe6",
       "name": "Mass Casualty Incident documented minimum",
-      "source": "require minimum(\"eScene.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.07\", 1)",
       "enabled": true,
       "message": "Mass Casualty Incident requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2358,7 +2358,7 @@
     {
       "id": "bdb2182e-3d26-4231-a722-afd3bc01879e",
       "name": "Mass Casualty Incident documented maximum",
-      "source": "require maximum(\"eScene.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.07\", 1)",
       "enabled": true,
       "message": "Mass Casualty Incident permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2372,7 +2372,7 @@
     {
       "id": "f3821e68-1ce1-410b-a56b-e2f5e6febd92",
       "name": "Triage Classification for MCI Patient documented minimum",
-      "source": "require minimum(\"eScene.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.08\", 1)",
       "enabled": true,
       "message": "Triage Classification for MCI Patient requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2386,7 +2386,7 @@
     {
       "id": "a3597e68-f076-41d8-af1d-5f2c5a585003",
       "name": "Triage Classification for MCI Patient documented maximum",
-      "source": "require maximum(\"eScene.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.08\", 1)",
       "enabled": true,
       "message": "Triage Classification for MCI Patient permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2400,7 +2400,7 @@
     {
       "id": "fb641148-b294-4656-ab3d-16d47c6fcd3d",
       "name": "Incident Location Type documented minimum",
-      "source": "require minimum(\"eScene.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.09\", 1)",
       "enabled": true,
       "message": "Incident Location Type requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2414,7 +2414,7 @@
     {
       "id": "ba530e45-efd7-4b09-add2-8a0548aa2320",
       "name": "Incident Location Type documented maximum",
-      "source": "require maximum(\"eScene.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.09\", 1)",
       "enabled": true,
       "message": "Incident Location Type permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2428,7 +2428,7 @@
     {
       "id": "f0a7fe57-75b7-4258-ad1d-777b55279a7a",
       "name": "Incident Facility Code documented maximum",
-      "source": "require maximum(\"eScene.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.10\", 1)",
       "enabled": true,
       "message": "Incident Facility Code permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2442,7 +2442,7 @@
     {
       "id": "86d37abd-90c9-4a86-a747-9ae5aa36dccc",
       "name": "Scene GPS Location documented maximum",
-      "source": "require maximum(\"eScene.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.11\", 1)",
       "enabled": true,
       "message": "Scene GPS Location permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2456,7 +2456,7 @@
     {
       "id": "ca42898c-cd85-4730-aaea-924a62406207",
       "name": "Incident Facility or Location Name documented maximum",
-      "source": "require maximum(\"eScene.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.13\", 1)",
       "enabled": true,
       "message": "Incident Facility or Location Name permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2470,7 +2470,7 @@
     {
       "id": "6da2f2d9-18d0-4144-af4d-8f633f1255e4",
       "name": "Incident Street Address documented maximum",
-      "source": "require maximum(\"eScene.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.15\", 1)",
       "enabled": true,
       "message": "Incident Street Address permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2484,7 +2484,7 @@
     {
       "id": "e94ac430-c18d-46a5-a3b3-2ac7456c6fb9",
       "name": "Incident Apartment, Suite, or Room documented maximum",
-      "source": "require maximum(\"eScene.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.16\", 1)",
       "enabled": true,
       "message": "Incident Apartment, Suite, or Room permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2498,7 +2498,7 @@
     {
       "id": "bdab5e88-bbc0-454f-a1a6-47a16424ca4c",
       "name": "Incident City documented maximum",
-      "source": "require maximum(\"eScene.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.17\", 1)",
       "enabled": true,
       "message": "Incident City permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2512,7 +2512,7 @@
     {
       "id": "6699b860-86d9-4a1a-a4b6-4652949c6bd2",
       "name": "Incident ZIP Code documented minimum",
-      "source": "require minimum(\"eScene.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.19\", 1)",
       "enabled": true,
       "message": "Incident ZIP Code requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2526,7 +2526,7 @@
     {
       "id": "9cf474c2-7a08-4a51-a140-f02e4b8a17ac",
       "name": "Incident ZIP Code documented maximum",
-      "source": "require maximum(\"eScene.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.19\", 1)",
       "enabled": true,
       "message": "Incident ZIP Code permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2540,7 +2540,7 @@
     {
       "id": "f9900a1d-0f0d-45a5-aaa4-777948ffde46",
       "name": "Incident County documented minimum",
-      "source": "require minimum(\"eScene.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.21\", 1)",
       "enabled": true,
       "message": "Incident County requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2554,7 +2554,7 @@
     {
       "id": "03e95b64-fdd7-466d-aec2-5244822233dd",
       "name": "Incident County documented maximum",
-      "source": "require maximum(\"eScene.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.21\", 1)",
       "enabled": true,
       "message": "Incident County permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2568,7 +2568,7 @@
     {
       "id": "d54f1cc3-e0a6-4a20-a849-cba09264beda",
       "name": "Incident Country documented maximum",
-      "source": "require maximum(\"eScene.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.22\", 1)",
       "enabled": true,
       "message": "Incident Country permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2582,7 +2582,7 @@
     {
       "id": "b4e6175e-64bb-43e3-a3c5-8f8ccf21ca4d",
       "name": "Incident Census Tract documented maximum",
-      "source": "require maximum(\"eScene.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.23\", 1)",
       "enabled": true,
       "message": "Incident Census Tract permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2610,7 +2610,7 @@
     {
       "id": "dd41d2ae-f7ce-4ebe-a99b-23f9bcdc2908",
       "name": "Date/Time of Symptom Onset documented minimum",
-      "source": "require minimum(\"eSituation.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.01\", 1)",
       "enabled": true,
       "message": "Date/Time of Symptom Onset requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2624,7 +2624,7 @@
     {
       "id": "7291ff03-4d4c-4b58-ac9b-2e59770f7972",
       "name": "Date/Time of Symptom Onset documented maximum",
-      "source": "require maximum(\"eSituation.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.01\", 1)",
       "enabled": true,
       "message": "Date/Time of Symptom Onset permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2638,7 +2638,7 @@
     {
       "id": "bfa03503-bc9a-4f94-af4e-63566d674b1a",
       "name": "Possible Injury documented minimum",
-      "source": "require minimum(\"eSituation.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.02\", 1)",
       "enabled": true,
       "message": "Possible Injury requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2652,7 +2652,7 @@
     {
       "id": "5d09bca8-d05e-425b-ae9f-07cee883d00e",
       "name": "Possible Injury documented maximum",
-      "source": "require maximum(\"eSituation.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.02\", 1)",
       "enabled": true,
       "message": "Possible Injury permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2722,7 +2722,7 @@
     {
       "id": "6cb170f9-6fc7-456e-af4b-c007ec9b27cd",
       "name": "Chief Complaint Anatomic Location documented minimum",
-      "source": "require minimum(\"eSituation.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.07\", 1)",
       "enabled": true,
       "message": "Chief Complaint Anatomic Location requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2736,7 +2736,7 @@
     {
       "id": "1ad4eb63-8af3-49c1-a80e-1752c9b2b20a",
       "name": "Chief Complaint Anatomic Location documented maximum",
-      "source": "require maximum(\"eSituation.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.07\", 1)",
       "enabled": true,
       "message": "Chief Complaint Anatomic Location permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2750,7 +2750,7 @@
     {
       "id": "12652932-dede-4443-ad52-048825319145",
       "name": "Chief Complaint Organ System documented minimum",
-      "source": "require minimum(\"eSituation.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.08\", 1)",
       "enabled": true,
       "message": "Chief Complaint Organ System requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2764,7 +2764,7 @@
     {
       "id": "3192cd01-3326-441f-ae53-76155cb94f83",
       "name": "Chief Complaint Organ System documented maximum",
-      "source": "require maximum(\"eSituation.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.08\", 1)",
       "enabled": true,
       "message": "Chief Complaint Organ System permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2778,7 +2778,7 @@
     {
       "id": "ad8d3a03-c0c2-40ed-ad52-17263eca2b01",
       "name": "Primary Symptom documented minimum",
-      "source": "require minimum(\"eSituation.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.09\", 1)",
       "enabled": true,
       "message": "Primary Symptom requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2792,7 +2792,7 @@
     {
       "id": "fa47fb70-8ed3-4f0d-a4ed-80ca21b87044",
       "name": "Primary Symptom documented maximum",
-      "source": "require maximum(\"eSituation.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.09\", 1)",
       "enabled": true,
       "message": "Primary Symptom permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2806,7 +2806,7 @@
     {
       "id": "9073d53d-75d8-4f61-abfd-4397d48511cb",
       "name": "Other Associated Symptoms documented minimum",
-      "source": "require minimum(\"eSituation.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.10\", 1)",
       "enabled": true,
       "message": "Other Associated Symptoms requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2820,7 +2820,7 @@
     {
       "id": "3fb11bb1-af90-42d5-a6f7-04ec7614c9ec",
       "name": "Provider's Primary Impression documented minimum",
-      "source": "require minimum(\"eSituation.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.11\", 1)",
       "enabled": true,
       "message": "Provider's Primary Impression requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2834,7 +2834,7 @@
     {
       "id": "6e281699-e687-4057-a5f7-ae9335527448",
       "name": "Provider's Primary Impression documented maximum",
-      "source": "require maximum(\"eSituation.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.11\", 1)",
       "enabled": true,
       "message": "Provider's Primary Impression permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2848,7 +2848,7 @@
     {
       "id": "e4d688d9-00d4-4a42-a533-c5f152cf5e8f",
       "name": "Provider's Secondary Impressions documented minimum",
-      "source": "require minimum(\"eSituation.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.12\", 1)",
       "enabled": true,
       "message": "Provider's Secondary Impressions requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2862,7 +2862,7 @@
     {
       "id": "67f486ee-1082-4fb6-a68e-40523bc31f5a",
       "name": "Initial Patient Acuity documented minimum",
-      "source": "require minimum(\"eSituation.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.13\", 1)",
       "enabled": true,
       "message": "Initial Patient Acuity requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2876,7 +2876,7 @@
     {
       "id": "73cd3869-1e96-48ca-ae9a-3d000cf1c249",
       "name": "Initial Patient Acuity documented maximum",
-      "source": "require maximum(\"eSituation.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.13\", 1)",
       "enabled": true,
       "message": "Initial Patient Acuity permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2890,7 +2890,7 @@
     {
       "id": "efd0662f-71b5-416b-a4b6-8c56b07fe13b",
       "name": "Work-Related Illness/Injury documented maximum",
-      "source": "require maximum(\"eSituation.14\", 1)",
+      "source": "for each(\"eSituation.WorkRelatedGroup\")\nrequire maximum(\"eSituation.14\", 1)",
       "enabled": true,
       "message": "Work-Related Illness/Injury permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2904,7 +2904,7 @@
     {
       "id": "07ee0af0-f040-4385-a460-19cc0079e808",
       "name": "Patient's Occupational Industry documented maximum",
-      "source": "require maximum(\"eSituation.15\", 1)",
+      "source": "for each(\"eSituation.WorkRelatedGroup\")\nrequire maximum(\"eSituation.15\", 1)",
       "enabled": true,
       "message": "Patient's Occupational Industry permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2918,7 +2918,7 @@
     {
       "id": "328f05d8-6a04-48c3-a3fc-ff3b3d468c6e",
       "name": "Date/Time Last Known Well documented minimum",
-      "source": "require minimum(\"eSituation.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.18\", 1)",
       "enabled": true,
       "message": "Date/Time Last Known Well requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2932,7 +2932,7 @@
     {
       "id": "e628cfe9-bd65-4c46-a0f5-0570ed0d66b8",
       "name": "Date/Time Last Known Well documented maximum",
-      "source": "require maximum(\"eSituation.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.18\", 1)",
       "enabled": true,
       "message": "Date/Time Last Known Well permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2946,7 +2946,7 @@
     {
       "id": "92592ad3-f11a-4946-a9e6-9a25a02217ba",
       "name": "PSAP Call Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.01\", 1)",
       "enabled": true,
       "message": "PSAP Call Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -2960,7 +2960,7 @@
     {
       "id": "91761ab7-6485-486a-a460-4405e73b33b3",
       "name": "PSAP Call Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.01\", 1)",
       "enabled": true,
       "message": "PSAP Call Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2974,7 +2974,7 @@
     {
       "id": "9b466296-7624-480d-a057-6ce13fac22e1",
       "name": "Dispatch Notified Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.02\", 1)",
       "enabled": true,
       "message": "Dispatch Notified Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -2988,7 +2988,7 @@
     {
       "id": "7fc3651b-d95d-4d11-aa83-f8b0f5eae6a7",
       "name": "Unit Notified by Dispatch Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.03\", 1)",
       "enabled": true,
       "message": "Unit Notified by Dispatch Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3002,7 +3002,7 @@
     {
       "id": "1e75b47e-9593-423e-a684-f36f1b20dc3f",
       "name": "Unit Notified by Dispatch Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.03\", 1)",
       "enabled": true,
       "message": "Unit Notified by Dispatch Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3016,7 +3016,7 @@
     {
       "id": "f572fec9-bf32-42cc-a0d4-b84a44c05b77",
       "name": "Dispatch Acknowledged Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.04\", 1)",
       "enabled": true,
       "message": "Dispatch Acknowledged Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3030,7 +3030,7 @@
     {
       "id": "37523a56-00e4-4d88-a5b2-c166d5415877",
       "name": "Unit En Route Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.05\", 1)",
       "enabled": true,
       "message": "Unit En Route Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3044,7 +3044,7 @@
     {
       "id": "1a6b752b-5064-44bf-abe2-c9c979e253a0",
       "name": "Unit En Route Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.05\", 1)",
       "enabled": true,
       "message": "Unit En Route Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3058,7 +3058,7 @@
     {
       "id": "4ae06cdc-2a52-4361-a0aa-4d719c8e8baa",
       "name": "Unit Arrived on Scene Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.06\", 1)",
       "enabled": true,
       "message": "Unit Arrived on Scene Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3072,7 +3072,7 @@
     {
       "id": "5958eca3-f7c9-4c14-a134-a1f3831fb123",
       "name": "Unit Arrived on Scene Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.06\", 1)",
       "enabled": true,
       "message": "Unit Arrived on Scene Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3086,7 +3086,7 @@
     {
       "id": "3778649d-ff79-43b4-a4e8-691a03125e0f",
       "name": "Arrived at Patient Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.07\", 1)",
       "enabled": true,
       "message": "Arrived at Patient Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3100,7 +3100,7 @@
     {
       "id": "4be2da56-834d-4d9d-a348-66259dc180a5",
       "name": "Arrived at Patient Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.07\", 1)",
       "enabled": true,
       "message": "Arrived at Patient Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3114,7 +3114,7 @@
     {
       "id": "634cb3ab-d753-44b4-a1e0-eb89068de05a",
       "name": "Unit Left Scene Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.09\", 1)",
       "enabled": true,
       "message": "Unit Left Scene Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3128,7 +3128,7 @@
     {
       "id": "59f8b37c-523e-4539-aaf6-8272e045329c",
       "name": "Unit Left Scene Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.09\", 1)",
       "enabled": true,
       "message": "Unit Left Scene Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3142,7 +3142,7 @@
     {
       "id": "fd20f6b3-e1e9-40b3-afec-1998756bde58",
       "name": "Patient Arrived at Destination Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.11\", 1)",
       "enabled": true,
       "message": "Patient Arrived at Destination Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3156,7 +3156,7 @@
     {
       "id": "61c48cd4-f2a3-486b-a70a-97cb5ccba540",
       "name": "Patient Arrived at Destination Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.11\", 1)",
       "enabled": true,
       "message": "Patient Arrived at Destination Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3170,7 +3170,7 @@
     {
       "id": "76f97c06-6511-45b7-a0fc-692a9eba1a8c",
       "name": "Unit Back in Service Date/Time documented minimum",
-      "source": "require minimum(\"eTimes.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.13\", 1)",
       "enabled": true,
       "message": "Unit Back in Service Date/Time requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3184,7 +3184,7 @@
     {
       "id": "81f3f462-2b79-4167-a9ad-32e1fd4d7198",
       "name": "Unit Back in Service Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.13\", 1)",
       "enabled": true,
       "message": "Unit Back in Service Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3198,7 +3198,7 @@
     {
       "id": "400eed0f-b155-4bbc-ac04-593fdf6c6d3f",
       "name": "Unit Back at Home Location Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.15\", 1)",
       "enabled": true,
       "message": "Unit Back at Home Location Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3212,7 +3212,7 @@
     {
       "id": "2a8a6a31-c1e1-40d7-ac9e-693249de5ba6",
       "name": "EMS Call Completed Date/Time documented maximum",
-      "source": "require maximum(\"eTimes.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.16\", 1)",
       "enabled": true,
       "message": "EMS Call Completed Date/Time permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3282,7 +3282,7 @@
     {
       "id": "90bfabd9-99a5-4303-a045-a64fbdc5fcea",
       "name": "Cardiac Rhythm / Electrocardiography (ECG) documented minimum",
-      "source": "require minimum(\"eVitals.03\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.03\", 1)",
       "enabled": true,
       "message": "Cardiac Rhythm / Electrocardiography (ECG) requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3296,7 +3296,7 @@
     {
       "id": "553d5925-6ed6-43ec-a999-132e2a083a49",
       "name": "ECG Type documented minimum",
-      "source": "require minimum(\"eVitals.04\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.04\", 1)",
       "enabled": true,
       "message": "ECG Type requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3310,7 +3310,7 @@
     {
       "id": "bbda8379-1761-48d5-acdc-104dc9ed7247",
       "name": "ECG Type documented maximum",
-      "source": "require maximum(\"eVitals.04\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.04\", 1)",
       "enabled": true,
       "message": "ECG Type permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3324,7 +3324,7 @@
     {
       "id": "ddb10063-ce43-4efc-ab5b-ec21b418277a",
       "name": "Method of ECG Interpretation documented minimum",
-      "source": "require minimum(\"eVitals.05\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.05\", 1)",
       "enabled": true,
       "message": "Method of ECG Interpretation requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3338,7 +3338,7 @@
     {
       "id": "a4f58896-f504-46e5-adbd-a693247e31f1",
       "name": "SBP (Systolic Blood Pressure) documented minimum",
-      "source": "require minimum(\"eVitals.06\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.06\", 1)",
       "enabled": true,
       "message": "SBP (Systolic Blood Pressure) requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3352,7 +3352,7 @@
     {
       "id": "2967a0cd-822c-4980-a0c2-efab45dfbfe7",
       "name": "SBP (Systolic Blood Pressure) documented maximum",
-      "source": "require maximum(\"eVitals.06\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.06\", 1)",
       "enabled": true,
       "message": "SBP (Systolic Blood Pressure) permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3366,7 +3366,7 @@
     {
       "id": "d485bdf1-b040-4752-a2b6-c3d305699b89",
       "name": "DBP (Diastolic Blood Pressure) documented maximum",
-      "source": "require maximum(\"eVitals.07\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.07\", 1)",
       "enabled": true,
       "message": "DBP (Diastolic Blood Pressure) permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3380,7 +3380,7 @@
     {
       "id": "c138a9cc-9ea7-40a3-a12a-e0bd201004c7",
       "name": "Method of Blood Pressure Measurement documented maximum",
-      "source": "require maximum(\"eVitals.08\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.08\", 1)",
       "enabled": true,
       "message": "Method of Blood Pressure Measurement permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3394,7 +3394,7 @@
     {
       "id": "a023c945-ec4d-4703-a555-ea75a69e74fc",
       "name": "Heart Rate documented minimum",
-      "source": "require minimum(\"eVitals.10\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.10\", 1)",
       "enabled": true,
       "message": "Heart Rate requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3408,7 +3408,7 @@
     {
       "id": "34be4077-3d8a-47d0-a9e5-9a496b410a7f",
       "name": "Heart Rate documented maximum",
-      "source": "require maximum(\"eVitals.10\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.10\", 1)",
       "enabled": true,
       "message": "Heart Rate permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3548,7 +3548,7 @@
     {
       "id": "a382e417-bbb3-44f9-af22-c011590978d8",
       "name": "Total Glasgow Coma Score documented maximum",
-      "source": "require maximum(\"eVitals.23\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.23\", 1)",
       "enabled": true,
       "message": "Total Glasgow Coma Score permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3562,7 +3562,7 @@
     {
       "id": "710d3500-0f04-4ff1-aa23-a4f31ecd3b20",
       "name": "Temperature documented maximum",
-      "source": "require maximum(\"eVitals.24\", 1)",
+      "source": "for each(\"eVitals.TemperatureGroup\")\nrequire maximum(\"eVitals.24\", 1)",
       "enabled": true,
       "message": "Temperature permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3604,7 +3604,7 @@
     {
       "id": "f9f2a29f-f1e0-41d5-ac95-8a55be5cac7d",
       "name": "Pain Scale Score documented minimum",
-      "source": "require minimum(\"eVitals.27\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.27\", 1)",
       "enabled": true,
       "message": "Pain Scale Score requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3618,7 +3618,7 @@
     {
       "id": "40e385f6-b87b-47be-a7dc-7092d4b98f04",
       "name": "Pain Scale Score documented maximum",
-      "source": "require maximum(\"eVitals.27\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.27\", 1)",
       "enabled": true,
       "message": "Pain Scale Score permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3632,7 +3632,7 @@
     {
       "id": "79772166-7d25-4eb6-a9c8-fe648cdc9673",
       "name": "Pain Scale Type documented maximum",
-      "source": "require maximum(\"eVitals.28\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.28\", 1)",
       "enabled": true,
       "message": "Pain Scale Type permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3646,7 +3646,7 @@
     {
       "id": "0726a8bb-cdab-4629-a146-a309895fc1f1",
       "name": "Stroke Scale Result documented minimum",
-      "source": "require minimum(\"eVitals.29\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.29\", 1)",
       "enabled": true,
       "message": "Stroke Scale Result requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3660,7 +3660,7 @@
     {
       "id": "74641c17-3d34-4c73-aa99-51ef70a69fb2",
       "name": "Stroke Scale Result documented maximum",
-      "source": "require maximum(\"eVitals.29\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.29\", 1)",
       "enabled": true,
       "message": "Stroke Scale Result permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3674,7 +3674,7 @@
     {
       "id": "5a286319-0285-4324-a53a-f1dca883fb14",
       "name": "Stroke Scale Type documented minimum",
-      "source": "require minimum(\"eVitals.30\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.30\", 1)",
       "enabled": true,
       "message": "Stroke Scale Type requires at least 1 documented occurrence(s)",
       "severity": "error",
@@ -3688,7 +3688,7 @@
     {
       "id": "f32f35a8-1be1-4469-a3fc-11246728ade2",
       "name": "Stroke Scale Type documented maximum",
-      "source": "require maximum(\"eVitals.30\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.30\", 1)",
       "enabled": true,
       "message": "Stroke Scale Type permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -3758,7 +3758,7 @@
     {
       "id": "219ae422-5416-4e29-a75f-e677a0e1ef39",
       "name": "Stroke Scale Score documented maximum",
-      "source": "require maximum(\"eVitals.34\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.34\", 1)",
       "enabled": true,
       "message": "Stroke Scale Score permits at most 1 documented occurrence(s)",
       "severity": "error",
@@ -7139,7 +7139,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.01",
       "message": "Primary Method of Payment requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePayment.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePayment.01\", 1)",
       "id": "bea0813c-6da5-4eaa-a568-d71da22c30b5"
     },
     {
@@ -7153,7 +7153,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.01",
       "message": "Primary Method of Payment permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.01\", 1)",
       "id": "6f6194cd-ab9d-4aab-a22d-d1a197556f4c"
     },
     {
@@ -7167,7 +7167,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.02",
       "message": "Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.02\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.02\", 1)",
       "id": "e29169bc-678c-444a-abee-4f7b2981e065"
     },
     {
@@ -7181,7 +7181,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.03",
       "message": "Date Physician Certification Statement Signed permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.03\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.03\", 1)",
       "id": "9c94fa16-dcb9-4fc5-abc2-89c2bff9b7e4"
     },
     {
@@ -7195,7 +7195,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.05",
       "message": "Healthcare Provider Type Signing Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.05\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.05\", 1)",
       "id": "4366c956-086f-41d8-a92b-e7520516f642"
     },
     {
@@ -7209,7 +7209,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.06",
       "message": "Last Name of Individual Signing Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.06\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.06\", 1)",
       "id": "fcda2230-62b6-4dda-a430-6e5cce0fe4da"
     },
     {
@@ -7223,7 +7223,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.07",
       "message": "First Name of Individual Signing Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.07\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.07\", 1)",
       "id": "0db35abe-35df-4d05-ad4a-11ae803f80a9"
     },
     {
@@ -7237,7 +7237,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.08",
       "message": "Patient Resides in Service Area permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.08\", 1)",
       "id": "095635a6-f960-4c74-a241-0ac76d330976"
     },
     {
@@ -7447,7 +7447,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.23",
       "message": "Closest Relative/Guardian Last Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.23\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.23\", 1)",
       "id": "d9ac2e63-c735-40eb-a27d-1581e6aea853"
     },
     {
@@ -7461,7 +7461,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.24",
       "message": "Closest Relative/ Guardian First Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.24\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.24\", 1)",
       "id": "843c0730-f148-49a3-a1a0-4812b45bd867"
     },
     {
@@ -7475,7 +7475,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.25",
       "message": "Closest Relative/ Guardian Middle Initial/Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.25\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.25\", 1)",
       "id": "acb11b1d-6bdb-4a6f-ab2b-f187fb7fb74a"
     },
     {
@@ -7489,7 +7489,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.26",
       "message": "Closest Relative/ Guardian Street Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.26\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.26\", 1)",
       "id": "efeca210-0bee-4167-a1c8-897e67e79772"
     },
     {
@@ -7503,7 +7503,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.27",
       "message": "Closest Relative/ Guardian City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.27\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.27\", 1)",
       "id": "4787d7fd-e969-43a6-a1fb-29d6a1675ee1"
     },
     {
@@ -7517,7 +7517,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.28",
       "message": "Closest Relative/ Guardian State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.28\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.28\", 1)",
       "id": "22a7a293-7d62-4625-a623-c3fed629b83b"
     },
     {
@@ -7531,7 +7531,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.29",
       "message": "Closest Relative/ Guardian ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.29\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.29\", 1)",
       "id": "28788f1f-c999-4e45-a5cb-7da4cd14710f"
     },
     {
@@ -7545,7 +7545,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.30",
       "message": "Closest Relative/ Guardian Country permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.30\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.30\", 1)",
       "id": "5d688627-877d-4518-a8dd-5755a88030bb"
     },
     {
@@ -7559,7 +7559,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.32",
       "message": "Closest Relative/ Guardian Relationship permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.32\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.32\", 1)",
       "id": "123c9a3e-46c8-483e-a367-2baaa59478bf"
     },
     {
@@ -7573,7 +7573,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.33",
       "message": "Patient's Employer permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.33\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.33\", 1)",
       "id": "b74363f8-d599-4f62-abda-38548ff5fe6c"
     },
     {
@@ -7587,7 +7587,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.34",
       "message": "Patient's Employer's Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.34\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.34\", 1)",
       "id": "eac4ee4c-c7ef-4190-a240-cd2808705774"
     },
     {
@@ -7601,7 +7601,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.35",
       "message": "Patient's Employer's City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.35\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.35\", 1)",
       "id": "43d44fd0-24c7-47c1-aa79-fb8490f68f87"
     },
     {
@@ -7615,7 +7615,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.36",
       "message": "Patient's Employer's State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.36\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.36\", 1)",
       "id": "3212ba21-de7a-4262-a5ba-f605c1e28d09"
     },
     {
@@ -7629,7 +7629,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.37",
       "message": "Patient's Employer's ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.37\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.37\", 1)",
       "id": "092d6af0-91bb-4ef8-a0d2-fa38b3b8c56b"
     },
     {
@@ -7643,7 +7643,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.38",
       "message": "Patient's Employer's Country permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.38\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.38\", 1)",
       "id": "ab681c8e-0553-4a3a-abfc-4174c5f4167f"
     },
     {
@@ -7657,7 +7657,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.39",
       "message": "Patient's Employer's Primary Phone Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.39\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.39\", 1)",
       "id": "745bb96c-cd36-4b37-a97f-1f4c0c5d35fa"
     },
     {
@@ -7671,7 +7671,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.40",
       "message": "Response Urgency permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.40\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.40\", 1)",
       "id": "fd52abb2-b44d-4d2d-afbf-307fa929c4c4"
     },
     {
@@ -7685,7 +7685,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.45",
       "message": "Round Trip Purpose Description permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.45\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.45\", 1)",
       "id": "179742c3-ae44-4273-a521-fe525b27cbba"
     },
     {
@@ -7699,7 +7699,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.46",
       "message": "Stretcher Purpose Description permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.46\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.46\", 1)",
       "id": "8affd6b4-9783-4d26-a0ab-2bac60e5b965"
     },
     {
@@ -7713,7 +7713,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.48",
       "message": "Mileage to Closest Hospital Facility permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.48\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.48\", 1)",
       "id": "57be29db-99d6-4ba2-ab78-d80f283d8a8c"
     },
     {
@@ -7727,7 +7727,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.49",
       "message": "ALS Assessment Performed and Warranted permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.49\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.49\", 1)",
       "id": "90e17607-5d88-493f-adae-c265fa801e4d"
     },
     {
@@ -7741,7 +7741,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.50",
       "message": "CMS Service Level requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePayment.50\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePayment.50\", 1)",
       "id": "1bd5eefd-11cb-4360-ab2a-ffd95fc5466e"
     },
     {
@@ -7755,7 +7755,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.50",
       "message": "CMS Service Level permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.50\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.50\", 1)",
       "id": "20fb6ca0-c219-4057-a9b4-2f11d3c7f8d6"
     },
     {
@@ -7769,7 +7769,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.53",
       "message": "Transport Authorization Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.53\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.53\", 1)",
       "id": "b40b1737-0469-436d-a9f7-b2f3ea374ead"
     },
     {
@@ -7783,7 +7783,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.54",
       "message": "Prior Authorization Code Payer permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.54\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.54\", 1)",
       "id": "d1040bbd-1c7d-4f5b-a126-8c1a91413994"
     },
     {
@@ -7825,7 +7825,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.57",
       "message": "Payer Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.57\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.57\", 1)",
       "id": "03ad621f-abe4-4828-ad7a-57caa338d91a"
     },
     {

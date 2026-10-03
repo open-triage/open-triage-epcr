@@ -1,5 +1,16 @@
 # Analytics projection operations
 
+Root `npm run dev` (also `npm run dev:local`) waits for PostgreSQL before starting
+the API and its analytics watcher, then confirms API and web readiness. The watcher
+runs one bounded projection batch immediately and once a minute after the previous
+batch finishes, using the private database environment. See the
+[local development runbook](local-development.md) for setup and troubleshooting.
+Manual `npm run dev -w @open-triage/api` also starts the watcher; load the private
+environment and make PostgreSQL ready first, then start the web separately without `PORT`.
+For an already-running API, start `npm run project:watch -w @open-triage/database`
+as a separate process until the API is restarted. Production continues to use
+the scheduled jobs below.
+
 The production scheduler is defined only by the
 [`analytics-cronjobs.yaml` Helm template](../../deploy/helm/open-triage/templates/analytics-cronjobs.yaml).
 Configure it through the chart's `analytics` values. Both jobs use the immutable
@@ -82,6 +93,39 @@ recorded with a safe error code and a non-zero exit; correct the cause and repea
 
 ## Backfill
 
+### Custom scalar transition (projector 1.2.0)
+
+After deploying migration `20261002190000_review_custom_scalar_analytics.sql` and
+the 1.2.0 projector, rebuild each historical signed-report date range with the
+bounded backfill command below. Use a unique key per range, run it repeatedly
+until `processedCount` is zero, then reconcile the same range. The projector
+reconstructs effective add, replace, and remove amendments from clinical history,
+deletes the old projection in the same transaction, and writes each surviving
+custom value exactly once into `epcr_repeatable_element`. Report-level custom
+rows have null analytical group fields; their clinical root group is unchanged.
+
+Older `additional_elements` and `additional_identifying_elements` JSON may still
+exist on reports awaiting rebuild. Review custom BI reads only the long table,
+so it never unions or counts those JSON copies. Reports awaiting rebuild can
+appear missing for a custom field; the projector version makes reconciliation
+detect them as stale. After backfill, the projector omits custom values from
+the JSON additions. Compare counts by report and custom identity through the
+projector role before retiring the transition. Run the backfill separately for
+real and synthetic report dates as needed; the projector preserves each report's
+dataset classification.
+
+### Grouped custom transition (projector 1.3.0)
+
+Migration `20261002220000_review_custom_grouped_source.sql` includes grouped and
+repeated custom rows in the same API-only source as standalone rows. Run the
+bounded historical backfill above for every signed-report date range after the
+1.3.0 projector is deployed, then reconcile each range. This also rebuilds
+earlier grouped rows whose `is_custom` flag was introduced by 1.2.0. Replay
+deletes a report's prior long rows before inserting its effective occurrences
+in one transaction; custom analyses read that table once and never union with
+wide JSON additions. The projector version change makes older projections
+visible to reconciliation as stale.
+
 Use a unique, non-clinical job key and an inclusive date range. Each invocation is
 bounded by `ANALYTICS_PROJECTOR_BATCH_SIZE`; invoke it repeatedly until its run
 reports no additional work:
@@ -96,3 +140,28 @@ each rebuilt report, so interruption and replay resume safely. Watch
 and run reconciliation over the same range when the backfill completes. Backfills
 must use a separately scheduled job with controlled concurrency; do not enlarge
 the routine queue batch until it threatens the normal freshness margin.
+# Repeated Review fields
+
+The basic Review builder exposes an allowlist of non-identifying repeated standard fields from
+`analytics.review_repeated_field_source`. Category membership is deduplicated within each
+patient report; a report may contribute to several categories, so category percentages can
+exceed 100% in total. A repeated numeric field requires a first, last, minimum, or maximum
+reducer before the cross-report mean, median, minimum, or maximum is calculated. Medication
+dosage also requires an explicit unit code; doses in other units are excluded from that result.
+
+First and last use clinical timestamps only when every eligible occurrence in that report has
+one. If any timestamp is missing, they use group ordinal, element ordinal, then occurrence ID
+for the whole report. Equal timestamps use the same deterministic ties. Occurrence order
+expresses documentation order and must not be described as clinical chronology. Results retain
+the effective source values and occurrence/group IDs for later record export. The API rejects
+analyses above 20,000 source rows; narrow the period or filters before retrying.
+
+## Legacy values without group links
+
+Projector 1.3.1 retains repeated NEMSIS occurrences from older signed reports even
+when their clinical group link is missing. Each occurrence retains its identity,
+value, and catalog group path, with `missing-group-instance` in `quality_flags`.
+Its group instance, ordinal, and instance path remain empty: no clinical
+correlation is inferred. Report-volume totals include the signed report; analyses
+requiring a group instance cannot correlate these flagged rows. Replay affected
+reports or run the normal queue to recover previously failed projections.

@@ -1590,14 +1590,14 @@ integrationTest("the idempotent demo installation authenticates with its exact r
   const demo = await signIn(DEMO_CLINICIAN_USERNAME);
   const demoSession = await demo.json();
   assert.equal(demo.status, 201);
-  assert.deepEqual(demoSession.capabilities, [
-    "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-    "forms:read", "forms:write", "roles:read", "settings:read", "users:read", "validation:read", "validation:write",
-  ]);
+  const registry = await client.query("select key from app_identity.capability order by key");
+  assert.deepEqual(demoSession.capabilities,
+    registry.rows.map(({ key }) => key).filter((key) => !key.endsWith(":publish")));
   assert.equal(demoSession.passwordChangeRequired, false);
   assert.equal(demoSession.capabilities.includes("catalog:publish"), false);
   assert.equal(demoSession.capabilities.includes("forms:publish"), false);
-  assert.equal(demoSession.capabilities.includes("roles:assign"), false);
+  assert.equal(demoSession.capabilities.includes("validation:publish"), false);
+  assert.equal(demoSession.capabilities.includes("roles:assign"), true);
 });
 
 

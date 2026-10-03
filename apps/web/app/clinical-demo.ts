@@ -11,7 +11,8 @@ export function shouldShowClinicalDemoBanner(input: {
   requestMode: BrowserRequestConfiguration["mode"];
 }): boolean {
   return input.authenticated && input.online && input.requestMode === "server" &&
-    input.presentationMode !== "admin" && input.capabilities?.includes("clinical:demo") === true;
+    input.presentationMode !== "admin" && input.presentationMode !== "review" &&
+    input.capabilities?.includes("clinical:demo") === true;
 }
 
 export function selectedClinicalDemoUnit(

@@ -12,6 +12,7 @@ import { DataSource } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encounterDocument } from "./encounter-document.persistence.js";
+import { reviewScope } from "../review/review-scope.js";
 
 type ReportRow = {
   id: string;
@@ -75,14 +76,17 @@ export class ReviewValidationService {
 
   async evaluate(accessToken: string, reportId: string, input: unknown): Promise<ValidationReviewEvaluation> {
     const session = await this.sessions.requireCapability(accessToken, "validation:read");
+    const scope = reviewScope(session);
     const validationVersionId = selectedVersion(input);
     const evaluatedAt = new Date().toISOString();
 
     return this.dataSource.transaction("REPEATABLE READ", async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
         select id,organization_id,catalog_release_id,revision from clinical.report
-        where id=$1 and organization_id=$2 and (status='signed' or documenting_user_id=$3)
-      `, [reportId, session.organization.id, session.user.id]);
+        where id=$1 and organization_id=$2 and status='signed'
+          and ($3::boolean or documenting_user_id=$4) and synthetic=$5
+      `, [reportId, session.organization.id, scope.reports === "all", session.user.id,
+        scope.defaultDataset === "synthetic"]);
       const report = reports[0];
       if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
 
@@ -102,7 +106,7 @@ export class ReviewValidationService {
           message: "The selected validation bundle failed its integrity check" }];
       } else {
         try {
-          const document = await encounterDocument(manager, report.id);
+          const document = await encounterDocument(manager, report.id, true);
           const settings = await manager.query<Array<{ language: string }>>(`
             select language from app_identity.agency_settings where organization_id=$1
           `, [report.organization_id]);

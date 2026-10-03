@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle } from "@open-triage/contracts";
-import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle, reviewPriorityOfRule } from "@open-triage/contracts";
+import { ConflictException, NotFoundException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 
@@ -12,6 +12,57 @@ const ruleId = randomUUID();
 const sourceRule = { id: ruleId, name: "Require incident number", enabled: true, severity: "error",
   executionTargets: ["live", "sign"], primaryTargetElementId: "eResponse.03",
   message: "Incident number is required", source: 'assert present("eResponse.03")' };
+
+test("review priority compiles independently of signing severity and legacy review rules use Medium", () => {
+  const catalog = new Set(["eResponse.03"]);
+  const authored = { ...sourceRule, severity: "warning", executionTargets: ["sign", "review"], reviewPriority: "high" };
+  const compiled = compileValidationRule(authored, versionId, catalog).compiled;
+  assert.equal(compiled.reviewPriority, "high");
+  assert.equal(compiled.severity, "warning");
+  assert.deepEqual(compiled.assertion, { operator: "present", elementId: "eResponse.03" });
+  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
+    catalogReleaseId: randomUUID(), rules: [compiled] };
+  const document = { $schema: "./encounter-document.schema-1.0.0.json", documentType: "open-triage.encounter",
+    modelVersion: "1.1.0", dataModel: { standard: "NEMSIS", version: "test", dataset: "EMSDataSet" },
+    formProfile: { id: "test", version: "1" }, encounter: { id: "test", createdAt: "2000-01-01T00:00:00.000Z",
+      updatedAt: "2000-01-01T00:00:00.000Z" }, groups: [] };
+  assert.equal(evaluateValidationBundle(bundle, document, "sign", { timestamp: "2000-01-01T00:00:00.000Z" })[0].severity, "warning");
+  const legacy = compileValidationRule({ ...authored, reviewPriority: undefined }, versionId, catalog).compiled;
+  assert.equal(legacy.reviewPriority, "medium");
+  assert.equal(reviewPriorityOfRule({}), "medium");
+  assert.equal(compileValidationRule({ ...authored, reviewPriority: "urgent" }, versionId, catalog).compiled, undefined);
+});
+
+test("authoring accepts independent review priority and rejects unknown values", () => {
+  const subject = service({ query: async () => [] });
+  const input = { ...sourceRule, executionTargets: ["sign", "review"], reviewPriority: "low" };
+  assert.equal(subject.rule(input).reviewPriority, "low");
+  assert.equal(subject.rule({ ...input, reviewPriority: undefined }).reviewPriority, "medium");
+  assert.throws(() => subject.rule({ ...input, reviewPriority: "urgent" }), UnprocessableEntityException);
+});
+
+test("None suppresses only its workflow and authoring preserves both choices", () => {
+  const subject = service({ query: async () => [] });
+  const timestamp = "2026-01-01T00:00:00.000Z";
+  const document = { groups: [] };
+  for (const [severity, reviewPriority, signing, review] of [
+    ["none", "high", 0, 1], ["warning", "none", 1, 0], ["none", "none", 0, 0],
+  ]) {
+    const authored = subject.rule({ ...sourceRule, severity, reviewPriority,
+      executionTargets: ["live", "sign", "review"] });
+    assert.equal(authored.severity, severity);
+    assert.equal(authored.reviewPriority, reviewPriority);
+    const compiled = compileValidationRule(authored, versionId, new Set(["eResponse.03"])).compiled;
+    assert.ok(compiled);
+    const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
+      catalogReleaseId: randomUUID(), rules: [compiled] };
+    assert.equal(evaluateValidationBundle(bundle, document, "live", { timestamp }).length, signing);
+    assert.equal(evaluateValidationBundle(bundle, document, "sign", { timestamp }).length, signing);
+    const findings = evaluateValidationBundle(bundle, document, "review", { timestamp });
+    assert.equal(findings.length, review);
+    if (review) assert.equal(findings[0].severity, "information");
+  }
+});
 
 function service(manager, capabilityCalls = []) {
   const database = { ...manager, query: (sql, ...args) => sql.includes("provenance->'customElementDefinitions'")
@@ -73,14 +124,18 @@ test("discard deletes only an organization-scoped draft at its expected revision
   await assert.rejects(service(missing).delete("session", versionId, { expectedRevision: 2 }), NotFoundException);
 });
 
-test("new drafts persist documented minimum and maximum as separate rules without changing Catalog bounds", async () => {
+test("new drafts require mandatory singleton children within their containing rows", async () => {
   let persistedRules;
   const manager = { query: async (sql, parameters = []) => {
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("from validation.version where organization_id") && !sql.includes("insert")) return [];
     if (sql.includes("select distinct cr.id")) return [{ id: "51000000-0000-4000-8000-000000000099" }];
     if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [{ element_id: "eVitals.06", name: "Systolic Blood Pressure",
-      min_occurs: 1, max_occurs: 2, group_id: "eVitals.VitalGroup", group_repeating: true }];
+      min_occurs: 1, max_occurs: 2, group_id: "eVitals.BloodPressureGroup", group_repeating: false }];
+    if (sql.includes("select group_id,repeating,parent_group_id,min_occurs")) return [
+      { group_id: "eVitals.BloodPressureGroup", repeating: false, parent_group_id: "eVitals.VitalGroup", min_occurs: 1 },
+      { group_id: "eVitals.VitalGroup", repeating: true, parent_group_id: null, min_occurs: 1 },
+    ];
     if (sql.includes("select fv.id,fv.canonical_definition")) return [];
     if (sql.includes("insert into validation.rule_identity")) return [];
     if (sql.includes("insert into validation.version")) {
@@ -109,6 +164,7 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("from validation.version where organization_id") && !sql.includes("insert")) return [];
     if (sql.includes("select distinct cr.id")) return [{ id: catalogReleaseId }];
+    if (sql.includes("select group_id,repeating,parent_group_id,min_occurs")) return [];
     if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [
       { element_id: "dAgency.01", name: "EMS Agency Unique State ID", min_occurs: 1, max_occurs: 1,
         group_id: "DemographicGroup", group_repeating: false, agency_required: true, agency_required_severity: "error" },
@@ -137,9 +193,11 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
   await service(manager).create("session", { catalogReleaseId, displayName: "Migrated policy" });
   assert.deepEqual(persistedRules.map(({ sourceKind }) => sourceKind), ["catalog", "catalog", "form", "form"]);
   assert.equal(persistedRules[0].severity, "warning");
-  assert.equal(persistedRules[2].source, 'require minimum("ePatient.02", 1)');
+  assert.equal(persistedRules[0].source, 'for each("ePatient.PatientGroup")\nrequire minimum("ePatient.01", 1)');
+  assert.equal(persistedRules[1].source, 'for each("ePatient.PatientGroup")\nrequire maximum("ePatient.02", 1)');
+  assert.equal(persistedRules[2].source, 'for each("ePatient.PatientGroup")\nrequire minimum("ePatient.02", 1)');
   assert.equal(persistedRules[3].source,
-    'when present("ePatient.01")\nrequire present("ePatient.02")');
+    'for each("ePatient.PatientGroup")\nwhen present("ePatient.01")\nrequire present("ePatient.02")');
   assert.equal(persistedRules.some(({ primaryTargetElementId }) => primaryTargetElementId === "dAgency.01"), false);
 });
 
@@ -284,21 +342,105 @@ test("rule library applies organization-scoped filters, stable pagination, prove
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const subject = service(manager);
-  const first = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1 });
+  const first = await subject.library("session", { element: "eResponse.03", validity: "warning", limit: 1 });
   assert.equal(first.total, 2);
   assert.equal(first.items.length, 1);
   assert.ok(first.nextCursor);
-  const second = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1, cursor: first.nextCursor });
+  const second = await subject.library("session", { element: "eResponse.03", validity: "warning", limit: 1, cursor: first.nextCursor });
   assert.equal(second.items.length, 1);
   assert.notEqual(second.items[0].rule.id, first.items[0].rule.id);
-  const all = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: "all" });
+  const all = await subject.library("session", { element: "eResponse.03", validity: "warning", limit: "all" });
   assert.equal(all.items.length, all.total);
   assert.equal(all.nextCursor, null);
   const imported = await subject.library("session", { source: "nemsis", search: "nemSch_1" });
   assert.equal(imported.items[0].rule.provenance[0].originalExpression, "not(eResponse.03)");
-  assert.ok(imported.items[0].diagnostics.some(({ code }) => code === "possible-conflict"));
+  assert.ok(imported.items[0].diagnostics.every(({ code }) => code !== "similar-rule" && code !== "possible-conflict"));
   assert.ok(parameters.every((values) => !values.length || values[0] === organizationId || values[0] === "catalog"),
     "library lookup is constrained to the authenticated organization and its catalog");
+});
+
+test("multiple rules targeting the same element stay valid in the library and draft validation", async () => {
+  const localization = { schemaVersion: 1, sv: { name: "Antal", message: "Kontrollera antal" } };
+  const rules = [
+    { ...sourceRule, id: randomUUID(), name: "Minimum", source: 'require minimum("eResponse.03", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Another minimum", severity: "warning",
+      source: 'assert minimum ( "eResponse.03" , 2 )', localization },
+    { ...sourceRule, id: randomUUID(), name: "Maximum", severity: "information",
+      source: 'require maximum("eResponse.03", 3)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Presence", localization },
+    { ...sourceRule, id: randomUUID(), name: "Conditional value", severity: "warning",
+      source: 'when present("eResponse.04")\nrequire equals("eResponse.03", "incident")', localization },
+    { ...sourceRule, id: randomUUID(), name: "Scoped maximum", enabled: false,
+      source: 'for each("eResponse.AgencyGroup")\nrequire maximum("eResponse.03", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Conditional minimum",
+      source: 'when present("eResponse.04")\nrequire minimum("eResponse.03", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Minimum groups",
+      source: 'require minimumGroups("eResponse.AgencyGroup", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Maximum groups",
+      source: 'require maximumGroups("eResponse.AgencyGroup", 2)', localization },
+  ];
+  const manager = { query: async (sql) => {
+    if (sql.includes("from validation.version")) return [{ id: versionId, catalog_release_id: "catalog", source_rule: rules }];
+    if (sql.includes("from catalog.element_definition")) return ["eResponse.03", "eResponse.04"].map(element_id => ({
+      element_id, name: "Incident Number", base_datatype: "string", group_path: ["eResponse.AgencyGroup"],
+      min_occurs: 0, max_occurs: 3,
+    }));
+    if (sql.includes("from catalog.group_definition")) return [{ group_id: "eResponse.AgencyGroup", name: "Agency",
+      repeating: true, parent_group_id: null, min_occurs: 0, max_occurs: null }];
+    if (sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const subject = service(manager);
+  const library = await subject.library("session", { validity: "valid", limit: "all" });
+  assert.equal(library.total, rules.length);
+  assert.ok(library.items.every(({ diagnostics }) => diagnostics.length === 0));
+  assert.equal((await subject.library("session", { validity: "warning", limit: "all" })).total, 0);
+  const validation = await subject.validate("session", versionId);
+  assert.equal(validation.valid, true);
+  assert.deepEqual(validation.diagnostics, []);
+  assert.equal(validation.compiledBundle.rules.length, rules.length);
+
+  // Exact duplicates and compilation problems still receive their own diagnostics.
+  rules.push({ ...rules[0], id: randomUUID(), name: "Duplicate minimum" });
+  rules.push({ ...rules[2], id: randomUUID(), name: "Invalid maximum", source: 'require maximum("eResponse.03", 4)' });
+  rules.push({ ...rules[0], id: randomUUID(), name: "Malformed minimum", source: 'require minimum("eResponse.03", -1)' });
+  const warnings = await subject.library("session", { limit: "all" });
+  assert.ok(warnings.items.find(({ rule }) => rule.name === "Duplicate minimum").diagnostics
+    .some(({ code }) => code === "exact-duplicate"));
+  assert.ok(warnings.items.find(({ rule }) => rule.name === "Invalid maximum").diagnostics
+    .some(({ code }) => code === "occurrence-bound"));
+  assert.equal(warnings.items.find(({ rule }) => rule.name === "Malformed minimum").validity, "invalid");
+  const invalid = await subject.validate("session", versionId);
+  assert.equal(invalid.valid, false);
+  assert.ok(invalid.diagnostics.some(({ code }) => code === "occurrence-bound"));
+});
+
+test("wording validity filters include incomplete English and Swedish without invalidating compilable rules", async () => {
+  const translated = { schemaVersion: 1, sv: { name: "Händelsenummer", message: "Ange händelsenummer" } };
+  const rules = [
+    { ...sourceRule, id: "complete", primaryTargetElementId: "eResponse.04", source: 'require present("eResponse.04")', localization: translated },
+    { ...sourceRule, id: "english", message: "  ", localization: translated },
+    { ...sourceRule, id: "swedish" },
+    { ...sourceRule, id: "both", name: " ", localization: { schemaVersion: 1, sv: { name: " ", message: "" } } },
+    { ...sourceRule, id: "invalid", source: "broken", localization: translated },
+  ];
+  const manager = { query: async (sql) => {
+    if (sql.includes("from validation.version")) return [{ id: versionId, catalog_release_id: "catalog", source_rule: rules }];
+    if (sql.includes("from catalog.element_definition")) return ["eResponse.03", "eResponse.04"].map(element_id => ({ element_id,
+      name: "Incident Number", base_datatype: "string" }));
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const subject = service(manager);
+  const ids = async (validity, extra = {}) => (await subject.library("session", { validity, limit: "all", ...extra }))
+    .items.map(({ rule }) => rule.id).sort();
+  assert.deepEqual(await ids("missing-english"), ["both", "english"]);
+  assert.deepEqual(await ids("missing-swedish"), ["both", "swedish"]);
+  assert.deepEqual(await ids("wording"), ["both", "english", "swedish"]);
+  assert.deepEqual(await ids("valid"), ["complete"]);
+  assert.deepEqual(await ids("warning"), ["both", "english", "swedish"]);
+  assert.deepEqual(await ids("invalid"), ["invalid"]);
+  assert.deepEqual(await ids("wording", { search: "no matching wording" }), []);
 });
 
 test("disabled invalid rules remain authored but do not block publication or enter the executable bundle", async () => {
@@ -356,7 +498,8 @@ test("publication persists source and compiled integrity with a complete actor-a
   const addedId = randomUUID();
   const baselineRule = { ...sourceRule, executionTargets: ["live", "sign"] };
   const changedRule = { ...sourceRule, name: "Historical incident number", enabled: false, executionTargets: ["review"] };
-  const addedRule = { ...sourceRule, id: addedId, name: "Review disposition", executionTargets: ["review"] };
+  const addedRule = { ...sourceRule, id: addedId, name: "Review disposition", severity: "warning",
+    reviewPriority: "high", executionTargets: ["sign", "review"] };
   const baseline = { id: randomUUID(), organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
     cloned_from_id: null, revision: 1, display_name: "Baseline", source_rule: [baselineRule], status: "published",
     version: 1, source_sha256: "a".repeat(64), compiled_bundle: { rules: [] }, compiled_sha256: "b".repeat(64),
@@ -394,7 +537,10 @@ test("publication persists source and compiled integrity with a complete actor-a
   assert.equal(audit[0], organizationId);
   assert.equal(audit[2], baseline.id);
   assert.equal(audit[5], "Reviewed policy changes");
-  assert.deepEqual(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).executionTargets, ["review"]);
+  assert.deepEqual(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).executionTargets, ["review", "sign"]);
+  assert.equal(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).reviewPriority, "high");
+  assert.equal(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).severity, "warning");
+  assert.equal(publishedBundle.rules.find(({ ruleId: id }) => id === ruleId).reviewPriority, "medium");
 });
 
 test("Validation history is organization isolated and exposes immutable lifecycle evidence", async () => {
@@ -603,4 +749,12 @@ test("every Validation endpoint independently authorizes before reading or mutat
     assert.deepEqual(requested, [attempt.required], attempt.name);
     assert.equal(queried, false, `${attempt.name} queried before authorization`);
   }
+});
+
+test("imported standard rule names retain complete wording while editor names remain bounded", () => {
+  const subject = service({ query: async () => [] });
+  const imported = { ...sourceRule, name: "Descriptive NEMSIS rule ".repeat(8).trim(), sourceKind: "nemsis" };
+  assert.throws(() => subject.rule(imported), /rule.name/);
+  assert.equal(subject.rule(imported, 500).name, imported.name);
+  assert.throws(() => subject.rule({ ...imported, enabled: "yes" }, 500));
 });

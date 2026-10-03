@@ -3,7 +3,7 @@
 import type { StationaryFormDraft } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { StationaryFormPreview } from "../../components/stationary-form-preview";
-import { loadInstallationConfiguration } from "../installation-settings";
+import { applyAgencyAppearance, loadInstallationConfiguration } from "../installation-settings";
 import { AdminLanguageContext, AdminText, useAdminText } from "../admin-localization";
 import type { AgencyLanguage } from "../localization";
 
@@ -12,7 +12,7 @@ export default function AdminPreviewPage() {
   const [error, setError] = useState("");
   const [agencyLanguage, setAgencyLanguage] = useState<AgencyLanguage>("en");
 
-  useEffect(() => { void loadInstallationConfiguration().then((config) => setAgencyLanguage(config.settings.language)).catch(() => {}); }, []);
+  useEffect(() => { void loadInstallationConfiguration().then((config) => { setAgencyLanguage(config.settings.language); applyAgencyAppearance(config.appearance, document, config.settings.language); }).catch(() => {}); }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

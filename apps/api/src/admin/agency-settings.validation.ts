@@ -84,12 +84,21 @@ function appearance(value: unknown): AgencyAppearance {
   }
   const accentColor = color(candidate.accentColor, "appearance.accentColor");
   const accentDarkColor = color(candidate.accentDarkColor, "appearance.accentDarkColor");
+  const destructiveColor = color(candidate.destructiveColor, "appearance.destructiveColor");
+  const inactiveButtonColor = color(candidate.inactiveButtonColor, "appearance.inactiveButtonColor");
+  const textColor = color(candidate.textColor, "appearance.textColor");
   if (contrastRatio(accentColor, "#ffffff") < 4.5 || contrastRatio(accentDarkColor, "#ffffff") < 4.5) {
     throw new UnprocessableEntityException("accent colors must have at least 4.5:1 contrast against white");
   }
+  if (contrastRatio(destructiveColor, "#ffffff") < 4.5) {
+    throw new UnprocessableEntityException("destructive color must have at least 4.5:1 contrast against white");
+  }
+  if (contrastRatio(textColor, inactiveButtonColor) < 4.5 || contrastRatio(textColor, "#fbfbf9") < 4.5) {
+    throw new UnprocessableEntityException("text color must have at least 4.5:1 contrast against inactive buttons and form backgrounds");
+  }
   return {
     brandText: text(candidate.brandText, "appearance.brandText", 100), helperText, logoPngDataUrl,
-    accentColor, accentDarkColor,
+    accentColor, accentDarkColor, destructiveColor, inactiveButtonColor, textColor,
     browserThemeColor: color(candidate.browserThemeColor, "appearance.browserThemeColor"),
     pwaBackgroundColor: color(candidate.pwaBackgroundColor, "appearance.pwaBackgroundColor"),
     pwaName: text(candidate.pwaName, "appearance.pwaName", 100),

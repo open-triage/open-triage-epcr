@@ -46,6 +46,12 @@ export class AdminController {
     return this.canonical.list(sessionToken(request, authorization), kind);
   }
 
+  @Post("canonical/:kind/import-file")
+  importCanonicalFile(@Param("kind") kind: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string) {
+    return this.canonical.importFile(sessionToken(request, authorization), kind, body);
+  }
+
   @Post("canonical/:kind/import")
   importCanonical(@Param("kind") kind: string, @Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string) {

@@ -92,7 +92,7 @@ function serviceFixture({ compatible = true, existingDraft = false } = {}) {
   const authoring = {
     current: async () => existingDraft ? { id: "existing" } : null,
     clone: async (_token, body) => { calls.push(["clone", body]); return { id: "draft", revision: 1 }; },
-    create: async (_token, body) => { calls.push(["create", body]); return { id: "draft", revision: 1 }; },
+    create: async (_token, body, options) => { calls.push(["create", body]); return { id: "draft", revision: 1, rules: options?.importedRules }; },
     save: async (_token, _id, body) => { calls.push(["save", body]); return { id: "draft", revision: 2, definitionSha256: "validated-digest" }; },
     publish: async (_token, _id, body) => { calls.push(["publish", body]); return { id: "published", version: 12 }; }
   };
@@ -105,14 +105,21 @@ for (const kind of ["form", "validation"]) {
     await assert.rejects(service.importPublished("token", kind, artifact(kind)), /exact compatible published catalog/);
     assert.equal(calls.some(Array.isArray), false);
   });
-  test(`${kind} import produces a published version and retains source version provenance`, async () => {
+  test(`${kind} import allocates the agency version without source version provenance`, async () => {
     const { service, calls } = serviceFixture();
     assert.deepEqual(await service.importPublished("token", kind, artifact(kind)), { id: "published", version: 12 });
     assert.equal(calls.find((call) => Array.isArray(call) && ["clone", "create"].includes(call[0]))[1].catalogReleaseId, "destination-catalog");
     const command = calls.find((call) => Array.isArray(call) && call[0] === "publish")[1];
-    assert.match(command.changeNote, /source version 7/);
+    assert.doesNotMatch(command.changeNote, /source version/);
     assert.match(command.changeNote, new RegExp(artifact(kind).sha256));
     assert.equal(command.expectedRevision, 2);
+    const saved = calls.find((call) => Array.isArray(call) && call[0] === "save")[1];
+    assert.equal(saved.displayName, "Portable");
+    if (kind === "validation") {
+      assert.notEqual(saved.rules[0].id, artifact(kind).definition[0].id);
+      assert.match(saved.rules[0].id, /^[a-f0-9-]{36}$/);
+      assert.equal(saved.rules[0].source, artifact(kind).definition[0].source);
+    }
   });
 }
 
@@ -122,17 +129,19 @@ test("import never overwrites an existing draft", async () => {
   assert.equal(calls.some(Array.isArray), false);
 });
 
-test("already imported package reuses publication under the import lock", async () => {
-  const queries = [];
-  const db = { transaction: async (_isolation, callback) => callback({ query: async (sql) => {
-    queries.push(sql); return sql.includes("fv.change_note") ? [{ id: "existing-publication" }] : [];
-  } }) };
-  const sessions = { requireCapability: async () => ({ organization: { id: "org" } }) };
-  const service = new CanonicalPackageService(db, sessions, {}, {}, {});
-  service.persist = async (_token, kind, id) => { assert.equal(kind, "form"); assert.equal(id, "existing-publication"); };
-  assert.deepEqual(await service.import("token", "form", artifact()), { id: "existing-publication" });
-  assert.match(queries[0], /pg_advisory_xact_lock/);
-  assert.equal(queries.length, 2);
+test("normalization discards foreign or absent version metadata and selects the destination catalog", async () => {
+  for (const version of ["999", 999, null, undefined]) {
+    const { sha256: _hash, ...content } = artifact();
+    const input = { ...content, version, catalog: { sha256: "a".repeat(64) } };
+    const portable = { ...input, sha256: contentDigest(input) };
+    const { service } = serviceFixture();
+    const normalized = await service.normalize("token", "form", portable, "destination-catalog");
+    assert.equal(normalized.version, "");
+    assert.equal(normalized.catalog.sha256, catalogFingerprint(snapshot));
+    assert.deepEqual(normalized.definition, portable.definition);
+    await assert.rejects(service.normalize("token", "form", portable, "other-agency"), /unavailable to this agency/);
+    assert.throws(() => parsePackage({ ...portable, name: "tampered" }, "form", { ignoreVersion: true }));
+  }
 });
 
 test("relocating the catalog schema preserves historical artifact checksums", async () => {
@@ -142,4 +151,60 @@ test("relocating the catalog schema preserves historical artifact checksums", as
   const original = text.replace("../../packages/contracts/catalog.schema-1.0.0.json", "./nemsis-data-model.schema-1.0.0.json");
   assert.equal(catalogArtifactSha256(text), catalogArtifactSha256(previous));
   assert.equal(catalogArtifactSha256(text), catalogArtifactSha256(original));
+});
+
+for (const kind of ["catalog", "form", "validation"]) {
+  test(`${kind} imports only the selected discovered file, and rejects arbitrary paths and malformed files`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "canonical-selected-"));
+    const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+    process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
+    try {
+      await writePackage(artifact(kind));
+      const folder = kind === "form" ? "forms" : kind;
+      await writeFile(path.join(root, folder, "broken.json"), "not JSON");
+      const calls = [];
+      const sessions = { requireCapability: async (_token, capability) => { calls.push(capability); } };
+      const service = new CanonicalPackageService({}, sessions, {}, {}, {});
+      service.import = async (_token, selectedKind, content) => {
+        calls.push(["import", selectedKind, content.sha256]); return { id: "published" };
+      };
+      assert.deepEqual(await service.importFile("token", kind, { file: `${folder}/local/portable-v7.json` }), { id: "published" });
+      assert.deepEqual(calls, [`${kind === "form" ? "forms" : kind}:publish`, ["import", kind, artifact(kind).sha256]]);
+      for (const input of [null, {}, { file: "../../secret.json" }, { file: "forms/local/missing.json" }, { file: 1 }]) {
+        await assert.rejects(service.importFile("token", kind, input), /Select|unavailable/);
+      }
+      await assert.rejects(service.importFile("token", kind, { file: `${folder}/broken.json` }), /Invalid/);
+      assert.equal(calls.filter(Array.isArray).length, 1);
+    } finally {
+      if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+      else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("listing files is read-only and does not import or export definitions", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "canonical-list-"));
+  const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+  process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
+  try {
+    await writePackage(artifact());
+    const { service, calls } = serviceFixture();
+    service.import = service.persist = async () => { throw new Error("Unexpected mutation"); };
+    const files = await service.list("token", "form");
+    assert.equal(files.length, 1);
+    assert.equal(files[0].compatible, true);
+    assert.deepEqual(calls, ["forms:read"]);
+  } finally {
+    if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+    else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("file imports require publication authority before reading or mutating", async () => {
+  const sessions = { requireCapability: async () => { throw new Error("Forbidden"); } };
+  const service = new CanonicalPackageService({}, sessions, {}, {}, {});
+  service.import = async () => { throw new Error("Unexpected mutation"); };
+  await assert.rejects(service.importFile("token", "form", { file: "forms/example.json" }), /Forbidden/);
 });

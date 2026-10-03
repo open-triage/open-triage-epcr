@@ -10,8 +10,8 @@ const INTERACTION_MAX = 20;
 const REQUEST_FAILURE_MAX = 10;
 const allowedFields = new Set(["idempotencyKey", "type", "description", "diagnostics"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const modes = new Set(["mobile", "stationary", "admin"]);
-const screens = new Set(["calls", "encounter", "admin"]);
+const modes = new Set(["mobile", "stationary", "admin", "review"]);
+const screens = new Set(["calls", "encounter", "admin", "review"]);
 const browsers = new Set(["chromium", "firefox", "safari", "other"]);
 const connectivityStates = new Set(["online", "offline"]);
 const viewportCategories = new Set(["narrow", "standard", "wide"]);
@@ -23,12 +23,12 @@ const interactionNames = new Set<FeedbackInteractionName>([
   "feedback.opened", "feedback.cancelled", "feedback.type.bug.selected",
   "feedback.type.feature.selected", "feedback.submit.attempted", "session.refresh.requested",
   "session.logout.requested", "presentation.mobile.selected", "presentation.stationary.selected",
-  "presentation.admin.selected", "draft-sync.server-conflict", "draft-sync.validation-rejected",
+  "presentation.admin.selected", "presentation.review.selected", "draft-sync.server-conflict", "draft-sync.validation-rejected",
   "draft-sync.recovered", "draft-sync.retry-exhausted"
 ]);
 const requestMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const endpointLiteralSegments = new Set([
-  "api", "admin", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
+  "api", "admin", "review", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
   "installation", "reports", "open", "sessions", "current", "password", "reauthenticate",
   "context", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
   "reopen", "assignments", "cancel", "complete", "ownership", "transfer", "preview", "publish",

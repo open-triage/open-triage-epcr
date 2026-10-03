@@ -1,0 +1,618 @@
+{
+  "repository": "open-triage/open-triage-epcr",
+  "branch": "feature/review",
+  "sourcePrd": "docs/prds/review.md",
+  "parentTitle": "Review workflows and basic analytics",
+  "parentMarker": "review:parent",
+  "publicationStatus": "published-verified",
+  "slices": [
+    {
+      "number": 1,
+      "file": "001-enter-review.md",
+      "title": "[AFK] Enter Review and browse reports within the user's scope",
+      "type": "AFK",
+      "blockedBy": [],
+      "userStories": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        66
+      ],
+      "marker": "review:slice-001",
+      "published": {
+        "number": 643,
+        "id": 5676196134,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/643",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 2,
+      "file": "002-inspect-report.md",
+      "title": "[AFK] Inspect signed reports with consistent identifying-data restrictions",
+      "type": "AFK",
+      "blockedBy": [
+        1
+      ],
+      "userStories": [
+        2,
+        4,
+        5,
+        8,
+        9,
+        17,
+        32,
+        57
+      ],
+      "marker": "review:slice-002",
+      "published": {
+        "number": 644,
+        "id": 5676196722,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/644",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 3,
+      "file": "003-author-priorities.md",
+      "title": "[AFK] Author and publish review priorities in the validation rule editor",
+      "type": "AFK",
+      "blockedBy": [],
+      "userStories": [
+        14,
+        15,
+        19
+      ],
+      "marker": "review:slice-003",
+      "published": {
+        "number": 645,
+        "id": 5676197252,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/645",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 4,
+      "file": "004-sign-to-queue.md",
+      "title": "[AFK] Create one durable review item per matching signed report and criterion",
+      "type": "AFK",
+      "blockedBy": [
+        1,
+        2,
+        3
+      ],
+      "userStories": [
+        16,
+        17,
+        18,
+        19,
+        21,
+        22,
+        34,
+        68
+      ],
+      "marker": "review:slice-004",
+      "published": {
+        "number": 646,
+        "id": 5676197708,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/646",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 5,
+      "file": "005-claim-item.md",
+      "title": "[AFK] Claim eligible unassigned review items",
+      "type": "AFK",
+      "blockedBy": [
+        4
+      ],
+      "userStories": [
+        24,
+        28,
+        30
+      ],
+      "marker": "review:slice-005",
+      "published": {
+        "number": 647,
+        "id": 5676198204,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/647",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 6,
+      "file": "006-route-assignments.md",
+      "title": "[AFK] Manage assignments and automatic routing by criterion",
+      "type": "AFK",
+      "blockedBy": [
+        5
+      ],
+      "userStories": [
+        6,
+        7,
+        23,
+        25,
+        68
+      ],
+      "marker": "review:slice-006",
+      "published": {
+        "number": 648,
+        "id": 5676198712,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/648",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 7,
+      "file": "007-complete-reviews.md",
+      "title": "[AFK] Complete assigned reviews with agency-configured outcomes",
+      "type": "AFK",
+      "blockedBy": [
+        5
+      ],
+      "userStories": [
+        27,
+        28,
+        29,
+        30,
+        32
+      ],
+      "marker": "review:slice-007",
+      "published": {
+        "number": 649,
+        "id": 5676199214,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/649",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 8,
+      "file": "008-review-discussion.md",
+      "title": "[AFK] Exchange scoped review comments and request clinician responses",
+      "type": "AFK",
+      "blockedBy": [
+        7
+      ],
+      "userStories": [
+        9,
+        28,
+        31,
+        32
+      ],
+      "marker": "review:slice-008",
+      "published": {
+        "number": 650,
+        "id": 5676199753,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/650",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 9,
+      "file": "009-independent-review.md",
+      "title": "[AFK] Require independent review for selected criteria",
+      "type": "AFK",
+      "blockedBy": [
+        6,
+        7
+      ],
+      "userStories": [
+        23,
+        30,
+        33
+      ],
+      "marker": "review:slice-009",
+      "published": {
+        "number": 651,
+        "id": 5676200369,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/651",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 10,
+      "file": "010-bulk-assignments.md",
+      "title": "[AFK] Bulk claim, assign, and reassign selected review items",
+      "type": "AFK",
+      "blockedBy": [
+        6,
+        9
+      ],
+      "userStories": [
+        6,
+        24,
+        25,
+        26,
+        27,
+        33
+      ],
+      "marker": "review:slice-010",
+      "published": {
+        "number": 652,
+        "id": 5676200826,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/652",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 11,
+      "file": "011-amendment-rereview.md",
+      "title": "[AFK] Return amended reports for re-review and apply agency clearance policy",
+      "type": "AFK",
+      "blockedBy": [
+        7,
+        9
+      ],
+      "userStories": [
+        21,
+        35,
+        36,
+        37,
+        57,
+        68
+      ],
+      "marker": "review:slice-011",
+      "published": {
+        "number": 653,
+        "id": 5676201446,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/653",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 12,
+      "file": "012-overdue-drafts.md",
+      "title": "[AFK] Follow up overdue unsigned drafts and resolve them on signing",
+      "type": "AFK",
+      "blockedBy": [
+        6,
+        7
+      ],
+      "userStories": [
+        38,
+        39,
+        40,
+        41,
+        42,
+        47
+      ],
+      "marker": "review:slice-012",
+      "published": {
+        "number": 654,
+        "id": 5676201903,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/654",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 13,
+      "file": "013-overdue-exceptions.md",
+      "title": "[AFK] Record exceptional closure of an unsigned overdue item",
+      "type": "AFK",
+      "blockedBy": [
+        12
+      ],
+      "userStories": [
+        43,
+        47
+      ],
+      "marker": "review:slice-013",
+      "published": {
+        "number": 655,
+        "id": 5676202518,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/655",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 14,
+      "file": "014-retrospective-review.md",
+      "title": "[AFK] Preview and run retrospective review over a selected period",
+      "type": "AFK",
+      "blockedBy": [
+        6,
+        7
+      ],
+      "userStories": [
+        19,
+        20,
+        21,
+        22,
+        68
+      ],
+      "marker": "review:slice-014",
+      "published": {
+        "number": 656,
+        "id": 5676203022,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/656",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 15,
+      "file": "015-in-app-attention.md",
+      "title": "[AFK] Show in-app attention indicators for review work",
+      "type": "AFK",
+      "blockedBy": [
+        8,
+        11,
+        12
+      ],
+      "userStories": [
+        34,
+        44,
+        68
+      ],
+      "marker": "review:slice-015",
+      "published": {
+        "number": 657,
+        "id": 5676203588,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/657",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 16,
+      "file": "016-call-volume-bi.md",
+      "title": "[AFK] View scoped report-volume analytics with visible freshness",
+      "type": "AFK",
+      "blockedBy": [
+        1
+      ],
+      "userStories": [
+        3,
+        4,
+        5,
+        8,
+        9,
+        45,
+        48,
+        49,
+        50,
+        58,
+        66,
+        67
+      ],
+      "marker": "review:slice-016",
+      "published": {
+        "number": 658,
+        "id": 5676204047,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/658",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 17,
+      "file": "017-basic-field-analysis.md",
+      "title": "[AFK] Build simple analyses of single-valued structured fields",
+      "type": "AFK",
+      "blockedBy": [
+        16
+      ],
+      "userStories": [
+        9,
+        45,
+        48,
+        49,
+        53
+      ],
+      "marker": "review:slice-017",
+      "published": {
+        "number": 659,
+        "id": 5676204598,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/659",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 18,
+      "file": "018-repeated-field-analysis.md",
+      "title": "[AFK] Analyze repeated fields using explicit per-report reductions",
+      "type": "AFK",
+      "blockedBy": [
+        17
+      ],
+      "userStories": [
+        48,
+        50,
+        51,
+        52,
+        53
+      ],
+      "marker": "review:slice-018",
+      "published": {
+        "number": 660,
+        "id": 5676205129,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/660",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 19,
+      "file": "019-custom-scalar-analytics.md",
+      "title": "[AFK] Analyze standalone custom values from the long analytics table",
+      "type": "AFK",
+      "blockedBy": [
+        17
+      ],
+      "userStories": [
+        54,
+        55,
+        56,
+        57,
+        67
+      ],
+      "marker": "review:slice-019",
+      "published": {
+        "number": 661,
+        "id": 5676205728,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/661",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 20,
+      "file": "020-custom-grouped-analytics.md",
+      "title": "[AFK] Analyze repeated and grouped custom values without losing their relationships",
+      "type": "AFK",
+      "blockedBy": [
+        18,
+        19
+      ],
+      "userStories": [
+        51,
+        52,
+        54,
+        55,
+        56,
+        57
+      ],
+      "marker": "review:slice-020",
+      "published": {
+        "number": 662,
+        "id": 5676206219,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/662",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 21,
+      "file": "021-operational-time-analysis.md",
+      "title": "[AFK] Analyze response, scene, and transport durations",
+      "type": "AFK",
+      "blockedBy": [
+        17
+      ],
+      "userStories": [
+        48,
+        49,
+        53,
+        57,
+        58
+      ],
+      "marker": "review:slice-021",
+      "published": {
+        "number": 663,
+        "id": 5676206855,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/663",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 22,
+      "file": "022-review-workload-analysis.md",
+      "title": "[AFK] Analyze review workload and filter clinical BI by review findings",
+      "type": "AFK",
+      "blockedBy": [
+        11,
+        13,
+        14,
+        17
+      ],
+      "userStories": [
+        43,
+        45,
+        46,
+        47,
+        49,
+        53
+      ],
+      "marker": "review:slice-022",
+      "published": {
+        "number": 664,
+        "id": 5676207346,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/664",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 23,
+      "file": "023-saved-analyses.md",
+      "title": "[AFK] Save personal analyses and publish permission-scoped shared views",
+      "type": "AFK",
+      "blockedBy": [
+        17
+      ],
+      "userStories": [
+        59,
+        60,
+        61
+      ],
+      "marker": "review:slice-023",
+      "published": {
+        "number": 665,
+        "id": 5676207913,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/665",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 24,
+      "file": "024-aggregate-csv.md",
+      "title": "[AFK] Export each visualization's displayed aggregate values as CSV",
+      "type": "AFK",
+      "blockedBy": [
+        17
+      ],
+      "userStories": [
+        62,
+        64,
+        65
+      ],
+      "marker": "review:slice-024",
+      "published": {
+        "number": 666,
+        "id": 5676208507,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/666",
+        "attachedToParent": true
+      }
+    },
+    {
+      "number": 25,
+      "file": "025-underlying-record-csv.md",
+      "title": "[AFK] Export the exact report records underlying any supported visualization",
+      "type": "AFK",
+      "blockedBy": [
+        18,
+        20,
+        21,
+        22,
+        24
+      ],
+      "userStories": [
+        9,
+        50,
+        51,
+        52,
+        54,
+        56,
+        57,
+        63,
+        64,
+        65,
+        67
+      ],
+      "marker": "review:slice-025",
+      "published": {
+        "number": 667,
+        "id": 5676209074,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/667",
+        "attachedToParent": true
+      }
+    }
+  ],
+  "parent": {
+    "number": 642,
+    "id": 5676195727,
+    "url": "https://github.com/open-triage/open-triage-epcr/issues/642"
+  }
+}

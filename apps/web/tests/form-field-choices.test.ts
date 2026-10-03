@@ -21,7 +21,7 @@ test("authoring and preview use one field policy for codes and NOT values", () =
   ] }] };
   const markup = renderToStaticMarkup(createElement(FormSectionElements,
     { definition, catalogFields, onChange() {} }));
-  assert.match(markup, /Enabled choices and order/);
+  assert.match(markup, /Edit choices and order/);
   assert.match(markup, /Not Recorded/);
   assert.doesNotMatch(markup, /NOT 7701003/);
   const preview = previewCatalogFields(definition, catalogFields);

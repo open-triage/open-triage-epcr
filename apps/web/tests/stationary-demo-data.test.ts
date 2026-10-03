@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
 import { encounterDocumentDiagnostics } from "../app/encounter-document";
 import { encounterEvents } from "../app/canonical-events";
 import { DEMO_PROVENANCE_ATTRIBUTE, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "../app/demo-provenance";
@@ -261,6 +261,16 @@ test("editing a generated value transfers ownership to the clinician before Clea
 });
 
 test("configured vital dialog warns for zero and clears after a corrected value loses focus", () => {
+  const compiled = compileValidationRule({ id: "respiratory-rule", name: "Respiratory rate", enabled: true,
+    severity: "warning", executionTargets: ["live", "sign"], primaryTargetElementId: "eVitals.14",
+    message: "Clinically unusual respiratory rate",
+    source: 'for each("eVitals.VitalGroup")\nwhen present("eVitals.14")\nrequire not(any(equals("eVitals.14", 0), equals("eVitals.14", "0")))',
+  }, "validation-version", new Set(["eVitals.14"]));
+  assert.deepEqual(compiled.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [compiled.compiled!] };
+  const form = { ...configuredVitalsForm, validation: { versionId: bundle.validationVersionId,
+    compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
   const populated = populateStationaryDemoData(syntheticEncounter.document);
   const vital = populated.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!;
   const respiratory = vital.elements.find(({ id }) => id === "eVitals.14")!.values[0]!;
@@ -269,7 +279,7 @@ test("configured vital dialog warns for zero and clears after a corrected value 
     occurrenceId: respiratory.occurrenceId, input: "0",
   });
   assert.equal(unusual.ok, true);
-  assert.ok(stationaryDialogFindings(unusual.document, configuredVitalsForm)
+  assert.ok(stationaryDialogFindings(unusual.document, form)
     .some(({ message }) => message?.includes("Clinically unusual respiratory rate")));
 
   const corrected = editScalarOccurrence(unusual.document, {
@@ -277,7 +287,7 @@ test("configured vital dialog warns for zero and clears after a corrected value 
     occurrenceId: respiratory.occurrenceId, input: "16",
   });
   assert.equal(corrected.ok, true);
-  const findings = stationaryDialogFindings(corrected.document, configuredVitalsForm);
+  const findings = stationaryDialogFindings(corrected.document, form);
   assert.equal(findings.some(({ message }) => message?.includes("Clinically unusual respiratory rate")), false);
   assert.equal(findings.some(({ severity, target }) => severity === "error" && ["eVitals.06", "eVitals.10", "eVitals.27"].includes(target.fieldId ?? target.elementId ?? "")), false);
 });

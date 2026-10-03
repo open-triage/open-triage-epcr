@@ -7,7 +7,7 @@ const interactions: FeedbackInteractionName[] = [];
 const requestFailures: FeedbackRequestFailure[] = [];
 const methods = new Set<FeedbackRequestFailure["method"]>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const literalSegments = new Set([
-  "api", "admin", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
+  "api", "admin", "review", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
   "installation", "reports", "open", "sessions", "current", "password", "reauthenticate",
   "context", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
   "reopen", "assignments", "cancel", "complete", "ownership", "transfer", "preview", "publish",

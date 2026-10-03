@@ -2,11 +2,27 @@
 
 The forward migration preserves every signed report, signature, validation finding, and warning acknowledgement. Records signed before Validation versioning retain null `validation_version_id` values and receive `legacy_unversioned_validation = true`; the rollout never assigns them a policy they did not use.
 
-`npm run migrate -w @open-triage/database` publishes and activates the NEMSIS full Validation rules in `defines/validation/validation_nemsis-full.json` for every organization with the matching published form and sealed catalog but no active complete configuration bundle. Rules whose inputs are not available from the active Form/platform remain disabled. Re-running the migration or seed is safe: organizations with an active bundle are reported as `already-active` and are not changed. Fresh demonstration bootstrap runs the seed again after Catalog and Form creation.
+`npm run migrate -w @open-triage/database` applies schema changes only. Opening an
+Admin editor also performs no imports. To import a definition, use **Import from
+defines** in Catalog, Forms, or Validation, select a JSON file, and click **Import
+selected file**. The definition must match a published catalog available to the
+agency. Import publishes an agency version; activation remains a separate action.
+Publish or discard an existing draft before importing.
 
-After that baseline is active, migration and demonstration bootstrap discover matching non-default files under `defines/forms` and `defines/validation` and publish them as inactive options against the same NEMSIS catalog. Sweden's form shows 215 NEMSIS elements; ePayment remains in the shared catalog and its 52 Sweden validation rules are retained but disabled because those fields are not shown. The default remains active until an administrator explicitly activates a compatible option. Re-running option installation is idempotent; it skips organizations with an authoring draft rather than changing that draft. For an organization initialized after migration, run `npm run seed:install-definitions -w @open-triage/database` after its baseline configuration is active.
+Explicit demonstration bootstrap still loads its catalog and form, then seeds
+baseline validation and inactive options. The standalone `seed:validation` and
+`seed:install-definitions` commands remain explicit operator actions. Baseline
+seeding preserves organizations with active bundles; option seeding preserves
+existing versions and skips agencies with drafts. Sweden's form shows 215 NEMSIS
+elements; ePayment remains in the shared catalog and its 52 Sweden rules are
+retained but disabled. The baseline remains active until an administrator
+explicitly activates a compatible option.
 
 The migration credential alone performs this rollout. Long-lived API, analytics, and retention workloads do not receive the reset function. Existing Validation capabilities remain: the installation owner and Administrator can publish; Demo can read/write but not publish; custom roles receive nothing automatically.
+
+## Review rule priority compatibility
+
+A review-target validation rule has a High, Medium, or Low review priority independent of its Error, Warning, or Information severity. The priority does not change its assertion or signing behavior. New authoring requests without a review priority use Medium, and publication writes that priority into the compiled bundle. Previously published review rules with no priority remain immutable and readable; readers treat their missing priority as Medium. Publishing a new version does not evaluate historical reports or add them to a review queue.
 
 ## Reset unsigned rollout data
 

@@ -285,7 +285,7 @@ export function demoActionMutationDelta(
   };
 }
 
-/** Recover a mixed optimistic snapshot without relabeling clinician work as demo data. */
+/** Partition saves and recovery by ownership without relabeling clinician work as demo data. */
 export function recoveryMutationBatches(
   mutations: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
   persisted: Pick<SaveDraftReportCommand, "groups" | "occurrences">,

@@ -320,7 +320,7 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
 }
 
 /** Rehydrates the portable encounter document from normalized canonical storage. */
-export async function encounterDocument(manager: Queryable, reportId: string): Promise<EncounterDocument> {
+export async function encounterDocument(manager: Queryable, reportId: string, includeAmendments = false, maxAmendmentSequence?: number): Promise<EncounterDocument> {
   const reports = await manager.query<ReportDocumentRow[]>(`
     select r.id, r.created_at, r.updated_at, f.id as form_id, fv.version as form_version,
            cr.standard as catalog_standard,
@@ -348,6 +348,26 @@ export async function encounterDocument(manager: Queryable, reportId: string): P
     from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
     order by element_id, ordinal, id
   `, [reportId]);
+  if (includeAmendments) {
+    const effective = new Map<string, StoredOccurrenceRow>(occurrences.map((row) => [row.id, row]));
+    const overlays = await manager.query<Array<{ action: string; target_element_occurrence_id: string | null;
+      corrected_value: Partial<StoredOccurrenceRow> | null }>>(`
+      select ac.action, ac.target_element_occurrence_id, ac.corrected_value
+      from clinical.amendment a join clinical.amendment_change ac on ac.amendment_id = a.id
+      where a.report_id = $1 and ($2::integer is null or a.sequence <= $2)
+      order by a.sequence, ac.id`, [reportId, maxAmendmentSequence ?? null]);
+    for (const overlay of overlays) {
+      if (overlay.action === "remove" && overlay.target_element_occurrence_id)
+        effective.delete(overlay.target_element_occurrence_id);
+      else if (overlay.corrected_value) {
+        const previous = overlay.action === "replace" && overlay.target_element_occurrence_id
+          ? effective.get(overlay.target_element_occurrence_id) : undefined;
+        const next = { ...(previous ?? {}), ...overlay.corrected_value } as StoredOccurrenceRow;
+        effective.set(next.id, next);
+      }
+    }
+    occurrences.splice(0, occurrences.length, ...effective.values());
+  }
   const byGroup = new Map<string, { id: string; instances: Array<{ instanceId: string; parentInstanceId?: string; attributes?: Record<string, string>; elements: Array<{ id: string; values: EncounterValue[] }> }> }>();
   for (const group of groups) {
     const target = byGroup.get(group.group_id) ?? { id: group.group_id, instances: [] };

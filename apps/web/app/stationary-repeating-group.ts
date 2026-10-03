@@ -57,6 +57,11 @@ export function repeatingDialogPath(
   const visited = new Set<string>();
   let currentGroupId: string | undefined = groupId;
   let currentInstanceId: string | undefined = instanceId;
+  // A missing mandatory child is targeted at its existing containing row.
+  if (!document.groups.find(({ id }) => id === groupId)?.instances.some((instance) => instance.instanceId === instanceId)) {
+    const container = document.groups.find((group) => group.instances.some((instance) => instance.instanceId === instanceId));
+    if (container && getNemsisGroup(groupId)?.path.includes(container.id)) currentGroupId = container.id;
+  }
   while (currentGroupId && currentInstanceId && !visited.has(`${currentGroupId}:${currentInstanceId}`)) {
     visited.add(`${currentGroupId}:${currentInstanceId}`);
     if (tableGroups.has(currentGroupId)) path.push({ groupId: currentGroupId, instanceId: currentInstanceId });

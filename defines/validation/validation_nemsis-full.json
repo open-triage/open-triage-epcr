@@ -16,7 +16,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "dAgency.01",
       "message": "EMS Agency Unique State ID requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"dAgency.01\", 1)",
+      "source": "for each(\"HeaderGroup\")\nrequire minimum(\"dAgency.01\", 1)",
       "id": "5ae8f177-55f6-4ffa-ae2b-b3b1b4354d07"
     },
     {
@@ -30,7 +30,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "dAgency.01",
       "message": "EMS Agency Unique State ID permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"dAgency.01\", 1)",
+      "source": "for each(\"HeaderGroup\")\nrequire maximum(\"dAgency.01\", 1)",
       "id": "e0c1cb71-0ee9-4fa6-a67b-7e600893062b"
     },
     {
@@ -44,7 +44,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "dAgency.02",
       "message": "EMS Agency Number requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"dAgency.02\", 1)",
+      "source": "for each(\"HeaderGroup\")\nrequire minimum(\"dAgency.02\", 1)",
       "id": "4f7ff19d-219c-4bf1-a856-e5b73c69cc14"
     },
     {
@@ -58,7 +58,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "dAgency.02",
       "message": "EMS Agency Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"dAgency.02\", 1)",
+      "source": "for each(\"HeaderGroup\")\nrequire maximum(\"dAgency.02\", 1)",
       "id": "7ba73008-01fa-4b1a-a6f0-477931c084c8"
     },
     {
@@ -72,7 +72,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "dAgency.04",
       "message": "EMS Agency State requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"dAgency.04\", 1)",
+      "source": "for each(\"HeaderGroup\")\nrequire minimum(\"dAgency.04\", 1)",
       "id": "029e5262-013b-405d-a63d-e6d893277ed1"
     },
     {
@@ -86,7 +86,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "dAgency.04",
       "message": "EMS Agency State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"dAgency.04\", 1)",
+      "source": "for each(\"HeaderGroup\")\nrequire maximum(\"dAgency.04\", 1)",
       "id": "5aa80899-eec3-4169-aa8d-f2bd0efb6be2"
     },
     {
@@ -170,7 +170,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eAirway.10",
       "message": "Date/Time Decision to Manage the Patient with an Invasive Airway permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eAirway.10\", 1)",
+      "source": "for each(\"eAirway.AirwayGroup\")\nrequire maximum(\"eAirway.10\", 1)",
       "id": "123a5ba4-0b4d-4ec2-aaaa-71650f17f3f5"
     },
     {
@@ -184,7 +184,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eAirway.11",
       "message": "Date/Time Invasive Airway Placement Attempts Abandoned permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eAirway.11\", 1)",
+      "source": "for each(\"eAirway.AirwayGroup\")\nrequire maximum(\"eAirway.11\", 1)",
       "id": "d716ae08-8bd4-4018-ae62-125a338e6e6c"
     },
     {
@@ -210,7 +210,7 @@
         }
       },
       "messageParameters": { "minimum": 1 },
-      "source": "require minimum(\"eArrest.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.01\", 1)",
       "id": "dfa2e52d-5b0e-4c5a-a857-215a01ee1120"
     },
     {
@@ -224,7 +224,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.01",
       "message": "Cardiac Arrest permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.01\", 1)",
       "id": "851fc81d-d700-49ca-a016-cf1a2970865d"
     },
     {
@@ -238,7 +238,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.02",
       "message": "Cardiac Arrest Etiology requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.02\", 1)",
       "id": "04fe7cec-9eb5-4850-a520-563ac877cfb1"
     },
     {
@@ -252,7 +252,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.02",
       "message": "Cardiac Arrest Etiology permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.02\", 1)",
       "id": "010d4295-3122-438c-a841-9574c790c2c5"
     },
     {
@@ -266,7 +266,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.03",
       "message": "Resuscitation Attempted By EMS requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.03\", 1)",
       "id": "7f83b549-3103-463b-acd8-fe32a48c226c"
     },
     {
@@ -280,7 +280,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.04",
       "message": "Arrest Witnessed By requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.04\", 1)",
       "id": "460d795b-fa4f-4809-a8fa-d95e072cadac"
     },
     {
@@ -294,7 +294,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.07",
       "message": "AED Use Prior to EMS Arrival requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.07\", 1)",
       "id": "59ffd619-3cde-4382-a00e-1265c4cf1f91"
     },
     {
@@ -308,7 +308,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.07",
       "message": "AED Use Prior to EMS Arrival permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.07\", 1)",
       "id": "1545e22d-b557-43b1-a1c8-6020c28013ad"
     },
     {
@@ -322,7 +322,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.09",
       "message": "Type of CPR Provided requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.09\", 1)",
       "id": "461d542d-1bd4-4f29-a16d-b41891bc4915"
     },
     {
@@ -336,7 +336,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.10",
       "message": "Therapeutic Hypothermia by EMS permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.10\", 1)",
       "id": "b9b324a7-694c-48d0-a7a5-03554ed3a0ee"
     },
     {
@@ -350,7 +350,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.11",
       "message": "First Monitored Arrest Rhythm of the Patient requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.11\", 1)",
       "id": "06123f27-ae00-4a4b-a1fb-22b10c9e34d4"
     },
     {
@@ -364,7 +364,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.11",
       "message": "First Monitored Arrest Rhythm of the Patient permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.11\", 1)",
       "id": "e354c469-637c-4ec1-aea1-71858cc4a03d"
     },
     {
@@ -378,7 +378,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.12",
       "message": "Any Return of Spontaneous Circulation requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.12\", 1)",
       "id": "ccd328e5-7f33-49ae-ac1a-75ccc8f0858a"
     },
     {
@@ -392,7 +392,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.13",
       "message": "Neurological Outcome at Hospital Discharge permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.13\", 1)",
       "id": "6a5656c0-c538-47ad-a8e3-87533f3b3a29"
     },
     {
@@ -406,7 +406,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.14",
       "message": "Date/Time of Cardiac Arrest requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.14\", 1)",
       "id": "47c7711a-2d6b-4793-a8fa-122b1bd5ffeb"
     },
     {
@@ -420,7 +420,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.14",
       "message": "Date/Time of Cardiac Arrest permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.14\", 1)",
       "id": "78c63858-eee9-4d10-a2b7-db4efb9341a6"
     },
     {
@@ -434,7 +434,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.15",
       "message": "Date/Time Resuscitation Discontinued permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.15\", 1)",
       "id": "87d618e5-37b0-4443-ae0c-6f9aaf77821c"
     },
     {
@@ -448,7 +448,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.16",
       "message": "Reason CPR/Resuscitation Discontinued requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.16\", 1)",
       "id": "b1631a06-7d32-4db6-ae56-f995f6731893"
     },
     {
@@ -462,7 +462,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.16",
       "message": "Reason CPR/Resuscitation Discontinued permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.16\", 1)",
       "id": "15938504-16ab-4046-a57b-8be033660cb9"
     },
     {
@@ -476,7 +476,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.17",
       "message": "Cardiac Rhythm on Arrival at Destination requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.17\", 1)",
       "id": "0b289788-9bb0-4118-a341-930e018a6443"
     },
     {
@@ -490,7 +490,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.18",
       "message": "End of EMS Cardiac Arrest Event requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.18\", 1)",
       "id": "b0caaa2b-2b64-4238-a37f-5bafd9c354bc"
     },
     {
@@ -504,7 +504,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.18",
       "message": "End of EMS Cardiac Arrest Event permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.18\", 1)",
       "id": "23160629-2a97-4d9c-a9c1-052852bb2e14"
     },
     {
@@ -518,7 +518,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.19",
       "message": "Date/Time of Initial CPR permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.19\", 1)",
       "id": "1fee7f7a-acce-41f2-a4c5-c41b197cd657"
     },
     {
@@ -532,7 +532,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.20",
       "message": "Who First Initiated CPR requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.20\", 1)",
       "id": "1ec9f6f1-4b4a-4776-aded-feeab92091c5"
     },
     {
@@ -546,7 +546,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.20",
       "message": "Who First Initiated CPR permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.20\", 1)",
       "id": "df4690c5-854b-4a7d-a3cf-1d1730fba380"
     },
     {
@@ -560,7 +560,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.21",
       "message": "Who First Applied the AED requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.21\", 1)",
       "id": "c355c5db-0583-417d-a55c-32d6bea391fe"
     },
     {
@@ -574,7 +574,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.21",
       "message": "Who First Applied the AED permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.21\", 1)",
       "id": "2904b17e-8231-425a-a187-77acd4c1ca62"
     },
     {
@@ -588,7 +588,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.22",
       "message": "Who First Defibrillated the Patient requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eArrest.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.22\", 1)",
       "id": "77059cd9-9006-4b2e-aab2-a41d85f66edb"
     },
     {
@@ -602,7 +602,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eArrest.22",
       "message": "Who First Defibrillated the Patient permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eArrest.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eArrest.22\", 1)",
       "id": "590495c0-ebdc-42bd-afa8-fc404e7c5a2c"
     },
     {
@@ -882,7 +882,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.04",
       "message": "Medical Device Waveform Graphic Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.04\", 1)",
+      "source": "for each(\"eDevice.WaveformGroup\")\nrequire maximum(\"eDevice.04\", 1)",
       "id": "51c01e21-58c5-47f5-af41-0b869a444040"
     },
     {
@@ -896,7 +896,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.05",
       "message": "Medical Device Waveform Graphic permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.05\", 1)",
+      "source": "for each(\"eDevice.WaveformGroup\")\nrequire maximum(\"eDevice.05\", 1)",
       "id": "bdc9ac56-9974-4e5a-a5c1-36eb15bbd993"
     },
     {
@@ -910,7 +910,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.06",
       "message": "Medical Device Mode (Manual, AED, Pacing, CO2, O2, etc) permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.06\", 1)",
+      "source": "for each(\"eDevice.WaveformGroup\")\nrequire maximum(\"eDevice.06\", 1)",
       "id": "9458f845-f3b8-435d-a55f-baf5d8c9c299"
     },
     {
@@ -938,7 +938,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.09",
       "message": "Type of Shock permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.09\", 1)",
+      "source": "for each(\"eDevice.ShockGroup\")\nrequire maximum(\"eDevice.09\", 1)",
       "id": "17627830-6383-4a71-a17e-0ff226e1fd97"
     },
     {
@@ -952,7 +952,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.10",
       "message": "Shock or Pacing Energy permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.10\", 1)",
+      "source": "for each(\"eDevice.ShockGroup\")\nrequire maximum(\"eDevice.10\", 1)",
       "id": "88732b24-aa53-4c62-ad7a-8be3f5ea50f4"
     },
     {
@@ -966,7 +966,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.11",
       "message": "Total Number of Shocks Delivered permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.11\", 1)",
+      "source": "for each(\"eDevice.ShockGroup\")\nrequire maximum(\"eDevice.11\", 1)",
       "id": "998cfd66-07dc-4a63-abe9-bc1eed6635fa"
     },
     {
@@ -980,7 +980,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDevice.12",
       "message": "Pacing Rate permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDevice.12\", 1)",
+      "source": "for each(\"eDevice.ShockGroup\")\nrequire maximum(\"eDevice.12\", 1)",
       "id": "9b08b762-e3ec-4f7c-a104-515cf5c75763"
     },
     {
@@ -994,7 +994,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.01",
       "message": "Dispatch Reason requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDispatch.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDispatch.01\", 1)",
       "id": "a62c1a82-77b4-44c8-aa0a-270c74536f06"
     },
     {
@@ -1008,7 +1008,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.01",
       "message": "Dispatch Reason permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDispatch.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.01\", 1)",
       "id": "a26b7c77-2c77-4ea2-ad5e-8a195d2881c6"
     },
     {
@@ -1022,7 +1022,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.02",
       "message": "EMD Performed requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDispatch.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDispatch.02\", 1)",
       "id": "8cebf189-1909-4032-a3fc-8afbbf6bbbf2"
     },
     {
@@ -1036,7 +1036,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.02",
       "message": "EMD Performed permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDispatch.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.02\", 1)",
       "id": "b51f064a-fd10-4364-a1bd-f4049cf9144a"
     },
     {
@@ -1050,7 +1050,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.03",
       "message": "EMD Determinant Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDispatch.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.03\", 1)",
       "id": "fafff141-796b-4a56-a7c5-3a65799ed900"
     },
     {
@@ -1064,7 +1064,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.04",
       "message": "Dispatch Center Name or ID permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDispatch.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.04\", 1)",
       "id": "a2cf9509-2e6c-43a2-a737-4db2e2ae7f8c"
     },
     {
@@ -1078,7 +1078,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.05",
       "message": "Dispatch Priority (Patient Acuity) permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDispatch.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.05\", 1)",
       "id": "e0fb1112-4742-4e20-a9a1-1e4c3f9b5471"
     },
     {
@@ -1092,7 +1092,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDispatch.06",
       "message": "Unit Dispatched CAD Record ID permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDispatch.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDispatch.06\", 1)",
       "id": "4c03f682-5995-488a-a666-613f53cf2941"
     },
     {
@@ -1106,7 +1106,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.01",
       "message": "Destination/Transferred To, Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.01\", 1)",
       "id": "28f26d65-dbe2-4f05-a860-a223929dace9"
     },
     {
@@ -1120,7 +1120,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.02",
       "message": "Destination/Transferred To, Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.02\", 1)",
       "id": "9c214288-36b3-4d83-a67b-bc10ebbd8b10"
     },
     {
@@ -1134,7 +1134,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.03",
       "message": "Destination Street Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.03\", 1)",
       "id": "57d3b588-b1ff-479c-afa8-2aba56a7fdbe"
     },
     {
@@ -1148,7 +1148,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.04",
       "message": "Destination City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.04\", 1)",
       "id": "e57f1aa5-9c86-4a86-acc9-2662c072bcd5"
     },
     {
@@ -1162,7 +1162,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.05",
       "message": "Destination State requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.05\", 1)",
       "id": "5dc965e3-5337-40d3-ab51-f3e3a43d23b9"
     },
     {
@@ -1176,7 +1176,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.05",
       "message": "Destination State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.05\", 1)",
       "id": "ba6120df-5005-419a-a360-f62345ecd04f"
     },
     {
@@ -1190,7 +1190,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.06",
       "message": "Destination County requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.06\", 1)",
       "id": "ed43c467-d402-4b32-a1e1-f36d1824a712"
     },
     {
@@ -1204,7 +1204,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.06",
       "message": "Destination County permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.06\", 1)",
       "id": "ab29f78a-7f50-400a-a2fb-4e04569c2496"
     },
     {
@@ -1218,7 +1218,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.07",
       "message": "Destination ZIP Code requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.07\", 1)",
       "id": "ddc608b5-f263-4dc2-a2ae-40e653f09678"
     },
     {
@@ -1232,7 +1232,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.07",
       "message": "Destination ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.07\", 1)",
       "id": "8d664358-4594-442d-aff3-deb048e016f8"
     },
     {
@@ -1246,7 +1246,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.08",
       "message": "Destination Country permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.08\", 1)",
       "id": "04a56ef3-fd39-47a1-a2ff-75745bb4ad70"
     },
     {
@@ -1260,7 +1260,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.09",
       "message": "Destination GPS Location permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.09\", 1)",
       "id": "931ebfc4-5715-418b-aa29-77973a14540d"
     },
     {
@@ -1274,7 +1274,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.10",
       "message": "Destination Location US National Grid Coordinates permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.10\", 1)",
       "id": "a980b111-7ca3-42a2-a0e2-f0278249f07e"
     },
     {
@@ -1288,7 +1288,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.11",
       "message": "Number of Patients Transported in this EMS Unit permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.11\", 1)",
       "id": "5d1f1467-77e6-4b87-afde-e3646bacba87"
     },
     {
@@ -1302,7 +1302,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.16",
       "message": "EMS Transport Method requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.16\", 1)",
       "id": "c95603d1-47ba-4370-ad70-ff5396d5216c"
     },
     {
@@ -1316,7 +1316,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.16",
       "message": "EMS Transport Method permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.16\", 1)",
       "id": "f7a0f93e-4133-4c7d-a5b3-c140fc4e939c"
     },
     {
@@ -1330,7 +1330,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.17",
       "message": "Transport Mode from Scene requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.17\", 1)",
       "id": "ef1bfbc9-09cb-4f2f-a08d-9e90dc106c63"
     },
     {
@@ -1344,7 +1344,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.17",
       "message": "Transport Mode from Scene permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.17\", 1)",
       "id": "7d9519a3-2a23-4145-adb8-8ceb8a5e1da6"
     },
     {
@@ -1358,7 +1358,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.18",
       "message": "Additional Transport Mode Descriptors requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.18\", 1)",
       "id": "b8a1f1d9-193a-4fde-a712-8a31ee0fa58d"
     },
     {
@@ -1372,7 +1372,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.19",
       "message": "Acuity Upon EMS Release of Patient requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.19\", 1)",
       "id": "1136f837-f927-4d12-addf-5cdf8fbccf1e"
     },
     {
@@ -1386,7 +1386,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.19",
       "message": "Acuity Upon EMS Release of Patient permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.19\", 1)",
       "id": "89649cc8-f29d-4f61-aac3-8b5bf7132fde"
     },
     {
@@ -1400,7 +1400,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.20",
       "message": "Reason for Choosing Destination requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.20\", 1)",
       "id": "9e77f079-6090-4107-a9e6-f3b2b4f35bc9"
     },
     {
@@ -1414,7 +1414,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.21",
       "message": "Type of Destination requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.21\", 1)",
       "id": "ed95d274-8da4-4536-adb3-782ca3259e17"
     },
     {
@@ -1428,7 +1428,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.21",
       "message": "Type of Destination permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.21\", 1)",
       "id": "3e3cd5f8-fb4a-41d5-a054-9ec9b080383f"
     },
     {
@@ -1442,7 +1442,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.22",
       "message": "Hospital In-Patient Destination requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.22\", 1)",
       "id": "a2ece171-de76-4890-a011-10e4bb3b2ec5"
     },
     {
@@ -1456,7 +1456,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.22",
       "message": "Hospital In-Patient Destination permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.22\", 1)",
       "id": "a4e6ca93-6794-4afd-a79d-1556d0d77dec"
     },
     {
@@ -1470,7 +1470,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.23",
       "message": "Hospital Capability requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.23\", 1)",
       "id": "3a6a0565-b45c-472b-ac8f-2d492853ab41"
     },
     {
@@ -1540,7 +1540,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.27",
       "message": "Unit Disposition requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.27\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.27\", 1)",
       "id": "40c97e2a-8526-40b5-a094-90a5d5186a86"
     },
     {
@@ -1554,7 +1554,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.27",
       "message": "Unit Disposition permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.27\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.27\", 1)",
       "id": "1b3cd399-da0e-4661-aef2-27041b5df2ab"
     },
     {
@@ -1568,7 +1568,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.28",
       "message": "Patient Evaluation/Care requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.28\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.28\", 1)",
       "id": "13ceea89-8d5b-4114-a220-67a393cdd713"
     },
     {
@@ -1582,7 +1582,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.28",
       "message": "Patient Evaluation/Care permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.28\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.28\", 1)",
       "id": "88aa43d5-3d35-4b81-a56a-171db374cca3"
     },
     {
@@ -1596,7 +1596,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.29",
       "message": "Crew Disposition requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.29\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.29\", 1)",
       "id": "413c4cf6-eac2-4d4c-a621-7bc5949da33e"
     },
     {
@@ -1610,7 +1610,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.29",
       "message": "Crew Disposition permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.29\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.29\", 1)",
       "id": "e655f39f-f776-4b13-a67f-f1f02ca38bc5"
     },
     {
@@ -1624,7 +1624,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.30",
       "message": "Transport Disposition requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.30\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.30\", 1)",
       "id": "f3b80200-00c8-41b2-a1a8-119779fd6b18"
     },
     {
@@ -1638,7 +1638,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.30",
       "message": "Transport Disposition permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.30\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.30\", 1)",
       "id": "0db93f12-581e-4c98-a376-da2e78786d5b"
     },
     {
@@ -1652,7 +1652,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.32",
       "message": "Level of Care Provided per Protocol requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eDisposition.32\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eDisposition.32\", 1)",
       "id": "6596779c-7864-4edd-a653-4e39fd6641da"
     },
     {
@@ -1666,7 +1666,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eDisposition.32",
       "message": "Level of Care Provided per Protocol permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eDisposition.32\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eDisposition.32\", 1)",
       "id": "b5d08d8b-bace-454d-aa43-8977bf1f94c6"
     },
     {
@@ -1680,7 +1680,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eExam.01",
       "message": "Estimated Body Weight in Kilograms permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eExam.01\", 1)",
+      "source": "for each(\"eExamSection\")\nrequire maximum(\"eExam.01\", 1)",
       "id": "6bf76223-d587-47a7-aa5f-934b5dfbb951"
     },
     {
@@ -1694,7 +1694,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eExam.02",
       "message": "Length Based Tape Measure permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eExam.02\", 1)",
+      "source": "for each(\"eExamSection\")\nrequire maximum(\"eExam.02\", 1)",
       "id": "cfcfca98-0fbe-43e2-a6a3-2f13bd289b89"
     },
     {
@@ -1778,7 +1778,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eExam.21",
       "message": "Stroke/CVA Symptoms Resolved permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eExam.21\", 1)",
+      "source": "for each(\"eExamSection\")\nrequire maximum(\"eExam.21\", 1)",
       "id": "6207fe00-b694-4474-a33d-0d7aace5d512"
     },
     {
@@ -1820,7 +1820,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eHistory.01",
       "message": "Barriers to Patient Care requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eHistory.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eHistory.01\", 1)",
       "id": "e9655884-a865-45cd-a1d8-1cac2a511864"
     },
     {
@@ -1960,7 +1960,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eHistory.16",
       "message": "Presence of Emergency Information Form permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eHistory.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eHistory.16\", 1)",
       "id": "74c2307b-1892-4dd5-aace-73094c90c5d6"
     },
     {
@@ -1974,7 +1974,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eHistory.17",
       "message": "Alcohol/Drug Use Indicators requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eHistory.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eHistory.17\", 1)",
       "id": "a75ded5f-80ac-4bb6-afbb-e934a24c24e8"
     },
     {
@@ -1988,7 +1988,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eHistory.18",
       "message": "Pregnancy permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eHistory.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eHistory.18\", 1)",
       "id": "112a5107-b54b-4812-aaa7-0b57b9bb392a"
     },
     {
@@ -2002,7 +2002,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eHistory.19",
       "message": "Last Oral Intake permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eHistory.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eHistory.19\", 1)",
       "id": "22b3e1c4-b8d4-4cfa-a7a1-d18271ba5a6a"
     },
     {
@@ -2030,7 +2030,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.01",
       "message": "Cause of Injury requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eInjury.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eInjury.01\", 1)",
       "id": "2dc9d3e3-e575-4f2b-a362-0254e075c051"
     },
     {
@@ -2044,7 +2044,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.03",
       "message": "Trauma Triage Criteria (High Risk for Serious Injury) requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eInjury.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eInjury.03\", 1)",
       "id": "38fc22f9-90d2-48cc-a9cb-ea10fdc4f140"
     },
     {
@@ -2058,7 +2058,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.04",
       "message": "Trauma Triage Criteria (Moderate Risk for Serious Injury) requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eInjury.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eInjury.04\", 1)",
       "id": "f2ff83a6-6cbe-4c26-aa96-5af47c0577c1"
     },
     {
@@ -2072,7 +2072,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.05",
       "message": "Main Area of the Vehicle Impacted by the Collision permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eInjury.05\", 1)",
       "id": "958021da-0d5c-47d7-a478-56bd866f4f80"
     },
     {
@@ -2086,7 +2086,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.06",
       "message": "Location of Patient in Vehicle permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eInjury.06\", 1)",
       "id": "b190926b-1868-4d82-a225-1943582fbeae"
     },
     {
@@ -2100,7 +2100,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.09",
       "message": "Height of Fall (feet) permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eInjury.09\", 1)",
       "id": "2ec32433-a75e-4739-aa54-92724875762e"
     },
     {
@@ -2114,7 +2114,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.11",
       "message": "ACN System/Company Providing ACN Data permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.11\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.11\", 1)",
       "id": "34a04b63-72b9-4bcc-a382-0f786cfc4528"
     },
     {
@@ -2128,7 +2128,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.12",
       "message": "ACN Incident ID permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.12\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.12\", 1)",
       "id": "22b90768-40e1-4180-a205-09ab79a7acbd"
     },
     {
@@ -2142,7 +2142,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.14",
       "message": "Date/Time of ACN Incident permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.14\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.14\", 1)",
       "id": "ad0d72cc-caf6-4e78-ab2d-c7081ae00a03"
     },
     {
@@ -2156,7 +2156,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.15",
       "message": "ACN Incident Location permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.15\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.15\", 1)",
       "id": "1fbd2983-eb66-47e8-a04d-1b94fd1a208a"
     },
     {
@@ -2170,7 +2170,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.16",
       "message": "ACN Incident Vehicle Body Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.16\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.16\", 1)",
       "id": "d50f57fd-073a-4258-a14b-f36c4c2d4893"
     },
     {
@@ -2184,7 +2184,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.17",
       "message": "ACN Incident Vehicle Manufacturer permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.17\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.17\", 1)",
       "id": "f0a1537e-9274-45b9-abaf-826a91027cef"
     },
     {
@@ -2198,7 +2198,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.18",
       "message": "ACN Incident Vehicle Make permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.18\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.18\", 1)",
       "id": "3d7ee652-3194-4e24-ad80-02878289d17b"
     },
     {
@@ -2212,7 +2212,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.19",
       "message": "ACN Incident Vehicle Model permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.19\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.19\", 1)",
       "id": "16112b3e-b5cf-4010-ae8d-1770176de54d"
     },
     {
@@ -2226,7 +2226,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.20",
       "message": "ACN Incident Vehicle Model Year permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.20\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.20\", 1)",
       "id": "efaddfab-f3d8-4967-ae23-5f419586431a"
     },
     {
@@ -2240,7 +2240,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.21",
       "message": "ACN Incident Multiple Impacts permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.21\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.21\", 1)",
       "id": "2dc56ec3-a61c-4ae0-a146-f994d917d4c6"
     },
     {
@@ -2254,7 +2254,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.23",
       "message": "ACN High Probability of Injury permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.23\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.23\", 1)",
       "id": "29b3e7dd-c005-4be0-ae72-8090c6e9cbf4"
     },
     {
@@ -2268,7 +2268,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.24",
       "message": "ACN Incident PDOF permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.24\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.24\", 1)",
       "id": "530418a7-254a-469f-a602-71c9655f2d0a"
     },
     {
@@ -2282,7 +2282,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eInjury.25",
       "message": "ACN Incident Rollover permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eInjury.25\", 1)",
+      "source": "for each(\"eInjury.CollisionGroup\")\nrequire maximum(\"eInjury.25\", 1)",
       "id": "f4343895-2754-4283-af3c-d8058bc079b8"
     },
     {
@@ -2576,7 +2576,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eMedications.05",
       "message": "Medication Dosage requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eMedications.05\", 1)",
+      "source": "for each(\"eMedications.MedicationGroup\")\nrequire minimum(\"eMedications.05\", 1)",
       "id": "0f147712-d236-4307-af63-fd84e0929809"
     },
     {
@@ -2590,7 +2590,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eMedications.05",
       "message": "Medication Dosage permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eMedications.05\", 1)",
+      "source": "for each(\"eMedications.MedicationGroup\")\nrequire maximum(\"eMedications.05\", 1)",
       "id": "00f2b5b6-e344-4460-a065-b28978948c39"
     },
     {
@@ -2604,7 +2604,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eMedications.06",
       "message": "Medication Dosage Units requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eMedications.06\", 1)",
+      "source": "for each(\"eMedications.MedicationGroup\")\nrequire minimum(\"eMedications.06\", 1)",
       "id": "f026bcc3-3f02-4dc9-a8bc-9c34e5df3158"
     },
     {
@@ -2618,7 +2618,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eMedications.06",
       "message": "Medication Dosage Units permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eMedications.06\", 1)",
+      "source": "for each(\"eMedications.MedicationGroup\")\nrequire maximum(\"eMedications.06\", 1)",
       "id": "e6e6a8bb-f0c5-4180-aa3a-c3de12307a0c"
     },
     {
@@ -2758,7 +2758,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eNarrative.01",
       "message": "Patient Care Report Narrative permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eNarrative.01\", 1)",
+      "source": "for each(\"eNarrativeSection\")\nrequire maximum(\"eNarrative.01\", 1)",
       "id": "2d6a4a8e-0f30-4b05-ad9c-59e84446bce0"
     },
     {
@@ -2772,7 +2772,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOther.01",
       "message": "Review Requested permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOther.01\", 1)",
+      "source": "for each(\"eOtherSection\")\nrequire maximum(\"eOther.01\", 1)",
       "id": "3d73b635-ac9d-4fbf-a91b-c60468b7a19b"
     },
     {
@@ -2814,7 +2814,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOther.08",
       "message": "Crew Member Completing this Report permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOther.08\", 1)",
+      "source": "for each(\"eOtherSection\")\nrequire maximum(\"eOther.08\", 1)",
       "id": "24e1be57-c785-44f8-ae92-161315a94fc1"
     },
     {
@@ -3010,7 +3010,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.01",
       "message": "Emergency Department Disposition requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.01\", 1)",
       "id": "2e48909b-f7af-4761-aed1-7b1c2b3da099"
     },
     {
@@ -3024,7 +3024,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.01",
       "message": "Emergency Department Disposition permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOutcome.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eOutcome.01\", 1)",
       "id": "9be86b12-1bb3-46f7-a5a8-233d05b805f5"
     },
     {
@@ -3038,7 +3038,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.02",
       "message": "Hospital Disposition requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.02\", 1)",
       "id": "c01e7226-1d47-4bbf-a6e4-5f007d2c7a92"
     },
     {
@@ -3052,7 +3052,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.02",
       "message": "Hospital Disposition permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOutcome.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eOutcome.02\", 1)",
       "id": "9576a779-85be-43d4-a471-62c76b6193ef"
     },
     {
@@ -3136,7 +3136,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.10",
       "message": "Emergency Department Diagnosis requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.10\", 1)",
       "id": "e2453322-c4f4-4f0d-afb0-fb6bf276c1d2"
     },
     {
@@ -3150,7 +3150,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.11",
       "message": "Date/Time of Hospital Admission requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.11\", 1)",
       "id": "b461c8bb-c6e1-4d17-a542-f9832cd73c3d"
     },
     {
@@ -3164,7 +3164,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.11",
       "message": "Date/Time of Hospital Admission permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOutcome.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eOutcome.11\", 1)",
       "id": "23b460b0-6160-44d0-a284-f4e86fa7ddcc"
     },
     {
@@ -3206,7 +3206,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.13",
       "message": "Hospital Diagnosis requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.13\", 1)",
       "id": "7deeb88e-89b8-42dd-a5cb-839d4732451b"
     },
     {
@@ -3220,7 +3220,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.16",
       "message": "Date/Time of Hospital Discharge requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.16\", 1)",
       "id": "bf5faa03-ced7-4e9d-a8f0-9ef5cf6bc497"
     },
     {
@@ -3234,7 +3234,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.16",
       "message": "Date/Time of Hospital Discharge permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOutcome.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eOutcome.16\", 1)",
       "id": "9891ab93-46af-4911-adca-10888f451778"
     },
     {
@@ -3248,7 +3248,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.18",
       "message": "Date/Time of Emergency Department Admission requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eOutcome.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eOutcome.18\", 1)",
       "id": "c2e4c83e-1ad0-4edc-ab5b-d08480e19e5a"
     },
     {
@@ -3262,7 +3262,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.18",
       "message": "Date/Time of Emergency Department Admission permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOutcome.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eOutcome.18\", 1)",
       "id": "7cd66ddc-3e11-4314-afbe-9f0cf71d79a6"
     },
     {
@@ -3332,7 +3332,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eOutcome.21",
       "message": "Injury Severity Score permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eOutcome.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eOutcome.21\", 1)",
       "id": "2c562f09-6177-43ed-aaf2-7e554106a052"
     },
     {
@@ -3346,7 +3346,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.01",
       "message": "EMS Patient ID permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.01\", 1)",
       "id": "3eae9fbd-3425-476d-ae7a-241bed2d1464"
     },
     {
@@ -3360,7 +3360,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.02",
       "message": "Last Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.02\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.02\", 1)",
       "id": "b66494c7-b6f2-4826-a6d3-12b10e7aa88e"
     },
     {
@@ -3374,7 +3374,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.03",
       "message": "First Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.03\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.03\", 1)",
       "id": "fd80a2e6-01b2-4812-a493-588c5834dd06"
     },
     {
@@ -3388,7 +3388,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.04",
       "message": "Middle Initial/Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.04\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.04\", 1)",
       "id": "c6c6ba2b-c689-44b4-ad76-943b99d71bc6"
     },
     {
@@ -3402,7 +3402,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.05",
       "message": "Patient's Home Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.05\", 1)",
       "id": "ceb2f009-86e1-4e93-a698-31330129d33e"
     },
     {
@@ -3416,7 +3416,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.06",
       "message": "Patient's Home City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.06\", 1)",
       "id": "cd2cc58b-b952-425e-afa7-c0379f8b5717"
     },
     {
@@ -3430,7 +3430,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.07",
       "message": "Patient's Home County requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.07\", 1)",
       "id": "7d7f93da-01c3-4165-ab05-063616ed69cb"
     },
     {
@@ -3444,7 +3444,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.07",
       "message": "Patient's Home County permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.07\", 1)",
       "id": "a88083bd-071f-4fe3-ad0f-12e634dc776e"
     },
     {
@@ -3458,7 +3458,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.08",
       "message": "Patient's Home State requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.08\", 1)",
       "id": "88d9213e-38e8-4cec-a426-7e7e776577c8"
     },
     {
@@ -3472,7 +3472,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.08",
       "message": "Patient's Home State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.08\", 1)",
       "id": "fdac7eea-6f1a-4c04-a473-561b48f4d6bc"
     },
     {
@@ -3486,7 +3486,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.09",
       "message": "Patient's Home ZIP Code requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.09\", 1)",
       "id": "804b9086-4ecf-4a29-a479-433c29e312a2"
     },
     {
@@ -3500,7 +3500,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.09",
       "message": "Patient's Home ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.09\", 1)",
       "id": "36631f2a-83e4-42e8-a44f-7c7b1bf6ac7b"
     },
     {
@@ -3514,7 +3514,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.10",
       "message": "Patient's Country of Residence permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.10\", 1)",
       "id": "1d18b4e0-4037-42f1-a680-93f5b835f814"
     },
     {
@@ -3528,7 +3528,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.11",
       "message": "Patient Home Census Tract permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.11\", 1)",
       "id": "a89ae2cb-6080-46f8-abbd-00525afeb661"
     },
     {
@@ -3542,7 +3542,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.12",
       "message": "Social Security Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.12\", 1)",
       "id": "192f9bac-7c20-4d0d-a337-8128884e9c88"
     },
     {
@@ -3556,7 +3556,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.13",
       "message": "Gender (DEPRECATED) permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.13\", 1)",
       "id": "4042cf38-da21-4255-a00b-a96842c62912"
     },
     {
@@ -3570,7 +3570,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.14",
       "message": "Race requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.14\", 1)",
       "id": "af14330a-905f-4028-a30a-4f9db914ed18"
     },
     {
@@ -3584,7 +3584,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.15",
       "message": "Age requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.15\", 1)",
       "id": "de7b983d-2ead-4009-afdf-a4e1993a9a41"
     },
     {
@@ -3598,7 +3598,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.15",
       "message": "Age permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.15\", 1)",
       "id": "e3285c89-0405-49bd-a738-43b57ab3bdd4"
     },
     {
@@ -3612,7 +3612,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.16",
       "message": "Age Units requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.16\", 1)",
       "id": "49bfb29d-28c6-4e95-adf2-889425f7de4a"
     },
     {
@@ -3626,7 +3626,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.16",
       "message": "Age Units permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.16\", 1)",
       "id": "72886667-ed14-4ca8-ad0c-fb964a2371b6"
     },
     {
@@ -3640,7 +3640,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.17",
       "message": "Date of Birth permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.17\", 1)",
       "id": "042d0f30-3bed-49d9-a9f8-0eab31fa892d"
     },
     {
@@ -3654,7 +3654,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.20",
       "message": "State Issuing Driver's License permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.20\", 1)",
       "id": "50ff93b2-5ed2-40a3-ab07-c60593ca5096"
     },
     {
@@ -3668,7 +3668,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.21",
       "message": "Driver's License Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.21\", 1)",
       "id": "d99e5b42-5016-4ae5-a383-252260d0e7a4"
     },
     {
@@ -3682,7 +3682,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.22",
       "message": "Alternate Home Residence permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.22\", 1)",
       "id": "84b12938-b5c6-4ae2-a5e5-f28e4bef1168"
     },
     {
@@ -3696,7 +3696,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.23",
       "message": "Name Suffix permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.23\", 1)",
+      "source": "for each(\"ePatient.PatientNameGroup\")\nrequire maximum(\"ePatient.23\", 1)",
       "id": "a6519fa5-8f85-4e9a-a7bd-b7c151129bfd"
     },
     {
@@ -3710,7 +3710,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.25",
       "message": "Sex requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePatient.25\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePatient.25\", 1)",
       "id": "f8a94a3f-409a-449d-a31a-51e8fce3e71e"
     },
     {
@@ -3724,7 +3724,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePatient.25",
       "message": "Sex permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePatient.25\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePatient.25\", 1)",
       "id": "2ead1b02-87c8-4665-ad1f-80781e5a2346"
     },
     {
@@ -3738,7 +3738,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.01",
       "message": "Primary Method of Payment requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePayment.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePayment.01\", 1)",
       "id": "bea0813c-6da5-4eaa-a568-d71da22c30b5"
     },
     {
@@ -3752,7 +3752,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.01",
       "message": "Primary Method of Payment permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.01\", 1)",
       "id": "6f6194cd-ab9d-4aab-a22d-d1a197556f4c"
     },
     {
@@ -3766,7 +3766,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.02",
       "message": "Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.02\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.02\", 1)",
       "id": "e29169bc-678c-444a-abee-4f7b2981e065"
     },
     {
@@ -3780,7 +3780,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.03",
       "message": "Date Physician Certification Statement Signed permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.03\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.03\", 1)",
       "id": "9c94fa16-dcb9-4fc5-abc2-89c2bff9b7e4"
     },
     {
@@ -3794,7 +3794,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.05",
       "message": "Healthcare Provider Type Signing Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.05\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.05\", 1)",
       "id": "4366c956-086f-41d8-a92b-e7520516f642"
     },
     {
@@ -3808,7 +3808,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.06",
       "message": "Last Name of Individual Signing Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.06\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.06\", 1)",
       "id": "fcda2230-62b6-4dda-a430-6e5cce0fe4da"
     },
     {
@@ -3822,7 +3822,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.07",
       "message": "First Name of Individual Signing Physician Certification Statement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.07\", 1)",
+      "source": "for each(\"ePayment.CertificateGroup\")\nrequire maximum(\"ePayment.07\", 1)",
       "id": "0db35abe-35df-4d05-ad4a-11ae803f80a9"
     },
     {
@@ -3836,7 +3836,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.08",
       "message": "Patient Resides in Service Area permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.08\", 1)",
       "id": "095635a6-f960-4c74-a241-0ac76d330976"
     },
     {
@@ -4046,7 +4046,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.23",
       "message": "Closest Relative/Guardian Last Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.23\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.23\", 1)",
       "id": "d9ac2e63-c735-40eb-a27d-1581e6aea853"
     },
     {
@@ -4060,7 +4060,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.24",
       "message": "Closest Relative/ Guardian First Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.24\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.24\", 1)",
       "id": "843c0730-f148-49a3-a1a0-4812b45bd867"
     },
     {
@@ -4074,7 +4074,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.25",
       "message": "Closest Relative/ Guardian Middle Initial/Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.25\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.25\", 1)",
       "id": "acb11b1d-6bdb-4a6f-ab2b-f187fb7fb74a"
     },
     {
@@ -4088,7 +4088,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.26",
       "message": "Closest Relative/ Guardian Street Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.26\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.26\", 1)",
       "id": "efeca210-0bee-4167-a1c8-897e67e79772"
     },
     {
@@ -4102,7 +4102,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.27",
       "message": "Closest Relative/ Guardian City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.27\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.27\", 1)",
       "id": "4787d7fd-e969-43a6-a1fb-29d6a1675ee1"
     },
     {
@@ -4116,7 +4116,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.28",
       "message": "Closest Relative/ Guardian State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.28\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.28\", 1)",
       "id": "22a7a293-7d62-4625-a623-c3fed629b83b"
     },
     {
@@ -4130,7 +4130,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.29",
       "message": "Closest Relative/ Guardian ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.29\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.29\", 1)",
       "id": "28788f1f-c999-4e45-a5cb-7da4cd14710f"
     },
     {
@@ -4144,7 +4144,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.30",
       "message": "Closest Relative/ Guardian Country permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.30\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.30\", 1)",
       "id": "5d688627-877d-4518-a8dd-5755a88030bb"
     },
     {
@@ -4158,7 +4158,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.32",
       "message": "Closest Relative/ Guardian Relationship permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.32\", 1)",
+      "source": "for each(\"ePayment.ClosestRelativeGroup\")\nrequire maximum(\"ePayment.32\", 1)",
       "id": "123c9a3e-46c8-483e-a367-2baaa59478bf"
     },
     {
@@ -4172,7 +4172,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.33",
       "message": "Patient's Employer permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.33\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.33\", 1)",
       "id": "b74363f8-d599-4f62-abda-38548ff5fe6c"
     },
     {
@@ -4186,7 +4186,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.34",
       "message": "Patient's Employer's Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.34\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.34\", 1)",
       "id": "eac4ee4c-c7ef-4190-a240-cd2808705774"
     },
     {
@@ -4200,7 +4200,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.35",
       "message": "Patient's Employer's City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.35\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.35\", 1)",
       "id": "43d44fd0-24c7-47c1-aa79-fb8490f68f87"
     },
     {
@@ -4214,7 +4214,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.36",
       "message": "Patient's Employer's State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.36\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.36\", 1)",
       "id": "3212ba21-de7a-4262-a5ba-f605c1e28d09"
     },
     {
@@ -4228,7 +4228,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.37",
       "message": "Patient's Employer's ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.37\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.37\", 1)",
       "id": "092d6af0-91bb-4ef8-a0d2-fa38b3b8c56b"
     },
     {
@@ -4242,7 +4242,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.38",
       "message": "Patient's Employer's Country permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.38\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.38\", 1)",
       "id": "ab681c8e-0553-4a3a-abfc-4174c5f4167f"
     },
     {
@@ -4256,7 +4256,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.39",
       "message": "Patient's Employer's Primary Phone Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.39\", 1)",
+      "source": "for each(\"ePayment.EmployerGroup\")\nrequire maximum(\"ePayment.39\", 1)",
       "id": "745bb96c-cd36-4b37-a97f-1f4c0c5d35fa"
     },
     {
@@ -4270,7 +4270,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.40",
       "message": "Response Urgency permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.40\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.40\", 1)",
       "id": "fd52abb2-b44d-4d2d-afbf-307fa929c4c4"
     },
     {
@@ -4284,7 +4284,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.45",
       "message": "Round Trip Purpose Description permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.45\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.45\", 1)",
       "id": "179742c3-ae44-4273-a521-fe525b27cbba"
     },
     {
@@ -4298,7 +4298,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.46",
       "message": "Stretcher Purpose Description permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.46\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.46\", 1)",
       "id": "8affd6b4-9783-4d26-a0ab-2bac60e5b965"
     },
     {
@@ -4312,7 +4312,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.48",
       "message": "Mileage to Closest Hospital Facility permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.48\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.48\", 1)",
       "id": "57be29db-99d6-4ba2-ab78-d80f283d8a8c"
     },
     {
@@ -4326,7 +4326,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.49",
       "message": "ALS Assessment Performed and Warranted permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.49\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.49\", 1)",
       "id": "90e17607-5d88-493f-adae-c265fa801e4d"
     },
     {
@@ -4340,7 +4340,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.50",
       "message": "CMS Service Level requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"ePayment.50\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"ePayment.50\", 1)",
       "id": "1bd5eefd-11cb-4360-ab2a-ffd95fc5466e"
     },
     {
@@ -4354,7 +4354,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.50",
       "message": "CMS Service Level permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.50\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.50\", 1)",
       "id": "20fb6ca0-c219-4057-a9b4-2f11d3c7f8d6"
     },
     {
@@ -4368,7 +4368,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.53",
       "message": "Transport Authorization Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.53\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.53\", 1)",
       "id": "b40b1737-0469-436d-a9f7-b2f3ea374ead"
     },
     {
@@ -4382,7 +4382,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.54",
       "message": "Prior Authorization Code Payer permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.54\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.54\", 1)",
       "id": "d1040bbd-1c7d-4f5b-a126-8c1a91413994"
     },
     {
@@ -4424,7 +4424,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "ePayment.57",
       "message": "Payer Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"ePayment.57\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"ePayment.57\", 1)",
       "id": "03ad621f-abe4-4828-ad7a-57caa338d91a"
     },
     {
@@ -4802,7 +4802,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.01",
       "message": "Patient Care Report Number requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eRecord.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eRecord.01\", 1)",
       "id": "8e1677b3-c147-48a9-a263-176c8f069f37"
     },
     {
@@ -4816,7 +4816,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.01",
       "message": "Patient Care Report Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eRecord.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eRecord.01\", 1)",
       "id": "30ddaaac-9604-4a14-a246-506875c24a5a"
     },
     {
@@ -4830,7 +4830,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.02",
       "message": "Software Creator requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eRecord.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eRecord.02\", 1)",
       "id": "2adaf7a7-b95c-4cfe-abd4-a060b24084ce"
     },
     {
@@ -4844,7 +4844,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.02",
       "message": "Software Creator permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eRecord.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eRecord.02\", 1)",
       "id": "eb7df8bc-532d-43ed-a762-642fbdef0187"
     },
     {
@@ -4858,7 +4858,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.03",
       "message": "Software Name requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eRecord.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eRecord.03\", 1)",
       "id": "77194a51-2095-4fc5-a060-7d492357a3d4"
     },
     {
@@ -4872,7 +4872,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.03",
       "message": "Software Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eRecord.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eRecord.03\", 1)",
       "id": "be22bf17-75a7-4ee6-a520-85eea0fe9444"
     },
     {
@@ -4886,7 +4886,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.04",
       "message": "Software Version requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eRecord.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eRecord.04\", 1)",
       "id": "caded30c-407f-4678-a8e4-e4f18ec4a81f"
     },
     {
@@ -4900,7 +4900,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eRecord.04",
       "message": "Software Version permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eRecord.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eRecord.04\", 1)",
       "id": "12c2885a-f777-47b4-a4fe-0070a8de42e3"
     },
     {
@@ -4914,7 +4914,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.01",
       "message": "EMS Agency Number requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.01\", 1)",
       "id": "aaf123fe-0692-4f20-ab21-fd6b0fa289df"
     },
     {
@@ -4928,7 +4928,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.01",
       "message": "EMS Agency Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.01\", 1)",
       "id": "e5c02bdc-d361-455c-afe2-63d411028588"
     },
     {
@@ -4942,7 +4942,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.02",
       "message": "EMS Agency Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.02\", 1)",
       "id": "372d39ff-772b-4ded-ae79-7f2f7bd13faf"
     },
     {
@@ -4956,7 +4956,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.03",
       "message": "Incident Number requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.03\", 1)",
       "id": "9ec96452-0451-4097-a8ff-fe80f1d7189a"
     },
     {
@@ -4970,7 +4970,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.03",
       "message": "Incident Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.03\", 1)",
       "id": "c467cc23-ad83-40a5-a0fe-a83cb5dcc0da"
     },
     {
@@ -4984,7 +4984,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.04",
       "message": "EMS Response Number requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.04\", 1)",
       "id": "76b7dde1-766d-43be-ab27-65be1d13c2b8"
     },
     {
@@ -4998,7 +4998,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.04",
       "message": "EMS Response Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.04\", 1)",
       "id": "99dcbef8-8ab1-4a81-a9d1-1be3c3899617"
     },
     {
@@ -5012,7 +5012,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.05",
       "message": "Type of Service Requested requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.05\", 1)",
       "id": "472f3772-228e-42d6-a84f-46b75f516e9a"
     },
     {
@@ -5026,7 +5026,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.05",
       "message": "Type of Service Requested permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.05\", 1)",
       "id": "c79187f2-91d8-490b-a959-61bd2b61d632"
     },
     {
@@ -5040,7 +5040,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.06",
       "message": "Standby Purpose permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.06\", 1)",
       "id": "0dc149dd-9b6e-4078-a368-0313a4e8ff27"
     },
     {
@@ -5054,7 +5054,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.07",
       "message": "Unit Transport and Equipment Capability requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.07\", 1)",
       "id": "f220aa53-99c3-4f4e-a82a-1e21e09a7e6e"
     },
     {
@@ -5068,7 +5068,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.07",
       "message": "Unit Transport and Equipment Capability permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.07\", 1)",
       "id": "4078f0f8-4e04-4988-af8f-d1005fe73efa"
     },
     {
@@ -5082,7 +5082,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.08",
       "message": "Type of Dispatch Delay requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.08\", 1)",
       "id": "dcd84e55-8cce-4850-a51b-13067191b877"
     },
     {
@@ -5096,7 +5096,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.09",
       "message": "Type of Response Delay requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.09\", 1)",
       "id": "a06dafb2-f685-4f06-ae32-4305126281dc"
     },
     {
@@ -5110,7 +5110,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.10",
       "message": "Type of Scene Delay requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.10\", 1)",
       "id": "376f0373-7082-44c3-a107-5cb69d499792"
     },
     {
@@ -5124,7 +5124,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.11",
       "message": "Type of Transport Delay requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.11\", 1)",
       "id": "61bf2182-1f00-446e-a81d-42e5a185827c"
     },
     {
@@ -5138,7 +5138,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.12",
       "message": "Type of Turn-Around Delay requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.12\", 1)",
       "id": "dcc1c97f-caf3-43c9-ab7c-affb4f565f55"
     },
     {
@@ -5152,7 +5152,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.13",
       "message": "EMS Vehicle (Unit) Number requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.13\", 1)",
       "id": "0773bd62-f56a-45b0-a5f7-f5893dc7630e"
     },
     {
@@ -5166,7 +5166,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.13",
       "message": "EMS Vehicle (Unit) Number permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.13\", 1)",
       "id": "fa155d0f-3748-4727-ab0e-a5d099d1c65d"
     },
     {
@@ -5180,7 +5180,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.14",
       "message": "EMS Unit Call Sign requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.14\", 1)",
       "id": "e42ce45f-e409-464d-aecf-bd994739391b"
     },
     {
@@ -5194,7 +5194,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.14",
       "message": "EMS Unit Call Sign permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.14\", 1)",
       "id": "23e1fb4e-0e3a-4507-a4b1-73febfefd2ef"
     },
     {
@@ -5208,7 +5208,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.16",
       "message": "Vehicle Dispatch Location permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.16\", 1)",
       "id": "d5826b9b-c878-4807-a60f-603fbaeed75c"
     },
     {
@@ -5222,7 +5222,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.17",
       "message": "Vehicle Dispatch GPS Location permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.17\", 1)",
       "id": "75a66978-bf6b-4be9-a35d-3b34681ad20e"
     },
     {
@@ -5236,7 +5236,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.18",
       "message": "Vehicle Dispatch Location US National Grid Coordinates permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.18\", 1)",
       "id": "dcdb8e4d-df18-4283-affe-6e413ee2671c"
     },
     {
@@ -5250,7 +5250,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.19",
       "message": "Beginning Odometer Reading of Responding Vehicle permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.19\", 1)",
       "id": "cfa0d79b-d5ae-422d-a15f-3d84336aa64c"
     },
     {
@@ -5264,7 +5264,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.20",
       "message": "On-Scene Odometer Reading of Responding Vehicle permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.20\", 1)",
       "id": "0bd5bac4-523f-4587-a345-7cb498570b27"
     },
     {
@@ -5278,7 +5278,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.21",
       "message": "Patient Destination Odometer Reading of Responding Vehicle permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.21\", 1)",
       "id": "9a60aba9-0c3b-43fb-a195-2d77db3485b6"
     },
     {
@@ -5292,7 +5292,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.22",
       "message": "Ending Odometer Reading of Responding Vehicle permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.22\", 1)",
       "id": "74187d5a-ab2f-4b2f-aaf6-92643f272bf6"
     },
     {
@@ -5306,7 +5306,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.23",
       "message": "Response Mode to Scene requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.23\", 1)",
       "id": "cb84b54d-28c0-41af-a9c0-d3167a046d68"
     },
     {
@@ -5320,7 +5320,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.23",
       "message": "Response Mode to Scene permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eResponse.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eResponse.23\", 1)",
       "id": "a324f0b3-8f41-4b89-a7f9-7b9051056aa8"
     },
     {
@@ -5334,7 +5334,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eResponse.24",
       "message": "Additional Response Mode Descriptors requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eResponse.24\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eResponse.24\", 1)",
       "id": "f4722569-d656-40f6-a6ae-ba31bf37dd41"
     },
     {
@@ -5348,7 +5348,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.01",
       "message": "First EMS Unit on Scene requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.01\", 1)",
       "id": "e063950c-d441-4d7b-a7b1-121ed3d39d21"
     },
     {
@@ -5362,7 +5362,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.01",
       "message": "First EMS Unit on Scene permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.01\", 1)",
       "id": "9d80f8a8-5fb7-4bf9-ae5e-759455eb3839"
     },
     {
@@ -5418,7 +5418,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.05",
       "message": "Date/Time Initial Responder Arrived on Scene permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.05\", 1)",
       "id": "79589623-4671-4bd7-a3c0-9e8137106389"
     },
     {
@@ -5432,7 +5432,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.06",
       "message": "Number of Patients at Scene requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.06\", 1)",
       "id": "779723de-683d-4234-aac7-b197eaf1e80a"
     },
     {
@@ -5446,7 +5446,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.06",
       "message": "Number of Patients at Scene permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.06\", 1)",
       "id": "d1734341-a3d7-4959-a540-6a2f4ecd0f56"
     },
     {
@@ -5460,7 +5460,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.07",
       "message": "Mass Casualty Incident requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.07\", 1)",
       "id": "1be5755a-af19-4885-aa53-0516e07a5df4"
     },
     {
@@ -5474,7 +5474,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.07",
       "message": "Mass Casualty Incident permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.07\", 1)",
       "id": "423d6bcc-bba2-480b-a222-34eb36f26da8"
     },
     {
@@ -5488,7 +5488,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.08",
       "message": "Triage Classification for MCI Patient requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.08\", 1)",
       "id": "3f5a0725-c36b-4133-a2a0-fcf26dbc9d8c"
     },
     {
@@ -5502,7 +5502,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.08",
       "message": "Triage Classification for MCI Patient permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.08\", 1)",
       "id": "1a838c59-fd76-4b48-a3fe-c2c992c96f94"
     },
     {
@@ -5516,7 +5516,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.09",
       "message": "Incident Location Type requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.09\", 1)",
       "id": "4f28e994-df4a-4f27-ad17-17ad235f322f"
     },
     {
@@ -5530,7 +5530,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.09",
       "message": "Incident Location Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.09\", 1)",
       "id": "8e43a541-a046-4fa0-abb4-020d91dc6f94"
     },
     {
@@ -5544,7 +5544,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.10",
       "message": "Incident Facility Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.10\", 1)",
       "id": "ef39eff5-0d56-44f8-af9d-0fd6df925f6e"
     },
     {
@@ -5558,7 +5558,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.11",
       "message": "Scene GPS Location permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.11\", 1)",
       "id": "ff76a16e-8dc0-4014-ae41-9d1a9c4894ee"
     },
     {
@@ -5572,7 +5572,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.12",
       "message": "Scene US National Grid Coordinates permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.12\", 1)",
       "id": "d89693d0-95a1-40da-a711-c3363b1eee6f"
     },
     {
@@ -5586,7 +5586,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.13",
       "message": "Incident Facility or Location Name permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.13\", 1)",
       "id": "f0ebbe05-aaf7-4b29-a2eb-9e6f9542acfc"
     },
     {
@@ -5600,7 +5600,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.14",
       "message": "Mile Post or Major Roadway permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.14\", 1)",
       "id": "d377697c-7991-4083-ad14-2f38dc396f92"
     },
     {
@@ -5614,7 +5614,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.15",
       "message": "Incident Street Address permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.15\", 1)",
       "id": "d2f8ca21-5c49-4ce6-a17d-96aaf493326a"
     },
     {
@@ -5628,7 +5628,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.16",
       "message": "Incident Apartment, Suite, or Room permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.16\", 1)",
       "id": "09524d88-1fbc-48b8-a7cc-866807fd7452"
     },
     {
@@ -5642,7 +5642,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.17",
       "message": "Incident City permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.17\", 1)",
       "id": "65321bdc-9b09-4a58-a88b-4dd2f6d825b1"
     },
     {
@@ -5656,7 +5656,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.18",
       "message": "Incident State requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.18\", 1)",
       "id": "4ed56108-b0ce-4090-abc9-3dddff4fae5b"
     },
     {
@@ -5670,7 +5670,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.18",
       "message": "Incident State permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.18\", 1)",
       "id": "1d9828d4-57cf-42e5-a122-24ceb47e52af"
     },
     {
@@ -5684,7 +5684,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.19",
       "message": "Incident ZIP Code requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.19\", 1)",
       "id": "653367cf-0274-417e-adb2-794a004b49bf"
     },
     {
@@ -5698,7 +5698,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.19",
       "message": "Incident ZIP Code permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.19\", 1)",
       "id": "afbee3fe-518c-413f-a2f6-b40ffd941f14"
     },
     {
@@ -5712,7 +5712,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.20",
       "message": "Scene Cross Street or Directions permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.20\", 1)",
       "id": "6881f5c0-10de-4c76-ad72-f58751d70431"
     },
     {
@@ -5726,7 +5726,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.21",
       "message": "Incident County requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eScene.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eScene.21\", 1)",
       "id": "10813283-0fab-4d70-a824-573313347de1"
     },
     {
@@ -5740,7 +5740,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.21",
       "message": "Incident County permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.21\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.21\", 1)",
       "id": "5e5a87cc-d4a2-498d-a992-0ad5c8ba0f01"
     },
     {
@@ -5754,7 +5754,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.22",
       "message": "Incident Country permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.22\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.22\", 1)",
       "id": "48924599-f5b4-4983-a8ed-afe7c3894923"
     },
     {
@@ -5768,7 +5768,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eScene.23",
       "message": "Incident Census Tract permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eScene.23\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eScene.23\", 1)",
       "id": "a6b9746d-df96-432e-a9e0-189c7a2f0b2f"
     },
     {
@@ -5810,7 +5810,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.01",
       "message": "Date/Time of Symptom Onset requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.01\", 1)",
       "id": "db53d714-4b5b-421d-a436-b7357aa2fd51"
     },
     {
@@ -5824,7 +5824,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.01",
       "message": "Date/Time of Symptom Onset permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.01\", 1)",
       "id": "ac85407c-dbab-4123-a87b-021b83e442e9"
     },
     {
@@ -5838,7 +5838,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.02",
       "message": "Possible Injury requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.02\", 1)",
       "id": "af311c4a-8432-427a-aadd-74de441c5aad"
     },
     {
@@ -5852,7 +5852,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.02",
       "message": "Possible Injury permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.02\", 1)",
       "id": "605a6305-a830-4cb3-a446-9f4fc9ac8dc4"
     },
     {
@@ -5922,7 +5922,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.07",
       "message": "Chief Complaint Anatomic Location requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.07\", 1)",
       "id": "beefd99b-4f0c-4809-a4f8-c30242a7104b"
     },
     {
@@ -5936,7 +5936,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.07",
       "message": "Chief Complaint Anatomic Location permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.07\", 1)",
       "id": "cf3ae26c-a939-4d7b-a73e-91c87bd1ea48"
     },
     {
@@ -5950,7 +5950,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.08",
       "message": "Chief Complaint Organ System requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.08\", 1)",
       "id": "4aea0e78-1c3e-45d9-a7c6-efcfdc3d2665"
     },
     {
@@ -5964,7 +5964,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.08",
       "message": "Chief Complaint Organ System permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.08\", 1)",
       "id": "a05252ef-d58d-4a30-a35a-ca048da99ae7"
     },
     {
@@ -5978,7 +5978,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.09",
       "message": "Primary Symptom requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.09\", 1)",
       "id": "f466cd69-3d63-4d1d-adf0-33e91db51025"
     },
     {
@@ -5992,7 +5992,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.09",
       "message": "Primary Symptom permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.09\", 1)",
       "id": "d7e49694-5149-4537-aed5-f4b4e62181e8"
     },
     {
@@ -6006,7 +6006,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.10",
       "message": "Other Associated Symptoms requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.10\", 1)",
       "id": "e8ea27a3-3abc-4042-a571-41de290819c6"
     },
     {
@@ -6020,7 +6020,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.11",
       "message": "Provider's Primary Impression requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.11\", 1)",
       "id": "93461544-353f-4862-a3be-f4a4db8c8ec5"
     },
     {
@@ -6034,7 +6034,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.11",
       "message": "Provider's Primary Impression permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.11\", 1)",
       "id": "54fc40bb-b05e-494d-a7dc-b0783e056092"
     },
     {
@@ -6048,7 +6048,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.12",
       "message": "Provider's Secondary Impressions requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.12\", 1)",
       "id": "12cc551d-eeda-47af-a133-5180520ca275"
     },
     {
@@ -6062,7 +6062,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.13",
       "message": "Initial Patient Acuity requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.13\", 1)",
       "id": "25904bd7-d15f-4ef3-ad94-6e2950199eb9"
     },
     {
@@ -6076,7 +6076,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.13",
       "message": "Initial Patient Acuity permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.13\", 1)",
       "id": "846aee98-37a4-490a-acca-f568b583489a"
     },
     {
@@ -6090,7 +6090,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.14",
       "message": "Work-Related Illness/Injury permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.14\", 1)",
+      "source": "for each(\"eSituation.WorkRelatedGroup\")\nrequire maximum(\"eSituation.14\", 1)",
       "id": "5b2efd76-7517-4c85-a3dd-99d776f878cf"
     },
     {
@@ -6104,7 +6104,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.15",
       "message": "Patient's Occupational Industry permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.15\", 1)",
+      "source": "for each(\"eSituation.WorkRelatedGroup\")\nrequire maximum(\"eSituation.15\", 1)",
       "id": "04366319-5751-45f4-a45b-288dc3ccdd88"
     },
     {
@@ -6118,7 +6118,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.16",
       "message": "Patient's Occupation permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.16\", 1)",
+      "source": "for each(\"eSituation.WorkRelatedGroup\")\nrequire maximum(\"eSituation.16\", 1)",
       "id": "03f2283f-f9f1-438b-a853-864bfd50d5b8"
     },
     {
@@ -6132,7 +6132,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.18",
       "message": "Date/Time Last Known Well requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.18\", 1)",
       "id": "d13c7549-f35d-443e-ab06-8898a613a550"
     },
     {
@@ -6146,7 +6146,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.18",
       "message": "Date/Time Last Known Well permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.18\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.18\", 1)",
       "id": "7838f1fe-39bd-4470-a9d9-e00f647fc802"
     },
     {
@@ -6160,7 +6160,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.19",
       "message": "Justification for Transfer or Encounter permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.19\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.19\", 1)",
       "id": "cd45a721-26bd-4e59-a85a-5269f55e967d"
     },
     {
@@ -6174,7 +6174,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.20",
       "message": "Reason for Interfacility Transfer/Medical Transport requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eSituation.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eSituation.20\", 1)",
       "id": "6b22968b-b89c-448f-abba-f4fb13f2f4d7"
     },
     {
@@ -6188,7 +6188,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eSituation.20",
       "message": "Reason for Interfacility Transfer/Medical Transport permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eSituation.20\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eSituation.20\", 1)",
       "id": "a7616bd3-bc7f-458f-ac16-3905ba5894f7"
     },
     {
@@ -6202,7 +6202,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.01",
       "message": "PSAP Call Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.01\", 1)",
       "id": "84e7f40e-3d97-4f1c-ac68-e72175de4e0a"
     },
     {
@@ -6216,7 +6216,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.01",
       "message": "PSAP Call Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.01\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.01\", 1)",
       "id": "b1abbc4a-3e58-45f0-aab3-37e31b3817f7"
     },
     {
@@ -6230,7 +6230,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.02",
       "message": "Dispatch Notified Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.02\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.02\", 1)",
       "id": "4cb3dfc8-6611-4fbb-ab6c-5b0d2be31e1c"
     },
     {
@@ -6244,7 +6244,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.03",
       "message": "Unit Notified by Dispatch Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.03\", 1)",
       "id": "6fe2e63c-4a55-4dae-a025-582c0cc86566"
     },
     {
@@ -6258,7 +6258,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.03",
       "message": "Unit Notified by Dispatch Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.03\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.03\", 1)",
       "id": "02f63a41-7293-4fb3-a44e-12b346321a8f"
     },
     {
@@ -6272,7 +6272,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.04",
       "message": "Dispatch Acknowledged Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.04\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.04\", 1)",
       "id": "ea6e12d1-0ae5-49f9-aa83-ef4af9c40194"
     },
     {
@@ -6286,7 +6286,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.05",
       "message": "Unit En Route Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.05\", 1)",
       "id": "22c17dfa-9986-4662-a2b0-040424e0834f"
     },
     {
@@ -6300,7 +6300,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.05",
       "message": "Unit En Route Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.05\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.05\", 1)",
       "id": "52edc235-6b2c-451b-a1b3-c83e0fc6d307"
     },
     {
@@ -6314,7 +6314,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.06",
       "message": "Unit Arrived on Scene Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.06\", 1)",
       "id": "a4f2e0a1-6a5f-429a-aeb6-0092c3e63faa"
     },
     {
@@ -6328,7 +6328,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.06",
       "message": "Unit Arrived on Scene Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.06\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.06\", 1)",
       "id": "c141dd58-4dd9-4208-a82c-6dc0e388e600"
     },
     {
@@ -6342,7 +6342,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.07",
       "message": "Arrived at Patient Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.07\", 1)",
       "id": "f87acf07-ec2b-499b-aa1f-235ad69da49c"
     },
     {
@@ -6356,7 +6356,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.07",
       "message": "Arrived at Patient Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.07\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.07\", 1)",
       "id": "dc29f23b-8a87-4735-aed8-1f50fa1d5bcb"
     },
     {
@@ -6370,7 +6370,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.08",
       "message": "Transfer of EMS Patient Care Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.08\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.08\", 1)",
       "id": "ffb21c6a-a88a-4230-aec2-72df60acebc2"
     },
     {
@@ -6384,7 +6384,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.09",
       "message": "Unit Left Scene Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.09\", 1)",
       "id": "10c26cfe-a017-482b-a0c1-75f14c714137"
     },
     {
@@ -6398,7 +6398,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.09",
       "message": "Unit Left Scene Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.09\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.09\", 1)",
       "id": "efb81b84-f299-4ff4-af68-dd49decca2b1"
     },
     {
@@ -6412,7 +6412,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.10",
       "message": "Arrival at Destination Landing Area Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.10\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.10\", 1)",
       "id": "dc48cb95-7956-4322-ab90-3fbf6e16a8e2"
     },
     {
@@ -6426,7 +6426,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.11",
       "message": "Patient Arrived at Destination Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.11\", 1)",
       "id": "6ff07c05-e52e-487d-a2ad-72d18a047973"
     },
     {
@@ -6440,7 +6440,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.11",
       "message": "Patient Arrived at Destination Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.11\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.11\", 1)",
       "id": "997b4b06-18ec-4c93-a974-1fa305d0637d"
     },
     {
@@ -6454,7 +6454,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.12",
       "message": "Destination Patient Transfer of Care Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.12\", 1)",
       "id": "6723d001-20a3-4840-a508-08d8b9dc04b4"
     },
     {
@@ -6468,7 +6468,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.12",
       "message": "Destination Patient Transfer of Care Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.12\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.12\", 1)",
       "id": "a17128cc-146e-4b42-a574-c925bf8d6d77"
     },
     {
@@ -6482,7 +6482,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.13",
       "message": "Unit Back in Service Date/Time requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eTimes.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eTimes.13\", 1)",
       "id": "0eeb1efc-93e7-480f-a96e-37f15e8dd557"
     },
     {
@@ -6496,7 +6496,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.13",
       "message": "Unit Back in Service Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.13\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.13\", 1)",
       "id": "568d5640-1f6f-4492-a41b-8fef7535b436"
     },
     {
@@ -6510,7 +6510,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.14",
       "message": "Unit Canceled Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.14\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.14\", 1)",
       "id": "401c870d-f2ae-4e13-ad3c-74a54c184751"
     },
     {
@@ -6524,7 +6524,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.15",
       "message": "Unit Back at Home Location Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.15\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.15\", 1)",
       "id": "f673c0bb-5d04-4572-a5b4-8fc1dac9109c"
     },
     {
@@ -6538,7 +6538,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.16",
       "message": "EMS Call Completed Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.16\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.16\", 1)",
       "id": "bbccd746-ff99-46f3-a768-68eeb8a02a52"
     },
     {
@@ -6552,7 +6552,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eTimes.17",
       "message": "Unit Arrived at Staging Area Date/Time permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eTimes.17\", 1)",
+      "source": "for each(\"PatientCareReportGroup\")\nrequire maximum(\"eTimes.17\", 1)",
       "id": "062ecee2-e958-46c3-ab0a-f27f1221676b"
     },
     {
@@ -6622,7 +6622,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.03",
       "message": "Cardiac Rhythm / Electrocardiography (ECG) requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.03\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.03\", 1)",
       "id": "1e9508cf-0494-4a48-a91a-b6f069fa16e8"
     },
     {
@@ -6636,7 +6636,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.04",
       "message": "ECG Type requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.04\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.04\", 1)",
       "id": "80a4b980-2e9e-41c7-a04a-29c8ba18f5ca"
     },
     {
@@ -6650,7 +6650,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.04",
       "message": "ECG Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.04\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.04\", 1)",
       "id": "fc240ef7-0afb-43ae-a035-c4a8e3e1b281"
     },
     {
@@ -6664,7 +6664,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.05",
       "message": "Method of ECG Interpretation requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.05\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.05\", 1)",
       "id": "1094b6e2-9aad-4a01-a998-71b4856ea745"
     },
     {
@@ -6678,7 +6678,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.06",
       "message": "SBP (Systolic Blood Pressure) requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.06\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.06\", 1)",
       "id": "dbe4cc4a-71db-4073-aa73-33e5d4983384"
     },
     {
@@ -6692,7 +6692,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.06",
       "message": "SBP (Systolic Blood Pressure) permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.06\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.06\", 1)",
       "id": "7498d747-8c8a-43b8-a813-e06d27bc6d36"
     },
     {
@@ -6706,7 +6706,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.07",
       "message": "DBP (Diastolic Blood Pressure) permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.07\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.07\", 1)",
       "id": "5b00ec15-f8f0-4368-a6a4-e368199947f2"
     },
     {
@@ -6720,7 +6720,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.08",
       "message": "Method of Blood Pressure Measurement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.08\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.08\", 1)",
       "id": "395b7c2f-092c-462e-a8cd-e005ff8aec5c"
     },
     {
@@ -6734,7 +6734,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.09",
       "message": "Mean Arterial Pressure permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.09\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.09\", 1)",
       "id": "48eef954-313f-4f4d-a096-3fbd3f5e8f03"
     },
     {
@@ -6748,7 +6748,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.10",
       "message": "Heart Rate requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.10\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.10\", 1)",
       "id": "3296cbb8-f5de-48a5-aac0-68bfd213f77d"
     },
     {
@@ -6762,7 +6762,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.10",
       "message": "Heart Rate permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.10\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.10\", 1)",
       "id": "684d7bec-2940-42ab-a5d5-d705329decab"
     },
     {
@@ -6776,7 +6776,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.11",
       "message": "Method of Heart Rate Measurement permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.11\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.11\", 1)",
       "id": "ddb9f227-b288-4ebe-a001-521c27313c17"
     },
     {
@@ -6944,7 +6944,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.19",
       "message": "Glasgow Coma Score-Eye requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.19\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.19\", 1)",
       "id": "55ac0598-98f3-4762-a808-33855d5373b4"
     },
     {
@@ -6958,7 +6958,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.19",
       "message": "Glasgow Coma Score-Eye permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.19\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.19\", 1)",
       "id": "b3c06c76-3280-40a3-a937-18af1c59c334"
     },
     {
@@ -6972,7 +6972,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.20",
       "message": "Glasgow Coma Score-Verbal requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.20\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.20\", 1)",
       "id": "7fcbb66b-bf2d-4cd0-a22d-a69ab9693d12"
     },
     {
@@ -6986,7 +6986,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.20",
       "message": "Glasgow Coma Score-Verbal permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.20\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.20\", 1)",
       "id": "6471b949-6a03-414d-a7ee-1b0c7fc936de"
     },
     {
@@ -7000,7 +7000,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.21",
       "message": "Glasgow Coma Score-Motor requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.21\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.21\", 1)",
       "id": "d9341700-e9f7-43d1-a2ae-3b278114ad76"
     },
     {
@@ -7014,7 +7014,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.21",
       "message": "Glasgow Coma Score-Motor permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.21\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.21\", 1)",
       "id": "a209c4bc-c90b-496a-a82f-92dc1e8c713c"
     },
     {
@@ -7028,7 +7028,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.22",
       "message": "Glasgow Coma Score-Qualifier requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.22\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.22\", 1)",
       "id": "737c1553-62ed-42ef-a14d-43be75ccd294"
     },
     {
@@ -7042,7 +7042,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.23",
       "message": "Total Glasgow Coma Score permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.23\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.23\", 1)",
       "id": "b7a85187-26e6-4ad8-a46d-ff4aabde0ec1"
     },
     {
@@ -7056,7 +7056,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.24",
       "message": "Temperature permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.24\", 1)",
+      "source": "for each(\"eVitals.TemperatureGroup\")\nrequire maximum(\"eVitals.24\", 1)",
       "id": "be1ae77c-3168-4136-a243-34fa05e70a59"
     },
     {
@@ -7070,7 +7070,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.25",
       "message": "Temperature Method permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.25\", 1)",
+      "source": "for each(\"eVitals.TemperatureGroup\")\nrequire maximum(\"eVitals.25\", 1)",
       "id": "39d4305e-7342-4509-a555-796a3863b521"
     },
     {
@@ -7112,7 +7112,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.27",
       "message": "Pain Scale Score requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.27\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.27\", 1)",
       "id": "f8cd2dc1-ef56-4fd4-a6d1-b8aa294e99a5"
     },
     {
@@ -7126,7 +7126,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.27",
       "message": "Pain Scale Score permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.27\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.27\", 1)",
       "id": "c1d3d86b-50de-4c36-a694-f52418d9ce6e"
     },
     {
@@ -7140,7 +7140,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.28",
       "message": "Pain Scale Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.28\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.28\", 1)",
       "id": "ad51907d-afc4-4a8e-a6bb-a11d6c0cd6da"
     },
     {
@@ -7154,7 +7154,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.29",
       "message": "Stroke Scale Result requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.29\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.29\", 1)",
       "id": "6baac04a-e3b2-4e61-ab6d-649a28d2561c"
     },
     {
@@ -7168,7 +7168,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.29",
       "message": "Stroke Scale Result permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.29\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.29\", 1)",
       "id": "407351a1-a343-49a2-afc2-db21d1c449f9"
     },
     {
@@ -7182,7 +7182,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.30",
       "message": "Stroke Scale Type requires at least 1 documented occurrence(s)",
-      "source": "require minimum(\"eVitals.30\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire minimum(\"eVitals.30\", 1)",
       "id": "324cd4a1-2121-4005-aeba-e272b79e3c5c"
     },
     {
@@ -7196,7 +7196,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.30",
       "message": "Stroke Scale Type permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.30\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.30\", 1)",
       "id": "26cf8723-0270-443f-af50-36f7e8553cfd"
     },
     {
@@ -7266,7 +7266,7 @@
       "sourceKind": "catalog",
       "primaryTargetElementId": "eVitals.34",
       "message": "Stroke Scale Score permits at most 1 documented occurrence(s)",
-      "source": "require maximum(\"eVitals.34\", 1)",
+      "source": "for each(\"eVitals.VitalGroup\")\nrequire maximum(\"eVitals.34\", 1)",
       "id": "5f1cc84a-0d0f-4f44-a0d6-843cf0f22328"
     },
     {

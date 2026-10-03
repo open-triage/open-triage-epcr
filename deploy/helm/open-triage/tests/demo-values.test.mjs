@@ -21,8 +21,8 @@ test("demo values preserve private image access for every workload", () => {
 
   assert.equal(
     output.match(/imagePullSecrets:\n\s+- name: ghcr-pull/g)?.length,
-    6,
-    "web, API, migration, synthetic expiry, and both analytics workloads must use the GHCR pull Secret",
+    7,
+    "web, API, migration, review worker, synthetic expiry, and both analytics workloads must use the GHCR pull Secret",
   );
 });
 

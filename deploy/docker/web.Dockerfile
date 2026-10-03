@@ -22,7 +22,7 @@ COPY deploy/docker/generate-nginx-config.mjs deploy/docker/generate-nginx-config
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web
 RUN node deploy/docker/generate-nginx-config.mjs deploy/docker/nginx.conf apps/web/out /tmp/nginx.conf
 
-FROM nginx:1.29-alpine
+FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY --from=build /tmp/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/apps/web/out /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 8080

@@ -1,4 +1,5 @@
 "use client";
+import { SortableList } from "./sortable-list";
 
 import type { EncounterDocument } from "@open-triage/contracts";
 import React, { useId, useState } from "react";
@@ -41,7 +42,12 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
   return (
     <fieldset className="stationary-field-control stationary-multiple-picker stationary-scalar-occurrences" data-element-id={presentation.elementId} aria-describedby={`${id}-help`}>
       <StationaryPickerLegend label={presentation.label} tooltipId={`${id}-help`} tooltip={<>{presentation.elementId}: {presentation.help}</>} />
-      {occurrences.map((value, index) => (
+      <SortableList items={occurrences} identity={(value) => value.occurrenceId}
+        label={(value) => `${presentation.label} ${occurrences.indexOf(value) + 1}`}
+        disabled={disabled || !presentation.repeatable} onMove={(from, to) => {
+          const result = moveScalarOccurrence(document, presentation.groupId, groupInstanceId, presentation.elementId, occurrences[from]!.occurrenceId, to);
+          if (result.ok) onDocumentChange(result.document);
+        }} renderItem={(value, _index, handle) => (
         <div className="stationary-scalar-occurrence" key={value.occurrenceId}>
           <StationaryScalarControl presentation={presentation} value={value} inputValue={raw[value.occurrenceId]} disabled={disabled}
             defaultDateTime={presentation.family === "datetime" ? stationaryDateTimeDefault(document, {
@@ -55,22 +61,15 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
             }}
             onBlur={(input) => apply(value.occurrenceId, input)} />
           {presentation.repeatable && <div className="stationary-occurrence-actions" aria-label={`${presentation.label} occurrence actions`}>
-            <button type="button" disabled={disabled || index === 0} onClick={() => {
-              const result = moveScalarOccurrence(document, presentation.groupId, groupInstanceId, presentation.elementId, value.occurrenceId, index - 1);
-              if (result.ok) onDocumentChange(result.document);
-            }}>Move up</button>
-            <button type="button" disabled={disabled || index === occurrences.length - 1} onClick={() => {
-              const result = moveScalarOccurrence(document, presentation.groupId, groupInstanceId, presentation.elementId, value.occurrenceId, index + 1);
-              if (result.ok) onDocumentChange(result.document);
-            }}>Move down</button>
-            <button type="button" disabled={disabled} onClick={() => {
+            {handle}
+            <button className="button-danger" type="button" disabled={disabled} onClick={() => {
               const result = removeScalarOccurrence(document, presentation.groupId, groupInstanceId, presentation.elementId, value.occurrenceId);
               if (result.ok) onDocumentChange(result.document);
               else setFindings((current) => ({ ...current, [value.occurrenceId]: result.findings }));
             }}>Remove</button>
           </div>}
         </div>
-      ))}
+      )} />
       {presentation.repeatable && canAdd && <div className="stationary-scalar-occurrence stationary-scalar-addition">
         <StationaryScalarControl presentation={presentation} inputValue={addition} findings={findings.new} disabled={disabled}
           defaultDateTime={presentation.family === "datetime" ? stationaryDateTimeDefault(document, {

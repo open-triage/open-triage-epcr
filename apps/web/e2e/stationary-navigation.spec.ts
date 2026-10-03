@@ -24,6 +24,7 @@ test("stationary rail supports section jumps, direct hashes, focus, and scroll t
 
   const rail = page.getByRole("navigation", { name: "Stationary record sections" });
   await expect(rail).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   await expect(rail.getByRole("button")).toHaveCount(25);
   await expect(rail.getByRole("button", { name: /Demographic/ })).toHaveCount(0);
   await expect(rail.getByRole("button", { name: /Custom Configuration/ })).toHaveCount(0);
@@ -39,10 +40,10 @@ test("stationary rail supports section jumps, direct hashes, focus, and scroll t
   const stickyHeading = patientHeading.locator("xpath=..");
   await expect(stickyHeading).toHaveCSS("position", "sticky");
   const stickyTop = (await stickyHeading.boundingBox())!.y;
-  await page.evaluate(() => window.scrollBy(0, 240));
+  await page.locator(".stationary-record-page").evaluate(element => element.scrollBy(0, 240));
   const pinnedTop = Math.round((await stickyHeading.boundingBox())!.y);
   expect(pinnedTop).toBeLessThanOrEqual(Math.round(stickyTop));
-  await page.evaluate(() => window.scrollBy(0, 120));
+  await page.locator(".stationary-record-page").evaluate(element => element.scrollBy(0, 120));
   await expect.poll(async () => Math.round((await stickyHeading.boundingBox())!.y)).toBe(pinnedTop);
 
   await page.evaluate(() => { window.location.hash = "stationary-section-eNarrativeSection"; });

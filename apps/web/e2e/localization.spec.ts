@@ -63,8 +63,8 @@ test("agency language saves through settings and takes effect on the next worksp
   expect(writes).toBe(1);
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "sv");
-  await expect(page.getByRole("button", { name: "Administration", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Administration", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Admin", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Myndighetsinställningar" })).toBeVisible();
   await expect(page.getByLabel("Myndighetens språk")).toHaveValue("sv");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage.clinician-session.v1")!).user.id)).toBe("owner-id");

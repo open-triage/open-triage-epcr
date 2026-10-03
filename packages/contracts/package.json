@@ -10,6 +10,7 @@
     ".": { "types": "./src/index.ts", "default": "./dist/index.js" },
     "./patient-key": { "types": "./patient-key.d.ts", "default": "./patient-key.mjs" },
     "./quality-rules": { "types": "./quality-rules.d.ts", "default": "./quality-rules.mjs" },
+    "./validation-group-scope": { "types": "./validation-group-scope.d.ts", "default": "./validation-group-scope.mjs" },
     "./quality-normalization-policy.json": "./quality-normalization-policy.json",
     "./encounter-document.schema-1.0.0.json": "./encounter-document.schema-1.0.0.json",
     "./dispatch-message.schema-1.0.0.json": "./dispatch-message.schema-1.0.0.json",

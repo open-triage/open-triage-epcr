@@ -17,6 +17,8 @@ const settingsRow = (revision = 1, bytes = 50 * 1024 * 1024) => ({
   organization_id: organizationId, language: "en", regional_format: null, time_zone: null, report_media_allowance_bytes: bytes, image_media_limit_bytes: 10 * 1024 * 1024, revision,
   brand_text: appearance.brandText, helper_text: appearance.helperText, logo_png_data_url: null,
   accent_color: appearance.accentColor, accent_dark_color: appearance.accentDarkColor,
+  destructive_color: appearance.destructiveColor,
+  inactive_button_color: appearance.inactiveButtonColor, text_color: appearance.textColor,
   browser_theme_color: appearance.browserThemeColor, pwa_background_color: appearance.pwaBackgroundColor,
   pwa_name: appearance.pwaName, pwa_short_name: appearance.pwaShortName,
   updated_at: "2026-09-24T10:00:00.000Z",
@@ -43,6 +45,14 @@ test("Agency Settings validation accepts complete bounded settings and rejects u
     { ...command(), reportMediaAllowanceBytes: 1024 * 1024 + 1 },
     { ...command(), imageMediaLimitBytes: 51 * 1024 * 1024 },
     { ...command(), appearance: { ...appearance, accentColor: "#ffffff" } },
+    { ...command(), appearance: { ...appearance, destructiveColor: "#ffffff" } },
+    { ...command(), appearance: { ...appearance, destructiveColor: "red" } },
+    { ...command(), appearance: { ...appearance, destructiveColor: "#ABCDEF" } },
+    { ...command(), appearance: { ...appearance, destructiveColor: null } },
+    { ...command(), appearance: { ...appearance, inactiveButtonColor: "white" } },
+    { ...command(), appearance: { ...appearance, textColor: null } },
+    { ...command(), appearance: { ...appearance, textColor: "#ffffff" } },
+    { ...command(), appearance: { ...appearance, inactiveButtonColor: "#1a1c1a" } },
     { ...command(), appearance: { ...appearance, helperText: "username: demo password: demo" } },
     { ...command(), demographics: { ...demographics, stateCode: "NY" } },
     { ...command(), secret: "not accepted" },
@@ -62,6 +72,7 @@ test("authorized readers receive appearance and the current canonical demographi
   } });
   const result = await service.get("session");
   assert.equal(result.appearance.brandText, "County EMS");
+  assert.equal(result.appearance.destructiveColor, appearance.destructiveColor);
   assert.equal(result.demographics.versionId, demographicId);
   assert.equal(result.demographics.agencyNumber, "AGENCY-1");
   assert.deepEqual(capabilities, ["settings:read"]);
@@ -100,14 +111,14 @@ test("a settings save is revision-guarded, active immediately, and audits bounde
   assert.equal(mutation.parameters[0], organizationId);
   assert.equal(mutation.parameters[1], 3);
   assert.equal(mutation.parameters[2], 80 * 1024 * 1024);
-  assert.equal(mutation.parameters.at(-4), actorId);
-  assert.equal(mutation.parameters.at(-3), "en");
-  assert.equal(mutation.parameters.at(-1), null);
+  assert.equal(mutation.parameters[14], actorId);
+  assert.equal(mutation.parameters[15], "en");
+  assert.equal(mutation.parameters[17], null);
   const audit = calls.find(({ sql }) => sql.includes("agency_settings_change_event"));
   assert.equal(audit.parameters[0], organizationId);
   assert.equal(audit.parameters[2], 3);
   assert.equal(audit.parameters[3], 4);
-  assert.deepEqual(audit.parameters.slice(-6), ["en", "en", null, null, null, null]);
+  assert.deepEqual(audit.parameters.slice(28, 34), ["en", "en", null, null, null, null]);
   assert.doesNotMatch(JSON.stringify(audit), /logoPngDataUrl|patient|caption|content|token|secret/i);
 });
 
@@ -173,8 +184,8 @@ test("language-only changes use the same revision and audit transaction", async 
   const saved = await service.update("session", { ...command(2), language: "sv" });
   assert.equal(saved.language, "sv");
   assert.equal(saved.revision, 3);
-  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-3), "sv");
-  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(-6), ["en", "sv", null, null, null, null]);
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters[15], "sv");
+  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(28, 34), ["en", "sv", null, null, null, null]);
 });
 
 
@@ -200,7 +211,7 @@ test("regional format persists independently of language and can return to compa
     if (sql.includes("for update")) return [current];
     if (sql.includes("agency_demographic_version")) return [demographicRow()];
     if (sql.includes("update app_identity.agency_settings")) {
-      current = { ...current, revision: current.revision + 1, regional_format: parameters.at(-2) };
+      current = { ...current, revision: current.revision + 1, regional_format: parameters[16] };
       return [current];
     }
     if (sql.includes("agency_settings_change_event")) return [];
@@ -212,12 +223,12 @@ test("regional format persists independently of language and can return to compa
   const saved = await service.update("session", { ...command(2), regionalFormat: "sv-SE" });
   assert.equal(saved.language, "en");
   assert.equal(saved.regionalFormat, "sv-SE");
-  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-2), "sv-SE");
-  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(-4), [null, "sv-SE", null, null]);
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters[16], "sv-SE");
+  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(30, 34), [null, "sv-SE", null, null]);
   calls.length = 0;
   const reset = await service.update("session", { ...command(3), regionalFormat: null });
   assert.equal(reset.regionalFormat, null);
-  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-2), null);
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters[16], null);
 });
 
 test("named clinical zone saves independently and uses the settings revision and audit", async () => {
@@ -229,7 +240,7 @@ test("named clinical zone saves independently and uses the settings revision and
     if (sql.includes("for update")) return [current];
     if (sql.includes("agency_demographic_version")) return [demographicRow()];
     if (sql.includes("update app_identity.agency_settings")) {
-      current = { ...current, revision: current.revision + 1, time_zone: parameters.at(-1) };
+      current = { ...current, revision: current.revision + 1, time_zone: parameters[17] };
       return [current];
     }
     if (sql.includes("agency_settings_change_event")) return [];
@@ -245,7 +256,70 @@ test("named clinical zone saves independently and uses the settings revision and
   assert.equal(saved.timeZone, "Europe/Stockholm");
   assert.equal(saved.language, "en");
   assert.equal(saved.regionalFormat, null);
-  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-1), "Europe/Stockholm");
-  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(-2), [null, "Europe/Stockholm"]);
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters[17], "Europe/Stockholm");
+  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(32, 34), [null, "Europe/Stockholm"]);
   await assert.rejects(service.update("session", { ...command(2), timeZone: null }), ConflictException);
+});
+
+test("a destructive-color-only save persists and audits the agency color without changing demographics", async () => {
+  const calls = [];
+  const customColor = "#9f241d";
+  const manager = { query: async (sql, parameters = []) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("on conflict")) return [];
+    if (sql.includes("for update")) return [settingsRow(2)];
+    if (sql.includes("select * from app_identity.agency_demographic_version")) return [demographicRow()];
+    if (sql.includes("update app_identity.agency_settings")) {
+      assert.match(sql, /destructive_color = \$14/);
+      assert.equal(parameters[13], customColor);
+      return [{ ...settingsRow(3), destructive_color: parameters[13] }];
+    }
+    if (sql.includes("agency_settings_change_event")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new AgencySettingsService({ transaction: async (work) => work(manager) }, {
+    requireCapability: async () => ({ organization: { id: organizationId }, user: { id: actorId } }),
+  });
+  const saved = await service.update("session", { ...command(2), appearance: { ...appearance, destructiveColor: customColor } });
+  assert.equal(saved.appearance.destructiveColor, customColor);
+  assert.equal(saved.appearance.accentColor, appearance.accentColor);
+  assert.equal(saved.revision, 3);
+  assert.equal(saved.demographics.version, 1);
+  const audit = calls.find(({ sql }) => sql.includes("agency_settings_change_event"));
+  assert.match(audit.sql, /old_destructive_color,new_destructive_color/);
+  assert.deepEqual(audit.parameters.slice(8, 10), [appearance.destructiveColor, customColor]);
+  assert.equal(calls.some(({ sql }) => sql.includes("insert into app_identity.agency_demographic_version")), false);
+});
+
+test("inactive button and text colors persist, audit, and appear in public configuration", async () => {
+  const calls = [];
+  const colors = { inactiveButtonColor: "#f2f5f3", textColor: "#202520" };
+  let current = settingsRow(2);
+  const manager = { query: async (sql, parameters = []) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("on conflict")) return [];
+    if (sql.includes("for update")) return [current];
+    if (sql.includes("agency_demographic_version")) return [demographicRow()];
+    if (sql.includes("update app_identity.agency_settings")) {
+      current = { ...current, revision: 3, inactive_button_color: parameters[18], text_color: parameters[19] };
+      return [current];
+    }
+    if (sql.includes("agency_settings_change_event")) return [];
+    if (sql.includes("join app_identity.organization")) return [current];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new AgencySettingsService({ ...manager, transaction: async work => work(manager) }, {
+    requireCapability: async () => ({ organization: { id: organizationId }, user: { id: actorId } }),
+  });
+  const input = validateUpdateAgencyMediaSettings({ ...command(2), appearance: { ...appearance, ...colors } });
+  const saved = await service.update("session", input);
+  assert.equal(saved.appearance.inactiveButtonColor, colors.inactiveButtonColor);
+  assert.equal(saved.appearance.textColor, colors.textColor);
+  assert.equal(saved.revision, 3);
+  assert.equal(saved.demographics.version, 1);
+  const audit = calls.find(({ sql }) => sql.includes("agency_settings_change_event"));
+  assert.deepEqual(audit.parameters.slice(34), [appearance.inactiveButtonColor, colors.inactiveButtonColor, appearance.textColor, colors.textColor]);
+  const publicConfiguration = await service.publicConfiguration();
+  assert.equal(publicConfiguration.appearance.inactiveButtonColor, colors.inactiveButtonColor);
+  assert.equal(publicConfiguration.appearance.textColor, colors.textColor);
 });

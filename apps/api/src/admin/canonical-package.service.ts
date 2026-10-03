@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Injectable, ConflictException, UnprocessableEntityException, ServiceUnavailableException } from "@nestjs/common";
@@ -29,42 +29,77 @@ export class CanonicalPackageService {
     const kind = this.kind(value);
     await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:read`);
     const files = await discoverPackages(kind);
-    const available = await this.catalogs.versions(token);
-    const fingerprints = new Set(await Promise.all(available.map((catalog) => this.fingerprint(token, catalog.id))));
     return Promise.all(files.map(async (entry) => {
       try {
-        const normalized = entry.package ?? await this.normalize(token, kind, entry.raw);
-        if ("installedId" in normalized) return { file: entry.file, package: entry.raw, compatible: true, installed: true };
-        return { file: entry.file, package: normalized, compatible: fingerprints.has(normalized.catalog.sha256) };
+        if (entry.error) throw new UnprocessableEntityException(entry.error);
+        if (kind === "catalog" && !entry.package) {
+          const bundle = await this.baseBundle(entry.raw);
+          return { file: entry.file, package: { name: `NEMSIS ${bundle.catalog.release}` }, compatible: true };
+        }
+        const normalized = await this.normalize(token, kind, entry.package ?? entry.raw);
+        return { file: entry.file, package: normalized, compatible: true };
       } catch (error) {
         return { file: entry.file, compatible: false, error: error instanceof Error ? error.message : "Invalid canonical definition" };
       }
     }));
   }
 
-  private async normalize(token: string, kind: DefinitionKind, input: unknown) {
+  /** Read and import only the file explicitly selected by the administrator. */
+  async importFile(token: string, value: string, input: unknown) {
+    const kind = this.kind(value);
+    await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
+    const file = (input as { file?: unknown } | null)?.file;
+    if (typeof file !== "string") throw new UnprocessableEntityException("Select a definition file");
+    const entry = (await discoverPackages(kind)).find((entry) => entry.file === file);
+    if (!entry) throw new UnprocessableEntityException("The selected definition file is unavailable");
+    if (entry.error) throw new UnprocessableEntityException(entry.error);
+    return this.import(token, kind, entry.package ?? entry.raw, (input as { catalogReleaseId?: unknown }).catalogReleaseId);
+  }
+
+  private async baseBundle(input: unknown) {
     const raw = input as Record<string, unknown> | undefined;
-    if (raw?.format === "opentriage-definition") return parsePackage(raw, kind);
-    if (!raw || (kind === "catalog" ? raw.schemaVersion !== "1.0.0" : raw.schemaVersion !== 1))
+    if (!raw || raw.schemaVersion !== "1.0.0" || typeof raw.release !== "string" || !/^[0-9.]+$/.test(raw.release))
+      throw new UnprocessableEntityException("Unsupported base catalog format");
+    const catalogText = await readFile(path.join(localDefinitionsRoot(), "catalog", `catalog_nemsis-${raw.release}.json`), "utf8");
+    if (contentDigest(raw) !== contentDigest(JSON.parse(catalogText)))
+      throw new UnprocessableEntityException("Base catalog differs from the supported definition file");
+    const { prepareBaseCatalog } = await import("../../../../packages/database/scripts/lib/base-catalog.mjs");
+    return prepareBaseCatalog(catalogText, path.join(localDefinitionsRoot(), "localization", "localization_sv.json"));
+  }
+
+  private async normalize(token: string, kind: DefinitionKind, input: unknown, targetCatalogId?: unknown) {
+    const raw = input as Record<string, unknown> | undefined;
+    const portable = raw?.format === "opentriage-definition" ? parsePackage(raw, kind, { ignoreVersion: true }) : null;
+    if (!portable && (!raw || raw.schemaVersion !== 1))
       throw new UnprocessableEntityException("Unsupported canonical schema version");
-    const key = kind === "catalog" ? `nemsis-${raw.release}` : raw.catalogKey;
-    if (typeof key !== "string" || !/^[a-z0-9.-]+$/.test(key)) throw new UnprocessableEntityException("Invalid catalog key");
-    // Legacy installation files pin the checked-in base catalog bytes, not just its name.
-    const catalogText = await readFile(path.join(localDefinitionsRoot(), "catalog", `catalog_${key}.json`), "utf8");
-    if (kind === "catalog" && contentDigest(raw) !== contentDigest(JSON.parse(catalogText)))
-      throw new UnprocessableEntityException("Base catalog differs from the installed canonical catalog");
-    const sourceHash = createHash("sha256").update(catalogText.replace(
-      /"\$schema": "(?:\.\/schema_nemsis-3\.5\.1\.json|\.\.\/\.\.\/packages\/contracts\/catalog\.schema-1\.0\.0\.json)"/,
-      '"$schema": "./nemsis-data-model.schema-1.0.0.json"')).digest("hex");
     const available = await this.catalogs.versions(token);
-    const rows = await this.db.query(`select id from catalog.release where sealed and
-      (provenance->>'catalogSourceSha256'=$1 or artifact_sha256=$1) and id=any($2::uuid[])`,
-      [sourceHash, available.map(({ id }) => id)]);
-    if (!rows[0]) throw new UnprocessableEntityException("Install the exact base catalog before importing this definition");
-    if (kind === "catalog") return { installedId: rows[0].id as string };
-    if (typeof raw.name !== "string") throw new UnprocessableEntityException("Canonical name is required");
-    return makePackage({ kind, name: raw.name, version: "1", catalog: { sha256: await this.fingerprint(token, rows[0].id) },
-      definition: kind === "form" ? { schemaVersion: 1, ...(raw.definition as object) } : raw.rules });
+    if (!available.length) throw new UnprocessableEntityException("Import a catalog before importing forms or validation rules");
+    if (targetCatalogId !== undefined && (typeof targetCatalogId !== "string" || !available.some(({ id }) => id === targetCatalogId)))
+      throw new UnprocessableEntityException("The selected catalog is unavailable to this agency");
+    let selected = available.find(({ id }) => id === targetCatalogId);
+    if (!selected && portable) {
+      for (const catalog of available) {
+        if (await this.fingerprint(token, catalog.id) === portable.catalog.sha256) { selected = catalog; break; }
+      }
+    }
+    if (!portable) {
+      const key = raw!.catalogKey;
+      if (typeof key !== "string" || !/^[a-z0-9.-]+$/.test(key)) throw new UnprocessableEntityException("Invalid catalog key");
+      const separator = key.indexOf("-");
+      const rows = await this.db.query<Array<{ id: string }>>(`select id from catalog.release where sealed and id=any($1::uuid[])
+        and standard=$2 and (coalesce(provenance->>'dataModelVersion',version)=$3 or version like $3 || '-agency-%')`,
+      [available.map(({ id }) => id), key.slice(0, separator).toUpperCase(), key.slice(separator + 1)]);
+      const compatible = new Set(rows.map(({ id }) => id));
+      if (selected && !compatible.has(selected.id)) throw new UnprocessableEntityException("The selected catalog uses a different clinical data model");
+      selected ??= available.find(({ id, status }) => compatible.has(id) && status === "active")
+        ?? available.find(({ id }) => compatible.has(id));
+      if (!selected) throw new UnprocessableEntityException("Import a catalog for this clinical data model first");
+    }
+    selected ??= available.find(({ status }) => status === "active") ?? available[0]!;
+    const name = portable?.name ?? raw!.name;
+    if (typeof name !== "string" || !name.trim()) throw new UnprocessableEntityException("Canonical name is required");
+    return makePackage({ kind, name, version: "", catalog: { sha256: await this.fingerprint(token, selected.id) },
+      definition: portable?.definition ?? (kind === "form" ? { schemaVersion: 1, ...(raw!.definition as object) } : raw!.rules) });
   }
 
   async export(token: string, value: string, id: string) {
@@ -93,14 +128,14 @@ export class CanonicalPackageService {
   }
   async persist(token: string, kind: DefinitionKind, id: string) {
     try { await writePackage(await this.export(token, kind, id)); }
-    catch { throw new ServiceUnavailableException({ message: "Publication succeeded, but canonical file export failed. Export this published version again after restoring writable local storage.", publishedId: id }); }
+    catch { throw new ServiceUnavailableException({ message: "Publication succeeded, but canonical file export failed. Export this published version after restoring writable local storage.", publishedId: id }); }
   }
-  async import(token: string, value: string, input: unknown) {
+  async import(token: string, value: string, input: unknown, targetCatalogId?: unknown) {
     const kind = this.kind(value);
     const session = await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
-    const normalized = await this.normalize(token, kind, input);
-    if ("installedId" in normalized) return { id: normalized.installedId };
-    const p = normalized;
+    const base = kind === "catalog" && (input as { format?: unknown } | null)?.format !== "opentriage-definition"
+      ? await this.baseBundle(input) : null;
+    const p = base ? null : await this.normalize(token, kind, input, targetCatalogId);
     const published = await this.db.transaction("SERIALIZABLE", async (manager) => {
       // Reuse authoring validation, audit, and publication in one transaction. Nested
       // authoring transactions join this manager, so a failed import leaves no draft.
@@ -111,38 +146,24 @@ export class CanonicalPackageService {
         transaction: { value: async (...args: unknown[]) => (args.at(-1) as (m: typeof manager) => unknown)(manager) }
       });
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`canonical-import:${session.organization.id}:${kind}`]);
-      const note = `Imported canonical ${p.sha256}, source version ${p.version}`;
-      const prior = kind === "catalog" ? await manager.query(`select cr.id from catalog.release cr
-        join catalog.authoring_draft d on d.published_release_id=cr.id
-        where d.organization_id=$1 and cr.provenance->>'changeNote'=$2`, [session.organization.id, note])
-        : kind === "form" ? await manager.query(`select fv.id from forms.form_version fv join forms.form f on f.id=fv.form_id
-          where f.organization_id=$1 and fv.status='published' and fv.change_note=$2`, [session.organization.id, note])
-        : await manager.query(`select id from validation.version where organization_id=$1 and status='published' and change_note=$2`, [session.organization.id, note]);
-      if (prior[0]) return { id: prior[0].id };
       const catalogs = new CatalogAuthoringService(scoped, this.sessions);
       const validations = new ValidationAuthoringService(scoped, this.sessions);
       const forms = new FormAuthoringService(scoped, this.sessions, new FormPublicationService(scoped), validations);
       const importer = new CanonicalPackageService(scoped, this.sessions, catalogs, forms, validations);
-      const versions = kind === "catalog" ? await catalogs.versions(token) : kind === "form" ? await forms.versions(token) : await validations.versions(token);
-      for (const candidate of versions) {
-        // A file written by this very installation already has a published version.
-        if (String(candidate.version) !== p.version) continue;
-        try { if ((await importer.export(token, kind, candidate.id)).sha256 === p.sha256) return { id: candidate.id }; }
-        catch (error) { if (!(error instanceof UnprocessableEntityException)) throw error; }
-      }
-      return importer.importPublished(token, kind, p);
+      if (base) return catalogs.importBase(token, base, `Imported base catalog ${contentDigest(input)}`);
+      return importer.importPublished(token, kind, p!, targetCatalogId as string | undefined);
     });
     await this.persist(token, kind, published.id);
     return published;
   }
 
-  private async importPublished(token: string, value: string, input: unknown) {
+  private async importPublished(token: string, value: string, input: unknown, targetCatalogId?: string) {
     const kind = this.kind(value);
     const session = await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
     const p = parsePackage(input, kind);
     const available = await this.catalogs.versions(token);
     let catalogReleaseId: string | undefined;
-    for (const catalog of available) if (await this.fingerprint(token, catalog.id) === p.catalog.sha256) { catalogReleaseId = catalog.id; break; }
+    for (const catalog of available.filter(({ id }) => !targetCatalogId || id === targetCatalogId)) if (await this.fingerprint(token, catalog.id) === p.catalog.sha256) { catalogReleaseId = catalog.id; break; }
     if (!catalogReleaseId) throw new UnprocessableEntityException("Install the exact compatible published catalog first. Matching names or version numbers are insufficient.");
     const draftLock = kind === "catalog" ? `catalog-draft:${session.organization.id}:${session.user.id}`
       : kind === "form" ? `form-draft:${session.organization.id}` : `validation-draft:${session.organization.id}:${session.user.id}`;
@@ -151,7 +172,7 @@ export class CanonicalPackageService {
     const current = kind === "catalog" ? await this.catalogs.current(token) : kind === "form" ? await this.forms.current(token) : await this.validations.current(token);
     if (current) throw new ConflictException("Publish or discard the existing draft before importing");
     let published: { id: string };
-    const changeNote = `Imported canonical ${p.sha256}, source version ${p.version}`;
+    const changeNote = `Imported canonical ${p.sha256}`;
     if (kind === "catalog") {
       const draft = await this.catalogs.cloneActive(token, { sourceVersionId: catalogReleaseId, displayName: p.name });
       const saved = await this.catalogs.save(token, draft.id, { expectedRevision: draft.revision, displayName: p.name,
@@ -162,8 +183,12 @@ export class CanonicalPackageService {
       const saved = await this.forms.save(token, draft.id, { expectedRevision: draft.revision, displayName: p.name, definition: p.definition });
       published = await this.forms.publish(token, saved.id, { expectedRevision: saved.revision, definitionSha256: saved.definitionSha256, displayName: p.name, changeNote });
     } else {
-      const draft = await this.validations.create(token, { catalogReleaseId, displayName: p.name });
-      const saved = await this.validations.save(token, draft.id, { expectedRevision: draft.revision, rules: p.definition });
+      if (!Array.isArray(p.definition)) throw new UnprocessableEntityException("Validation definition must contain rules");
+      // Portable rule IDs belong to the source agency. Allocate destination identities
+      // inside the import transaction without changing provenance or rule content.
+      const rules = p.definition.map((rule) => ({ ...rule, id: randomUUID() }));
+      const draft = await this.validations.create(token, { catalogReleaseId, displayName: p.name }, { importedRules: rules });
+      const saved = await this.validations.save(token, draft.id, { expectedRevision: draft.revision, displayName: p.name, rules: draft.rules });
       published = await this.validations.publish(token, saved.id, { expectedRevision: saved.revision, displayName: p.name, changeNote });
     }
     return published;

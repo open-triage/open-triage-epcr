@@ -1,11 +1,17 @@
 import { encounterValueFacets, type EncounterDocument, type EncounterValue } from "./index.js";
-import { NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS, NEMSIS_351_EMS_MESSAGE_REPAIRS } from "./nemsis-3.5.1-ems.generated.js";
+import { NEMSIS_351_CATALOG_OCCURRENCE_GROUPS, NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS, NEMSIS_351_EMS_MESSAGE_REPAIRS } from "./nemsis-3.5.1-ems.generated.js";
 
 export const VALIDATION_LANGUAGE_VERSION = "1.0.0" as const;
 export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
 
-export type ValidationSeverity = "error" | "warning" | "information";
+export type ValidationSeverity = "none" | "error" | "warning" | "information";
+export type ValidationReviewPriority = "none" | "high" | "medium" | "low";
 export type ValidationExecutionTarget = "live" | "sign" | "review";
+
+/** Published legacy review rules have no priority; treat them as Medium without rewriting history. */
+export function reviewPriorityOfRule(rule: { reviewPriority?: ValidationReviewPriority }): ValidationReviewPriority {
+  return rule.reviewPriority ?? "medium";
+}
 export type ValidationRuleSourceKind = "agency" | "nemsis" | "catalog" | "form" | "platform";
 
 export interface ValidationRuleProvenance {
@@ -30,6 +36,7 @@ export interface ValidationRuleSource {
   name: string;
   enabled: boolean;
   severity: ValidationSeverity;
+  reviewPriority?: ValidationReviewPriority;
   executionTargets: ValidationExecutionTarget[];
   primaryTargetElementId: string;
   message: string;
@@ -93,6 +100,8 @@ export type CompiledValidationExpression =
   | { operator: "equals"; elementId: string; value: string | number | boolean }
   | { operator: "minimum-occurrences"; elementId: string; count: number }
   | { operator: "maximum-occurrences"; elementId: string; count: number }
+  | { operator: "minimum-groups"; groupId: string; count: number }
+  | { operator: "maximum-groups"; groupId: string; count: number }
   | { operator: "undocumented"; elementId: string }
   | { operator: "has-not-value"; elementId: string; code?: string }
   | { operator: "has-pertinent-negative"; elementId: string; code?: string }
@@ -140,6 +149,7 @@ export interface CompiledValidationRule {
   name: string;
   enabled: boolean;
   severity: ValidationSeverity;
+  reviewPriority?: ValidationReviewPriority;
   executionTargets: ValidationExecutionTarget[];
   primaryTarget: { elementId: string };
   scope?: { groupId: string; iteration: "each" };
@@ -148,7 +158,7 @@ export interface CompiledValidationRule {
   messageParameters?: ValidationRuleSource["messageParameters"];
   applicability?: CompiledValidationExpression;
   assertion: CompiledValidationExpression;
-  references: { elementIds: string[]; codes: Array<{ elementId: string; codeSystem: string; code: string }> };
+  references: { elementIds: string[]; groupIds?: string[]; codes: Array<{ elementId: string; codeSystem: string; code: string }> };
 }
 
 export interface CompiledValidationBundle {
@@ -157,6 +167,30 @@ export interface CompiledValidationBundle {
   validationVersionId: string;
   catalogReleaseId: string;
   rules: CompiledValidationRule[];
+}
+
+/** Repair only recognizable generated legacy requirements, preserving stored
+ * artifacts and explicitly authored document-wide rules. Correct scopes win.
+ */
+function legacyGeneratedRuleScope(rule: CompiledValidationRule): CompiledValidationRule["scope"] {
+  const entry = NEMSIS_351_CATALOG_OCCURRENCE_GROUPS[rule.primaryTarget.elementId];
+  if (!entry) return undefined;
+  const [label, owningGroupId, groupId] = entry;
+  if (rule.scope && rule.scope.groupId !== owningGroupId) return undefined;
+  const assertion = rule.assertion;
+  if (!("elementId" in assertion) || assertion.elementId !== rule.primaryTarget.elementId) return undefined;
+  let generated = false;
+  if (!rule.applicability && (assertion.operator === "minimum-occurrences" || assertion.operator === "maximum-occurrences")) {
+    const minimum = assertion.operator === "minimum-occurrences";
+    generated = rule.name === `${label} documented ${minimum ? "minimum" : "maximum"}` &&
+      rule.message === `${label} ${minimum ? "requires at least" : "permits at most"} ${assertion.count} documented occurrence(s)`;
+    if (minimum && assertion.count === 1) generated ||= (
+      rule.name === `${label} agency required` && rule.message === `${label} is required by agency policy` ||
+      rule.name === `${label} form required` && rule.message === `${label} is required by the form`);
+  } else if (rule.applicability && assertion.operator === "present") {
+    generated = rule.name === `${label} conditional form required` && rule.message === `${label} is required by its current form condition`;
+  }
+  return generated ? { groupId, iteration: "each" } : undefined;
 }
 
 /** A pinned, unconditional minimum or presence rule owns an equivalent form/catalog requirement.
@@ -172,13 +206,16 @@ export function minimumRuleCoversRequirement(
   allowUnscoped = true,
 ): boolean {
   if (!bundle || minimum <= 0) return false;
-  return bundle.rules.some((rule) => rule.enabled && rule.executionTargets.includes(executionTarget) &&
-    !rule.applicability && (rule.scope ? rule.scope.groupId === groupId : allowUnscoped) &&
-    (rule.severity === "error" || requiredSeverity === "warning" && rule.severity === "warning") &&
-    rule.primaryTarget.elementId === elementId && (
-      rule.assertion.operator === "minimum-occurrences" && rule.assertion.elementId === elementId &&
-        rule.assertion.count >= minimum ||
-      rule.assertion.operator === "present" && rule.assertion.elementId === elementId && minimum === 1));
+  return bundle.rules.some((rule) => {
+    const scope = legacyGeneratedRuleScope(rule) ?? rule.scope;
+    return rule.enabled && rule.executionTargets.includes(executionTarget) &&
+      !rule.applicability && (scope ? scope.groupId === groupId : allowUnscoped) &&
+      (rule.severity === "error" || requiredSeverity === "warning" && rule.severity === "warning") &&
+      rule.primaryTarget.elementId === elementId && (
+        rule.assertion.operator === "minimum-occurrences" && rule.assertion.elementId === elementId &&
+          rule.assertion.count >= minimum ||
+        rule.assertion.operator === "present" && rule.assertion.elementId === elementId && minimum === 1);
+  });
 }
 
 /** Demographic (d*) NEMSIS elements belong to the agency dataset, not a patient care report. */
@@ -194,11 +231,27 @@ function isPatientCareReportRule(rule: CompiledValidationRule): boolean {
 export interface ValidationFinding {
   validationVersionId: string;
   ruleId: string;
-  severity: ValidationSeverity;
+  severity: Exclude<ValidationSeverity, "none">;
   executionTarget: ValidationExecutionTarget;
   message: string;
   primaryTarget: { elementId: string; groupInstanceId?: string; occurrenceId?: string };
   inputFingerprint: string;
+}
+
+/** Wording warnings are independent of whether a rule compiles successfully. */
+export function validationRuleWordingStatuses(rule: ValidationRuleSource): Array<"missing-english" | "missing-swedish"> {
+  const present = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+  const statuses: Array<"missing-english" | "missing-swedish"> = [];
+  if (!present(rule.name) || !present(rule.message)) statuses.push("missing-english");
+  if (!present(rule.localization?.sv?.name) || !present(rule.localization?.sv?.message)) statuses.push("missing-swedish");
+  return statuses;
+}
+
+export function validationRuleValidity(rule: ValidationRuleSource, compiles: boolean,
+  diagnostics: ReadonlyArray<ValidationDiagnostic>): "valid" | "warning" | "invalid" {
+  if (!compiles || diagnostics.some(({ severity }) => severity === "error")) return "invalid";
+  return diagnostics.some(({ severity }) => severity === "warning") || validationRuleWordingStatuses(rule).length > 0
+    ? "warning" : "valid";
 }
 
 /** Select wording from the rule which produced the finding; identity never depends on locale. */
@@ -379,6 +432,16 @@ class ExpressionParser {
     if (functionName.value === "present") {
       const elementId = this.take("string", "present expects an element ID string").value;
       this.punctuation(")"); return { operator: "present", elementId };
+    }
+    if (functionName.value === "minimumGroups" || functionName.value === "maximumGroups") {
+      const groupId = this.take("string", `${functionName.value} expects a group ID string`).value;
+      this.punctuation(",");
+      const count = this.take("number", `${functionName.value} expects a non-negative safe integer`).value;
+      if (!/^\d+$/.test(count) || !Number.isSafeInteger(Number(count))) {
+        throw new ParseFailure(`${functionName.value} expects a non-negative safe integer`, this.sourceOffset + functionName.offset);
+      }
+      this.punctuation(")");
+      return { operator: functionName.value === "minimumGroups" ? "minimum-groups" : "maximum-groups", groupId, count: Number(count) };
     }
     if (functionName.value === "coded") {
       const elementId = this.take("string", "coded expects an element ID string").value; this.punctuation(",");
@@ -615,6 +678,9 @@ function formatExpression(expression: CompiledValidationExpression, depth = 0): 
   if (expression.operator === "equals") return `equals(${escape(expression.elementId)}, ${typeof expression.value === "string" ? escape(expression.value) : expression.value})`;
   if (expression.operator === "minimum-occurrences") return `minimum(${escape(expression.elementId)}, ${expression.count})`;
   if (expression.operator === "maximum-occurrences") return `maximum(${escape(expression.elementId)}, ${expression.count})`;
+  if (expression.operator === "minimum-groups" || expression.operator === "maximum-groups") {
+    return `${expression.operator === "minimum-groups" ? "minimumGroups" : "maximumGroups"}(${escape(expression.groupId)}, ${expression.count})`;
+  }
   if (expression.operator === "undocumented") return `undocumented(${escape(expression.elementId)})`;
   if (expression.operator === "has-not-value" || expression.operator === "has-pertinent-negative") {
     const name = expression.operator === "has-not-value" ? "hasNotValue" : "hasPertinentNegative";
@@ -671,7 +737,8 @@ function catalogParts(catalog: ReadonlySet<string> | ValidationCatalog): {
 
 type ExpressionReference = { elementId: string; expression: CompiledValidationExpression };
 function referencedExpressions(expression: CompiledValidationExpression): ExpressionReference[] {
-  if (expression.operator === "constant" || expression.operator === "any-payload") return [];
+  if (expression.operator === "constant" || expression.operator === "any-payload" ||
+    expression.operator === "minimum-groups" || expression.operator === "maximum-groups") return [];
   if (expression.operator === "all" || expression.operator === "any") return expression.operands.flatMap(referencedExpressions);
   if (expression.operator === "not") return referencedExpressions(expression.operand);
   if (expression.operator === "compare-elements") return [
@@ -760,6 +827,16 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     }
   }
   const compoundExpressions = [...(parsed.applicability ? walkExpressions(parsed.applicability) : []), ...walkExpressions(parsed.assertion)];
+  const groupIds = [...new Set(compoundExpressions.flatMap((expression) =>
+    "groupId" in expression ? [expression.groupId] : []))].sort();
+  for (const groupId of groupIds) {
+    const definition = "elements" in catalog ? catalog : undefined;
+    if (!definition || !(definition.groups?.some((group) => group.groupId === groupId) ||
+      definition.elements.some((element) => element.groupPath?.includes(groupId)))) {
+      diagnostics.push({ severity: "error", code: "catalog-reference", ruleId: rule.id,
+        message: `Group ${groupId} is not present in the bound catalog; group checks require Catalog group definitions or element paths` });
+    }
+  }
   for (const expression of compoundExpressions) {
     if (expression.operator === "compare-elements") {
       const left = known.elements.get(expression.leftElementId); const right = known.elements.get(expression.rightElementId);
@@ -799,6 +876,8 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
   }
   if (!rule.executionTargets.length) diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id,
     message: "Select at least one execution target" });
+  if (rule.reviewPriority !== undefined && !["none", "high", "medium", "low"].includes(rule.reviewPriority))
+    diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id, message: "Invalid review priority" });
   if (diagnostics.some(({ severity }) => severity === "error")) return { diagnostics };
   const elements = [...new Set(expressions.map(({ elementId }) => elementId))].sort();
   const codes = expressions.map(({ expression }) => expression)
@@ -809,12 +888,13 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     schemaVersion: VALIDATION_COMPILED_SCHEMA_VERSION, languageVersion: VALIDATION_LANGUAGE_VERSION,
     ruleId: rule.id, validationVersionId, name: rule.name.trim(), enabled: rule.enabled,
     severity: rule.severity, executionTargets: [...new Set(rule.executionTargets)].sort(),
+    ...(rule.executionTargets.includes("review") ? { reviewPriority: reviewPriorityOfRule(rule) } : {}),
     primaryTarget: { elementId: rule.primaryTargetElementId }, message: rule.message.trim(),
     ...(rule.localization ? { localization: rule.localization } : {}),
     ...(rule.messageParameters ? { messageParameters: rule.messageParameters } : {}),
     ...(parsed.scopeGroupId ? { scope: { groupId: parsed.scopeGroupId, iteration: "each" as const } } : {}),
     ...(parsed.applicability ? { applicability: parsed.applicability } : {}), assertion: parsed.assertion,
-    references: { elementIds: elements, codes },
+    references: { elementIds: elements, ...(groupIds.length ? { groupIds } : {}), codes },
   } };
 }
 
@@ -840,6 +920,10 @@ function explainExpression(expression: CompiledValidationExpression, catalog: Va
   }
   if (expression.operator === "minimum-occurrences") return `${labelFor(expression.elementId, catalog)} has at least ${expression.count} documented occurrence(s)`;
   if (expression.operator === "maximum-occurrences") return `${labelFor(expression.elementId, catalog)} has at most ${expression.count} documented occurrence(s)`;
+  if (expression.operator === "minimum-groups" || expression.operator === "maximum-groups") {
+    const label = catalog.groups?.find((group) => group.groupId === expression.groupId)?.label;
+    return `${label ? `${label} (${expression.groupId})` : expression.groupId} has at ${expression.operator === "minimum-groups" ? "least" : "most"} ${expression.count} group instance(s) in this scope, including empty instances`;
+  }
   if (expression.operator === "undocumented") return `${labelFor(expression.elementId, catalog)} has no occurrences`;
   if (expression.operator === "has-not-value") return `${labelFor(expression.elementId, catalog)} has Not Value${expression.code ? ` ${expression.code}` : ""}`;
   if (expression.operator === "has-pertinent-negative") return `${labelFor(expression.elementId, catalog)} has Pertinent Negative${expression.code ? ` ${expression.code}` : ""}`;
@@ -890,8 +974,9 @@ function fingerprintInputs(inputs: readonly unknown[]): string {
 }
 
 type DocumentElement = { element: { id: string; values: readonly EncounterValue[] }; groupInstanceId: string; order: number };
+type DocumentGroupInstance = { groupId: string; groupInstanceId: string; parentInstanceId?: string };
 type EvaluationState = { timestamp: number; steps: number; maxSteps: number; maxValues: number; globalElements?: DocumentElement[];
-  scopeElementIds?: ReadonlySet<string> };
+  scopeElementIds?: ReadonlySet<string>; groupInstances?: DocumentGroupInstance[] };
 function tick(state: EvaluationState, amount = 1): void {
   state.steps += amount;
   if (state.steps > state.maxSteps) throw new ValidationResourceLimitError(`Validation traversal exceeds ${state.maxSteps} steps`);
@@ -936,6 +1021,12 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
   if (expression.operator === "all") return expression.operands.every((operand) => evaluateExpression(operand, elements, state));
   if (expression.operator === "any") return expression.operands.some((operand) => evaluateExpression(operand, elements, state));
   if (expression.operator === "not") return !evaluateExpression(expression.operand, elements, state);
+  if (expression.operator === "minimum-groups" || expression.operator === "maximum-groups") {
+    const instances = state.groupInstances ?? [];
+    tick(state, instances.length);
+    const count = instances.filter((instance) => instance.groupId === expression.groupId).length;
+    return expression.operator === "minimum-groups" ? count >= expression.count : count <= expression.count;
+  }
   if (expression.operator === "compare-elements") {
     const left = referencedElements(elements, expression.leftElementId, state).flatMap(({ element }) => element.values).map(ordinaryValue).filter((value) => value !== undefined);
     const right = referencedElements(elements, expression.rightElementId, state).flatMap(({ element }) => element.values).map(ordinaryValue).filter((value) => value !== undefined);
@@ -1065,8 +1156,13 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId, order: order++ }))));
   state.globalElements = elements;
   tick(state, elements.length);
+  const groupInstances = document.groups.flatMap((group) => group.instances.map((instance) => ({
+    groupId: group.id, groupInstanceId: instance.instanceId,
+    ...(instance.parentInstanceId ? { parentInstanceId: instance.parentInstanceId } : {}),
+  })));
+  tick(state, groupInstances.length);
   const scopedRows = (groupId: string): Array<{ elements: DocumentElement[]; rootGroupInstanceId: string;
-    scopeElementIds: ReadonlySet<string> }> => {
+    scopeElementIds: ReadonlySet<string>; groupInstances: DocumentGroupInstance[] }> => {
     const roots = document.groups.find(({ id }) => id === groupId)?.instances ?? [];
     const ownedByRoot = new Map(roots.map((root) => [root.instanceId, new Set([root.instanceId])]));
     for (const ownedInstanceIds of ownedByRoot.values()) {
@@ -1087,16 +1183,21 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     return roots.map((root) => {
       const ownedInstanceIds = ownedByRoot.get(root.instanceId)!;
       return { rootGroupInstanceId: root.instanceId, scopeElementIds,
+        groupInstances: groupInstances.filter((instance) => ownedInstanceIds.has(instance.groupInstanceId)),
         elements: document.groups.flatMap((group) => group.instances.filter(({ instanceId }) => ownedInstanceIds.has(instanceId))
           .flatMap((instance) => instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId,
             order: elements.find(({ element: candidate, groupInstanceId }) => candidate === element && groupInstanceId === instance.instanceId)?.order ?? 0 })))) };
     });
   };
-  return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget)).flatMap((rule) => {
-    const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string; scopeElementIds?: ReadonlySet<string> }> = rule.scope
-      ? scopedRows(rule.scope.groupId) : [{ elements }];
+  return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget) &&
+    (executionTarget === "review" ? reviewPriorityOfRule(rule) !== "none" : rule.severity !== "none")).flatMap((rule) => {
+    const ruleScope = legacyGeneratedRuleScope(rule) ?? rule.scope;
+    const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string; scopeElementIds?: ReadonlySet<string>;
+      groupInstances: DocumentGroupInstance[] }> = ruleScope
+      ? scopedRows(ruleScope.groupId) : [{ elements, groupInstances }];
     return scopes.flatMap((scope) => {
     state.scopeElementIds = scope.scopeElementIds;
+    state.groupInstances = scope.groupInstances;
     const nodeCount = walkExpressions(rule.assertion).length + (rule.applicability ? walkExpressions(rule.applicability).length : 0);
     if (nodeCount > Math.min(requestedNodes, MAX_EXPRESSION_NODES)) throw new ValidationResourceLimitError("Compiled expression exceeds evaluation node limit");
     // Published pre-fix NEMSIS bundles omitted Schematron's element-context selection.
@@ -1109,7 +1210,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     if (evaluateExpression(rule.assertion, scope.elements, state)) return [];
     if (rule.primaryTarget.elementId === "*" && rule.assertion.operator === "all-elements") {
       return violatingAllElements(rule.assertion.invariant, scope.elements, rule.assertion.excludedElementIds).map((match) => ({
-        validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
+        validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity === "none" ? "information" : rule.severity,
         executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
           rule.references?.elementIds ?? []), primaryTarget: { elementId: match.element.id,
           groupInstanceId: match.groupInstanceId, ...(match.element.values.length === 1 ? { occurrenceId: match.element.values[0]!.occurrenceId } : {}) },
@@ -1120,12 +1221,16 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     const referencedElementIds = rule.references?.elementIds ?? referencedExpressions(rule.assertion).map(({ elementId }) => elementId);
     const relevantInputs: unknown[] = scope.elements.filter(({ element }) => referencedElementIds.includes(element.id))
       .map(({ element, groupInstanceId }) => ({ elementId: element.id, groupInstanceId, values: element.values }));
+    const referencedGroupIds = rule.references?.groupIds ?? [...(rule.applicability ? walkExpressions(rule.applicability) : []),
+      ...walkExpressions(rule.assertion)].flatMap((expression) => "groupId" in expression ? [expression.groupId] : []);
+    relevantInputs.push(...scope.groupInstances.filter((instance) => referencedGroupIds.includes(instance.groupId))
+      .map(({ groupId, groupInstanceId, parentInstanceId }) => ({ elementId: `group:${groupId}`, groupInstanceId, parentInstanceId })));
     // Evaluation time is not a clinician-authored input. Including it here made
     // an acknowledged warning acquire a new identity on every refresh (and at
     // signing), even when the documented values had not changed.
     const uniqueMatch = matches.length === 1 ? matches[0] : undefined;
     const uniqueGroupInstanceId = uniqueMatch?.groupInstanceId ?? (matches.length === 0 ? scope.rootGroupInstanceId : undefined);
-    return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
+    return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity === "none" ? "information" : rule.severity,
       executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
         rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
         ...(uniqueGroupInstanceId ? { groupInstanceId: uniqueGroupInstanceId } : {}),
@@ -1143,7 +1248,8 @@ export function evaluateValidationBundleSafely(bundle: CompiledValidationBundle,
     code: "compatibility", message: "The compiled validation bundle has no rule list",
   }] };
   const targetRules = bundle.rules.filter((rule) => rule?.enabled && Array.isArray(rule.executionTargets)
-    && rule.executionTargets.includes(executionTarget) && isPatientCareReportRule(rule));
+    && rule.executionTargets.includes(executionTarget) &&
+    (executionTarget === "review" ? reviewPriorityOfRule(rule) !== "none" : rule.severity !== "none") && isPatientCareReportRule(rule));
   if (targetRules.length > MAX_RULES_PER_EVALUATION) return { findings: [], failures: [{
     validationVersionId: bundle.validationVersionId, ruleId: "bundle", executionTarget,
     code: "resource-limit", message: `The compiled validation bundle exceeds ${MAX_RULES_PER_EVALUATION} rules`,

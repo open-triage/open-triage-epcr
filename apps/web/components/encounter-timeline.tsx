@@ -1,3 +1,4 @@
+import { activateListRow } from "./list-row-action";
 import { mobileDisplayDefinition, mobileDisplayEvent } from "../app/mobile-localization";
 import type { ClinicalFormConfiguration, ReportAudioNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import React, { useId, useState } from "react";
@@ -15,11 +16,12 @@ import { AuthorizedAudioButton } from "./audio-note";
 export type EncounterTimelineItem = (EncounterEvent & { readonly sortTime: string }) | NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem;
 export type EncounterTimelineFilter = "all" | "notes";
 
+
 export function filterEncounterTimeline(events: ReadonlyArray<EncounterTimelineItem>, filter: EncounterTimelineFilter): ReadonlyArray<EncounterTimelineItem> {
   return filter === "notes" ? events.filter(({ kind }) => kind === "text-note" || kind === "photo-note" || kind === "audio-note") : events;
 }
 
-export function EncounterTimeline({ events, validationStatuses, definition: sourceDefinition, clinicalForm, headingId, language, className, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent }: {
+export function EncounterTimeline({ events, validationStatuses, definition: sourceDefinition, clinicalForm, headingId, language, className, readOnly = false, mediaContentPath, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent }: {
   readonly events: ReadonlyArray<EncounterTimelineItem>;
   readonly validationStatuses: ReadonlyMap<string, "warning" | "error">;
   readonly definition: EncounterDefinition;
@@ -27,6 +29,8 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
   readonly headingId: string;
   readonly language: AgencyLanguage;
   readonly className?: string;
+  readonly readOnly?: boolean;
+  readonly mediaContentPath?: (note: ReportPhotoNote | ReportAudioNote) => string;
   readonly onOpenTextNote: (note: ReportTextNote, trigger: HTMLElement) => void;
   readonly onOpenPhoto: (note: ReportPhotoNote, trigger: HTMLElement) => void;
   readonly onOpenAudio: (note: ReportAudioNote, trigger: HTMLElement) => void;
@@ -58,11 +62,13 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
           return <li key={event.id} className="editable-event photo-note-event">
             <time dateTime={event.note.capturedAt}>{event.time}</time>
             <span className={`event-dot validation-${event.note.persistenceState === "failed" ? "error" : "clear"}`} role="img" aria-label={t("mobile.photoState", { state: photoState })} />
-            <button aria-label={t("mobile.openPhoto", { time: event.time, author: event.note.author.displayName, caption: event.note.caption ?? t("mobile.noCaption") })} className="timeline-event-button photo-timeline-button" type="button" onClick={(clickEvent) => onOpenPhoto(event.note, clickEvent.currentTarget)}>
+            <div className="timeline-event-button photo-timeline-button" onClick={activateListRow}>
               <span className="photo-timeline-copy"><span className="event-title">{t("mobile.photoNote")}</span><span className="event-detail">{event.note.caption || t("mobile.noCaption")}</span>
-                <small>{event.note.author.displayName} · {photoState} · {t("mobile.openPhotoShort")}</small></span>
-              <AuthorizedPhotoImage language={language} reportId={event.note.reportId} noteId={event.note.id} alt="" className="photo-thumbnail" />
-            </button>
+                <small>{event.note.author.displayName} · {photoState}</small></span>
+              <AuthorizedPhotoImage language={language} reportId={event.note.reportId} noteId={event.note.id} contentPath={mediaContentPath?.(event.note)} alt="" className="photo-thumbnail" />
+              <button className="timeline-row-action" data-list-row-action type="button" aria-label={t("mobile.openPhoto", { time: event.time, author: event.note.author.displayName, caption: event.note.caption ?? t("mobile.noCaption") })}
+                onClick={(clickEvent) => onOpenPhoto(event.note, clickEvent.currentTarget)}>{t("mobile.openPhotoShort")}</button>
+            </div>
           </li>;
         }
         if (event.kind === "audio-note") {
@@ -73,12 +79,13 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
             <time dateTime={event.note.capturedAt}>{event.time}</time>
             <span className={`event-dot validation-${event.note.persistenceState === "failed" ? "error" : "clear"}`} role="img" aria-label={t("mobile.audioState", { state: audioState })} />
             <div className="audio-timeline-content">
-              <button aria-label={t("mobile.openAudio", { time: event.time, author: event.note.author.displayName, duration, caption: event.note.caption ?? t("mobile.noCaption") })}
-                className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenAudio(event.note, clickEvent.currentTarget)}>
+              <div className="timeline-event-button" onClick={activateListRow}>
                 <span className="event-title">{t("mobile.audioNote")} · {duration}</span><span className="event-detail">{event.note.caption || t("mobile.noCaption")}</span>
-                <small>{event.note.author.displayName} · {audioState} · {t("mobile.openAudioShort")}</small>
-              </button>
-              <AuthorizedAudioButton language={language} reportId={event.note.reportId} noteId={event.note.id} label={t("mobile.playAudio", { duration })} className="timeline-audio-action" />
+                <small>{event.note.author.displayName} · {audioState}</small>
+                <button className="timeline-row-action" data-list-row-action type="button" aria-label={t("mobile.openAudio", { time: event.time, author: event.note.author.displayName, duration, caption: event.note.caption ?? t("mobile.noCaption") })}
+                  onClick={(clickEvent) => onOpenAudio(event.note, clickEvent.currentTarget)}>{t("mobile.openAudioShort")}</button>
+              </div>
+              <AuthorizedAudioButton language={language} reportId={event.note.reportId} noteId={event.note.id} contentPath={mediaContentPath?.(event.note)} label={t("mobile.playAudio", { duration })} className="timeline-audio-action" />
             </div>
           </li>;
         }
@@ -87,10 +94,12 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
           return <li key={event.id} className="editable-event text-note-event">
             <time dateTime={event.note.capturedAt}>{event.time}</time>
             <span className="event-dot validation-clear" role="img" aria-label={t("mobile.textReady")} />
-            <button aria-label={t("mobile.openText", { time: event.time, author: event.note.author.displayName, excerpt })} className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenTextNote(event.note, clickEvent.currentTarget)}>
+            <div className="timeline-event-button" onClick={activateListRow}>
               <span className="event-title">{t("mobile.textNote")}</span><span className="event-detail">{excerpt}</span>
-              <small>{event.note.author.displayName} · {t("mobile.ready")} · {t("mobile.openNote")}</small>
-            </button>
+              <small>{event.note.author.displayName} · {t("mobile.ready")}</small>
+              <button className="timeline-row-action" data-list-row-action type="button" aria-label={t("mobile.openText", { time: event.time, author: event.note.author.displayName, excerpt })}
+                onClick={(clickEvent) => onOpenTextNote(event.note, clickEvent.currentTarget)}>{t("mobile.openNote")}</button>
+            </div>
           </li>;
         }
         const validationStatus = validationStatuses.get(event.id) ?? "clear";
@@ -102,15 +111,17 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
           <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
           <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={t("mobile.validationStatus", { status: t(validationStatus === "clear" ? "mobile.validationClear" : validationStatus === "error" ? "mobile.validationError" : "mobile.validationWarning") })} />
           {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
-            <button aria-label={t("mobile.editEvent", { title, time: event.time, detail: eventDetail })} className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenEvent(event, clickEvent.currentTarget)}>
+            <div className="timeline-event-button" onClick={activateListRow}>
               <span className="event-title">{title}</span><span className="event-detail">{eventDetail}</span>
-              <small>{presentation.reference} · {t("mobile.openEntry")}</small>
+              <small>{presentation.reference}</small>
               {event.procedure && validateProcedure({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time,
                 procedureCode: event.procedure.code, procedureLabel: event.procedure.label, attempts: String(event.procedure.attempts),
                 success: event.procedure.success, outcome: event.procedure.outcome, complications: event.procedure.complications,
                 warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
               }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>}
-            </button>
+              <button className="timeline-row-action" data-list-row-action type="button" aria-label={t(readOnly ? "mobile.viewEvent" : "mobile.editEvent", { title, time: event.time, detail: eventDetail })}
+                onClick={(clickEvent) => onOpenEvent(event, clickEvent.currentTarget)}>{t(readOnly ? "admin.viewDetails" : "admin.edit")}</button>
+            </div>
           ) : <div><h2>{title}</h2><p>{eventDetail}</p><small>{event.reference}</small></div>}
         </li>;
       })}

@@ -33,7 +33,7 @@ const compiledSha256 = compiledValidationBundleSha256(bundle);
 
 function subject(manager, requireCapability = async (_token, capability) => {
   assert.equal(capability, "validation:read");
-  return { organization: { id: organizationId }, user: { id: userId } };
+  return { organization: { id: organizationId }, user: { id: userId }, capabilities: ["review:self"] };
 }) {
   return new ReviewValidationService({
     transaction: async (isolation, work) => {
@@ -58,7 +58,7 @@ function evaluatingManager({ storedSha256 = compiledSha256 } = {}) {
       created_at: "2026-09-18T10:00:00Z", updated_at: "2026-09-18T11:00:00Z",
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",
       catalog_version: "3.5.1", catalog_dataset: "EMSDataSet" }];
-    if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence")) return [];
+    if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence") || sql.includes("from clinical.amendment a")) return [];
     if (sql.includes("insert into clinical.validation_review_evaluation")) {
       return [{ id: randomUUID(), report_id: reportId, report_revision: 7,
         validation_version_id: versionId, validation_compiled_sha256: storedSha256,
@@ -94,8 +94,8 @@ test("a selected published review-only version evaluates one current report and 
   assert.ok(calls.some(({ sql }) => sql.includes("insert into clinical.validation_review_evaluation")));
   assert.ok(calls.every(({ sql }) => !sql.includes("clinical.validation_finding")));
   const reportRead = calls.find(({ sql }) => sql.includes("from clinical.report") && sql.includes("organization_id=$2"));
-  assert.match(reportRead.sql, /status='signed' or documenting_user_id=\$3/);
-  assert.deepEqual(reportRead.parameters, [reportId, organizationId, userId]);
+  assert.match(reportRead.sql, /status='signed'/);
+  assert.deepEqual(reportRead.parameters, [reportId, organizationId, false, userId, false]);
 
   const document = { groups: [] };
   assert.deepEqual(evaluateValidationBundle(bundle, document, "live", { timestamp: "2026-09-18T12:00:00Z" }), []);
@@ -124,7 +124,7 @@ test("review-only rules do not participate in authoritative signing", async () =
       created_at: "2026-09-18T10:00:00Z", updated_at: "2026-09-18T11:00:00Z",
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",
       catalog_version: "3.5.1", catalog_dataset: "EMSDataSet" }];
-    if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence")) return [];
+    if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence") || sql.includes("from clinical.amendment a")) return [];
     if (sql.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -157,7 +157,7 @@ test("review evaluation authorizes before data access and scopes report/version 
   await subject(manager).evaluate("session", reportId, { validationVersionId: versionId });
   const reportRead = calls.find(({ sql }) => sql.includes("from clinical.report") && sql.includes("organization_id=$2"));
   const versionRead = calls.find(({ sql }) => sql.includes("from validation.version"));
-  assert.deepEqual(reportRead.parameters, [reportId, organizationId, userId]);
+  assert.deepEqual(reportRead.parameters, [reportId, organizationId, false, userId, false]);
   assert.deepEqual(versionRead.parameters, [versionId, organizationId, catalogReleaseId]);
 });
 

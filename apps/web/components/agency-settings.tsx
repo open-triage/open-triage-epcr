@@ -1,5 +1,6 @@
 "use client";
 
+import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
@@ -44,6 +45,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (settings) return;
     let current = true;
     loadAgencyMediaSettings().then((loaded) => {
       if (!current) return;
@@ -55,7 +57,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
       if (current) setError(language !== "en" ? t("settings.loadFailed") : reason instanceof Error ? reason.message : t("settings.loadFailed"));
     });
     return () => { current = false; };
-  }, [language, t]);
+  }, [language, t, settings]);
 
   useEffect(() => {
     if (draft) applyAgencyColors(draft.appearance, document);
@@ -74,6 +76,9 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
     /^[0-9]{2}$/.test(draft.demographics.stateCode);
   const unchanged = !!settings && !!draft && JSON.stringify({ ...draft, expectedRevision: settings.revision,
     reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes }) === JSON.stringify(editable(settings));
+
+  useUnsavedChanges(!!draft && !unchanged);
+  useEffect(() => () => { if (settings) applyAgencyColors(settings.appearance, document); }, [settings]);
 
   function changeAppearance<K extends keyof AgencyAppearance>(key: K, value: AgencyAppearance[K]) {
     setDraft((current) => current ? { ...current, appearance: { ...current.appearance, [key]: value } } : current);
@@ -184,13 +189,19 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
           {/* A bounded administrator-supplied data URL cannot use Next's static image optimizer. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={draft.appearance.logoPngDataUrl} alt={resolveMessage(language, "admin.agencyLogoPreview")} />
-          <button type="button" onClick={() => changeAppearance("logoPngDataUrl", null)}><AdminText messageKey="admin.removeLogo" /></button>
+          <button type="button" className="button-danger" onClick={() => changeAppearance("logoPngDataUrl", null)}><AdminText messageKey="admin.removeLogo" /></button>
         </div>}
         <div className="agency-color-grid">
           <label><AdminText messageKey="admin.accentColor" /><input type="color" value={draft.appearance.accentColor}
             onChange={(event) => changeAppearance("accentColor", event.target.value)} /></label>
           <label><AdminText messageKey="admin.darkAccentColor" /><input type="color" value={draft.appearance.accentDarkColor}
             onChange={(event) => changeAppearance("accentDarkColor", event.target.value)} /></label>
+          <label><AdminText messageKey="admin.destructiveColor" /><input type="color" value={draft.appearance.destructiveColor}
+            onChange={(event) => changeAppearance("destructiveColor", event.target.value)} /></label>
+          <label><AdminText messageKey="admin.inactiveButtonColor" /><input type="color" value={draft.appearance.inactiveButtonColor}
+            onChange={(event) => changeAppearance("inactiveButtonColor", event.target.value)} /></label>
+          <label><AdminText messageKey="admin.textColor" /><input type="color" value={draft.appearance.textColor}
+            onChange={(event) => changeAppearance("textColor", event.target.value)} /></label>
           <label><AdminText messageKey="admin.browserThemeColor" /><input type="color" value={draft.appearance.browserThemeColor}
             onChange={(event) => changeAppearance("browserThemeColor", event.target.value)} /></label>
           <label><AdminText messageKey="admin.pwaBackgroundColor" /><input type="color" value={draft.appearance.pwaBackgroundColor}
@@ -198,7 +209,9 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
         </div>
         <p className="agency-appearance-preview">
           <span><AdminText messageKey="admin.accessibleAccentPreview" /></span>
-          <span><AdminText messageKey="admin.darkAccentPreview" /></span>
+          <span className="agency-dark-accent-preview"><AdminText messageKey="admin.darkAccentPreview" /></span>
+          <span className="agency-destructive-preview"><AdminText messageKey="admin.destructivePreview" /></span>
+          <span className="agency-inactive-button-preview"><AdminText messageKey="admin.inactiveButtonPreview" /></span>
         </p>
         <label><AdminText messageKey="admin.pwaName" /><input maxLength={100} required value={draft.appearance.pwaName}
           onChange={(event) => changeAppearance("pwaName", event.target.value)} /></label>
