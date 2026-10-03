@@ -1,3 +1,10 @@
+# UI development
+
+Before developing UI, read [the UI style guide](docs/design/ui-style-guide.md).
+Apply it to new or changed UI and the shared components needed for that work.
+Record other existing violations in [the UI remediation backlog](docs/design/ui-style-guide-backlog.md)
+for future work; keep unrelated redesigns outside the current task.
+
 # Local database-backed development
 
 Launch the API and web app as separate processes. Do not source the root
