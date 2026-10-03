@@ -1,9 +1,12 @@
 # Analytics projection operations
 
-Local API development (`npm run dev -w @open-triage/api`, including `dev:local`)
-starts the analytics watcher alongside the API. It runs one bounded projection
-batch immediately and once a minute after the previous batch finishes, using
-the private database environment. Start the web app separately without `PORT`.
+Root `npm run dev` (also `npm run dev:local`) waits for PostgreSQL before starting
+the API and its analytics watcher, then confirms API and web readiness. The watcher
+runs one bounded projection batch immediately and once a minute after the previous
+batch finishes, using the private database environment. See the
+[local development runbook](local-development.md) for setup and troubleshooting.
+Manual `npm run dev -w @open-triage/api` also starts the watcher; load the private
+environment and make PostgreSQL ready first, then start the web separately without `PORT`.
 For an already-running API, start `npm run project:watch -w @open-triage/database`
 as a separate process until the API is restarted. Production continues to use
 the scheduled jobs below.

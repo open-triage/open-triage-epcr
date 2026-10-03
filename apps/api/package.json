@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "prebuild": "npm run build -w @open-triage/contracts",
-    "dev": "concurrently -n api,analytics \"nest start --watch\" \"npm run project:watch -w @open-triage/database\"",
+    "dev": "concurrently --kill-others-on-fail -n api,analytics \"nest start --watch\" \"npm run project:watch -w @open-triage/database\"",
     "build": "nest build",
     "start": "node dist/main.js",
     "dispatch:ingest": "npm run build && node dist/dispatch/dispatch-file-cli.entry.js",

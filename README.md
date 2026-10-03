@@ -15,11 +15,24 @@ The product requirements documents are indexed in
 
 ## Start
 
-1. Copy `.env.example` to `.env.local` and add Supabase credentials.
-2. Run `npm install`.
-3. Run `npm run dev`.
+1. Install Node.js 22 or newer, Docker Desktop (or a Docker engine), and the
+   [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
+2. Run `npm install`, copy `.env.example` to `.env.local`, and configure the private
+   database and installation keys.
+3. On a fresh machine, run `supabase start` from the repository root and complete
+   the [local database and owner setup](docs/runbooks/local-development.md).
+4. Run `npm run dev` from the repository root. `npm run dev:local` is an alias.
 
 Web runs on http://localhost:3000 and the API on http://localhost:3001.
+The startup helper loads `.env.local`, keeps its private values in the API
+process, checks for occupied ports, and waits for PostgreSQL before launching
+the API, analytics watcher, and web app. For the default local database on port
+54322, it can start Docker Desktop and resume the existing project database
+container, using `docker.exe` on WSL when Linux Docker integration is unavailable.
+It confirms API and web readiness and stops the process groups together on exit.
+Run `npm run dev -- --check` to check configuration, ports, and database readiness
+without launching the app. See the [local development runbook](docs/runbooks/local-development.md)
+for first-time setup, manual startup, and troubleshooting.
 
 The NestJS API uses TypeORM with `DATABASE_URL` and requires PostgreSQL 15 or newer.
 Supabase SQL migrations remain the single source of truth for schema changes;

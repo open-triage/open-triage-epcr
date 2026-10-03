@@ -1,8 +1,28 @@
 # Local database-backed development
 
-Launch the API and web app as separate processes. Do not source the root
-`.env.local` before running the root `npm run dev`: its API `PORT=3001` value is
-otherwise inherited by Next.js, so the web app and API compete for port 3001.
+Use `npm run dev` (or its alias `npm run dev:local`) from the repository root.
+The helper loads `.env.local` itself, launches the API and web as separate
+processes, keeps private root values out of the web environment, and removes
+the API `PORT` value before starting Next.js on port 3000.
+
+Before launch it checks both app ports and connects to PostgreSQL. For a refused
+connection to the default local Supabase database on port 54322, it tries Docker
+and then `docker.exe` on WSL, starts Docker Desktop if needed, and resumes only
+the existing `supabase_db_<project_id>` database container. It waits through
+PostgreSQL startup recovery before launching the API and analytics watcher.
+It creates no containers or accounts and performs no database migrations or resets.
+
+On a fresh machine, install Docker and the Supabase CLI, run `supabase start`
+from the root, and follow `docs/runbooks/local-development.md` to apply migrations,
+create the demonstration organization, and bootstrap its ordinary installation owner.
+Run `npm run dev -- --check` to check environment, ports, and database readiness
+without launching the app; this may start the existing database and Docker Desktop.
+If ports are already occupied, inspect the running app or stop its supervisor
+before starting another instance. Do not treat a running Next.js server as proof
+that the API or database is ready.
+
+For manual startup, first ensure PostgreSQL is ready. Launch the API and web as
+separate processes. Source root private values only in the API process:
 
 From the repository root, start the API with the private server/database values:
 

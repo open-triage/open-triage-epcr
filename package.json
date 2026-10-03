@@ -8,8 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api -c cyan,magenta \"env -u PORT npm run dev -w @open-triage/web\" \"npm run dev -w @open-triage/api\"",
-    "dev:local": "bash scripts/dev-local.sh",
+    "dev": "node scripts/dev-local.mjs",
+    "dev:local": "npm run dev --",
     "db:reset:development": "npm run reset:development -w @open-triage/database --",
     "feedback:validate": "node scripts/feedback-validation.mjs",
     "build": "npm run audit:nemsis-catalog && npm run check:nemsis-catalog-guardrails && npm run check:canonical-definitions && npm run check:stationary-layout && npm run check:database && npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
