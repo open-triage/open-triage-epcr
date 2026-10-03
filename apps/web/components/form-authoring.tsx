@@ -3,8 +3,9 @@
 import { AdminText, useAdminText } from "../app/admin-localization";
 
 import type { ClinicalFormConfiguration, FormCatalogElement, FormDraftDefinition, FormDraftField } from "@open-triage/contracts";
-import React, { useState } from "react";
+import React, { useId, useRef, useState } from "react";
 import { SortableList } from "./sortable-list";
+import { activateListRow } from "./list-row-action";
 import { getNemsisDataElement, getNemsisGroup } from "../app/nemsis-data-model";
 import { stationaryDisplayLabel } from "../app/stationary-label";
 import { formChoiceLabel } from "../app/form-choice-label";
@@ -115,24 +116,19 @@ export function moveFormElement(definition: FormDraftDefinition, sectionKey: str
     ? { ...candidate, fields } : candidate) };
 }
 
-export function FormElementPicker({ definition, results, query, targetSection, catalogGroups, language = "en", onQueryChange, onSectionChange, onAdd }: {
+export function FormElementPicker({ definition, results, query, busy = false, onQueryChange, onAdd }: {
   readonly definition: FormDraftDefinition; readonly results: readonly FormCatalogElement[]; readonly query: string;
-  readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"]; readonly language?: string;
-  readonly targetSection: string; readonly onQueryChange: (value: string) => void;
-  readonly onSectionChange: (value: string) => void; readonly onAdd: (element: FormCatalogElement) => void;
+  readonly busy?: boolean; readonly onQueryChange: (value: string) => void;
+  readonly onAdd: (element: FormCatalogElement) => void;
 }) {
   const t = useAdminText();
+  const searchId = useId();
   const [resultLimit, setResultLimit] = useState(20);
   const placed = new Set(definition.sections.flatMap((section) => section.fields.map(fieldIdentity)));
-  return <fieldset className="form-picker">
+  return <fieldset className="form-picker" disabled={busy}>
     <legend><AdminText messageKey="admin.addAnExisting" /></legend>
-    <label htmlFor="form-target-section"><AdminText messageKey="admin.section" /></label>
-    <select id="form-target-section" value={targetSection || definition.sections[0]?.key || ""}
-      onChange={(event) => onSectionChange(event.target.value)}>
-      {definition.sections.map((section) => <option key={section.key} value={section.key}>{formSectionLabel(section, catalogGroups, language)}</option>)}
-    </select>
-    <label htmlFor="form-element-search"><AdminText messageKey="admin.findByIdentifierName" /></label>
-    <input id="form-element-search" type="search" value={query} onChange={(event) => {
+    <label htmlFor={searchId}><AdminText messageKey="admin.findByIdentifierName" /></label>
+    <input id={searchId} type="search" autoFocus value={query} onChange={(event) => {
       setResultLimit(20); onQueryChange(event.target.value);
     }} />
     {!query.trim() && <p><AdminText messageKey="admin.searchTheCatalog" /></p>}
@@ -152,7 +148,7 @@ export function FormElementPicker({ definition, results, query, targetSection, c
   </fieldset>;
 }
 
-export function FormSectionElements({ definition, catalogFields, customFields, catalogGroups, newChoicesByField, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
+export function FormSectionElements({ definition, catalogFields, customFields, catalogGroups, newChoicesByField, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection, renderElementPicker }: {
   readonly definition: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly customFields?: ClinicalFormConfiguration["customFields"];
@@ -163,14 +159,23 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
   readonly onChange: (definition: FormDraftDefinition, announcement: string) => void;
   readonly onMoveSection?: (from: number, to: number) => void;
   readonly onRequestRemoveSection?: (index: number) => void;
+  readonly renderElementPicker?: (sectionKey: string) => React.ReactNode;
 }) {
   const t = useAdminText();
   const [newSectionName, setNewSectionName] = useState("");
   const [expandedSection, setExpandedSection] = useState<string | null>(definition.sections[0]?.key ?? null);
+  const [expandedChoices, setExpandedChoices] = useState<ReadonlySet<string>>(() => new Set());
+  const choicesId = useId();
+  const [sectionAction, setSectionAction] = useState<{ key: string; kind: "rename" | "add" } | null>(null);
+  const actionTrigger = useRef<HTMLButtonElement | null>(null);
+  function closeAction() {
+    setSectionAction(null);
+    requestAnimationFrame(() => actionTrigger.current?.focus({ preventScroll: true }));
+  }
   const selectedKey = definition.sections.some(({ key }) => key === expandedSection)
     ? expandedSection : expandedSection === null ? null : definition.sections[0]?.key ?? null;
   return <div className="form-fields">
-    {!readOnly && <fieldset disabled={busy}>
+    {!readOnly && <fieldset className="form-create-section" disabled={busy}>
       <label htmlFor="new-section-name">{t("admin.newSectionName")}</label>
       <input id="new-section-name" maxLength={120} value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} />
       <button type="button" disabled={!newSectionName.trim()} onClick={() => {
@@ -179,7 +184,9 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
       }}>{t("admin.createSection")}</button>
     </fieldset>}
     <label htmlFor="form-section-navigation"><AdminText messageKey="admin.goToSection" /></label>
-    <select id="form-section-navigation" value={selectedKey ?? ""} onChange={(event) => setExpandedSection(event.target.value || null)}>
+    <select id="form-section-navigation" value={selectedKey ?? ""} onChange={(event) => {
+      setExpandedSection(event.target.value || null); setSectionAction(null);
+    }}>
       <option value=""><AdminText messageKey="admin.allSectionsCollapsed" /></option>
       {definition.sections.map((section) => <option key={section.key} value={section.key}>
         {formSectionLabel(section, catalogGroups, language)} ({t("admin.countElements", { count: section.fields.length })})</option>)}
@@ -188,25 +195,50 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
       label={(section) => section.key} language={language} disabled={busy || readOnly || !onMoveSection}
       onMove={(from, to) => onMoveSection?.(from, to)} renderItem={(section, sectionIndex, sectionHandle) => {
       const open = selectedKey === section.key;
+      const renaming = !readOnly && sectionAction?.key === section.key && sectionAction.kind === "rename";
+      const adding = !readOnly && open && sectionAction?.key === section.key && sectionAction.kind === "add";
       return <section className="form-section" key={section.key}>
-      <header className="form-section-header">
-        <button type="button" className="form-section-toggle" aria-expanded={open}
-          onClick={() => setExpandedSection(open ? null : section.key)}>
+      <header className="form-section-header" onClick={activateListRow}>
+        {renaming ? <label className="form-section-name">{t("admin.sectionName")}
+          <input autoFocus disabled={busy} maxLength={120} value={section.name ?? formSectionLabel(section, catalogGroups, language)}
+            onChange={(event) => onChange(renameFormSection(definition, section.key, event.target.value), t("admin.sectionRenamed"))}
+            onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); closeAction(); } }} />
+        </label> : <div className="form-section-heading">
           {formSectionLabel(section, catalogGroups, language)} <small>{section.key}</small> <span>{t("admin.countElements", { count: section.fields.length })}</span>
+        </div>}
+        <button type="button" className="form-section-toggle" data-list-row-action aria-expanded={open}
+          onClick={() => { setExpandedSection(open ? null : section.key); setSectionAction(null); }}>
+          {t(open ? "list.collapse" : "list.expand")}
         </button>
-        {onMoveSection && onRequestRemoveSection && <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
-          {sectionHandle}
-          <button className="button-danger" type="button" disabled={busy || definition.sections.length === 1} aria-label={`Remove ${section.key}`}
-            onClick={() => onRequestRemoveSection(sectionIndex)}><AdminText messageKey="admin.removeSection" /></button>
+        {!readOnly && <div className="form-section-actions" role="group" aria-label={`Actions for ${section.key}`}>
+          <button type="button" disabled={busy} onClick={(event) => {
+            if (renaming) { closeAction(); return; }
+            actionTrigger.current = event.currentTarget; setSectionAction({ key: section.key, kind: "rename" });
+          }}>{t(renaming ? "admin.doneEditingGroup" : "admin.renameGroup")}</button>
+          {renderElementPicker && <button type="button" className={adding ? "button-primary" : undefined} disabled={busy} aria-expanded={adding} onClick={(event) => {
+            if (adding) { closeAction(); return; }
+            actionTrigger.current = event.currentTarget; setExpandedSection(section.key); setSectionAction({ key: section.key, kind: "add" });
+          }}>{t("admin.addElements")}</button>}
+          {onMoveSection && sectionHandle}
+          {onRequestRemoveSection && <button className="button-danger" type="button" disabled={busy || definition.sections.length === 1} aria-label={`Remove ${section.key}`}
+            onClick={() => onRequestRemoveSection(sectionIndex)}><AdminText messageKey="admin.removeSection" /></button>}
         </div>}
       </header>
-      {open && !readOnly && <label>{t("admin.sectionName")}
-        <input aria-label={t("admin.sectionName")} disabled={busy} maxLength={120} value={section.name ?? formSectionLabel(section, catalogGroups, language)}
-          onChange={(event) => onChange(renameFormSection(definition, section.key, event.target.value), t("admin.sectionRenamed"))} />
-      </label>}
-      {open && <SortableList ordered items={section.fields} identity={(field) => field.key}
+      {adding && <div className="form-section-picker" onKeyDown={(event) => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeAction(); }
+      }}>{renderElementPicker?.(section.key)}</div>}
+      {open && <div className={`form-element-group${readOnly ? " is-read-only" : ""}`}>
+      {!readOnly && <div className="form-element-columns" aria-hidden="true">
+        <span>{t("admin.element")}</span><span>{t("admin.formChoices")}</span>
+        <span>{t("admin.moveToSection")}</span><span>{t("admin.formActions")}</span>
+      </div>}
+      <SortableList ordered className={`form-element-list${readOnly ? " is-read-only" : ""}`} items={section.fields} identity={(field) => field.key}
         label={(field) => field.source.kind === "nemsis" ? field.source.elementId : field.key}
         language={language} disabled={busy || readOnly} ariaLabel={`${section.key} form elements`}
+        onItemClick={readOnly ? undefined : (_field, event) => {
+          if ((event.target as HTMLElement).closest(".form-choice-lists")) return;
+          activateListRow(event);
+        }}
         onMove={(from, to) => onChange(moveFormElement(definition, section.key, from, to), t("admin.fieldMoved"))}
         renderItem={(field, _index, fieldHandle) => {
           const label = field.source.kind === "nemsis" ? field.source.elementId : field.key;
@@ -217,34 +249,21 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
           const newIds = new Set((newChoicesByField?.[field.key] ?? []).map(choiceIdentity));
           const selectedIds = new Set(selected.map(choiceIdentity));
           const reviewChoices = [...selected, ...available.filter((choice) => !selectedIds.has(choiceIdentity(choice)))];
+          const choicesOpen = expandedChoices.has(field.key);
+          const choicesPanelId = `${choicesId}-${field.key}`;
           return <>
-            <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
-            {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
-              {reviewChoices.length > 0 && <details><summary>{language === "sv" ? "Aktiva val och ordning" : "Enabled choices and order"}
-                {newIds.size > 0 && ` · ${newIds.size} ${language === "sv" ? "nya val" : "new choices"}`}</summary>
-                <SortableList ordered items={reviewChoices} identity={choiceIdentity}
-                  label={(choice) => `${formChoiceLabel(choice, field, catalogFields, customFields, language)} choice`}
-                  language={language} disabled={busy} canDrag={(choice) => selectedIds.has(choiceIdentity(choice))}
-                  ariaLabel={`Choices for ${label}`} onMove={(from, to) => {
-                    const next = [...selected]; const [moving] = next.splice(from, 1); next.splice(to, 0, moving!);
-                    onChange(updateFieldChoices(definition, field.key, next), `Reordered choices for ${label}.`);
-                  }} renderItem={(choice, _index, choiceHandle) => {
-                  const identity = choiceIdentity(choice);
-                  const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
-                  const unavailable = !availableIds.has(identity);
-                  const choiceLabel = formChoiceLabel(choice, field, catalogFields, customFields, language);
-                  return <><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}
-                    onChange={(event) => onChange(updateFieldChoices(definition, field.key,
-                      event.target.checked ? [...selected, choice] : selected.filter((candidate) => choiceIdentity(candidate) !== identity)),
-                    `Updated choices for ${label}.`)} />{choiceLabel}</label>
-                    {newIds.has(identity) && <small>{position >= 0
-                      ? language === "sv" ? "Ny i målkatalogen · aktiverad" : "New in target catalog · enabled"
-                      : language === "sv" ? "Ny i målkatalogen · avstängd tills du väljer den" : "New in target catalog · disabled until selected"}</small>}
-                    {unavailable && <small role="alert">{language === "sv" ? "Inte tillgänglig i målkatalogen; avmarkera för att lösa" : "Unavailable in target catalog; uncheck to resolve"}</small>}
-                    {choiceHandle}
-                  </>;
-                }} />
-              </details>}
+            <span className="form-element-identity"><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
+            {!readOnly && <>
+              <div className="form-element-choices" data-label={t("admin.formChoices")}>
+              {reviewChoices.length > 0 && <button type="button" className={`form-choices-toggle${choicesOpen ? " button-primary" : ""}`}
+                data-list-row-action aria-expanded={choicesOpen} aria-controls={choicesPanelId}
+                onClick={() => setExpandedChoices((previous) => {
+                  const next = new Set(previous);
+                  if (next.has(field.key)) next.delete(field.key); else next.add(field.key);
+                  return next;
+                })}>{choicesOpen ? language === "sv" ? "Stäng val och ordning" : "Close choices and order"
+                  : language === "sv" ? "Redigera val och ordning" : "Edit choices and order"}
+                {newIds.size > 0 && ` · ${newIds.size} ${language === "sv" ? "nya val" : "new choices"}`}</button>}
               {field.source.kind === "custom" && customFields?.[field.source.elementDefinitionId]?.datatype === "coded" &&
                 <details><summary>Permitted exceptional values</summary>
                   {(() => {
@@ -263,21 +282,60 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                           ? "Ny i målkatalogen" : "New in target catalog"}</small>}</label>);
                   })()}
                 </details>}
-              <label>{t("admin.moveToSection")}
+              {reviewChoices.length === 0 && <span aria-label={t("admin.formNoChoices")}>—</span>}
+              </div>
+              {reviewChoices.length > 0 && <div className="form-choice-lists" id={choicesPanelId} hidden={!choicesOpen}>
+                  {(["code", "not-value"] as const).map((kind) => {
+                    const choices = reviewChoices.filter((choice) => choice.kind === kind);
+                    if (choices.length === 0) return null;
+                    return <div className="form-choice-list" key={kind}>
+                      <strong>{kind === "code" ? language === "sv" ? "Ordinarie värden" : "Ordinary values"
+                        : language === "sv" ? "NOT-värden" : "NOT values"}</strong>
+                      <SortableList ordered items={choices} identity={choiceIdentity}
+                        label={(choice) => `${formChoiceLabel(choice, field, catalogFields, customFields, language)} choice`}
+                        language={language} disabled={busy} canDrag={(choice) => selectedIds.has(choiceIdentity(choice))}
+                        ariaLabel={kind === "code" ? `Choices for ${label}` : `NOT values for ${label}`} onMove={(from, to) => {
+                          const reordered = selected.filter((choice) => choice.kind === kind);
+                          const [moving] = reordered.splice(from, 1); reordered.splice(to, 0, moving!);
+                          let index = 0;
+                          const next = selected.map((choice) => choice.kind === kind ? reordered[index++]! : choice);
+                          onChange(updateFieldChoices(definition, field.key, next), `Reordered choices for ${label}.`);
+                        }} renderItem={(choice, _index, choiceHandle) => {
+                          const identity = choiceIdentity(choice);
+                          const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
+                          const unavailable = !availableIds.has(identity);
+                          const choiceLabel = formChoiceLabel(choice, field, catalogFields, customFields, language);
+                          return <><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}
+                            onChange={(event) => onChange(updateFieldChoices(definition, field.key,
+                              event.target.checked ? [...selected, choice] : selected.filter((candidate) => choiceIdentity(candidate) !== identity)),
+                            `Updated choices for ${label}.`)} />{choiceLabel}</label>
+                            {newIds.has(identity) && <small>{position >= 0
+                              ? language === "sv" ? "Ny i målkatalogen · aktiverad" : "New in target catalog · enabled"
+                              : language === "sv" ? "Ny i målkatalogen · avstängd tills du väljer den" : "New in target catalog · disabled until selected"}</small>}
+                            {unavailable && <small role="alert">{language === "sv" ? "Inte tillgänglig i målkatalogen; avmarkera för att lösa" : "Unavailable in target catalog; uncheck to resolve"}</small>}
+                            {choiceHandle}
+                          </>;
+                        }} />
+                    </div>;
+                  })}
+              </div>}
+              <label className="form-element-destination"><span className="sr-only">{t("admin.moveToSection")}</span>
                 <select aria-label={`${t("admin.moveToSection")} ${label}`} disabled={busy} value={section.key}
                   onChange={(event) => onChange(transferFormElement(definition, section.key, field.key, event.target.value), t("admin.fieldMoved"))}>
                   {definition.sections.map((target) => <option key={target.key} value={target.key}>{formSectionLabel(target, catalogGroups, language)}</option>)}
                 </select>
               </label>
-              <small>{t("admin.dataBinding")}: {field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.groupPath.join(" / ") : field.source.groupDefinitionId ?? field.source.elementDefinitionId}</small>
+              <div className="form-field-actions" aria-label={`Actions for ${label}`}>
               {fieldHandle}
               <button className="button-danger" type="button" disabled={busy} aria-label={`Remove ${label}`} onClick={() => {
                 if (window.confirm(`Remove ${label} from ${section.key}?`))
                   onChange(removeFormElement(definition, section.key, field.key), `Removed ${label}.`);
               }}><AdminText messageKey="admin.remove" /></button>
-            </div>}
+              </div>
+            </>}
           </>;
-        }} />}
+        }} />
+      </div>}
     </section>; }} />
   </div>;
 }

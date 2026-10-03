@@ -35,7 +35,6 @@ for (const newlyPublished of [false, true]) {
       body: '<html lang="en"><body><div id="root"></div><script src="/__validation-script"></script></body></html>' }));
     await page.route("**/api/admin/**", route => {
       const pathname = new URL(route.request().url()).pathname.replace("/api/admin/", "");
-      if (pathname === "canonical/validation/synchronize") return route.fulfill({ json: { errors: [] } });
       if (pathname === "validation-draft") return route.fulfill({ json: newlyPublished ? draft : null });
       if (pathname === "validation-versions") return route.fulfill({ json: activated
         ? [{ ...previous, status: "published" }, candidate, compatible] : [previous, candidate] });
@@ -121,7 +120,6 @@ test("validation rule creation, language, severity, targets, source, save, and v
     const method = route.request().method();
     const body = !route.request().postData() ? undefined : route.request().postDataJSON() as Record<string, unknown>;
     requests.push({ path, method, ...(body ? { body } : {}) });
-    if (path === "canonical/validation/synchronize") return route.fulfill({ json: { errors: [] } });
     if (path === "validation-draft") return route.fulfill({ json: draft });
     if (path === "validation-versions" || path === "form-versions") return route.fulfill({ json: [] });
     if (path === "catalog-versions/catalog") return route.fulfill({ json: catalog });
@@ -142,7 +140,8 @@ test("validation rule creation, language, severity, targets, source, save, and v
   });
   await page.goto("/__validation-harness");
   await expect(page.getByText("Canonical JSON files", { exact: true })).toHaveCount(0);
-  await expect.poll(() => requests.filter(({ path }) => path === "canonical/validation/synchronize").length).toBe(1);
+  expect(requests.filter(({ method }) => method !== "GET")).toHaveLength(0);
+  await expect(page.getByLabel("JSON file", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Create agency rule" }).click();
   const editor = page.locator(".validation-rule-editor");
   await expect(editor).toBeVisible();
@@ -186,4 +185,91 @@ test("validation rule creation, language, severity, targets, source, save, and v
   await expect(page.locator(".validation-rule-editor").getByLabel("Documentation severity", { exact: true })).toHaveValue("none");
   await expect(page.locator(".validation-rule-editor").getByLabel("Review priority")).toHaveValue("high");
   await expect(page.locator(".validation-rule-table")).toContainText("High");
+});
+
+test("wording issues appear in rule validity and use the shared validity filter", async ({ page }, testInfo) => {
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(path.resolve(__dirname, "../app/styles.css"), "utf8");
+  const translated = { schemaVersion: 1, sv: { name: "Patientnamn", message: "Ange patientnamn" } };
+  const base = { message: "Enter patient name", source: 'require present("ePatient.02")',
+    primaryTargetElementId: "ePatient.02", sourceKind: "agency", enabled: true, severity: "warning", executionTargets: ["live"] };
+  const rules = [
+    { ...base, id: "complete", name: "Complete rule", localization: translated },
+    { ...base, id: "english", name: "English warning", message: " ", localization: translated },
+    { ...base, id: "swedish", name: "Swedish warning" },
+    { ...base, id: "both", name: "Both warnings", message: "" },
+  ];
+  const subsets: Record<string, string[]> = { "missing-english": ["english", "both"],
+    "missing-swedish": ["swedish", "both"], wording: ["english", "swedish", "both"], warning: ["english", "swedish", "both"] };
+  const requestedFilters: string[] = [];
+  await page.route("**/__validation-script", route => route.fulfill({ contentType: "text/javascript", body: script }));
+  await page.route("**/__validation-harness", route => route.fulfill({ contentType: "text/html",
+    body: `<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body style="--green:#315ba8;--green-dark:#24447e;--inactive-button:#edf1fa;--text-color:#202850"><main id="root"></main><script src="/__validation-script"></script></body></html>` }));
+  await page.route("**/api/admin/**", route => {
+    const url = new URL(route.request().url());
+    const pathname = url.pathname.replace("/api/admin/", "");
+    if (pathname === "validation-draft") return route.fulfill({ json: { id: "draft", revision: 1,
+      displayName: "Agency rules", catalogReleaseId: "catalog", rules } });
+    if (pathname === "validation-versions" || pathname === "form-versions" || pathname === "catalog-versions") return route.fulfill({ json: [] });
+    if (pathname === "catalog-versions/catalog") return route.fulfill({ json: { id: "catalog", definition: {
+      elements: [{ elementId: "ePatient.02", label: "Last Name", baseDatatype: "string",
+        storageSemantics: { groupPath: ["PatientCareReportGroup", "ePatient.PatientNameGroup"] }, constraints: { minOccurs: 0, maxOccurs: 1 } }], codeLists: [],
+    } } });
+    if (pathname === "validation-rules") {
+      const validity = url.searchParams.get("validity") ?? "";
+      requestedFilters.push(validity);
+      const selected = subsets[validity] ? rules.filter(({ id }) => subsets[validity]!.includes(id)) : rules;
+      return route.fulfill({ json: { items: selected.map(rule => ({ rule, source: "agency", validity: rule.id === "complete" ? "valid" : "warning",
+        diagnostics: rule.id === "english" ? [{ severity: "warning", code: "similar-rule", message: "Similar rule already exists." }] : [] })),
+        total: selected.length, nextCursor: null } });
+    }
+    return route.fulfill({ status: 404, body: pathname });
+  });
+  await page.goto("/__validation-harness");
+  const rows = page.locator(".validation-rule-table tbody tr");
+  await expect(rows).toHaveCount(4);
+  await expect(rows.filter({ hasText: "Complete rule" }).locator("td").last()).toHaveText("Valid");
+  for (const name of ["English warning", "Swedish warning", "Both warnings"]) {
+    await expect(rows.filter({ hasText: name }).locator("td").last()).toHaveText("Warning");
+  }
+  await expect(rows.locator(".field-help-trigger")).toHaveCount(0);
+  const englishStatus = rows.filter({ hasText: "English warning" }).locator(".validation-library-status");
+  await englishStatus.hover();
+  await expect(page.getByRole("tooltip")).toContainText("Message (en): Missing English text");
+  await expect(page.getByRole("tooltip")).toContainText("Similar rule already exists.");
+  await englishStatus.focus();
+  await expect(englishStatus).toHaveAccessibleDescription(/Similar rule already exists/);
+  await expect(page.locator(".validation-rule-editor").getByLabel("Name (en)")).toHaveValue("Complete rule");
+  await englishStatus.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await englishStatus.blur();
+  const swedishStatus = rows.filter({ hasText: "Swedish warning" }).locator(".validation-library-status");
+  await swedishStatus.click();
+  await expect(page.getByRole("tooltip")).toContainText("Name (sv): Missing Swedish text");
+  await expect(page.getByRole("tooltip")).toContainText("Message (sv): Missing Swedish text");
+  await swedishStatus.press("Escape");
+  await expect(page.getByLabel("Show wording issues", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Translation diagnostics" })).toHaveCount(0);
+  const validity = page.getByRole("search").getByRole("combobox", { name: "Validity", exact: true });
+  await validity.selectOption("missing-english");
+  await expect(rows).toHaveCount(2);
+  await expect(rows).toContainText(["English warning", "Both warnings"]);
+  await validity.selectOption("missing-swedish");
+  await expect(rows).toHaveCount(2);
+  await expect(rows).toContainText(["Swedish warning", "Both warnings"]);
+  await validity.selectOption("wording");
+  await expect(rows).toHaveCount(3);
+  expect(requestedFilters).toEqual(["", "missing-english", "missing-swedish", "wording"]);
+  await validity.selectOption("warning");
+  await expect(rows).toHaveCount(3);
+  expect(requestedFilters.at(-1)).toBe("warning");
+  await rows.filter({ hasText: "Swedish warning" }).getByRole("rowheader").click();
+  const editor = page.locator(".validation-rule-editor");
+  await editor.getByLabel("Wording language").selectOption("sv");
+  await expect(editor.getByLabel("Message (sv)")).toHaveValue("");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("wording-validity.png"), fullPage: true });
+  await validity.selectOption("");
+  await expect(rows).toHaveCount(4);
+  await expect(editor.getByLabel("Wording language")).toHaveValue("sv");
 });

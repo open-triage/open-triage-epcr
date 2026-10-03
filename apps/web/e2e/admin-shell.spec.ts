@@ -117,6 +117,7 @@ test("admin drafts retain edits and filters across tabs and validation deletion 
   await expect(editor.getByRole("list", { name: "assessment form elements" })).toBeVisible();
   await editor.getByLabel("Go to section").selectOption("patient");
   await editor.getByRole("button", { name: "Reorder ePatient.02", exact: true }).dragTo(editor.getByRole("list", { name: "patient form elements" }).locator(":scope > li").last());
+  await editor.getByRole("group", { name: "Actions for patient", exact: true }).getByRole("button", { name: "Add elements", exact: true }).click();
   await editor.getByLabel("Find by identifier, name, or description").fill("patient name");
   await expect.poll(() => catalogSearches).toBe(1);
   const initialFormLoads = formLoads;
@@ -797,9 +798,9 @@ test("owner edits and previews the unsaved form through Stationary without creat
   const preview = await popupPromise;
 
   await expect(preview.getByRole("heading", { name: "Draft form" })).toBeVisible({ timeout: 30_000 });
-  await expect(preview.getByRole("navigation", { name: "Stationary record sections" }).getByText("Patient preview", { exact: true })).toBeVisible();
+  await expect(preview.locator(".stationary-section-selector select")).toContainText("Patient preview");
   await expect(preview.locator('[data-element-id="ePatient.02"]').first()).toBeVisible();
-  await preview.getByRole("navigation", { name: "Stationary record sections" }).getByText("Care given", { exact: true }).click();
+  await preview.locator(".stationary-section-selector select").selectOption({ label: "Care given" });
   await expect(preview.locator('[data-element-id="ePatient.01"]').first()).toBeVisible();
   await preview.locator('[data-element-id="ePatient.02"] input').first().fill("Preview surname");
   await preview.getByRole("button", { name: "Return to form draft" }).click();
@@ -847,7 +848,7 @@ test("Swedish agency administration keeps authored names and role permissions", 
   } }));
   await page.route("**/api/admin/users/role-options", (route) => route.fulfill({ json: { items: [] } }));
   await signInAsCombinedOwner(page, ["admin-dashboard:read", "users:read"]);
-  await page.getByRole("group", { name: "Dokumentationsvy" }).getByRole("button", { name: "Administration" }).click();
+  await page.getByRole("group", { name: "Dokumentationsvy" }).getByRole("button", { name: "Admin" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "sv");
   await expect(page.getByRole("heading", { name: "Aktiv konfiguration" })).toBeVisible();
   await expect(page.getByText("Agency Catalog", { exact: true })).toBeVisible();

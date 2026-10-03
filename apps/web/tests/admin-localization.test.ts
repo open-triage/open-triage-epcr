@@ -37,6 +37,9 @@ test("validation filters and translation diagnostics expose Swedish controls", (
   const validation = render("sv", createElement(ValidationRuleFilterControls, { value: filters, onChange: () => {} }));
   assert.match(validation, /aria-label="Filtrera valideringsregler"/);
   assert.match(validation, /Alla allvarlighetsgrader/);
+  assert.match(validation, /value="wording">Textproblem/);
+  assert.match(validation, /value="missing-english">Saknar engelska/);
+  assert.match(validation, /value="missing-swedish">Saknar svenska/);
   const issues = render("sv", createElement(TranslationIssueSummary, {
     issues: [{ id: "ePatient.01", field: "label", kind: "agency", message: "Missing Swedish text" }],
     filter: "all", onFilter: () => {}, onNavigate: () => {}

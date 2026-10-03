@@ -1,6 +1,13 @@
 "use client";
 
-import { synchronizeCanonicalFiles } from "../app/admin-context";
+import { listAccessRemoved } from "../app/list-refresh";
+
+import { AuthoringDraftToolbar } from "./authoring-draft-toolbar";
+
+import { useUnsavedChanges } from "./unsaved-changes";
+
+import { DefinitionFileImport } from "./definition-file-import";
+import { importCanonicalDefinitionFile } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
@@ -89,7 +96,9 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   const [pendingRemoval, setPendingRemoval] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FormCatalogElement[]>([]);
-  const [targetSection, setTargetSection] = useState("");
+  const [resultsQuery, setResultsQuery] = useState("");
+  const [resultsError, setResultsError] = useState(false);
+  const [resultsRefresh, setResultsRefresh] = useState(0);
   const [publicationNote, setPublicationNote] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [activationNote, setActivationNote] = useState("");
@@ -99,8 +108,10 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     formId: string; validationId: string; note: string; rules: ReadonlyArray<{ id: string; name: string }>;
     published?: PublishedStationaryForm;
   } | null>(null);
+  const removalTrigger = useRef<HTMLElement | null>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const draftId = draft?.id;
+  useUnsavedChanges(dirty || !!publicationNote || !!newDisplayName || !!activationNote);
 
   useEffect(() => {
     if (loaded) return;
@@ -113,20 +124,12 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   useEffect(() => {
     if (!active) return;
     let current = true;
-    (async () => {
-      if (canPublish) {
-        try {
-          const result = await synchronizeCanonicalFiles(csrfToken, "form");
-          if (current && result.errors.length) setError(result.errors.join("\n"));
-        } catch (reason) { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); }
-      }
-      return loadStationaryFormVersions();
-    })().then((items) => { if (current) {
+    loadStationaryFormVersions().then((items) => { if (current) {
       setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); });
     return () => { current = false; };
-  }, [active, adminError, canPublish, csrfToken]);
+  }, [active, adminError]);
   useEffect(() => {
     if (!active || !capabilities.includes("catalog:read")) return;
     let current = true;
@@ -142,12 +145,6 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     return () => { current = false; };
   }, [active, adminError]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
 
   useEffect(() => { if (pendingRemoval !== null) confirmationRef.current?.focus(); }, [pendingRemoval]);
 
@@ -156,11 +153,14 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     let current = true;
     const timeout = window.setTimeout(() => {
       searchFormCatalog(draftId, query).then((page) => { if (current) {
-        setResults(page.items);
-      } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); });
+        setResults(page.items); setResultsQuery(query); setResultsError(false);
+      } }).catch((reason: unknown) => { if (current) {
+        if (listAccessRemoved(reason)) setResults([]);
+        setResultsError(true);
+      } });
     }, 150);
     return () => { current = false; window.clearTimeout(timeout); };
-  }, [draftId, query, adminError]);
+  }, [draftId, query, resultsRefresh]);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
@@ -170,10 +170,10 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     setDraft((current) => current ? { ...current, definition: next } : current);
     setDirty(true); setStatus(`Unsaved changes. ${announcement}`); setError(""); setPendingRemoval(null);
   }
-  function add(element: FormCatalogElement) {
+  function add(sectionKey: string, element: FormCatalogElement) {
     if (!draft) return;
     try {
-      change(addFormElement(draft.definition, targetSection || draft.definition.sections[0]?.key || "", element),
+      change(addFormElement(draft.definition, sectionKey, element),
         `Added ${element.elementId}.`);
     } catch (reason) { setError(adminError(reason, "admin.stationaryFormOperation")); }
   }
@@ -226,6 +226,15 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       const cloned = await cloneStationaryFormDraft(csrfToken, targetCatalogId, newDisplayName, selectedVersionId);
       setPublished(null); setActivated(false); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.stationaryFormDraftCreated"));
     })}>
+    {canPublish && <DefinitionFileImport kind="form" busy={busy} hasDraft={Boolean(draft && !published)}
+      onImport={(file) => action(async () => {
+        const imported = await importCanonicalDefinitionFile(csrfToken, "form", file, targetCatalogId || undefined);
+        setStatus(t("admin.definitionImported"));
+        try {
+          setVersions(await loadStationaryFormVersions()); setSelectedVersionId(imported.id);
+        } catch { setError(t("admin.definitionImportedRefreshFailed")); }
+        setSelectedTargetCatalogId(""); setActivationReview(null);
+      })} />}
     {canWrite && !draft && catalogVersions.length > 0 && <div className="authoring-version-row">
       <label htmlFor="form-target-catalog">{language === "sv" ? "Målkatalog" : "Target catalog"}</label>
       <select id="form-target-catalog" value={targetCatalogId} onChange={(event) => setSelectedTargetCatalogId(event.target.value)}>
@@ -273,13 +282,8 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   return <div className="form-editor">
     {versionWorkspace}
     {activationConfirmation}
-    <div className="form-actions form-editor-toolbar" role="group" aria-label={t("admin.formDraftActions")}>
-      <span role="status">{busy ? t("admin.working") : dirty ? t("admin.unsavedChanges") : t("admin.allChangesSaved")}</span>
-      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
-        if (openStationaryFormPreview(draft)) setStatus(t("admin.openedStationaryForm"));
-        else setError(t("admin.previewWindowBlocked"));
-      }}><AdminText messageKey="admin.previewStationaryForm" /></button>
-      {canWrite && <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
+    <AuthoringDraftToolbar label={t("admin.formDraftActions")} busy={busy} dirty={dirty}>
+      {canWrite && <button className="button-primary" type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
         const saved = await saveStationaryFormDraft(csrfToken, draft);
         setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);
       })}><AdminText messageKey="admin.saveFormDraft" /></button>}
@@ -290,7 +294,11 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
           setDraft(null); setDirty(false); setStatus(t("admin.stationaryFormDraftDeleted"));
         });
       }}><AdminText messageKey="admin.deleteFormDraft" /></button>}
-    </div>
+      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
+        if (openStationaryFormPreview(draft)) setStatus(t("admin.openedStationaryForm"));
+        else setError(t("admin.previewWindowBlocked"));
+      }}><AdminText messageKey="admin.previewStationaryForm" /></button>
+    </AuthoringDraftToolbar>
     <p>{t("admin.draftRevisionRevision", { revision: draft.revision })} {canWrite
       ? t("admin.publishedFormsRemain")
       : t("admin.formReadOnlyAccess")}</p>
@@ -298,17 +306,18 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       <strong><AdminText messageKey="admin.resolveClonedCatalog" /></strong>
       <ul>{draft.diagnostics.map((finding) => <li key={`${finding.code}:${finding.path}`}>{finding.message} ({finding.path})</li>)}</ul>
     </div>}
-    {canWrite && <fieldset className="form-picker-container" disabled={busy}><FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
-      catalogGroups={draft.catalogGroups} language={language}
-      onQueryChange={(value) => { setQuery(value); setResults([]); }}
-      onSectionChange={setTargetSection} onAdd={add} /></fieldset>}
     <FormSectionElements definition={draft.definition} catalogFields={draft.catalogFields} customFields={draft.customFields} catalogGroups={draft.catalogGroups}
       newChoicesByField={draft.adoption?.newChoicesByField} language={language}
       busy={busy} readOnly={!canWrite} onChange={change}
       {...(canWrite ? {
+        renderElementPicker: (sectionKey: string) => <>
+          {(resultsError || (results.length > 0 && query !== resultsQuery)) && <p role={resultsError ? "alert" : "status"}>{t(resultsError ? "list.optionsUnavailable" : "list.refreshRetained")}</p>}
+          {resultsError && <button type="button" onClick={() => setResultsRefresh((value) => value + 1)}>{t("list.retry")}</button>}
+          <FormElementPicker definition={draft.definition} results={results} query={query} busy={busy}
+          onQueryChange={setQuery} onAdd={(element) => add(sectionKey, element)} /></>,
         onMoveSection: (from: number, to: number) => change(moveFormSection(draft.definition, from, to),
           `Moved ${draft.definition.sections[from]!.key} ${to < from ? "up" : "down"}.`),
-        onRequestRemoveSection: setPendingRemoval
+        onRequestRemoveSection: (index: number) => { removalTrigger.current = document.activeElement as HTMLElement; setPendingRemoval(index); }
       } : {})} />
     {canWrite && pendingRemoval !== null && draft.definition.sections[pendingRemoval] && <div className="form-remove-confirmation"
       role="alertdialog" aria-modal="false" aria-labelledby="remove-section-heading"
@@ -321,9 +330,10 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         const section = draft.definition.sections[index]!; const affected = affectedFieldNames(section);
         change(removeFormSection(draft.definition, index),
           `Removed ${section.key} and ${affected.length} affected ${affected.length === 1 ? "field" : "fields"}.`);
+        requestAnimationFrame(() => document.getElementById("form-section-navigation")?.focus());
       }}><AdminText messageKey="admin.confirmRemoval" /></button><button type="button" onClick={() => {
         const section = pendingRemoval === null ? undefined : draft.definition.sections[pendingRemoval];
-        setPendingRemoval(null); setStatus(section ? `Kept ${section.key}.` : t("admin.removalCanceled"));
+        setPendingRemoval(null); requestAnimationFrame(() => removalTrigger.current?.focus({ preventScroll: true })); setStatus(section ? `Kept ${section.key}.` : t("admin.removalCanceled"));
       }}><AdminText messageKey="admin.keepSection" /></button></div>
     </div>}
     <section className="form-publication-review" aria-labelledby="form-publication-heading">
@@ -340,7 +350,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
             if (!draft.displayName?.trim()) throw new Error(t("admin.enterAForm"));
             if (!publicationNote.trim()) throw new Error(t("admin.enterAPublication"));
             const result = await publishStationaryFormDraft(csrfToken, draft, draft.displayName, publicationNote);
-            setPublished(result); setSelectedVersionId(result.id);
+            setPublished(result); setPublicationNote(""); setNewDisplayName(""); setSelectedVersionId(result.id);
             setVersions(await loadStationaryFormVersions());
             setStatus(t("admin.stationaryFormPublished"));
           })} />

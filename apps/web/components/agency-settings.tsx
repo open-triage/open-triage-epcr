@@ -1,5 +1,6 @@
 "use client";
 
+import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
@@ -44,6 +45,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (settings) return;
     let current = true;
     loadAgencyMediaSettings().then((loaded) => {
       if (!current) return;
@@ -55,7 +57,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
       if (current) setError(language !== "en" ? t("settings.loadFailed") : reason instanceof Error ? reason.message : t("settings.loadFailed"));
     });
     return () => { current = false; };
-  }, [language, t]);
+  }, [language, t, settings]);
 
   useEffect(() => {
     if (draft) applyAgencyColors(draft.appearance, document);
@@ -74,6 +76,9 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
     /^[0-9]{2}$/.test(draft.demographics.stateCode);
   const unchanged = !!settings && !!draft && JSON.stringify({ ...draft, expectedRevision: settings.revision,
     reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes }) === JSON.stringify(editable(settings));
+
+  useUnsavedChanges(!!draft && !unchanged);
+  useEffect(() => () => { if (settings) applyAgencyColors(settings.appearance, document); }, [settings]);
 
   function changeAppearance<K extends keyof AgencyAppearance>(key: K, value: AgencyAppearance[K]) {
     setDraft((current) => current ? { ...current, appearance: { ...current.appearance, [key]: value } } : current);
@@ -184,7 +189,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
           {/* A bounded administrator-supplied data URL cannot use Next's static image optimizer. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={draft.appearance.logoPngDataUrl} alt={resolveMessage(language, "admin.agencyLogoPreview")} />
-          <button type="button" onClick={() => changeAppearance("logoPngDataUrl", null)}><AdminText messageKey="admin.removeLogo" /></button>
+          <button type="button" className="button-danger" onClick={() => changeAppearance("logoPngDataUrl", null)}><AdminText messageKey="admin.removeLogo" /></button>
         </div>}
         <div className="agency-color-grid">
           <label><AdminText messageKey="admin.accentColor" /><input type="color" value={draft.appearance.accentColor}

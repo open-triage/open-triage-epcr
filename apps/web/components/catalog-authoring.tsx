@@ -1,6 +1,11 @@
 "use client";
 
-import { synchronizeCanonicalFiles } from "../app/admin-context";
+import { AuthoringDraftToolbar } from "./authoring-draft-toolbar";
+
+import { useUnsavedChanges } from "./unsaved-changes";
+
+import { DefinitionFileImport } from "./definition-file-import";
+import { importCanonicalDefinitionFile } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
@@ -74,6 +79,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty);
   const [newGroup, setNewGroup] = useState({ namespace: CUSTOM_NAMESPACE, slug: "", title: "", swedishTitle: "", recurrence: "multiple" as CatalogDraftCustomGroup["recurrence"], correlatesTo: "" });
   const [customText, setCustomText] = useState({ namespace: CUSTOM_NAMESPACE, slug: "", title: "", definition: "",
     swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
@@ -124,21 +130,13 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
   useEffect(() => {
     if (!active) return;
     let current = true;
-    (async () => {
-      if (canPublish) {
-        try {
-          const result = await synchronizeCanonicalFiles(csrfToken, "catalog");
-          if (current && result.errors.length) setError(result.errors.join("\n"));
-        } catch (reason) { if (current) showError(reason); }
-      }
-      return loadCatalogVersions();
-    })().then((items) => { if (current) {
+    loadCatalogVersions().then((items) => { if (current) {
       setVersions(items);
       setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) showError(reason); });
     return () => { current = false; };
-  }, [active, showError, canPublish, csrfToken]);
+  }, [active, showError]);
   useEffect(() => {
     if (!loaded || !selectedVersionId || hasAuthoringDraft || draft?.id === selectedVersionId) return;
     let current = true;
@@ -415,6 +413,14 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       const cloned = await cloneCatalogDraft(csrfToken, newDisplayName, selectedVersionId);
       setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.catalogDraftCreated"));
     })}>
+    {canPublish && <DefinitionFileImport kind="catalog" busy={busy} hasDraft={hasAuthoringDraft}
+      onImport={(file) => action(async () => {
+        const imported = await importCanonicalDefinitionFile(csrfToken, "catalog", file, selectedVersionId || undefined);
+        setStatus(t("admin.definitionImported"));
+        try {
+          setVersions(await loadCatalogVersions()); setSelectedVersionId(imported.id);
+        } catch { setError(t("admin.definitionImportedRefreshFailed")); }
+      })} />}
       <p role="note"><AdminText messageKey="admin.publishedCatalogActivatedWithForm" /></p>
     </AuthoringVersionWorkspace>;
 
@@ -432,6 +438,25 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
 
   return <div className="catalog-editor">
     {versionWorkspace}
+    {authoringDraft && <AuthoringDraftToolbar label={t("admin.catalogDraftActions")} busy={busy} dirty={dirty}>
+      {canWrite && <button className="button-primary" type="button" disabled={busy} onClick={() => action(async () => {
+        const saved = await saveCatalogDraft(csrfToken, authoringDraft); setDraft(saved); setDirty(false); setStatus(`Saved revision ${saved.revision}.`);
+      })}><AdminText messageKey="admin.saveDraft" /></button>}
+      {canWrite && <button className="button-danger" type="button" disabled={busy} onClick={() => {
+        if (!window.confirm(t("admin.deleteCatalogDraftConfirm"))) return;
+        void action(async () => {
+          await deleteCatalogDraft(csrfToken, authoringDraft);
+          const [activeCatalog, items] = await Promise.all([loadActiveCatalogDefinition(), loadCatalogVersions()]);
+          setDraft(activeCatalog); setVersions(items); setDirty(false); setNote("");
+          setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
+          setStatus(t("admin.catalogDraftDeleted"));
+        });
+      }}><AdminText messageKey="admin.deleteCatalogDraft" /></button>}
+      {authoringDraft && <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
+        const result = await validateCatalogDraft(csrfToken, authoringDraft.id);
+        setStatus(result.valid && result.projectionsVerified ? `Catalog is valid. ${result.warnings?.length ?? 0} localization warnings.` : result.findings.join("; "));
+      })}><AdminText messageKey="admin.validate" /></button>}
+    </AuthoringDraftToolbar>}
     {copySourceId?.startsWith("fixed:") && !authoringDraft && <p role="note">{language === "sv" ? "Skapa ett katalogutkast för att slutföra kopian." : "Create a catalog draft to finish copying this NEMSIS element."}</p>}
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
       : canWrite ? `${draft.status === "active" ? t("admin.active") : t("admin.published")} Catalog ${draft.displayName}, version ${draft.version}. Create a draft to edit it.`
@@ -748,23 +773,6 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       </fieldset>}
     </section>}
     <div className="catalog-actions">
-      {canEdit && authoringDraft && <button type="button" disabled={busy} onClick={() => action(async () => {
-        const saved = await saveCatalogDraft(csrfToken, authoringDraft); setDraft(saved); setDirty(false); setStatus(`Saved revision ${saved.revision}.`);
-      })}><AdminText messageKey="admin.saveDraft" /></button>}
-      {canEdit && authoringDraft && <button className="button-danger" type="button" disabled={busy} onClick={() => {
-        if (!window.confirm(t("admin.deleteCatalogDraftConfirm"))) return;
-        void action(async () => {
-          await deleteCatalogDraft(csrfToken, authoringDraft);
-          const [activeCatalog, items] = await Promise.all([loadActiveCatalogDefinition(), loadCatalogVersions()]);
-          setDraft(activeCatalog); setVersions(items); setDirty(false); setNote("");
-          setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
-          setStatus(t("admin.catalogDraftDeleted"));
-        });
-      }}><AdminText messageKey="admin.deleteCatalogDraft" /></button>}
-      {authoringDraft && <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
-        const result = await validateCatalogDraft(csrfToken, authoringDraft.id);
-        setStatus(result.valid && result.projectionsVerified ? `Catalog is valid. ${result.warnings?.length ?? 0} localization warnings.` : result.findings.join("; "));
-      })}><AdminText messageKey="admin.validate" /></button>}
       <label htmlFor="catalog-display-name"><AdminText messageKey="admin.catalogVersionDisplay" /></label>
       <input id="catalog-display-name" disabled={!canEdit} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus(t("admin.unsavedChanges")); }} />

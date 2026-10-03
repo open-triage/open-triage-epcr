@@ -201,21 +201,14 @@ export const cancelOwnershipTransfer = (csrfToken: string, command: CancelOwners
   catalogRequest<OwnershipTransferState>("ownership-transfer", csrfToken,
     { method: "DELETE", body: JSON.stringify(command) });
 
-export type CanonicalFile = { file: string; package?: { name?: string; version?: string; sha256?: string }; error?: string; compatible: boolean; installed?: boolean };
+export type CanonicalFile = { file: string; package?: { name?: string; version?: string; sha256?: string }; error?: string; compatible: boolean };
 export const loadCanonicalFiles = (kind: string) => catalogRequest<CanonicalFile[]>(`canonical/${kind}`);
 export const importCanonicalFile = (csrfToken: string, kind: string, content: unknown) =>
   catalogRequest<{ id: string }>(`canonical/${kind}/import`, csrfToken, { method: "POST", body: JSON.stringify(content) });
 export const exportCanonicalFile = (csrfToken: string, kind: string, id: string) =>
   catalogRequest<unknown>(`canonical/${kind}/${id}/export`, csrfToken, { method: "POST" });
 
-// One in-flight synchronization per editor prevents duplicate imports in React Strict Mode.
-const canonicalSynchronizations = new Map<string, Promise<{ errors: string[] }>>();
-export function synchronizeCanonicalFiles(csrfToken: string, kind: string) {
-  const key = `${kind}:${csrfToken}`;
-  const pending = canonicalSynchronizations.get(key);
-  if (pending) return pending;
-  const request = catalogRequest<{ errors: string[] }>(`canonical/${kind}/synchronize`, csrfToken, { method: "POST" })
-    .finally(() => canonicalSynchronizations.delete(key));
-  canonicalSynchronizations.set(key, request);
-  return request;
-}
+export const importCanonicalDefinitionFile = (csrfToken: string, kind: string, file: string, catalogReleaseId?: string) =>
+  catalogRequest<{ id: string }>(`canonical/${kind}/import-file`, csrfToken, {
+    method: "POST", body: JSON.stringify({ file, catalogReleaseId })
+  });

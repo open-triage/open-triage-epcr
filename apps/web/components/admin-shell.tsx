@@ -3,20 +3,22 @@
 import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
+import { listAccessRemoved } from "../app/list-refresh";
 import { CatalogAuthoring } from "./catalog-authoring";
 import { StationaryFormAuthoring } from "./stationary-form-authoring";
 import { ValidationAuthoring } from "./validation-authoring";
 import { RolesPanel, UsersPanel } from "./admin-directory";
 import { AgencySettingsPanel } from "./agency-settings";
+import { ReviewSettingsPanel, type ReviewSettingsSection } from "./review-settings";
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
 
-type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings";
+type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
   ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
-  ["settings", "Agency Settings"]
+  ["settings", "Agency Settings"], ["review-settings", "Review settings"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -31,33 +33,37 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session, language = "en" }: {
+export function AdminShell({ session, language = "en", online = true, reviewSettingsSection }: {
   readonly session: ClinicianSession;
   readonly language?: AgencyLanguage;
+  readonly online?: boolean;
+  readonly reviewSettingsSection?: ReviewSettingsSection;
 }) {
-  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} /></AdminLanguageContext.Provider>;
+  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} /></AdminLanguageContext.Provider>;
 }
 
-function AuthorizedAdminShell({ session, language }: {
+function AuthorizedAdminShell({ session, language, online, reviewSettingsSection }: {
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
+  readonly online: boolean;
+  readonly reviewSettingsSection?: ReviewSettingsSection;
 }) {
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
   const adminT = useAdminText();
   const panelKeys: Record<AdminPanel, string> = { Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
     "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
-    "Agency Settings": "navigation.settings" };
+    "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings" };
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [contextRefresh, setContextRefresh] = useState(0);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
-  const [activePanel, setActivePanel] = useState<AdminPanel | null>(null);
+  const [activePanel, setActivePanel] = useState<AdminPanel | null>(reviewSettingsSection ? "Review settings" : null);
   const [visitedPanels, setVisitedPanels] = useState<readonly AdminPanel[]>([]);
 
   useEffect(() => {
     let current = true;
     const unavailableOffline = () => {
       if (!navigator.onLine) {
-        setContext(null);
         setError(t("navigation.adminOffline"));
         return true;
       }
@@ -74,7 +80,7 @@ function AuthorizedAdminShell({ session, language }: {
         setActivePanel((selected) => selected && authorized.includes(selected) ? selected : authorized[0] ?? null);
       }).catch((reason: unknown) => {
         if (current) {
-          setContext(null);
+          if (listAccessRemoved(reason)) setContext(null);
           setError(language === "sv" ? t("navigation.adminUnavailable") :
             reason instanceof Error ? reason.message : t("navigation.adminUnavailable"));
         }
@@ -88,7 +94,7 @@ function AuthorizedAdminShell({ session, language }: {
       window.removeEventListener("offline", wentOffline);
       window.removeEventListener("online", reloadContext);
     };
-  }, [session, language, t]);
+  }, [session, language, t, contextRefresh]);
 
   const organization = context?.organization ?? session.organization;
   const panels = context ? panelDefinition.filter(([key]) => context.panels.includes(key)).map(([, panel]) => panel) : [];
@@ -110,7 +116,8 @@ function AuthorizedAdminShell({ session, language }: {
           }}>{t(panelKeys[panel])}</button>)}
       </nav>
       <div className="admin-panel" aria-live="polite">
-    {error && <p className="admin-error" role="alert">{error}</p>}
+    {error && <><p className="admin-error" role="alert">{error}{context && ` ${t("list.refreshRetained")}`}</p>
+      <button type="button" onClick={() => setContextRefresh((value) => value + 1)}>{t("list.retry")}</button></>}
     {!context && !error && <LoadingStatus className="admin-loading">{t("navigation.loadingConfiguration")}</LoadingStatus>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
@@ -181,6 +188,10 @@ function AuthorizedAdminShell({ session, language }: {
     {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""}
       canWrite={context.capabilities.includes("settings:write")} /></div>}
+
+    {context && mounted("Review settings") && <div hidden={activePanel !== "Review settings"}><ReviewSettingsPanel
+      session={session} language={language} online={online} active={activePanel === "Review settings"}
+      section={reviewSettingsSection} /></div>}
 
       </div>
     </div>
