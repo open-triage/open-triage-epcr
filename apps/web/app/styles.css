@@ -509,7 +509,7 @@ fieldset { min-inline-size: 0; }
 .form-publication-review label, .form-publication label { font-size: var(--text-caption); font-weight: 800; }
 .form-publication-review textarea, .form-publication textarea { width: 100%; min-height: 88px; padding: 10px 12px; border: 1px solid #87928a; border-radius: 5px; font: inherit; font-size: var(--text-control); resize: vertical; }
 .form-publication-review small, .form-publication small { color: var(--muted); }
-.form-publication-review button, .form-publication button { justify-self: start; min-width: 210px; }
+.form-publication-review button, .form-publication button { justify-self: start; min-width: min(210px, 100%); max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .form-activation-status { padding: 10px 12px; border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; }
 @media (max-width: 900px) { .code-list-values li { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 640px) {
