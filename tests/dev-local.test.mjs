@@ -159,7 +159,10 @@ test("failed API process stops the web process and its watcher descendants", { s
     const { readFile } = await import("node:fs/promises");
     const status = await readFile(`/proc/${descendant}/stat`, "utf8");
     assert.match(status, /\) Z /);
-  } catch (error) { if (error.code !== "ENOENT") throw error; }
+  } catch (error) {
+    // Linux can reap the process after opening stat but before reading it.
+    if (!["ENOENT", "ESRCH"].includes(error.code)) throw error;
+  }
 });
 
 test("failed process spawning exits promptly instead of hanging cleanup", async () => {
