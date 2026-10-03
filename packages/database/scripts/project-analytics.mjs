@@ -23,6 +23,7 @@ const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
 const analyticsMappingByRelease = new Map();
 const repeatingGroupTimeMappingByRelease = new Map();
+const customDefinitionsByRelease = new Map();
 
 function parseArguments(args) {
   const options = { mode: "queue" };
@@ -151,6 +152,19 @@ async function repeatingGroupTimeMappings(releaseId, organizationId, groups) {
     [organizationId]
   )).rows;
   return [...standardMappings, ...customMappings];
+}
+
+async function pinnedCustomDefinitions(releaseId) {
+  if (customDefinitionsByRelease.has(releaseId)) return customDefinitionsByRelease.get(releaseId);
+  const result = await client.query(
+    "select provenance->'customElementDefinitions' as definitions from catalog.release where id=$1",
+    [releaseId]
+  );
+  const definitions = new Map((Array.isArray(result.rows[0]?.definitions)
+    ? result.rows[0].definitions : []).map((definition) => [definition.id, definition]));
+  // Signed reports pin sealed releases, so custom definitions are immutable too.
+  customDefinitionsByRelease.set(releaseId, definitions);
+  return definitions;
 }
 
 function valuePayload(row) {
@@ -332,18 +346,20 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        fv.id as form_version_id,
        fv.version as form_version,
        cr.version as catalog_version,
-       cr.provenance->'customElementDefinitions' as pinned_custom_definitions,
        ss.id as signed_snapshot_id,
        ss.canonical_sha256 as signed_snapshot_sha256,
        ss.signed_at,
-       coalesce(max(a.sequence), 0)::integer as amendment_count,
-       max(a.signed_at) as last_amended_at
+       coalesce(amendment_summary.amendment_count, 0)::integer as amendment_count,
+       amendment_summary.last_amended_at
      from clinical.report r
      join clinical.patient p on p.id = r.patient_id
      join forms.form_version fv on fv.id = r.form_version_id
      join catalog.release cr on cr.id = r.catalog_release_id
      join clinical.signed_snapshot ss on ss.report_id = r.id
-     left join clinical.amendment a on a.report_id = r.id
+     left join lateral (
+       select max(a.sequence) as amendment_count, max(a.signed_at) as last_amended_at
+       from clinical.amendment a where a.report_id = r.id
+     ) amendment_summary on true
      left join lateral (
        select correction.reporting_date, correction.reporting_date_source
        from clinical.amendment correction
@@ -351,15 +367,13 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        order by correction.sequence desc
        limit 1
      ) date_correction on true
-     where r.id = $1 and r.status = 'signed'
-     group by r.id, p.pseudonymous_key, p.pseudonymous_key_version, fv.id, cr.version, cr.provenance, ss.id,
-       date_correction.reporting_date, date_correction.reporting_date_source`,
+     where r.id = $1 and r.status = 'signed'`,
     [reportId]
   );
   if (reportResult.rowCount === 0) throw new Error(`Signed report ${reportId} was not found`);
   const report = reportResult.rows[0];
 
-  const [elementResult, groupResult, mappingByElement, amendmentResult] = await Promise.all([
+  const [elementResult, groupResult, mappingByElement, amendmentResult, customDefinitions] = await Promise.all([
     client.query(
       `select * from clinical.element_occurrence
        where report_id = $1 and tombstoned_at is null
@@ -379,7 +393,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        where a.report_id = $1
        order by a.sequence, ac.id`,
       [reportId]
-    )
+    ),
+    pinnedCustomDefinitions(report.catalog_release_id)
   ]);
   const timeMappings = await repeatingGroupTimeMappings(
     report.catalog_release_id,
@@ -405,8 +420,6 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   }
 
   const elements = [...elementsById.values()];
-  const customDefinitions = new Map((Array.isArray(report.pinned_custom_definitions)
-    ? report.pinned_custom_definitions : []).map((definition) => [definition.id, definition]));
   const quality = evaluateQualityAndNormalization(elements.map((element) => ({
     id: element.id,
     elementId: element.element_id,
