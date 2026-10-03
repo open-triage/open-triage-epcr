@@ -22,7 +22,8 @@ function digest(value: unknown): string {
 /** Hash the exact occurrence membership and states read by a criterion, without storing values. */
 export function reviewInputLineage(document: EncounterDocument, rule: CompiledValidationRule,
   identifying: ReadonlySet<string>): ReviewInputLine[] {
-  const referenced = new Set([rule.primaryTarget.elementId, ...rule.references.elementIds]);
+  const referencedGroups = new Set(rule.references.groupIds ?? []);
+  const referenced = new Set([...(referencedGroups.size ? [] : [rule.primaryTarget.elementId]), ...rule.references.elementIds]);
   const allElements = referenced.has("*");
   const instances = document.groups.flatMap((group) => group.instances.map((instance) =>
     ({ groupId: group.id, instance })));
@@ -40,7 +41,7 @@ export function reviewInputLineage(document: EncounterDocument, rule: CompiledVa
   const lines: ReviewInputLine[] = [];
   for (const { groupId, instance } of instances) {
     if (!included.has(instance.instanceId)) continue;
-    if (rule.scope && groupId === rule.scope.groupId) lines.push({
+    if ((rule.scope && groupId === rule.scope.groupId) || referencedGroups.has(groupId)) lines.push({
       key: `group:${instance.instanceId}`, elementId: null, groupInstanceId: instance.instanceId,
       occurrenceId: null, digest: digest({ groupId, parentInstanceId: instance.parentInstanceId }), identifying: false,
     });

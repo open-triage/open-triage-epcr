@@ -164,8 +164,9 @@ Compile published validation definitions into deterministic, immutable rule bund
 
 - A rule has immutable identity plus editable name, enabled state, severity, execution targets, primary target element, message, and domain-language source.
 - Rule removal is archival or disablement, not physical deletion.
-- Rule logic supports an optional repeating scope, an optional applicability condition, and one required assertion.
-- A missing applicability condition means the rule always applies.
+- Rule logic supports an optional group scope (singleton or repeating), an optional applicability condition, and one required assertion.
+- A missing applicability condition means the rule applies to every existing scope instance, or to the whole report for an unscoped rule. A missing group or zero group instances skips a scoped rule; an existing empty instance is evaluated.
+- `minimumGroups("<group ID>", n)` and `maximumGroups("<group ID>", n)` count group instances directly, including empty instances. Unscoped rules count across the report; scoped rules count the current instance and its descendants. A group container with no instances counts as zero. Use an unscoped `require minimumGroups("eVitals.VitalGroup", 1)` to require a vitals set even when the group is absent. Group references must exist in the bound Catalog, and counts must be non-negative safe integers. The primary element target locates the finding and does not supply the group count.
 - Each failure produces one finding for the relevant scope occurrence and primary target.
 - Minimum and maximum policies are separate rules.
 - Imported NEMSIS warnings and errors map to the corresponding product severities. Agency rules may also use informational severity.

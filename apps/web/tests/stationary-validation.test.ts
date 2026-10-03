@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { compileValidationRule, compiledValidationBundleSha256, NEMSIS_351_EMS_MESSAGE_REPAIRS, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
-import { displayValidationRuleMessage, validateStationaryRecord } from "../app/stationary-validation";
+import { actionableStationaryFindings, displayValidationRuleMessage, validateStationaryRecord } from "../app/stationary-validation";
 
 const evaluationTimestamp = "2026-01-01T00:00:00.000Z";
 import { syntheticEncounter } from "../app/standard-encounter";
-import { stationaryDialogFindings } from "../components/stationary-repeating-groups";
+import { RepeatingGroupTable, stationaryDialogFindings, stationaryGroupValidationFindings } from "../components/stationary-repeating-groups";
+import { configuredRepeatingGroups, ensureNestedSingleGroupOccurrence, repeatingDialogPath } from "../app/stationary-repeating-group";
 
 test("report validation does not require fields from agency demographics", () => {
   const document = { ...syntheticEncounter.document, groups: [
@@ -121,6 +124,68 @@ test("complete-record validation associates required findings with stable naviga
   assert.equal(patient.target.fieldId, "ePatient.07");
   assert.equal(patient.severity, "error");
   assert.match(patient.id, /^validation:/);
+});
+
+test("stationary validation skips absent groups in older pinned generated requirements", () => {
+  const rules = [
+    { elementId: "eVitals.06", groupId: "eVitals.VitalGroup", label: "SBP (Systolic Blood Pressure)" },
+    { elementId: "eMedications.05", groupId: "eMedications.MedicationGroup", label: "Medication Dosage" },
+  ].map(({ elementId, groupId, label }) => ({ groupId, rule: compileValidationRule({
+    id: elementId, name: `${label} documented minimum`, enabled: true, severity: "error", sourceKind: "catalog",
+    executionTargets: ["live", "sign"], primaryTargetElementId: elementId,
+    message: `${label} requires at least 1 documented occurrence(s)`, source: `require minimum("${elementId}", 1)`,
+  }, "legacy", new Set([elementId])).compiled! }));
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "legacy",
+    catalogReleaseId: "catalog", rules: rules.map(({ rule }) => rule) };
+  const hash = compiledValidationBundleSha256(bundle);
+  const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "care", fields: rules.map(({ rule }) => ({
+    key: rule.ruleId, source: { kind: "nemsis" as const, elementId: rule.primaryTarget.elementId },
+  })) }] }, catalogFields: {}, validation: { versionId: "legacy", compiledSha256: hash, bundle } };
+  const empty = { ...syntheticEncounter.document, groups: [] };
+  assert.deepEqual(validateStationaryRecord(empty, form, evaluationTimestamp), []);
+  const documented = { ...empty, groups: rules.map(({ groupId }) => ({ id: groupId,
+    instances: [{ instanceId: groupId, elements: [] }] })) };
+  assert.deepEqual(validateStationaryRecord(documented, form, evaluationTimestamp).map(({ target }) => target.groupInstanceId),
+    rules.map(({ groupId }) => groupId));
+  assert.equal(compiledValidationBundleSha256(bundle), hash);
+});
+
+test("a medication row requires dosage before its mandatory child exists and routes the error to that row", () => {
+  const elementId = "eMedications.05";
+  for (const prefix of ['', 'for each("eMedications.DosageGroup")\n', 'for each("eMedications.MedicationGroup")\n']) {
+    const compiled = compileValidationRule({ id: "dosage", name: "Medication Dosage documented minimum", enabled: true,
+      severity: "error", sourceKind: "catalog", executionTargets: ["live", "sign"], primaryTargetElementId: elementId,
+      message: "Medication Dosage requires at least 1 documented occurrence(s)", source: `${prefix}require minimum("${elementId}", 1)`,
+    }, "dosage", new Set([elementId])).compiled!;
+    const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "dosage",
+      catalogReleaseId: "catalog", rules: [compiled] };
+    const form = { definition: { schemaVersion: 1 as const, sections: [{ key: "medications", fields: [
+      { key: elementId, source: { kind: "nemsis" as const, elementId } },
+    ] }] }, catalogFields: {}, validation: { versionId: "dosage", compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+    const document = { ...syntheticEncounter.document, groups: [{ id: "eMedications.MedicationGroup", instances: [
+      { instanceId: "med-one", elements: [] }, { instanceId: "med-two", elements: [] },
+    ] }] };
+    const findings = actionableStationaryFindings(validateStationaryRecord(document, form, evaluationTimestamp));
+    assert.deepEqual(findings.map(({ target }) => target.groupInstanceId), ["med-one", "med-two"]);
+    assert.deepEqual(repeatingDialogPath(document, "eMedications.DosageGroup", "med-one"),
+      [{ groupId: "eMedications.MedicationGroup", instanceId: "med-one" }]);
+    const prepared = ensureNestedSingleGroupOccurrence(document, "eMedications.DosageGroup", "med-one", () => "dose-one");
+    assert.equal(prepared.ok, true);
+    if (!prepared.ok) return;
+    const inline = stationaryGroupValidationFindings(prepared.document, findings, "eMedications.DosageGroup", prepared.instanceId);
+    assert.equal(inline.length, 1);
+    assert.equal(inline[0]?.target.groupInstanceId, "dose-one", "the error attaches to the detached dose control");
+    const edited = editScalarOccurrence(prepared.document, { groupId: "eMedications.DosageGroup", groupInstanceId: "dose-one",
+      elementId, input: "5" });
+    assert.equal(edited.ok, true);
+    const remaining = actionableStationaryFindings(validateStationaryRecord(edited.document, form, evaluationTimestamp));
+    assert.deepEqual(remaining.map(({ target }) => target.groupInstanceId), ["med-two"]);
+    const placement = configuredRepeatingGroups().find(({ id }) => id === "eMedications.MedicationGroup")!;
+    const html = renderToStaticMarkup(React.createElement(RepeatingGroupTable, { document: edited.document, placement,
+      findings: remaining, clinicalForm: form, onDocumentChange() {} }));
+    assert.match(html, /data-group-instance-id="med-two" class="stationary-validation-state error"/);
+    assert.doesNotMatch(html, /data-group-instance-id="med-one" class="stationary-validation-state error"/);
+  }
 });
 
 test("Populate produces a catalog-valid complete stationary record", () => {

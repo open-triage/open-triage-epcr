@@ -124,14 +124,18 @@ test("discard deletes only an organization-scoped draft at its expected revision
   await assert.rejects(service(missing).delete("session", versionId, { expectedRevision: 2 }), NotFoundException);
 });
 
-test("new drafts persist documented minimum and maximum as separate rules without changing Catalog bounds", async () => {
+test("new drafts require mandatory singleton children within their containing rows", async () => {
   let persistedRules;
   const manager = { query: async (sql, parameters = []) => {
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("from validation.version where organization_id") && !sql.includes("insert")) return [];
     if (sql.includes("select distinct cr.id")) return [{ id: "51000000-0000-4000-8000-000000000099" }];
     if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [{ element_id: "eVitals.06", name: "Systolic Blood Pressure",
-      min_occurs: 1, max_occurs: 2, group_id: "eVitals.VitalGroup", group_repeating: true }];
+      min_occurs: 1, max_occurs: 2, group_id: "eVitals.BloodPressureGroup", group_repeating: false }];
+    if (sql.includes("select group_id,repeating,parent_group_id,min_occurs")) return [
+      { group_id: "eVitals.BloodPressureGroup", repeating: false, parent_group_id: "eVitals.VitalGroup", min_occurs: 1 },
+      { group_id: "eVitals.VitalGroup", repeating: true, parent_group_id: null, min_occurs: 1 },
+    ];
     if (sql.includes("select fv.id,fv.canonical_definition")) return [];
     if (sql.includes("insert into validation.rule_identity")) return [];
     if (sql.includes("insert into validation.version")) {
@@ -160,6 +164,7 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("from validation.version where organization_id") && !sql.includes("insert")) return [];
     if (sql.includes("select distinct cr.id")) return [{ id: catalogReleaseId }];
+    if (sql.includes("select group_id,repeating,parent_group_id,min_occurs")) return [];
     if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [
       { element_id: "dAgency.01", name: "EMS Agency Unique State ID", min_occurs: 1, max_occurs: 1,
         group_id: "DemographicGroup", group_repeating: false, agency_required: true, agency_required_severity: "error" },
@@ -188,9 +193,11 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
   await service(manager).create("session", { catalogReleaseId, displayName: "Migrated policy" });
   assert.deepEqual(persistedRules.map(({ sourceKind }) => sourceKind), ["catalog", "catalog", "form", "form"]);
   assert.equal(persistedRules[0].severity, "warning");
-  assert.equal(persistedRules[2].source, 'require minimum("ePatient.02", 1)');
+  assert.equal(persistedRules[0].source, 'for each("ePatient.PatientGroup")\nrequire minimum("ePatient.01", 1)');
+  assert.equal(persistedRules[1].source, 'for each("ePatient.PatientGroup")\nrequire maximum("ePatient.02", 1)');
+  assert.equal(persistedRules[2].source, 'for each("ePatient.PatientGroup")\nrequire minimum("ePatient.02", 1)');
   assert.equal(persistedRules[3].source,
-    'when present("ePatient.01")\nrequire present("ePatient.02")');
+    'for each("ePatient.PatientGroup")\nwhen present("ePatient.01")\nrequire present("ePatient.02")');
   assert.equal(persistedRules.some(({ primaryTargetElementId }) => primaryTargetElementId === "dAgency.01"), false);
 });
 

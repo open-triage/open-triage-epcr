@@ -27,6 +27,7 @@ import {
   type ValidationRuleSourceKind,
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
+import { validationOccurrenceScope } from "@open-triage/contracts/validation-group-scope";
 import { mutationRows } from "../database/mutation-result.js";
 import { canonicalDefinitionSha256 } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -287,15 +288,18 @@ export class ValidationAuthoringService {
       if (!catalogs[0]) throw new UnprocessableEntityException("Validation drafts must bind to a published catalog available to the organization");
       const hiddenIds = new Set(catalogs[0].hidden_element_ids ?? []);
       const elements = await manager.query<Array<{ element_id: string; name: string; min_occurs: number;
-        max_occurs: number | null; group_id: string; group_repeating: boolean;
+        max_occurs: number | null; group_id: string;
         agency_required: boolean | null; agency_required_severity: "warning" | "error" | null }>>(`
         select e.element_id,e.name,e.min_occurs,e.max_occurs,e.agency_required,e.agency_required_severity,
-          e.group_path[array_length(e.group_path,1)] as group_id,
-          coalesce(g.repeating,false) as group_repeating
-        from catalog.element_definition e left join catalog.group_definition g
-          on g.release_id=e.release_id and g.group_id=e.group_path[array_length(e.group_path,1)]
+          e.group_path[array_length(e.group_path,1)] as group_id
+        from catalog.element_definition e
         where e.release_id=$1 order by e.element_id`, [catalogReleaseId]);
       if (!elements.length) throw new UnprocessableEntityException("The selected catalog has no elements");
+      const groups = await manager.query<Array<{ group_id: string; repeating: boolean; parent_group_id: string | null; min_occurs: number }>>(
+        "select group_id,repeating,parent_group_id,min_occurs from catalog.group_definition where release_id=$1", [catalogReleaseId]);
+      const groupDefinitions = new Map(groups.map((group) => [group.group_id, { groupId: group.group_id, repeating: group.repeating,
+        ...(group.parent_group_id ? { parentGroupId: group.parent_group_id } : {}), intrinsicOccurrence: { min: group.min_occurs } }]));
+      const scopeFor = (element: { group_id: string }) => validationOccurrenceScope(element.group_id, groupDefinitions);
       const forms = await manager.query<MigratedForm[]>(`select fv.id,fv.canonical_definition
         from forms.form_version fv join forms.form f on f.id=fv.form_id
         join forms.agency_stationary_default active on active.organization_id=f.organization_id
@@ -305,12 +309,12 @@ export class ValidationAuthoringService {
       const versionId = randomUUID();
       const rules: ValidationRuleSource[] = elements.filter((element) =>
         !isNemsisDemographicElementId(element.element_id)).flatMap((element) => {
-        const scope = element.group_repeating ? element.group_id : undefined;
+        const scope = scopeFor(element);
         const required = element.agency_required === true ? [{ id: randomUUID(), name: `${element.name} agency required`, enabled: true,
           severity: element.agency_required_severity ?? "error" as const,
           executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"], sourceKind: "catalog" as const,
           primaryTargetElementId: element.element_id, message: `${element.name} is required by agency policy`,
-          source: formatOccurrenceSource(element.element_id, "minimum", 1) }] : [];
+          source: formatOccurrenceSource(element.element_id, "minimum", 1, scope) }] : [];
         const minimum = element.min_occurs > 0 ? [{ id: randomUUID(), name: `${element.name} documented minimum`, enabled: true,
           severity: "error" as const, executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"],
           sourceKind: "catalog" as const,
@@ -338,7 +342,7 @@ export class ValidationAuthoringService {
           if (field.required) rules.push({ id: randomUUID(), name: `${element.name} form required`, enabled: true,
             severity: "error", executionTargets: ["live", "sign"], sourceKind: "form",
             primaryTargetElementId: element.element_id, message: `${element.name} is required by the form`,
-            source: formatOccurrenceSource(element.element_id, "minimum", 1) });
+            source: formatOccurrenceSource(element.element_id, "minimum", 1, scopeFor(element)) });
           for (const legacyRule of field.rules ?? []) {
             if (legacyRule.kind !== "requiredness" || !legacyRule.expression) continue;
             const condition = migrateFormExpression(legacyRule.expression as FormExpression, elementByField);
@@ -347,7 +351,7 @@ export class ValidationAuthoringService {
               severity: "error", executionTargets: ["live", "sign"], sourceKind: "form",
               primaryTargetElementId: element.element_id,
               message: `${element.name} is required by its current form condition`,
-              source: `when ${condition}\nrequire present(${JSON.stringify(element.element_id)})` });
+              source: `for each(${JSON.stringify(scopeFor(element))})\nwhen ${condition}\nrequire present(${JSON.stringify(element.element_id)})` });
           }
         }
       }
@@ -355,7 +359,7 @@ export class ValidationAuthoringService {
         const element = elements[0]!;
         rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error", sourceKind: "catalog",
           executionTargets: ["live", "sign"], primaryTargetElementId: element.element_id,
-          message: `${element.name} has no documented minimum`, source: formatOccurrenceSource(element.element_id, "minimum", 0) });
+          message: `${element.name} has no documented minimum`, source: formatOccurrenceSource(element.element_id, "minimum", 0, scopeFor(element)) });
       }
       await manager.query(`insert into validation.rule_identity(id,organization_id,created_by)
         select x.id,$1,$2 from jsonb_to_recordset($3::jsonb) x(id uuid)`,

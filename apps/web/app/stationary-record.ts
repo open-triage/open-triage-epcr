@@ -1,4 +1,4 @@
-import type { FormDraftDefinition } from "@open-triage/contracts";
+import type { EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
 import { getNemsisGroup } from "./nemsis-data-model";
 import type { FormLanguage } from "./form-localization";
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup, type StationaryElementPlacement } from "./stationary-layout";
@@ -15,6 +15,34 @@ export type StationarySectionFinding = {
     readonly occurrenceId?: string;
   };
 };
+
+/** Match field findings to an existing instance or the ancestor of an empty
+ * inline context. Required-child findings can target their containing row.
+ */
+export function stationaryGroupValidationFindings(document: EncounterDocument, findings: ReadonlyArray<StationarySectionFinding>,
+  groupId: string, instanceId?: string, includeDescendants = false, parentInstanceId?: string) {
+  const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [instance.instanceId, instance] as const)));
+  const descendsFrom = (child: string, ancestor: string) => {
+    const visited = new Set<string>();
+    let current: string | undefined = child;
+    while (current && !visited.has(current)) {
+      if (current === ancestor) return true;
+      visited.add(current);
+      current = instances.get(current)?.parentInstanceId;
+    }
+    return false;
+  };
+  return findings.filter((finding) => {
+    const targetInstance = finding.target.groupInstanceId ?? finding.target.instanceId;
+    const contextInstance = instanceId ?? parentInstanceId;
+    const matchesGroup = finding.target.groupId === groupId || includeDescendants &&
+      getNemsisGroup(finding.target.groupId)?.path.includes(groupId);
+    return matchesGroup && (!targetInstance || (contextInstance
+      ? descendsFrom(contextInstance, targetInstance) || descendsFrom(targetInstance, contextInstance)
+      : includeDescendants));
+  }).map((finding) => !includeDescendants && instanceId ? { ...finding,
+    target: { ...finding.target, groupInstanceId: instanceId, instanceId } } : finding);
+}
 
 export type StationarySectionStatus = {
   readonly errors: number;

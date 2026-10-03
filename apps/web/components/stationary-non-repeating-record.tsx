@@ -16,7 +16,7 @@ import { StationaryCodedOccurrencesField, StationaryCodedValueField } from "./st
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryPickerLegend } from "./stationary-picker-label";
-import type { StationarySectionFinding } from "../app/stationary-record";
+import { stationaryGroupValidationFindings, type StationarySectionFinding } from "../app/stationary-record";
 import { resolveCatalogElementText, resolveCatalogGroupText } from "../app/catalog-localization";
 import { resolveMessage } from "../app/localization";
 import type { FormLanguage } from "../app/form-localization";
@@ -167,8 +167,12 @@ function renderContexts(document: EncounterDocument, group: StationaryNonRepeati
   const instances = nonRepeatingGroupInstances(document, group.id);
   if (instances.length) return instances.map((instance) => ({ instance, ...(instance.parentInstanceId ? { parentInstanceId: instance.parentInstanceId } : {}) }));
   if (!group.parentId) return [{}];
-  const parentInstances = document.groups.find(({ id }) => id === group.parentId)?.instances ?? [];
-  if (parentInstances.length) return parentInstances.map(({ instanceId }) => ({ parentInstanceId: instanceId }));
+  // Mandatory ancestry may still be absent. Anchor its empty controls to the
+  // nearest documented ancestor so report-scoped findings remain visible.
+  for (const ancestorId of group.path.slice(0, -1).reverse()) {
+    const parentInstances = document.groups.find(({ id }) => id === ancestorId)?.instances ?? [];
+    if (parentInstances.length) return parentInstances.map(({ instanceId }) => ({ parentInstanceId: instanceId }));
+  }
   return [{}];
 }
 
@@ -200,7 +204,10 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
         key={group.id}
         aria-label={resolveMessage(language, "stationary.fields", { label: resolveCatalogGroupText(catalogGroups, group.id, language, group.label) })}
       >
-        {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={contexts.length === 1 ? `${document.encounter.id}:single` : instance?.parentInstanceId ?? parentInstanceId ?? instance?.instanceId ?? contextIndex}>
+        {contexts.map(({ instance, parentInstanceId }, contextIndex) => {
+          const contextFindings = stationaryGroupValidationFindings(document, findings, group.id,
+            instance?.instanceId, false, parentInstanceId);
+          return <div className="stationary-inline-fields" key={contexts.length === 1 ? `${document.encounter.id}:single` : instance?.parentInstanceId ?? parentInstanceId ?? instance?.instanceId ?? contextIndex}>
           {group.fields.map((field) => {
             const pinned = catalogFields[field.id];
             const catalogLocalizedField = pinned ? { ...field,
@@ -214,10 +221,9 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
             const localizedField = catalogLocalizedField;
             const fieldApplicability = applicability[field.id];
             const disabled = fieldApplicability?.applicable === false;
-            const fieldFindings = findings.filter((finding) => {
+            const fieldFindings = contextFindings.filter((finding) => {
               const targetField = finding.target.fieldId ?? finding.target.elementId;
-              const targetInstance = finding.target.groupInstanceId ?? finding.target.instanceId;
-              return finding.target.groupId === group.id && targetField === field.id && (!targetInstance || targetInstance === instance?.instanceId);
+              return targetField === field.id;
             });
             const fieldSeverity = stationaryFindingSeverity(fieldFindings);
             return <div className={`stationary-field-shell${fieldSeverity ? ` stationary-validation-state ${fieldSeverity}` : ""}`} key={field.id}>
@@ -230,7 +236,8 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
               <StationaryValidationMessages findings={fieldFindings} />
             </div>;
           })}
-        </div>)}
+        </div>;
+        })}
         <StationaryValidationMessages findings={groupFindings} />
       </section>;
     })}

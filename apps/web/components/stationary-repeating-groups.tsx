@@ -24,11 +24,13 @@ import { stationaryActionLabel, stationaryDisplayLabel } from "../app/stationary
 import { StationaryCodedOccurrencesField, StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryScalarControl } from "./stationary-scalar-control";
-import type { StationarySectionFinding } from "../app/stationary-record";
+import { stationaryGroupValidationFindings, type StationarySectionFinding } from "../app/stationary-record";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 import { withoutDemoProvenance } from "../app/demo-provenance";
+
+export { stationaryGroupValidationFindings } from "../app/stationary-record";
 
 export function stationaryDialogFindings(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationarySectionFinding> {
   const reviewFindings = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition);
@@ -36,13 +38,6 @@ export function stationaryDialogFindings(document: EncounterDocument, clinicalFo
     ...actionableStationaryFindings(validateStationaryRecord(document, clinicalForm, new Date().toISOString())),
     ...stationaryReviewFindings(reviewFindings, clinicalForm),
   ];
-}
-
-function groupValidationFindings(findings: ReadonlyArray<StationarySectionFinding>, groupId: string, instanceId?: string) {
-  return findings.filter((finding) => {
-    const targetInstance = finding.target.groupInstanceId ?? finding.target.instanceId;
-    return finding.target.groupId === groupId && (!instanceId || !targetInstance || targetInstance === instanceId);
-  });
 }
 
 function elementValidationFindings(findings: ReadonlyArray<StationarySectionFinding>, groupId: string, instanceId: string, elementId: string) {
@@ -237,7 +232,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
     placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
   const actionLabel = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
     stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
-  const validationFindings = groupValidationFindings(liveFindings, placement.id, instance.instanceId);
+  const validationFindings = stationaryGroupValidationFindings(draft, liveFindings, placement.id, instance.instanceId);
   const groupOnlyFindings = validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId));
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onCancel();
@@ -285,7 +280,7 @@ function NestedSingleGroup({ document, placement, parentInstanceId, findings, cl
   const instance = entryDocument.groups.find(({ id }) => id === placement.id)!.instances
     .find((candidate) => candidate.instanceId === prepared.instanceId)!;
   const editable = placement.mode !== "read-only";
-  const validationFindings = groupValidationFindings(findings, placement.id, instance.instanceId);
+  const validationFindings = stationaryGroupValidationFindings(entryDocument, findings, placement.id, instance.instanceId);
   const commit = (next: EncounterDocument) => {
     if (editable && next !== entryDocument) onDocumentChange(next);
   };
@@ -338,7 +333,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
   const actionLabel = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
     stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
   const localFindings: ReadonlyArray<StationarySectionFinding> = finding ? [{ severity: "error", message: finding.message, target: { groupId: placement.id } }] : [];
-  const validationFindings = [...groupValidationFindings(findings, placement.id), ...localFindings];
+  const validationFindings = [...stationaryGroupValidationFindings(document, findings, placement.id, undefined, true), ...localFindings];
   const validationSeverity = stationaryFindingSeverity(validationFindings);
   const columnLabel = (elementId: string, fallback?: string) => {
     const pinned = clinicalForm?.catalogFields?.[elementId];
@@ -361,7 +356,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
     <div className="stationary-table-scroll" tabIndex={0} role="region" aria-label={t("stationary.table", { label })}>
       <table><thead><tr>{(placement.presentation.columns ?? []).map((column) => <th key={column.elementId}>{columnLabel(column.elementId, column.label)}</th>)}<th>{t("stationary.actions")}</th></tr></thead>
         <tbody>{instances.map((instance) => {
-          const rowSeverity = stationaryFindingSeverity(groupValidationFindings(validationFindings, placement.id, instance.instanceId));
+          const rowSeverity = stationaryFindingSeverity(stationaryGroupValidationFindings(document, validationFindings, placement.id, instance.instanceId, true));
           return <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}
             className={rowSeverity ? `stationary-validation-state ${rowSeverity}` : undefined}>
             {repeatingGroupSummary(document, placement, instance).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>{t("stationary.notRecorded")}</span>}</td>)}

@@ -1130,3 +1130,2256 @@ export const NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS: Readonly<Record<string, strin
   "eDisposition.30\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.30": "eDisposition.30",
   "eDisposition.32\u0000should be recorded (with a value other than \"No Care Provided\") when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eDisposition.32": "eDisposition.32"
 };
+
+export const NEMSIS_351_CATALOG_OCCURRENCE_GROUPS: Readonly<Record<string, readonly [label: string, owningGroupId: string, scopeGroupId: string]>> = {
+  "eAirway.01": [
+    "Indications for Invasive Airway",
+    "eAirway.AirwayGroup",
+    "eAirway.AirwayGroup"
+  ],
+  "eAirway.02": [
+    "Date/Time Airway Device Placement Confirmation",
+    "eAirway.ConfirmationGroup",
+    "eAirway.ConfirmationGroup"
+  ],
+  "eAirway.03": [
+    "Airway Device Being Confirmed",
+    "eAirway.ConfirmationGroup",
+    "eAirway.ConfirmationGroup"
+  ],
+  "eAirway.04": [
+    "Airway Device Placement Confirmed Method",
+    "eAirway.ConfirmationGroup",
+    "eAirway.ConfirmationGroup"
+  ],
+  "eAirway.05": [
+    "Tube Depth",
+    "eAirway.ConfirmationGroup",
+    "eAirway.ConfirmationGroup"
+  ],
+  "eAirway.06": [
+    "Type of Individual Confirming Airway Device Placement",
+    "eAirway.ConfirmationGroup",
+    "eAirway.ConfirmationGroup"
+  ],
+  "eAirway.07": [
+    "Crew Member ID",
+    "eAirway.ConfirmationGroup",
+    "eAirway.ConfirmationGroup"
+  ],
+  "eAirway.08": [
+    "Airway Complications Encountered",
+    "eAirway.AirwayGroup",
+    "eAirway.AirwayGroup"
+  ],
+  "eAirway.09": [
+    "Suspected Reasons for Failed Airway Management",
+    "eAirway.AirwayGroup",
+    "eAirway.AirwayGroup"
+  ],
+  "eAirway.10": [
+    "Date/Time Decision to Manage the Patient with an Invasive Airway",
+    "eAirway.AirwayGroup",
+    "eAirway.AirwayGroup"
+  ],
+  "eAirway.11": [
+    "Date/Time Invasive Airway Placement Attempts Abandoned",
+    "eAirway.AirwayGroup",
+    "eAirway.AirwayGroup"
+  ],
+  "eArrest.01": [
+    "Cardiac Arrest",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.02": [
+    "Cardiac Arrest Etiology",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.03": [
+    "Resuscitation Attempted By EMS",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.04": [
+    "Arrest Witnessed By",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.07": [
+    "AED Use Prior to EMS Arrival",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.09": [
+    "Type of CPR Provided",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.10": [
+    "Therapeutic Hypothermia by EMS",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.11": [
+    "First Monitored Arrest Rhythm of the Patient",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.12": [
+    "Any Return of Spontaneous Circulation",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.13": [
+    "Neurological Outcome at Hospital Discharge",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.14": [
+    "Date/Time of Cardiac Arrest",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.15": [
+    "Date/Time Resuscitation Discontinued",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.16": [
+    "Reason CPR/Resuscitation Discontinued",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.17": [
+    "Cardiac Rhythm on Arrival at Destination",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.18": [
+    "End of EMS Cardiac Arrest Event",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.19": [
+    "Date/Time of Initial CPR",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.20": [
+    "Who First Initiated CPR",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.21": [
+    "Who First Applied the AED",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eArrest.22": [
+    "Who First Defibrillated the Patient",
+    "eArrestSection",
+    "PatientCareReportGroup"
+  ],
+  "eCrew.01": [
+    "Crew Member ID",
+    "eCrew.CrewGroup",
+    "eCrew.CrewGroup"
+  ],
+  "eCrew.02": [
+    "Crew Member Level",
+    "eCrew.CrewGroup",
+    "eCrew.CrewGroup"
+  ],
+  "eCrew.03": [
+    "Crew Member Response Role",
+    "eCrew.CrewGroup",
+    "eCrew.CrewGroup"
+  ],
+  "eCustomConfiguration.01": [
+    "Custom Data Element Title",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.02": [
+    "Custom Definition",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.03": [
+    "Custom Data Type",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.04": [
+    "Custom Data Element Recurrence",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.05": [
+    "Custom Data Element Usage",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.06": [
+    "Custom Data Element Potential Values",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.07": [
+    "Custom Data Element Potential NOT Values (NV)",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.08": [
+    "Custom Data Element Potential Pertinent Negative Values (PN)",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomConfiguration.09": [
+    "Custom Data Element Grouping ID",
+    "eCustomConfiguration.eCustomGroup",
+    "eCustomConfiguration.eCustomGroup"
+  ],
+  "eCustomResults.01": [
+    "Custom Data Element Result",
+    "eCustomConfiguration.eResultsGroup",
+    "eCustomConfiguration.eResultsGroup"
+  ],
+  "eCustomResults.02": [
+    "Custom Element ID Referenced",
+    "eCustomConfiguration.eResultsGroup",
+    "eCustomConfiguration.eResultsGroup"
+  ],
+  "eCustomResults.03": [
+    "CorrelationID of PatientCareReport Element or Group",
+    "eCustomConfiguration.eResultsGroup",
+    "eCustomConfiguration.eResultsGroup"
+  ],
+  "eDevice.01": [
+    "Medical Device Serial Number",
+    "eDevice.DeviceGroup",
+    "eDevice.DeviceGroup"
+  ],
+  "eDevice.02": [
+    "Date/Time of Event (per Medical Device)",
+    "eDevice.DeviceGroup",
+    "eDevice.DeviceGroup"
+  ],
+  "eDevice.03": [
+    "Medical Device Event Type",
+    "eDevice.DeviceGroup",
+    "eDevice.DeviceGroup"
+  ],
+  "eDevice.04": [
+    "Medical Device Waveform Graphic Type",
+    "eDevice.WaveformGroup",
+    "eDevice.WaveformGroup"
+  ],
+  "eDevice.05": [
+    "Medical Device Waveform Graphic",
+    "eDevice.WaveformGroup",
+    "eDevice.WaveformGroup"
+  ],
+  "eDevice.06": [
+    "Medical Device Mode (Manual, AED, Pacing, CO2, O2, etc)",
+    "eDevice.WaveformGroup",
+    "eDevice.WaveformGroup"
+  ],
+  "eDevice.07": [
+    "Medical Device ECG Lead",
+    "eDevice.DeviceGroup",
+    "eDevice.DeviceGroup"
+  ],
+  "eDevice.08": [
+    "Medical Device ECG Interpretation",
+    "eDevice.DeviceGroup",
+    "eDevice.DeviceGroup"
+  ],
+  "eDevice.09": [
+    "Type of Shock",
+    "eDevice.ShockGroup",
+    "eDevice.ShockGroup"
+  ],
+  "eDevice.10": [
+    "Shock or Pacing Energy",
+    "eDevice.ShockGroup",
+    "eDevice.ShockGroup"
+  ],
+  "eDevice.11": [
+    "Total Number of Shocks Delivered",
+    "eDevice.ShockGroup",
+    "eDevice.ShockGroup"
+  ],
+  "eDevice.12": [
+    "Pacing Rate",
+    "eDevice.ShockGroup",
+    "eDevice.ShockGroup"
+  ],
+  "eDispatch.01": [
+    "Dispatch Reason",
+    "eDispatchSection",
+    "PatientCareReportGroup"
+  ],
+  "eDispatch.02": [
+    "EMD Performed",
+    "eDispatchSection",
+    "PatientCareReportGroup"
+  ],
+  "eDispatch.03": [
+    "EMD Determinant Code",
+    "eDispatchSection",
+    "PatientCareReportGroup"
+  ],
+  "eDispatch.04": [
+    "Dispatch Center Name or ID",
+    "eDispatchSection",
+    "PatientCareReportGroup"
+  ],
+  "eDispatch.05": [
+    "Dispatch Priority (Patient Acuity)",
+    "eDispatchSection",
+    "PatientCareReportGroup"
+  ],
+  "eDispatch.06": [
+    "Unit Dispatched CAD Record ID",
+    "eDispatchSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.01": [
+    "Destination/Transferred To, Name",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.02": [
+    "Destination/Transferred To, Code",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.03": [
+    "Destination Street Address",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.04": [
+    "Destination City",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.05": [
+    "Destination State",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.06": [
+    "Destination County",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.07": [
+    "Destination ZIP Code",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.08": [
+    "Destination Country",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.09": [
+    "Destination GPS Location",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.10": [
+    "Destination Location US National Grid Coordinates",
+    "eDisposition.DestinationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.11": [
+    "Number of Patients Transported in this EMS Unit",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.13": [
+    "How Patient Was Moved to Ambulance",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.14": [
+    "Position of Patient During Transport",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.15": [
+    "How Patient Was Moved From Ambulance",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.16": [
+    "EMS Transport Method",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.17": [
+    "Transport Mode from Scene",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.18": [
+    "Additional Transport Mode Descriptors",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.19": [
+    "Acuity Upon EMS Release of Patient",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.20": [
+    "Reason for Choosing Destination",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.21": [
+    "Type of Destination",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.22": [
+    "Hospital In-Patient Destination",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.23": [
+    "Hospital Capability",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.24": [
+    "Destination Team Pre-Arrival Alert or Activation",
+    "eDisposition.HospitalTeamActivationGroup",
+    "eDisposition.HospitalTeamActivationGroup"
+  ],
+  "eDisposition.25": [
+    "Date/Time of Destination Prearrival Alert or Activation",
+    "eDisposition.HospitalTeamActivationGroup",
+    "eDisposition.HospitalTeamActivationGroup"
+  ],
+  "eDisposition.26": [
+    "Disposition Instructions Provided",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.27": [
+    "Unit Disposition",
+    "eDisposition.IncidentDispositionGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.28": [
+    "Patient Evaluation/Care",
+    "eDisposition.IncidentDispositionGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.29": [
+    "Crew Disposition",
+    "eDisposition.IncidentDispositionGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.30": [
+    "Transport Disposition",
+    "eDisposition.IncidentDispositionGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.31": [
+    "Reason for Refusal/Release",
+    "eDisposition.IncidentDispositionGroup",
+    "PatientCareReportGroup"
+  ],
+  "eDisposition.32": [
+    "Level of Care Provided per Protocol",
+    "eDispositionSection",
+    "PatientCareReportGroup"
+  ],
+  "eExam.01": [
+    "Estimated Body Weight in Kilograms",
+    "eExamSection",
+    "eExamSection"
+  ],
+  "eExam.02": [
+    "Length Based Tape Measure",
+    "eExamSection",
+    "eExamSection"
+  ],
+  "eExam.03": [
+    "Date/Time of Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.04": [
+    "Skin Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.05": [
+    "Head Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.06": [
+    "Face Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.07": [
+    "Neck Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.09": [
+    "Heart Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.10": [
+    "Abdominal Assessment Finding Location",
+    "eExam.AbdomenGroup",
+    "eExam.AbdomenGroup"
+  ],
+  "eExam.11": [
+    "Abdomen Assessment",
+    "eExam.AbdomenGroup",
+    "eExam.AbdomenGroup"
+  ],
+  "eExam.12": [
+    "Pelvis/Genitourinary Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.13": [
+    "Back and Spine Assessment Finding Location",
+    "eExam.SpineGroup",
+    "eExam.SpineGroup"
+  ],
+  "eExam.14": [
+    "Back and Spine Assessment",
+    "eExam.SpineGroup",
+    "eExam.SpineGroup"
+  ],
+  "eExam.15": [
+    "Extremity Assessment Finding Location",
+    "eExam.ExtremityGroup",
+    "eExam.ExtremityGroup"
+  ],
+  "eExam.16": [
+    "Extremities Assessment",
+    "eExam.ExtremityGroup",
+    "eExam.ExtremityGroup"
+  ],
+  "eExam.17": [
+    "Eye Assessment Finding Location",
+    "eExam.EyeGroup",
+    "eExam.EyeGroup"
+  ],
+  "eExam.18": [
+    "Eye Assessment",
+    "eExam.EyeGroup",
+    "eExam.EyeGroup"
+  ],
+  "eExam.19": [
+    "Mental Status Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.20": [
+    "Neurological Assessment",
+    "eExam.AssessmentGroup",
+    "eExam.AssessmentGroup"
+  ],
+  "eExam.21": [
+    "Stroke/CVA Symptoms Resolved",
+    "eExamSection",
+    "eExamSection"
+  ],
+  "eExam.22": [
+    "Lung Assessment Finding Location",
+    "eExam.LungGroup",
+    "eExam.LungGroup"
+  ],
+  "eExam.23": [
+    "Lung Assessment",
+    "eExam.LungGroup",
+    "eExam.LungGroup"
+  ],
+  "eExam.24": [
+    "Chest Assessment Finding Location",
+    "eExam.ChestGroup",
+    "eExam.ChestGroup"
+  ],
+  "eExam.25": [
+    "Chest Assessment",
+    "eExam.ChestGroup",
+    "eExam.ChestGroup"
+  ],
+  "eHistory.01": [
+    "Barriers to Patient Care",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.02": [
+    "Last Name of Patient's Practitioner",
+    "eHistory.PractitionerGroup",
+    "eHistory.PractitionerGroup"
+  ],
+  "eHistory.03": [
+    "First Name of Patient's Practitioner",
+    "eHistory.PractitionerGroup",
+    "eHistory.PractitionerGroup"
+  ],
+  "eHistory.04": [
+    "Middle Name/Initial of Patient's Practitioner",
+    "eHistory.PractitionerGroup",
+    "eHistory.PractitionerGroup"
+  ],
+  "eHistory.05": [
+    "Advance Directives",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.06": [
+    "Medication Allergies",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.07": [
+    "Environmental/Food Allergies",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.08": [
+    "Medical/Surgical History",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.09": [
+    "Medical History Obtained From",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.10": [
+    "The Patient's Type of Immunization",
+    "eHistory.ImmunizationsGroup",
+    "eHistory.ImmunizationsGroup"
+  ],
+  "eHistory.11": [
+    "Immunization Year",
+    "eHistory.ImmunizationsGroup",
+    "eHistory.ImmunizationsGroup"
+  ],
+  "eHistory.12": [
+    "Current Medications",
+    "eHistory.CurrentMedsGroup",
+    "eHistory.CurrentMedsGroup"
+  ],
+  "eHistory.13": [
+    "Current Medication Dose",
+    "eHistory.CurrentMedsGroup",
+    "eHistory.CurrentMedsGroup"
+  ],
+  "eHistory.14": [
+    "Current Medication Dosage Unit",
+    "eHistory.CurrentMedsGroup",
+    "eHistory.CurrentMedsGroup"
+  ],
+  "eHistory.15": [
+    "Current Medication Administration Route",
+    "eHistory.CurrentMedsGroup",
+    "eHistory.CurrentMedsGroup"
+  ],
+  "eHistory.16": [
+    "Presence of Emergency Information Form",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.17": [
+    "Alcohol/Drug Use Indicators",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.18": [
+    "Pregnancy",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.19": [
+    "Last Oral Intake",
+    "eHistorySection",
+    "PatientCareReportGroup"
+  ],
+  "eHistory.20": [
+    "Current Medication Frequency",
+    "eHistory.CurrentMedsGroup",
+    "eHistory.CurrentMedsGroup"
+  ],
+  "eInjury.01": [
+    "Cause of Injury",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.02": [
+    "Mechanism of Injury",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.03": [
+    "Trauma Triage Criteria (High Risk for Serious Injury)",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.04": [
+    "Trauma Triage Criteria (Moderate Risk for Serious Injury)",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.05": [
+    "Main Area of the Vehicle Impacted by the Collision",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.06": [
+    "Location of Patient in Vehicle",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.07": [
+    "Use of Occupant Safety Equipment",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.08": [
+    "Airbag Deployment",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.09": [
+    "Height of Fall (feet)",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.10": [
+    "OSHA Personal Protective Equipment Used",
+    "eInjurySection",
+    "PatientCareReportGroup"
+  ],
+  "eInjury.11": [
+    "ACN System/Company Providing ACN Data",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.12": [
+    "ACN Incident ID",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.13": [
+    "ACN Call Back Phone Number",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.14": [
+    "Date/Time of ACN Incident",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.15": [
+    "ACN Incident Location",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.16": [
+    "ACN Incident Vehicle Body Type",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.17": [
+    "ACN Incident Vehicle Manufacturer",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.18": [
+    "ACN Incident Vehicle Make",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.19": [
+    "ACN Incident Vehicle Model",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.20": [
+    "ACN Incident Vehicle Model Year",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.21": [
+    "ACN Incident Multiple Impacts",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.22": [
+    "ACN Incident Delta Velocity",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.23": [
+    "ACN High Probability of Injury",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.24": [
+    "ACN Incident PDOF",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.25": [
+    "ACN Incident Rollover",
+    "eInjury.CollisionGroup",
+    "eInjury.CollisionGroup"
+  ],
+  "eInjury.26": [
+    "ACN Vehicle Seat Location",
+    "eInjury.SeatGroup",
+    "eInjury.SeatGroup"
+  ],
+  "eInjury.27": [
+    "Seat Occupied",
+    "eInjury.SeatGroup",
+    "eInjury.SeatGroup"
+  ],
+  "eInjury.28": [
+    "ACN Incident Seatbelt Use",
+    "eInjury.SeatGroup",
+    "eInjury.SeatGroup"
+  ],
+  "eInjury.29": [
+    "ACN Incident Airbag Deployed",
+    "eInjury.SeatGroup",
+    "eInjury.SeatGroup"
+  ],
+  "eLabs.01": [
+    "Date/Time of Laboratory or Imaging Result",
+    "eLabs.LabGroup",
+    "eLabs.LabGroup"
+  ],
+  "eLabs.02": [
+    "Study/Result Prior to this Unit's EMS Care",
+    "eLabs.LabGroup",
+    "eLabs.LabGroup"
+  ],
+  "eLabs.03": [
+    "Laboratory Result Type",
+    "eLabs.LabResultGroup",
+    "eLabs.LabResultGroup"
+  ],
+  "eLabs.04": [
+    "Laboratory Result",
+    "eLabs.LabResultGroup",
+    "eLabs.LabResultGroup"
+  ],
+  "eLabs.05": [
+    "Imaging Study Type",
+    "eLabs.LabImageGroup",
+    "eLabs.LabImageGroup"
+  ],
+  "eLabs.06": [
+    "Imaging Study Results",
+    "eLabs.LabImageGroup",
+    "eLabs.LabImageGroup"
+  ],
+  "eLabs.07": [
+    "Imaging Study File or Waveform Graphic Type",
+    "eLabs.WaveformGraphicGroup",
+    "eLabs.WaveformGraphicGroup"
+  ],
+  "eLabs.08": [
+    "Imaging Study File or Waveform Graphic",
+    "eLabs.WaveformGraphicGroup",
+    "eLabs.WaveformGraphicGroup"
+  ],
+  "eMedications.01": [
+    "Date/Time Medication Administered",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.02": [
+    "Medication Administered Prior to this Unit's EMS Care",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.03": [
+    "Medication Administered",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.04": [
+    "Medication Administered Route",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.05": [
+    "Medication Dosage",
+    "eMedications.DosageGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.06": [
+    "Medication Dosage Units",
+    "eMedications.DosageGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.07": [
+    "Response to Medication",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.08": [
+    "Medication Complication",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.09": [
+    "Medication Crew (Healthcare Professionals) ID",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.10": [
+    "Role/Type of Person Administering Medication",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.11": [
+    "Medication Authorization",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.12": [
+    "Medication Authorizing Physician",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eMedications.13": [
+    "Medication Administered by Another Unit",
+    "eMedications.MedicationGroup",
+    "eMedications.MedicationGroup"
+  ],
+  "eNarrative.01": [
+    "Patient Care Report Narrative",
+    "eNarrativeSection",
+    "eNarrativeSection"
+  ],
+  "eOther.01": [
+    "Review Requested",
+    "eOtherSection",
+    "eOtherSection"
+  ],
+  "eOther.02": [
+    "Potential System of Care/Specialty/Registry Patient",
+    "eOtherSection",
+    "eOtherSection"
+  ],
+  "eOther.03": [
+    "Personal Protective Equipment Used",
+    "eOther.EMSCrewMemberGroup",
+    "eOther.EMSCrewMemberGroup"
+  ],
+  "eOther.04": [
+    "EMS Professional (Crew Member) ID",
+    "eOther.EMSCrewMemberGroup",
+    "eOther.EMSCrewMemberGroup"
+  ],
+  "eOther.05": [
+    "Suspected EMS Work Related Exposure, Injury, or Death",
+    "eOther.EMSCrewMemberGroup",
+    "eOther.EMSCrewMemberGroup"
+  ],
+  "eOther.06": [
+    "The Type of Work-Related Injury, Death or Suspected Exposure",
+    "eOther.EMSCrewMemberGroup",
+    "eOther.EMSCrewMemberGroup"
+  ],
+  "eOther.07": [
+    "Natural, Suspected, Intentional, or Unintentional Disaster",
+    "eOtherSection",
+    "eOtherSection"
+  ],
+  "eOther.08": [
+    "Crew Member Completing this Report",
+    "eOtherSection",
+    "eOtherSection"
+  ],
+  "eOther.09": [
+    "External Electronic Document Type",
+    "eOther.FileGroup",
+    "eOther.FileGroup"
+  ],
+  "eOther.10": [
+    "File Attachment Type",
+    "eOther.FileGroup",
+    "eOther.FileGroup"
+  ],
+  "eOther.11": [
+    "File Attachment Image",
+    "eOther.FileGroup",
+    "eOther.FileGroup"
+  ],
+  "eOther.12": [
+    "Type of Person Signing",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.13": [
+    "Signature Reason",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.14": [
+    "Type Of Patient Representative",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.15": [
+    "Signature Status",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.16": [
+    "Signature File Name",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.17": [
+    "Signature File Type",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.18": [
+    "Signature Graphic",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.19": [
+    "Date/Time of Signature",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.20": [
+    "Signature Last Name",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.21": [
+    "Signature First Name",
+    "eOther.SignatureGroup",
+    "eOther.SignatureGroup"
+  ],
+  "eOther.22": [
+    "File Attachment Name",
+    "eOther.FileGroup",
+    "eOther.FileGroup"
+  ],
+  "eOutcome.01": [
+    "Emergency Department Disposition",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.02": [
+    "Hospital Disposition",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.03": [
+    "External Report ID/Number Type",
+    "eOutcome.ExternalDataGroup",
+    "eOutcome.ExternalDataGroup"
+  ],
+  "eOutcome.04": [
+    "External Report ID/Number",
+    "eOutcome.ExternalDataGroup",
+    "eOutcome.ExternalDataGroup"
+  ],
+  "eOutcome.05": [
+    "Other Report Registry Type",
+    "eOutcome.ExternalDataGroup",
+    "eOutcome.ExternalDataGroup"
+  ],
+  "eOutcome.09": [
+    "Emergency Department Procedures",
+    "eOutcome.EmergencyDepartmentProceduresGroup",
+    "eOutcome.EmergencyDepartmentProceduresGroup"
+  ],
+  "eOutcome.10": [
+    "Emergency Department Diagnosis",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.11": [
+    "Date/Time of Hospital Admission",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.12": [
+    "Hospital Procedures",
+    "eOutcome.HospitalProceduresGroup",
+    "eOutcome.HospitalProceduresGroup"
+  ],
+  "eOutcome.13": [
+    "Hospital Diagnosis",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.16": [
+    "Date/Time of Hospital Discharge",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.18": [
+    "Date/Time of Emergency Department Admission",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "eOutcome.19": [
+    "Date/Time Emergency Department Procedure Performed",
+    "eOutcome.EmergencyDepartmentProceduresGroup",
+    "eOutcome.EmergencyDepartmentProceduresGroup"
+  ],
+  "eOutcome.20": [
+    "Date/Time Hospital Procedure Performed",
+    "eOutcome.HospitalProceduresGroup",
+    "eOutcome.HospitalProceduresGroup"
+  ],
+  "eOutcome.21": [
+    "Injury Severity Score",
+    "eOutcomeSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.01": [
+    "EMS Patient ID",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.02": [
+    "Last Name",
+    "ePatient.PatientNameGroup",
+    "ePatient.PatientNameGroup"
+  ],
+  "ePatient.03": [
+    "First Name",
+    "ePatient.PatientNameGroup",
+    "ePatient.PatientNameGroup"
+  ],
+  "ePatient.04": [
+    "Middle Initial/Name",
+    "ePatient.PatientNameGroup",
+    "ePatient.PatientNameGroup"
+  ],
+  "ePatient.05": [
+    "Patient's Home Address",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.06": [
+    "Patient's Home City",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.07": [
+    "Patient's Home County",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.08": [
+    "Patient's Home State",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.09": [
+    "Patient's Home ZIP Code",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.10": [
+    "Patient's Country of Residence",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.11": [
+    "Patient Home Census Tract",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.12": [
+    "Social Security Number",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.13": [
+    "Gender (DEPRECATED)",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.14": [
+    "Race",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.15": [
+    "Age",
+    "ePatient.AgeGroup",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.16": [
+    "Age Units",
+    "ePatient.AgeGroup",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.17": [
+    "Date of Birth",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.18": [
+    "Patient's Phone Number",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.19": [
+    "Patient's Email Address",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.20": [
+    "State Issuing Driver's License",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.21": [
+    "Driver's License Number",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.22": [
+    "Alternate Home Residence",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.23": [
+    "Name Suffix",
+    "ePatient.PatientNameGroup",
+    "ePatient.PatientNameGroup"
+  ],
+  "ePatient.24": [
+    "Patient's Preferred Language(s)",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePatient.25": [
+    "Sex",
+    "ePatientSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.01": [
+    "Primary Method of Payment",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.02": [
+    "Physician Certification Statement",
+    "ePayment.CertificateGroup",
+    "ePayment.CertificateGroup"
+  ],
+  "ePayment.03": [
+    "Date Physician Certification Statement Signed",
+    "ePayment.CertificateGroup",
+    "ePayment.CertificateGroup"
+  ],
+  "ePayment.04": [
+    "Reason for Physician Certification Statement",
+    "ePayment.CertificateGroup",
+    "ePayment.CertificateGroup"
+  ],
+  "ePayment.05": [
+    "Healthcare Provider Type Signing Physician Certification Statement",
+    "ePayment.CertificateGroup",
+    "ePayment.CertificateGroup"
+  ],
+  "ePayment.06": [
+    "Last Name of Individual Signing Physician Certification Statement",
+    "ePayment.CertificateGroup",
+    "ePayment.CertificateGroup"
+  ],
+  "ePayment.07": [
+    "First Name of Individual Signing Physician Certification Statement",
+    "ePayment.CertificateGroup",
+    "ePayment.CertificateGroup"
+  ],
+  "ePayment.08": [
+    "Patient Resides in Service Area",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.09": [
+    "Insurance Company ID",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.10": [
+    "Insurance Company Name",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.11": [
+    "Insurance Company Billing Priority",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.12": [
+    "Insurance Company Address",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.13": [
+    "Insurance Company City",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.14": [
+    "Insurance Company State",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.15": [
+    "Insurance Company ZIP Code",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.16": [
+    "Insurance Company Country",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.17": [
+    "Insurance Group ID",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.18": [
+    "Insurance Policy ID Number",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.19": [
+    "Last Name of the Insured",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.20": [
+    "First Name of the Insured",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.21": [
+    "Middle Initial/Name of the Insured",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.22": [
+    "Relationship to the Insured",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.23": [
+    "Closest Relative/Guardian Last Name",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.24": [
+    "Closest Relative/ Guardian First Name",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.25": [
+    "Closest Relative/ Guardian Middle Initial/Name",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.26": [
+    "Closest Relative/ Guardian Street Address",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.27": [
+    "Closest Relative/ Guardian City",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.28": [
+    "Closest Relative/ Guardian State",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.29": [
+    "Closest Relative/ Guardian ZIP Code",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.30": [
+    "Closest Relative/ Guardian Country",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.31": [
+    "Closest Relative/ Guardian Phone Number",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.32": [
+    "Closest Relative/ Guardian Relationship",
+    "ePayment.ClosestRelativeGroup",
+    "ePayment.ClosestRelativeGroup"
+  ],
+  "ePayment.33": [
+    "Patient's Employer",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.34": [
+    "Patient's Employer's Address",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.35": [
+    "Patient's Employer's City",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.36": [
+    "Patient's Employer's State",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.37": [
+    "Patient's Employer's ZIP Code",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.38": [
+    "Patient's Employer's Country",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.39": [
+    "Patient's Employer's Primary Phone Number",
+    "ePayment.EmployerGroup",
+    "ePayment.EmployerGroup"
+  ],
+  "ePayment.40": [
+    "Response Urgency",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.41": [
+    "Patient Transport Assessment",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.42": [
+    "Specialty Care Transport Care Provider",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.44": [
+    "Ambulance Transport Reason Code",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.45": [
+    "Round Trip Purpose Description",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.46": [
+    "Stretcher Purpose Description",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.47": [
+    "Ambulance Conditions Indicator",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.48": [
+    "Mileage to Closest Hospital Facility",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.49": [
+    "ALS Assessment Performed and Warranted",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.50": [
+    "CMS Service Level",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.51": [
+    "EMS Condition Code",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.52": [
+    "CMS Transportation Indicator",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.53": [
+    "Transport Authorization Code",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.54": [
+    "Prior Authorization Code Payer",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.55": [
+    "Supply Item Used Name",
+    "ePayment.SupplyItemGroup",
+    "ePayment.SupplyItemGroup"
+  ],
+  "ePayment.56": [
+    "Number of Supply Item(s) Used",
+    "ePayment.SupplyItemGroup",
+    "ePayment.SupplyItemGroup"
+  ],
+  "ePayment.57": [
+    "Payer Type",
+    "ePaymentSection",
+    "PatientCareReportGroup"
+  ],
+  "ePayment.58": [
+    "Insurance Group Name",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.59": [
+    "Insurance Company Phone Number",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "ePayment.60": [
+    "Date of Birth of the Insured",
+    "ePayment.InsuranceGroup",
+    "ePayment.InsuranceGroup"
+  ],
+  "eProcedures.01": [
+    "Date/Time Procedure Performed",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.02": [
+    "Procedure Performed Prior to this Unit's EMS Care",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.03": [
+    "Procedure",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.04": [
+    "Size of Procedure Equipment",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.05": [
+    "Number of Procedure Attempts",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.06": [
+    "Procedure Successful",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.07": [
+    "Procedure Complication",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.08": [
+    "Response to Procedure",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.09": [
+    "Procedure Crew Members ID",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.10": [
+    "Role/Type of Person Performing the Procedure",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.11": [
+    "Procedure Authorization",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.12": [
+    "Procedure Authorizing Physician",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.13": [
+    "Vascular Access Location",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.14": [
+    "Airway Placement Technique",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProcedures.15": [
+    "Procedure Performed by Another Unit",
+    "eProcedures.ProcedureGroup",
+    "eProcedures.ProcedureGroup"
+  ],
+  "eProtocols.01": [
+    "Protocols Used",
+    "eProtocols.ProtocolGroup",
+    "eProtocols.ProtocolGroup"
+  ],
+  "eProtocols.02": [
+    "Protocol Age Category",
+    "eProtocols.ProtocolGroup",
+    "eProtocols.ProtocolGroup"
+  ],
+  "eRecord.01": [
+    "Patient Care Report Number",
+    "eRecordSection",
+    "PatientCareReportGroup"
+  ],
+  "eRecord.02": [
+    "Software Creator",
+    "eRecord.SoftwareApplicationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eRecord.03": [
+    "Software Name",
+    "eRecord.SoftwareApplicationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eRecord.04": [
+    "Software Version",
+    "eRecord.SoftwareApplicationGroup",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.01": [
+    "EMS Agency Number",
+    "eResponse.AgencyGroup",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.02": [
+    "EMS Agency Name",
+    "eResponse.AgencyGroup",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.03": [
+    "Incident Number",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.04": [
+    "EMS Response Number",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.05": [
+    "Type of Service Requested",
+    "eResponse.ServiceGroup",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.06": [
+    "Standby Purpose",
+    "eResponse.ServiceGroup",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.07": [
+    "Unit Transport and Equipment Capability",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.08": [
+    "Type of Dispatch Delay",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.09": [
+    "Type of Response Delay",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.10": [
+    "Type of Scene Delay",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.11": [
+    "Type of Transport Delay",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.12": [
+    "Type of Turn-Around Delay",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.13": [
+    "EMS Vehicle (Unit) Number",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.14": [
+    "EMS Unit Call Sign",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.16": [
+    "Vehicle Dispatch Location",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.17": [
+    "Vehicle Dispatch GPS Location",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.18": [
+    "Vehicle Dispatch Location US National Grid Coordinates",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.19": [
+    "Beginning Odometer Reading of Responding Vehicle",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.20": [
+    "On-Scene Odometer Reading of Responding Vehicle",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.21": [
+    "Patient Destination Odometer Reading of Responding Vehicle",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.22": [
+    "Ending Odometer Reading of Responding Vehicle",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.23": [
+    "Response Mode to Scene",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eResponse.24": [
+    "Additional Response Mode Descriptors",
+    "eResponseSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.01": [
+    "First EMS Unit on Scene",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.02": [
+    "Other EMS or Public Safety Agencies at Scene",
+    "eScene.ResponderGroup",
+    "eScene.ResponderGroup"
+  ],
+  "eScene.03": [
+    "Other EMS or Public Safety Agency ID Number",
+    "eScene.ResponderGroup",
+    "eScene.ResponderGroup"
+  ],
+  "eScene.04": [
+    "Type of Other Service at Scene",
+    "eScene.ResponderGroup",
+    "eScene.ResponderGroup"
+  ],
+  "eScene.05": [
+    "Date/Time Initial Responder Arrived on Scene",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.06": [
+    "Number of Patients at Scene",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.07": [
+    "Mass Casualty Incident",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.08": [
+    "Triage Classification for MCI Patient",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.09": [
+    "Incident Location Type",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.10": [
+    "Incident Facility Code",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.11": [
+    "Scene GPS Location",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.12": [
+    "Scene US National Grid Coordinates",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.13": [
+    "Incident Facility or Location Name",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.14": [
+    "Mile Post or Major Roadway",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.15": [
+    "Incident Street Address",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.16": [
+    "Incident Apartment, Suite, or Room",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.17": [
+    "Incident City",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.18": [
+    "Incident State",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.19": [
+    "Incident ZIP Code",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.20": [
+    "Scene Cross Street or Directions",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.21": [
+    "Incident County",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.22": [
+    "Incident Country",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.23": [
+    "Incident Census Tract",
+    "eSceneSection",
+    "PatientCareReportGroup"
+  ],
+  "eScene.24": [
+    "First Other EMS or Public Safety Agency at Scene to Provide Patient Care",
+    "eScene.ResponderGroup",
+    "eScene.ResponderGroup"
+  ],
+  "eScene.25": [
+    "Transferred Patient/Care To/From Agency",
+    "eScene.ResponderGroup",
+    "eScene.ResponderGroup"
+  ],
+  "eSituation.01": [
+    "Date/Time of Symptom Onset",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.02": [
+    "Possible Injury",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.03": [
+    "Complaint Type",
+    "eSituation.PatientComplaintGroup",
+    "eSituation.PatientComplaintGroup"
+  ],
+  "eSituation.04": [
+    "Complaint",
+    "eSituation.PatientComplaintGroup",
+    "eSituation.PatientComplaintGroup"
+  ],
+  "eSituation.05": [
+    "Duration of Complaint",
+    "eSituation.PatientComplaintGroup",
+    "eSituation.PatientComplaintGroup"
+  ],
+  "eSituation.06": [
+    "Time Units of Duration of Complaint",
+    "eSituation.PatientComplaintGroup",
+    "eSituation.PatientComplaintGroup"
+  ],
+  "eSituation.07": [
+    "Chief Complaint Anatomic Location",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.08": [
+    "Chief Complaint Organ System",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.09": [
+    "Primary Symptom",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.10": [
+    "Other Associated Symptoms",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.11": [
+    "Provider's Primary Impression",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.12": [
+    "Provider's Secondary Impressions",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.13": [
+    "Initial Patient Acuity",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.14": [
+    "Work-Related Illness/Injury",
+    "eSituation.WorkRelatedGroup",
+    "eSituation.WorkRelatedGroup"
+  ],
+  "eSituation.15": [
+    "Patient's Occupational Industry",
+    "eSituation.WorkRelatedGroup",
+    "eSituation.WorkRelatedGroup"
+  ],
+  "eSituation.16": [
+    "Patient's Occupation",
+    "eSituation.WorkRelatedGroup",
+    "eSituation.WorkRelatedGroup"
+  ],
+  "eSituation.17": [
+    "Patient Activity",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.18": [
+    "Date/Time Last Known Well",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.19": [
+    "Justification for Transfer or Encounter",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eSituation.20": [
+    "Reason for Interfacility Transfer/Medical Transport",
+    "eSituationSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.01": [
+    "PSAP Call Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.02": [
+    "Dispatch Notified Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.03": [
+    "Unit Notified by Dispatch Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.04": [
+    "Dispatch Acknowledged Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.05": [
+    "Unit En Route Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.06": [
+    "Unit Arrived on Scene Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.07": [
+    "Arrived at Patient Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.08": [
+    "Transfer of EMS Patient Care Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.09": [
+    "Unit Left Scene Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.10": [
+    "Arrival at Destination Landing Area Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.11": [
+    "Patient Arrived at Destination Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.12": [
+    "Destination Patient Transfer of Care Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.13": [
+    "Unit Back in Service Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.14": [
+    "Unit Canceled Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.15": [
+    "Unit Back at Home Location Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.16": [
+    "EMS Call Completed Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eTimes.17": [
+    "Unit Arrived at Staging Area Date/Time",
+    "eTimesSection",
+    "PatientCareReportGroup"
+  ],
+  "eVitals.01": [
+    "Date/Time Vital Signs Taken",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.02": [
+    "Obtained Prior to this Unit's EMS Care",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.03": [
+    "Cardiac Rhythm / Electrocardiography (ECG)",
+    "eVitals.CardiacRhythmGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.04": [
+    "ECG Type",
+    "eVitals.CardiacRhythmGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.05": [
+    "Method of ECG Interpretation",
+    "eVitals.CardiacRhythmGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.06": [
+    "SBP (Systolic Blood Pressure)",
+    "eVitals.BloodPressureGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.07": [
+    "DBP (Diastolic Blood Pressure)",
+    "eVitals.BloodPressureGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.08": [
+    "Method of Blood Pressure Measurement",
+    "eVitals.BloodPressureGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.09": [
+    "Mean Arterial Pressure",
+    "eVitals.BloodPressureGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.10": [
+    "Heart Rate",
+    "eVitals.HeartRateGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.11": [
+    "Method of Heart Rate Measurement",
+    "eVitals.HeartRateGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.12": [
+    "Pulse Oximetry",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.13": [
+    "Pulse Rhythm",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.14": [
+    "Respiratory Rate",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.15": [
+    "Respiratory Effort",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.16": [
+    "End Tidal Carbon Dioxide (ETCO2)",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.17": [
+    "Carbon Monoxide (CO)",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.18": [
+    "Blood Glucose Level",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.19": [
+    "Glasgow Coma Score-Eye",
+    "eVitals.GlasgowScoreGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.20": [
+    "Glasgow Coma Score-Verbal",
+    "eVitals.GlasgowScoreGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.21": [
+    "Glasgow Coma Score-Motor",
+    "eVitals.GlasgowScoreGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.22": [
+    "Glasgow Coma Score-Qualifier",
+    "eVitals.GlasgowScoreGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.23": [
+    "Total Glasgow Coma Score",
+    "eVitals.GlasgowScoreGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.24": [
+    "Temperature",
+    "eVitals.TemperatureGroup",
+    "eVitals.TemperatureGroup"
+  ],
+  "eVitals.25": [
+    "Temperature Method",
+    "eVitals.TemperatureGroup",
+    "eVitals.TemperatureGroup"
+  ],
+  "eVitals.26": [
+    "Level of Responsiveness (AVPU)",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.27": [
+    "Pain Scale Score",
+    "eVitals.PainScaleGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.28": [
+    "Pain Scale Type",
+    "eVitals.PainScaleGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.29": [
+    "Stroke Scale Result",
+    "eVitals.StrokeScaleGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.30": [
+    "Stroke Scale Type",
+    "eVitals.StrokeScaleGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.31": [
+    "Reperfusion Checklist",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.32": [
+    "APGAR",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.33": [
+    "Revised Trauma Score",
+    "eVitals.VitalGroup",
+    "eVitals.VitalGroup"
+  ],
+  "eVitals.34": [
+    "Stroke Scale Score",
+    "eVitals.StrokeScaleGroup",
+    "eVitals.VitalGroup"
+  ]
+};

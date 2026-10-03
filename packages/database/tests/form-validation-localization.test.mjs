@@ -63,7 +63,7 @@ test("an installed count rule renders Swedish live and sign findings without cha
   const document = JSON.parse(await readFile(new URL("../../../apps/web/app/data/synthetic-encounter-document.json", import.meta.url), "utf8"));
   for (const profile of definitions.pairs) {
     const rule = profile.validation.rules.find((candidate) => candidate.primaryTargetElementId === "eArrest.01"
-      && candidate.source === 'require minimum("eArrest.01", 1)');
+      && candidate.source === 'for each("PatientCareReportGroup")\nrequire minimum("eArrest.01", 1)');
     assert.ok(rule, profile.key);
     const compiled = compileValidationRule(rule, "00000000-0000-4000-8000-000000000000", new Set(["eArrest.01"])).compiled;
     assert.ok(compiled, profile.key);
