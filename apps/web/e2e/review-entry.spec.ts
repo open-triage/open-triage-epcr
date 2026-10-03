@@ -1,4 +1,4 @@
-import { openReviewCall, refreshOnFocus } from "./helpers/review-window";
+import { closeReviewCall, openReviewCall, refreshOnFocus } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
@@ -86,9 +86,6 @@ test("Review administrator configures routing and reassigns an item without vali
         itemVersion: version, assignedAt: "2026-10-02T08:00:00Z", action: "assigned" }];
       return request.fulfill({ json: { ...item(), assignmentHistory: history } });
     }
-    if (path === "/api/review/reports") return request.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (path === `/api/review/reports/${reportId}`) return request.fulfill({ json: { id: reportId,
       reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 0,
       identifying: false, groups: [], values: [], notes: [] } });
@@ -124,18 +121,18 @@ test("Review administrator configures routing and reassigns an item without vali
   await page.getByLabel("Route to").selectOption("named");
   await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
   await page.getByRole("tab", { name: "Review queue", exact: true }).click();
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
   await call.locator(".review-assignment > summary").click();
   await call.getByLabel("Assign reviewer").selectOption(reviewerId);
   const readsBeforeAssignment = { queue: queueReads, attention: attentionReads };
   await call.getByRole("button", { name: "Save assignment" }).click();
-  await expect(call.getByText("Assignment saved.", { exact: true })).toBeVisible();
+  await expect(call.locator("#review-inspector").getByText("Assignment saved.", { exact: true })).toBeVisible();
   await refreshOnFocus(page);
   await expect.poll(() => queueReads).toBeGreaterThan(readsBeforeAssignment.queue);
   await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeAssignment.attention);
   await call.getByRole("tab", { name: "History", exact: true }).click();
   await expect(call.getByRole("heading", { name: "Assignment history" })).toBeVisible();
-  await call.close();
+  await closeReviewCall(call);
   await expect(page.getByRole("button", { name: "Select this page" })).toBeVisible();
   await page.getByRole("button", { name: "Select this page" }).click();
   await page.getByRole("combobox", { name: "Assign to" }).selectOption(reviewerId);
@@ -170,8 +167,6 @@ test("Review claim persists in the queue and item history, with recoverable stal
       return route.fulfill({ json: { dataset: "real", asOf: new Date().toISOString(),
         assignments: assigneeId === "reviewer" ? 1 : 0, responses: 0, reopened: 0 } });
     }
-    if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: false, page: 1, pageSize: 25, total: 0, asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
     if (url.pathname === `/api/review/items/${itemId}`) return route.fulfill({ json: {
@@ -208,7 +203,7 @@ test("Review claim persists in the queue and item history, with recoverable stal
   await expect(page.getByText("Assigned to you", { exact: true }).first()).toBeVisible();
   await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeClaim);
   await expect(page.getByRole("button", { name: /^Assigned to me/ })).toBeVisible();
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
   await call.getByRole("tab", { name: "History", exact: true }).click();
   await expect(call.getByRole("heading", { name: "Assignment history" })).toBeVisible();
   await expect(call.getByText("Assigned to you").last()).toBeVisible();
@@ -217,7 +212,7 @@ test("Review claim persists in the queue and item history, with recoverable stal
   await expect(call.getByText("eVitals.06").last()).toBeVisible();
 });
 
-test("Review-only account enters its scoped signed-report list and keeps datasets separate", async ({ page, context }) => {
+test("Review-only account enters its scoped queue and keeps datasets separate", async ({ page, context }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
   const session = {
     csrfToken: "review-entry-test", user: { id: "reviewer-id", displayName: "Reviewer" },
@@ -233,19 +228,10 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
-    if (url.pathname === "/api/review/reports") {
-      const dataset = url.searchParams.get("dataset")!;
-      requestedDatasets.push(dataset);
-      return route.fulfill({ json: {
-        dataset, scope: "all", identifying: false, administrator: false,
-        page: Number(url.searchParams.get("page")), pageSize: 25, total: 1,
-        asOf: "2026-10-02T08:00:00Z",
-        reports: [{ id: `${dataset}-report`, reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z" }],
-      } });
-    }
     if (url.pathname === "/api/review/queue") {
       const dataset = url.searchParams.get("dataset")!;
       queueRequests.push(url.search);
+      requestedDatasets.push(dataset);
       const items = dataset === "real" ? [{ id: "review-item", reportId: "real-report",
         criterionId: "123e4567-e89b-42d3-a456-426614174001", priority: "high", status: "new",
         assigneeId: null, firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
@@ -271,15 +257,20 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("tab", { name: "Reports", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Signed reports" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Reports", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Review queue", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Mobile" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Report ID · REAL-REP" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "View Report ID · REAL-REP" })).toBeVisible();
   await page.getByRole("tab", { name: "Review queue", exact: true }).click();
-  await page.locator(".review-record-button").first().hover();
-  await expect(page.getByText("Review missing narrative", { exact: true })).toBeVisible();
+  await page.locator(".review-row-criterion").first().hover();
+  if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+    await expect(page.getByText("Review missing narrative", { exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByText("Review missing narrative", { exact: true })).not.toBeVisible();
+    await expect(page.locator(".review-row-criterion")).toHaveAttribute("aria-describedby", "review-reason-review-item");
+  }
   await expect(page.locator(".review-badge.priority-high")).toBeVisible();
   await page.getByRole("combobox", { name: /^Priority/ }).selectOption("high");
   await expect.poll(() => queueRequests.some((query) => query.includes("priority=high"))).toBe(true);
@@ -287,8 +278,6 @@ test("Review-only account enters its scoped signed-report list and keeps dataset
   await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toBeVisible();
   await expect(page.getByText("Signed patient reports in the selected period: 2", { exact: false })).toBeVisible();
   await page.getByLabel("Dataset").selectOption("synthetic");
-  await page.getByRole("tab", { name: "Reports", exact: true }).click();
-  await expect(page.getByText("Report ID · SYNTHETI")).toBeVisible();
   await page.getByRole("tab", { name: "Review queue", exact: true }).click();
   await expect(page.getByText("No matching review items.")).toBeVisible();
   await page.getByRole("tab", { name: "Analysis", exact: true }).click();
@@ -316,9 +305,12 @@ test("Review opens effective grouped signed content without identifying text", a
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/installation") return route.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
-    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: false, page: 1, pageSize: 25, total: 1,
-      asOf: "2026-10-02T08:00:00Z", reports: [{ id, reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z" }] } });
+    if (path === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1, pageSize: 25, total: 1,
+      asOf: "2026-10-02T08:00:00Z", items: [{ id: "grouped-item", reportId: id, criterionId: "grouped",
+        kind: "criterion", priority: "high", status: "new", assigneeId: null, version: 0,
+        firstMatchedAt: "2026-10-02T08:00:00Z", signedAt: "2026-10-02T07:00:00Z", findings: [] }] } });
+    if (path === "/api/review/items/grouped-item") return route.fulfill({ json: { id: "grouped-item", reportId: id,
+      kind: "criterion", priority: "high", status: "new", findings: [], comments: [], assignmentHistory: [], progressHistory: [] } });
     if (path === `/api/review/reports/${id}`) return route.fulfill({ json: { id, reportingDate: "2026-10-02",
       signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 1, identifying: false,
       groups: [{ id: "entry-1", parentGroupInstanceId: null, groupId: "custom.entry", label: "Assessment entry", ordinal: 1 }],
@@ -327,11 +319,11 @@ test("Review opens effective grouped signed content without identifying text", a
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("tab", { name: "Reports", exact: true }).click();
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${id.slice(0, 8).toUpperCase()}` }));
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${id.slice(0, 8).toUpperCase()}` }));
+  await call.getByRole("tab", { name: "Summary", exact: true }).click();
   await expect(call.getByRole("heading", { name: "Assessment entry #2" })).toBeVisible();
   await expect(call.getByText("Score")).toBeVisible();
   await expect(call.getByText("4", { exact: true })).toBeVisible();
-  await expect(call.getByText("1 signed amendments")).toBeVisible();
+  await expect(call.locator("#review-inspector").getByText("1 signed amendments")).toBeVisible();
   await expect(call.getByText("Surname")).toHaveCount(0);
 });

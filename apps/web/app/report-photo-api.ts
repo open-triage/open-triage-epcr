@@ -45,8 +45,8 @@ export function deleteReportPhotoNote(csrfToken: string, reportId: string, noteI
   return mutate<DeleteReportPhotoNoteResponse>(csrfToken, `/api/reports/${reportId}/photos/${noteId}`, "DELETE", command);
 }
 
-export async function fetchReportPhoto(reportId: string, noteId: string): Promise<Blob> {
-  const response = await fetch(browserRouteUrl(`/api/reports/${reportId}/photos/${noteId}/image`), browserRequestInit());
+export async function fetchReportPhoto(reportId: string, noteId: string, contentPath?: string): Promise<Blob> {
+  const response = await fetch(browserRouteUrl(contentPath ?? `/api/reports/${reportId}/photos/${noteId}/image`), browserRequestInit());
   if (!response.ok) throw await platformRequestError(response);
   if (response.headers.get("content-type") !== "image/jpeg") throw new Error("The photo response was not a canonical JPEG.");
   return response.blob();

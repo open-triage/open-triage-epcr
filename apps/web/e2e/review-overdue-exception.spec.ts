@@ -22,9 +22,6 @@ test("review administrator closes an overdue unsigned follow-up with a coded rea
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
-    if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
     if (url.pathname === `/api/review/items/${itemId}/close-exceptionally`) {
@@ -56,7 +53,7 @@ test("review administrator closes an overdue unsigned follow-up with a coded rea
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
   await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
   await expect(call.getByRole("button", { name: "Close unsigned follow-up exceptionally" })).toBeDisabled();
   await call.getByRole("combobox", { name: /^Exception reason/ }).selectOption("report-not-required");

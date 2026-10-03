@@ -27,9 +27,6 @@ for (const width of [390, 1440]) test(`Review tabs preserve filters and support 
         assignmentCounts: { all: 2, mine: 1, unassigned: 1 },
         asOf: new Date().toISOString(), items: filtered } });
     }
-    if (url.pathname === '/api/review/reports') return route.fulfill({ json: { dataset: 'real',
-      scope: 'all', identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === '/api/review/items/123e4567-e89b-42d3-a456-426614174001') return route.fulfill({ json: { ...item,
       assignmentHistory: [], progressHistory: [], comments: [], commentsRestricted: true } });
     if (url.pathname === '/api/review/reports/123e4567-e89b-42d3-a456-426614174002') return route.fulfill({ json: { id: '123e4567-e89b-42d3-a456-426614174002',
@@ -40,7 +37,7 @@ for (const width of [390, 1440]) test(`Review tabs preserve filters and support 
   });
   await page.goto('/');
   const navigation = page.getByRole('tablist', { name: 'Review workspace', exact: true });
-  await expect(navigation.getByRole('tab')).toHaveCount(4);
+  await expect(navigation.getByRole('tab')).toHaveCount(3);
   const queue = navigation.getByRole('tab', { name: 'Review queue' });
   await expect(queue).toHaveAttribute('aria-selected', 'true');
   const table = page.getByRole('table', { name: 'Review queue', exact: true });
@@ -63,8 +60,8 @@ for (const width of [390, 1440]) test(`Review tabs preserve filters and support 
   await expect(page.getByRole('button', { name: 'Assigned to me 1', exact: true })).toBeVisible();
   await queue.focus();
   await page.keyboard.press('ArrowRight');
-  await expect(navigation.getByRole('tab', { name: 'Reports', exact: true })).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'Signed reports' })).toBeVisible();
+  await expect(navigation.getByRole('tab', { name: 'Reports', exact: true })).toHaveCount(0);
+  await expect(navigation.getByRole('tab', { name: 'Analysis', exact: true })).toBeFocused();
   await page.keyboard.press('End');
   await expect(navigation.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Criterion routing' })).toBeVisible();
@@ -73,8 +70,8 @@ for (const width of [390, 1440]) test(`Review tabs preserve filters and support 
   await expect(page.getByRole('heading', { name: 'Review outcomes', exact: true })).toBeVisible();
   await page.keyboard.press('Home');
   await expect(page.getByRole('searchbox', { name: 'Search' })).toHaveValue('oxygen');
-  const call = await openReviewCall(page, page.getByRole('button', { name: /^PCR-000123/ }));
-  await expect(call.getByRole('tab', { name: 'Document findings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  const call = await openReviewCall(page, page.getByRole('button', { name: /^View PCR-000123/ }));
+  await expect(call.getByRole('tab', { name: 'Findings', exact: true })).toHaveAttribute('aria-selected', 'true');
   await call.getByRole('tab', { name: 'History', exact: true }).click();
   await expect(call.getByText('Discussion text requires Review identifying access.', { exact: false })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

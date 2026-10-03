@@ -25,9 +25,6 @@ test("reviewer progresses one item and completes with an agency outcome", async 
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
-    if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
     if (url.pathname === "/api/review/backlog") return route.fulfill({ json: { work: [] } });
@@ -55,7 +52,7 @@ test("reviewer progresses one item and completes with an agency outcome", async 
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
   await call.getByRole("button", { name: "Start review" }).click();
   await expect(call.getByText("Status: In review", { exact: true })).toBeVisible();
   await call.getByRole("button", { name: "Await clinician" }).click();

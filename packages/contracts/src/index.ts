@@ -333,26 +333,6 @@ export interface ReviewAttentionResponse {
   processingFailures?: number;
 }
 
-export interface ReviewSignedReportSummary {
-  id: string;
-  reportNumber?: string | null;
-  reportingDate: string;
-  signedAt: string;
-  documentingClinician?: string;
-}
-
-export interface ReviewSignedReportsResponse {
-  dataset: "real" | "synthetic";
-  scope: "own" | "all";
-  identifying: boolean;
-  administrator: boolean;
-  page: number;
-  pageSize: number;
-  total: number;
-  asOf: string;
-  reports: ReviewSignedReportSummary[];
-}
-
 export interface ReviewReportValue {
   id: string;
   elementId: string;

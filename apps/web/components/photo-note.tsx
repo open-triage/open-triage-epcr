@@ -36,8 +36,9 @@ import {
 } from "../app/protected-clinical-storage";
 import { browserMediaCapturePreflight, mediaCaptureErrorMessage } from "../app/media-capture-capability";
 
-export function AuthorizedPhotoImage({ reportId, noteId, alt, className, language = "en" }: {
+export function AuthorizedPhotoImage({ reportId, noteId, alt, className, language = "en", contentPath }: {
   readonly reportId: string; readonly noteId: string; readonly alt: string; readonly className?: string; readonly language?: AgencyLanguage;
+  readonly contentPath?: string;
 }) {
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   const [source, setSource] = useState<string | null>(null);
@@ -45,14 +46,14 @@ export function AuthorizedPhotoImage({ reportId, noteId, alt, className, languag
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
-    const local = protectedPhotoBlob(reportId, noteId);
-    void (local ? Promise.resolve(local) : fetchReportPhoto(reportId, noteId)).then((blob) => {
+    const local = contentPath ? null : protectedPhotoBlob(reportId, noteId);
+    void (local ? Promise.resolve(local) : fetchReportPhoto(reportId, noteId, contentPath)).then((blob) => {
       if (!active) return;
       objectUrl = URL.createObjectURL(blob);
       setSource(objectUrl);
     }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [noteId, reportId]);
+  }, [noteId, reportId, contentPath]);
   if (failed) return <span className="photo-unavailable" role="img" aria-label={t("noteUi.photoUnavailableNamed", { alt })}>{t("noteUi.photoUnavailableLabel")}</span>;
   if (!source) return <span className="photo-loading" role="status">{t("noteUi.loading.photo")}</span>;
   // Canonical bytes are fetched with the authorized session and retained only in an object URL for this mount.
@@ -341,7 +342,7 @@ export function PhotoNoteDialog({
         </>}
         <div className="note-dialog-actions">
           <DialogCancelButton language={language} disabled={saving} onClick={onClose} />
-          {mode === "preview" && <button type="button" disabled={saving} onClick={discard}>{t("noteUi.discard.retake")}</button>}
+          {mode === "preview" && <button className="button-danger" type="button" disabled={saving} onClick={discard}>{t("noteUi.discard.retake")}</button>}
           {mode !== "camera" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : note ? t("noteUi.save.caption") : t("noteUi.use.photo")}</button>}
         </div>
       </>}

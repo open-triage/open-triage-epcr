@@ -63,6 +63,7 @@ import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAu
 import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote,
   type NoteReadinessBlocker } from "./report-text-notes";
 import { EncounterTimeline } from "../components/encounter-timeline";
+import { WorkspaceSidebar } from "../components/workspace-sidebar";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
 import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
@@ -908,16 +909,14 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             groups={report.clinicalForm!.customGroups} language={language}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
         </section>}
-      {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label={t("mobile.encounterTimeline")} onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
+      {presentationMode === "stationary" && stationaryTimelineOpen && <WorkspaceSidebar id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" label={t("mobile.encounterTimeline")} onEscape={() => {
         setStationaryTimelineOpen(false);
         storeStationaryTimelineOpen(window.localStorage, session.user.id, false);
         timelineToggle.current?.focus();
       }}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={displayDefinition}
           clinicalForm={report?.clinicalForm} headingId="stationary-timeline-heading" language={language} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
-      </aside>}
+      </WorkspaceSidebar>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">

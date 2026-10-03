@@ -1,12 +1,14 @@
 "use client";
 
-import type { ClinicianSession, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewVolumeResult,
+import type { ClinicianSession, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueDraft, ReviewSignedReport, ReviewVolumeResult,
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
-  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReviewOverdueExceptionCode, ReviewBulkResult, ReportNote } from "@open-triage/contracts";
-import { useEffect, useState } from "react";
+  ReviewEligibleReviewer, ReviewOutcomeOption, ReviewAmendmentPolicy, ReviewOverdueExceptionCode, ReviewBulkResult } from "@open-triage/contracts";
+import { useEffect, useRef, useState } from "react";
 import { ReviewTabs } from "./review-tabs";
-import { StationaryRecord } from "./stationary-record";
-import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "../app/browser-api";
+import { ReviewReport } from "./review-report";
+import { ReviewStatusBadge } from "./review-status-badge";
+import { WorkspaceSidebar } from "./workspace-sidebar";
+import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { ReviewVolumeChart } from "./review-volume-chart";
 import { ReviewAnalysisBuilder } from "./review-analysis-builder";
@@ -26,13 +28,16 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const [dataset, setDataset] = useState<"real" | "synthetic">(
     callWindow?.dataset ?? (session.capabilities?.includes("clinical:demo") ? "synthetic" : "real"));
   const administrator = session.capabilities?.includes("review:admin") ?? false;
-  const [tab, setTab] = useState<"queue" | "reports" | "analysis" | "settings">("queue");
+  const [tab, setTab] = useState<"queue" | "analysis" | "settings">("queue");
   const [analysisTab, setAnalysisTab] = useState<"volume" | "clinical" | "workload" | "saved">("volume");
-  const [detailTab, setDetailTab] = useState<"findings" | "history">("findings");
+  const [detailTab, setDetailTab] = useState<"findings" | "summary" | "history">("findings");
+  const [fullReportOpen, setFullReportOpen] = useState(!!callWindow);
+  const [fullFindingsOpen, setFullFindingsOpen] = useState(true);
+  const reportToolbar = useRef<HTMLElement>(null);
+  const reportTrigger = useRef<HTMLElement | null>(null);
   const [assignment, setAssignment] = useState<"all" | "mine" | "unassigned">("all");
   const [search, setSearch] = useState("");
   const [moreFilters, setMoreFilters] = useState(false);
-  const [page, setPage] = useState(1);
   const [queue, setQueue] = useState<ReviewQueueResponse | null>(null);
   const [queueError, setQueueError] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -49,17 +54,13 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const [queueFrom, setQueueFrom] = useState("");
   const [queueTo, setQueueTo] = useState("");
   const [backlog, setBacklog] = useState<Array<{ reportId: string; state: string; attempts: number; lastError: string | null }> | null>(null);
-  const [result, setResult] = useState<ReviewSignedReportsResponse | null>(null);
-  const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string | null>(callWindow?.reportId ?? null);
   const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
   const [selectedReportItemId, setSelectedReportItemId] = useState<string | null>(callWindow?.itemId ?? null);
   const selectedItemId = selectedItem?.id ?? selectedReportItemId;
   const [itemDetail, setItemDetail] = useState<ReviewItemDetail | null>(null);
-  const selectedKind = selectedItem?.kind ?? itemDetail?.kind;
-  const selectedSignedAt = selectedItem?.signedAt ?? itemDetail?.signedAt;
-  const waitingForItem = !!selectedItemId && !itemDetail;
+  const [itemError, setItemError] = useState(false);
 
   const [entryKind, setEntryKind] = useState<"comment" | "finding">("comment");
   const [handoffTarget, setHandoffTarget] = useState("");
@@ -91,6 +92,11 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const [exceptionCode, setExceptionCode] = useState<ReviewOverdueExceptionCode | "">("");
   const [detail, setDetail] = useState<ReviewSignedReport | null>(null);
   const [draftDetail, setDraftDetail] = useState<ReviewOverdueDraft | null>(null);
+  const currentItem = itemDetail ?? selectedItem;
+  // Queue entries already tell us which endpoint to use. Only direct item links
+  // need the item request before choosing between a signed report and a draft.
+  const reportSource = selectedItemId && !currentItem ? (detail ? "signed" : null) :
+    currentItem?.kind === "overdue-unsigned" && !currentItem.signedAt ? "draft" : "signed";
   const [overduePolicy, setOverduePolicy] = useState<{ deadlineHours: number; version: number } | null>(null);
   const [deadlineHours, setDeadlineHours] = useState(24);
   const [detailError, setDetailError] = useState(false);
@@ -112,10 +118,16 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       document.removeEventListener("visibilitychange", update); };
   }, [online]);
 
-  function openCall(reportId: string, itemId?: string) {
-    const query = new URLSearchParams({ report: reportId, dataset, language });
-    if (itemId) query.set("item", itemId);
-    window.open(`${browserRequestConfiguration().basePath}/review-call/?${query}`, "_blank", "noopener,width=1440,height=1000");
+  function selectReport(reportId: string, item?: ReviewQueueItem, full = false) {
+    if (commentDraft.trim()) return;
+    if (reportId === selected && item?.id === selectedItemId && (detailError || itemError)) setRefresh((value) => value + 1);
+    reportTrigger.current = item ? document.getElementById(`review-view-${item.id}`) : null;
+    setSelected(reportId); setSelectedItem(item ?? null); setSelectedReportItemId(item?.id ?? null);
+    if (item?.id !== selectedItemId) setItemDetail(null);
+    setItemError(false);
+    if (reportId !== selected) { setDetail(null); setDraftDetail(null); }
+    setDetailError(false); setDetailTab("findings"); setFullReportOpen(full); setFullFindingsOpen(true);
+    setCommentDraft(""); setCommentPending(null); setCommentError(null); setWorkflowError(null); setClaimError(null);
   }
 
   const bulkScopeKey = JSON.stringify([dataset, queuePage, priority, status, attentionFilter, criterion, queueFrom, queueTo, assignment, search]);
@@ -165,20 +177,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   }, [dataset, online, refresh, session.capabilities, callWindow]);
 
   useEffect(() => {
-    if (!online || callWindow || tab !== "reports") return;
-    const controller = new AbortController();
-    const url = apiRequestUrl(`/api/review/reports?dataset=${dataset}&page=${page}`);
-    if (!url) return;
-    void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
-      if (!response.ok) throw new Error(String(response.status));
-      const next = await response.json() as ReviewSignedReportsResponse;
-      if (!controller.signal.aborted) { setResult(next); setError(false); }
-    }).catch(() => { if (!controller.signal.aborted) { setResult(null); setError(true); } });
-    return () => controller.abort();
-  }, [dataset, online, page, refresh, callWindow, tab]);
-
-  useEffect(() => {
-    if (!online || !selected || waitingForItem || (selectedKind === "overdue-unsigned" && !selectedSignedAt)) return;
+    if (!online || !selected || reportSource !== "signed") return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/reports/${selected}?dataset=${dataset}`);
     if (!url) return;
@@ -188,10 +187,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       if (!controller.signal.aborted) { setDetail(next); setDetailError(false); }
     }).catch(() => { if (!controller.signal.aborted) { setDetail(null); setDetailError(true); } });
     return () => controller.abort();
-  }, [dataset, online, selected, waitingForItem, selectedKind, selectedSignedAt, refresh]);
+  }, [dataset, online, selected, reportSource, refresh]);
 
   useEffect(() => {
-    if (!online || !selectedItemId || selectedKind !== "overdue-unsigned" || !!selectedSignedAt) return;
+    if (!online || !selectedItemId || reportSource !== "draft") return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/items/${selectedItemId}/draft?dataset=${dataset}`);
     if (!url) return;
@@ -200,7 +199,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       if (!controller.signal.aborted) { setDraftDetail(await response.json() as ReviewOverdueDraft); setDetailError(false); }
     }).catch(() => { if (!controller.signal.aborted) { setDraftDetail(null); setDetailError(true); } });
     return () => controller.abort();
-  }, [dataset, online, selectedItemId, selectedKind, selectedSignedAt, refresh]);
+  }, [dataset, online, selectedItemId, reportSource, refresh]);
 
   useEffect(() => {
     if (!online || callWindow || !session.capabilities?.includes("review:admin")) return;
@@ -223,8 +222,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
       if (!response.ok) throw new Error(String(response.status));
       const next = await response.json() as ReviewItemDetail;
-      if (!controller.signal.aborted) { setItemDetail(next); }
-    }).catch(() => { if (!controller.signal.aborted) { setItemDetail(null); setDetail(null); setDraftDetail(null); setDetailError(true); } });
+      if (!controller.signal.aborted) { setItemDetail(next); setItemError(false); }
+    }).catch(() => { if (!controller.signal.aborted) { setItemDetail(null); setItemError(true); } });
     return () => controller.abort();
   }, [dataset, online, selectedItemId, refresh]);
 
@@ -499,9 +498,9 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     setVolumeExportBusy(false);
   };
 
-  const viewDetail = detail ?? (draftDetail ? { ...draftDetail, amendmentSequence: 0,
+  const viewDetail = reportSource === "signed" ? detail : (draftDetail ? { ...draftDetail, amendmentSequence: 0,
     reviewItems: [] as NonNullable<ReviewSignedReport["reviewItems"]> } : null);
-  const mainTabs = ["queue", "reports", "analysis", ...(administrator ? ["settings"] : [])] as Array<typeof tab>;
+  const mainTabs = ["queue", "analysis", ...(administrator ? ["settings"] : [])] as Array<typeof tab>;
   const panel = (id: string, value: string, active: string) => ({ role: "tabpanel", id: `${id}-panel-${value}`,
     "aria-labelledby": `${id}-tab-${value}`, hidden: value !== active, tabIndex: 0 });
   const reportLabel = (id: string, number?: string | null) => number ? number :
@@ -512,15 +511,23 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   };
   const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName">>) => item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") :
     item.criterionName ?? routes?.find((route) => route.criterionId === item.criterionId)?.name ?? t("review.findings");
+  const closeReport = () => {
+    if (callWindow) window.close();
+    else {
+      setFullReportOpen(false); setFullFindingsOpen(true);
+      requestAnimationFrame(() => reportTrigger.current?.focus({ preventScroll: true }));
+    }
+  };
+  const closeFindings = () => { setFullFindingsOpen(false); document.getElementById("review-findings-toggle")?.focus(); };
   return <main className="review-workspace" aria-labelledby="review-heading">
     <header className="review-heading review-card">
       <div><h1 id="review-heading">{t("navigation.review")}</h1><p>{session.organization.name}</p></div>
       {!callWindow && <div className="review-heading-actions">
         <label><span className="review-sr-only">{t("review.dataset")}</span><select value={dataset} onChange={(event) => {
-          setResult(null); setDetail(null); setDraftDetail(null); setSelected(null); setSelectedItem(null);
-          setSelectedReportItemId(null); setCommentDraft(""); setCommentPending(null);
+          setDetail(null); setDraftDetail(null); setSelected(null); setSelectedItem(null); setFullReportOpen(false);
+          setSelectedReportItemId(null); setItemDetail(null); setItemError(false); setCommentDraft(""); setCommentPending(null);
           setVolume(null); setVolumeError(false); setQueue(null); setSearch("");
-          setDataset(event.target.value as "real" | "synthetic"); setPage(1); setQueuePage(1);
+          setDataset(event.target.value as "real" | "synthetic"); setQueuePage(1);
         }}><option value="real">{t("review.real")}</option><option value="synthetic">{t("review.synthetic")}</option></select></label>
 
       </div>}
@@ -529,8 +536,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     {!callWindow && <ReviewTabs id="review-main" label={t("review.workspace.navigation")} value={tab} onChange={setTab}
       options={mainTabs.map((value) => ({ value, label: t(`review.workspace.${value}`) }))} />}
     {!online ? <p role="status" className="review-card">{t("review.offline")}</p> : <>
-    <div className={`review-content${callWindow ? " review-call-content" : ""}`}>
-      {!callWindow && <>
+    <div className={`review-content${selected && (tab === "queue") ? " has-inspector" : ""}${fullReportOpen && (tab === "queue") ? ` review-call-content${fullFindingsOpen ? " has-findings" : ""}` : ""}`}>
+      {!callWindow && <div className="review-queue-panels" hidden={fullReportOpen && (tab === "queue")}>
       <div {...panel("review-main", "queue", tab)}>
         <div className="review-work-filters" role="group" aria-label={t("review.workspace.workFilters")}>
           {(["all", "mine", "unassigned"] as const).map((value) => <button key={value} type="button"
@@ -577,7 +584,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         {workflowError && <p role="alert">{t(workflowError === "conflict" ? "review.workflowConflict" : "review.workflowUnavailable")}</p>}
         {queue && <><p>{t("review.queueCount", { count: queue.total })}</p>
           {(session.capabilities?.includes("review:all") || session.capabilities?.includes("review:admin")) &&
-            <section className="review-bulk" aria-labelledby="review-bulk-heading"><h3 id="review-bulk-heading">{t("review.workspace.bulkActions")}</h3><div className="review-controls">
+            <section className="review-bulk" aria-label={t("review.workspace.bulkActions")}><div className="review-controls">
               <button type="button" onClick={() => setBulkSelection({ key: bulkScopeKey, items: Object.fromEntries(
                 queue.items.map((item) => [item.id, item.version])) })}>{t("review.bulkSelectPage")}</button>
               <button type="button" onClick={() => setBulkSelection({ key: bulkScopeKey, items: {} })}>{t("review.bulkClearSelection")}</button>
@@ -609,7 +616,11 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                   "review.status", "review.assignee", "review.age", "review.workspace.actions"].map((key) =>
                   <th key={key} scope="col">{t(key)}</th>)}
               </tr></thead><tbody>
-            {queue.items.map((item) => <tr key={item.id} className="review-queue-row">
+            {queue.items.map((item) => <tr key={item.id} className="review-queue-row"
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest("button, input, a, label")) return;
+                selectReport(item.reportId, item);
+              }}>
               <td><input type="checkbox" aria-label={t("review.bulkSelectItem", { id: item.id })}
                 checked={Object.hasOwn(activeBulkSelection, item.id)} onChange={(event) => {
                   setBulkSelection((previous) => {
@@ -619,15 +630,16 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                     return { key: bulkScopeKey, items: next };
                   });
                 }} /></td>
-              <td><button type="button" className="review-record-button review-queue-open" onClick={() => openCall(item.reportId, item.id)}>
-                <strong>{reportLabel(item.reportId, item.reportNumber)}</strong>
-              </button></td>
-              <td><span className="review-row-criterion" tabIndex={0}>{criterionLabel(item)}<span className="review-criterion-tooltip" role="tooltip">{item.criterionDescription ?? item.findings.map((finding) => finding.message).join(" · ")}</span></span></td>
+              <td><strong>{reportLabel(item.reportId, item.reportNumber)}</strong></td>
+              <td><span className="review-row-criterion" tabIndex={0} aria-describedby={`review-reason-${item.id}`}>{criterionLabel(item)}<span id={`review-reason-${item.id}`} className="review-criterion-tooltip" role="tooltip">{item.criterionDescription ?? item.findings.map((finding) => finding.message).join(" · ")}</span></span></td>
               <td><span className={`review-badge priority-${item.priority}`}>{t(`review.${item.priority}`)}</span></td>
-              <td><span className={`review-badge status-${item.status}`}>{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}{item.reopened && ` · ${t("review.reopened")}`}</span></td>
+              <td><ReviewStatusBadge item={item} language={language} /></td>
               <td>{item.assigneeId ? item.assigneeId === session.user.id ? t("review.assignedToYou") : item.assigneeName ?? t("review.workspace.reviewer") : t("review.unassigned")}</td>
               <td>{ageLabel(item.firstMatchedAt)}</td>
-              <td>{!item.assigneeId && item.status === "new" && session.capabilities?.includes("review:all") && <button type="button" disabled={!!claiming} onClick={() => void claim(item)}>{t("review.claim")}</button>}</td>
+              <td><div className="review-row-actions"><button id={`review-view-${item.id}`} type="button" aria-label={t("review.workspace.viewReview", { report: reportLabel(item.reportId, item.reportNumber) })}
+                aria-expanded={fullReportOpen && selectedItemId === item.id} aria-controls={fullReportOpen ? "review-full-report" : undefined}
+                onClick={() => selectReport(item.reportId, item, true)}>{t("review.workspace.view")}</button>
+                {!item.assigneeId && item.status === "new" && session.capabilities?.includes("review:all") && <button type="button" disabled={!!claiming} onClick={() => void claim(item)}>{t("review.claim")}</button>}</div></td>
             </tr>)}
             </tbody></table>
           </div>}
@@ -639,28 +651,6 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       </section>
 
       </div>
-      <div {...panel("review-main", "reports", tab)}><section className="review-card"><h2>{t("review.heading")}</h2>
-      {error && <p role="alert">{t("review.unavailable")}</p>}
-      {!result && !error && <p role="status">{t("review.loading")}</p>}
-      {result && <>
-        <p>{t("review.count", { count: result.total })}</p>
-        {result.reports.length === 0 ? <p>{t("review.empty")}</p> :
-          <div className="review-record-list" role="list">{result.reports.map((report) => <div role="listitem" key={report.id}>
-            <button type="button" className="review-record-button review-signed-row" onClick={() => openCall(report.id)}>
-              <strong>{reportLabel(report.id, report.reportNumber)}</strong><span>{report.reportingDate}</span>
-              <span>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.signedAt))}</span>
-              {result.identifying && <span>{report.documentingClinician ?? "—"}</span>}
-            </button>
-          </div>)}</div>}
-        <nav className="review-pagination" aria-label={t("review.pages")}>
-          <button type="button" disabled={page === 1} onClick={() => { setResult(null); setPage(page - 1); }}>{t("review.previous")}</button>
-          <span>{t("review.page", { page })}</span>
-          <button type="button" disabled={page * result.pageSize >= result.total}
-            onClick={() => { setResult(null); setPage(page + 1); }}>{t("review.next")}</button>
-        </nav>
-      </>}
-
-</section></div>
       <div {...panel("review-main", "analysis", tab)}>
         <ReviewTabs id="review-analysis" label={t("review.workspace.analysis")} value={analysisTab} onChange={setAnalysisTab}
           options={(["volume", "clinical", "workload", "saved"] as const).map((value) => ({ value, label: t(`review.workspace.${value}`) }))} />
@@ -824,47 +814,53 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           </div>
         </div>
       </div>}
-      </>}
-      {callWindow && viewDetail && <article className="review-card review-call-form" aria-label={t("review.report")}>
-
-          {!draftDetail && <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
-          {!!viewDetail.reviewItems?.length && <section><h3>{t("review.reportItems")}</h3><ul>
-            {viewDetail.reviewItems.map((item) => <li key={item.id}><button type="button"
-              onClick={() => { if (commentDraft.trim()) return; setSelectedItem(null); setSelectedReportItemId(item.id); setItemDetail(null);
-                setDetailTab("findings"); setCommentDraft(""); setCommentPending(null); }}>{criterionLabel(item)}</button>:
-              {" "}{t(`review.${item.status === "in-review" ? "inReview" : item.status === "awaiting-clinician" ? "awaitingClinician" : item.status}`)}
-              {item.outcome && <> — {item.outcome.label}: {item.outcome.meaning}</>}
-              {item.clearancePending && <> — {t("review.clearancePending")}</>}
-              {item.closureReason && <> — {t("review.automaticClosure")}</>}</li>)}
-          </ul></section>}
-          {viewDetail.document && viewDetail.clinicalForm ? <StationaryRecord key={viewDetail.id} readOnly
-            document={viewDetail.document} formDefinition={viewDetail.clinicalForm.definition}
-            catalogFields={viewDetail.clinicalForm.catalogFields} customFields={viewDetail.clinicalForm.customFields}
-            customGroups={viewDetail.clinicalForm.customGroups} catalogGroups={viewDetail.clinicalForm.catalogGroups}
-            language={language} onDocumentChange={() => {}} /> : <>
-          {viewDetail.groups.map((group) => <section key={group.id}>
-            <h3>{group.parentGroupInstanceId ? `${viewDetail.groups.find((item) => item.id === group.parentGroupInstanceId)?.label ?? ""} / ` : ""}
-              {group.label} {group.ordinal > 0 ? `#${group.ordinal + 1}` : ""}</h3>
-            <ReviewValues values={viewDetail.values.filter((value) => value.groupInstanceId === group.id)} />
-          </section>)}
-          <ReviewValues values={viewDetail.values.filter((value) => !value.groupInstanceId)} />
-          </>}
-          {viewDetail.notes.length > 0 && <section><h3>{t("review.notes")}</h3>
-            {viewDetail.notes.map((note) => <ReviewNote key={note.id} note={note} reportId={viewDetail.id} dataset={dataset} language={language} />)}
-          </section>}
+      </div>}
+      {fullReportOpen && (tab === "queue") && <article id="review-full-report" className="review-card review-call-form" aria-label={t("review.workspace.report")}>
+        {viewDetail ? <ReviewReport key={viewDetail.id} report={viewDetail} full language={language} dataset={dataset}
+          toolbarRef={reportToolbar} findingsOpen={fullFindingsOpen} onToggleFindings={() => setFullFindingsOpen(!fullFindingsOpen)}
+          onClose={closeReport} /> : <>
+          <header ref={reportToolbar} className="review-report-toolbar">
+            <button type="button" className="review-report-close" aria-label={t("review.workspace.closeReport")} onClick={closeReport}>×</button>
+          </header>
+          {detailError ? <p role="alert">{t("review.detailUnavailable")}</p> : <p role="status">{t("review.detailLoading")}</p>}
+        </>}
       </article>}
-      {selected && (tab === "queue" || tab === "reports") && <aside className="review-card review-inspector" aria-label={t("review.detail")}>
+      {selected && (tab === "queue") && (!fullReportOpen || fullFindingsOpen) && <WorkspaceSidebar id="review-inspector"
+        className={`review-card review-inspector${fullReportOpen ? " review-findings-sidebar" : ""}`} label={t("review.detail")}
+        docked={fullReportOpen && !!viewDetail} anchor={reportToolbar} onEscape={fullReportOpen ? closeFindings : undefined}>
         <header className="review-inspector-heading"><div><p className="eyebrow">{t("review.workspace.selectedReview")}</p>
-          <h2>{reportLabel(selected, (itemDetail ?? selectedItem)?.reportNumber ?? result?.reports.find((report) => report.id === selected)?.reportNumber)}</h2></div>
+          <h2>{reportLabel(selected, (itemDetail ?? selectedItem)?.reportNumber)}</h2></div>
           <button type="button" aria-label={t("review.close")} onClick={() => {
+            if (fullReportOpen) { closeFindings(); return; }
             if (callWindow) { window.close(); return; }
-            setSelected(null); setSelectedItem(null); setSelectedReportItemId(null); setItemDetail(null);
+            setSelected(null); setSelectedItem(null); setSelectedReportItemId(null); setItemDetail(null); setFullReportOpen(false);
             setDetail(null); setDraftDetail(null); setCommentDraft(""); setCommentPending(null);
-          }}>×</button></header>
+          }} disabled={!!commentDraft.trim()}>×</button></header>
+        {!!viewDetail?.reviewItems?.length && <section className="review-report-items" aria-label={t("review.reportItems")}><h3>{t("review.reportItems")}</h3><ul>
+          {viewDetail.reviewItems.map((reportItem) => {
+            const item = reportItem.id === itemDetail?.id ? { ...reportItem, ...itemDetail } : reportItem;
+            return <li key={item.id}><button type="button" aria-current={selectedItemId === item.id ? "true" : undefined}
+              disabled={!!commentDraft.trim() && selectedItemId !== item.id}
+              onClick={() => {
+                if (selectedItemId === item.id) return;
+                setSelectedItem(null); setSelectedReportItemId(item.id); setItemDetail(null); setItemError(false);
+                setDraftDetail(null); setDetailError(false); setDetailTab("findings");
+                setCommentPending(null); setCommentError(null); setWorkflowError(null); setClaimError(null);
+              }}>
+              <span>{criterionLabel(item)}</span><ReviewStatusBadge item={item} language={language} />
+              {selectedItemId === item.id && <small className="review-active-item">{t("review.workspace.activeItem")}</small>}
+            </button>
+              {item.outcome && <p>{item.outcome.label}: {item.outcome.meaning}</p>}
+              {item.clearancePending && <p>{t("review.clearancePending")}</p>}
+              {item.closureReason && <p>{t("review.automaticClosure")}</p>}
+            </li>;
+          })}
+        </ul></section>}
         <ReviewTabs id="review-detail" label={t("review.detail")} value={detailTab} onChange={setDetailTab}
-          options={(["findings", "history"] as const).map((value) => ({ value, label: t(value === "findings" ? "review.documentFindings" : "review.workspace.history") }))} />
-        {detailError && <p role="alert">{t("review.detailUnavailable")}</p>}
-        {!viewDetail && !detailError && <p role="status">{t("review.detailLoading")}</p>}
+          options={(["findings", "summary", "history"] as const).map((value) => ({ value, label: t(`review.workspace.${value}`) }))} />
+        {itemError && <p role="alert">{t("review.itemUnavailable")}</p>}
+        {detailError && !fullReportOpen && <p role="alert">{t("review.detailUnavailable")}</p>}
+        {!viewDetail && !detailError && !fullReportOpen && <p role="status">{t("review.detailLoading")}</p>}
         {workflowError && <p role="alert">{t(workflowError === "conflict" ? "review.workflowConflict" : "review.workflowUnavailable")}</p>}
         {claimError && <p role="alert">{t(claimError === "conflict" ? "review.claimConflict" : "review.claimUnavailable")}</p>}
         {viewDetail && <>
@@ -899,7 +895,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
               <button type="button" disabled={assignmentTarget === (itemDetail.assigneeId ?? "")}
                 onClick={() => void assign(itemDetail)}>{t("review.saveAssignment")}</button>
             </div></details>}
-            {itemDetail && <><p>{t("review.status")}: {t(`review.${itemDetail.status === "in-review" ? "inReview" : itemDetail.status === "awaiting-clinician" ? "awaitingClinician" : itemDetail.status}`)}</p>
+            {itemDetail && <><p>{t("review.status")}: <ReviewStatusBadge item={itemDetail} language={language} /></p>
               {itemDetail.resolutionReason === "resolved-by-signing" && <p>{t("review.resolvedBySigning")}</p>}
               {itemDetail.resolutionReason === "closed-exceptionally" && <p>
                 {t("review.closedExceptionally")}: {t(`review.exception.${itemDetail.exceptionCode}`)}</p>}
@@ -958,6 +954,11 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
             {!selectedItem && !itemDetail && <p>{t("review.workspace.chooseFinding")}</p>}
 
           </div>
+          <div {...panel("review-detail", "summary", detailTab)}>
+            <button type="button" className="review-primary" disabled={fullReportOpen} onClick={() => { setFullReportOpen(true); setFullFindingsOpen(true); }}>{t("review.workspace.openReport")}</button>
+            {!draftDetail && <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
+            {detailTab === "summary" && <ReviewReport key={viewDetail.id} report={viewDetail} language={language} dataset={dataset} />}
+          </div>
           <div {...panel("review-detail", "history", detailTab)}>
 {itemDetail ? <>
               <section aria-label={t("review.discussionHeading")}><h4>{t("review.discussionHeading")}</h4>
@@ -1003,43 +1004,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
 </>}
           </div>
         </>}
-      </aside>}
+      </WorkspaceSidebar>}
     </div>
     </>}
   </main>;
-}
-
-function ReviewValues({ values }: { values: ReviewSignedReport["values"] }) {
-  return values.length > 0 && <dl>{values.map((value) => <div key={value.id}>
-    <dt>{value.label}{value.ordinal > 0 ? ` #${value.ordinal + 1}` : ""}</dt>
-    <dd>{value.codeDisplay ?? value.absenceDisplay ?? String(value.value ?? "—")}</dd>
-  </div>)}</dl>;
-}
-
-function ReviewNote({ note, reportId, dataset, language }: { note: ReportNote; reportId: string;
-  dataset: "real" | "synthetic"; language: AgencyLanguage }) {
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  useEffect(() => () => { if (mediaUrl) URL.revokeObjectURL(mediaUrl); }, [mediaUrl]);
-  const t = (key: string) => resolveMessage(language, key);
-  const load = async () => {
-    if (note.type === "text") return;
-    const url = apiRequestUrl(`/api/review/reports/${reportId}/${note.type}/${note.id}/content?dataset=${dataset}`);
-    if (!url) return;
-    try {
-      const response = await fetch(url, browserRequestInit());
-      if (!response.ok) throw new Error(String(response.status));
-      setMediaUrl(URL.createObjectURL(await response.blob())); setError(false);
-    } catch { setError(true); }
-  };
-  return <article>
-    <p>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(note.capturedAt))}</p>
-    {note.type === "text" ? <p>{note.content}</p> : <>
-      {note.caption && <p>{note.caption}</p>}
-      <button type="button" onClick={() => void load()}>{note.type === "photo" ? t("review.openPhoto") : t("review.playAudio")}</button>
-      {error && <p role="alert">{t("review.mediaUnavailable")}</p>}
-      {mediaUrl && (note.type === "photo" ? <img src={mediaUrl} alt={note.caption ?? t("review.photo")} /> :
-        <audio src={mediaUrl} controls />)}
-    </>}
-  </article>;
 }

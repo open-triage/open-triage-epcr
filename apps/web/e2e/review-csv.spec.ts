@@ -25,9 +25,6 @@ test("Review CSV refreshes changed volume and exports the displayed aggregates",
     const path = url.pathname;
     if (path === "/api/installation") return route.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
-    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: false, page: 1, pageSize: 25, total: 0,
-      asOf: "2026-10-02T08:00:00Z", reports: [] } });
     if (path === "/api/review/volume") {
       const from = url.searchParams.get("from")!;
       const to = url.searchParams.get("to")!;

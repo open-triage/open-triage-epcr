@@ -22,9 +22,6 @@ test("reviewer inspects an overdue draft and administrator changes its deadline"
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
-    if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item] } });
     if (url.pathname === "/api/review/overdue-policy") {
@@ -54,8 +51,9 @@ test("reviewer inspects an overdue draft and administrator changes its deadline"
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
   await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
+  await call.getByRole("tab", { name: "Summary", exact: true }).click();
   await expect(call.getByText("Primary Symptom", { exact: true })).toBeVisible();
   await expect(call.getByText("Pain", { exact: true })).toBeVisible();
   expect(draftReads).toBeGreaterThan(0);
@@ -84,9 +82,6 @@ test("signing resolution remains visible in Review history", async ({ page }) =>
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
-    if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: false, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item] } });
     if (url.pathname === `/api/review/items/${itemId}`) return route.fulfill({ json: {
@@ -106,7 +101,7 @@ test("signing resolution remains visible in Review history", async ({ page }) =>
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
-  const call = await openReviewCall(page, page.getByRole("button", { name: `Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
   await expect(call.getByText("Resolved by signing").first()).toBeVisible();
   expect(signedReads).toBeGreaterThan(0);
 });

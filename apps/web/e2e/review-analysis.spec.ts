@@ -12,9 +12,6 @@ test("Review builder runs a coded case-mix starter with a scoped filter and D3 c
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/installation") return route.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
-    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: false, page: 1, pageSize: 25, total: 0,
-      asOf: "2026-10-02T08:00:00Z", reports: [] } });
     if (path === "/api/review/analysis/fields") return route.fulfill({ json: [
       { id: "eSituation.09", label: "Primary Symptom", kind: "categorical", unit: null,
         operations: ["distribution"] },
@@ -183,9 +180,6 @@ test("Review saves, revises, publishes, and reopens a definition under the selec
           values: [{ value: "pain", count: dataset === "synthetic" ? 3 : 2, percentage: 100 }] }],
       } } });
     }
-    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: "2026-10-02T08:00:00Z", reports: [] } });
     if (path === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 0, asOf: "2026-10-02T08:00:00Z", items: [] } });
     if (path === "/api/review/backlog") return route.fulfill({ json: { work: [] } });

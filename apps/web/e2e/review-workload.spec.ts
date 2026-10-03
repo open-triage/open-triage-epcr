@@ -16,9 +16,6 @@ test("workload uses item counts while clinical Review filters retain signed repo
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/installation") return route.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
-    if (path === "/api/review/reports") return route.fulfill({ json: { dataset: "real", scope: "all",
-      identifying: false, administrator: false, page: 1, pageSize: 25, total: 0,
-      asOf: "2026-10-02T08:00:00Z", reports: [] } });
     if (path === "/api/review/analysis/fields") return route.fulfill({ json: [{ id: "eSituation.09",
       label: "Primary Symptom", kind: "categorical", unit: null, operations: ["distribution"] }] });
     if (path === "/api/review/analysis/review-filters") return route.fulfill({ json: {

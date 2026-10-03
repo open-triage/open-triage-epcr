@@ -195,6 +195,9 @@ These are behavioral boundaries rather than a requirement to create six independ
 ## API and interface contracts
 
 - Review context returns available modes, effective capabilities, dataset defaults, and permitted review actions.
+- Review navigation contains Review queue, Analysis, and administrator-only Settings. The standalone Reports tab and signed-report list endpoint are removed; report detail and media endpoints support queue inspection.
+- View replaces the queue with the full read-only report and its findings sidebar. Queue entries provide the signed/draft context so report and review-item requests can start independently. The loading view can be closed, and closing the full report restores the queue and keyboard focus.
+- Review-reason descriptions appear only while hovering the reason name. Hover colors and tooltips clear on pointer exit, and touch interactions do not leave hover styling active.
 - Queue and detail queries accept supported filters and pagination and return authorized items, criterion context, permitted report content, history, and available actions.
 - Workflow commands cover claim, assign/reassign, status changes, completion/outcome updates, discussion, and the authorized overdue exception. Commands identify the expected item version and actor; stale updates produce a recoverable conflict.
 - Criterion evaluation contracts distinguish evaluation evidence from mutable workflow state and expose the report, amendment, and rule versions used.

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { EncounterValue, AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewSignedReportsResponse, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
+import type { EncounterValue, AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -901,43 +901,6 @@ export class ReviewService implements OnModuleDestroy {
       total: points.reduce((sum, point) => sum + point.count, 0),
       sources: sourceRows.map((row) => ({ reportId: row.report_id, reportingDate: row.reporting_date })) };
     });
-  }
-
-  async signedReports(token: string, requestedDataset?: string,
-    requestedPage?: string, requestedPageSize?: string): Promise<ReviewSignedReportsResponse> {
-    const scope = reviewScope(await this.sessions.get(token));
-    const dataset = requestedDataset ?? scope.defaultDataset;
-    if (dataset !== "real" && dataset !== "synthetic") throw new BadRequestException("Invalid Review dataset");
-    const page = positiveInteger(requestedPage, 1, 1000000);
-    const pageSize = positiveInteger(requestedPageSize, 25, 100);
-    const offset = (page - 1) * pageSize;
-    if (!Number.isSafeInteger(offset)) throw new BadRequestException("Invalid Review pagination");
-    const parameters = [scope.organizationId, dataset === "synthetic", scope.userId, scope.reports === "all"];
-    const where = `r.organization_id = $1 and r.synthetic = $2 and r.status = 'signed'
-      and ($4::boolean or r.documenting_user_id = $3)`;
-    const [countRows, reportRows] = await Promise.all([
-      this.database.query<Array<{ total: string }>>(`select count(*)::text total from clinical.report r where ${where}`, parameters),
-      this.database.query<Array<{ id: string; reporting_date: string; signed_at: Date | string;
-        report_number: string | null; author_name: string | null }>>(`
-        select r.id, r.reporting_date, s.signed_at,
-          case when $7::boolean then ${reviewReportNumberSql} else null end report_number,
-          case when $7::boolean then u.display_name else null end author_name
-        from clinical.report r
-        join clinical.signed_snapshot s on s.report_id = r.id
-        join app_identity.app_user u on u.id = r.documenting_user_id
-        where ${where}
-        order by s.signed_at desc, r.id desc limit $5 offset $6
-      `, [...parameters, pageSize, offset, scope.identifying]),
-    ]);
-    return {
-      dataset, page, pageSize, total: Number(countRows[0]?.total ?? 0),
-      scope: scope.reports, identifying: scope.identifying, administrator: scope.administrator,
-      asOf: new Date().toISOString(),
-      reports: reportRows.map((row) => ({ id: row.id, reportingDate: row.reporting_date,
-        signedAt: new Date(row.signed_at).toISOString(),
-        ...(row.report_number ? { reportNumber: row.report_number } : {}),
-        ...(row.author_name ? { documentingClinician: row.author_name } : {}) })),
-    };
   }
 
   private dataset(requested: string | undefined, scope: ReviewScope): "real" | "synthetic" {

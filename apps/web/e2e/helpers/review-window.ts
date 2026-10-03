@@ -1,13 +1,17 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export async function openReviewCall(page: Page, row: Locator): Promise<Page> {
-  const pending = page.context().waitForEvent("page");
   await row.click();
-  const call = await pending;
-  await call.waitForLoadState();
-  return call;
+  await expect(page.getByRole("article", { name: "Full report", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close full report", exact: true }).click();
+  await page.locator("#review-inspector").waitFor();
+  return page;
 }
 
 export async function refreshOnFocus(page: Page): Promise<void> {
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+}
+
+export async function closeReviewCall(page: Page): Promise<void> {
+  await page.locator("#review-inspector").getByRole("button", { name: "Close report", exact: true }).click();
 }

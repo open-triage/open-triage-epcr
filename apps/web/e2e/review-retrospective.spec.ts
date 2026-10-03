@@ -13,9 +13,6 @@ test('Review administrators have no retrospective workflow', async ({ page }) =>
     if (pathname === '/api/installation') return route.fulfill({ json: { settings } });
     if (pathname === '/api/sessions/current') return route.fulfill({ json: session });
     if (pathname.startsWith('/api/review/retrospective')) retrospectiveRequests++;
-    if (pathname === '/api/review/reports') return route.fulfill({ json: { dataset: 'real', scope: 'all',
-      identifying: false, administrator: true, page: 1, pageSize: 25, total: 0,
-      asOf: new Date().toISOString(), reports: [] } });
     if (pathname === '/api/review/queue') return route.fulfill({ json: { dataset: 'real', page: 1,
       pageSize: 25, total: 0, asOf: new Date().toISOString(), items: [] } });
     return route.fulfill({ status: 404 });

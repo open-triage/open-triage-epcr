@@ -47,10 +47,6 @@ test("Review badges update automatically and administration attention remains sc
         assignmentCounts: { all: visible() ? 1 : 0, mine: visible() && state.assigneeId === self ? 1 : 0, unassigned: visible() && !state.assigneeId ? 1 : 0 },
         total: matching ? 1 : 0, asOf: new Date().toISOString(), items: matching ? [item()] : [] } });
     }
-    if (url.pathname === "/api/review/reports") return route.fulfill({ json: { dataset: "real",
-      scope: session.capabilities.includes("review:all") ? "all" : "own", identifying: false,
-      administrator: session.capabilities.includes("review:admin"), page: 1, pageSize: 25,
-      total: 0, asOf: new Date().toISOString(), reports: [] } });
     if (url.pathname === "/api/review/routes") return route.fulfill({ json: [] });
     if (url.pathname === "/api/review/eligible-reviewers") return route.fulfill({ json: [] });
     if (url.pathname === "/api/review/backlog") return route.fulfill({ json: { dataset: "real",
