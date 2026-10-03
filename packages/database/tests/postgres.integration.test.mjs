@@ -240,16 +240,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         ["review:admin", "review:all"]);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), true);
-      assert.equal(administrator.capabilities.length, 21);
+      assert.deepEqual(administrator.capabilities, capabilityKeys);
       assert.equal(administrator.capabilities.includes("settings:read"), true);
       assert.equal(administrator.capabilities.includes("settings:write"), true);
       assert.equal(administrator.capabilities.includes("validation:publish"), true);
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
-      assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
-        "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-        "forms:read", "forms:write", "review:admin", "review:all", "review:identifying",
-        "roles:read", "settings:read", "users:read", "validation:read", "validation:write"
-      ] });
+      assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true,
+        capabilities: capabilityKeys.filter(key => !key.endsWith(":publish")) });
       await client.query(`insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by, note)
         select $1, $2, id, $2, 'Authorization test owner'
