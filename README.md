@@ -21,6 +21,12 @@ The product requirements documents are indexed in
 
 Web runs on http://localhost:3000 and the API on http://localhost:3001.
 
+API development also starts the analytics projector and the Review worker. Review
+processes signed reports in bounded batches, polling every five seconds after the
+previous batch finishes. Restart the API development process after changing its
+startup scripts. To process a batch manually with `DATABASE_URL` loaded, run
+`npm run review:work -w @open-triage/api`.
+
 The NestJS API uses TypeORM with `DATABASE_URL` and requires PostgreSQL 15 or newer.
 Supabase SQL migrations remain the single source of truth for schema changes;
 TypeORM's `synchronize` option is disabled.
