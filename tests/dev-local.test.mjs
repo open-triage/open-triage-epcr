@@ -154,14 +154,21 @@ test("failed API process stops the web process and its watcher descendants", { s
   } }), /API exited \(2\)/);
   assert.ok(web.signalCode);
   assert.ok(descendant);
-  // Descendants can briefly be zombies until the OS reaps them; they cannot keep serving.
-  try {
-    const { readFile } = await import("node:fs/promises");
-    const status = await readFile(`/proc/${descendant}/stat`, "utf8");
-    assert.match(status, /\) Z /);
-  } catch (error) {
-    // Linux can reap the process after opening stat but before reading it.
-    if (!["ENOENT", "ESRCH"].includes(error.code)) throw error;
+  // Group signals arrive asynchronously. Require the descendant to exit within
+  // a bound, allowing zombies until the OS reaps them.
+  const { readFile } = await import("node:fs/promises");
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      const status = await readFile(`/proc/${descendant}/stat`, "utf8");
+      if (/\) Z /.test(status)) break;
+      if (Date.now() >= deadline) assert.match(status, /\) Z /);
+    } catch (error) {
+      // Linux can reap the process after opening stat but before reading it.
+      if (["ENOENT", "ESRCH"].includes(error.code)) break;
+      throw error;
+    }
+    await delay(10);
   }
 });
 
