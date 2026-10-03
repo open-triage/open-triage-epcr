@@ -1,4 +1,5 @@
 "use client";
+import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import type { AssignedCall, ClinicianSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
@@ -68,6 +69,7 @@ export function ClinicianSessionGate({ children }: {
     language: AgencyLanguage;
   }) => ReactNode);
 }) {
+  const unsavedEditors = useRef(new Set<string>());
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
   const [preferredLanguage, setPreferredLanguage] = useState<string | null>(null);
   const language = preferredLanguage ?? installation?.settings.language ?? "en";
@@ -85,6 +87,7 @@ export function ClinicianSessionGate({ children }: {
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
+  const [adminReviewSettingsSection, setAdminReviewSettingsSection] = useState<"routing" | "backlog">();
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [dismissedActiveReportNoticeId, setDismissedActiveReportNoticeId] = useState<string | null>(null);
@@ -155,6 +158,28 @@ export function ClinicianSessionGate({ children }: {
     observer.observe(bar);
     return () => observer.disconnect();
   }, [session, presentationMode]);
+
+  useEffect(() => {
+    const viewport = sessionBar.current?.querySelector<HTMLElement>(".presentation-selector-scroll");
+    const selector = viewport?.querySelector<HTMLElement>(".presentation-selector");
+    if (!viewport || !selector) return;
+    const revealActiveMode = () => {
+      const active = selector.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+      if (!active) return;
+      selector.style.setProperty("--mode-offset", `${active.offsetLeft - 2}px`);
+      selector.style.setProperty("--mode-width", `${active.offsetWidth}px`);
+      const left = active.offsetLeft - 2;
+      const right = active.offsetLeft + active.offsetWidth + 2;
+      if (left < viewport.scrollLeft) viewport.scrollLeft = left;
+      else if (right > viewport.scrollLeft + viewport.clientWidth) viewport.scrollLeft = right - viewport.clientWidth;
+    };
+    revealActiveMode();
+    const observer = new ResizeObserver(revealActiveMode);
+    observer.observe(viewport);
+    observer.observe(selector);
+    selector.querySelectorAll("button").forEach(button => observer.observe(button));
+    return () => observer.disconnect();
+  }, [session, presentationMode, language, installation]);
 
   const lockAndEndLocalSession = useCallback(async (endedMessage: string) => {
     clearClinicianSession(window.localStorage);
@@ -302,6 +327,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function requestLogout() {
+    if (!confirmDiscardChanges(unsavedEditors.current.size > 0)) return;
     recordFeedbackInteraction("session.logout.requested");
     const summary = protectedLogoutSummary();
     if (summary.pendingReportCount > 0) {
@@ -323,11 +349,13 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function selectPresentationMode(mode: PresentationMode) {
-    if ((mode === "admin" || mode === "review") && (activeReport || openingCall)) return;
+    if ((mode === "admin" || mode === "review") && (activeReport || openingCall)) return false;
+    if (mode === presentationMode || !confirmDiscardChanges(unsavedEditors.current.size > 0)) return false;
     setModeMessage(null);
     recordFeedbackInteraction(`presentation.${mode}.selected`);
     storePresentationMode(window.localStorage, mode);
     setPresentationMode(mode);
+    return true;
   }
 
   const sessionEnded = useCallback(() => {
@@ -397,6 +425,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   return (
+    <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
     <div className={`authenticated-shell ${presentationMode}-shell${presentationMode !== "mobile" ? " desktop-shell" : ""}`}>
@@ -409,20 +438,22 @@ export function ClinicianSessionGate({ children }: {
           <FeedbackControl language={language} csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : presentationMode === "review" ? "review" : activeReport ? "encounter" : "calls"} />}
         <span className="session-identity">{t("navigation.signedInAs", { name: session.user.displayName })}</span>
-        <div className="presentation-selector" role="group" aria-label={t("navigation.presentation")}>
-          {hasClinicalMode(session.capabilities) && <>
-            <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>{t("navigation.mobile")}</button>
-            <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>{t("navigation.stationary")}</button>
-          </>}
-          {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"}
-            disabled={activeReport !== null || openingCall !== null}
-            onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
-          {hasReviewMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "review"}
-            disabled={activeReport !== null || openingCall !== null}
-            onClick={() => selectPresentationMode("review")}>{t("navigation.review")}
-            {reviewAttention && reviewAttention.dataset === reviewAttentionDataset &&
-              reviewAttention.assignments + reviewAttention.responses + reviewAttention.reopened > 0 &&
-              <> ({reviewAttention.assignments + reviewAttention.responses + reviewAttention.reopened})</>}</button>}
+        <div className="presentation-selector-scroll">
+          <div className="presentation-selector" role="group" aria-label={t("navigation.presentation")}>
+            {hasClinicalMode(session.capabilities) && <>
+              <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>{t("navigation.mobile")}</button>
+              <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>{t("navigation.stationary")}</button>
+            </>}
+            {hasReviewMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "review"}
+              disabled={activeReport !== null || openingCall !== null}
+              onClick={() => selectPresentationMode("review")}>{t("navigation.review")}
+              {reviewAttention && reviewAttention.dataset === reviewAttentionDataset &&
+                reviewAttention.total > 0 &&
+                <> <span className="presentation-attention-count">({reviewAttention.total})</span></>}</button>}
+            {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"}
+              disabled={activeReport !== null || openingCall !== null}
+              onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
+          </div>
         </div>
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
@@ -461,7 +492,7 @@ export function ClinicianSessionGate({ children }: {
         <h1 ref={openingHeading} tabIndex={-1} id="call-opening-heading">{t("calls.openingCall", { call: openingCall.callNumber })}</h1>
         <LoadingStatus>{t("calls.preparingReport")}</LoadingStatus>
       </section>}
-      {presentationMode !== "admin" && presentationMode !== "review" && <div hidden={activeReport !== null || openingCall !== null}>
+      {presentationMode !== "admin" && presentationMode !== "review" && <div className="call-directory" hidden={activeReport !== null || openingCall !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
         <AssignedCalls session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
@@ -499,12 +530,16 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
-      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} />}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online}
+        reviewSettingsSection={adminReviewSettingsSection} />}
       {presentationMode === "review" && !activeReport && <ReviewShell session={session} language={language}
         online={online} attention={reviewAttention?.dataset === reviewAttentionDataset ? reviewAttention : null}
-        onAttentionRefresh={refreshReviewAttention} />}
+        onAttentionRefresh={refreshReviewAttention} onOpenSettings={(section) => {
+          if (selectPresentationMode("admin")) setAdminReviewSettingsSection(section);
+        }} />}
     </div>
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>
+    </UnsavedChangesContext.Provider>
   );
 }

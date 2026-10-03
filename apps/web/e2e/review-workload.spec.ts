@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
+test.skip(true, "Analysis navigation is temporarily hidden.");
+
 test("workload uses item counts while clinical Review filters retain signed report counts", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed mock API configuration.");
   const criterionId = "123e4567-e89b-42d3-a456-426614174301";

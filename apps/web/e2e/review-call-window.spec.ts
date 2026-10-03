@@ -27,8 +27,9 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   const mediaReads: string[] = [];
   const session = { csrfToken: "window-csrf", user: { id: reviewerId, displayName: "Reviewer" },
     organization: { id: "organization", name: "Example EMS" }, startedAt: now,
-    expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:identifying"], workspaceAvailable: true };
+    expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:identifying", "review:admin"], workspaceAvailable: true };
   let version = 1, status = "in-review", assigneeId = reviewerId;
+  let assignmentAttempts = 0, handoffCommentAttempts = 0;
   const comments: Array<{ id: string; actorId: string; actorName: string; body: string; kind: string; itemVersion: number; recordedAt: string }> = [];
   const item = () => ({ id: itemId, reportId, reportNumber: "PCR-123", criterionId: outcomeId,
     criterionName: "Timeline", criterionDescription: "Confirm the time of arrival.", kind: "criterion", priority: "high",
@@ -43,9 +44,11 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
       mediaReads.push(path);
       return path.includes("/photo/") ? route.fulfill({ contentType: "image/jpeg", body: Buffer.from(image, "base64") }) : route.fulfill({ status: 403 });
     }
-    if (path === "/api/installation") return route.fulfill({ json: { settings } });
+    if (path === "/api/installation") return route.fulfill({ json: { settings,
+      ...(width === 1440 ? { appearance: { accentColor: "#315ba8", accentDarkColor: "#24447e",
+        destructiveColor: "#8a2670", inactiveButtonColor: "#edf1fa", textColor: "#202850" } } : {}) } });
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
-    if (path === "/api/review/attention") return route.fulfill({ json: { dataset: "real", asOf: now, assignments: 0, responses: 0, reopened: 0 } });
+    if (path === "/api/review/attention") return route.fulfill({ json: { dataset: "real", asOf: now, total: 0, assignments: 0, responses: 0, reopened: 0 } });
     if (path === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1, pageSize: 25, total: 1,
       assignmentCounts: { all: 1, mine: 1, unassigned: 0 }, asOf: now, items: [item()] } });
     if (path === `/api/review/items/${itemId}`) return route.fulfill({ json: item() });
@@ -61,8 +64,9 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
         { id: itemId, criterionId: outcomeId, criterionName: "Timeline", status, outcome: null },
         { id: secondItemId, criterionId: outcomeId, criterionName: "Clinical assessment", status: "new", outcome: null }],
       clinicalForm: { definition: { sections: [{ key: "saved-layout", name: "Original form layout", fields: [
-        { key: "pulse", source: { kind: "nemsis", elementId: "eVitals.06" } },
-        { key: "custom-note", source: { kind: "custom", elementDefinitionId: "custom-note" } }] }] },
+        { key: "pulse", source: { kind: "nemsis", elementId: "eVitals.06" } }] },
+        { key: "observations", name: "Additional observations", fields: [
+          { key: "custom-note", source: { kind: "custom", elementDefinitionId: "custom-note" } }] }] },
         catalogFields: {}, customFields: { "custom-note": { id: "custom-note", namespace: "test", slug: "Note", title: "Saved observation", datatype: "string", recurrence: "single", usage: "Optional", identifying: true, constraints: { maxLength: 120 } } } },
       document: { $schema: "https://opentriage.org/schemas/encounter-document/v1", documentType: "open-triage.encounter", modelVersion: "1",
         dataModel: { standard: "NEMSIS", version: "3.5.0", dataset: "EMSDataSet" }, formProfile: { id: "original-form", version: "1" },
@@ -76,6 +80,8 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
       const command = route.request().postDataJSON();
       expect(command.expectedVersion).toBe(version);
       expect(route.request().headers()["x-csrf-token"]).toBe("window-csrf");
+      if (command.body === "Please check the assessment." && ++handoffCommentAttempts === 1)
+        return route.fulfill({ status: 503 });
       version++; comments.push({ id: String(version), actorId: reviewerId, actorName: "Reviewer", body: command.body,
         kind: command.kind, itemVersion: version, recordedAt: now });
       return route.fulfill({ json: item() });
@@ -85,9 +91,11 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
       expect(command.outcomeOptionId).toBe(outcomeId); status = command.status; version++;
       return route.fulfill({ json: item() });
     }
-    if (path === `/api/review/items/${itemId}/forward`) {
+    if (path === `/api/review/items/${itemId}/assign`) {
       const command = route.request().postDataJSON(); expect(command.expectedVersion).toBe(version);
-      expect(command.assigneeId).toBe(nextReviewer); assigneeId = nextReviewer; status = "new"; version++;
+      expect(command.assigneeId).toBe(nextReviewer);
+      if (++assignmentAttempts === 1) return route.fulfill({ status: 503 });
+      assigneeId = nextReviewer; status = "in-review"; version++;
       return route.fulfill({ json: item() });
     }
     return route.fulfill({ status: 404 });
@@ -106,7 +114,9 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await reason.hover(); await expect(tooltip).toBeVisible();
   await row.hover(); await expect(tooltip).not.toBeVisible();
   await page.getByRole("heading", { name: "Review queue", exact: true }).hover();
-  await reason.focus(); await expect(tooltip).not.toBeVisible();
+  await reason.focus(); await expect(tooltip).toBeVisible();
+  await reason.press("Escape"); await expect(tooltip).not.toBeVisible();
+  await expect(reason).toBeFocused();
   const queueTable = page.getByRole("table", { name: "Review queue", exact: true });
   await expect(queueTable.locator("tbody tr td").nth(1).getByRole("button")).toHaveCount(0);
   await expect(queueTable.locator("tbody tr td").nth(7).getByRole("button", { name: "View PCR-123", exact: true })).toHaveText("View");
@@ -122,7 +132,7 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   if (width >= 1440) {
     await expect.poll(() => page.locator(".review-table-scroll").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   }
-  await expect(sidebar.getByRole("tab")).toHaveText(["Findings", "Summary", "History"]);
+  await expect(sidebar.getByRole("tab")).toHaveText(["Actions", "Summary", "History"]);
   const reportItems = sidebar.getByRole("region", { name: "Review items on this report" });
   const activeItem = reportItems.getByRole("button", { name: /^Timeline/ });
   await expect(activeItem).toHaveAttribute("aria-current", "true");
@@ -150,6 +160,30 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await expect(findingsToggle).toBeFocused();
   await findingsToggle.click();
   await expect(sidebar).toBeVisible();
+  const sectionSelector = fullReport.locator(".stationary-section-selector");
+  const sectionRail = fullReport.getByRole("navigation", { name: "Stationary record sections", exact: true });
+  const recordPage = fullReport.locator(".stationary-record-page");
+  if (width >= 1440) {
+    await expect(sectionSelector).not.toBeVisible();
+    await expect(sectionRail).toBeVisible();
+    await expect(recordPage).toHaveCSS("overflow-y", "auto");
+    const railBounds = await sectionRail.boundingBox();
+    const recordBounds = await recordPage.boundingBox();
+    expect(recordBounds!.x).toBeGreaterThanOrEqual(railBounds!.x + railBounds!.width);
+    expect(Math.abs(recordBounds!.y - railBounds!.y)).toBeLessThanOrEqual(1);
+    expect(recordBounds!.width).toBeGreaterThan(railBounds!.width);
+    expect(recordBounds!.y + recordBounds!.height).toBeLessThanOrEqual(1000);
+    await sectionRail.getByRole("button", { name: /^Additional observations:/ }).click();
+    await expect(fullReport.getByRole("heading", { name: "Additional observations", exact: true })).toBeFocused();
+    await sectionRail.getByRole("button", { name: /^Original form layout:/ }).click();
+    if (width === 1440) await expect(sectionRail.locator(".stationary-section-selection")).toHaveCSS("background-color", "rgb(49, 91, 168)");
+  } else {
+    await expect(sectionSelector).toBeVisible();
+    await expect(sectionRail).not.toBeVisible();
+    await sectionSelector.getByRole("combobox").selectOption({ label: "Additional observations" });
+    await expect(fullReport.getByRole("heading", { name: "Additional observations", exact: true })).toBeFocused();
+    await sectionSelector.getByRole("combobox").selectOption({ label: "Original form layout" });
+  }
   await page.screenshot({ path: test.info().outputPath("full-report.png") });
   await test.info().attach("Full report and sidebar", { path: test.info().outputPath("full-report.png"), contentType: "image/png" });
   await fullReport.getByRole("button", { name: /^Timeline/ }).click();
@@ -182,6 +216,8 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await expect(fullReport.getByRole("button", { name: /^Timeline/ })).toBeFocused();
   await fullReport.getByRole("button", { name: "Findings", exact: true }).click();
   await expect(sidebar).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath("stationary-report.png") });
+  await test.info().attach("Stationary report layout", { path: test.info().outputPath("stationary-report.png"), contentType: "image/png" });
   await expect(popup.getByRole("heading", { name: "Original form layout", exact: true })).toBeVisible();
   await expect(popup.getByRole("textbox", { name: /Saved observation/ })).toBeDisabled();
   await expect(popup.getByRole("textbox", { name: /Saved observation/ })).toHaveValue("Documented observation");
@@ -194,41 +230,71 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await expect(queueTable).toBeVisible();
   await expect(activeItem).toHaveAttribute("aria-current", "true");
   await row.click();
-  await expect(sidebar.getByLabel("Entry type")).toBeVisible();
+  await expect(sidebar.getByRole("combobox", { name: "Action", exact: true })).toBeVisible();
   await expect(queueTable).not.toBeVisible();
   await expect(fullReport.getByRole("heading", { name: "Original form layout", exact: true })).toBeVisible();
   await fullReport.getByRole("button", { name: "Close full report", exact: true }).click();
   await page.getByRole("heading", { name: "Review queue", exact: true }).hover();
   await expect(queueTable.locator("tbody tr")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(tooltip).not.toBeVisible();
-  await sidebar.getByRole("tab", { name: "Findings", exact: true }).click();
+  await sidebar.getByRole("tab", { name: "Actions", exact: true }).click();
   await expect(popup.getByRole("tab", { name: "Discussion", exact: true })).toHaveCount(0);
-  await popup.getByLabel("Entry type").selectOption("finding");
+  await popup.getByRole("combobox", { name: "Action", exact: true }).selectOption("finding");
   await popup.getByRole("textbox", { name: "Document findings", exact: true }).fill("Timeline confirmed.");
   await popup.getByRole("button", { name: "Save findings", exact: true }).click();
-  await expect(popup.getByRole("textbox", { name: "Document findings", exact: true })).toHaveValue("");
-  await popup.getByLabel("Entry type").selectOption("comment");
+  await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("");
+  await popup.getByRole("combobox", { name: "Action", exact: true }).selectOption("comment");
   await popup.getByRole("textbox", { name: "Comment", exact: true }).fill("Discussed with clinician.");
   await popup.getByRole("button", { name: "Send comment", exact: true }).click();
   await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("");
   await popup.getByRole("tab", { name: "History", exact: true }).click();
   await expect(popup.getByText("Timeline confirmed.", { exact: true })).toBeVisible();
   await expect(popup.getByText("Discussed with clinician.", { exact: true })).toBeVisible();
-  await popup.getByRole("tab", { name: "Findings", exact: true }).click();
-  await popup.getByLabel("Send to reviewer").selectOption(nextReviewer);
-  await popup.getByRole("button", { name: "Send for further review", exact: true }).click();
+  await popup.getByRole("tab", { name: "Actions", exact: true }).click();
+  await expect(popup.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=forward]")).toHaveCount(0);
+  await popup.getByRole("combobox", { name: "Action", exact: true }).selectOption("assign");
+  await expect(popup.getByRole("button", { name: "Assign reviewer", exact: true })).toBeDisabled();
+  await popup.getByRole("combobox", { name: "Reviewer", exact: true }).selectOption(nextReviewer);
+  await popup.getByRole("textbox", { name: "Comment", exact: true }).fill("Please check the assessment.");
+  await popup.getByRole("tab", { name: "History", exact: true }).click();
+  await popup.getByRole("tab", { name: "Actions", exact: true }).click();
+  await expect(popup.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("assign");
+  await expect(popup.getByRole("combobox", { name: "Reviewer", exact: true })).toHaveValue(nextReviewer);
+  await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("Please check the assessment.");
+  if (width === 1440) await expect(popup.getByRole("button", { name: "Assign reviewer", exact: true })).toHaveCSS("background-color", "rgb(49, 91, 168)");
+  await popup.locator(".review-action-form").screenshot({ path: test.info().outputPath("handoff-action.png") });
+  await popup.getByRole("button", { name: "Assign reviewer", exact: true }).click();
+  await expect(popup.getByText("The comment could not be sent. Retry to check whether it was saved.", { exact: true })).toBeVisible();
+  expect(assignmentAttempts).toBe(0);
+  await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("Please check the assessment.");
+  await popup.getByRole("button", { name: "Assign reviewer", exact: true }).click();
+  await expect(popup.getByText("Your comment was saved. The action could not be completed; try it again.", { exact: true })).toBeVisible();
+  expect(assigneeId).toBe(reviewerId);
+  await expect(popup.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("assign");
+  await expect(popup.getByRole("combobox", { name: "Reviewer", exact: true })).toHaveValue(nextReviewer);
+  await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("");
+  await popup.getByRole("button", { name: "Assign reviewer", exact: true }).click();
   await expect.poll(() => assigneeId).toBe(nextReviewer);
   await expect(popup.getByRole("button", { name: "Start review", exact: true })).toHaveCount(0);
-  expect(comments.map((entry) => entry.kind)).toEqual(["finding", "comment"]);
+  expect(comments.map((entry) => entry.kind)).toEqual(["finding", "comment", "comment"]);
+  await expect(popup.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("comment");
+  await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toBeEnabled();
   assigneeId = reviewerId; status = "in-review";
   await page.getByRole("tab", { name: "Summary", exact: true }).click();
   await page.getByRole("button", { name: "View full report", exact: true }).click();
   await page.getByRole("button", { name: "Close full report", exact: true }).click();
-  await page.getByRole("tab", { name: "Findings", exact: true }).click();
+  await page.getByRole("tab", { name: "Actions", exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(sidebar.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=complete]")).toHaveCount(1);
+  await sidebar.getByRole("combobox", { name: "Action", exact: true }).selectOption("complete");
+  await expect(popup.getByRole("button", { name: "Complete item", exact: true })).toBeDisabled();
   await sidebar.getByRole("combobox", { name: /^Outcome/ }).selectOption(outcomeId);
+  await popup.getByRole("textbox", { name: "Comment", exact: true }).fill("Final review confirmed.");
+  await popup.locator(".review-action-form").screenshot({ path: test.info().outputPath("outcome-action.png") });
   await popup.getByRole("button", { name: "Complete item", exact: true }).click();
   await expect.poll(() => status).toBe("completed");
+  expect(comments.at(-1)?.body).toBe("Final review confirmed.");
+  await expect(popup.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("comment");
   const results = await new AxeBuilder({ page: popup }).analyze();
   expect(results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""))).toEqual([]);
   await expect(sidebar.locator(".status-completed").first()).toHaveText("Completed");
@@ -289,7 +355,7 @@ for (const unsigned of [false, true]) test(`View loads the ${unsigned ? "overdue
     await expect(queue).not.toBeVisible();
     expect(reads).toHaveLength(1);
     releaseItem();
-    await expect(page.locator("#review-inspector").getByText("Status: New", { exact: false })).toBeVisible();
+    await expect(page.locator("#review-inspector").getByRole("form", { name: "Review action", exact: true })).toBeVisible();
     await report.getByRole("button", { name: "Close full report", exact: true }).click();
     await expect(queue).toBeVisible();
   } finally { releaseReport(); releaseItem(); }

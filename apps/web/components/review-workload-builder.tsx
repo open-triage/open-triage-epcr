@@ -1,5 +1,7 @@
 "use client";
 
+import { listAccessRemoved } from "../app/list-refresh";
+
 import type { ReviewWorkloadDefinition, ReviewWorkloadResult } from "@open-triage/contracts";
 import { useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
@@ -25,14 +27,14 @@ export function ReviewWorkloadBuilder({ dataset, from, to, language, csrfToken }
   const run = async () => {
     const url = apiRequestUrl("/api/review/workload");
     if (!url) return;
-    setResult(null); setError(false); setExportNotice(null);
+    setError(false); setExportNotice(null);
     try {
       const response = await fetch(url, browserRequestInit({ method: "POST",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify({ groupBy, filters: { from, to, dataset } }) }));
       if (!response.ok) throw new Error(String(response.status));
       setResult(await response.json() as ReviewWorkloadResult);
-    } catch { setError(true); }
+    } catch (cause) { if (listAccessRemoved(cause)) setResult(null); setError(true); }
   };
   const exportCsv = async (records = false) => {
     if (!result) return;
@@ -54,7 +56,7 @@ export function ReviewWorkloadBuilder({ dataset, from, to, language, csrfToken }
       }}>{views.map((view) => <option key={view} value={view}>{t(`review.workload.${view}`)}</option>)}</select></label>
       <button type="button" disabled={from > to} onClick={() => void run()}>{t("review.workloadRun")}</button>
     </div>
-    {error && <p role="alert">{t("review.workloadUnavailable")}</p>}
+    {error && <p role="alert">{t("review.workloadUnavailable")}{result && ` ${t("list.refreshRetained")}`}</p>}
     {exportNotice && <p role="alert">{exportNotice}</p>}
     {result && <>
       {result.exportRevision && <button type="button" disabled={exportBusy}

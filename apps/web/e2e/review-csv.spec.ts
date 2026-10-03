@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
+test.skip(true, "Analysis navigation is temporarily hidden.");
+
 test("Review CSV refreshes changed volume and exports the displayed aggregates", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed mock API configuration.");
   const session = { csrfToken: "csv-test", user: { id: "reviewer", displayName: "Reviewer" },

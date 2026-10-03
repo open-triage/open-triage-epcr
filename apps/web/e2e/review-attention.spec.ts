@@ -15,16 +15,19 @@ test("Review badges update automatically and administration attention remains sc
     capabilities, workspaceAvailable: true });
   let session = sessionFor(["review:all", "review:admin", "review:identifying"]);
   let responded = false;
-  let state = { status: "new", assigneeId: self as string | null, reopened: false,
+  let state = { status: "new", assigneeId: self as string | null, reopened: true,
     authorId: self, recoveryReason: null as string | null };
   const visible = () => session.capabilities.includes("review:all") || state.authorId === self;
-  const counts = () => ({ dataset: "real", asOf: new Date().toISOString(),
-    assignments: visible() && state.assigneeId === self && state.status === "new" ? 1 : 0,
-    responses: visible() && !responded && session.capabilities.includes("review:identifying") &&
-      state.authorId === self && state.status === "awaiting-clinician" ? 1 : 0,
-    reopened: visible() && state.assigneeId === self && state.reopened && state.status !== "completed" ? 1 : 0,
-    ...(session.capabilities.includes("review:admin") ? { unavailableAssignees: state.recoveryReason ? 1 : 0,
-      unavailableRoutes: 1, processingFailures: 1 } : {}) });
+  const counts = () => {
+    const assignments = visible() && state.assigneeId === self && state.status === "new" ? 1 : 0;
+    const responses = visible() && !responded && session.capabilities.includes("review:identifying") &&
+      state.authorId === self && state.status === "awaiting-clinician" ? 1 : 0;
+    const reopened = visible() && state.assigneeId === self && state.reopened && state.status !== "completed" ? 1 : 0;
+    return { dataset: "real", asOf: new Date().toISOString(),
+      total: assignments || responses || reopened ? 1 : 0, assignments, responses, reopened,
+      ...(session.capabilities.includes("review:admin") ? { unavailableAssignees: state.recoveryReason ? 1 : 0,
+        unavailableRoutes: 1, processingFailures: 1 } : {}) };
+  };
   const item = () => ({ id: itemId, reportId, criterionId, priority: "high", ...state,
     kind: "criterion", version: 1, activeMatch: true, clearancePending: false, closureReason: null,
     firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
@@ -59,8 +62,12 @@ test("Review badges update automatically and administration attention remains sc
   await expect(page.getByRole("button", { name: "All reviews 1", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Assigned to me 1", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /New assignments:|Clinician responses requested:|Reopened reviews:/ })).toHaveCount(0);
+  state = { ...state, status: "awaiting-clinician" };
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Review (1)", exact: true })).toBeVisible();
   state = { ...state, status: "awaiting-clinician", assigneeId: other };
   await refreshOnFocus(page);
+  await expect(page.getByRole("button", { name: "Review (1)", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Assigned to me 0", exact: true })).toBeVisible();
   responded = true;
   state = { ...state, status: "completed", reopened: false, assigneeId: null, recoveryReason: null };

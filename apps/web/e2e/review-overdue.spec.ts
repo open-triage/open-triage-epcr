@@ -22,6 +22,7 @@ test("reviewer inspects an overdue draft and administrator changes its deadline"
     const url = new URL(route.request().url());
     if (url.pathname === "/api/installation") return route.fulfill({ json: { settings } });
     if (url.pathname === "/api/sessions/current") return route.fulfill({ json: session });
+    if (url.pathname === "/api/admin/context") return route.fulfill({ json: { organization: session.organization, capabilities: session.capabilities, panels: ["review-settings"], activeConfiguration: null, dashboard: null } });
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item] } });
     if (url.pathname === "/api/review/overdue-policy") {
@@ -57,7 +58,7 @@ test("reviewer inspects an overdue draft and administrator changes its deadline"
   await expect(call.getByText("Primary Symptom", { exact: true })).toBeVisible();
   await expect(call.getByText("Pain", { exact: true })).toBeVisible();
   expect(draftReads).toBeGreaterThan(0);
-  await page.getByRole("tab", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
   await page.getByLabel("Hours after call completion").fill("48");
   await page.getByRole("button", { name: "Save deadline" }).click();
   await expect(page.getByLabel("Hours after call completion")).toHaveValue("48");
@@ -102,6 +103,7 @@ test("signing resolution remains visible in Review history", async ({ page }) =>
   });
   await page.goto("/");
   const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
+  await call.getByRole("tab", { name: "History", exact: true }).click();
   await expect(call.getByText("Resolved by signing").first()).toBeVisible();
   expect(signedReads).toBeGreaterThan(0);
 });

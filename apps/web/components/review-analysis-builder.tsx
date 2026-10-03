@@ -2,11 +2,19 @@
 
 import type { ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult,
   ReviewAnalysisReviewFilters, ReviewSavedAnalysis, ReviewSavedAnalysisOpen } from "@open-triage/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
+import { listAccessRemoved } from "../app/list-refresh";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
+import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { ReviewAnalysisChart } from "./review-analysis-chart";
 import { downloadReviewCsv } from "./review-csv-download";
+
+function draftSnapshot(value: unknown): string {
+  return JSON.stringify(value, (key, current) => key === "dataset" ? "workspace" :
+    current && typeof current === "object" && !Array.isArray(current)
+      ? Object.fromEntries(Object.entries(current).sort(([left], [right]) => left.localeCompare(right))) : current);
+}
 
 const starters = [
   { id: "eSituation.09", label: "review.analysisComplaint" },
@@ -23,6 +31,7 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   language: AgencyLanguage; refresh: number; csrfToken: string; administrator: boolean;
 }) {
   const [fields, setFields] = useState<ReviewAnalysisField[]>([]);
+  const [fieldsError, setFieldsError] = useState(false);
   const [fieldId, setFieldId] = useState("eSituation.09");
   const [operation, setOperation] = useState<ReviewAnalysisDefinition["operation"]>("distribution");
   const [reducer, setReducer] = useState<ReviewAnalysisDefinition["reducer"] | "">("");
@@ -36,8 +45,14 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   const [analysisFrom, setAnalysisFrom] = useState(from);
   const [analysisTo, setAnalysisTo] = useState(to);
   const [saved, setSaved] = useState<ReviewSavedAnalysis[]>([]);
+  const [savedListError, setSavedListError] = useState(false);
+  const [filtersError, setFiltersError] = useState(false);
   const [selectedSavedId, setSelectedSavedId] = useState("");
   const [activeSavedId, setActiveSavedId] = useState("");
+  const loadedSavedId = useRef("");
+  const dirtyDraft = useRef(false);
+  const [baseline, setBaseline] = useState(() => draftSnapshot({ name: "", shared: false,
+    definition: { fieldId: "eSituation.09", operation: "distribution", filters: { from, to, dataset } } }));
   const [savedMeta, setSavedMeta] = useState<ReviewSavedAnalysis | null>(null);
   const [savedName, setSavedName] = useState("");
   const [shareDraft, setShareDraft] = useState(false);
@@ -56,12 +71,15 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     if (!url) return;
     void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
       if (!response.ok) throw new Error(String(response.status));
-      if (!controller.signal.aborted) setFields(await response.json() as ReviewAnalysisField[]);
-    }).catch(() => { if (!controller.signal.aborted) setError(t("review.analysisUnavailable")); });
+      const next = await response.json() as ReviewAnalysisField[];
+      if (!controller.signal.aborted) { setFields(next); setFieldsError(false); }
+    }).catch((cause) => { if (!controller.signal.aborted) {
+      if (listAccessRemoved(cause)) setFields([]);
+      setFieldsError(true);
+    } });
     return () => controller.abort();
   // The metadata is reloaded on explicit refresh; dataset does not alter the field policy.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh]);
+  }, [refresh, openSequence]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -69,18 +87,26 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
     if (!url) return;
     void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
       if (!response.ok) throw new Error(String(response.status));
-      if (!controller.signal.aborted) setReviewFilters(await response.json() as ReviewAnalysisReviewFilters);
-    }).catch(() => { if (!controller.signal.aborted) setReviewFilters({ criteria: [], outcomes: [] }); });
+      const next = await response.json() as ReviewAnalysisReviewFilters;
+      if (!controller.signal.aborted) { setReviewFilters(next); setFiltersError(false); }
+    }).catch((cause) => { if (!controller.signal.aborted) {
+      if (listAccessRemoved(cause)) setReviewFilters({ criteria: [], outcomes: [] });
+      setFiltersError(true);
+    } });
     return () => controller.abort();
-  }, [dataset, refresh]);
+  }, [dataset, refresh, openSequence]);
   useEffect(() => {
     const controller = new AbortController();
     const url = apiRequestUrl("/api/review/analysis/saved");
     if (!url) return;
     void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
       if (!response.ok) throw new Error(String(response.status));
-      if (!controller.signal.aborted) setSaved(await response.json() as ReviewSavedAnalysis[]);
-    }).catch(() => { if (!controller.signal.aborted) setSaved([]); });
+      const next = await response.json() as ReviewSavedAnalysis[];
+      if (!controller.signal.aborted) { setSaved(next); setSavedListError(false); }
+    }).catch((cause) => { if (!controller.signal.aborted) {
+      if (listAccessRemoved(cause)) setSaved([]);
+      setSavedListError(true);
+    } });
     return () => controller.abort();
   }, [refresh, openSequence]);
 
@@ -94,18 +120,27 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       const opened = await response.json() as ReviewSavedAnalysisOpen;
       if (controller.signal.aborted) return;
       const definition = opened.result.definition;
-      setSavedMeta(opened.saved); setSavedName(opened.saved.name); setShareDraft(opened.saved.shared);
-      setFieldId(definition.fieldId); setOperation(definition.operation);
-      setReducer(definition.reducer ?? ""); setUnit(definition.unit ?? "");
-      setGroupBy(definition.groupBy ?? ""); setFilterId(definition.filters.field?.id ?? "");
-      setFilterValue(definition.filters.field?.value ?? "");
-      setReviewCriterionId(definition.filters.review?.criterionId ?? "");
-      setReviewOutcomeId(definition.filters.review?.outcomeOptionId ?? "");
-      setAnalysisFrom(definition.filters.from); setAnalysisTo(definition.filters.to);
-      setResult(opened.result); setSavedError(null); setError(null);
+      const replacingDraft = loadedSavedId.current !== activeSavedId || !dirtyDraft.current;
+      if (replacingDraft) {
+        loadedSavedId.current = activeSavedId;
+        setBaseline(draftSnapshot({ name: opened.saved.name, shared: opened.saved.shared, definition }));
+        setSavedMeta(opened.saved); setSavedName(opened.saved.name); setShareDraft(opened.saved.shared);
+        setFieldId(definition.fieldId); setOperation(definition.operation);
+        setReducer(definition.reducer ?? ""); setUnit(definition.unit ?? "");
+        setGroupBy(definition.groupBy ?? ""); setFilterId(definition.filters.field?.id ?? "");
+        setFilterValue(definition.filters.field?.value ?? "");
+        setReviewCriterionId(definition.filters.review?.criterionId ?? "");
+        setReviewOutcomeId(definition.filters.review?.outcomeOptionId ?? "");
+        setAnalysisFrom(definition.filters.from); setAnalysisTo(definition.filters.to);
+      }
+      if (replacingDraft) { setResult(opened.result); setError(null); }
+      setSavedError(null);
     }).catch((cause) => {
-      if (!controller.signal.aborted) { setResult(null); setSavedMeta(null);
-        setSavedError(t(cause instanceof Error && cause.message === "403" ? "review.savedAccessChanged" :
+      if (!controller.signal.aborted) {
+        const unavailable = listAccessRemoved(cause) || (cause instanceof Error && cause.message === "400");
+        setResult((previous) => !unavailable && loadedSavedId.current === activeSavedId && previous?.definition.filters.dataset === dataset ? previous : null);
+        setSavedMeta((previous) => !unavailable && loadedSavedId.current === activeSavedId ? previous : null);
+        setSavedError(!unavailable ? `${t("review.analysisUnavailable")} ${t("list.refreshRetained")}` : t(cause instanceof Error && cause.message === "403" ? "review.savedAccessChanged" :
           cause instanceof Error && cause.message === "404" ? "review.savedUnavailable" :
             "review.savedDefinitionUnavailable")); }
     });
@@ -124,10 +159,15 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
       ...(reviewCriterionId || reviewOutcomeId ? { review: {
         ...(reviewCriterionId ? { criterionId: reviewCriterionId } : {}),
         ...(reviewOutcomeId ? { outcomeOptionId: reviewOutcomeId } : {}) } } : {}) } });
+  const serializedDraft = draftSnapshot({ name: savedName, shared: shareDraft, definition: definition() });
+  const dirty = serializedDraft !== baseline;
+  useLayoutEffect(() => { dirtyDraft.current = dirty; }, [dirty]);
+  useUnsavedChanges(dirty);
+
   const run = async () => {
     const url = apiRequestUrl("/api/review/analysis");
     if (!url) return;
-    setResult(null); setError(null); setExportNotice(null);
+    setError(null); setExportNotice(null);
     const current = definition();
     try {
       const response = await fetch(url, browserRequestInit({ method: "POST",
@@ -135,13 +175,14 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         body: JSON.stringify(current) }));
       if (!response.ok) throw new Error(String(response.status));
       setResult(await response.json() as ReviewAnalysisResult);
-    } catch { setError(t("review.analysisUnavailable")); }
+    } catch (cause) { if (listAccessRemoved(cause)) setResult(null); setError(t("review.analysisUnavailable")); }
   };
 
   const save = async (update: boolean) => {
     if (!savedName.trim() || savedBusy || (update && (!savedMeta || !savedMeta.editable))) return;
     const url = apiRequestUrl(`/api/review/analysis/saved${update ? `/${savedMeta!.id}` : ""}`);
     if (!url) return;
+    const savedDefinition = definition();
     setSavedBusy(true); setSavedError(null);
     try {
       const response = await fetch(url, browserRequestInit({ method: "POST",
@@ -149,9 +190,12 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         body: JSON.stringify({ commandId: crypto.randomUUID(),
           ...(update ? { expectedVersion: savedMeta!.version } : {}),
           name: savedName.trim(), shared: administrator && shareDraft,
-          definition: definition() }) }));
+          definition: savedDefinition }) }));
       if (!response.ok) throw new Error(String(response.status));
       const value = await response.json() as ReviewSavedAnalysis;
+      setBaseline(draftSnapshot({ name: value.name, shared: value.shared, definition: savedDefinition }));
+      dirtyDraft.current = false;
+      setSavedName(value.name); setShareDraft(value.shared);
       setSavedMeta(value); setSelectedSavedId(value.id); setActiveSavedId(value.id);
       setOpenSequence((current) => current + 1);
     } catch (cause) {
@@ -174,6 +218,9 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
   };
 
   return <section aria-labelledby="review-analysis-heading">
+    {(fieldsError || savedListError || filtersError) && <p role="alert">{t("list.optionsUnavailable")}</p>}
+    {(fieldsError || savedListError || filtersError || savedError) && <>
+      <button type="button" onClick={() => setOpenSequence((current) => current + 1)}>{t("list.retry")}</button></>}
     <h2 id="review-analysis-heading">{t(view === "saved" ? "review.savedHeading" : "review.analysisHeading")}</h2>
     <p>{t("review.analysisHelp")}</p>
     <section hidden={view !== "saved"} aria-labelledby="review-saved-heading">
@@ -186,22 +233,24 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
             {entry.name}{entry.shared ? ` (${t("review.savedShared")})` : ""}
           </option>)}</select></label>
         <button type="button" disabled={!selectedSavedId || savedBusy}
-          onClick={() => { setActiveSavedId(selectedSavedId);
+          onClick={() => { if (!confirmDiscardChanges(dirty)) return;
+            loadedSavedId.current = ""; setActiveSavedId(selectedSavedId);
             setOpenSequence((current) => current + 1); }}>{t("review.savedOpen")}</button>
       </div>
       <div className="review-controls">
-        <label>{t("review.savedName")} <input value={savedName} maxLength={120}
+        <label>{t("review.savedName")} <input value={savedName} maxLength={120} disabled={savedBusy}
           onChange={(event) => setSavedName(event.target.value)} /></label>
-        {administrator && <label><input type="checkbox" checked={shareDraft}
+        {administrator && <label><input type="checkbox" disabled={savedBusy} checked={shareDraft}
           onChange={(event) => setShareDraft(event.target.checked)} />{t("review.savedPublish")}</label>}
-        <button type="button" disabled={!savedName.trim() || savedBusy}
+        <button className="button-primary" type="button" disabled={!savedName.trim() || savedBusy}
           onClick={() => void save(false)}>{t("review.savedCreate")}</button>
-        <button type="button" disabled={!savedMeta?.editable || !savedName.trim() || savedBusy}
+        <button className="button-primary" type="button" disabled={!savedMeta?.editable || !savedName.trim() || savedBusy}
           onClick={() => void save(true)}>{t("review.savedUpdate")}</button>
       </div>
       {savedMeta && <p>{t("review.savedVersion", { version: savedMeta.version })}</p>}
       {savedError && <p role="alert">{savedError}</p>}
     </section>
+    <fieldset disabled={savedBusy} className="review-analysis-fields">
     <div className="review-controls">{starters.map((starter) =>
       <button key={starter.id} type="button" disabled={!fields.some((item) => item.id === starter.id)}
         onClick={() => { const next = fields.find((item) => item.id === starter.id);
@@ -261,12 +310,13 @@ export function ReviewAnalysisBuilder({ dataset, from, to, language, refresh, cs
         <option value="">{t("review.analysisAll")}</option>
         {reviewFilters.outcomes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select></label>
-      <button type="button" disabled={!field || field.operations.length === 0 || analysisFrom > analysisTo || (filterId !== "" && !filterValue) ||
+      <button className="button-primary" type="button" disabled={!field || field.operations.length === 0 || analysisFrom > analysisTo || (filterId !== "" && !filterValue) ||
         (field.repeating && field.kind === "numeric" && !reducer) ||
         (fieldId === "eMedications.05" && !unit.trim())}
         onClick={() => void run()}>{t("review.analysisRun")}</button>
     </div>
-    {error && <p role="alert">{error}</p>}
+    </fieldset>
+    {error && <p role="alert">{error}{result && ` ${t("list.refreshRetained")}`}</p>}
     {exportNotice && <p role="alert">{exportNotice}</p>}
     {result?.freshness.status === "stale" && <p role="alert">{t("review.volumeStale")}</p>}
     {result?.freshness.status === "current" && <>

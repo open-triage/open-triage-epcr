@@ -17,11 +17,12 @@ test("Review administrator configures routing and reassigns an item without vali
   let amendmentPolicy = { clearance: "confirm", version: 0 };
   let assigneeId: string | null = null;
   let version = 0;
+  let status = "new";
   let history: Array<{ commandId: string; actorId: string; assigneeId: string | null;
     itemVersion: number; assignedAt: string; action: string }> = [];
   let queueReads = 0;
   let attentionReads = 0;
-  const item = () => ({ id: itemId, reportId, criterionId, priority: "high", status: "new", assigneeId,
+  const item = () => ({ id: itemId, reportId, criterionId, priority: "high", status, assigneeId,
     version, firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
     signedAt: "2026-10-02T07:00:00Z", findings: [] });
   const secondItem = () => ({ ...item(), id: secondItemId, version: 0, assigneeId: null });
@@ -31,6 +32,7 @@ test("Review administrator configures routing and reassigns an item without vali
     const path = url.pathname;
     if (path === "/api/installation") return request.fulfill({ json: { settings } });
     if (path === "/api/sessions/current") return request.fulfill({ json: session });
+    if (path === "/api/admin/context") return request.fulfill({ json: { organization: session.organization, capabilities: session.capabilities, panels: ["review-settings"], activeConfiguration: null, dashboard: null } });
     if (path === "/api/review/routes" && request.request().method() === "GET")
       return request.fulfill({ json: [route] });
     if (path === "/api/review/amendment-policy" && request.request().method() === "GET")
@@ -60,7 +62,7 @@ test("Review administrator configures routing and reassigns an item without vali
     if (path === "/api/review/attention") {
       attentionReads++;
       return request.fulfill({ json: { dataset: "real", asOf: new Date().toISOString(),
-        assignments: 0, responses: 0, reopened: 0, unavailableAssignees: 0,
+        total: 0, assignments: 0, responses: 0, reopened: 0, unavailableAssignees: 0,
         unavailableRoutes: 0, processingFailures: 0 } });
     }
     if (path === "/api/review/items/bulk-assign") {
@@ -81,7 +83,7 @@ test("Review administrator configures routing and reassigns an item without vali
       const body = request.request().postDataJSON() as { commandId: string; assigneeId: string | null;
         expectedVersion: number };
       expect(body.expectedVersion).toBe(version);
-      assigneeId = body.assigneeId; version++;
+      assigneeId = body.assigneeId; status = "in-review"; version++;
       history = [...history, { commandId: body.commandId, actorId: "administrator", assigneeId,
         itemVersion: version, assignedAt: "2026-10-02T08:00:00Z", action: "assigned" }];
       return request.fulfill({ json: { ...item(), assignmentHistory: history } });
@@ -98,35 +100,37 @@ test("Review administrator configures routing and reassigns an item without vali
     return request.fulfill({ status: 404 });
   });
   await page.goto("/");
-  await page.getByRole("tab", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Criterion routing" })).toBeVisible();
 
   await page.getByLabel("When a criterion clears").selectOption("automatic");
   await page.getByRole("button", { name: "Save clearance policy" }).click();
   await expect(page.getByText("Clearance policy saved.")).toBeVisible();
   expect(amendmentPolicy.clearance).toBe("automatic");
-  await page.getByLabel("Route to").selectOption("named");
-  await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
+  await page.getByLabel("Route to").selectOption(reviewerId);
+  await expect(page.getByRole("combobox", { name: "Reviewer", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Save route" }).click();
   await expect(page.getByText("Routing saved.")).toBeVisible();
   expect(route.route).toBe("named");
   expect(route.namedUserId).toBe(reviewerId);
   await page.getByLabel("Require independent review").check();
+  await page.getByRole("button", { name: "Reports documented by this reviewer will remain unassigned for another reviewer.", exact: true }).focus();
   await expect(page.getByText("Reports documented by this reviewer will remain unassigned for another reviewer.")).toBeVisible();
   await page.getByRole("button", { name: "Save route" }).click();
   expect(route.independentReview).toBe(true);
   await page.getByLabel("Route to").selectOption("author");
   await expect(page.getByText("Choose an unassigned queue or a named reviewer.", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save route" })).toBeDisabled();
-  await page.getByLabel("Route to").selectOption("named");
-  await page.getByRole("combobox", { name: "Reviewer" }).selectOption(reviewerId);
-  await page.getByRole("tab", { name: "Review queue", exact: true }).click();
+  await page.getByLabel("Route to").selectOption(reviewerId);
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Review", exact: true }).click();
   const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
-  await call.locator(".review-assignment > summary").click();
-  await call.getByLabel("Assign reviewer").selectOption(reviewerId);
+  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=forward]")).toHaveCount(0);
+  await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("assign");
+  await call.getByRole("combobox", { name: "Reviewer", exact: true }).selectOption(reviewerId);
   const readsBeforeAssignment = { queue: queueReads, attention: attentionReads };
-  await call.getByRole("button", { name: "Save assignment" }).click();
-  await expect(call.locator("#review-inspector").getByText("Assignment saved.", { exact: true })).toBeVisible();
+  await call.getByRole("button", { name: "Assign reviewer", exact: true }).click();
+  await expect(call.locator("#review-inspector").getByText("Action saved.", { exact: true })).toBeVisible();
   await refreshOnFocus(page);
   await expect.poll(() => queueReads).toBeGreaterThan(readsBeforeAssignment.queue);
   await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeAssignment.attention);
@@ -165,7 +169,7 @@ test("Review claim persists in the queue and item history, with recoverable stal
     if (url.pathname === "/api/review/attention") {
       attentionReads++;
       return route.fulfill({ json: { dataset: "real", asOf: new Date().toISOString(),
-        assignments: assigneeId === "reviewer" ? 1 : 0, responses: 0, reopened: 0 } });
+        total: assigneeId === "reviewer" ? 1 : 0, assignments: assigneeId === "reviewer" ? 1 : 0, responses: 0, reopened: 0 } });
     }
     if (url.pathname === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
@@ -204,6 +208,7 @@ test("Review claim persists in the queue and item history, with recoverable stal
   await expect.poll(() => attentionReads).toBeGreaterThan(readsBeforeClaim);
   await expect(page.getByRole("button", { name: /^Assigned to me/ })).toBeVisible();
   const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
+  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=forward]")).toHaveCount(0);
   await call.getByRole("tab", { name: "History", exact: true }).click();
   await expect(call.getByRole("heading", { name: "Assignment history" })).toBeVisible();
   await expect(call.getByText("Assigned to you").last()).toBeVisible();
@@ -263,31 +268,24 @@ test("Review-only account enters its scoped queue and keeps datasets separate", 
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Mobile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "View Report ID · REAL-REP" })).toBeVisible();
-  await page.getByRole("tab", { name: "Review queue", exact: true }).click();
-  await page.locator(".review-row-criterion").first().hover();
   if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+    await page.locator(".review-row-criterion").first().hover();
     await expect(page.getByText("Review missing narrative", { exact: true })).toBeVisible();
   } else {
     await expect(page.getByText("Review missing narrative", { exact: true })).not.toBeVisible();
-    await expect(page.locator(".review-row-criterion")).toHaveAttribute("aria-describedby", "review-reason-review-item");
+    const reason = page.locator(".review-row-criterion");
+    await expect(reason.getByRole("button")).toHaveCount(0);
+    await reason.hover();
+    await expect(reason).toHaveAttribute("aria-describedby", "review-reason-review-item");
   }
   await expect(page.locator(".review-badge.priority-high")).toBeVisible();
   await page.getByRole("combobox", { name: /^Priority/ }).selectOption("high");
   await expect.poll(() => queueRequests.some((query) => query.includes("priority=high"))).toBe(true);
-  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
-  await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toBeVisible();
-  await expect(page.getByText("Signed patient reports in the selected period: 2", { exact: false })).toBeVisible();
-  await page.getByLabel("Dataset").selectOption("synthetic");
-  await page.getByRole("tab", { name: "Review queue", exact: true }).click();
-  await expect(page.getByText("No matching review items.")).toBeVisible();
-  await page.getByRole("tab", { name: "Analysis", exact: true }).click();
-  await expect(page.getByText("Signed patient reports in the selected period: 1", { exact: false })).toBeVisible();
-  staleVolume = true;
-  await refreshOnFocus(page);
-  await expect(page.getByText("Report volume is withheld", { exact: false })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Analysis", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Dataset")).toHaveCount(0);
   await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toHaveCount(0);
   expect(requestedDatasets[0]).toBe("real");
-  expect(requestedDatasets.at(-1)).toBe("synthetic");
+  expect(requestedDatasets.every((dataset) => dataset === "real")).toBe(true);
   await page.reload();
   await expect(page.getByRole("button", { name: "Review", exact: true })).toHaveAttribute("aria-pressed", "true");
   await context.setOffline(true);

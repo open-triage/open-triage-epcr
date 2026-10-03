@@ -70,12 +70,12 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       anchor={toolbar} onEscape={closeTimeline}>{timelinePanel}</WorkspaceSidebar> :
       <div id={timelineId} className="review-report-timeline">{timelinePanel}</div>)}
     <div className="review-report-body">
-    {full && "amendmentSequence" in report && <p>{resolveMessage(language, "review.amendments", { count: report.amendmentSequence })}</p>}
-    {full && report.document && report.clinicalForm ? <StationaryRecord readOnly
-      document={report.document} formDefinition={report.clinicalForm.definition}
-      catalogFields={report.clinicalForm.catalogFields} customFields={report.clinicalForm.customFields}
-      customGroups={report.clinicalForm.customGroups} catalogGroups={report.clinicalForm.catalogGroups}
-      validation={report.clinicalForm.validation} language={language} onDocumentChange={() => {}} /> : <>
+    {full && "amendmentSequence" in report && report.amendmentSequence > 0 && <p className="review-report-amendments">{resolveMessage(language, "review.amendments", { count: report.amendmentSequence })}</p>}
+    {full && report.document ? <StationaryRecord readOnly
+      document={report.document} formDefinition={report.clinicalForm?.definition}
+      catalogFields={report.clinicalForm?.catalogFields} customFields={report.clinicalForm?.customFields}
+      customGroups={report.clinicalForm?.customGroups} catalogGroups={report.clinicalForm?.catalogGroups}
+      validation={report.clinicalForm?.validation} language={language} onDocumentChange={() => {}} /> : <>
       {report.groups.filter((group) => report.values.some((value) => value.groupInstanceId === group.id)).map((group) => <section key={group.id}>
         <h3>{group.parentGroupInstanceId ? `${report.groups.find((item) => item.id === group.parentGroupInstanceId)?.label ?? ""} / ` : ""}
           {group.label} {group.ordinal > 0 ? `#${group.ordinal + 1}` : ""}</h3>
@@ -83,7 +83,7 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       </section>)}
       <ReviewValues values={report.values.filter((value) => !value.groupInstanceId)} />
     </>}
-    {report.notes.length > 0 && <section><h3>{t("review.notes")}</h3>
+    {(!full || !report.document) && report.notes.length > 0 && <section><h3>{t("review.notes")}</h3>
       {report.notes.map((note) => <article key={note.id} className="review-report-note">
         <time dateTime={note.capturedAt}>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(note.capturedAt))}</time>
         {note.type === "text" ? <p>{note.content}</p> : <>

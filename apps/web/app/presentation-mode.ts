@@ -11,7 +11,7 @@ export function hasClinicalMode(capabilities?: ReadonlyArray<string>): boolean {
 
 export function hasAdminMode(capabilities?: ReadonlyArray<string>): boolean {
   return capabilities?.some((capability) =>
-    /^(admin-dashboard|catalog|credentials|forms|roles|sessions|settings|users|validation):/.test(capability)) ?? false;
+    capability === "review:admin" || /^(admin-dashboard|catalog|credentials|forms|roles|sessions|settings|users|validation):/.test(capability)) ?? false;
 }
 
 export function hasReviewMode(capabilities?: ReadonlyArray<string>): boolean {

@@ -55,9 +55,12 @@ test("review administrator closes an overdue unsigned follow-up with a coded rea
   await page.goto("/");
   const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }));
   await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();
+  await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("exception");
   await expect(call.getByRole("button", { name: "Close unsigned follow-up exceptionally" })).toBeDisabled();
   await call.getByRole("combobox", { name: /^Exception reason/ }).selectOption("report-not-required");
   await call.getByRole("button", { name: "Close unsigned follow-up exceptionally" }).click();
+  await expect(call.getByText("Action saved.", { exact: true })).toBeVisible();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
   await expect(call.getByText("Closed exceptionally while unsigned").first()).toBeVisible();
   await expect(call.getByText("Report not required").first()).toBeVisible();
   await expect(call.getByRole("heading", { name: /Read-only overdue draft/ })).toBeVisible();

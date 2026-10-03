@@ -18,7 +18,7 @@ test('Review administrators have no retrospective workflow', async ({ page }) =>
     return route.fulfill({ status: 404 });
   });
   await page.goto('/');
-  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Retrospective', exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Retrospective Review' })).toHaveCount(0);
   expect(retrospectiveRequests).toBe(0);

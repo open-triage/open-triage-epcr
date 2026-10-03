@@ -22,7 +22,7 @@ export function ReviewVolumeChart({ points, title }: {
     .x((point) => x(new Date(`${point.date}T00:00:00Z`)))
     .y((point) => y(point.count))(points);
 
-  return <svg className="review-volume-chart" role="img" aria-label={title}
+  return <div className="review-chart-scroll" tabIndex={0} role="region" aria-label={title}><svg className="review-volume-chart" role="img" aria-label={title}
     viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
     {y.ticks(4).map((tick) => <g key={tick}>
       <line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke="currentColor" opacity="0.18" />
@@ -33,5 +33,5 @@ export function ReviewVolumeChart({ points, title }: {
       cx={x(new Date(`${point.date}T00:00:00Z`))} cy={y(point.count)} r="3" fill="currentColor" />)}
     <text x={left} y={height - 6} fontSize="12" fill="currentColor">{points[0]?.date}</text>
     <text x={right} y={height - 6} textAnchor="end" fontSize="12" fill="currentColor">{points.at(-1)?.date}</text>
-  </svg>;
+  </svg></div>;
 }

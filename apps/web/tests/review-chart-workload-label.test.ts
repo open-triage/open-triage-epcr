@@ -10,7 +10,9 @@ test("D3 chart renders every result group including groups after the twentieth",
   const markup = renderToStaticMarkup(createElement(ReviewAnalysisChart, { title: "All groups", values }));
   assert.equal((markup.match(/<rect /g) ?? []).length, 21);
   assert.match(markup, /Group 21/);
-  assert.match(markup, /viewBox="0 0 720 608"/);
+  const height = Number(markup.match(/viewBox="0 0 720 (\d+)"/)?.[1]);
+  assert.ok(height >= 21 * 32, "every row keeps readable label height");
+  assert.match(markup, /font-size="14"/);
 });
 
 test("workload grouping labels are localized without changing raw group keys", () => {
