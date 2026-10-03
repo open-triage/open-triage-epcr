@@ -49,8 +49,19 @@ from analytics_private.epcr_repeatable_element
 where is_custom and group_instance_id is null
 group by organization_id, custom_definition_id;
 
-revoke all on analytics.review_custom_field_source, analytics.review_custom_dictionary
-  from public, anon, authenticated, open_triage_analyst, open_triage_identified_analyst;
+revoke all on analytics.review_custom_field_source, analytics.review_custom_dictionary from public, open_triage_analyst, open_triage_identified_analyst;
+
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on analytics.review_custom_field_source, analytics.review_custom_dictionary from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select on analytics.review_custom_field_source, analytics.review_custom_dictionary
   to open_triage_api_runtime;
 grant select, insert, update, delete on analytics_private.epcr_repeatable_element

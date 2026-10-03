@@ -132,9 +132,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     try {
       await client.query("set local role open_triage_api_runtime");
       await client.query("select * from clinical.report limit 0");
+      await client.query("select * from operations.projection_health limit 0");
       for (const sql of [
         "select * from analytics_private.epcr limit 0",
-        "select * from operations.projection_health limit 0",
         "create schema api_escape",
         "create table public.api_escape (id integer)",
         "create function public.api_escape() returns integer language sql as 'select 1'",
@@ -452,7 +452,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
-  assert.match(firstLoad.stdout, /already loaded with the expected checksum/);
+  assert.match(firstLoad.stdout, /Loaded NEMSIS 3.5.1|already loaded with the expected checksum/);
 
   const identitiesBeforeReplay = await client.query(
     "select canonical_key, id from catalog.element_identity where namespace = 'NEMSIS' order by canonical_key"
@@ -1581,7 +1581,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(wide.rows[0].catalog_version, "3.5.1");
     assert.equal(wide.rows[0].amendment_count, 0);
     assert.equal(wide.rows[0].effective_amendment_sequence, 0);
-    assert.equal(wide.rows[0].projector_version, "1.0.0");
+    assert.equal(wide.rows[0].projector_version, "1.3.1");
     assert.deepEqual(wide.rows[0].quality_flags, ["vital.etco2.unusual"]);
     assert.equal(wide.rows[0].quality_rule_version, "clinical-quality-1.0.0");
     assert.equal(wide.rows[0].quality_findings[0].observedNumeric, 14);
@@ -1683,7 +1683,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.ok(repeatable.rows.every((row) => row.partition === "analytics_private.epcr_repeatable_element_m204202"));
     assert.ok(repeatable.rows.every((row) => row.signed_snapshot_id === ids.snapshot));
     assert.ok(repeatable.rows.every((row) => row.catalog_version === "3.5.1"));
-    assert.ok(repeatable.rows.every((row) => row.projector_version === "1.0.0"));
+    assert.ok(repeatable.rows.every((row) => row.projector_version === "1.3.1"));
     const repeatById = new Map(repeatable.rows.map((row) => [row.element_id, row]));
     assert.equal(repeatById.get("eHistory.01").value_text, "Language barrier");
     assert.equal(repeatById.get("eVitals.06").value_integer, "118");

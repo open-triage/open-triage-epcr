@@ -384,8 +384,19 @@ select p.organization_id, p.documenting_user_id, p.synthetic, p.reporting_date,
   p.report_id
 from analytics_private.epcr p;
 
-revoke all on analytics.review_field_source_with_identity from public, anon, authenticated,
-  open_triage_analyst, open_triage_identified_analyst;
+revoke all on analytics.review_field_source_with_identity from public, open_triage_analyst, open_triage_identified_analyst;
+
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on analytics.review_field_source_with_identity from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select on analytics.review_field_source_with_identity to open_triage_api_runtime;
 comment on view analytics.review_field_source_with_identity is
   'API-only, catalog allowlisted signed report source with report identity for repeated Review BI.';
@@ -416,8 +427,19 @@ left join lateral (
 where not r.is_identifying
   and r.element_id in ('eMedications.03', 'eMedications.05', 'eVitals.06');
 
-revoke all on analytics.review_repeated_field_source from public, anon, authenticated,
-  open_triage_analyst, open_triage_identified_analyst;
+revoke all on analytics.review_repeated_field_source from public, open_triage_analyst, open_triage_identified_analyst;
+
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on analytics.review_repeated_field_source from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select on analytics.review_repeated_field_source to open_triage_api_runtime;
 comment on view analytics.review_repeated_field_source is
   'API-only effective signed repeated standard values for basic Review BI; one row per occurrence.';

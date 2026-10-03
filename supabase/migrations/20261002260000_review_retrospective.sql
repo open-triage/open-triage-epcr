@@ -68,7 +68,18 @@ create index review_retrospective_report_ready_idx
 create index review_retrospective_report_work_idx
   on clinical.review_retrospective_report (work_id) where work_id is not null;
 
-revoke all on clinical.review_retrospective_run, clinical.review_retrospective_report
-  from public, anon, authenticated, open_triage_api_runtime;
+revoke all on clinical.review_retrospective_run, clinical.review_retrospective_report from public, open_triage_api_runtime;
+
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on clinical.review_retrospective_run, clinical.review_retrospective_report from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select, insert on clinical.review_retrospective_run to open_triage_api_runtime;
 grant select, insert, update (work_id) on clinical.review_retrospective_report to open_triage_api_runtime;

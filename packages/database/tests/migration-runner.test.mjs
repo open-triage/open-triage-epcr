@@ -222,3 +222,64 @@ test("an older application tolerates unknown forward migrations without revertin
   assert.equal(client.applied.get("202608309999"), "f".repeat(64));
   assert.ok(!client.queries.some(({ sql }) => /delete|update/i.test(sql)));
 });
+
+
+test("portable Review revokes preserve applied checksums and reject unrelated edits", async () => {
+  const migrations = await readMigrations(repositoryMigrations);
+  const expected = [
+  [
+    "20261002120000",
+    "2fb0dc3e1670662eb6bce33967db23cdd3a0025b998efc644f58b397a0b40e61",
+    "d45b66b2f9435917b144baefbe2fb464f0c0ab00f116f1454789fc3d895731bc"
+  ],
+  [
+    "20261002130000",
+    "e8baa0838c366b1a2edcc7bca8564a988ec0cce1c735ca7354f4da085f73e856",
+    "19082b9b0c590aecee96911ce47ff92cd5706fa6e1732a6461738c852b091d1e"
+  ],
+  [
+    "20261002180000",
+    "cdbd5c0dffe3ad75eb9b850b75007030b91d5f5c9867559eec5c9dfdc82273bd",
+    "6b3c2d561747c2e2e0ca262e15b7c1400b97aa5c098810ebc304d6d69b461bc9"
+  ],
+  [
+    "20261002190000",
+    "a341b6742cd379fd314ee20ac1a57d7c964f32512f09f28423787f5d463cba3c",
+    "c9d5c8cfec4bad632c0a25f07cf05c8a32608eadae19719a7b2e25fb7dd472b1"
+  ],
+  [
+    "20261002230000",
+    "80d01b446a437628afa62af7ef562d27034e7afae960c748427e4ede20281a99",
+    "04c21fa8ea8f7d1eebfdf53c41608926e2ce20b7f082daea0a476ccba29d5a76"
+  ],
+  [
+    "20261002260000",
+    "d963d74efb42224eebace81356d445bc41a0e1af7c9d2122381073c6c8880c58",
+    "6ac484ec5f6214ac28c0cfee15db2e4be0408e99569b38d87e0e4658049a585b"
+  ],
+  [
+    "20261002290000",
+    "9dc0cb383e2350c165409c56e86efd3378789fdcd084e7ee5ddab4b59e2bbd71",
+    "0827f66f7d354233f8f0fb2d71761d1306cf247c680119c03a7281ddfe643aab"
+  ],
+  [
+    "20261002300000",
+    "7208ae35f0d373e4d491173da820a2e41cbbcc122e4d17e89fa965561ade57aa",
+    "2fbd8bec7f68bfec323a0dfb80ac9d82e685f6110aa6a21027155fa582e72cbc"
+  ],
+  [
+    "20261002202737",
+    "59d66301e77d60cb458d3bb2d0b94aa747debc5342aff87d20f7fb951ad181c9",
+    "82f8bee7d5d7efc658a19ab8ae2df9371ea83e1c355c193235c2e3d2a435fc46"
+  ]
+];
+  for (const [version, oldChecksum, currentChecksum] of expected) {
+    const migration = migrations.find((entry) => entry.version === version);
+    assert.equal(migration?.checksum, currentChecksum);
+    const client = new FakeClient([[version, oldChecksum]]);
+    await applyMigrations(client, [migration], silentLog);
+    assert.equal(client.applied.get(version), oldChecksum);
+    assert.ok(!client.queries.some(({ sql }) => sql === migration.sql));
+    await assert.rejects(applyMigrations(client, [{ ...migration, checksum: "0".repeat(64) }], silentLog), /has been modified/);
+  }
+});

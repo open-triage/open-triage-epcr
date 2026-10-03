@@ -7,6 +7,7 @@ create table clinical.review_comment (
   command_id uuid not null,
   actor_id uuid not null,
   item_version bigint not null check (item_version > 0),
+  kind text not null default 'comment' check (kind in ('comment', 'finding')),
   body text not null check (char_length(btrim(body)) between 1 and 4000),
   recorded_at timestamptz not null default now(),
   unique (organization_id, command_id),
@@ -18,5 +19,17 @@ create index review_comment_item_history_idx
 create trigger review_comment_append_only before update or delete on clinical.review_comment
   for each row execute function public.prevent_update_or_delete();
 
-revoke all on clinical.review_comment from public, anon, authenticated, open_triage_api_runtime;
+revoke all on clinical.review_comment from public, open_triage_api_runtime;
+
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on clinical.review_comment from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select, insert on clinical.review_comment to open_triage_api_runtime;

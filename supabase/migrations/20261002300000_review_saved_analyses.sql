@@ -42,7 +42,18 @@ create trigger review_saved_analysis_history_append_only before update or delete
   on clinical.review_saved_analysis_history for each row
   execute function public.prevent_update_or_delete();
 
-revoke all on clinical.review_saved_analysis, clinical.review_saved_analysis_history
-  from public, anon, authenticated, open_triage_api_runtime;
+revoke all on clinical.review_saved_analysis, clinical.review_saved_analysis_history from public, open_triage_api_runtime;
+
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on clinical.review_saved_analysis, clinical.review_saved_analysis_history from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select, insert, update on clinical.review_saved_analysis to open_triage_api_runtime;
 grant select, insert on clinical.review_saved_analysis_history to open_triage_api_runtime;
