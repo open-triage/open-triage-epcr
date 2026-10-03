@@ -1,17 +1,19 @@
 "use client";
 
-import React, { useId, useState, type ReactNode } from "react";
+import React, { useId, useRef, useState, type ReactNode } from "react";
 
 /** Shared mouse/touch drag handles with keyboard pickup, movement, drop and cancel. */
 export function SortableList<T>({ items, identity, label, onMove, renderItem, disabled = false,
-  ordered = false, className, ariaLabel, canDrag = () => true, language = "en" }: {
+  ordered = false, className, ariaLabel, canDrag = () => true, language = "en", onItemClick }: {
   items: readonly T[]; identity: (item: T) => string; label: (item: T) => string;
   onMove: (from: number, to: number) => void;
   renderItem: (item: T, index: number, handle: ReactNode) => ReactNode;
   disabled?: boolean; ordered?: boolean; className?: string; ariaLabel?: string;
   canDrag?: (item: T) => boolean; language?: string;
+  onItemClick?: (item: T, event: React.MouseEvent<HTMLElement>) => void;
 }) {
   const id = useId();
+  const pointer = useRef<number | null>(null);
   const [drag, setDrag] = useState<{ key: string; target: string; keyboard: boolean } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const ids = items.map(identity);
@@ -34,24 +36,23 @@ export function SortableList<T>({ items, identity, label, onMove, renderItem, di
       const key = identity(item);
       const handle = !disabled && canDrag(item) && items.filter(canDrag).length > 1 ? <button type="button" className="sort-handle" style={{ touchAction: "none" }}
         aria-label={`${language === "sv" ? "Ordna" : "Reorder"} ${label(item)}`} aria-describedby={`${id}-help`} aria-pressed={drag?.key === key}
-        draggable onDragStart={(event) => {
-          event.stopPropagation(); event.dataTransfer.effectAllowed = "move";
-          event.dataTransfer.setData("application/x-opentriage-sort", JSON.stringify({ list: id, key }));
-          setDrag({ key, target: key, keyboard: false });
-        }} onDragEnd={() => setDrag(null)}
         onPointerDown={(event) => {
-          if (event.pointerType === "mouse") return;
-          event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+          if (event.button !== 0) return;
+          event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+          event.currentTarget.setPointerCapture(event.pointerId); pointer.current = event.pointerId;
           setDrag({ key, target: key, keyboard: false });
         }} onPointerMove={(event) => {
-          if (event.pointerType === "mouse" || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          if (pointer.current !== event.pointerId || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          event.stopPropagation();
           const target = targetAt(event.clientX, event.clientY);
-          if (target) setDrag({ key, target, keyboard: false });
+          setDrag({ key, target: target ?? key, keyboard: false });
         }} onPointerUp={(event) => {
-          if (event.pointerType === "mouse" || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          if (pointer.current !== event.pointerId || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          event.stopPropagation(); pointer.current = null;
           event.currentTarget.releasePointerCapture(event.pointerId);
-          move(key, targetAt(event.clientX, event.clientY) ?? drag?.target ?? key);
-        }} onPointerCancel={() => setDrag(null)}
+          move(key, targetAt(event.clientX, event.clientY) ?? key);
+        }} onPointerCancel={(event) => { event.stopPropagation(); pointer.current = null; setDrag(null); }}
+        onLostPointerCapture={() => { pointer.current = null; setDrag(null); }}
         onKeyDown={(event) => {
           if (["Enter", " "].includes(event.key)) {
             event.preventDefault(); event.stopPropagation();
@@ -67,21 +68,12 @@ export function SortableList<T>({ items, identity, label, onMove, renderItem, di
             setDrag({ ...drag, target: movableIds[next]! }); setAnnouncement(`${next + 1} / ${items.length}`);
           }
         }}><span aria-hidden="true">⠿</span></button> : null;
+      const dropTarget = drag?.target === key && drag.key !== key && canDrag(item);
       return <Row key={key} data-sortable-item={key} data-sortable-list={id}
-        className={`sortable-item${drag?.key === key ? " is-dragging" : ""}${drag?.target === key && drag.key !== key ? " is-drop-target" : ""}`}
-        onDragOver={(event) => {
-          if (disabled || !canDrag(item) || !drag || drag.keyboard) return;
-          event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move";
-          setDrag({ ...drag, target: key });
-        }} onDrop={(event) => {
-          if (disabled) return;
-          event.stopPropagation();
-          try {
-            const data = JSON.parse(event.dataTransfer.getData("application/x-opentriage-sort"));
-            if (data.list !== id) return;
-            event.preventDefault(); move(data.key, key);
-          } catch { /* Ignore drops from outside this list. */ }
-        }}>{renderItem(item, index, handle)}</Row>;
+        onClick={onItemClick ? (event) => onItemClick(item, event) : undefined}
+        data-drop-position={dropTarget ? ids.indexOf(drag.key) < index ? "after" : "before" : undefined}
+        className={`sortable-item${drag?.key === key ? " is-dragging" : ""}${dropTarget ? " is-drop-target" : ""}`}>
+        {renderItem(item, index, handle)}</Row>;
     })}
   </Root>
     <span id={`${id}-help`} className="visually-hidden">{language === "sv" ? "Dra för att ändra ordning. Tryck mellanslag, använd piltangenter och tryck mellanslag igen. Escape avbryter." : "Drag to reorder. With the keyboard, press Space, use arrow keys, then Space to drop. Escape cancels."}</span>

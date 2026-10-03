@@ -13,11 +13,8 @@ Read this guide before developing UI. New or changed UI must follow these
 rules, including shared components needed for the work. Reuse or extend shared
 styles and components instead of introducing a separate visual language.
 
-Record other existing departures in the
-[remediation backlog](ui-style-guide-backlog.md) for future work. Keep unrelated
-redesigns outside the current task. Existing inconsistencies are not precedents
-to copy. This guide defines the intended behavior; it does not imply every
-existing screen already complies.
+Use this guide to inform future UI development. Keep unrelated redesigns outside
+the current task. Existing inconsistencies are not precedents to copy.
 
 ## Screen layout and navigation
 
@@ -29,6 +26,14 @@ existing screen already complies.
   actions, and the pagination controls when sizing the list.
 - Avoid stacking settings, editors, results, and unrelated sections down one
   long page. Show the current task in the available workspace.
+- Exception agreed 2026-10-03: keep Agency Settings and all Admin authoring
+  editors as long pages because they are rarely used. Apply the shared control,
+  mobile-width, draft protection, and accessibility rules to them. Large
+  directories still use bounded lists. Review settings also use one long page
+  under Admin, with no task tab selector; Analysis navigation is temporarily hidden.
+- Keep all clinical record sections together in one bounded scrolling panel
+  on desktop. Use a compact section selector on mobile, preserving section
+  error counts and access to signing.
 - On mobile, preserve the task divisions and adapt to available width. Allow
   vertical scrolling when needed to keep text and controls usable. Enlarged
   text, a small viewport, or the on-screen keyboard must not make content or
@@ -51,6 +56,44 @@ View action in [review-shell.tsx](../../apps/web/components/review-shell.tsx).
 [Review interaction tests](../../apps/web/e2e/review-call-window.spec.ts) describe
 the inspector and full-report transitions. Verify state preservation for the
 work being changed; the reference is not exempt from the rest of this guide.
+
+## Lists and row interactions
+
+Use a shared list pattern across clinical, Admin, and Review workspaces. The
+Review queue is the reference for compact rows, aligned columns, headers, and
+row actions.
+
+- Make the row's normal action available by clicking anywhere on its
+  noninteractive surface. This typically selects the item or opens its detail
+  or editor. Keep destructive and secondary actions as explicit controls.
+- Buttons, links, checkboxes, inputs, selects, help triggers, and drag handles
+  within a row perform their own actions without also triggering the row action.
+- Give actionable rows a subtle hover background using the agency accent and
+  shared color properties. Show visible keyboard focus and a distinct selected
+  state; hover alone must not communicate selection.
+- When a row opens detail or an editor, provide a named native button or link
+  in its Actions column so keyboard and assistive technology users can perform
+  the same action. Keep item names as plain text; do not turn them into buttons
+  solely to provide keyboard access. Preserve table and list semantics.
+- Validation rule library exception agreed 2026-10-03: omit the Edit button and
+  Actions column. The row opens the editor directly; make it focusable, named,
+  and operable with Enter and Space, while keeping tooltip interaction independent.
+- Reuse `ListRowAction` for a list item with a separate action button, or
+  `activateListRow` with a named native action in a table row. Both keep
+  embedded controls independent of the row action.
+- For editable lists whose fields and actions are already available in each
+  row, use those native controls for keyboard access. Do not add a row action
+  or selection state that only focuses an already accessible field.
+- Align corresponding values and actions in consistent columns across rows.
+  Use clear column headers, including an Actions header where appropriate.
+  Prefer a table for comparable records; editable lists can use a shared grid
+  with the same column alignment.
+- Keep rows compact with restrained padding, consistent gaps, and minimal
+  decorative containers. Retain readable text and controls at least 44px tall.
+  Keep lengthy help in tooltips or detail views so it does not stretch rows.
+- Adapt columns to smaller screens with labeled stacked fields or a bounded
+  horizontal scroller. Preserve the row action, headers or equivalent labels,
+  and usable controls without shrinking text.
 
 ## Agency and semantic colors
 
@@ -93,6 +136,10 @@ states to assistive technology. Preserve keyboard access and visible focus.
 Give icon-only actions accessible names. Do not use color as the sole indicator
 of selected, disabled, or error states.
 
+Attach help tooltips directly to the associated label, value, or control. Show
+them immediately on hover and keyboard focus, support dismissal with Escape,
+and keep them available on touch screens. Do not add separate ⓘ buttons.
+
 ## Density, typography, and spacing
 
 Minimize dead space. Use modest headings, restrained spacing, and minimal
@@ -128,6 +175,12 @@ main form.
 ## Editing, tabs, and save status
 
 - Preserve in-progress edits when switching tabs within an editor.
+- A failed refresh must keep already loaded list rows, selections, scroll
+  position, and drafts. Show the error and offer retry; replace the rows only
+  after a successful response. Do not clear a list before a filter or page
+  request finishes. Clearly identify retained results when new filters could
+  not be applied. Clear data when access is revoked, an item is removed, or
+  the user or organization changes; never show one scope's data in another.
 - Keep Save/Cancel accessible in workflows that use explicit saving.
 - Identify tabs containing validation errors and make the affected field easy
   to reach. Errors in hidden tabs must not leave users guessing why saving failed.
@@ -149,12 +202,13 @@ fit. Use meaningful existing tests or add focused coverage for changed behavior.
       statuses retain their meaning.
 - [ ] Primary, secondary, selected, destructive, and disabled treatments are
       consistent; keyboard focus and labels remain clear.
+- [ ] Lists use compact rows and aligned columns with headers, with item names
+      displayed as plain text. Where a row opens detail or an editor, its action
+      works through the row and a named control in Actions. Inline editable lists
+      expose native fields and actions without artificial row selection.
+      Embedded controls act independently; applicable hover, focus, and selection
+      states remain clear.
 - [ ] Fields have consistent padding, margins, typography, and alignment;
       unnecessary empty space and nested padding have been removed.
 - [ ] Where applicable, list state survives detail navigation, drafts survive
       tab switches, hidden errors are discoverable, and save status is clear.
-- [ ] Newly discovered unrelated violations are recorded in the backlog with
-      evidence; any resolved entry includes the change and verification.
-
-The [backlog](ui-style-guide-backlog.md) separates confirmed source findings
-from checks still needing browser verification. Its initial audit is partial.

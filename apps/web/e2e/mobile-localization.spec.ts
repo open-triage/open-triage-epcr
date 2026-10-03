@@ -63,7 +63,7 @@ for (const language of ["en", "sv"] as const) {
     await page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first().click();
     await expect(page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: systolicLabel })).toHaveValue("120");
     await page.keyboard.press("Escape");
-    await expect(page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first()).toBeFocused();
+    await expect(page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first().getByRole("button")).toBeFocused();
     await page.getByRole("button", { name: language === "sv" ? "Textanteckning" : "Text note" }).click();
     const noteDialog = page.getByRole("dialog", { name: language === "sv" ? "Textanteckning" : "Text note" });
     const noteText = noteDialog.getByRole("textbox");

@@ -28,7 +28,22 @@ function cachedConfiguration(storage: ConfigurationStorage | undefined, endpoint
   } catch { return null; }
 }
 
+function contrastText(color: string): string {
+  const hex = color.replace("#", "");
+  const channels = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map((channel) => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
+  const luminance = .2126 * channels[0]! + .7152 * channels[1]! + .0722 * channels[2]!;
+  return luminance > .179 ? "#000" : "#fff";
+}
+
 export function applyAgencyColors(appearance: AgencyAppearance, document: Document): void {
+  const destructive = appearance.destructiveColor ?? DEFAULT_AGENCY_APPEARANCE.destructiveColor;
+  const destructiveHover = `#${[1, 3, 5].map((offset) => Math.round(parseInt(destructive.slice(offset, offset + 2), 16) * .8)
+    .toString(16).padStart(2, "0")).join("")}`;
+  document.documentElement.style.setProperty("--accent-contrast", contrastText(appearance.accentColor));
+  document.documentElement.style.setProperty("--accent-dark-contrast", contrastText(appearance.accentDarkColor));
+  document.documentElement.style.setProperty("--destructive-contrast", contrastText(destructive));
+  document.documentElement.style.setProperty("--destructive-hover-contrast", contrastText(destructiveHover));
   document.documentElement.style.setProperty("--green", appearance.accentColor);
   document.documentElement.style.setProperty("--green-dark", appearance.accentDarkColor);
   document.documentElement.style.setProperty("--destructive", appearance.destructiveColor ?? DEFAULT_AGENCY_APPEARANCE.destructiveColor);

@@ -343,7 +343,7 @@ export function PhotoNoteDialog({
         <div className="note-dialog-actions">
           <DialogCancelButton language={language} disabled={saving} onClick={onClose} />
           {mode === "preview" && <button className="button-danger" type="button" disabled={saving} onClick={discard}>{t("noteUi.discard.retake")}</button>}
-          {mode !== "camera" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : note ? t("noteUi.save.caption") : t("noteUi.use.photo")}</button>}
+          {mode !== "camera" && <button className="button-primary" type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : note ? t("noteUi.save.caption") : t("noteUi.use.photo")}</button>}
         </div>
       </>}
     </section>

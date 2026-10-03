@@ -394,8 +394,8 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
         <small id="report-audio-caption-count">{t("noteUi.captionCount", { count: validation.characterCount.toLocaleString(language === "sv" ? "sv-SE" : "en-US"), max: REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") })}</small></>}
       <p id="report-audio-error" className="finish-help" role={validation.error || error ? "alert" : captureUnavailable ? "status" : undefined}>{validation.error ?? error ?? captureUnavailable}</p>
       <div className="note-dialog-actions"><DialogCancelButton language={language} disabled={saving || mode === "recording"} onClick={onClose} />
-        {mode === "preview" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.processing") : capture?.interrupted ? t("noteUi.use.interrupted.recording") : t("noteUi.use.recording")}</button>}
-        {mode === "viewer" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : t("noteUi.saveAudioCaption")}</button>}</div>
+        {mode === "preview" && <button className="button-primary" type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.processing") : capture?.interrupted ? t("noteUi.use.interrupted.recording") : t("noteUi.use.recording")}</button>}
+        {mode === "viewer" && <button className="button-primary" type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : t("noteUi.saveAudioCaption")}</button>}</div>
     </>}
   </section></div>;
 }

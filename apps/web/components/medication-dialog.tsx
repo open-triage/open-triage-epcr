@@ -75,7 +75,7 @@ export function MedicationDialog({ language, draft, dispatch, dialogRef, definit
       {medication.fields.map(renderField)}
       <div className="note-dialog-actions">
         <DialogCancelButton language={language} onClick={() => dispatch({ type: "medication-cancelled" })} />
-        <button type="button" onClick={() => dispatch({ type: "medication-saved" })}>{draft.isNew ? medication.labels.add : medication.labels.save}</button>
+        <button className="button-primary" type="button" onClick={() => dispatch({ type: "medication-saved" })}>{draft.isNew ? medication.labels.add : medication.labels.save}</button>
       </div>
     </section>
   </div>;

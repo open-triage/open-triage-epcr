@@ -6,6 +6,7 @@ import schema from "@open-triage/contracts/installation-settings.schema-1.0.0.js
 import production from "@open-triage/contracts/config/installation.production.json";
 import {
   applyAgencyAppearance,
+  applyAgencyColors,
   loadInstallationConfiguration,
   selectedInstallationSettings,
 } from "../app/installation-settings";
@@ -102,6 +103,19 @@ test("agency appearance activates accessible colors, browser chrome, and PWA nam
   assert.equal(manifestJson.name, "County EMS ePCR");
   assert.equal(manifestJson.short_name, "County EMS");
   assert.equal(manifestJson.background_color, "#eef5fb");
+});
+
+test("button foregrounds retain contrast when a light destructive color darkens on hover", () => {
+  const declarations = new Map<string, string>();
+  const documentStub = { documentElement: { style: { setProperty(name: string, value: string) {
+    declarations.set(name, value);
+  } } } } as unknown as Document;
+  applyAgencyColors({ ...DEFAULT_AGENCY_APPEARANCE, accentColor: "#ffff00", accentDarkColor: "#005ea8",
+    destructiveColor: "#888888" }, documentStub);
+  assert.equal(declarations.get("--accent-contrast"), "#000");
+  assert.equal(declarations.get("--accent-dark-contrast"), "#fff");
+  assert.equal(declarations.get("--destructive-contrast"), "#000");
+  assert.equal(declarations.get("--destructive-hover-contrast"), "#fff");
 });
 
 test("the static prototype accepts manually supplied local credentials as a clinician only", async () => {

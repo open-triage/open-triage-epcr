@@ -1,7 +1,8 @@
 "use client";
 
 import type { ClinicalFormConfiguration, EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useAvailableHeight } from "./use-available-height";
 import {
   activeStationarySection,
   configuredStationaryPreviewSections,
@@ -44,6 +45,7 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
+  const workspace = useAvailableHeight<HTMLDivElement>(0);
   const defaultSections = useMemo(() => configuredStationarySections(), []);
   const previewSections = useMemo(() => {
     if (!formDefinition) return undefined;
@@ -70,13 +72,41 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
     }));
   }, [defaultSections, previewSections, sectionFindings]);
   const [activeId, setActiveId] = useState(sections[0]?.id ?? "");
+  const sectionOptions = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const options = sectionOptions.current;
+    const rail = options?.parentElement;
+    if (!options || !rail) return;
+    const updateSelection = () => {
+      const active = options.querySelector<HTMLButtonElement>('button[aria-current="location"]');
+      if (!active?.offsetWidth) return;
+      options.style.setProperty("--section-selection-x", `${active.offsetLeft}px`);
+      options.style.setProperty("--section-selection-y", `${active.offsetTop}px`);
+      options.style.setProperty("--section-selection-width", `${active.offsetWidth}px`);
+      options.style.setProperty("--section-selection-height", `${active.offsetHeight}px`);
+      const buttonBounds = active.getBoundingClientRect();
+      const railBounds = rail.getBoundingClientRect();
+      if (buttonBounds.top < railBounds.top + 8) rail.scrollTop += buttonBounds.top - railBounds.top - 8;
+      else if (buttonBounds.bottom > railBounds.bottom - 8) rail.scrollTop += buttonBounds.bottom - railBounds.bottom + 8;
+    };
+    updateSelection();
+    const observer = new ResizeObserver(updateSelection);
+    observer.observe(options);
+    options.querySelectorAll("button").forEach(button => observer.observe(button));
+    return () => observer.disconnect();
+  }, [activeId, sections]);
 
   const moveToSection = useCallback((sectionId: string, focus: boolean, smooth = false) => {
     const section = sections.find(({ id }) => id === sectionId);
     const target = section ? window.document.getElementById(section.hash) : null;
     if (!section || !target) return;
     setActiveId(section.id);
-    target.scrollIntoView({ behavior: smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto", block: "start" });
+    const page = target.parentElement!;
+    const behavior = smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto";
+    if (getComputedStyle(page).overflowY === "auto") {
+      page.scrollTo({ top: page.scrollTop + target.getBoundingClientRect().top - page.getBoundingClientRect().top - 8, behavior });
+    } else target.scrollIntoView({ behavior, block: "start" });
     if (focus) target.querySelector<HTMLElement>("[data-stationary-section-heading]")?.focus({ preventScroll: true });
   }, [sections]);
 
@@ -86,7 +116,9 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const positions = sections.map((section) => ({ id: section.id, top: window.document.getElementById(section.hash)?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY }));
-        const headerBottom = window.document.querySelector<HTMLElement>(".encounter-header")?.getBoundingClientRect().bottom ?? 136;
+        const recordPage = window.document.querySelector<HTMLElement>(".stationary-record-page");
+        const headerBottom = recordPage && getComputedStyle(recordPage).overflowY === "auto" ? recordPage.getBoundingClientRect().top
+          : window.document.querySelector<HTMLElement>(".encounter-header")?.getBoundingClientRect().bottom ?? 136;
         const active = activeStationarySection(positions, headerBottom + 24);
         if (active) setActiveId(active);
       });
@@ -97,39 +129,52 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
       if (section) window.requestAnimationFrame(() => moveToSection(section.id, true));
       else updateFromScroll();
     };
+    const recordPage = window.document.querySelector(".stationary-record-page");
+    recordPage?.addEventListener("scroll", updateFromScroll, { passive: true });
     window.addEventListener("scroll", updateFromScroll, { passive: true });
     window.addEventListener("resize", updateFromScroll);
     window.addEventListener("hashchange", updateFromHash);
     updateFromHash();
     return () => {
       window.cancelAnimationFrame(frame);
+      recordPage?.removeEventListener("scroll", updateFromScroll);
       window.removeEventListener("scroll", updateFromScroll);
       window.removeEventListener("resize", updateFromScroll);
       window.removeEventListener("hashchange", updateFromHash);
     };
   }, [moveToSection, sections]);
 
-  return <div className={`stationary-record-layout${readOnly ? " stationary-read-only" : ""}`}>
+  return <div ref={workspace} className={`stationary-record-layout${readOnly ? " stationary-read-only" : ""}`}>
+    <label className="stationary-section-selector">{resolveMessage(language, "stationary.sections")}
+      <select value={activeId} onChange={(event) => moveToSection(event.target.value, true)}>
+        {sections.map((section) => { const status = statuses.get(section.id)!; return <option key={section.id} value={section.id}>
+          {sectionLabel(section)}{status.errors || status.warnings ? ` — ${statusText(language, status.errors, status.warnings)}` : ""}
+        </option>; })}
+      </select>
+    </label>
     <nav className="stationary-section-rail" aria-label={resolveMessage(language, "stationary.sections")}>
-      <ul>{sections.map((section) => {
-        const status = statuses.get(section.id)!;
-        const summary = statusText(language, status.errors, status.warnings);
-        const label = sectionLabel(section);
-        return <li key={section.id}>
-          <button type="button"
-            aria-current={activeId === section.id ? "location" : undefined}
-            aria-label={`${label}: ${summary}`}
-            className={activeId === section.id ? "active" : undefined}
-            onClick={() => moveToSection(section.id, true, true)}
-          >
-            <span>{label}</span>
-            <span className="stationary-section-counts" aria-hidden="true">
-              <span className={`error-count${status.errors ? "" : " zero-count"}`} title={resolveMessage(language, "stationary.blockingErrors")}>{status.errors}</span>
-              <span className={`warning-count${status.warnings ? "" : " zero-count"}`} title={resolveMessage(language, "stationary.warnings")}>{status.warnings}</span>
-            </span>
-          </button>
-        </li>;
-      })}</ul>
+      <div ref={sectionOptions} className="stationary-section-options">
+        <span className="stationary-section-selection" aria-hidden="true" />
+        <ul>{sections.map((section) => {
+          const status = statuses.get(section.id)!;
+          const summary = statusText(language, status.errors, status.warnings);
+          const label = sectionLabel(section);
+          return <li key={section.id}>
+            <button type="button"
+              aria-current={activeId === section.id ? "location" : undefined}
+              aria-label={`${label}: ${summary}`}
+              className={activeId === section.id ? "active" : undefined}
+              onClick={() => moveToSection(section.id, true, true)}
+            >
+              <span>{label}</span>
+              <span className="stationary-section-counts" aria-hidden="true">
+                <span className={`error-count${status.errors ? "" : " zero-count"}`} title={resolveMessage(language, "stationary.blockingErrors")}>{status.errors}</span>
+                <span className={`warning-count${status.warnings ? "" : " zero-count"}`} title={resolveMessage(language, "stationary.warnings")}>{status.warnings}</span>
+              </span>
+            </button>
+          </li>;
+        })}</ul>
+      </div>
       <span className="visually-hidden" aria-live="polite">{resolveMessage(language, "stationary.currentSection", { section: sections.find(({ id }) => id === activeId) ? sectionLabel(sections.find(({ id }) => id === activeId)!) : "" })}</span>
     </nav>
 

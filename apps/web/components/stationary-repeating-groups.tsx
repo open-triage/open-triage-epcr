@@ -251,7 +251,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} findings={liveFindings} clinicalForm={clinicalForm} onDocumentChange={onDraftChange} />
       {editable && <div className="note-dialog-actions">
         <button type="button" onClick={onCancel}>{t("stationary.cancel")}</button>
-        <button type="button" onClick={onSave}>{t(isNew ? "stationary.addRow" : "stationary.saveChanges")}</button>
+        <button className="button-primary" type="button" onClick={onSave}>{t(isNew ? "stationary.addRow" : "stationary.saveChanges")}</button>
       </div>}
       <StationaryValidationMessages findings={groupOnlyFindings} />
     </section>

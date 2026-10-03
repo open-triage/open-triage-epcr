@@ -191,9 +191,9 @@ export function OpenReports({
         return;
       }
       const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
-      showReports(cached);
+      showReports(cached.length ? cached : reportsRef.current);
       setLoaded(true);
-      setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : t("reports.refreshFailed"));
+      setError(refreshError instanceof Error ? refreshError.message : t("reports.refreshFailed"));
     } finally {
       refreshing.current = false;
     }

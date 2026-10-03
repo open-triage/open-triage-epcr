@@ -16,7 +16,7 @@ test("stationary, admin and review share a full-width desktop background", async
     if (path === "/api/reports/open") return route.fulfill({ json: { openCalls: [], completedReportIds: [] } });
     if (path === "/api/admin/context") return route.fulfill({ json: { organization: session.organization,
       panels: [], capabilities: session.capabilities, dashboard: null, activeConfiguration: null } });
-    if (path === "/api/review/attention") return route.fulfill({ json: { dataset: "real", asOf: now, assignments: 0, responses: 0, reopened: 0 } });
+    if (path === "/api/review/attention") return route.fulfill({ json: { dataset: "real", asOf: now, total: 0, assignments: 0, responses: 0, reopened: 0 } });
     if (path === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1, pageSize: 25,
       total: 0, asOf: now, items: [] } });
     if (path === "/api/review/outcomes") return route.fulfill({ json: [] });

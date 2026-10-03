@@ -2,8 +2,8 @@
 
 Before developing UI, read [the UI style guide](docs/design/ui-style-guide.md).
 Apply it to new or changed UI and the shared components needed for that work.
-Record other existing violations in [the UI remediation backlog](docs/design/ui-style-guide-backlog.md)
-for future work; keep unrelated redesigns outside the current task.
+Use the guide to inform future UI development. Keep unrelated redesigns outside
+the current task.
 
 # Local database-backed development
 

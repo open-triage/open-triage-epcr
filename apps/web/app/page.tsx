@@ -1,5 +1,7 @@
 "use client";
 
+import { ExceptionalValueMenu } from "../components/exceptional-value-menu";
+
 import { DialogCancelButton, DialogRemoveButton } from "../components/documentation-dialog-buttons";
 import { enabledMobileOptions, mobileDisplayDefinition } from "./mobile-localization";
 
@@ -62,6 +64,7 @@ import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAu
   subscribeProtectedAudio, subscribeProtectedPhotos, updateProtectedAudio, updateProtectedPhoto } from "./protected-clinical-storage";
 import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote,
   type NoteReadinessBlocker } from "./report-text-notes";
+import { ListRowAction } from "../components/list-row-action";
 import { EncounterTimeline } from "../components/encounter-timeline";
 import { WorkspaceSidebar } from "../components/workspace-sidebar";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
@@ -458,8 +461,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 
     returnFocus.current ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = window.requestAnimationFrame(() => {
-      const target = (activeDialog === "vitals" && openNullField ? dialog.current?.querySelector<HTMLElement>(".null-value-menu button") : null)
-        ?? dialog.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")
+      const target = dialog.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")
         ?? dialog.current?.querySelector<HTMLElement>("button, input, select, textarea");
       target?.focus();
     });
@@ -492,7 +494,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, openNullField, presentationMode, stationaryTimelineOpen]);
+  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, presentationMode, stationaryTimelineOpen]);
 
   function rememberTrigger(element: HTMLElement) {
     returnFocus.current = element;
@@ -865,7 +867,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       </p>}
 
       {presentationMode === "stationary" && (
-        <div hidden={shell.view === "review"}>
+        <div className="stationary-record-workspace" hidden={shell.view === "review"}>
           <StationaryRecord
             language={language}
             document={encounter.document}
@@ -932,12 +934,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             <ul className="review-findings checklist-findings">
               {displayMobileChecklistFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
-                  <button type="button" onClick={(event) => editValidationFinding(finding, event.currentTarget)}>
+                  <ListRowAction label={"vitalField" in finding.target && finding.target.vitalField ? t("mobile.editValue") : t("mobile.editEntry")}
+                    itemName={finding.title} onAction={(trigger) => editValidationFinding(finding, trigger)}>
                     <span className="finding-category">{finding.severity === "error" ? t("mobile.error") : t("mobile.warning")} · {finding.category}</span>
                     <strong>{finding.title}</strong>
                     <span>{finding.message}</span>
-                    <small>{"vitalField" in finding.target && finding.target.vitalField ? t("mobile.editValue") : t("mobile.editEntry")}</small>
-                  </button>
+                  </ListRowAction>
                   {inlineChecklistEditor(finding)}
                 </li>
               ))}
@@ -1049,7 +1051,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               </p>
               <div className="note-dialog-actions">
                 <DialogCancelButton language={language} disabled={noteSaving} onClick={closeActiveDialog} />
-                <button type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
+                <button className="button-primary" type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
                   {noteSaving ? t("settings.saving") : textNoteDraft.isNew ? t("mobile.saveTextNote") : t("noteUi.textSave")}
                 </button>
               </div>
@@ -1083,41 +1085,20 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                   </label>
                   <div className="vital-inputs">
                     <input id={`vital-${field}`} aria-describedby={help ? helpId : undefined} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
-                    <button
-                      type="button"
-                      className={`null-value-trigger ${shell.vitalDraft!.values.nullValues[field] ? "active" : ""}`}
-                      aria-label={t("mobile.setExceptional", { label: configuredField.label })}
-                      aria-expanded={openNullField === field}
-                      onClick={() => setOpenNullField((current) => current === field ? null : field)}
-                    >×</button>
-                    {openNullField === field && (
-                      <div className="null-value-menu" role="menu" aria-label={t("mobile.exceptionalMenu", { label: configuredField.label })}>
-                        {shell.vitalDraft!.values.nullValues[field] && (
-                          <button
-                            autoFocus
-                            type="button"
-                            role="menuitem"
-                            onClick={() => { dispatch({ type: "vitals-null-changed", field, value: "" }); setOpenNullField(null); }}
-                          >{t("mobile.clearExceptional")}</button>
-                        )}
-                        {nullOptionsFor(configuredField).filter((option) => option.value).map((option, index) => (
-                          <button
-                            autoFocus={!shell.vitalDraft!.values.nullValues[field] && index === 0}
-                            key={option.value}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => { dispatch({ type: "vitals-null-changed", field, value: option.value }); setOpenNullField(null); }}
-                          >{option.label}</button>
-                        ))}
-                      </div>
-                    )}
+                    <ExceptionalValueMenu label={t("mobile.setExceptional", { label: configuredField.label })}
+                      menuLabel={t("mobile.exceptionalMenu", { label: configuredField.label })}
+                      selected={!!shell.vitalDraft!.values.nullValues[field]} open={openNullField === field}
+                      onOpenChange={(open) => setOpenNullField(open ? field : null)}
+                      choices={[...(shell.vitalDraft!.values.nullValues[field] ? [{ key: "", label: t("mobile.clearExceptional") }] : []),
+                        ...nullOptionsFor(configuredField).filter((option) => option.value).map((option) => ({ key: option.value, label: option.label }))]}
+                      onSelect={(value) => dispatch({ type: "vitals-null-changed", field, value })} />
                   </div>
                   <DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingActionableFinding : undefined} />
                 </div>
               );})}
             </div>
             <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>
-            <div className="note-dialog-actions"><DialogCancelButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }} /><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
+            <div className="note-dialog-actions"><DialogCancelButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }} /><button className="button-primary" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
           </section>
         </div>
       )}
@@ -1221,12 +1202,11 @@ function NoteReadinessList({ language, blockers, onOpen }: {
     <h2 id="note-readiness-heading">{resolveMessage(language, "mobile.noteReadiness")} <span className={blockers.length ? undefined : "zero-count"}>{blockers.length}</span></h2>
     {!blockers.length ? <p className="review-empty">✓ {resolveMessage(language, "mobile.allNotesReady")}</p> : <ul className="review-findings">
       {blockers.map((blocker) => <li key={`${blocker.note.type}:${blocker.note.id}`} className="error">
-        <button type="button" onClick={(event) => onOpen(blocker, event.currentTarget)}>
+        <ListRowAction label={blocker.action} itemName={blocker.title} onAction={(trigger) => onOpen(blocker, trigger)}>
           <span className="finding-category">{resolveMessage(language, "mobile.error")} · {resolveMessage(language, "mobile.noteReadiness")}</span>
           <strong>{blocker.title}</strong>
           <span>{blocker.message}</span>
-          <small>{blocker.action}</small>
-        </button>
+          </ListRowAction>
       </li>)}
     </ul>}
   </section>;
@@ -1253,12 +1233,12 @@ function FindingGroup({ language, title, empty, findings, onFinding, inlineEdito
         <ul className="review-findings">
           {section.findings.map((finding) => (
             <li key={finding.id} className={finding.severity}>
-              <button type="button" onClick={(event) => onFinding(finding, event.currentTarget)}>
+              <ListRowAction label={resolveMessage(language, "mobile.openAffected")} itemName={finding.title}
+                onAction={(trigger) => onFinding(finding, trigger)}>
                 <span className="finding-category">{finding.category} · {finding.reference}</span>
                 <strong>{finding.title}</strong>
                 <span>{finding.message}</span>
-                <small>{resolveMessage(language, "mobile.openAffected")}</small>
-              </button>
+              </ListRowAction>
               {inlineEditor(finding)}
               {finding.severity === "warning" && (
                 <label className="review-acknowledgement">

@@ -1,12 +1,13 @@
 "use client";
 
 import type { EncounterValue, ScalarEncounterValue } from "@open-triage/contracts";
-import React, { useId, useState, useSyncExternalStore } from "react";
+import React, { useId, useSyncExternalStore } from "react";
 import type { ChangeEvent } from "react";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { canonicalDecimal, displayDecimal, useRegionalFormat } from "../app/regional-format";
 import { localStationaryDateTimeParts, stationaryLocalDateTimeInput } from "../app/stationary-date-time";
 import type { ScalarControlPresentation, ScalarValidationFinding } from "../app/stationary-scalar";
+import { ExceptionalValueMenu } from "./exceptional-value-menu";
 import { StationaryPickerLegend } from "./stationary-picker-label";
 import { TimePicker } from "./time-picker";
 
@@ -38,7 +39,6 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
   const id = useId();
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
-  const [exceptionalOpen, setExceptionalOpen] = useState(false);
   const shownValue = inputValue ?? (presentation.family === "numeric"
     ? displayDecimal(String(value?.lexical ?? value?.value ?? ""), region) : value?.lexical ?? value?.value ?? "");
   const commit = (input: string | boolean) => onBlur?.(presentation.family === "numeric" && typeof input === "string"
@@ -53,19 +53,10 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
     reader.addEventListener("load", () => onInput(String(reader.result).split(",", 2)[1] ?? ""));
     reader.readAsDataURL(file);
   };
-  const exceptionalControl = exceptionalChoices.length && onExceptionalChange ? <div className="stationary-exceptional-picker">
-    <button className={`null-value-trigger${exceptionalValue ? " active" : ""}`} type="button"
-      aria-label={`Set unavailable value for ${presentation.label}`} aria-expanded={exceptionalOpen}
-      disabled={disabled} onClick={() => setExceptionalOpen((open) => !open)}>×</button>
-    {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${presentation.label} unavailable values`}>
-      {exceptionalValue && <button type="button" role="menuitem" onClick={() => {
-        onExceptionalChange(undefined); setExceptionalOpen(false);
-      }}>Clear unavailable value</button>}
-      {exceptionalChoices.map(({ code, label }) => <button type="button" role="menuitem" key={code} onClick={() => {
-        onExceptionalChange(code); setExceptionalOpen(false);
-      }}>{label}</button>)}
-    </div>}
-  </div> : exceptionalValue ? <output>{exceptionalValue.notValue?.display ?? exceptionalValue.notValue?.code}</output> : null;
+  const exceptionalControl = exceptionalChoices.length && onExceptionalChange ? <ExceptionalValueMenu
+    label={`Set unavailable value for ${presentation.label}`} selected={!!exceptionalValue} disabled={disabled}
+    choices={[...(exceptionalValue ? [{ key: "", label: "Clear unavailable value" }] : []), ...exceptionalChoices.map(({ code, label }) => ({ key: code, label }))]}
+    onSelect={(key) => onExceptionalChange(key || undefined)} /> : exceptionalValue ? <output>{exceptionalValue.notValue?.display ?? exceptionalValue.notValue?.code}</output> : null;
   if (presentation.family === "datetime") {
     const candidate = inputValue ?? value?.value;
     // Server-render and first hydration use the source clock; after mount the
