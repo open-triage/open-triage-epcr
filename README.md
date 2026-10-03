@@ -13,11 +13,11 @@ Browser-based electronic patient care reporting, initially modeled on NEMSIS 3.5
 The product requirements documents are indexed in
 [`docs/prds/README.md`](docs/prds/README.md).
 
-## Start
+## Start a local development instance
 
 1. Install Node.js 22 or newer, Docker Desktop (or a Docker engine), and the
    [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
-2. Run `npm install`, copy `.env.example` to `.env.local`, and configure the private
+2. Run `npm ci`, copy `.env.example` to `.env.local`, and configure the private
    database and installation keys.
 3. On a fresh machine, run `supabase start` from the repository root and complete
    the [local database and owner setup](docs/runbooks/local-development.md).
@@ -30,6 +30,9 @@ the API, analytics watcher, and web app. For the default local database on port
 54322, it can start Docker Desktop and resume the existing project database
 container, using `docker.exe` on WSL when Linux Docker integration is unavailable.
 It confirms API and web readiness and stops the process groups together on exit.
+Do not source `.env.local` before launching the web app separately: its API
+`PORT=3001` would make Next.js compete with the API. The helper isolates these values;
+the runbook also gives the two-process manual procedure.
 Run `npm run dev -- --check` to check configuration, ports, and database readiness
 without launching the app. See the [local development runbook](docs/runbooks/local-development.md)
 for first-time setup, manual startup, and troubleshooting.
@@ -107,7 +110,33 @@ The production protected-storage guarantee, lifecycle behavior, operational
 requirements, threat exclusions, and deferred device controls are documented in
 [`docs/protected-offline-clinical-storage.md`](docs/protected-offline-clinical-storage.md).
 
-## Kubernetes demo
+## Start a production server with Kubernetes or Tanzu
+
+Use the [production installation runbook](docs/runbooks/kubernetes-production.md).
+It covers identifying your Tanzu edition, preparing a workload cluster, Harbor,
+PostgreSQL, ingress, DNS and TLS, generating private workload credentials,
+bootstrapping the owner, and checking the rollout. Production uses built containers
+and Helm; `npm run dev` and local Supabase are development tools.
+
+Copy [the production values template](deploy/helm/open-triage/production-reference.values.yaml)
+outside the repository and complete the runbook's setup steps. Then run:
+
+```sh
+# Read-only preflight: explicit workload-cluster context, existing namespace/Secrets.
+npm run deploy:kubernetes -- --context YOUR_WORKLOAD_CONTEXT \
+  --values /private/open-triage/production.values.yaml
+
+# Apply migrations, install or upgrade, and wait for readiness.
+npm run deploy:kubernetes -- --context YOUR_WORKLOAD_CONTEXT \
+  --values /private/open-triage/production.values.yaml --apply
+```
+
+The helper checks real hosts, pinned images, TLS, restricted pod settings,
+workload Secret keys, RBAC, and server admission before installation. It does not
+create a cluster or database. A fresh installation still requires approved clinical
+configuration before patient care; the runbook describes this commissioning boundary.
+
+## Hosted Kubernetes demonstration
 
 The synthetic-data-only demo is deployed to DigitalOcean Kubernetes after every
 successful validation of `main`. The web application is available at

@@ -3,8 +3,13 @@ web:
   image:
     repository: ghcr.io/open-triage/open-triage-web
     tag: latest
+    digest: ""
     pullPolicy: IfNotPresent
   replicas: 1
+  securityContext:
+    runAsUser: 101
+    allowPrivilegeEscalation: false
+    capabilities: { drop: [ALL] }
   host: demo.opentriage.org
   resources:
     requests: { cpu: 25m, memory: 32Mi }
@@ -15,8 +20,13 @@ api:
   image:
     repository: ghcr.io/open-triage/open-triage-api
     tag: latest
+    digest: ""
     pullPolicy: IfNotPresent
   replicas: 1
+  securityContext:
+    runAsUser: 1000
+    allowPrivilegeEscalation: false
+    capabilities: { drop: [ALL] }
   host: api.demo.opentriage.org
   trustProxyHops: 1
   resources:
@@ -62,8 +72,14 @@ syntheticExpiry:
     limits: { cpu: 100m, memory: 128Mi }
 
 imagePullSecrets: []
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
 ingress:
+  # Annotation behavior is separate from the cluster's IngressClass name.
+  controller: nginx
   className: nginx
+  annotations: {}
   tls: []
   authenticationRateLimit:
     enabled: true

@@ -13,6 +13,8 @@ spec:
     metadata:
       labels: { app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }} }
     spec:
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       topologySpreadConstraints:
         - maxSkew: 1
@@ -22,9 +24,10 @@ spec:
             matchLabels: { app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }} }
       containers:
         - name: web
-          image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag }}"
+          image: {{ include "open-triage.image" .Values.web.image | quote }}
           imagePullPolicy: {{ .Values.web.image.pullPolicy }}
-          ports: [{ name: http, containerPort: 80 }]
+          securityContext: {{- toYaml .Values.web.securityContext | nindent 12 }}
+          ports: [{ name: http, containerPort: 8080 }]
           readinessProbe:
             httpGet: { path: /, port: http }
           livenessProbe:

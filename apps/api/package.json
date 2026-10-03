@@ -10,6 +10,7 @@
     "start": "node dist/main.js",
     "dispatch:ingest": "npm run build && node dist/dispatch/dispatch-file-cli.entry.js",
     "identity:account": "npm run build && node dist/identity/identity-account.cli.entry.js",
+    "identity:account:runtime": "node dist/identity/identity-account.cli.entry.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs",

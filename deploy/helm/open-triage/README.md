@@ -1,7 +1,13 @@
-# OpenTriage demo chart
+# OpenTriage Kubernetes chart
 
 This chart deploys the static web frontend, NestJS API, and analytics CronJobs.
-PostgreSQL remains in Supabase Free. By default the chart references separate
+PostgreSQL 15+ is provided separately; the chart does not deploy a database.
+For production, including Tanzu, start with the
+[production installation runbook](../../../docs/runbooks/kubernetes-production.md)
+and `production-reference.values.yaml`. Defaults below retain the hosted demo's
+single-replica sizing and must be overridden for production.
+
+By default the chart references separate
 cluster-owned Secrets for each database workload; Helm neither renders their
 values nor updates the Secrets during upgrades. See the
 [workload credential runbook](../../../docs/runbooks/database-workload-credentials.md)
@@ -38,14 +44,15 @@ docker build -f deploy/docker/api.Dockerfile \
 
 Create the Secrets outside Helm before the first install (or retain existing
 ones when upgrading). Every Secret contains only `DATABASE_URL`, except the API
-Secret, which also contains `SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
+Secret, which also contains
 `PATIENT_KEY_INSTALLATION_ID`, `PATIENT_KEY_VERSION`, and
 `PATIENT_KEY_SECRET_BASE64`, `AUTH_RATE_LIMIT_SECRET_BASE64`,
 `OFFLINE_RECOVERY_KEY_VERSION`, and `OFFLINE_RECOVERY_SECRET_BASE64`. The
 authentication rate-limit secret must be a distinct random value of at least 32
 bytes, shared by every API replica. The protected-storage wrapping secret must
 also be dedicated to that purpose and backed up according to the offline
-recovery runbook. Keep each workload's values in a separate private input file:
+recovery runbook. `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are optional for standalone
+PostgreSQL. Keep each workload's values in a separate private input file:
 
 ```sh
 kubectl create secret generic open-triage-api-database \
@@ -108,3 +115,13 @@ the same Secret.
 
 Set `web.replicas` and `api.replicas` to `3` when the cluster has three worker
 nodes. The current defaults are deliberately one replica for a one-node demo.
+
+Chart 0.2.0 requires the rebuilt, unprivileged web image listening on port 8080;
+the Service still exposes port 80. Do not reuse earlier web images listening on 80.
+All workloads run with restricted pod security and no mounted service-account
+token. Set `web.image.digest` / `api.image.digest` to a `sha256:…` value to pin
+images by digest; a digest takes precedence over the tag, including in all jobs.
+Choose `ingress.controller: contour` or `nginx` separately from `className`.
+Contour requires `ingress.authenticationRateLimit.enabled: false`; configure
+any additional edge rate limits through the platform. API authentication throttling
+is independent of the ingress controller.
