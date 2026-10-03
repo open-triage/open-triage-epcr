@@ -468,7 +468,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
             event.preventDefault(); selectRule();
           }}>
           <th scope="row">{validationRuleText(item.rule, wordingLanguage, "name")}</th><td><code>{item.rule.primaryTargetElementId}</code></td>
-          <td>{item.source}</td><td>{item.rule.severity}</td><td>{item.rule.executionTargets.includes("review") ? t({ high: "admin.priorityHigh", medium: "admin.priorityMedium", low: "admin.priorityLow" }[reviewPriorityOfRule(item.rule)]) : "—"}</td><td>{item.rule.executionTargets.join(", ")}</td>
+          <td>{item.source}</td><td>{item.rule.severity}</td><td>{item.rule.executionTargets.includes("review") ? t({ high: "admin.priorityHigh", medium: "admin.priorityMedium", low: "admin.priorityLow", none: "admin.none" }[reviewPriorityOfRule(item.rule)]) : "—"}</td><td>{item.rule.executionTargets.join(", ")}</td>
           <td>{item.rule.enabled ? t("admin.enabled") : t("admin.disabled")}</td><td>
             {issues.length > 0 ? <FieldHelp label={validityLabel} className={`validation-library-status ${validity}`}
               text={issues.join("; ")} /> : validityLabel}</td></tr>;
