@@ -16,6 +16,7 @@ COPY apps/api apps/api
 COPY apps/web apps/web
 COPY defines defines
 COPY packages/contracts packages/contracts
+COPY packages/database/scripts/lib packages/database/scripts/lib
 COPY packages/database/config/identifying-elements.json packages/database/config/identifying-elements.json
 COPY deploy/docker/nginx.conf deploy/docker/nginx.conf
 COPY deploy/docker/generate-nginx-config.mjs deploy/docker/generate-nginx-config.mjs
