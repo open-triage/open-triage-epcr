@@ -162,6 +162,14 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     try {
       await client.query("set local role open_triage_analytics_projector");
       await client.query("select * from clinical.signed_snapshot limit 0");
+      assert.equal((await client.query(`select analytics_private.report_projection_is_current(
+        '00000000-0000-4000-8000-000000000000', current_date,
+        '00000000-0000-4000-8000-000000000000', 0, '1.3.1', 0,
+        '00000000-0000-4000-8000-000000000000', false
+      ) as current`)).rows[0].current, false);
+      await client.query(`select analytics_private.delete_report_projection(
+        '00000000-0000-4000-8000-000000000000'
+      )`);
       await rejectsSql(client, "select * from app_identity.local_credential limit 0", [], "42501");
       await client.query("rollback");
     } catch (error) {
@@ -731,6 +739,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_identified_analyst', 'analytics.epcr_identified', 'select') as identified_view,
         has_table_privilege('open_triage_projector', 'analytics_private.epcr', 'insert') as projector_insert,
         has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
+        has_function_privilege('open_triage_analytics_projector',
+          'analytics_private.delete_report_projection(uuid)', 'execute') as projector_delete_projection,
+        not has_function_privilege('open_triage_api_runtime',
+          'analytics_private.delete_report_projection(uuid)', 'execute') as no_api_delete_projection,
+        not has_function_privilege('open_triage_analyst',
+          'analytics_private.report_projection_is_current(uuid,date,uuid,integer,text,integer,uuid,boolean)',
+          'execute') as no_analyst_projection_status,
         has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
         has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
         not has_table_privilege('open_triage_analyst', 'clinical.dispatch_receipt', 'select') as no_analyst_receipt,
@@ -744,6 +759,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       identified_view: true,
       projector_insert: true,
       projector_run_insert: true,
+      projector_delete_projection: true,
+      no_api_delete_projection: true,
+      no_analyst_projection_status: true,
       operational_health: true,
       operational_failures: true,
       no_analyst_receipt: true,

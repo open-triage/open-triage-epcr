@@ -608,20 +608,13 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
 
   if (onlyIfStale) {
     const status = (await client.query(
-      `select
-        (select count(*) = 1 and bool_and(
-           reporting_date = $2::date and signed_snapshot_id = $3
-           and effective_amendment_sequence = $4 and projector_version = $5
-           and documenting_user_id = $7 and synthetic = $8)
-         from analytics_private.epcr where report_id = $1) as wide_current,
-        (select count(*) = $6 and coalesce(bool_and(
-           reporting_date = $2::date and signed_snapshot_id = $3
-           and effective_amendment_sequence = $4 and projector_version = $5), true)
-         from analytics_private.epcr_repeatable_element where report_id = $1) as repeatable_current`,
+      `select analytics_private.report_projection_is_current(
+         $1, $2::date, $3, $4, $5, $6, $7, $8
+       ) as current`,
       [reportId, report.reporting_date, report.signed_snapshot_id, report.amendment_count,
         PROJECTOR_VERSION, repeatRows.length, report.documenting_user_id, report.synthetic]
     )).rows[0];
-    if (status.wide_current && status.repeatable_current) {
+    if (status.current) {
       return { report, repeatableCount: repeatRows.length, repaired: false };
     }
   }
@@ -629,8 +622,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   await client.query("select analytics_private.ensure_partitions($1::date, ($1::date + interval '1 day')::date)", [
     report.reporting_date
   ]);
-  await client.query("delete from analytics_private.epcr_repeatable_element where report_id = $1", [reportId]);
-  await client.query("delete from analytics_private.epcr where report_id = $1", [reportId]);
+  await client.query("select analytics_private.delete_report_projection($1)", [reportId]);
   if (process.env.ANALYTICS_PROJECTOR_FAIL_AFTER_DELETE === "1") {
     throw new Error("Injected analytical projection failure after delete");
   }
