@@ -43,7 +43,7 @@ COPY --from=build /workspace/packages/contracts/dist packages/contracts/dist
 COPY packages/contracts/config packages/contracts/config
 COPY packages/contracts/catalog.schema-1.0.0.json packages/contracts/
 COPY packages/contracts/examples/dispatch packages/contracts/examples/dispatch
-COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs packages/contracts/quality-normalization-policy.json packages/contracts/
+COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs packages/contracts/validation-group-scope.mjs packages/contracts/quality-normalization-policy.json packages/contracts/
 
 # Assets intentionally retained for deployment jobs and operator runbooks.
 COPY packages/database/scripts/bootstrap-synthetic-installation.mjs packages/database/scripts/
