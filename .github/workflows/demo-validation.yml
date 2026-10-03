@@ -92,6 +92,12 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Test the root-hosted web artifact
         run: npm run test:deployment -w @open-triage/web
+      - name: Build the web runtime image
+        run: >-
+          docker build -f deploy/docker/web.Dockerfile
+          --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
+          --build-arg OPEN_TRIAGE_BUILD_SHA="${{ inputs.deployment_revision || github.sha }}"
+          -t open-triage-web:runtime-validation .
 
   api-runtime-image-validation:
     name: Validate / Pruned API runtime image
