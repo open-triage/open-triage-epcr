@@ -3,6 +3,8 @@ import { ConflictException, Injectable, NotFoundException, UnprocessableEntityEx
 import { InjectDataSource } from "@nestjs/typeorm";
 import {
   compileValidationRule,
+  validationRuleWordingStatuses,
+  validationRuleValidity,
   compiledValidationBundleSha256,
   evaluateValidationBundle,
   explainValidationRule,
@@ -178,13 +180,6 @@ function ruleAdvisories(rules: ValidationRuleSource[]): Map<string, ValidationDi
     if (canonicalRule(first) === canonicalRule(second)) {
       add(first, "exact-duplicate", `Exact duplicate of ${second.name}; it will execute only once.`);
       add(second, "exact-duplicate", `Exact duplicate of ${first.name}; it will execute only once.`);
-    } else if (first.primaryTargetElementId === second.primaryTargetElementId) {
-      add(first, "similar-rule", `Similar non-identical rule ${second.name} targets the same element.`);
-      add(second, "similar-rule", `Similar non-identical rule ${first.name} targets the same element.`);
-      if (first.enabled && second.enabled && first.severity !== second.severity) {
-        add(first, "possible-conflict", `Possible conflict with ${second.name}: enabled rules use different severities.`);
-        add(second, "possible-conflict", `Possible conflict with ${first.name}: enabled rules use different severities.`);
-      }
     }
   }
   return diagnostics;
@@ -228,8 +223,9 @@ export class ValidationAuthoringService {
     const advisories = ruleAdvisories(rules);
     const analyzed = rules.map((rule) => {
       const result = compileValidationRule(rule, row.id, catalog);
-      return { rule, source: sourceKind(rule), validity: result.compiled ? "valid" as const : "invalid" as const,
-        diagnostics: [...result.diagnostics, ...(advisories.get(rule.id) ?? [])] };
+      const diagnostics = [...result.diagnostics, ...(advisories.get(rule.id) ?? [])];
+      return { rule, source: sourceKind(rule), validity: validationRuleValidity(rule, Boolean(result.compiled), diagnostics),
+        diagnostics };
     });
     const search = typeof query.search === "string" ? query.search.trim().toLocaleLowerCase() : "";
     const element = typeof query.element === "string" ? query.element.trim() : "";
@@ -248,7 +244,10 @@ export class ValidationAuthoringService {
         && (!severity || item.rule.severity === severity)
         && (!executionTarget || item.rule.executionTargets.includes(executionTarget as never))
         && (!enabled || String(item.rule.enabled) === enabled)
-        && (!validity || item.validity === validity);
+        && (!validity || item.validity === validity
+          || validationRuleWordingStatuses(item.rule).some((status) => status === validity)
+          || validity === "wording" && (validationRuleWordingStatuses(item.rule).length > 0
+            || item.diagnostics.some(({ code }) => code === "wording")));
     }).sort((first, second) => first.rule.name.localeCompare(second.rule.name) || first.rule.id.localeCompare(second.rule.id));
     const requestedLimit = Number(query.limit ?? 25);
     const limit = query.limit === "all" ? filtered.length
@@ -269,21 +268,30 @@ export class ValidationAuthoringService {
     return { items, nextCursor, total: filtered.length };
   }
 
-  async create(token: string, input: unknown): Promise<ValidationDraft> {
+  async create(token: string, input: unknown, options: { importedRules?: readonly unknown[] } = {}): Promise<ValidationDraft> {
     const session = await this.sessions.requireCapability(token, "validation:write");
     const body = record(input);
     const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
     const displayName = requiredText(body.displayName, "displayName", 120);
+    // Imported NEMSIS definitions have descriptive names longer than the editor
+    // limit. Validate their structure, retaining the complete standard wording.
+    const importedRules = options.importedRules?.map((rule) => this.rule(rule, 500, true));
+    if (importedRules && !importedRules.length) throw new UnprocessableEntityException("rules must contain at least one rule");
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}:${session.user.id}`]);
       const existing = await manager.query<VersionRow[]>(
         "select * from validation.version where organization_id=$1 and created_by=$2 and status='draft'", [session.organization.id, session.user.id]);
-      if (existing[0]) return draft(existing[0]);
+      if (existing[0]) {
+        if (importedRules) throw new ConflictException("Publish or discard the existing draft before importing");
+        return draft(existing[0]);
+      }
       const catalogs = await manager.query<Array<{ id: string; hidden_element_ids?: string[] }>>(`
         select distinct cr.id,cr.provenance->'hiddenElementIds' as hidden_element_ids from catalog.release cr
-        join forms.form_version fv on fv.catalog_release_id=cr.id and fv.status='published'
-        join forms.form f on f.id=fv.form_id and f.organization_id=$1
-        where cr.id=$2 and cr.sealed
+        where cr.id=$2 and cr.sealed and (
+          exists(select 1 from catalog.authoring_draft d
+            where d.organization_id=$1 and d.published_release_id=cr.id)
+          or exists(select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
+            where f.organization_id=$1 and fv.catalog_release_id=cr.id and fv.status='published'))
       `, [session.organization.id, catalogReleaseId]);
       if (!catalogs[0]) throw new UnprocessableEntityException("Validation drafts must bind to a published catalog available to the organization");
       const hiddenIds = new Set(catalogs[0].hidden_element_ids ?? []);
@@ -307,7 +315,7 @@ export class ValidationAuthoringService {
         where f.organization_id=$1 and fv.catalog_release_id=$2 and fv.status='published' limit 1`,
       [session.organization.id, catalogReleaseId]);
       const versionId = randomUUID();
-      const rules: ValidationRuleSource[] = elements.filter((element) =>
+      let rules: ValidationRuleSource[] = elements.filter((element) =>
         !isNemsisDemographicElementId(element.element_id)).flatMap((element) => {
         const scope = scopeFor(element);
         const required = element.agency_required === true ? [{ id: randomUUID(), name: `${element.name} agency required`, enabled: true,
@@ -355,6 +363,7 @@ export class ValidationAuthoringService {
           }
         }
       }
+      if (importedRules) rules = importedRules;
       if (!rules.length) {
         const element = elements[0]!;
         rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error", sourceKind: "catalog",
@@ -852,7 +861,7 @@ export class ValidationAuthoringService {
         code: choice.code, codeSystem: element.codeSystem, label: choice.label, enabled: true })) : [])] };
   }
 
-  private rule(value: unknown): ValidationRuleSource {
+  private rule(value: unknown, nameMaximum = 120, imported = false): ValidationRuleSource {
     const body = record(value);
     const severity = body.severity;
     const targets = body.executionTargets;
@@ -890,15 +899,15 @@ export class ValidationAuthoringService {
       if (reviewed && Object.keys(reviewed).some((key) => !["name", "message"].includes(key)))
         throw new UnprocessableEntityException("rule.localization.sv.reviewedSource is malformed");
       const optional = (value: unknown, name: string, maximum: number) => {
-        if (value === undefined) return undefined;
+        if (value === undefined || (imported && value === null)) return undefined;
         if (typeof value !== "string" || value.length > maximum) throw new UnprocessableEntityException(`${name} must be text`);
         return value;
       };
       localization = { schemaVersion: 1, ...(sv ? { sv: {
-        ...(sv.name !== undefined ? { name: optional(sv.name, "rule.localization.sv.name", 120) } : {}),
+        ...(sv.name !== undefined ? { name: optional(sv.name, "rule.localization.sv.name", nameMaximum) } : {}),
         ...(sv.message !== undefined ? { message: optional(sv.message, "rule.localization.sv.message", 500) } : {}),
         ...(reviewed ? { reviewedSource: {
-          ...(reviewed.name !== undefined ? { name: optional(reviewed.name, "rule.localization.sv.reviewedSource.name", 120) } : {}),
+          ...(reviewed.name !== undefined ? { name: optional(reviewed.name, "rule.localization.sv.reviewedSource.name", nameMaximum) } : {}),
           ...(reviewed.message !== undefined ? { message: optional(reviewed.message, "rule.localization.sv.reviewedSource.message", 500) } : {}),
         } } : {}),
       } } : {}) };
@@ -912,7 +921,7 @@ export class ValidationAuthoringService {
         throw new UnprocessableEntityException("rule.messageParameters is malformed");
       messageParameters = values as ValidationRuleSource["messageParameters"];
     }
-    return { id: uuidText(body.id, "rule.id"), name: requiredText(body.name, "rule.name", 120),
+    return { id: uuidText(body.id, "rule.id"), name: requiredText(body.name, "rule.name", nameMaximum),
       enabled: body.enabled, severity: severity as ValidationRuleSource["severity"],
       ...(targets.includes("review") ? { reviewPriority: (reviewPriority ?? "medium") as ValidationRuleSource["reviewPriority"] } : {}),
       executionTargets: targets as ValidationRuleSource["executionTargets"],

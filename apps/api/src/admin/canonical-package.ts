@@ -32,12 +32,12 @@ export function makePackage(input: Omit<CanonicalPackage, "format" | "schemaVers
   const content = { format: "opentriage-definition" as const, schemaVersion: 1 as const, ...input };
   return { ...content, sha256: contentDigest(content) };
 }
-export function parsePackage(value: unknown, kind: DefinitionKind): CanonicalPackage {
+export function parsePackage(value: unknown, kind: DefinitionKind, options: { ignoreVersion?: boolean } = {}): CanonicalPackage {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new UnprocessableEntityException("Expected canonical JSON object");
   const p = value as CanonicalPackage;
   const { sha256, ...content } = p;
   if (p.format !== "opentriage-definition" || p.schemaVersion !== 1 || p.kind !== kind ||
-      typeof p.name !== "string" || !p.name.trim() || p.name.length > 120 || typeof p.version !== "string" ||
+      typeof p.name !== "string" || !p.name.trim() || p.name.length > 120 || (!options.ignoreVersion && typeof p.version !== "string") ||
       !p.catalog || !/^[a-f0-9]{64}$/.test(p.catalog.sha256) || !p.definition || contentDigest(content) !== sha256) {
     throw new UnprocessableEntityException("Unsupported canonical format/version, kind, or content digest");
   }
@@ -84,7 +84,7 @@ export async function discoverPackages(kind: DefinitionKind): Promise<Array<{ fi
       try {
         const raw = JSON.parse(await readFile(path.join(directory, entry.name), "utf8"));
         const file = path.relative(root, path.join(directory, entry.name));
-        return raw.format === "opentriage-definition" ? { file, package: parsePackage(raw, kind) } : { file, raw };
+        return raw.format === "opentriage-definition" ? { file, package: parsePackage(raw, kind, { ignoreVersion: true }) } : { file, raw };
       }
       catch { return { file: path.relative(root, path.join(directory, entry.name)), error: "Invalid or unsupported canonical JSON" }; }
     }));

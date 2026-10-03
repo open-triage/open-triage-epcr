@@ -88,6 +88,7 @@ export async function resetDevelopmentDatabase({
 
   const childEnvironment = { ...environment, DATABASE_URL: databaseUrl };
   await run("migrate.mjs", childEnvironment);
+  await run("load-nemsis-catalog.mjs", childEnvironment);
 
   const organizationClient = new Client({ connectionString: databaseUrl });
   await organizationClient.connect();

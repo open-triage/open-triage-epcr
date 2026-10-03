@@ -8,16 +8,20 @@ NEMSIS or reverse-DNS custom identifiers; component names are never data keys.
 
 `defines/catalog/catalog_nemsis-3.5.1.json` is the canonical catalog. Edit it
 directly; keep exact NEMSIS technical identifiers in `id` and human-readable
-application wording in `name` and the other display fields. No repository command
-writes files under `defines/`.
+application wording in `name` and the other display fields. Publication exports agency definitions into the corresponding `local/` folders
+under `defines/`. Checked-in base definitions remain authored inputs.
 
 The pinned upstream inputs and provenance are described in
 `apps/web/app/data/nemsis-3.5.1-sources/README.md`. After editing the canonical
 catalog, run `npm run check:nemsis-data-model`, `npm run audit:nemsis-catalog`,
 and `npm run check:database`. These commands validate the authored JSON against
 its JSON Schema, pinned NEMSIS sources, and analytical projection without
-modifying it. A fresh application installation reads the canonical definitions
-from `defines/` and publishes them to the database.
+modifying it. Schema migration and opening an editor do not import definitions. Admins select a JSON file in the editor’s import controls and click
+**Import selected file**
+to publish it as the next agency version. Imported version metadata is ignored,
+and each import creates a new version, including repeated imports of the same file.
+Forms and validation rules use the selected published catalog. Activation is separate. Explicit
+synthetic-fixture setup seeds its own demonstration definitions.
 
 ## Form and custom-element authoring
 

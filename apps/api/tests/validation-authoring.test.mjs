@@ -342,21 +342,105 @@ test("rule library applies organization-scoped filters, stable pagination, prove
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const subject = service(manager);
-  const first = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1 });
+  const first = await subject.library("session", { element: "eResponse.03", validity: "warning", limit: 1 });
   assert.equal(first.total, 2);
   assert.equal(first.items.length, 1);
   assert.ok(first.nextCursor);
-  const second = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1, cursor: first.nextCursor });
+  const second = await subject.library("session", { element: "eResponse.03", validity: "warning", limit: 1, cursor: first.nextCursor });
   assert.equal(second.items.length, 1);
   assert.notEqual(second.items[0].rule.id, first.items[0].rule.id);
-  const all = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: "all" });
+  const all = await subject.library("session", { element: "eResponse.03", validity: "warning", limit: "all" });
   assert.equal(all.items.length, all.total);
   assert.equal(all.nextCursor, null);
   const imported = await subject.library("session", { source: "nemsis", search: "nemSch_1" });
   assert.equal(imported.items[0].rule.provenance[0].originalExpression, "not(eResponse.03)");
-  assert.ok(imported.items[0].diagnostics.some(({ code }) => code === "possible-conflict"));
+  assert.ok(imported.items[0].diagnostics.every(({ code }) => code !== "similar-rule" && code !== "possible-conflict"));
   assert.ok(parameters.every((values) => !values.length || values[0] === organizationId || values[0] === "catalog"),
     "library lookup is constrained to the authenticated organization and its catalog");
+});
+
+test("multiple rules targeting the same element stay valid in the library and draft validation", async () => {
+  const localization = { schemaVersion: 1, sv: { name: "Antal", message: "Kontrollera antal" } };
+  const rules = [
+    { ...sourceRule, id: randomUUID(), name: "Minimum", source: 'require minimum("eResponse.03", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Another minimum", severity: "warning",
+      source: 'assert minimum ( "eResponse.03" , 2 )', localization },
+    { ...sourceRule, id: randomUUID(), name: "Maximum", severity: "information",
+      source: 'require maximum("eResponse.03", 3)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Presence", localization },
+    { ...sourceRule, id: randomUUID(), name: "Conditional value", severity: "warning",
+      source: 'when present("eResponse.04")\nrequire equals("eResponse.03", "incident")', localization },
+    { ...sourceRule, id: randomUUID(), name: "Scoped maximum", enabled: false,
+      source: 'for each("eResponse.AgencyGroup")\nrequire maximum("eResponse.03", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Conditional minimum",
+      source: 'when present("eResponse.04")\nrequire minimum("eResponse.03", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Minimum groups",
+      source: 'require minimumGroups("eResponse.AgencyGroup", 1)', localization },
+    { ...sourceRule, id: randomUUID(), name: "Maximum groups",
+      source: 'require maximumGroups("eResponse.AgencyGroup", 2)', localization },
+  ];
+  const manager = { query: async (sql) => {
+    if (sql.includes("from validation.version")) return [{ id: versionId, catalog_release_id: "catalog", source_rule: rules }];
+    if (sql.includes("from catalog.element_definition")) return ["eResponse.03", "eResponse.04"].map(element_id => ({
+      element_id, name: "Incident Number", base_datatype: "string", group_path: ["eResponse.AgencyGroup"],
+      min_occurs: 0, max_occurs: 3,
+    }));
+    if (sql.includes("from catalog.group_definition")) return [{ group_id: "eResponse.AgencyGroup", name: "Agency",
+      repeating: true, parent_group_id: null, min_occurs: 0, max_occurs: null }];
+    if (sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const subject = service(manager);
+  const library = await subject.library("session", { validity: "valid", limit: "all" });
+  assert.equal(library.total, rules.length);
+  assert.ok(library.items.every(({ diagnostics }) => diagnostics.length === 0));
+  assert.equal((await subject.library("session", { validity: "warning", limit: "all" })).total, 0);
+  const validation = await subject.validate("session", versionId);
+  assert.equal(validation.valid, true);
+  assert.deepEqual(validation.diagnostics, []);
+  assert.equal(validation.compiledBundle.rules.length, rules.length);
+
+  // Exact duplicates and compilation problems still receive their own diagnostics.
+  rules.push({ ...rules[0], id: randomUUID(), name: "Duplicate minimum" });
+  rules.push({ ...rules[2], id: randomUUID(), name: "Invalid maximum", source: 'require maximum("eResponse.03", 4)' });
+  rules.push({ ...rules[0], id: randomUUID(), name: "Malformed minimum", source: 'require minimum("eResponse.03", -1)' });
+  const warnings = await subject.library("session", { limit: "all" });
+  assert.ok(warnings.items.find(({ rule }) => rule.name === "Duplicate minimum").diagnostics
+    .some(({ code }) => code === "exact-duplicate"));
+  assert.ok(warnings.items.find(({ rule }) => rule.name === "Invalid maximum").diagnostics
+    .some(({ code }) => code === "occurrence-bound"));
+  assert.equal(warnings.items.find(({ rule }) => rule.name === "Malformed minimum").validity, "invalid");
+  const invalid = await subject.validate("session", versionId);
+  assert.equal(invalid.valid, false);
+  assert.ok(invalid.diagnostics.some(({ code }) => code === "occurrence-bound"));
+});
+
+test("wording validity filters include incomplete English and Swedish without invalidating compilable rules", async () => {
+  const translated = { schemaVersion: 1, sv: { name: "Händelsenummer", message: "Ange händelsenummer" } };
+  const rules = [
+    { ...sourceRule, id: "complete", primaryTargetElementId: "eResponse.04", source: 'require present("eResponse.04")', localization: translated },
+    { ...sourceRule, id: "english", message: "  ", localization: translated },
+    { ...sourceRule, id: "swedish" },
+    { ...sourceRule, id: "both", name: " ", localization: { schemaVersion: 1, sv: { name: " ", message: "" } } },
+    { ...sourceRule, id: "invalid", source: "broken", localization: translated },
+  ];
+  const manager = { query: async (sql) => {
+    if (sql.includes("from validation.version")) return [{ id: versionId, catalog_release_id: "catalog", source_rule: rules }];
+    if (sql.includes("from catalog.element_definition")) return ["eResponse.03", "eResponse.04"].map(element_id => ({ element_id,
+      name: "Incident Number", base_datatype: "string" }));
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const subject = service(manager);
+  const ids = async (validity, extra = {}) => (await subject.library("session", { validity, limit: "all", ...extra }))
+    .items.map(({ rule }) => rule.id).sort();
+  assert.deepEqual(await ids("missing-english"), ["both", "english"]);
+  assert.deepEqual(await ids("missing-swedish"), ["both", "swedish"]);
+  assert.deepEqual(await ids("wording"), ["both", "english", "swedish"]);
+  assert.deepEqual(await ids("valid"), ["complete"]);
+  assert.deepEqual(await ids("warning"), ["both", "english", "swedish"]);
+  assert.deepEqual(await ids("invalid"), ["invalid"]);
+  assert.deepEqual(await ids("wording", { search: "no matching wording" }), []);
 });
 
 test("disabled invalid rules remain authored but do not block publication or enter the executable bundle", async () => {
@@ -665,4 +749,12 @@ test("every Validation endpoint independently authorizes before reading or mutat
     assert.deepEqual(requested, [attempt.required], attempt.name);
     assert.equal(queried, false, `${attempt.name} queried before authorization`);
   }
+});
+
+test("imported standard rule names retain complete wording while editor names remain bounded", () => {
+  const subject = service({ query: async () => [] });
+  const imported = { ...sourceRule, name: "Descriptive NEMSIS rule ".repeat(8).trim(), sourceKind: "nemsis" };
+  assert.throws(() => subject.rule(imported), /rule.name/);
+  assert.equal(subject.rule(imported, 500).name, imported.name);
+  assert.throws(() => subject.rule({ ...imported, enabled: "yes" }, 500));
 });

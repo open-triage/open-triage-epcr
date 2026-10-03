@@ -10,7 +10,7 @@
     "migrate": "npm run build -w @open-triage/api && node scripts/migrate.mjs",
     "migrate:runtime": "node scripts/migrate.mjs",
     "provision:workload-logins": "node scripts/provision-workload-logins.mjs",
-    "bootstrap:synthetic": "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run migrate && npm run bootstrap:synthetic:runtime && npm run seed:validation && npm run seed:install-definitions",
+    "bootstrap:synthetic": "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run migrate && npm run load:catalog && npm run bootstrap:synthetic:runtime && npm run seed:validation && npm run seed:install-definitions",
     "bootstrap:synthetic:runtime": "node scripts/bootstrap-synthetic-installation.mjs",
     "reset:development": "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && node scripts/reset-development-database.mjs",
     "load:catalog": "node scripts/load-nemsis-catalog.mjs",
@@ -35,7 +35,7 @@
     "test:integration": "npm run build -w @open-triage/api && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs",
     "audit:localization": "node scripts/audit-catalog-localization.mjs",
     "audit:form-localization": "node scripts/audit-form-validation-localization.mjs",
-    "install:synthetic:runtime": "node scripts/migrate.mjs && node scripts/bootstrap-synthetic-installation.mjs && node scripts/seed-initial-validation-versions.mjs && node scripts/seed-install-definitions.mjs"
+    "install:synthetic:runtime": "node scripts/migrate.mjs && node scripts/load-nemsis-catalog.mjs && node scripts/bootstrap-synthetic-installation.mjs && node scripts/seed-initial-validation-versions.mjs && node scripts/seed-install-definitions.mjs"
   },
   "dependencies": {
     "@open-triage/contracts": "0.1.0",

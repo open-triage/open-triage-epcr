@@ -333,6 +333,7 @@ test("Catalog readers inspect the active sealed definition when no authoring dra
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
     if (sql.includes("customGroupDefinitions")) return [];
+    if (sql.includes("row_number()")) return [{ id: "release-1", display_name: "NEMSIS", version: "1", active: true }];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const viewed = await serviceWith(manager).inspectActive("reader-session");

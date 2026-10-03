@@ -21,7 +21,7 @@ values. The default local database is `127.0.0.1:54322/postgres`. Set
 Keep them in `.env.local`, which is ignored by Git. Root startup reads this file
 directly; sourcing it first is unnecessary. Exported shell variables take precedence.
 
-Apply the repository migrations and canonical definitions with the private values
+Apply the repository schema migrations with the private values
 loaded in a subshell:
 
 ```sh
@@ -60,7 +60,8 @@ at the prompt. Skip this step when the organization already has an owner; see th
 )
 ```
 
-Seed the fictional demo fixture after organization and owner setup:
+Seed the fictional demo fixture after organization and owner setup. This explicit
+fixture command loads its baseline catalog, form, and validation definitions:
 
 ```sh
 (
@@ -76,6 +77,18 @@ bootstrap preserves existing passwords, account state, and owner-controlled role
 assignments. Bootstrap creates neither an organization nor an owner. An empty
 assigned-call list is valid; use the explicit dispatch ingestion command in the
 [README](../../README.md) when you need a fictional assigned call.
+
+## Import agency definitions
+
+Opening an Admin editor and applying schema migrations do not import JSON files.
+In Catalog, Forms, or Validation, select a JSON file in the import controls,
+and click **Import selected file**. Imports create published agency versions;
+activation remains a separate action. Publish or discard your draft before
+importing. Files must match a published catalog available to the agency.
+
+Files are read from the corresponding folder under `defines/` (including its
+`local/` exports), or `OPENTRIAGE_DEFINITIONS_ROOT` when configured. The explicit
+synthetic fixture setup commands above still seed their demonstration data.
 
 ## Daily startup
 

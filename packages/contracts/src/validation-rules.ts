@@ -238,6 +238,22 @@ export interface ValidationFinding {
   inputFingerprint: string;
 }
 
+/** Wording warnings are independent of whether a rule compiles successfully. */
+export function validationRuleWordingStatuses(rule: ValidationRuleSource): Array<"missing-english" | "missing-swedish"> {
+  const present = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+  const statuses: Array<"missing-english" | "missing-swedish"> = [];
+  if (!present(rule.name) || !present(rule.message)) statuses.push("missing-english");
+  if (!present(rule.localization?.sv?.name) || !present(rule.localization?.sv?.message)) statuses.push("missing-swedish");
+  return statuses;
+}
+
+export function validationRuleValidity(rule: ValidationRuleSource, compiles: boolean,
+  diagnostics: ReadonlyArray<ValidationDiagnostic>): "valid" | "warning" | "invalid" {
+  if (!compiles || diagnostics.some(({ severity }) => severity === "error")) return "invalid";
+  return diagnostics.some(({ severity }) => severity === "warning") || validationRuleWordingStatuses(rule).length > 0
+    ? "warning" : "valid";
+}
+
 /** Select wording from the rule which produced the finding; identity never depends on locale. */
 export function validationRuleText(rule: Pick<CompiledValidationRule, "name" | "message" | "localization" | "messageParameters"> & { ruleId?: string; id?: string },
   language: string, field: "name" | "message"): string {

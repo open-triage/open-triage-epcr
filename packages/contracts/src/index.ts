@@ -21,6 +21,8 @@ export {
   repairNemsisImportedMessage,
   reviewPriorityOfRule,
   validationRuleText,
+  validationRuleWordingStatuses,
+  validationRuleValidity,
   type CompiledValidationBundle,
   type CompiledValidationExpression,
   type CompiledValidationRule,
@@ -193,6 +195,7 @@ export interface ReviewCriterionRoute {
 export interface ReviewEligibleReviewer {
   id: string;
   displayName: string;
+  documentingClinician?: boolean;
 }
 
 export interface ConfigureReviewRouteCommand {
@@ -325,6 +328,8 @@ export type ReviewAttentionKind = "assignments" | "responses" | "reopened" | "un
 export interface ReviewAttentionResponse {
   dataset: "real" | "synthetic";
   asOf: string;
+  /** Review items needing personal attention, counted once across overlapping categories. */
+  total: number;
   assignments: number;
   responses: number;
   reopened: number;
@@ -833,7 +838,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings";
 
 export interface AdminRoleSummary {
   id: string;
@@ -1275,7 +1280,7 @@ export interface ValidationDraftResult {
 export interface ValidationRuleLibraryItem {
   rule: import("./validation-rules.js").ValidationRuleSource;
   source: import("./validation-rules.js").ValidationRuleSourceKind;
-  validity: "valid" | "invalid";
+  validity: "valid" | "warning" | "invalid";
   diagnostics: import("./validation-rules.js").ValidationDiagnostic[];
 }
 
