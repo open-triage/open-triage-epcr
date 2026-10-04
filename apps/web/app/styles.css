@@ -772,6 +772,11 @@ fieldset { min-inline-size: 0; }
 .list-row-content > button { justify-self: start; }
 .list-row-content:hover, .timeline-event-button:hover { background: color-mix(in srgb, var(--green) 8%, transparent); }
 .list-row-content:focus-within, .timeline-event-button:focus-within { outline: 2px solid var(--green); outline-offset: -2px; }
+.list-action-row:is(:has([data-list-row-action]:enabled), [tabindex="0"]) { cursor: pointer; }
+.list-action-row:is(:has([data-list-row-action]:enabled), [tabindex="0"]):not([aria-selected="true"]):hover { background: color-mix(in srgb, var(--green) 8%, transparent); }
+.list-action-row[aria-disabled="true"] { opacity: .65; cursor: not-allowed; }
+.list-action-row[aria-selected="true"] { background: color-mix(in srgb, var(--green) 14%, transparent); box-shadow: inset 4px 0 var(--green); }
+.list-action-row:focus-visible, .list-action-row:has(:focus-visible) { outline: 2px solid var(--green); outline-offset: -2px; }
 .checklist-findings { margin: 0 16px 24px; }
 .checklist-empty { margin: 0 16px 24px; }
 .finding-frame { position: relative; z-index: 1; border-radius: 5px; outline: 2px solid; outline-offset: 1px; }
@@ -1060,7 +1065,6 @@ fieldset { min-inline-size: 0; }
 .review-detail dd { margin: .15rem 0 0; overflow-wrap: anywhere; }
 .review-detail article { padding-block: .75rem; border-top: 1px solid var(--border-color, #ced4da); }
 .review-detail img, .review-detail audio { display: block; max-width: 100%; margin-top: .75rem; }
-.review-volume-chart { display: block; width: 100%; max-width: 720px; height: auto; margin-block: 1rem; }
 .review-pagination { justify-content: flex-start; }
 .review-priority-high { border-left: 5px solid #b12c24; background: #fff4f1; }
 .review-priority-medium { border-left: 5px solid #ad7300; background: #fff9e9; }
@@ -1125,7 +1129,6 @@ fieldset { min-inline-size: 0; }
 :where(.admin-ownership-transfer, .report-reauthentication) label { display: grid; gap: 6px; }
 :where(.admin-ownership-transfer, .report-reauthentication) fieldset { display: grid; gap: 12px; }
 :where(.admin-ownership-transfer, .report-reauthentication) :is(input, select, textarea) { width: 100%; }
-.review-analysis-fields { margin: 0; padding: 0; border: 0; }
 .field-help-item { cursor: help; }
 .field-help-item:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
 .stationary-picker-label { position: relative; }

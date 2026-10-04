@@ -3,6 +3,7 @@ import { ServiceWorkerRegistration } from "../components/service-worker-registra
 import "./styles.css";
 import "./session-layout.css";
 import "./review-workspace.css";
+import "./analytics-workspace.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
 

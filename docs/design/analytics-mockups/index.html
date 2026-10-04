@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenTriage · Analytics workspace</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="demo-data.js" defer></script><script src="mockup.js" defer></script>
+</head>
+<body>
+  <header class="design-bar"><div class="design-label"><span class="eyebrow">ANALYTICS WORKSPACE · APPROVED DIRECTION</span><strong>One set of controls. One central visualization.</strong></div><span class="revision-tag">Metric + aggregation · Agency record catalog</span><span class="prototype-label">Interactive mockup · fictional data</span></header>
+  <div class="app-frame">
+    <div class="session-bar" role="region" aria-label="Application session"><div class="brand"><svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true"><path d="M4 12h4l2-7 4 14 2-7h4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></svg><strong>OpenTriage</strong><span class="session-divider"></span><span>Review</span></div><div class="session-meta">Demonstration agency <span class="avatar" aria-hidden="true">JD</span></div></div>
+    <main class="workspace" data-layout="a">
+      <header class="page-heading"><div><div class="breadcrumb">Demonstration agency</div><div class="workspace-selector" role="tablist" aria-label="Review workspace"><button id="review-tab" type="button" role="tab" aria-selected="false" aria-controls="review-panel" tabindex="-1">Review</button><button id="analytics-tab" type="button" role="tab" aria-selected="true" aria-controls="analytics-panel">Analytics</button></div></div><div class="scope"><span class="scope-dot"></span> Agency records <span class="demo-badge">Demo</span></div></header>
+      <div id="analytics-panel" class="analysis-workspace" role="tabpanel" aria-labelledby="analytics-tab">
+        <form id="query-form" class="query-form" aria-label="Analysis controls">
+          <div class="controls-title"><div><span class="eyebrow">DEFINE YOUR VIEW</span><h2>Analysis controls</h2></div></div>
+          <div class="scroll-controls">
+            <fieldset class="viz-field"><legend>Visualization</legend><div class="viz-choices"><button type="button" data-viz="line" aria-pressed="true">╱ Line</button><button type="button" data-viz="bar" aria-pressed="false">▥ Bar</button><button type="button" data-viz="table" aria-pressed="false">☷ Table</button></div></fieldset>
+            <div class="measure-fields"><label class="metric-field">Metric<select id="metric"><optgroup label="Continuous values"><option value="response">Response time</option><option value="scene">Time on scene</option></optgroup><optgroup label="Discrete values"><option value="count">Records</option><option value="element:Primary impression">Primary impression</option><option value="element:Disposition">Disposition</option></optgroup></select></label><label class="aggregation-field">Aggregation<select id="aggregation"><option value="mean">Mean</option><option value="median" selected>Median</option><option value="minimum">Minimum</option><option value="maximum">Maximum</option></select></label><p id="aggregation-help">Continuous values · minutes</p></div>
+            <fieldset class="date-fields"><legend>Time period</legend><label>From<input id="date-from" type="date" value="2026-09-01" required></label><label>Through<input id="date-to" type="date" value="2026-09-30" required></label></fieldset>
+            <div class="group-field"><label id="group-label">Group by</label><button type="button" id="group-button" aria-labelledby="group-label group-value" aria-haspopup="dialog"><span id="group-value">Priority</span><span aria-hidden="true">⌄</span></button><p id="group-help">One series per recorded value.</p></div>
+            <div class="filter-section"><div class="filter-heading"><span class="filter-label">Filters <span id="filter-count">1</span></span></div><div id="filter-chips" class="filter-chips"></div><button type="button" class="add-filter" id="add-filter">＋ Add filter</button></div>
+          </div>
+          <div class="query-actions"><p id="control-status" role="status">All choices applied</p><button type="submit" class="button-primary generate" id="generate">Update visualization <span aria-hidden="true">→</span></button></div>
+        </form>
+        <section class="result-panel" aria-labelledby="result-title">
+          <header class="result-heading"><div><div class="result-eyebrow"><span id="chart-kind">LINE CHART</span><span class="auto-tag">Grouped by <span id="applied-group">Priority</span></span></div><h1 id="result-title">Median response time by priority</h1><p id="result-context" class="result-context"></p></div><button id="export-button" class="export-button" type="button">↓ Export <span aria-hidden="true">⌄</span></button></header>
+          <div id="pending-notice" class="pending-notice" role="status" hidden>Changes not applied. This visualization shows your previous choices.</div>
+          <div class="result-summary"><div><strong id="overall-value"></strong><span id="overall-caption"></span></div><div class="population"><span id="population-count"></span><span id="missing-count"></span></div></div>
+          <div id="chart-legend" class="chart-legend" aria-label="Chart series"></div>
+          <div class="visualization" id="visualization" tabindex="0" role="region" aria-label="Analysis visualization"></div>
+          <div id="time-controls" class="time-controls"><label for="time-group">Time grouping</label><select id="time-group"><option value="day">Day</option><option value="week" selected>Week</option><option value="month">Month</option></select><span id="time-note">Record date · Weeks start Monday</span></div>
+          <footer class="result-footer"><span id="chart-description">Missing values excluded from the median</span><span>Illustrative data · Europe/Stockholm</span></footer>
+        </section>
+      </div>
+      <section id="review-panel" class="review-preview" role="tabpanel" aria-labelledby="review-tab" hidden><div class="review-preview-heading"><h1>Review queue</h1><span class="demo-badge">Fictional records</span></div><table class="data-table"><thead><tr><th>Record</th><th>Priority</th><th>Status</th></tr></thead><tbody><tr><td>DEMO-202609-0042</td><td>High</td><td>New</td></tr><tr><td>DEMO-202609-0089</td><td>Medium</td><td>In review</td></tr><tr><td>DEMO-202609-0140</td><td>Low</td><td>Awaiting clinician</td></tr></tbody></table></section>
+    </main>
+  </div>
+  <footer class="design-notes"><span class="design-letter">A</span><div><strong>Analytics workspace</strong><p>Choose a metric and its aggregation. Custom dates and recorded values define the view.</p></div><span class="design-verdict">Selected direction</span></footer>
+  <dialog id="catalog-dialog" aria-labelledby="catalog-title"><form id="catalog-form">
+    <header class="dialog-heading"><div><span class="eyebrow">AGENCY RECORD CATALOG</span><h2 id="catalog-title">Group by an element</h2></div><button type="button" class="close-dialog" aria-label="Close element picker">×</button></header>
+    <p class="catalog-scope" id="catalog-scope"></p>
+    <label>Find an element<input id="element-search" type="search" placeholder="Search documented elements" autocomplete="off"></label>
+    <div id="element-options" class="catalog-options"></div>
+    <p class="dialog-help">Options come from the agency’s full record history, independently of the selected dates and filters.</p>
+    <div class="dialog-actions"><button type="button" class="close-dialog">Cancel</button><button type="submit" class="button-primary" id="choose-element">Use element</button></div>
+  </form></dialog>
+  <dialog id="values-dialog" aria-labelledby="values-title"><form id="values-form">
+    <header class="dialog-heading"><div><span class="eyebrow">DOCUMENTED VALUES</span><h2 id="values-title">Filter disposition</h2></div><button type="button" class="close-dialog" aria-label="Close value picker">×</button></header>
+    <p id="values-scope" class="catalog-scope"></p><label>Find a value<input id="value-search" type="search" placeholder="Search recorded values" autocomplete="off"></label>
+    <fieldset class="value-options"><legend>Include any of these values</legend><div id="value-options"></div></fieldset>
+    <p class="dialog-help">Counts cover all agency records. Values within a filter match any selection; different filters must all match.</p>
+    <div class="dialog-actions"><button type="button" class="close-dialog">Cancel</button><button type="submit" class="button-primary" id="apply-filter">Apply filter</button></div>
+  </form></dialog>
+  <dialog id="export-dialog" aria-labelledby="export-title"><header class="dialog-heading"><div><span class="eyebrow">CURRENT VISUALIZATION</span><h2 id="export-title">Export data</h2></div><button type="button" class="close-dialog" aria-label="Close export dialog">×</button></header><p id="export-context" class="export-context"></p><button type="button" id="export-aggregate" class="export-choice"><span><strong>Aggregate data</strong><small id="aggregate-detail"></small></span><span class="file-type">CSV ↓</span></button><button type="button" id="export-records" class="export-choice"><span><strong>Record-level data</strong><small id="record-detail"></small></span><span class="file-type">CSV ↓</span></button><p class="dialog-help">Both exports use the displayed dates and filters. Each matching record appears once in the record-level file, with its documented elements.</p><p class="sample-notice">This mockup downloads fictional demonstration data.</p></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

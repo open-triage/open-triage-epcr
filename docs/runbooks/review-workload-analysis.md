@@ -1,4 +1,8 @@
-# Review workload and clinical analysis filters
+# Review workload API compatibility
+
+The retained `/api/review/workload` and `/api/review/analysis` contracts cover
+operational workload and Review filters. For the current Analytics workspace,
+see [Unified analytics](unified-analytics.md).
 
 Review workload reads the operational Review tables on the primary database. Its
 unit is one durable `clinical.review_item`, including overdue unsigned items.

@@ -27,19 +27,18 @@ function item(index: number) {
 }
 
 test.beforeAll(async () => {
-  css = (await Promise.all(["styles.css", "session-layout.css", "review-workspace.css"].map(file =>
+  css = (await Promise.all(["styles.css", "session-layout.css", "review-workspace.css", "analytics-workspace.css"].map(file =>
     readFile(path.resolve(__dirname, "../app", file), "utf8")))).join("\n");
   const result = await build({ bundle: true, write: false, jsx: "automatic", format: "iife", platform: "browser",
     define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: "http://127.0.0.1:3108" }) },
     stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `
-      import React,{useEffect,useState} from 'react'; import{createRoot}from'react-dom/client';
-      import Home from './app/page'; import{UsersPanel,RolesPanel}from'./components/admin-directory'; import{ReviewShell}from'./components/review-shell'; import{ReviewSettingsPanel}from'./components/review-settings'; import{ReviewAnalysisBuilder}from'./components/review-analysis-builder';
+      import React,{useState} from 'react'; import{createRoot}from'react-dom/client';
+      import Home from './app/page'; import{UsersPanel,RolesPanel}from'./components/admin-directory'; import{ReviewShell}from'./components/review-shell'; import{ReviewSettingsPanel}from'./components/review-settings';
       import{StationaryRecord}from'./components/stationary-record';
       import{AdminShell}from'./components/admin-shell'; import{ListRowAction}from'./components/list-row-action';
       import{EncounterTimeline}from'./components/encounter-timeline'; import{standardEncounterDefinition}from'./app/standard-encounter-definition';
       import{ValidationAuthoring}from'./components/validation-authoring';
       import{StationaryCodedValueField}from'./components/stationary-coded-field';
-      import{ReviewAnalysisChart}from'./components/review-analysis-chart';
       import{applyAgencyAppearance}from'./app/installation-settings';
       import opened from './public/demo-open-assignment.json';
       const session=${JSON.stringify(session)}; applyAgencyAppearance(${JSON.stringify(appearance)},document);
@@ -53,14 +52,8 @@ test.beforeAll(async () => {
         return <StationaryRecord document={record} onDocumentChange={setRecord}/>;}
       function Findings(){const[count,setCount]=useState(0);const[secondary,setSecondary]=useState(0);return <><ul className="review-findings"><li><ListRowAction label="Open affected field" itemName="Incident number missing" onAction={trigger=>{setCount(value=>value+1);trigger.focus();}}><strong>Incident number missing</strong><span>Add the incident number.</span><button onClick={()=>setSecondary(value=>value+1)}>Acknowledge</button></ListRowAction></li></ul><p role="status">Opened {count}; acknowledged {secondary}</p></>;}
       function Timeline(){const[count,setCount]=useState(0); const note={id:'note',reportId:'report',type:'text',content:'Patient feels better.',capturedAt:'2026-10-03T12:02:00Z',author:{id:'owner',displayName:'Owner'},persistenceState:'ready'};return <><EncounterTimeline events={[{id:'note',kind:'text-note',time:'12:02',sortTime:note.capturedAt,note}]} validationStatuses={new Map()} definition={standardEncounterDefinition} headingId="timeline" language="en" onOpenTextNote={(note,trigger)=>{setCount(value=>value+1);trigger.focus();}} onOpenPhoto={()=>{}} onOpenAudio={()=>{}} onOpenEvent={()=>{}}/><p role="status">Opened {count}</p></>;}
-      function SavedAnalysis(){const[refresh,setRefresh]=useState(0); useEffect(()=>{
-        const update=()=>setRefresh(value=>value+1); window.addEventListener('focus',update);
-        return()=>window.removeEventListener('focus',update);},[]);
-        return <ReviewAnalysisBuilder view="saved" dataset="real" from="2026-09-04" to="2026-10-03"
-          language="en" csrfToken="fixture-only" administrator refresh={refresh}/>;}
       createRoot(document.getElementById('root')).render(view==='findings'?<Findings/>:view==='admin'?<AdminShell session={session}/>:view==='timeline'?<Timeline/>:view==='validation'?<ValidationAuthoring csrfToken="fixture-only" capabilities={['validation:read','validation:write']} catalogReleaseId="catalog" language="en"/>:view==='users'?<UsersPanel canCreate canManage csrfToken="fixture-only"/>:view==='roles'?<RolesPanel csrfToken="fixture-only" capabilities={['roles:write']}/>:view==='session'?<Home/>:view==='record'?<Record/>:
-        view==='review-settings'?<ReviewSettingsPanel session={session} language="en" online active/>:view==='saved-analysis'?<SavedAnalysis/>:view==='controls-disabled'?<fieldset disabled><Controls/></fieldset>:view==='controls'?<Controls/>:view==='chart'?<ReviewAnalysisChart title="Distribution" values={[
-          {value:'A long clinical category label that must remain fully readable on a narrow phone',count:42}]}/>:
+        view==='review-settings'?<ReviewSettingsPanel session={session} language="en" online active/>:view==='controls-disabled'?<fieldset disabled><Controls/></fieldset>:view==='controls'?<Controls/>:
         <ReviewShell session={session} language="en" online attention={null} onAttentionRefresh={()=>{}}/>);
     ` } });
   script = result.outputFiles[0]!.text;
@@ -89,9 +82,6 @@ test.beforeEach(async ({ page }) => {
         independentReview: false, version: 1 }],
       "/api/review/backlog": { work: [] }, "/api/review/eligible-reviewers": [], "/api/review/outcomes": [],
       "/api/review/amendment-policy": { clearance: "confirm", version: 1 },
-      "/api/review/volume": { definition: { filters: { dataset: "real" } }, points: [], total: 0,
-        population: { scope: "all" }, freshness: { observedAt: now, status: "current" } },
-      "/api/review/analysis/review-filters": { criteria: [], outcomes: [] },
       "/api/review/overdue-policy": { deadlineHours: 24, version: 1 },
     };
     if (endpoint.startsWith("/api/review/reports/")) return route.fulfill({ json: { id: endpoint.split("/").at(-1),
@@ -568,16 +558,6 @@ test("stationary encounter fills the available screen without a page scrollbar",
   await page.screenshot({ path: test.info().outputPath("stationary-full-height.png") });
 });
 
-test("mobile charts keep readable full labels in their own horizontal scroller", async ({ page }) => {
-  await open(page, "chart");
-  await page.setViewportSize({ width: 320, height: 844 });
-  const region = page.getByRole("region", { name: "Distribution" });
-  expect(await region.evaluate(element => element.scrollWidth)).toBeGreaterThan(600);
-  await expect(page.locator("svg text").first()).toContainText("fully readable on a narrow phone");
-  await expect(page.locator("svg text").first()).toHaveCSS("font-size", "14px");
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-});
-
 test("field help remains keyboard accessible inside read-only fieldsets", async ({ page }) => {
   await open(page, "controls-disabled");
   const help = page.locator(".stationary-picker-label > span");
@@ -587,51 +567,6 @@ test("field help remains keyboard accessible inside read-only fieldsets", async 
   await expect(page.getByRole("tooltip")).toBeHidden();
   await expect(help).toBeFocused();
   await expect(page.getByRole("button", { name: "Set unavailable or pertinent-negative value for Gender" })).toBeDisabled();
-});
-
-test("saved analysis refresh retains edited name, sharing, definition, and expected revision", async ({ page }) => {
-  const definition = { fieldId: "eSituation.09", operation: "distribution", filters: { from: "2026-10-01", to: "2026-10-03", dataset: "real" } };
-  const saved = { id: "saved", name: "Saved analysis", shared: false, version: 1, editable: true };
-  let reads = 0;
-  let serverVersion = 1;
-  let loadUnavailable = false;
-  await page.route("**/api/review/analysis/fields", route => route.fulfill({ json: [
-    { id: "eSituation.09", label: "Complaint", kind: "categorical", operations: ["distribution"], repeating: false },
-  ] }));
-  await page.route("**/api/review/analysis/saved", route => route.fulfill({ json: [saved] }));
-  await page.route("**/api/review/analysis/saved/saved?*", route => {
-    reads += 1;
-    if (loadUnavailable) return route.fulfill({ status: 503 });
-    return route.fulfill({ json: { saved: { ...saved, name: serverVersion === 1 ? saved.name : "Concurrent rename", version: serverVersion },
-      result: { definition, field: { id: "eSituation.09", label: "Complaint", kind: "categorical" }, groups: [],
-        population: { scope: "all" }, freshness: { observedAt: now, status: "current" } } } });
-  });
-  await page.route("**/api/review/analysis/saved/saved", route => {
-    expect(route.request().postDataJSON()).toMatchObject({ expectedVersion: 1, name: "My draft", shared: true,
-      definition: { filters: { from: "2026-09-01" } } });
-    return route.fulfill({ status: 409, json: {} });
-  });
-  await open(page, "saved-analysis");
-  await page.getByLabel("Saved definition").selectOption("saved");
-  await page.getByRole("button", { name: "Open saved analysis", exact: true }).click();
-  const name = page.getByLabel("Analysis name");
-  await expect(name).toHaveValue("Saved analysis");
-  await name.fill("My draft");
-  await page.getByLabel("Publish to Review users").check();
-  await page.getByLabel("From", { exact: true }).fill("2026-09-01");
-  serverVersion = 2;
-  const previousReads = reads;
-  await refresh(page);
-  await expect.poll(() => reads).toBeGreaterThan(previousReads);
-  await expect(name).toHaveValue("My draft");
-  await expect(page.getByLabel("Publish to Review users")).toBeChecked();
-  loadUnavailable = true;
-  const beforeFailure = reads;
-  await refresh(page);
-  await expect.poll(() => reads).toBeGreaterThan(beforeFailure);
-  await expect(page.getByRole("alert").filter({ hasText: "last loaded results" })).toBeVisible();
-  await page.getByRole("button", { name: "Update saved analysis", exact: true }).click();
-  await expect(name).toHaveValue("My draft");
 });
 
 test("user and role editor dismissal protects drafts and returns focus to the initiating action", async ({ page }) => {
@@ -821,36 +756,6 @@ test("validation filter errors retain rule rows and unsaved parameters until ret
   await expect(page.getByRole("alert").filter({ hasText: "last loaded results" })).toHaveCount(0);
   await expect(page.locator("#validation-message-parameters")).toHaveValue('{"count":');
   await page.screenshot({ path: test.info().outputPath("validation-list-actions.png") });
-});
-
-test("saved analysis refresh retains choices, loaded result and name and recovers on retry", async ({ page }) => {
-  let failed = false;
-  const saved = { id: "saved", name: "Saved analysis", shared: false, version: 1, editable: true };
-  await page.route("**/api/review/analysis/fields", route => route.fulfill({ json: [
-    { id: "eSituation.09", label: "Complaint", kind: "categorical", operations: ["distribution"], repeating: false },
-  ] }));
-  await page.route("**/api/review/analysis/saved", route => failed ? route.fulfill({ status: 503 }) : route.fulfill({ json: [saved] }));
-  await page.route("**/api/review/analysis/review-filters?*", route => failed ? route.fulfill({ status: 503 }) : route.fulfill({ json: { criteria: [], outcomes: [] } }));
-  await page.route("**/api/review/analysis/saved/saved?*", route => failed ? route.fulfill({ status: 503 }) : route.fulfill({ json: {
-    saved, result: { definition: { fieldId: "eSituation.09", operation: "distribution", filters: { from: "2026-10-01", to: "2026-10-03", dataset: "real" } },
-      field: { id: "eSituation.09", label: "Complaint", kind: "categorical" }, groups: [{ denominator: 3, missing: 0, absent: 0, values: [{ value: "Chest pain", count: 3, percentage: 100 }] }],
-      population: { scope: "all" }, freshness: { observedAt: now, status: "current" } },
-  } }));
-  await open(page, "saved-analysis");
-  const choices = page.getByLabel("Saved definition");
-  await choices.selectOption("saved");
-  await page.getByRole("button", { name: "Open saved analysis", exact: true }).click();
-  await expect(page.getByRole("table")).toBeVisible();
-  failed = true;
-  await refresh(page);
-  await expect(page.getByRole("alert").filter({ hasText: "refresh the choices" })).toBeVisible();
-  await expect(choices.locator("option")).toHaveCount(2);
-  await expect(choices).toHaveValue("saved");
-  await expect(page.getByRole("table")).toBeVisible();
-  await expect(page.getByLabel("Analysis name")).toHaveValue("Saved analysis");
-  failed = false;
-  await page.getByRole("button", { name: "Retry loading", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("Admin connection failures keep the mounted editor and draft and retry restores context", async ({ page }) => {

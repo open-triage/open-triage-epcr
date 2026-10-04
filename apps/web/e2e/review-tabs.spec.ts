@@ -48,7 +48,7 @@ for (const demo of [false, true]) for (const width of [390, 1440]) test(`Review 
   });
   await page.goto('/');
   await expect(page.getByRole('tablist', { name: 'Review workspace', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: 'Analysis', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Analytics', exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Dataset', exact: true })).toHaveCount(0);
   const table = page.getByRole('table', { name: 'Review queue', exact: true });
   await expect(table.getByRole('columnheader')).toHaveText(['Select', 'Report ID', 'Review reason', 'Priority', 'Status', 'Assignee', 'Age', 'Actions']);

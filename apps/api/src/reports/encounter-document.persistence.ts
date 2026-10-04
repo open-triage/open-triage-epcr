@@ -368,6 +368,10 @@ export async function encounterDocument(manager: Queryable, reportId: string, in
     }
     occurrences.splice(0, occurrences.length, ...effective.values());
   }
+  return assembleEncounterDocument(report, groups, occurrences);
+}
+
+export function assembleEncounterDocument(report: ReportDocumentRow, groups: StoredGroupRow[], occurrences: StoredOccurrenceRow[]): EncounterDocument {
   const byGroup = new Map<string, { id: string; instances: Array<{ instanceId: string; parentInstanceId?: string; attributes?: Record<string, string>; elements: Array<{ id: string; values: EncounterValue[] }> }> }>();
   for (const group of groups) {
     const target = byGroup.get(group.group_id) ?? { id: group.group_id, instances: [] };

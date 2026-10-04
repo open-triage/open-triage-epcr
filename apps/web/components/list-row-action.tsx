@@ -2,9 +2,10 @@
 
 import { useRef, type MouseEvent, type ReactNode } from "react";
 
-export function activateListRow(event: MouseEvent<HTMLElement>) {
+export function activateListRow(event: MouseEvent<HTMLElement>, action?: () => void) {
   if ((event.target as HTMLElement).closest("button, a, input, select, textarea, label, summary, [data-tooltip-trigger]")) return;
-  event.currentTarget.querySelector<HTMLButtonElement>("[data-list-row-action]")?.click();
+  if (action) action();
+  else event.currentTarget.querySelector<HTMLButtonElement | HTMLInputElement>("[data-list-row-action]")?.click();
 }
 
 /** Keep the item's content plain while exposing its row action to keyboard users. */

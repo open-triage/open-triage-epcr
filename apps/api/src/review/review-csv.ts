@@ -13,7 +13,7 @@ function cell(value: Cell): string {
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
-function csv(rows: Cell[][]): string {
+export function csv(rows: Cell[][]): string {
   return `${rows.map((row) => row.map(cell).join(",")).join("\r\n")}\r\n`;
 }
 

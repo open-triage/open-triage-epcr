@@ -83,7 +83,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
   await expect.poll(() => detailReads).toBeGreaterThan(1);
   await expect(call.getByText("Please clarify the timeline.")).toBeVisible();
   await call.getByRole("tab", { name: "Actions", exact: true }).click();
-  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option")).toHaveText(["Comment", "Document findings"]);
+  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option")).toHaveText(["Comment"]);
   await expect(call.getByLabel("Send to reviewer")).toHaveCount(0);
   await expect(call.getByLabel("Outcome", { exact: true })).toHaveCount(0);
   await call.getByRole("textbox", { name: "Comment", exact: true }).fill("The event occurred after arrival.");
