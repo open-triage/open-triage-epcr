@@ -138,12 +138,16 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
   if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
     throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+  }
+  if (body.syntheticRetentionHours !== undefined && body.syntheticRetentionHours !== null &&
+      (!Number.isSafeInteger(body.syntheticRetentionHours) || Number(body.syntheticRetentionHours) < 1)) {
+    throw new UnprocessableEntityException("syntheticRetentionHours must be a positive whole number of hours or null");
   }
   const allowance = Number(body.reportMediaAllowanceBytes);
   if (!Number.isSafeInteger(body.reportMediaAllowanceBytes) ||
@@ -175,6 +179,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     catch { throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null"); }
   }
   return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(body.syntheticRetentionHours === undefined ? {} : { syntheticRetentionHours: body.syntheticRetentionHours as number | null }),
     ...(body.regionalFormat === undefined ? {} : { regionalFormat: body.regionalFormat }),
     ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone as string | null }), reportMediaAllowanceBytes: allowance,
     imageMediaLimitBytes: imageLimit,

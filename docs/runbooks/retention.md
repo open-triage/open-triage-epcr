@@ -85,3 +85,20 @@ the preceding `event_hash`, retain the final deletion evidence with the change
 ticket, and alert on any prepared batch that is not verified or failed within the
 deployment window. Restore tests must periodically download by immutable object
 version, verify SHA-256, load every NDJSON line, and validate its per-report hash.
+
+## Demo-record expiry
+
+In **Admin → Agency Settings → Demo records**, set **Automatically wipe after
+(hours)** to a positive whole number. The default is 24 hours, with no product
+maximum. Leave it blank to disable automatic deletion for new demo records.
+Saving requires `settings:write` and records the old and new policy in the
+agency settings audit.
+
+Each generated call and report uses the agency policy at its own server creation
+time. Changes do not alter existing deadlines, including records created with
+automatic deletion disabled. Expiry covers signed and unsigned generated reports
+and their dependent data; it does not change ordinary clinical retention.
+
+Continue running `npm run purge:synthetic -w @open-triage/database` on the existing
+expiry schedule. The worker and browser cleanup use each record's saved deadline;
+records without a deadline remain. Purged records retain anti-replay tombstones.

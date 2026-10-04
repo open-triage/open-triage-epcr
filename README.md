@@ -84,6 +84,13 @@ by an owner. The account has no authority until the
 organization has a normal installation owner; follow
 [`docs/runbooks/identity-recovery.md`](docs/runbooks/identity-recovery.md) for owner setup.
 
+Generate varied synthetic reports from an agency's active form and validation
+with `npm run generate:synthetic -- --agency UUID --count 100
+--from 2026-09-01 --to 2026-09-30`. See the
+[synthetic record CLI runbook](docs/runbooks/synthetic-record-generation.md) for
+random user assignment, distributions, dry runs, and draft output. No user password
+is required; add `--username USER` to select a fixed clinician.
+
 To ingest one vendor snapshot explicitly, pass the file and caller-owned organization
 and source context to the JSON-output CLI:
 
@@ -99,7 +106,9 @@ The login form never exposes or prefills fixture credentials. Demonstration and
 production deployments use the same ownership, password, authorization, publication,
 export, and ordinary ten-year clinical-retention policy. Synthetic clinical records
 are created explicitly by users with Clinical Demo authority and expire according to
-their own immutable 24-hour record provenance.
+the agency’s demo-record policy at creation (24 hours by default). Agency Settings
+accepts positive whole hours without a product maximum; a blank value disables
+automatic deletion for new records. Existing record deadlines remain unchanged.
 
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
 incident, patient, and command identities. The API derives the analytical patient

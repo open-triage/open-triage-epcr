@@ -1,11 +1,15 @@
 # Review issue hierarchy
 
-Status: Published and verified.
+Status: Historical publication record; local bodies reflect current requirements.
 
 Parent: [#642: Review workflows and basic analytics](https://github.com/open-triage/open-triage-epcr/issues/642).  
 Repository: [open-triage/open-triage-epcr](https://github.com/open-triage/open-triage-epcr).  
 Implementation branch: feature/review.  
 Source: [Review PRD](../../prds/review.md).
+
+The [Unified analytics workspace PRD](../../prds/unified-analytics-workspace.md)
+defines the current Analytics interface. This hierarchy records the original
+backend and workflow delivery dependencies; it is not a separate interface plan.
 
 All 25 children are attached using actual GitHub sub-issue relationships. The parent contains the full PRD and a linked child/dependency index. Each child includes its approved scope, acceptance criteria, AFK classification, covered user stories, and published prerequisite links.
 
@@ -67,14 +71,14 @@ All 68 PRD stories are covered. Tests belong to the relevant delivery slice. The
 
 - Start independently with **#643** (scoped Review entry) and **#645** (priority authoring).
 - Review progresses through report inspection and sign-to-queue, then branches into routing, completion, independent review, discussion, amendments, overdue follow-up, retrospective review, and notifications.
-- BI starts with **#658** after **#643**; **#659** enables the independent repeated-field, custom-scalar, operational-time, saved-analysis, and aggregate-export work.
+- BI starts with **#658** after **#643**; **#659** enables the independent repeated-field, custom-scalar, operational-time, stored-definition API, and aggregate-export work.
 - **#662** combines repeated-field behavior with custom long-table storage. **#664** joins review workflows and BI. **#667** completes underlying-record exports for the supported measures and populations.
 - The blockers listed above and in manifest.json are authoritative; each references an earlier slice and the graph has no cycles.
 
-## Publication verification
+## Recorded publication verification
 
 - The live parent body contains the complete source PRD.
 - The live parent has exactly the 25 approved child issues attached as real sub-issues.
-- Every live child title/body matches its local published body, is classified AFK, links back to the parent, and references published GitHub issues for blockers.
+- At publication, each child matched its local body, was classified AFK, linked back to the parent, and referenced published GitHub issues for blockers. Local documentation has since been updated for unified Analytics.
 - No publication or relationship failures remain.
 - Stable review markers and recorded GitHub IDs/URLs in manifest.json support duplicate-safe inspection and resumption.

@@ -30,6 +30,25 @@ test("sign commands require a revision, signer, and explicit attestation", () =>
       error.findings.some((finding) => finding.includes("attestation")));
 });
 
+test("reporting dates prefer documented eTimes, then explicit service, receipt and signing dates", async () => {
+  const service = new SignReportService({}, {});
+  let observed = { clinical_date: "2026-10-03", server_date: "2026-10-04" };
+  const manager = { query: async () => [observed] };
+  const report = { id: randomUUID(), reporting_date: "2026-10-02" };
+  const signedAt = "2026-10-05T10:00:00Z";
+  assert.deepEqual(await service.reportingDate(manager, report, signedAt),
+    { date: "2026-10-03", source: "earliest-clinical-time" });
+  observed = { clinical_date: null, server_date: "2026-10-04" };
+  assert.deepEqual(await service.reportingDate(manager, report, signedAt),
+    { date: "2026-10-02", source: "service-date" });
+  report.reporting_date = null;
+  assert.deepEqual(await service.reportingDate(manager, report, signedAt),
+    { date: "2026-10-04", source: "earliest-server-time" });
+  observed = { clinical_date: null, server_date: null };
+  assert.deepEqual(await service.reportingDate(manager, report, signedAt),
+    { date: "2026-10-05", source: "signing-time" });
+});
+
 test("unresolved dispatch differences block signing until disposition", () => {
   const findings = unresolvedDispatchConflictFindings([
     { id: "conflict-1", element_id: "eDispatch.01" }

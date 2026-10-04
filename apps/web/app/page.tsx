@@ -53,6 +53,7 @@ import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { sameJsonValue } from "./json-values";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { populateSyntheticRecord } from "./populate-synthetic-record";
 import { stationarySectionForGroup } from "./stationary-record";
 import { groupReviewFindings } from "./review-presentation";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
@@ -129,6 +130,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [pinnedChecklistFinding, setPinnedChecklistFinding] = useState<StationaryValidationFinding | null>(null);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const [populateError, setPopulateError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [navigationMessage, setNavigationMessage] = useState<string | null>(null);
   const [reportNotes, setReportNotes] = useState<ReadonlyArray<ReportNote>>(report?.notes ?? []);
@@ -375,8 +377,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
   }, [session.user.id]);
   useEffect(() => {
-    onErrorStateChange(reviewErrors.length > 0 || Boolean((recoveryNotice && !bestEffortNoticeInDemoBanner) || signError || conflictError));
-  }, [bestEffortNoticeInDemoBanner, conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
+    onErrorStateChange(reviewErrors.length > 0 || Boolean((recoveryNotice && !bestEffortNoticeInDemoBanner) || signError || conflictError || populateError));
+  }, [bestEffortNoticeInDemoBanner, conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError, populateError]);
   const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
@@ -407,17 +409,27 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, [presentationMode, shell.view]);
 
   useEffect(() => {
-    const authorized = () => canUseClinicalDemoDraftActions(report) && navigator.onLine &&
+    const authorized = () => restored && !editingBlocked && canUseClinicalDemoDraftActions(report) && navigator.onLine &&
       browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true;
-    const populate = () => { if (authorized()) dispatch({ type: "demo-populated", catalogFields: report?.clinicalForm?.catalogFields }); };
-    const clear = () => { if (authorized()) dispatch({ type: "demo-cleared" }); };
+    const populate = () => {
+      if (!authorized()) return;
+      try {
+        if (!report?.clinicalForm) throw new Error("The report's pinned form is unavailable. Reopen the report and try again.");
+        const document = populateSyntheticRecord(shell.encounter.document, report.clinicalForm);
+        setPopulateError(null);
+        dispatch({ type: "demo-populated", document });
+      } catch (reason) {
+        setPopulateError(reason instanceof Error ? reason.message : "Unable to populate the synthetic record.");
+      }
+    };
+    const clear = () => { if (authorized()) { setPopulateError(null); dispatch({ type: "demo-cleared" }); } };
     window.addEventListener(DEMO_POPULATE_EVENT, populate);
     window.addEventListener(DEMO_CLEAR_EVENT, clear);
     return () => {
       window.removeEventListener(DEMO_POPULATE_EVENT, populate);
       window.removeEventListener(DEMO_CLEAR_EVENT, clear);
     };
-  }, [report, session.capabilities]);
+  }, [editingBlocked, report, restored, session.capabilities, shell.encounter.document]);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -789,6 +801,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
+      {populateError && <aside className="safety-notice" role="alert">{populateError}</aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>{t("mobile.dispatchCancelled")}</strong>
         <span>{t("mobile.cancellationNotice", { date: formatClinicalDate(dispatchCancellation.canceledAt, region) })}</span>

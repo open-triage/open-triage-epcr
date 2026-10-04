@@ -1,3 +1,7 @@
+> This document describes the Review workflow and backend boundaries.
+> See [Unified analytics workspace](unified-analytics-workspace.md) for Analytics
+> controls, discovery, visualizations, and exports.
+
 # Problem Statement
 
 Clinicians and reviewers need to find reports requiring attention, document their conclusions, and understand patterns across the calls they are authorized to review. Administrators can already author validation rules with a server-side review execution target, but there is no operational review queue, assignment workflow, or Review workspace. Overdue unsigned drafts also need follow-up without entering the signed clinical analytics population.
@@ -6,11 +10,11 @@ The database already projects effective signed reports into analytical views, in
 
 # Solution
 
-Add an online-only **Review** mode to the existing Mobile / Stationary / Admin selector. Use the project's current interface conventions for review queues, a report viewer with review context, basic analytics, saved analyses, and review administration. The historical interface design supplied by the user informs the workflow; it is reference material rather than a binding screen specification or a source of additional requirements.
+Add an online-only **Review** mode to the existing Mobile / Stationary / Admin selector. Use the project's current interface conventions for review queues, a report viewer with review context, the unified Analytics workspace, and review administration. The historical interface design supplied by the user informs the workflow; it is reference material rather than a binding screen specification or a source of additional requirements.
 
 Create one review item for each patient report and matching criterion. Give each item an assignee, priority, workflow status, outcome, comments, and durable history. Evaluate ordinary criteria after signing and relevant signed amendments. Support a separate overdue-draft workflow, automatic routing, independent review, and deliberate retrospective evaluation.
 
-Provide a basic analysis builder with simple filters, one grouping at a time, standard descriptive summaries, and a few starter views. Query the existing analytics projections through an authorized API. Export the displayed aggregate data and the underlying report records as CSV. Project every custom value into the long analytical table, retaining typed values and occurrence relationships.
+Provide the [unified Analytics workspace](unified-analytics-workspace.md) with one control rail, typed aggregations, documented filters, and a central Line, Bar, or Table result. Query the existing analytics projections through an authorized API. Export the displayed aggregate data and the underlying report records as CSV. Project every custom value into the long analytical table, retaining typed values and occurrence relationships.
 
 # User Stories
 
@@ -61,8 +65,8 @@ Provide a basic analysis builder with simple filters, one grouping at a time, st
 45. As an analyst within my review scope, I want statistics over all eligible signed reports, so that I can compare flagged cases with the wider report population.
 46. As an analyst, I want filters for review criteria and outcomes, so that I can relate review findings to clinical and operational patterns.
 47. As a review administrator, I want unsigned workload and exceptions represented in workload statistics, so that unfinished documentation remains visible without entering signed clinical measures.
-48. As an analyst, I want a basic builder with simple filters, one grouping, and standard summaries, so that I can answer routine questions without a complex BI tool.
-49. As an analyst, I want starter views for call volume, operational times, case mix, and review workload, so that useful analyses are available immediately.
+48. As an analyst, I want one Analytics control rail with filters, grouping, and typed aggregations, so that I can answer routine questions.
+49. As an analyst, I want to select Line, Bar, or Table for the same definition, so that I can inspect results in a useful form.
 50. As an analyst, I want patient reports counted individually even when several belong to one incident, so that the counting unit matches the records being reviewed.
 51. As an analyst, I want each report counted once per repeated category, so that multiple doses of the same medication do not inflate a report count.
 52. As an analyst, I want to select first, last, minimum, or maximum for repeated numeric values, so that the value used for each report is explicit.
@@ -72,9 +76,9 @@ Provide a basic analysis builder with simple filters, one grouping at a time, st
 56. As an analyst, I want custom values to retain their definition, occurrence, and grouping identities, so that repeated and historical answers retain their meaning.
 57. As an analyst, I want statistics to reflect effective signed amendments, so that results use the current signed record.
 58. As an analyst, I want visible analytical freshness and refresh behavior, so that recently signed or amended reports are not assumed to appear immediately.
-59. As a user, I want to save personal analyses, so that I can return to common questions without rebuilding their filters.
-60. As a review administrator, I want to publish shared analyses, so that the organization can reuse useful views.
-61. As a recipient of a shared analysis, I want it evaluated within my own permissions, so that sharing a definition never shares additional report access.
+59. As an API consumer, I want existing personal definitions preserved, so that stored data remains usable.
+60. As a review administrator, I want existing shared-definition API permissions preserved, so that publication remains controlled.
+61. As an API consumer opening a shared definition, I want it evaluated within my own permissions, so that the definition never grants additional report access.
 62. As an analyst, I want to export a visualization's aggregate values as CSV, so that I can use its results elsewhere.
 63. As an analyst, I want to export the underlying report records as CSV, so that I can inspect or further analyze the population behind a visualization.
 64. As an analyst, I want both exports to use the visualization's filters and data state, so that exported records reconcile with the displayed results.
@@ -93,8 +97,8 @@ The user confirmed these six boundaries and testing for all six:
 2. **Criterion execution.** Reuse published validation bundles for ordinary review and coordinate signing, amendment, overdue, and retrospective evaluation. Return versioned findings or explicit failures and create or reconcile review items idempotently.
 3. **Review workflow.** Own item identity, assignment, routing settings, state transitions, outcomes, comments, history, independent-review checks, and in-app attention indicators. Accept authorized commands with concurrency control.
 4. **Analytics projection.** Extend the existing projector and analytical dictionary to provide consistent custom occurrence rows, scoped report metadata, effective amendment lineage, freshness, and rebuild support.
-5. **Analysis and exports.** Validate a small analysis definition, apply scope and dataset selection, calculate aggregates, provide the underlying report population, manage personal/shared definitions, and produce matching CSV exports.
-6. **Review workspace.** Integrate the selector, queues, report viewer, review actions, settings, analysis builder, saved views, exports, and notifications using the established application components and localization conventions.
+5. **Analysis and exports.** Validate a small analysis definition, apply scope and dataset selection, calculate aggregates, provide the underlying report population, preserve stored-definition API compatibility, and produce matching CSV exports.
+6. **Review workspace.** Integrate the selector, queues, report viewer, review actions, settings, the unified Analytics workspace, exports, and notifications using the established application components and localization conventions.
 
 These are behavioral boundaries rather than a requirement to create six independently deployed services. Shared code should encapsulate rules behind stable interfaces rather than spread permission, counting, or lifecycle logic across screens.
 
@@ -114,7 +118,7 @@ These are behavioral boundaries rather than a requirement to create six independ
 - Existing validation read/write/publish capabilities continue to govern criterion authoring and publication. Review administration permits routing and workflow management without automatically authorizing changes to validation logic.
 - Organization and documenting-user scope must be enforced server-side for every read and mutation, including indirect paths such as shared views, aggregate filters, result counts, exports, and media retrieval. Assignment cannot expand report access.
 - The existing analyst database roles restrict accessible views but are not a substitute for application user and organization scope. Extend projected metadata and authorized query contracts where necessary to enforce scope and synthetic selection on the analytics connection.
-- Recheck current application authorization for queries, mutations, and downloads. A saved analysis, stale browser state, or reporting replica must not preserve revoked access.
+- Recheck current application authorization for queries, mutations, and downloads. A stored definition, stale browser state, or reporting replica must not preserve revoked access.
 - Apply both catalog identifying classifications and the agreed clinical-free-text/media restrictions. The non-identifying experience withholds restricted values, filter options, narratives, photos, and audio, including on the clinician's own reports in Review mode.
 - Shared discussion remains subject to the same identifying boundary. As an implementation inference, unrestricted review comments are potentially identifying and must not create a bypass. Structured statuses and outcomes must remain usable within the non-identifying experience.
 - Replace the existing presentation-mode assumption that every non-clinical capability grants Admin mode. Explicitly classify clinical, review, and administrative capabilities; authorize each panel separately.
@@ -175,17 +179,16 @@ These are behavioral boundaries rather than a requirement to create six independ
 - Rebuild existing signed custom values through the established bounded replay/reconciliation mechanisms, including effective amendments and both identifying classifications. Define the compatibility treatment of old JSON additions during implementation; the new BI path must use a single authoritative custom representation and never count both copies.
 - Preserve existing normalization and quality policies: source values remain available, approved conversions are additive and versioned, and unusual values are not silently removed or clipped. New clinical thresholds or normalization rules are not part of this feature.
 
-## Basic analysis and exports
+## Analytics and exports
 
-- Provide simple field filters, one grouping at a time, standard descriptive summaries, and saved definitions. The initial experience must remain basic.
+- Use the [unified Analytics workspace](unified-analytics-workspace.md) for visualization, metric, aggregation, dates, grouping, documented filters, and explicit updates.
 - As a bounded implementation default for the agreed standard summaries, start with counts, percentages, categorical distributions, and applicable numeric summaries such as mean, median, minimum, and maximum. Additional measures must justify their inclusion within the basic scope.
-- Starter saved views cover call volume over time; response, scene, and transport durations; complaint, clinical impression, and disposition; and review workload by criterion, priority, status, age, and completion time. Keep them expressible by the same supported analysis definitions.
 - Clearly define the start/end timestamps of operational intervals, units, denominators, inclusion rules, and missing values. The interview selected these measure families, not particular clinical thresholds or a new timing standard. Use existing canonical definitions where available and document the concrete mappings in the implementation.
 - The default counting unit is a **patient report**, not an incident. Multiple patient reports belonging to one incident count separately. Interface wording must make this unit clear even where the familiar word call is used.
 - For repeated categorical values, count a report once per category. A report may belong to several categories, so percentages across non-exclusive categories may exceed 100%; make that interpretation visible.
 - For repeated numeric values, require an explicit per-report choice of first, last, minimum, or maximum. Define first/last ordering from available occurrence and mapped time metadata with deterministic tie handling. Do not invent clinical chronology for non-temporal groups.
 - Missing values and explicit absence states must not become numeric zero. Expose the eligible denominator and excluded/missing count for measures where they affect interpretation. Do not combine incompatible units silently.
-- Save personal analysis definitions. Review administrators can publish shared definitions. Sharing stores the definition, not another user's result rows or access; evaluate it under the current viewer's permissions and dataset.
+- Preserve existing personal/shared definition storage and API contracts. Evaluate stored definitions under the current viewer's permissions and dataset; stored definitions never convey another user's result rows or access.
 - Each visualization supports aggregate CSV and underlying-record CSV. Apply identical population filters, repeated-field reductions, report scope, identifying restrictions, dataset selection, and data lineage to the visualization and its exports.
 - Underlying exports use one row per contributing patient report and include selected permitted structured fields and the values needed to explain the visualization. Represent multi-valued categories without multiplying patient-report rows; use the agreed reducer for repeated numeric values.
 - Ensure exports reconcile with what is displayed when projections or review outcomes change. Implement a consistent result/version boundary or explicitly refresh the visualization and its exports together; do not silently export a different population from the displayed result.
@@ -195,15 +198,15 @@ These are behavioral boundaries rather than a requirement to create six independ
 ## API and interface contracts
 
 - Review context returns available modes, effective capabilities, dataset defaults, and permitted review actions.
-- Review navigation contains Review queue, Analysis, and administrator-only Settings. The standalone Reports tab and signed-report list endpoint are removed; report detail and media endpoints support queue inspection.
+- Review navigation contains the Review / Analytics selector. Review settings live under Admin. Report detail and media endpoints support queue inspection.
 - View replaces the queue with the full read-only report and its findings sidebar. Queue entries provide the signed/draft context so report and review-item requests can start independently. The loading view can be closed, and closing the full report restores the queue and keyboard focus.
 - Review-reason descriptions appear only while hovering the reason name. Hover colors and tooltips clear on pointer exit, and touch interactions do not leave hover styling active.
 - Queue and detail queries accept supported filters and pagination and return authorized items, criterion context, permitted report content, history, and available actions.
 - Workflow commands cover claim, assign/reassign, status changes, completion/outcome updates, discussion, and the authorized overdue exception. Commands identify the expected item version and actor; stale updates produce a recoverable conflict.
 - Criterion evaluation contracts distinguish evaluation evidence from mutable workflow state and expose the report, amendment, and rule versions used.
 - Retrospective preview/run contracts bind a selected criterion configuration, date range, dataset, and scope. Execution revalidates authority and reports discrepancies or failures explicitly.
-- Analysis field discovery returns only usable fields and permitted operations. Analysis requests carry a validated definition and dataset; responses carry results, population/denominator information, freshness, and the context needed for matching exports.
-- Saved analyses distinguish personal definitions from published shared definitions. Export contracts distinguish aggregate and underlying-record CSV while retaining the same authorized analysis context.
+- Analytics discovery returns permitted documented elements and values across readable records. Query requests carry a validated definition; responses carry results, population/denominator information, freshness, and the context needed for matching exports. Query and export use the authorized signed population.
+- Stored-definition APIs distinguish personal definitions from published shared definitions. Export contracts distinguish aggregate and underlying-record CSV while retaining the same authorized analysis context.
 - Reuse the current report presentation and catalog labels for read-only review, including the relevant occurrence context and amendment changes. Keep review actions and discussion easy to reach while inspecting a report.
 - Integrate Review with existing localization, feedback diagnostics, navigation persistence, and accessibility. Browser-held presentation or analysis settings are preferences rather than authority to retrieve clinical data.
 
@@ -214,7 +217,7 @@ The user approved testing **all six modules**. Good tests verify externally obse
 ## Access and privacy
 
 - Exercise own-report scope, organization-wide scope, review administration, identifying access, and relevant combinations through actual API behavior.
-- Verify cross-user and cross-organization denial for queues, report details, mutations, criterion-derived populations, aggregates, saved views, media, and both export types.
+- Verify cross-user and cross-organization denial for queues, report details, mutations, criterion-derived populations, aggregates, stored definitions, media, and both export types.
 - Verify that assigning or sharing never broadens scope, identifying access alone gives no report scope, and revoked permissions are enforced on subsequent requests/downloads.
 - Verify non-identifying views cannot leak restricted content through clinical free text, custom fields, comments, filters, counts based on prohibited filters, or exports.
 - Verify role defaults and demo fixture capabilities, explicit mode visibility, and real/synthetic defaults. Extend existing role-authoring, user-role-assignment, presentation-mode, and PostgreSQL workload-role tests.
@@ -248,14 +251,14 @@ The user approved testing **all six modules**. Good tests verify externally obse
 - Use small fixtures with hand-calculable results for every supported measure family, filter, grouping, and reducer.
 - Include multiple patient reports for one incident, repeated doses of the same medication, multi-category membership, repeated numeric values with tied/missing times, missing/absence values, incompatible units, custom fields, and effective amendments.
 - Verify one report per underlying export row and exact reconciliation between chart aggregates and contributing records for the selected population and version.
-- Change source projections or review outcomes between display and export to prove coherent refresh/version handling. Exercise stale authorization and saved-view sharing under different users.
+- Change source projections or review outcomes between display and export to prove coherent refresh/version handling. Exercise stale authorization and stored-definition API evaluation under different users.
 - Verify safe CSV serialization, declared dataset/context, complete bounded export behavior, and explicit failures instead of silent truncation.
 - Use existing analytical mapping, quality/normalization, reporting-role, and production-scale fixtures as prior art. Add representative query-plan/load checks for the actual introduced access patterns rather than expanding unrelated performance testing.
 
 ## Review workspace and acceptance journeys
 
 - Verify online-only Review navigation, correct mode visibility, queue filters and priority/age display, report inspection, discussion access, individual completion, bulk administration, and in-app indicators.
-- Verify basic analysis creation, each starter view, personal saving, shared publication, dataset switching, and both CSV downloads. Cover accessibility, keyboard use, and existing supported languages.
+- Verify Analytics controls, Line/Bar/Table results, documented filter discovery, Review state preservation, authorized dataset separation, and both CSV downloads. Cover accessibility, keyboard use, and existing supported languages.
 - Administrator journey: author/publish a criterion with review priority; configure routing and optional independence with the appropriate permissions; sign matching reports; see the expected queue population; preview and execute a historical run without duplicates.
 - Clinician journey: see personal reports/statistics, receive a self-review item, respond and complete where allowed, and remain unable to close an independently reviewed item or read another clinician's reports.
 - Reviewer journey: claim an eligible item, inspect its permitted record, request a clinician response, complete with an outcome, and receive the same item for re-review after a relevant signed amendment.

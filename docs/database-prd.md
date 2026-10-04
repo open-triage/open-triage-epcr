@@ -144,9 +144,9 @@ foundation.
   UUID/CorrelationID values.
 - Missing projected values use SQL `NULL`. Sparse status or extension JSON is
   itself `NULL` when empty; no empty object is written merely to indicate absence.
-- The reporting date uses the explicit service date when available. If it must be
-  inferred, it uses the earliest valid timestamp associated with the record and
-  exposes the selected source.
+- The reporting date uses the UTC date of the earliest valid documented eTimes
+  value. If no eTimes value exists, it falls back to an explicit service date,
+  earliest server receipt date, then signing date, and exposes the selected source.
 - Repeatable clinical time is resolved by a committed build-time mapping to one
   element, an inherited group time, or an explicit non-temporal classification.
 - The default analytical views exclude fields explicitly classified as identifying

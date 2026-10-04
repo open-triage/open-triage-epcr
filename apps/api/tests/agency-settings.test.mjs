@@ -14,7 +14,7 @@ const appearance = { ...DEFAULT_AGENCY_APPEARANCE, brandText: "County EMS", pwaN
 const demographics = { agencyUniqueStateId: "STATE-1", agencyNumber: "AGENCY-1", stateCode: "36",
   stateDisplay: "New York", stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null };
 const settingsRow = (revision = 1, bytes = 50 * 1024 * 1024) => ({
-  organization_id: organizationId, language: "en", regional_format: null, time_zone: null, report_media_allowance_bytes: bytes, image_media_limit_bytes: 10 * 1024 * 1024, revision,
+  synthetic_retention_hours: "24", organization_id: organizationId, language: "en", regional_format: null, time_zone: null, report_media_allowance_bytes: bytes, image_media_limit_bytes: 10 * 1024 * 1024, revision,
   brand_text: appearance.brandText, helper_text: appearance.helperText, logo_png_data_url: null,
   accent_color: appearance.accentColor, accent_dark_color: appearance.accentDarkColor,
   destructive_color: appearance.destructiveColor,
@@ -318,8 +318,58 @@ test("inactive button and text colors persist, audit, and appear in public confi
   assert.equal(saved.revision, 3);
   assert.equal(saved.demographics.version, 1);
   const audit = calls.find(({ sql }) => sql.includes("agency_settings_change_event"));
-  assert.deepEqual(audit.parameters.slice(34), [appearance.inactiveButtonColor, colors.inactiveButtonColor, appearance.textColor, colors.textColor]);
+  assert.deepEqual(audit.parameters.slice(34, 38), [appearance.inactiveButtonColor, colors.inactiveButtonColor, appearance.textColor, colors.textColor]);
   const publicConfiguration = await service.publicConfiguration();
   assert.equal(publicConfiguration.appearance.inactiveButtonColor, colors.inactiveButtonColor);
   assert.equal(publicConfiguration.appearance.textColor, colors.textColor);
+});
+
+
+test("demo retention accepts positive whole hours without a product maximum and null disables wiping", () => {
+  for (const hours of [1, 24, 721, 100_000, null]) {
+    assert.equal(validateUpdateAgencyMediaSettings({ ...command(), syntheticRetentionHours: hours }).syntheticRetentionHours, hours);
+  }
+  assert.equal("syntheticRetentionHours" in validateUpdateAgencyMediaSettings(command()), false);
+  for (const hours of [0, -1, 1.5, "24", "", false, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => validateUpdateAgencyMediaSettings({ ...command(), syntheticRetentionHours: hours }), UnprocessableEntityException);
+  }
+});
+
+test("demo retention saves per agency, audits changes, preserves omitted policy, and guards revisions", async () => {
+  const calls = [];
+  let current = settingsRow();
+  const manager = { query: async (sql, parameters = []) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("on conflict")) return [];
+    if (sql.includes("for update")) return [current];
+    if (sql.includes("agency_demographic_version")) return [demographicRow()];
+    if (sql.includes("update app_identity.agency_settings")) {
+      assert.equal(parameters[0], organizationId);
+      current = { ...current, revision: current.revision + 1, language: parameters[15], synthetic_retention_hours: parameters[20] };
+      return [current];
+    }
+    if (sql.includes("agency_settings_change_event")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new AgencySettingsService({ transaction: work => work(manager) }, {
+    requireCapability: async (_token, capability) => {
+      assert.equal(capability, "settings:write");
+      return { organization: { id: organizationId }, user: { id: actorId } };
+    },
+  });
+  for (const hours of [100_000, null, 1]) {
+    const before = current;
+    const saved = await service.update("session", { ...command(current.revision), syntheticRetentionHours: hours });
+    assert.equal(saved.syntheticRetentionHours, hours);
+    assert.equal(saved.revision, before.revision + 1);
+    assert.deepEqual(calls.findLast(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(38),
+      [before.synthetic_retention_hours, hours]);
+    await assert.rejects(service.update("session", { ...command(before.revision), syntheticRetentionHours: 24 }), ConflictException);
+    const writes = calls.filter(({ sql }) => sql.includes("update app_identity.agency_settings")).length;
+    await service.update("session", command(current.revision));
+    assert.equal(calls.filter(({ sql }) => sql.includes("update app_identity.agency_settings")).length, writes);
+  }
+  await service.update("session", { ...command(current.revision), syntheticRetentionHours: null });
+  const saved = await service.update("session", { ...command(current.revision), language: "sv" });
+  assert.equal(saved.syntheticRetentionHours, null);
 });

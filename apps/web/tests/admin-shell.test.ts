@@ -101,7 +101,7 @@ test("Validation library requests expose all filters and revisioned create, disa
     return Response.json(requests.length === 1 ? { items: [], nextCursor: null, total: 0 } : { ...draft, revision: draft.revision + requests.length });
   };
   await loadValidationRules({ search: "incident number", element: "eResponse.03", source: "nemsis", severity: "warning",
-    executionTarget: "sign", enabled: "false", validity: "invalid", cursor: "opaque", limit: 25 });
+    reviewPriority: "high", executionTarget: "sign", enabled: "false", validity: "invalid", cursor: "opaque", limit: 25 });
   await loadValidationRules({ source: "nemsis", limit: "all" });
   const rule = { name: "Agency incident rule", enabled: false, severity: "warning" as const,
     executionTargets: ["live" as const], primaryTargetElementId: "eResponse.03", message: "Review incident number",
@@ -109,7 +109,7 @@ test("Validation library requests expose all filters and revisioned create, disa
   await createValidationRule("csrf-proof", draft, rule);
   await setValidationRuleEnabled("csrf-proof", draft, "52000000-0000-4000-8000-000000000001", false);
   await setValidationRuleEnabled("csrf-proof", draft, "52000000-0000-4000-8000-000000000001", true);
-  assert.match(requests[0]!.input, /validation-rules\?search=incident\+number&element=eResponse\.03&source=nemsis&severity=warning&executionTarget=sign&enabled=false&validity=invalid&cursor=opaque&limit=25$/);
+  assert.match(requests[0]!.input, /validation-rules\?search=incident\+number&element=eResponse\.03&source=nemsis&severity=warning&reviewPriority=high&executionTarget=sign&enabled=false&validity=invalid&cursor=opaque&limit=25$/);
   assert.match(requests[1]!.input, /validation-rules\?source=nemsis&limit=all$/);
   assert.match(requests[2]!.input, /validation-drafts\/51000000-0000-4000-8000-000000000001\/rules$/);
   assert.equal(JSON.parse(String(requests[2]!.init?.body)).expectedRevision, 4);
@@ -120,10 +120,10 @@ test("Validation library requests expose all filters and revisioned create, disa
 
 test("Validation rule-library filters expose an accessible search landmark and every supported facet", () => {
   const markup = renderToStaticMarkup(createElement(ValidationRuleFilterControls, { value: {
-    search: "", element: "", source: "", severity: "", executionTarget: "", enabled: "", validity: "",
+    search: "", element: "", source: "", severity: "", reviewPriority: "", executionTarget: "", enabled: "", validity: "",
   }, onChange() {} }));
   assert.match(markup, /role="search" aria-label="Filter Validation rules"/);
-  for (const label of ["Search", "Element", "Source", "Documentation severity", "Target", "State", "Validity"]) {
+  for (const label of ["Search", "Element", "Source", "Documentation severity", "Review priority", "Target", "State", "Validity"]) {
     assert.match(markup, new RegExp(`>${label}(?:<| )`));
   }
   assert.match(markup, /type="search"/);
@@ -175,6 +175,22 @@ test("validation feedback deduplicates identical messages without losing rule re
   assert.match(markup, /3 warnings/);
   assert.match(markup, /1 distinct messages/);
   assert.doesNotMatch(markup, /<li>/);
+});
+
+test("disabled-rule warnings do not obscure blocking validation errors", () => {
+  const warnings = ["Map trauma eligibility", "Map trauma centers", "Missing local eligibility field"].map((message) => ({
+    ruleId: "disabled-trauma", code: "catalog-reference" as const, severity: "warning" as const, message: `Disabled rule: ${message}`,
+  }));
+  const markup = renderToStaticMarkup(createElement(ValidationResultFeedback, {
+    ruleCount: 2, result: { valid: false, diagnostics: [...warnings,
+      { ruleId: "enabled-rule", code: "syntax", severity: "error", message: "Fix the enabled rule expression" }],
+    },
+  }));
+  assert.match(markup, /Validation found 1 issues/);
+  assert.match(markup, /<li>Fix the enabled rule expression<\/li>/);
+  assert.doesNotMatch(markup, /<li>Disabled rule:/);
+  assert.match(markup, /role="status"><strong>3 warnings/);
+  assert.match(markup, /Warnings do not block publication/);
 });
 
 test("validation deletion accepts empty 200 and 204 success and still surfaces conflicts", async (t) => {

@@ -7,6 +7,7 @@ import { mutationRows } from "../database/mutation-result.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { recordMediaAccess } from "../reports/report-note-collaboration.js";
 import { reviewScope } from "./review-scope.js";
+import { normalizedMetricEvidence, restrictedMetricInputs } from "./metric-evidence.js";
 import type { ReviewScope } from "./review-scope.js";
 import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./review-fields.js";
 import { reduceRepeated, type RepeatedRow } from "./review-repeated.js";
@@ -118,7 +119,7 @@ export class ReviewService implements OnModuleDestroy {
     }
   }
 
-  private async analyticsDatabase(): Promise<DataSource> {
+  async analyticsDatabase(): Promise<DataSource> {
     const url = process.env.REVIEW_REPORTING_REPLICA_DATABASE_URL;
     if (!url) return this.database;
     if (!this.reportingInitialization) {
@@ -1251,7 +1252,7 @@ export class ReviewService implements OnModuleDestroy {
         from clinical.review_item i join clinical.report r on r.id=i.report_id where ${badgeWhere}`, params),
     ]);
     const queueTargets = [...new Set(rows.flatMap((row) => (row.findings as ReviewItemDetail["findings"] ?? [])
-      .map((finding) => finding.primaryTarget.elementId)))];
+      .flatMap((finding) => [finding.primaryTarget.elementId, ...(finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)])))];
     const queueReleases = [...new Set(rows.map((row) => row.catalog_release_id))];
     const queueVisibility = scope.identifying || !queueTargets.length ? [] :
       await this.database.query<Array<{ release_id: string; element_id: string }>>(`
@@ -1259,6 +1260,9 @@ export class ReviewService implements OnModuleDestroy {
         where release_id=any($1::uuid[]) and element_id=any($2::text[]) and not identifying`,
       [queueReleases, queueTargets]);
     const visibleQueueTargets = new Set(queueVisibility.map((entry) => `${entry.release_id}:${entry.element_id}`));
+    const restrictedQueueMetrics = scope.identifying ? new Set<string>() : await restrictedMetricInputs(this.database,
+      rows.map(row => row.report_id), rows.flatMap(row => (row.findings as ReviewItemDetail["findings"] ?? [])
+        .flatMap(finding => (finding.metricEvidence ?? []).flatMap(metric => metric.inputElementIds))));
     return { dataset, page, pageSize, total: Number(counts[0]?.total ?? 0),
       assignmentCounts: { all: Number(assignmentCounts[0]?.all ?? 0), mine: Number(assignmentCounts[0]?.mine ?? 0), unassigned: Number(assignmentCounts[0]?.unassigned ?? 0) },
       asOf: new Date().toISOString(), items: rows.map((row) => ({
@@ -1276,7 +1280,10 @@ export class ReviewService implements OnModuleDestroy {
         firstMatchedAt: new Date(row.first_matched_at).toISOString(),
         reportingDate: row.reporting_date, signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
         findings: (row.findings as ReviewItemDetail["findings"] ?? []).filter((finding) =>
-          scope.identifying || visibleQueueTargets.has(`${row.catalog_release_id}:${finding.primaryTarget.elementId}`)),
+          scope.identifying || visibleQueueTargets.has(`${row.catalog_release_id}:${finding.primaryTarget.elementId}`))
+          .map((finding) => scope.identifying || !finding.metricEvidence ? finding : ({ ...finding, metricEvidence: finding.metricEvidence.filter((metric) =>
+            metric.inputElementIds.every((id) => visibleQueueTargets.has(`${row.catalog_release_id}:${id}`) &&
+              !restrictedQueueMetrics.has(`${row.report_id}:${id}`))).map(normalizedMetricEvidence) })),
       })) };
   }
 
@@ -1357,15 +1364,21 @@ export class ReviewService implements OnModuleDestroy {
       order by decision.amendment_sequence,decision.recorded_at,decision.id`,
     [scope.organizationId, id]);
     const detailTargets = [...new Set([...(row.findings ?? []), ...decisions.flatMap((decision) => decision.findings)]
-      .map((finding) => finding.primaryTarget.elementId))];
+      .flatMap((finding) => [finding.primaryTarget.elementId, ...(finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)]))];
     const detailVisibility = scope.identifying || !detailTargets.length ? [] :
       await this.database.query<Array<{ element_id: string }>>(`
         select element_id from catalog.analytics_element_mapping
         where release_id=$1 and element_id=any($2::text[]) and not identifying`,
       [row.catalog_release_id, detailTargets]);
     const visibleDetailTargets = new Set(detailVisibility.map((entry) => entry.element_id));
+    const restrictedDetailMetrics = scope.identifying ? new Set<string>() : await restrictedMetricInputs(this.database,
+      [row.report_id], [...(row.findings ?? []), ...decisions.flatMap(decision => decision.findings)]
+        .flatMap(finding => (finding.metricEvidence ?? []).flatMap(metric => metric.inputElementIds)));
     const permittedFindings = (findings: ReviewItemDetail["findings"]) =>
-      findings.filter((finding) => scope.identifying || visibleDetailTargets.has(finding.primaryTarget.elementId));
+      findings.filter((finding) => scope.identifying || visibleDetailTargets.has(finding.primaryTarget.elementId))
+        .map((finding) => scope.identifying || !finding.metricEvidence ? finding : ({ ...finding, metricEvidence: finding.metricEvidence.filter((metric) =>
+          metric.inputElementIds.every((id) => visibleDetailTargets.has(id) &&
+            !restrictedDetailMetrics.has(`${row.report_id}:${id}`))).map(normalizedMetricEvidence) }));
     const comments = scope.identifying ? await this.database.query<Array<{
       id: string; actor_id: string; display_name: string; body: string; kind: "comment" | "finding";
       item_version: string; recorded_at: Date | string }>>(`

@@ -7,7 +7,7 @@ import { ConflictException, UnprocessableEntityException } from "@nestjs/common"
 export type DefinitionKind = "catalog" | "form" | "validation";
 export interface CanonicalPackage {
   format: "opentriage-definition";
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   kind: DefinitionKind;
   name: string;
   version: string;
@@ -29,14 +29,14 @@ export function catalogFingerprint(definition: Record<string, unknown>): string 
   return contentDigest(content);
 }
 export function makePackage(input: Omit<CanonicalPackage, "format" | "schemaVersion" | "sha256">): CanonicalPackage {
-  const content = { format: "opentriage-definition" as const, schemaVersion: 1 as const, ...input };
+  const content = { format: "opentriage-definition" as const, schemaVersion: input.kind === "validation" && !Array.isArray(input.definition) ? 2 as const : 1 as const, ...input };
   return { ...content, sha256: contentDigest(content) };
 }
 export function parsePackage(value: unknown, kind: DefinitionKind, options: { ignoreVersion?: boolean } = {}): CanonicalPackage {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new UnprocessableEntityException("Expected canonical JSON object");
   const p = value as CanonicalPackage;
   const { sha256, ...content } = p;
-  if (p.format !== "opentriage-definition" || p.schemaVersion !== 1 || p.kind !== kind ||
+  if (p.format !== "opentriage-definition" || !(p.schemaVersion === 1 || p.schemaVersion === 2 && kind === "validation") || p.kind !== kind ||
       typeof p.name !== "string" || !p.name.trim() || p.name.length > 120 || (!options.ignoreVersion && typeof p.version !== "string") ||
       !p.catalog || !/^[a-f0-9]{64}$/.test(p.catalog.sha256) || !p.definition || contentDigest(content) !== sha256) {
     throw new UnprocessableEntityException("Unsupported canonical format/version, kind, or content digest");

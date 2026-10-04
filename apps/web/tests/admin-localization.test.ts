@@ -33,10 +33,12 @@ test("version selector translates chrome but keeps the authored version name", (
 });
 
 test("validation filters and translation diagnostics expose Swedish controls", () => {
-  const filters = { search: "", element: "", source: "", severity: "", executionTarget: "", enabled: "", validity: "" };
+  const filters = { search: "", element: "", source: "", severity: "", reviewPriority: "", executionTarget: "", enabled: "", validity: "" };
   const validation = render("sv", createElement(ValidationRuleFilterControls, { value: filters, onChange: () => {} }));
   assert.match(validation, /aria-label="Filtrera valideringsregler"/);
   assert.match(validation, /Alla allvarlighetsgrader/);
+  assert.match(validation, /Granskningsprioritet/);
+  assert.match(validation, /Alla prioriteter/);
   assert.match(validation, /value="wording">Textproblem/);
   assert.match(validation, /value="missing-english">Saknar engelska/);
   assert.match(validation, /value="missing-swedish">Saknar svenska/);

@@ -187,21 +187,22 @@ test("validation rule creation, language, severity, targets, source, save, and v
   await expect(page.locator(".validation-rule-table")).toContainText("High");
 });
 
-test("wording issues appear in rule validity and use the shared validity filter", async ({ page }, testInfo) => {
+test("wording validity and review priority filters combine in the rule library", async ({ page }, testInfo) => {
   const { readFile } = await import("node:fs/promises");
   const css = await readFile(path.resolve(__dirname, "../app/styles.css"), "utf8");
   const translated = { schemaVersion: 1, sv: { name: "Patientnamn", message: "Ange patientnamn" } };
   const base = { message: "Enter patient name", source: 'require present("ePatient.02")',
-    primaryTargetElementId: "ePatient.02", sourceKind: "agency", enabled: true, severity: "warning", executionTargets: ["live"] };
+    primaryTargetElementId: "ePatient.02", sourceKind: "agency", enabled: true, severity: "warning", executionTargets: ["live", "review"] };
   const rules = [
-    { ...base, id: "complete", name: "Complete rule", localization: translated },
-    { ...base, id: "english", name: "English warning", message: " ", localization: translated },
-    { ...base, id: "swedish", name: "Swedish warning" },
-    { ...base, id: "both", name: "Both warnings", message: "" },
+    { ...base, id: "complete", name: "Complete rule", localization: translated, reviewPriority: "none" },
+    { ...base, id: "english", name: "English warning", message: " ", localization: translated, reviewPriority: "high" },
+    { ...base, id: "swedish", name: "Swedish warning", reviewPriority: undefined },
+    { ...base, id: "both", name: "Both warnings", message: "", reviewPriority: "low" },
   ];
   const subsets: Record<string, string[]> = { "missing-english": ["english", "both"],
     "missing-swedish": ["swedish", "both"], wording: ["english", "swedish", "both"], warning: ["english", "swedish", "both"] };
   const requestedFilters: string[] = [];
+  const requestedPriorities: string[] = [];
   await page.route("**/__validation-script", route => route.fulfill({ contentType: "text/javascript", body: script }));
   await page.route("**/__validation-harness", route => route.fulfill({ contentType: "text/html",
     body: `<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body style="--green:#315ba8;--green-dark:#24447e;--inactive-button:#edf1fa;--text-color:#202850"><main id="root"></main><script src="/__validation-script"></script></body></html>` }));
@@ -217,8 +218,11 @@ test("wording issues appear in rule validity and use the shared validity filter"
     } } });
     if (pathname === "validation-rules") {
       const validity = url.searchParams.get("validity") ?? "";
+      const priority = url.searchParams.get("reviewPriority") ?? "";
       requestedFilters.push(validity);
-      const selected = subsets[validity] ? rules.filter(({ id }) => subsets[validity]!.includes(id)) : rules;
+      requestedPriorities.push(priority);
+      const selected = rules.filter(rule => (!subsets[validity] || subsets[validity]!.includes(rule.id))
+        && (!priority || (rule.reviewPriority ?? "medium") === priority));
       return route.fulfill({ json: { items: selected.map(rule => ({ rule, source: "agency", validity: rule.id === "complete" ? "valid" : "warning",
         diagnostics: rule.id === "english" ? [{ severity: "warning", code: "similar-rule", message: "Similar rule already exists." }] : [] })),
         total: selected.length, nextCursor: null } });
@@ -263,6 +267,21 @@ test("wording issues appear in rule validity and use the shared validity filter"
   await validity.selectOption("warning");
   await expect(rows).toHaveCount(3);
   expect(requestedFilters.at(-1)).toBe("warning");
+  const priority = page.getByRole("search").getByRole("combobox", { name: "Review priority", exact: true });
+  for (const [value, name] of [["high", "English warning"], ["medium", "Swedish warning"], ["low", "Both warnings"]]) {
+    await priority.selectOption(value!);
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toContainText([name!]);
+    await expect(validity).toHaveValue("warning");
+    expect(requestedPriorities.at(-1)).toBe(value);
+  }
+  await priority.selectOption("none");
+  await expect(rows).toHaveCount(0);
+  await validity.selectOption("");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText(["Complete rule"]);
+  await priority.selectOption("");
+  await expect(rows).toHaveCount(4);
   await rows.filter({ hasText: "Swedish warning" }).getByRole("rowheader").click();
   const editor = page.locator(".validation-rule-editor");
   await editor.getByLabel("Wording language").selectOption("sv");
@@ -272,4 +291,6 @@ test("wording issues appear in rule validity and use the shared validity filter"
   await validity.selectOption("");
   await expect(rows).toHaveCount(4);
   await expect(editor.getByLabel("Wording language")).toHaveValue("sv");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("search").screenshot({ path: testInfo.outputPath("review-priority-desktop.png") });
 });

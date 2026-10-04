@@ -92,12 +92,38 @@ function serviceFixture({ compatible = true, existingDraft = false } = {}) {
   const authoring = {
     current: async () => existingDraft ? { id: "existing" } : null,
     clone: async (_token, body) => { calls.push(["clone", body]); return { id: "draft", revision: 1 }; },
-    create: async (_token, body, options) => { calls.push(["create", body]); return { id: "draft", revision: 1, rules: options?.importedRules }; },
+    create: async (_token, body, options) => { calls.push(["create", body]); return { id: "draft", revision: 1, rules: options?.importedRules, metrics: options?.importedMetrics }; },
     save: async (_token, _id, body) => { calls.push(["save", body]); return { id: "draft", revision: 2, definitionSha256: "validated-digest" }; },
     publish: async (_token, _id, body) => { calls.push(["publish", body]); return { id: "published", version: 12 }; }
   };
-  return { service: new CanonicalPackageService({ query: async () => [] }, sessions, catalogs, authoring, authoring), calls };
+  return { service: new CanonicalPackageService({ query: async (sql) => sql.includes("from catalog.release") ? [{ id: "destination-catalog" }] : [] }, sessions, catalogs, authoring, authoring), calls };
 }
+
+test("bundled NEMSIS validation imports preserve metrics and dependent rules", async () => {
+  const full = JSON.parse(await readFile(new URL("../../../defines/validation/validation_nemsis-full.json", import.meta.url), "utf8"));
+  const { service, calls } = serviceFixture();
+  const normalized = await service.normalize("token", "validation", full);
+  assert.equal(normalized.schemaVersion, 2);
+  assert.deepEqual(normalized.definition.rules.map(({ localization, ...rule }) => rule), full.rules.map(({ localization, ...rule }) => rule));
+  assert.deepEqual(normalized.definition.metrics.map(({ localization, ...metric }) => metric), full.metrics);
+  assert.ok(normalized.definition.rules.every((rule) => rule.localization?.sv?.name && rule.localization.sv.message));
+  assert.ok(normalized.definition.metrics.every((metric) => metric.localization?.sv?.name && metric.localization.sv.description));
+  await service.importPublished("token", "validation", normalized);
+  const saved = calls.find((call) => Array.isArray(call) && call[0] === "save")[1];
+  assert.deepEqual(saved.metrics, normalized.definition.metrics);
+  const pain = saved.metrics.find(({ name }) => name === "Pain change (last minus first)");
+  const outcomes = saved.rules.filter(({ source }) => source.includes(`metricCompare("${pain.id}"`));
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].name, "Pain reduced");
+  assert.equal(outcomes[0].enabled, true);
+  await assert.rejects(service.normalize("token", "validation", { ...full, metrics: undefined }), /Unsupported Validation definition/);
+
+  const ruleOnly = { schemaVersion: 1, name: "Rule-only library", catalogKey: full.catalogKey, rules: [full.rules[0]] };
+  const legacy = await service.normalize("token", "validation", ruleOnly);
+  assert.equal(legacy.schemaVersion, 1);
+  assert.deepEqual(legacy.definition.map(({ localization, ...rule }) => rule), ruleOnly.rules.map(({ localization, ...rule }) => rule));
+  assert.ok(legacy.definition[0].localization.sv.name);
+});
 
 for (const kind of ["form", "validation"]) {
   test(`${kind} import rejects incompatible catalogs before mutation`, async () => {

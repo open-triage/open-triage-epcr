@@ -2,7 +2,8 @@ import { openReviewCall } from "./helpers/review-window";
 import { expect, test } from "@playwright/test";
 import settings from "@open-triage/contracts/config/installation.production.json";
 
-for (const width of [390, 1440]) test(`reviewer completes and administrator reopens by assigning at ${width}px`, async ({ page }) => {
+for (const width of [390, 1440]) for (const assignment of ["self", "unassigned", "other"] as const)
+  test(`reviewer closes ${assignment} review and administrator reopens at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed mock API configuration.");
   const itemId = "123e4567-e89b-42d3-a456-426614174111";
@@ -12,6 +13,8 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
   const session = { csrfToken: "csrf", user: { id: reviewerId, displayName: "Reviewer" },
     organization: { id: "organization", name: "Example EMS" }, startedAt: "2026-10-02T08:00:00Z",
     expiresAt: "2099-10-02T20:00:00Z", capabilities: ["review:all", "review:admin", "review:identifying"], workspaceAvailable: true };
+  let assigneeId: string | null = assignment === "self" ? reviewerId : assignment === "unassigned" ? null : "123e4567-e89b-42d3-a456-426614174116";
+  let closureAssignmentAttempts = 0;
   let version = 1;
   let status = "new";
   let reopened = false;
@@ -21,7 +24,7 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
     status: string; outcome: { optionId: string; revision: number; label: string; meaning: string } | null;
     recordedAt: string; reason?: string }> = [];
   const item = () => ({ id: itemId, reportId, criterionId: "123e4567-e89b-42d3-a456-426614174114",
-    priority: "high", status, outcome, assigneeId: reviewerId, version, reopened, comments, canComment: true,
+    priority: "high", status, outcome, assigneeId, version, reopened, comments, canComment: true,
     firstMatchedAt: "2026-10-01T08:00:00Z", reportingDate: "2026-10-02",
     signedAt: "2026-10-02T07:00:00Z", findings: [] });
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
@@ -42,6 +45,7 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
       const command = route.request().postDataJSON() as { commandId: string; expectedVersion: number;
         status: string; outcomeOptionId?: string };
       expect(command.expectedVersion).toBe(version);
+      expect(assigneeId).toBe(reviewerId);
       if (command.status === "completed") expect(command.outcomeOptionId).toBe(optionId);
       version++; status = command.status;
       outcome = status === "completed" ? { optionId, revision: 1, label: "Follow-up",
@@ -52,6 +56,7 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
     }
     if (url.pathname === `/api/review/items/${itemId}/comments`) {
       const command = route.request().postDataJSON(); expect(command.expectedVersion).toBe(version);
+      expect(command.kind).toBe(command.body === "Timeline confirmed." ? "finding" : "comment");
       if (["new", "awaiting-clinician"].includes(status)) {
         status = "in-review";
         progressHistory.push({ commandId: command.commandId, actorId: reviewerId,
@@ -64,7 +69,12 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
       expect(route.request().headers()["x-csrf-token"]).toBe("csrf");
       const command = route.request().postDataJSON();
       expect(command.expectedVersion).toBe(version); expect(command.assigneeId).toBe(reviewerId);
-      status = "in-review"; outcome = null; reopened = true; version++;
+      if (status !== "completed") {
+        if (++closureAssignmentAttempts === 1) return route.fulfill({ status: 503 });
+        assigneeId = reviewerId; status = "in-review"; version++;
+        return route.fulfill({ json: { ...item(), assignmentHistory: [], progressHistory } });
+      }
+      assigneeId = reviewerId; status = "in-review"; outcome = null; reopened = true; version++;
       progressHistory.push({ commandId: command.commandId, actorId: reviewerId, itemVersion: version,
         status, outcome, reason: "reopened-by-assignment", recordedAt: new Date().toISOString() });
       return route.fulfill({ json: { ...item(), assignmentHistory: [], progressHistory } });
@@ -79,18 +89,39 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
   const call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).first());
   await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=start]")).toHaveCount(0);
   await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=complete]")).toHaveCount(1);
-  const kind = width === 390 ? "comment" : "finding";
-  await call.getByRole("combobox", { name: "Action", exact: true }).selectOption(kind);
-  await call.getByRole("textbox", { name: kind === "comment" ? "Comment" : "Document findings", exact: true }).fill("Reviewing the timeline.");
-  await call.getByRole("button", { name: kind === "comment" ? "Send comment" : "Save findings", exact: true }).click();
+  await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("comment");
+  await call.getByRole("textbox", { name: "Comment", exact: true }).fill("Reviewing the timeline.");
+  await call.getByRole("button", { name: "Send comment", exact: true }).click();
   await expect(call.locator(".review-report-items .status-in-review")).toHaveText("In review");
-  await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("await");
-  await call.getByRole("button", { name: "Await clinician" }).click();
-  await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("resume");
-  await call.getByRole("button", { name: "Resume review" }).click();
+  if (assignment === "self") {
+    await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("await");
+    await call.getByRole("button", { name: "Await clinician" }).click();
+    await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("resume");
+    await call.getByRole("button", { name: "Resume review" }).click();
+  }
   await call.getByRole("combobox", { name: "Action", exact: true }).selectOption("complete");
+  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=finding]")).toHaveCount(0);
+  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=complete]")).toHaveText("Close review");
+  const closeReview = call.getByRole("button", { name: "Close review", exact: true });
+  await expect(closeReview).toBeDisabled();
+  await call.getByRole("textbox", { name: "Document findings", exact: true }).fill("Timeline confirmed.");
+  await expect(closeReview).toBeDisabled();
   await call.getByRole("combobox", { name: "Outcome" }).last().selectOption(optionId);
-  await call.getByRole("button", { name: "Complete item" }).click();
+  await call.getByRole("tab", { name: "History", exact: true }).click();
+  await call.getByRole("tab", { name: "Actions", exact: true }).click();
+  await expect(call.getByRole("combobox", { name: "Outcome", exact: true })).toHaveValue(optionId);
+  await expect(call.getByRole("textbox", { name: "Document findings", exact: true })).toHaveValue("Timeline confirmed.");
+  if (assignment !== "self") {
+    await expect(call.getByText("Closing this review assigns it to you.", { exact: true })).toBeVisible();
+    await call.locator(".review-action-form").screenshot({ path: test.info().outputPath("close-review-action.png") });
+    await closeReview.click();
+    await expect(call.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("complete");
+    await expect(call.getByRole("textbox", { name: "Document findings", exact: true })).toHaveValue("Timeline confirmed.");
+    expect(comments).toHaveLength(1);
+    expect(status).toBe("in-review");
+  }
+  await closeReview.click();
+  expect(closureAssignmentAttempts).toBe(assignment === "self" ? 0 : 2);
   await expect(call.locator(".review-report-items .status-completed")).toHaveText("Completed");
   await expect(call.getByRole("region", { name: "Review items on this report" }).getByText("Follow-up: Clinician follow-up")).toBeVisible();
   const actions = call.getByRole("tabpanel", { name: "Actions", exact: true });
@@ -100,6 +131,7 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
   await expect(actions.getByText(/Assignee:|Status:|Outcome:|Criterion ID:/)).toHaveCount(0);
   await expect(actions.getByRole("combobox", { name: "Assign reviewer", exact: true })).toHaveCount(0);
   const action = call.getByRole("combobox", { name: "Action", exact: true });
+  await expect(action.locator("option[value=complete]")).toHaveText("Change outcome");
   await action.selectOption("assign");
   await expect(actions.getByText("Assigning a reviewer reopens this item. The previous outcome remains in History.")).toBeVisible();
   const submit = actions.getByRole("button", { name: "Reopen and assign", exact: true });
@@ -113,12 +145,13 @@ for (const width of [390, 1440]) test(`reviewer completes and administrator reop
   await submit.click();
   await expect(call.locator(".review-report-items .status-in-review")).toHaveText("In review · Returned for re-review");
   await expect(action).toHaveValue("comment");
-  expect(reopened).toBe(true); expect(comments).toHaveLength(2);
+  expect(reopened).toBe(true); expect(comments).toHaveLength(3);
   await call.getByRole("tab", { name: "History", exact: true }).click();
   const history = call.getByRole("tabpanel", { name: "History", exact: true });
+  await expect(history.getByText("Timeline confirmed.", { exact: true })).toBeVisible();
   await expect(history.getByText("Please review the final outcome again.", { exact: true })).toBeVisible();
   await expect(history.getByText("Follow-up: Clinician follow-up", { exact: false })).toBeVisible();
   await expect(history.getByText("Reopened by reviewer assignment", { exact: false })).toBeVisible();
-  expect(progressHistory.map((entry) => entry.status)).toEqual([
-    "in-review", "awaiting-clinician", "in-review", "completed", "in-review"]);
+  expect(progressHistory.map((entry) => entry.status)).toEqual(assignment === "self" ? [
+    "in-review", "awaiting-clinician", "in-review", "completed", "in-review"] : ["in-review", "completed", "in-review"]);
 });

@@ -92,11 +92,6 @@ test("Review administrator configures routing and reassigns an item without vali
       reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 0,
       identifying: false, groups: [], values: [], notes: [] } });
     if (path === "/api/review/backlog") return request.fulfill({ json: { work: [] } });
-    if (path === "/api/review/volume") return request.fulfill({ json: { definition: { measure: "signed-report-count",
-      grouping: "day", filters: { from: "2026-10-01", to: "2026-10-02", dataset: "real" } },
-      population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
-      freshness: { observedAt: new Date().toISOString(), targetSeconds: 300, status: "current",
-        oldestBacklogSeconds: null, replicaLagSeconds: null }, total: 0, points: [] } });
     return request.fulfill({ status: 404 });
   });
   await page.goto("/");
@@ -192,11 +187,6 @@ test("Review claim persists in the queue and item history, with recoverable stal
     if (url.pathname === `/api/review/reports/${reportId}`) return route.fulfill({ json: { id: reportId,
       reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 0,
       identifying: false, groups: [], values: [], notes: [] } });
-    if (url.pathname === "/api/review/volume") return route.fulfill({ json: { definition: { measure: "signed-report-count", grouping: "day",
-      filters: { from: "2026-10-01", to: "2026-10-02", dataset: "real" } },
-      population: { unit: "patient-report", scope: "all", organizationId: "organization", signedOnly: true },
-      freshness: { observedAt: new Date().toISOString(), targetSeconds: 300, status: "current",
-        oldestBacklogSeconds: null, replicaLagSeconds: null }, total: 0, points: [] } });
     return route.fulfill({ status: 404 });
   });
   await page.goto("/");
@@ -226,7 +216,6 @@ test("Review-only account enters its scoped queue and keeps datasets separate", 
     capabilities: ["review:all"], workspaceAvailable: true,
   };
   const requestedDatasets: string[] = [];
-  let staleVolume = false;
   const queueRequests: string[] = [];
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.context().route("**/api/**", (route) => {
@@ -244,20 +233,6 @@ test("Review-only account enters its scoped queue and keeps datasets separate", 
           primaryTarget: { elementId: "eNarrative.01" } }] }] : [];
       return route.fulfill({ json: { dataset, page: 1, pageSize: 25, total: items.length,
         asOf: "2026-10-02T08:00:00Z", items } });
-    }
-    if (url.pathname === "/api/review/volume") {
-      const dataset = url.searchParams.get("dataset")!;
-      const from = url.searchParams.get("from")!;
-      const to = url.searchParams.get("to")!;
-      return route.fulfill({ json: {
-        definition: { measure: "signed-report-count", grouping: "day", filters: { from, to, dataset } },
-        population: { unit: "patient-report", scope: "all", organizationId: "organization-id", signedOnly: true },
-        freshness: { observedAt: "2026-10-02T08:00:00Z", targetSeconds: 300,
-          status: staleVolume ? "stale" : "current", oldestBacklogSeconds: staleVolume ? 301 : null,
-          replicaLagSeconds: null },
-        total: staleVolume ? null : dataset === "real" ? 2 : 1,
-        points: staleVolume ? [] : [{ date: from, count: dataset === "real" ? 2 : 1 }, { date: to, count: 0 }],
-      } });
     }
     return route.fulfill({ status: 404 });
   });
@@ -281,9 +256,8 @@ test("Review-only account enters its scoped queue and keeps datasets separate", 
   await expect(page.locator(".review-badge.priority-high")).toBeVisible();
   await page.getByRole("combobox", { name: /^Priority/ }).selectOption("high");
   await expect.poll(() => queueRequests.some((query) => query.includes("priority=high"))).toBe(true);
-  await expect(page.getByRole("tab", { name: "Analysis", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Analytics", exact: true })).toBeVisible();
   await expect(page.getByLabel("Dataset")).toHaveCount(0);
-  await expect(page.getByRole("img", { name: /Daily signed patient report count trend/ })).toHaveCount(0);
   expect(requestedDatasets[0]).toBe("real");
   expect(requestedDatasets.every((dataset) => dataset === "real")).toBe(true);
   await page.reload();

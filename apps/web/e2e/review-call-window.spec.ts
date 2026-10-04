@@ -134,13 +134,13 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   }
   await expect(sidebar.getByRole("tab")).toHaveText(["Actions", "Summary", "History"]);
   const reportItems = sidebar.getByRole("region", { name: "Review items on this report" });
-  const activeItem = reportItems.getByRole("button", { name: /^Timeline/ });
+  const activeItem = reportItems.getByRole("button", { name: "Select Timeline", exact: true });
   await expect(activeItem).toHaveAttribute("aria-current", "true");
-  await expect(activeItem.locator(".status-in-review")).toHaveText("In review");
+  await expect(activeItem.locator("..").locator(".status-in-review")).toHaveText("In review");
   await page.screenshot({ path: test.info().outputPath("queue.png") });
   await test.info().attach("Queue and findings", { path: test.info().outputPath("queue.png"), contentType: "image/png" });
-  await reportItems.getByRole("button", { name: /^Clinical assessment/ }).click();
-  await expect(reportItems.getByRole("button", { name: /^Clinical assessment/ })).toHaveAttribute("aria-current", "true");
+  await reportItems.getByRole("button", { name: "Select Clinical assessment", exact: true }).click();
+  await expect(reportItems.getByRole("button", { name: "Select Clinical assessment", exact: true })).toHaveAttribute("aria-current", "true");
   await activeItem.click();
   await expect(activeItem).toHaveAttribute("aria-current", "true");
   await sidebar.getByRole("tab", { name: "Summary", exact: true }).click();
@@ -189,6 +189,10 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await fullReport.getByRole("button", { name: /^Timeline/ }).click();
   await expect(fullReport.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
   const timelinePanel = fullReport.getByRole("complementary", { name: "Encounter timeline", exact: true });
+  await page.getByRole("tab", { name: "Analytics", exact: true }).click();
+  await expect(fullReport).toBeHidden();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await expect(timelinePanel).toBeVisible();
   await expect(timelinePanel).toHaveCSS("position", "fixed");
   await page.evaluate(() => window.scrollTo(0, 600));
   await expect.poll(async () => {
@@ -239,9 +243,9 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await expect(tooltip).not.toBeVisible();
   await sidebar.getByRole("tab", { name: "Actions", exact: true }).click();
   await expect(popup.getByRole("tab", { name: "Discussion", exact: true })).toHaveCount(0);
-  await popup.getByRole("combobox", { name: "Action", exact: true }).selectOption("finding");
-  await popup.getByRole("textbox", { name: "Document findings", exact: true }).fill("Timeline confirmed.");
-  await popup.getByRole("button", { name: "Save findings", exact: true }).click();
+  await popup.getByRole("combobox", { name: "Action", exact: true }).selectOption("comment");
+  await popup.getByRole("textbox", { name: "Comment", exact: true }).fill("Timeline confirmed.");
+  await popup.getByRole("button", { name: "Send comment", exact: true }).click();
   await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toHaveValue("");
   await popup.getByRole("combobox", { name: "Action", exact: true }).selectOption("comment");
   await popup.getByRole("textbox", { name: "Comment", exact: true }).fill("Discussed with clinician.");
@@ -276,7 +280,7 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await popup.getByRole("button", { name: "Assign reviewer", exact: true }).click();
   await expect.poll(() => assigneeId).toBe(nextReviewer);
   await expect(popup.getByRole("button", { name: "Start review", exact: true })).toHaveCount(0);
-  expect(comments.map((entry) => entry.kind)).toEqual(["finding", "comment", "comment"]);
+  expect(comments.map((entry) => entry.kind)).toEqual(["comment", "comment", "comment"]);
   await expect(popup.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("comment");
   await expect(popup.getByRole("textbox", { name: "Comment", exact: true })).toBeEnabled();
   assigneeId = reviewerId; status = "in-review";
@@ -287,13 +291,14 @@ for (const width of [390, 1440, 1920]) test(`queue rows open inline findings, su
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(sidebar.getByRole("combobox", { name: "Action", exact: true }).locator("option[value=complete]")).toHaveCount(1);
   await sidebar.getByRole("combobox", { name: "Action", exact: true }).selectOption("complete");
-  await expect(popup.getByRole("button", { name: "Complete item", exact: true })).toBeDisabled();
+  await expect(popup.getByRole("button", { name: "Close review", exact: true })).toBeDisabled();
   await sidebar.getByRole("combobox", { name: /^Outcome/ }).selectOption(outcomeId);
-  await popup.getByRole("textbox", { name: "Comment", exact: true }).fill("Final review confirmed.");
+  await popup.getByRole("textbox", { name: "Document findings", exact: true }).fill("Final review confirmed.");
   await popup.locator(".review-action-form").screenshot({ path: test.info().outputPath("outcome-action.png") });
-  await popup.getByRole("button", { name: "Complete item", exact: true }).click();
+  await popup.getByRole("button", { name: "Close review", exact: true }).click();
   await expect.poll(() => status).toBe("completed");
   expect(comments.at(-1)?.body).toBe("Final review confirmed.");
+  expect(comments.at(-1)?.kind).toBe("finding");
   await expect(popup.getByRole("combobox", { name: "Action", exact: true })).toHaveValue("comment");
   const results = await new AxeBuilder({ page: popup }).analyze();
   expect(results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""))).toEqual([]);

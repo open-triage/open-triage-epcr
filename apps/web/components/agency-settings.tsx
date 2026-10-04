@@ -4,6 +4,7 @@ import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
+import { DEFAULT_SYNTHETIC_RETENTION_HOURS } from "@open-triage/contracts";
 import React, { FormEvent, useCallback, useEffect, useState } from "react";
 import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { applyAgencyColors } from "../app/installation-settings";
@@ -19,6 +20,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
   return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
+    syntheticRetentionHours: settings.syntheticRetentionHours === undefined ? DEFAULT_SYNTHETIC_RETENTION_HOURS : settings.syntheticRetentionHours,
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
     appearance: { ...settings.appearance },
@@ -40,6 +42,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   const [draft, setDraft] = useState<UpdateAgencyMediaSettingsCommand | null>(null);
   const [allowanceMib, setAllowanceMib] = useState("50");
   const [imageLimitMib, setImageLimitMib] = useState("10");
+  const [retentionHours, setRetentionHours] = useState(String(DEFAULT_SYNTHETIC_RETENTION_HOURS));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -53,6 +56,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
       setDraft(editable(loaded));
       setAllowanceMib(String(loaded.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(loaded.imageMediaLimitBytes / MEBIBYTE));
+      setRetentionHours(loaded.syntheticRetentionHours === null ? "" : String(loaded.syntheticRetentionHours ?? DEFAULT_SYNTHETIC_RETENTION_HOURS));
     }).catch((reason: unknown) => {
       if (current) setError(language !== "en" ? t("settings.loadFailed") : reason instanceof Error ? reason.message : t("settings.loadFailed"));
     });
@@ -69,12 +73,16 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   const imageMib = Number(imageLimitMib);
   const validImageLimit = Number.isInteger(imageMib) && imageMib >= 1 && imageMib <= mib;
   const proposedImageBytes = validImageLimit ? imageMib * MEBIBYTE : 0;
+  const proposedRetentionHours = retentionHours.trim() === "" ? null : Number(retentionHours);
+  const validRetentionHours = proposedRetentionHours === null ||
+    (Number.isSafeInteger(proposedRetentionHours) && proposedRetentionHours > 0);
   const warning = validAllowance && showsStorageGrowthWarning(proposedBytes, settings?.defaultReportMediaAllowanceBytes);
   const complete = !!draft && draft.appearance.brandText.trim() && draft.appearance.helperText.trim() &&
     draft.appearance.pwaName.trim() && draft.appearance.pwaShortName.trim() &&
     draft.demographics.agencyUniqueStateId.trim() && draft.demographics.agencyNumber.trim() &&
     /^[0-9]{2}$/.test(draft.demographics.stateCode);
   const unchanged = !!settings && !!draft && JSON.stringify({ ...draft, expectedRevision: settings.revision,
+    syntheticRetentionHours: proposedRetentionHours,
     reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes }) === JSON.stringify(editable(settings));
 
   useUnsavedChanges(!!draft && !unchanged);
@@ -102,15 +110,17 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settings || !draft || !validAllowance || !validImageLimit || !complete || !canWrite) return;
+    if (!settings || !draft || !validAllowance || !validImageLimit || !validRetentionHours || !complete || !canWrite) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       const updated = await updateAgencyMediaSettings(csrfToken, { ...draft,
+        syntheticRetentionHours: proposedRetentionHours,
         expectedRevision: settings.revision, reportMediaAllowanceBytes: proposedBytes,
         imageMediaLimitBytes: proposedImageBytes });
       setSettings(updated); setDraft(editable(updated));
       setAllowanceMib(String(updated.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(updated.imageMediaLimitBytes / MEBIBYTE));
+      setRetentionHours(updated.syntheticRetentionHours === null ? "" : String(updated.syntheticRetentionHours ?? DEFAULT_SYNTHETIC_RETENTION_HOURS));
       setNotice(t("settings.saved", { version: updated.demographics.version }));
     } catch (reason) {
       setError(reason instanceof Error && /revision is stale/i.test(reason.message) ? t("settings.stale") :
@@ -153,6 +163,16 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
           <span>{t("settings.timeZoneHelp")}</span></label>
         <input id="agency-time-zone" value={draft.timeZone ?? ""} placeholder={resolveMessage(language, "admin.useDeviceTime")}
           onChange={(event) => setDraft((current) => current ? { ...current, timeZone: event.target.value || null } : current)} />
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{t("settings.demoRecords")}</legend>
+        <label htmlFor="synthetic-retention-hours"><strong>{t("settings.demoWipeHours")}</strong></label>
+        <input id="synthetic-retention-hours" name="syntheticRetentionHours" type="number" min="1" step="1"
+          value={retentionHours} aria-describedby="synthetic-retention-help" aria-invalid={!validRetentionHours}
+          onChange={(event) => setRetentionHours(event.target.value)} />
+        <small id="synthetic-retention-help">{t("settings.demoWipeHelp")}</small>
+        {!validRetentionHours && <p className="admin-error" role="alert">{t("settings.demoWipeInvalid")}</p>}
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
@@ -239,7 +259,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
       <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>
       {!canWrite && <p>{t("settings.readOnly")}</p>}
       {canWrite && <div className="form-actions"><button type="submit"
-        disabled={busy || !validAllowance || !validImageLimit || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
+        disabled={busy || !validAllowance || !validImageLimit || !validRetentionHours || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
     </form>}
   </section>;
 }

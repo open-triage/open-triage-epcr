@@ -4,6 +4,7 @@ import test from "node:test";
 import { UnauthorizedException } from "@nestjs/common";
 import {
   compileValidationRule,
+  compileMetric,
   compiledValidationBundleSha256,
   evaluateValidationBundle,
 } from "@open-triage/contracts";
@@ -173,5 +174,27 @@ test("the review language cannot compile database, history, or external-service 
       message: "Forbidden", source }, versionId, catalog);
     assert.equal(result.compiled, undefined);
     assert.ok(["syntax", "compatibility"].includes(result.diagnostics[0].code));
+  }
+});
+
+test("metric evidence is immutable but identifying dependencies are withheld from restricted review responses", async () => {
+  const catalog = { elements: [{ elementId: 'private-input', label: 'Restricted input', baseDatatype: 'decimal' }] };
+  const metric = compileMetric({ id: 'metric', name: 'Restricted metric', description: '', enabled: true, reviewEnabled: true,
+    unit: 'score', source: JSON.stringify({ operator: 'value', elementId: 'private-input', unit: 'score' }) }, versionId, catalog).compiled;
+  const rule = compileValidationRule({ id: ruleId, name: 'Availability', message: 'Missing input', enabled: true, severity: 'warning',
+    executionTargets: ['review'], primaryTargetElementId: 'private-input', source: 'require metricAvailable("metric")' }, versionId, catalog, [metric]).compiled;
+  const selected = { schemaVersion: 2, languageVersion: '2.0.0', validationVersionId: versionId, catalogReleaseId, rules: [rule], metrics: [metric] };
+  for (const identifying of [false, true]) {
+    const { manager, calls } = evaluatingManager();
+    const proxy = { query: (sql, parameters) => {
+      if (sql.includes('from validation.version')) return [{ id: versionId, compiled_bundle: selected, compiled_sha256: compiledValidationBundleSha256(selected) }];
+      if (sql.includes('from catalog.analytics_element_mapping')) return [];
+      return manager.query(sql, parameters);
+    } };
+    const result = await subject(proxy, async () => ({ organization: { id: organizationId }, user: { id: userId },
+      capabilities: ['review:self', ...(identifying ? ['review:identifying'] : [])] })).evaluate('session', reportId, { validationVersionId: versionId });
+    const stored = JSON.parse(calls.find(({ sql }) => sql.includes('insert into clinical.validation_review_evaluation')).parameters[7]);
+    assert.equal(stored[0].metricEvidence[0].state, 'missing');
+    assert.equal(result.findings[0].metricEvidence.length, identifying ? 1 : 0);
   }
 });

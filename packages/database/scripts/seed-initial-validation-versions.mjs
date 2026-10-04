@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
-import { compileValidationRule, compiledValidationBundleSha256 } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, compileMetricLibrary,
+  serializeValidationDefinition } from "@open-triage/contracts";
 import { readInstallDefinitions } from "./lib/install-definitions.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +31,7 @@ async function catalogFor(client, releaseId) {
   const codes = await client.query(`select o.element_id,o.code,o.code_system,o.display as label,coalesce(c.enabled,true) enabled
       from catalog.element_option o left join catalog.element_option_configuration c
         on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
-       and c.code_system=o.code_system and c.code=o.code where o.release_id=$1
+       and c.code_system=o.code_system and c.code=o.code where o.release_id=$1 and o.source_kind='inline'
       union all
       select vse.element_id,o.code,o.code_system,o.display,coalesce(c.enabled,true)
       from catalog.value_set_element vse join catalog.value_set_option o
@@ -53,7 +54,7 @@ async function catalogFor(client, releaseId) {
   };
 }
 
-async function seedTarget(client, target, importedRules) {
+async function seedTarget(client, target, definition) {
   const versionId = rolloutUuid("initial-validation-version", target.organization_id, target.catalog_release_id);
   const existing = await client.query(`select validation_version_id from app_identity.active_configuration_bundle
     where organization_id=$1`, [target.organization_id]);
@@ -68,26 +69,30 @@ async function seedTarget(client, target, importedRules) {
     union select element_id from validation.platform_element_source where catalog_release_id=$2`,
   [target.form_version_id, target.catalog_release_id]);
   const availableElements = new Set(available.rows.map(({ element_id }) => element_id));
-  const rules = importedRules.map((rule) => ({ ...rule,
+  const rules = definition.rules.map((rule) => ({ ...rule,
     id: rolloutUuid("initial-validation-rule", target.organization_id, target.catalog_release_id, rule.id) }));
+  const metrics = definition.metrics ?? [];
+  const library = compileMetricLibrary(metrics, versionId, catalog);
+  const metricError = library.diagnostics.find(({ severity }) => severity === "error");
+  if (metricError) throw new Error(`Initial metrics cannot compile: ${metricError.message}`);
   const compiledRules = [];
   for (const rule of rules) {
-    const compiled = compileValidationRule(rule, versionId, catalog);
+    const compiled = compileValidationRule(rule, versionId, catalog, library.metrics);
     if (!compiled.compiled) {
       if (rule.enabled) throw new Error(`Initial rule ${rule.name} cannot compile: ${compiled.diagnostics[0]?.message}`);
       continue;
     }
     const references = [compiled.compiled.primaryTarget.elementId, ...compiled.compiled.references.elementIds]
       .filter((elementId) => elementId !== "*");
-    const compatible = compiled.compiled.primaryTarget.elementId !== "*"
-      && references.every((elementId) => availableElements.has(elementId));
+    const compatible = references.every((elementId) => availableElements.has(elementId));
     rule.enabled = rule.enabled && compatible;
     compiled.compiled.enabled = rule.enabled;
     compiledRules.push(compiled.compiled);
   }
-  const compiledBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
-    catalogReleaseId: target.catalog_release_id, rules: compiledRules };
-  const sourceSha256 = sha256(JSON.stringify(rules));
+  const compiledBundle = { schemaVersion: metrics.length ? 2 : 1, languageVersion: metrics.length ? "2.0.0" : "1.0.0", validationVersionId: versionId,
+    catalogReleaseId: target.catalog_release_id, rules: compiledRules, ...(metrics.length ? { metrics: library.metrics } : {}) };
+  const source = serializeValidationDefinition(rules, metrics);
+  const sourceSha256 = sha256(JSON.stringify(source));
   const compiledSha256 = compiledValidationBundleSha256(compiledBundle);
   const nextVersion = Number((await client.query(`select coalesce(max(version),0)+1 next_version
     from validation.version where organization_id=$1`, [target.organization_id])).rows[0].next_version);
@@ -100,7 +105,7 @@ async function seedTarget(client, target, importedRules) {
      compiled_bundle,compiled_sha256,source_sha256,change_note,created_by,published_by,published_at)
     values ($1,$2,$3,$4,$5,'published',1,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$12,now())`,
   [versionId, target.organization_id, target.catalog_release_id, rules[0].id, nextVersion,
-    target.definition_name, JSON.stringify(rules), JSON.stringify(compiledBundle),
+    target.definition_name, JSON.stringify(source), JSON.stringify(compiledBundle),
     compiledSha256, sourceSha256, "Initial rollout from current Catalog, Form, and NEMSIS rules", target.actor_id]);
   await client.query(`insert into validation.change_event
     (organization_id,actor_id,action,destination_version_id,catalog_release_id,change_note,rule_changes,source_sha256,compiled_sha256)
@@ -151,7 +156,7 @@ export async function seedInitialValidationVersions({ databaseUrl = process.env.
       await client.query("begin isolation level serializable");
       try {
         await client.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${target.organization_id}`]);
-        outcomes.push(await seedTarget(client, { ...target, definition_name: definition.name }, definition.rules));
+        outcomes.push(await seedTarget(client, { ...target, definition_name: definition.name }, definition));
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");

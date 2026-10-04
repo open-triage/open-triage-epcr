@@ -19,6 +19,8 @@ implemented behavior.
 | [Localization](localization.md) | Feature specification | Defines agency-wide language and regional settings, versioned definition translations, and the first Swedish translation pass; parent issue [#559](https://github.com/open-triage/open-triage-epcr/issues/559) |
 | [User feedback](user-feedback.md) | Feature specification | Defines safe bug reporting, feature requests, diagnostics, retention, and human-approved AI review |
 | [Review and basic analytics](review.md) | Feature specification | Defines scoped review queues, overdue-draft follow-up, basic BI and CSV exports, and custom-element long-table analytics; parent issue [#642](https://github.com/open-triage/open-triage-epcr/issues/642) |
+| [Unified analytics workspace](unified-analytics-workspace.md) | Feature specification | Supersedes Review's analytics workspace presentation with one control rail and visualization; replaces the Review banner with a Review / Analytics selector while retaining the current app shell and Review workflow |
+| [Metric library](metric-library.md) | Feature specification | Adds continuous metrics above the Validation Rule library, shares one canonical JSON and version lifecycle, and exposes review-enabled metrics and Boolean rules in Analytics |
 
 When a PRD is replaced, keep it here as design history and add a prominent
 supersession note linking to its replacement. New PRDs should use lowercase,

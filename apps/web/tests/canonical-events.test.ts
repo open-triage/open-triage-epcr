@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
-import { shellStateToDraftMutations } from "../app/draft-report";
+import { encounterEvents, removeCanonicalEvent, repairRecreatedMedicationEvents, saveCanonicalEvent } from "../app/canonical-events";
+import { draftMutationDelta, encounterDocumentToDraftMutations, recoveryMutationBatches, shellStateToDraftMutations } from "../app/draft-report";
 import { ENCOUNTER_EXTENSION_KEY, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { EMPTY_VITALS, INITIAL_SHELL_STATE, bundledEncounterDefinition, transitionShell, type EncounterEvent } from "../app/standard-encounter";
@@ -9,6 +9,51 @@ import { EMPTY_VITALS, INITIAL_SHELL_STATE, bundledEncounterDefinition, transiti
 function patientGroups(document = INITIAL_SHELL_STATE.encounter.document) {
   return document.groups.filter(({ id }) => id.startsWith("ePatient") || id.startsWith("eHistory"));
 }
+
+test("editing a populated medication retains stored identities, extra fields, and other doses", () => {
+  let document = populateStationaryDemoData(INITIAL_SHELL_STATE.encounter.document);
+  const event = encounterEvents(document, bundledEncounterDefinition).find(({ medication }) => medication)!;
+  const doseGroup = document.groups.find(({ id }) => id === "eMedications.DosageGroup")!;
+  const dose = doseGroup.instances.find(({ parentInstanceId }) => parentInstanceId === event.id)!;
+  const otherDose = { ...dose, instanceId: "another-dose", elements: dose.elements.map((element) => ({ ...element,
+    values: element.values.map((value) => ({ ...value, occurrenceId: `another-${value.occurrenceId}` })) })) };
+  document = { ...document, groups: document.groups.map((group) => group === doseGroup
+    ? { ...group, instances: [otherDose, ...group.instances] } : group) };
+  const baseline = encounterDocumentToDraftMutations("report-1", document);
+  const edited = saveCanonicalEvent(document, { ...event,
+    medication: { ...event.medication!, medicationCode: "7052", label: "Morphine" } }, bundledEncounterDefinition);
+  const projected = encounterDocumentToDraftMutations("report-1", edited, baseline);
+  assert.deepEqual(projected.groups.map(({ id }) => id), baseline.groups.map(({ id }) => id));
+  assert.deepEqual(projected.occurrences.map(({ id }) => id), baseline.occurrences.map(({ id }) => id));
+  const before = document.groups.find(({ id }) => id === "eMedications.MedicationGroup")!.instances[0]!;
+  const after = edited.groups.find(({ id }) => id === "eMedications.MedicationGroup")!.instances[0]!;
+  for (const id of ["eMedications.02", "eMedications.08", "eMedications.09"])
+    assert.deepEqual(after.elements.find((element) => element.id === id), before.elements.find((element) => element.id === id));
+  assert.deepEqual(edited.groups.find(({ id }) => id === doseGroup.id)!.instances[0], otherDose);
+  assert.equal(encounterEvents(edited, bundledEncounterDefinition).find(({ id }) => id === event.id)!.medication!.medicationCode, "7052");
+  const batches = recoveryMutationBatches(draftMutationDelta(projected, baseline), baseline);
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0]!.demoAction, undefined);
+  assert.ok(batches[0]!.occurrences.every((occurrence) => !occurrence.tombstone && !occurrence.provenanceKind));
+});
+
+test("retry repairs a medication edit queued by the old dialog without losing the selection", () => {
+  let document = populateStationaryDemoData(INITIAL_SHELL_STATE.encounter.document);
+  const event = encounterEvents(document, bundledEncounterDefinition).find(({ medication }) => medication)!;
+  document = saveCanonicalEvent(document, { ...event, id: "other-medication" }, bundledEncounterDefinition);
+  const editedEvent = { ...event, medication: { ...event.medication!, medicationCode: "7052", label: "Morphine" } };
+  // The old dialog removed the subtree before regenerating its values and dose group.
+  const legacy = saveCanonicalEvent(removeCanonicalEvent(document, event.id), editedEvent, bundledEncounterDefinition);
+  const repaired = repairRecreatedMedicationEvents(legacy, document, bundledEncounterDefinition);
+  const expected = saveCanonicalEvent(document, editedEvent, bundledEncounterDefinition);
+  const baseline = encounterDocumentToDraftMutations("report-1", document);
+  const actualMutations = encounterDocumentToDraftMutations("report-1", repaired, baseline);
+  const expectedMutations = encounterDocumentToDraftMutations("report-1", expected, baseline);
+  const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
+  assert.deepEqual(actualMutations.groups.toSorted(byId), expectedMutations.groups.toSorted(byId));
+  assert.deepEqual(actualMutations.occurrences.toSorted(byId), expectedMutations.occurrences.toSorted(byId));
+  assert.strictEqual(repairRecreatedMedicationEvents(document, document, bundledEncounterDefinition), document);
+});
 
 test("quick capture preserves invalid times for correction rather than normalizing or rejecting the entry", () => {
   const event: EncounterEvent = { id: "invalid-clock", date: "2026-09-24", time: "99:99", kind: "care",

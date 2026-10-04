@@ -15,7 +15,8 @@ export async function readCatalogLocalizationSeed(file, catalog) {
   const seed = JSON.parse(source);
   if (!record(seed) || seed.schemaVersion !== 1 || seed.language !== "sv" ||
       !record(seed.catalog) || !record(seed.validationRules) ||
-      !keysOnly(seed, ["schemaVersion", "language", "catalog", "validationRules"]) ||
+      !keysOnly(seed, ["schemaVersion", "language", "catalog", "validationRules", "validationMetrics"]) ||
+      (seed.validationMetrics !== undefined && !record(seed.validationMetrics)) ||
       !keysOnly(seed.catalog, ["elements", "groups", "codeLists", "specialChoices"]) ||
       !record(seed.catalog.elements) || !record(seed.catalog.groups) ||
       !record(seed.catalog.codeLists) || !record(seed.catalog.specialChoices))

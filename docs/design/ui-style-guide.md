@@ -30,7 +30,7 @@ the current task. Existing inconsistencies are not precedents to copy.
   editors as long pages because they are rarely used. Apply the shared control,
   mobile-width, draft protection, and accessibility rules to them. Large
   directories still use bounded lists. Review settings also use one long page
-  under Admin, with no task tab selector; Analysis navigation is temporarily hidden.
+  under Admin, with no task tab selector. Review uses a Review / Analytics selector.
 - Keep all clinical record sections together in one bounded scrolling panel
   on desktop. Use a compact section selector on mobile, preserving section
   error counts and access to signing.
@@ -78,6 +78,9 @@ row actions.
 - Validation rule library exception agreed 2026-10-03: omit the Edit button and
   Actions column. The row opens the editor directly; make it focusable, named,
   and operable with Enter and Space, while keeping tooltip interaction independent.
+- Analytics selector exception agreed 2026-10-04: omit Select buttons and the
+  Actions column. Make each choice row focusable, named, and operable with Enter
+  and Space. Value lists retain their checkboxes and whole-row toggling.
 - Reuse `ListRowAction` for a list item with a separate action button, or
   `activateListRow` with a named native action in a table row. Both keep
   embedded controls independent of the row action.

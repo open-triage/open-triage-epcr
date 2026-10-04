@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
+import { compileMetricLibrary, compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle } from "@open-triage/contracts";
 import { encounterDocumentDiagnostics } from "../app/encounter-document";
 import { encounterEvents } from "../app/canonical-events";
 import { DEMO_PROVENANCE_ATTRIBUTE, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "../app/demo-provenance";
@@ -125,17 +125,26 @@ test("the populated report satisfies all enabled canonical NEMSIS validation rul
   const catalog = JSON.parse(readFileSync(new URL("../../../defines/catalog/catalog_nemsis-3.5.1.json", import.meta.url), "utf8"));
   const validation = JSON.parse(readFileSync(new URL("../../../defines/validation/validation_nemsis-full.json", import.meta.url), "utf8"));
   const compileCatalog = {
+    codes: catalog.elements.flatMap((element: any) => [
+      ...(element.valueSource.values ?? []).map((value: any) => ({ elementId: element.id,
+        code: value.code, label: value.label, codeSystem: "" })),
+      ...catalog.bundledLists.filter((list: any) => element.valueSource.bundledListIds?.includes(list.id))
+        .flatMap((list: any) => list.values.map((value: any) => ({ elementId: element.id,
+          code: value.code, label: value.label, codeSystem: value.codeSystem }))),
+    ]),
     elements: catalog.elements.map((element: any) => ({ elementId: element.id, label: element.name,
       baseDatatype: element.datatype.base, groupPath: element.groupPath, intrinsicOccurrence: element.occurrence })),
     groups: catalog.groups.map((group: any) => ({ groupId: group.id, label: group.name, repeating: group.repeating,
       ...(group.parentId ? { parentGroupId: group.parentId } : {}), intrinsicOccurrence: group.occurrence })),
   };
+  const library = compileMetricLibrary(validation.metrics, "demo-validation", compileCatalog);
+  assert.deepEqual(library.diagnostics, []);
   const rules = validation.rules.filter((rule: any) => rule.enabled).map((rule: any) => {
-    const result = compileValidationRule(rule, "demo-validation", compileCatalog);
+    const result = compileValidationRule(rule, "demo-validation", compileCatalog, library.metrics);
     assert.deepEqual(result.diagnostics, [], rule.name);
     return result.compiled!;
   });
-  const bundle = { schemaVersion: 1 as const, languageVersion: "1.0.0" as const, validationVersionId: "demo-validation",
+  const bundle = { schemaVersion: 2 as const, languageVersion: "2.0.0" as const, metrics: library.metrics, validationVersionId: "demo-validation",
     catalogReleaseId: "nemsis-3.5.1", rules };
   const clinicalForm: ClinicalFormConfiguration = {
     definition: { schemaVersion: 1, sections: [{ key: "all", fields: catalog.elements

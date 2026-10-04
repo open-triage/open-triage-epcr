@@ -7,13 +7,13 @@ User stories covered: US-3, US-4, US-5, US-8, US-9, US-45, US-48, US-49, US-50, 
 
 ## What to build
 
-Deliver the first real BI visualization: report counts over a selected period from existing signed analytics views, with own/all scope, real/synthetic selection, and visible freshness. Establish the small validated analysis/result contract later measures and exports will reuse.
+Support report counts over a selected period from existing signed analytics views, with own/all scope, authorized real/synthetic separation, and visible freshness. The [Unified analytics workspace PRD](../../prds/unified-analytics-workspace.md) defines the current interface and Records metric.
 
 Deliver the persistence/contracts, authorized API behavior, UI or operational integration, and behavioral tests needed for this specific journey. Follow the parent PRD's organization scope, identifying restrictions, real/synthetic separation, current UI/localization conventions, immutable clinical history, and basic-BI boundary. Apply relevant repository instructions and skills during implementation.
 
 ## Acceptance criteria
 
-- [ ] The user can view a report-volume trend in Review with a date filter and one time grouping; all eligible signed reports are included regardless of review assignment or criterion match.
+- [ ] The user can view the Records metric in Analytics with date filters and time grouping; all eligible signed reports are included regardless of review assignment or criterion match.
 - [ ] Multiple patient reports in one incident count separately, and the interface identifies the counting unit.
 - [ ] Backend queries enforce organization, documenting-user, dataset, and identifying rules using suitable scoped metadata and explicit least-privilege analytical access; private projections are not made generally accessible.
 - [ ] The existing projector populates any required stable scope/dataset metadata with effective amendment lineage, including replay of existing reports where necessary.

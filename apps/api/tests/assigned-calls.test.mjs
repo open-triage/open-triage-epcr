@@ -354,70 +354,74 @@ test("opening and retrying one assignment creates one draft without an automatic
   assert.deepEqual(isolations, ["REPEATABLE READ", "REPEATABLE READ"]);
 });
 
-test("Clinical Demo generation ignores ordinary calls, creates once, reuses per user and unit, and audits safe facts", async () => {
-  const unitId = "32000000-0000-4000-8000-000000000010";
-  let generated;
-  const audits = [];
-  const writes = [];
-  const manager = { query: async (sql, parameters) => {
-    const normalized = sql.replace(/\s+/g, " ");
-    if (normalized.includes("pg_advisory_xact_lock")) return [];
-    if (normalized.includes("from app_identity.unit_clinician") && normalized.includes("ou.id = $3")) return [{
-      id: unitId, call_sign: "Medic 32", name: "Medic 32", agency_time_zone: "America/New_York"
-    }];
-    if (normalized.includes("from clinical.call_assignment ca") && normalized.includes("synthetic_generated_by")) {
-      assert.match(normalized, /ca\.synthetic and ca\.status = 'assigned'/);
-      return generated ? [generated] : [];
-    }
-    if (normalized.includes("insert into clinical.dispatch_receipt")) { writes.push("receipt"); return []; }
-    if (normalized.includes("insert into clinical.incident")) { writes.push("incident"); return []; }
-    if (normalized.includes("insert into clinical.call_assignment")) {
-      writes.push("assignment");
-      assert.match(normalized, /synthetic_generated_by/);
-      const expiresAt = new Date(Date.parse(parameters[5]) + 24 * 60 * 60 * 1_000).toISOString();
-      generated = {
-        id: parameters[0], call_number: parameters[4], unit_id: parameters[2], call_sign: "Medic 32",
-        dispatched_at: parameters[5], dispatch_reason: parameters[6], dispatch_priority_code: "2305003",
-        dispatch_priority_display: "Emergent", chief_complaint: null, agency_time_zone: "America/New_York",
-        expires_at: expiresAt, status: "assigned"
-      };
-      return [{ created_at: parameters[5], expires_at: expiresAt }];
-    }
-    if (normalized.includes("insert into clinical_audit.synthetic_generation_event")) {
-      audits.push(parameters);
-      return [];
-    }
-    if (normalized.includes("customGroupDefinitions")) return [];
-    throw new Error(`Unexpected SQL: ${normalized}`);
-  } };
-  const sessions = {
-    assertCsrf: async (token, csrf) => {
-      assert.equal(token, session.accessToken);
-      assert.equal(csrf, "csrf-token");
-    },
-    requireCapability: async (token, capability) => {
-      assert.equal(token, session.accessToken);
-      assert.ok(["clinical:document", "clinical:demo"].includes(capability));
-      return session;
-    }
-  };
-  const service = new AssignedCallsService(transactional(manager), sessions);
-  const now = new Date("2026-09-03T12:00:00.000Z");
+for (const expiresAt of ["2026-09-09T12:00:00.000Z", null]) {
+  test(`Clinical Demo generation creates and reuses calls with expiry ${expiresAt}`, async () => {
+    const unitId = "32000000-0000-4000-8000-000000000010";
+    let generated;
+    const audits = [];
+    const writes = [];
+    const manager = { query: async (sql, parameters) => {
+      const normalized = sql.replace(/\s+/g, " ");
+      if (normalized.includes("pg_advisory_xact_lock")) return [];
+      if (normalized.includes("from app_identity.unit_clinician") && normalized.includes("ou.id = $3")) return [{
+        id: unitId, call_sign: "Medic 32", name: "Medic 32", agency_time_zone: "America/New_York"
+      }];
+      if (normalized.includes("from clinical.call_assignment ca") && normalized.includes("synthetic_generated_by")) {
+        assert.match(normalized, /ca\.synthetic and ca\.status = 'assigned'/);
+        assert.match(normalized, /ca\.expires_at is null or ca\.expires_at > \$4/);
+        return generated ? [generated] : [];
+      }
+      if (normalized.includes("insert into clinical.dispatch_receipt")) { writes.push("receipt"); return []; }
+      if (normalized.includes("insert into clinical.incident")) { writes.push("incident"); return []; }
+      if (normalized.includes("insert into clinical.call_assignment")) {
+        writes.push("assignment");
+        assert.match(normalized, /synthetic_generated_by/);
+        generated = {
+          id: parameters[0], call_number: parameters[4], unit_id: parameters[2], call_sign: "Medic 32",
+          dispatched_at: parameters[5], dispatch_reason: parameters[6], dispatch_priority_code: "2305003",
+          dispatch_priority_display: "Emergent", chief_complaint: null, agency_time_zone: "America/New_York",
+          expires_at: expiresAt, status: "assigned"
+        };
+        return [{ created_at: parameters[5], expires_at: expiresAt }];
+      }
+      if (normalized.includes("insert into clinical_audit.synthetic_generation_event")) {
+        audits.push(parameters);
+        return [];
+      }
+      if (normalized.includes("customGroupDefinitions")) return [];
+      throw new Error(`Unexpected SQL: ${normalized}`);
+    } };
+    const sessions = {
+      assertCsrf: async (token, csrf) => {
+        assert.equal(token, session.accessToken);
+        assert.equal(csrf, "csrf-token");
+      },
+      requireCapability: async (token, capability) => {
+        assert.equal(token, session.accessToken);
+        assert.ok(["clinical:document", "clinical:demo"].includes(capability));
+        return session;
+      }
+    };
+    const service = new AssignedCallsService(transactional(manager), sessions);
+    const now = new Date("2026-09-03T12:00:00.000Z");
 
-  const created = await service.generateSynthetic(session.accessToken, "csrf-token", unitId, now);
-  const reused = await service.generateSynthetic(session.accessToken, "csrf-token", unitId, now);
+    const created = await service.generateSynthetic(session.accessToken, "csrf-token", unitId, now);
+    const reused = await service.generateSynthetic(session.accessToken, "csrf-token", unitId, now);
 
-  assert.equal(created.reused, false);
-  assert.equal(reused.reused, true);
-  assert.equal(reused.assignment.id, created.assignment.id);
-  assert.match(created.assignment.callNumber, /^DEMO-20260903-[0-9A-F]{8}$/);
-  assert.deepEqual(writes, ["receipt", "incident", "assignment"]);
-  assert.deepEqual(audits.map((parameters) => parameters.slice(0, 5)), [
-    [session.organization.id, session.user.id, unitId, created.assignment.id, "synthetic_call.generate"],
-    [session.organization.id, session.user.id, unitId, created.assignment.id, "synthetic_call.reuse"]
-  ]);
-  assert.equal(JSON.stringify(audits).includes("patient"), false);
-});
+    assert.equal(created.reused, false);
+    assert.equal(created.assignment.expiresAt, expiresAt ?? undefined);
+    assert.equal(reused.assignment.expiresAt, expiresAt ?? undefined);
+    assert.equal(reused.reused, true);
+    assert.equal(reused.assignment.id, created.assignment.id);
+    assert.match(created.assignment.callNumber, /^DEMO-20260903-[0-9A-F]{8}$/);
+    assert.deepEqual(writes, ["receipt", "incident", "assignment"]);
+    assert.deepEqual(audits.map((parameters) => parameters.slice(0, 5)), [
+      [session.organization.id, session.user.id, unitId, created.assignment.id, "synthetic_call.generate"],
+      [session.organization.id, session.user.id, unitId, created.assignment.id, "synthetic_call.reuse"]
+    ]);
+    assert.equal(JSON.stringify(audits).includes("patient"), false);
+  });
+}
 
 test("generation rejects missing current Clinical Demo authority before any database mutation", async () => {
   let queried = false;

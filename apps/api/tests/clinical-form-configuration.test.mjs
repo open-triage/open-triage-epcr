@@ -59,6 +59,7 @@ test("report configuration verifies the pinned artifact and includes enabled liv
   const manager = { query: async (sql) => {
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: digest }];
+    if (sql.includes("from catalog.element_definition") || sql.includes("from catalog.value_set_element")) return [];
     if (sql.includes("from catalog.group_definition")) return [];
     if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);

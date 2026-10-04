@@ -266,7 +266,11 @@ export class AssignedCallsService {
   }
 
   async generateSynthetic(accessToken: string, csrfToken: string | undefined, unitId: string,
-    now = new Date()): Promise<GenerateSyntheticCallResponse> {
+    now = new Date(), options: { dispatchedAt?: Date; random?: () => number } = {}): Promise<GenerateSyntheticCallResponse> {
+    const dispatchedAt = options.dispatchedAt ?? now;
+    if (!Number.isFinite(dispatchedAt.getTime()) || dispatchedAt > now) {
+      throw new UnprocessableEntityException("Synthetic dispatch time must be a valid time at or before now");
+    }
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
@@ -302,7 +306,7 @@ export class AssignedCallsService {
           left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
           where ca.organization_id = $1 and ca.synthetic_generated_by = $2
             and ca.unit_id = $3 and ca.synthetic and ca.status = 'assigned'
-            and ca.expires_at > $4
+            and (ca.expires_at is null or ca.expires_at > $4)
           limit 1
         `, [session.organization.id, session.user.id, unit.id, now]);
         if (existing[0]) {
@@ -315,7 +319,8 @@ export class AssignedCallsService {
           organizationId: session.organization.id,
           userId: session.user.id,
           unit,
-          now,
+          dispatchedAt,
+          random: options.random,
         });
         await this.auditSyntheticGeneration(manager, session.organization.id, session.user.id,
           unit.id, assignment.id, "synthetic_call.generate", now);
@@ -431,15 +436,16 @@ export class AssignedCallsService {
     organizationId: string;
     userId: string;
     unit: EligibleUnitRow;
-    now: Date;
+    dispatchedAt: Date;
+    random?: () => number;
   }): Promise<AssignedCall> {
-    const callNumber = `DEMO-${input.now.toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const callNumber = `DEMO-${input.dispatchedAt.toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
     const incidentId = randomUUID();
     const assignmentId = randomUUID();
     const receiptId = randomUUID();
     const sourceRecordId = `SYNTHETIC-GENERATED-${randomUUID()}`;
     const payload = syntheticReplacementPayload(
-      randomSyntheticDispatchPayload(), callNumber, input.now, randomUUID(), sourceRecordId,
+      randomSyntheticDispatchPayload(input.random), callNumber, input.dispatchedAt, randomUUID(), sourceRecordId,
     );
     await manager.query(`
       insert into clinical.dispatch_receipt
@@ -463,11 +469,11 @@ export class AssignedCallsService {
       fixture: "open-triage-synthetic-assignment-v1",
       synthetic: true,
       callNumber,
-      dispatchedAt: input.now.toISOString()
+      dispatchedAt: input.dispatchedAt.toISOString()
     })]);
     const inserted = mutationRows<{
       created_at: Date | string;
-      expires_at: Date | string;
+      expires_at: Date | string | null;
     }>(await manager.query(`
       insert into clinical.call_assignment
         (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
@@ -478,7 +484,7 @@ export class AssignedCallsService {
               'assigned', true, $12)
       returning created_at, expires_at
     `, [assignmentId, input.organizationId, input.unit.id, incidentId, callNumber,
-      input.now.toISOString(), generatedDispatchReason, payload.sourceRecordId,
+      input.dispatchedAt.toISOString(), generatedDispatchReason, payload.sourceRecordId,
       scalarPayloadValue(payload, "eResponse.04"),
       scalarPayloadValue(payload, "eResponse.13"), receiptId, input.userId]));
     if (!inserted[0]) throw new Error("Synthetic assignment lifecycle was not returned");
@@ -487,7 +493,7 @@ export class AssignedCallsService {
       call_number: callNumber,
       unit_id: input.unit.id,
       call_sign: input.unit.call_sign,
-      dispatched_at: input.now,
+      dispatched_at: input.dispatchedAt,
       dispatch_reason: generatedDispatchReason,
       dispatch_priority_code: priorityCode,
       dispatch_priority_display: priorityDisplay,

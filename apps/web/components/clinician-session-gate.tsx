@@ -532,7 +532,7 @@ export function ClinicianSessionGate({ children }: {
       } }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online}
         reviewSettingsSection={adminReviewSettingsSection} />}
-      {presentationMode === "review" && !activeReport && <ReviewShell session={session} language={language}
+      {presentationMode === "review" && !activeReport && <ReviewShell key={`${session.user.id}:${session.organization.id}:${[...(session.capabilities ?? [])].sort().join(",")}`} session={session} language={language}
         online={online} attention={reviewAttention?.dataset === reviewAttentionDataset ? reviewAttention : null}
         onAttentionRefresh={refreshReviewAttention} onOpenSettings={(section) => {
           if (selectPresentationMode("admin")) setAdminReviewSettingsSection(section);
