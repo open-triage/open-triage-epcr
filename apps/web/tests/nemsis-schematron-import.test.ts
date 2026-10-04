@@ -81,15 +81,17 @@ test("the pinned official EMS corpus is completely accounted for with immutable 
     }
   }
   assert.ok(contextRules > 100, "all element-context assertions are covered");
-  const sweden = JSON.parse(readFileSync(resolve(process.cwd(),
-    "../../defines/validation/validation_sweden.json"), "utf8")) as { rules: Array<{
-      source: string; message: string; name: string; provenance?: Array<{ sourceIdentity: string }> }> };
+  const validation = JSON.parse(readFileSync(resolve(process.cwd(),
+    "../../defines/validation/validation_nemsis-full.json"), "utf8")) as { rules: Array<{
+      sourceKind: string; source: string; message: string; name: string; provenance?: Array<{ sourceIdentity: string }> }> };
   const importedByIdentity = new Map(imported.rules.flatMap((importedRule) => importedRule.provenance
     .map(({ sourceIdentity }) => [sourceIdentity, importedRule] as const)));
-  for (const seeded of sweden.rules) {
+  const seededNemsisRules = validation.rules.filter(({ sourceKind }) => sourceKind === "nemsis");
+  assert.equal(seededNemsisRules.length, imported.rules.length);
+  for (const seeded of seededNemsisRules) {
     const sourceIdentity = seeded.provenance?.[0]?.sourceIdentity;
     const importedRule = sourceIdentity ? importedByIdentity.get(sourceIdentity) : undefined;
-    if (!importedRule) continue;
+    assert.ok(importedRule, `${seeded.name} retains its imported source identity`);
     assert.deepEqual({ source: seeded.source, message: seeded.message, name: seeded.name },
       { source: importedRule.source, message: importedRule.message, name: importedRule.name },
       `${sourceIdentity} stays synchronized with the shared import`);

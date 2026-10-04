@@ -2,16 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { validationOccurrenceScope } from "@open-triage/contracts/validation-group-scope";
-import { compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle,
+import { compileMetricLibrary, compileValidationRule, compiledValidationBundleSha256, evaluateValidationBundle,
   evaluateValidationBundleSafely, minimumRuleCoversRequirement } from "@open-triage/contracts";
 
+import { canonicalValidationCatalog } from "./helpers/canonical-validation-catalog.mjs";
+
 const catalogDefinition = JSON.parse(await readFile(new URL("../../../defines/catalog/catalog_nemsis-3.5.1.json", import.meta.url)));
-const catalog = {
-  elements: catalogDefinition.elements.map((element) => ({ elementId: element.id, label: element.name,
-    baseDatatype: element.datatype.base, groupPath: element.groupPath, intrinsicOccurrence: element.occurrence })),
-  groups: catalogDefinition.groups.map((group) => ({ groupId: group.id, label: group.name, repeating: group.repeating,
-    parentGroupId: group.parentId, intrinsicOccurrence: group.occurrence })),
-};
+const catalog = canonicalValidationCatalog(catalogDefinition);
 const context = { timestamp: "2026-10-03T00:00:00Z" };
 const groupDefinitions = new Map(catalog.groups.map((group) => [group.groupId, group]));
 const scopeFor = (elementId) => validationOccurrenceScope(
@@ -60,37 +57,43 @@ test("foreach skips assertion and applicability evaluation when any named group 
   }
 });
 
-for (const key of ["nemsis-full", "sweden"]) {
-  test(`${key}: every generated catalog bound respects required and optional group ancestry`, async () => {
-    const definition = JSON.parse(await readFile(new URL(`../../../defines/validation/validation_${key}.json`, import.meta.url)));
-    const sources = definition.rules.filter((rule) => rule.sourceKind === "catalog");
-    assert.ok(sources.length > 300);
-    for (const source of sources) {
-      const rule = compile(source);
-      assert.deepEqual(rule.scope, { groupId: scopeFor(source.primaryTargetElementId), iteration: "each" }, source.name);
-    }
-    const reportRules = sources.filter((rule) => rule.enabled && rule.primaryTargetElementId.startsWith("e"));
-    const installed = bundleOf(definition.rules.filter((rule) => rule.enabled).map(compile));
-    for (const target of targets) {
-      assert.deepEqual(evaluateValidationBundleSafely(installed, { groups: [] }, target, context), { findings: [], failures: [] },
-        "the complete installed rule set does not require data in absent groups");
-    }
-    const current = bundleOf(reportRules.map(compile));
-    // Simulate published artifacts from before singleton-group scopes were added.
-    const legacy = bundleOf(reportRules.map((source) => compile({ ...source,
-      source: source.source.replace(/^for each\("[^"]+"\)\n/, "") })));
-    for (const bundle of [current, legacy]) {
-      const hash = compiledValidationBundleSha256(bundle);
-      for (const groups of [[], [{ id: "unrelated", instances: [{ instanceId: "unrelated", elements: [] }] }],
-        catalog.groups.map(({ groupId }) => ({ id: groupId, instances: [] }))]) {
-        for (const target of targets) {
-          assert.deepEqual(evaluateValidationBundleSafely(bundle, { groups }, target, context), { findings: [], failures: [] });
-        }
+test("every generated NEMSIS catalog bound respects required and optional group ancestry", async () => {
+  const definition = JSON.parse(await readFile(new URL("../../../defines/validation/validation_nemsis-full.json", import.meta.url)));
+  const sources = definition.rules.filter((rule) => rule.sourceKind === "catalog");
+  assert.ok(sources.length > 300);
+  for (const source of sources) {
+    // Inspect generated scope even for demographic rules awaiting report-field mappings.
+    const rule = compile({ ...source, unresolved: [] });
+    assert.deepEqual(rule.scope, { groupId: scopeFor(source.primaryTargetElementId), iteration: "each" }, source.name);
+  }
+  const reportRules = sources.filter((rule) => rule.enabled && rule.primaryTargetElementId.startsWith("e"));
+  const library = compileMetricLibrary(definition.metrics ?? [], "test", catalog);
+  assert.deepEqual(library.diagnostics, []);
+  const installed = { ...bundleOf([]), schemaVersion: 2, languageVersion: "2.0.0", metrics: library.metrics,
+    rules: definition.rules.filter(rule => rule.enabled).map(source => {
+      const result = compileValidationRule(source, "test", catalog, library.metrics);
+      assert.ok(result.compiled, JSON.stringify(result.diagnostics));
+      return result.compiled;
+    }) };
+  for (const target of targets) {
+    assert.deepEqual(evaluateValidationBundleSafely(installed, { groups: [] }, target, context), { findings: [], failures: [] },
+      "the complete installed rule set does not require data in absent groups");
+  }
+  const current = bundleOf(reportRules.map(compile));
+  // Simulate published artifacts from before singleton-group scopes were added.
+  const legacy = bundleOf(reportRules.map((source) => compile({ ...source,
+    source: source.source.replace(/^for each\("[^"]+"\)\n/, "") })));
+  for (const bundle of [current, legacy]) {
+    const hash = compiledValidationBundleSha256(bundle);
+    for (const groups of [[], [{ id: "unrelated", instances: [{ instanceId: "unrelated", elements: [] }] }],
+      catalog.groups.map(({ groupId }) => ({ id: groupId, instances: [] }))]) {
+      for (const target of targets) {
+        assert.deepEqual(evaluateValidationBundleSafely(bundle, { groups }, target, context), { findings: [], failures: [] });
       }
-      assert.equal(compiledValidationBundleSha256(bundle), hash, "evaluation preserves pinned artifact integrity");
     }
-  });
-}
+    assert.equal(compiledValidationBundleSha256(bundle), hash, "evaluation preserves pinned artifact integrity");
+  }
+});
 
 test("required singleton children are required as soon as their containing row exists", () => {
   for (const elementId of ["eVitals.06", "eMedications.05", "ePatient.15", "eResponse.03"]) {

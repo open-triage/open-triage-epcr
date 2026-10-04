@@ -1,3 +1,4 @@
+import { readValidationDefinition, serializeValidationDefinition } from "@open-triage/contracts";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -70,7 +71,7 @@ export class CanonicalPackageService {
   private async normalize(token: string, kind: DefinitionKind, input: unknown, targetCatalogId?: unknown) {
     const raw = input as Record<string, unknown> | undefined;
     const portable = raw?.format === "opentriage-definition" ? parsePackage(raw, kind, { ignoreVersion: true }) : null;
-    if (!portable && (!raw || raw.schemaVersion !== 1))
+    if (!portable && (!raw || !(raw.schemaVersion === 1 || kind === "validation" && raw.schemaVersion === 2)))
       throw new UnprocessableEntityException("Unsupported canonical schema version");
     const available = await this.catalogs.versions(token);
     if (!available.length) throw new UnprocessableEntityException("Import a catalog before importing forms or validation rules");
@@ -98,8 +99,21 @@ export class CanonicalPackageService {
     selected ??= available.find(({ status }) => status === "active") ?? available[0]!;
     const name = portable?.name ?? raw!.name;
     if (typeof name !== "string" || !name.trim()) throw new UnprocessableEntityException("Canonical name is required");
+    let definition = portable?.definition;
+    if (!portable) {
+      if (kind === "form") definition = { schemaVersion: 1, ...(raw!.definition as object) };
+      else {
+        try {
+          const imported = readValidationDefinition(structuredClone(raw!.schemaVersion === 2 ? raw : raw!.rules));
+          const { applyFormValidationLocalization } = await import("../../../../packages/database/scripts/lib/form-validation-localization.mjs");
+          await applyFormValidationLocalization(localDefinitionsRoot(), { key: raw!.key ?? name }, imported,
+            { missingOnly: true, allowUnmatched: true });
+          definition = serializeValidationDefinition(imported.rules, imported.metrics);
+        } catch { throw new UnprocessableEntityException("Unsupported Validation definition"); }
+      }
+    }
     return makePackage({ kind, name, version: "", catalog: { sha256: await this.fingerprint(token, selected.id) },
-      definition: portable?.definition ?? (kind === "form" ? { schemaVersion: 1, ...(raw!.definition as object) } : raw!.rules) });
+      definition });
   }
 
   async export(token: string, value: string, id: string) {
@@ -122,7 +136,7 @@ export class CanonicalPackageService {
       if (!rows[0]) throw new UnprocessableEntityException("Published definition is unavailable");
       name = rows[0].display_name; version = String(rows[0].version); catalogId = rows[0].catalog_release_id;
       definition = rows[0].definition;
-      if (kind === "validation" && !Array.isArray(definition)) definition = [definition];
+      if (kind === "validation" && !Array.isArray(definition) && (definition as { schemaVersion?: number }).schemaVersion !== 2) definition = [definition];
     }
     return makePackage({ kind, name, version, catalog: { sha256: await this.fingerprint(token, catalogId) }, definition });
   }
@@ -183,12 +197,13 @@ export class CanonicalPackageService {
       const saved = await this.forms.save(token, draft.id, { expectedRevision: draft.revision, displayName: p.name, definition: p.definition });
       published = await this.forms.publish(token, saved.id, { expectedRevision: saved.revision, definitionSha256: saved.definitionSha256, displayName: p.name, changeNote });
     } else {
-      if (!Array.isArray(p.definition)) throw new UnprocessableEntityException("Validation definition must contain rules");
+      let imported;
+      try { imported = readValidationDefinition(p.definition); } catch { throw new UnprocessableEntityException("Unsupported Validation definition"); }
       // Portable rule IDs belong to the source agency. Allocate destination identities
       // inside the import transaction without changing provenance or rule content.
-      const rules = p.definition.map((rule) => ({ ...rule, id: randomUUID() }));
-      const draft = await this.validations.create(token, { catalogReleaseId, displayName: p.name }, { importedRules: rules });
-      const saved = await this.validations.save(token, draft.id, { expectedRevision: draft.revision, displayName: p.name, rules: draft.rules });
+      const rules = imported.rules.map((rule) => ({ ...rule, id: randomUUID() }));
+      const draft = await this.validations.create(token, { catalogReleaseId, displayName: p.name }, { importedRules: rules, importedMetrics: imported.metrics });
+      const saved = await this.validations.save(token, draft.id, { expectedRevision: draft.revision, displayName: p.name, rules: draft.rules, metrics: draft.metrics });
       published = await this.validations.publish(token, saved.id, { expectedRevision: saved.revision, displayName: p.name, changeNote });
     }
     return published;

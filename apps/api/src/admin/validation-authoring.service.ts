@@ -2,9 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import {
-  compileValidationRule,
+  compileValidationRule, compileMetricLibrary, readValidationDefinition, serializeValidationDefinition,
+  type MetricSource, type ValidationDefinition,
   validationRuleWordingStatuses,
   validationRuleValidity,
+  reviewPriorityOfRule,
   compiledValidationBundleSha256,
   evaluateValidationBundle,
   explainValidationRule,
@@ -38,7 +40,7 @@ import { releaseCustomDefinitions } from "./custom-definition-version.js";
 type VersionRow = {
   id: string; organization_id: string; catalog_release_id: string; rule_id: string;
   cloned_from_id: string | null;
-  revision: number; display_name: string; source_rule: ValidationRuleSource | ValidationRuleSource[];
+  revision: number; display_name: string; source_rule: ValidationRuleSource | ValidationRuleSource[] | ValidationDefinition;
   status: "draft" | "published"; version: number | null; compiled_bundle: CompiledValidationBundle | null;
   source_sha256: string | null; compiled_sha256: string | null; created_at: Date | string;
   updated_at: Date | string; published_at: Date | string | null;
@@ -83,9 +85,9 @@ function uuidText(value: unknown, name: string): string {
 }
 
 function draft(row: VersionRow, diagnostics?: ValidationDiagnostic[]): ValidationDraft {
-  const rules = Array.isArray(row.source_rule) ? row.source_rule : [row.source_rule];
+  const { rules, metrics } = readValidationDefinition(row.source_rule);
   return { id: row.id, catalogReleaseId: row.catalog_release_id, clonedFromId: row.cloned_from_id ?? null,
-    revision: Number(row.revision), displayName: row.display_name, rules,
+    revision: Number(row.revision), displayName: row.display_name, rules, metrics,
     ...(diagnostics ? { diagnostics } : {}), updatedAt: new Date(row.updated_at).toISOString() };
 }
 
@@ -221,8 +223,9 @@ export class ValidationAuthoringService {
     const catalog = await this.validationCatalog(this.dataSource.manager, row.catalog_release_id);
     const rules = this.rowRules(row);
     const advisories = ruleAdvisories(rules);
+    const metrics = compileMetricLibrary(this.rowMetrics(row), row.id, catalog).metrics;
     const analyzed = rules.map((rule) => {
-      const result = compileValidationRule(rule, row.id, catalog);
+      const result = compileValidationRule(rule, row.id, catalog, metrics);
       const diagnostics = [...result.diagnostics, ...(advisories.get(rule.id) ?? [])];
       return { rule, source: sourceKind(rule), validity: validationRuleValidity(rule, Boolean(result.compiled), diagnostics),
         diagnostics };
@@ -231,6 +234,7 @@ export class ValidationAuthoringService {
     const element = typeof query.element === "string" ? query.element.trim() : "";
     const wantedSource = typeof query.source === "string" ? query.source : "";
     const severity = typeof query.severity === "string" ? query.severity : "";
+    const reviewPriority = typeof query.reviewPriority === "string" ? query.reviewPriority : "";
     const executionTarget = typeof query.executionTarget === "string" ? query.executionTarget : "";
     const enabled = typeof query.enabled === "string" ? query.enabled : "";
     const validity = typeof query.validity === "string" ? query.validity : "";
@@ -242,6 +246,7 @@ export class ValidationAuthoringService {
         && (!element || item.rule.primaryTargetElementId === element || item.rule.source.includes(`"${element}"`))
         && (!wantedSource || item.source === wantedSource)
         && (!severity || item.rule.severity === severity)
+        && (!reviewPriority || item.rule.executionTargets.includes("review") && reviewPriorityOfRule(item.rule) === reviewPriority)
         && (!executionTarget || item.rule.executionTargets.includes(executionTarget as never))
         && (!enabled || String(item.rule.enabled) === enabled)
         && (!validity || item.validity === validity
@@ -268,7 +273,7 @@ export class ValidationAuthoringService {
     return { items, nextCursor, total: filtered.length };
   }
 
-  async create(token: string, input: unknown, options: { importedRules?: readonly unknown[] } = {}): Promise<ValidationDraft> {
+  async create(token: string, input: unknown, options: { importedRules?: readonly unknown[]; importedMetrics?: readonly unknown[] } = {}): Promise<ValidationDraft> {
     const session = await this.sessions.requireCapability(token, "validation:write");
     const body = record(input);
     const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
@@ -276,7 +281,8 @@ export class ValidationAuthoringService {
     // Imported NEMSIS definitions have descriptive names longer than the editor
     // limit. Validate their structure, retaining the complete standard wording.
     const importedRules = options.importedRules?.map((rule) => this.rule(rule, 500, true));
-    if (importedRules && !importedRules.length) throw new UnprocessableEntityException("rules must contain at least one rule");
+    const importedMetrics = options.importedMetrics?.map((metric) => this.metric(metric)) ?? [];
+    if (importedRules && !importedRules.length && !importedMetrics.length) throw new UnprocessableEntityException("rules must contain at least one rule");
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}:${session.user.id}`]);
       const existing = await manager.query<VersionRow[]>(
@@ -364,19 +370,20 @@ export class ValidationAuthoringService {
         }
       }
       if (importedRules) rules = importedRules;
-      if (!rules.length) {
+      if (!rules.length && !importedMetrics.length) {
         const element = elements[0]!;
         rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error", sourceKind: "catalog",
           executionTargets: ["live", "sign"], primaryTargetElementId: element.element_id,
           message: `${element.name} has no documented minimum`, source: formatOccurrenceSource(element.element_id, "minimum", 0, scopeFor(element)) });
       }
+      const anchorId = rules[0]?.id ?? randomUUID();
       await manager.query(`insert into validation.rule_identity(id,organization_id,created_by)
         select x.id,$1,$2 from jsonb_to_recordset($3::jsonb) x(id uuid)`,
-      [session.organization.id, session.user.id, JSON.stringify(rules.map(({ id }) => ({ id })))]);
+      [session.organization.id, session.user.id, JSON.stringify(rules.length ? rules.map(({ id }) => ({ id })) : [{ id: anchorId }])]);
       const inserted = mutationRows<VersionRow>(await manager.query(`insert into validation.version
         (id,organization_id,catalog_release_id,rule_id,display_name,source_rule,created_by)
         values ($1,$2,$3,$4,$5,$6::jsonb,$7) returning *`,
-      [versionId, session.organization.id, catalogReleaseId, rules[0]!.id, displayName, JSON.stringify(rules), session.user.id]));
+      [versionId, session.organization.id, catalogReleaseId, anchorId, displayName, JSON.stringify(serializeValidationDefinition(rules, importedMetrics)), session.user.id]));
       return draft(inserted[0]!);
     });
   }
@@ -421,7 +428,7 @@ export class ValidationAuthoringService {
         (id,organization_id,catalog_release_id,rule_id,display_name,source_rule,created_by,cloned_from_id)
         values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8) returning *`,
       [randomUUID(), session.organization.id, catalogReleaseId, source.rule_id, displayName,
-        JSON.stringify(clonedRules), session.user.id, source.id]));
+        JSON.stringify(serializeValidationDefinition(clonedRules, this.rowMetrics(source))), session.user.id, source.id]));
       const validation = await this.validateRow(manager, inserted[0]!);
       return draft(inserted[0]!, validation.diagnostics);
     });
@@ -470,11 +477,12 @@ export class ValidationAuthoringService {
     if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     }
-    if (!Array.isArray(body.rules) || !body.rules.length) throw new UnprocessableEntityException("rules must contain at least one rule");
+    if (!Array.isArray(body.rules)) throw new UnprocessableEntityException("rules must contain at least one rule");
     const existingRows = await this.dataSource.query<VersionRow[]>(`select * from validation.version
       where id=$1 and organization_id=$2 and created_by=$3 and status='draft'`, [id, session.organization.id, session.user.id]);
     const existing = existingRows[0];
     if (!existing) throw new NotFoundException(`Validation draft ${id} was not found`);
+    const metrics = body.metrics === undefined ? this.rowMetrics(existing) : this.parseMetrics(body.metrics, this.rowMetrics(existing));
     const existingRules = new Map(this.rowRules(existing).map((rule) => [rule.id, rule]));
     const rules = body.rules.map((value) => {
       const unchanged = value && typeof value === "object" && !Array.isArray(value)
@@ -499,8 +507,8 @@ export class ValidationAuthoringService {
     const rows = mutationRows<VersionRow>(await this.dataSource.query(`with updated as (
       update validation.version set revision=revision+1,display_name=$4,source_rule=$5::jsonb,updated_at=now()
       where id=$1 and organization_id=$2 and created_by=$6 and status='draft' and revision=$3 returning *) select * from updated`,
-    [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(rules), session.user.id]));
-    if (!rows[0]) throw new ConflictException("Validation draft revision is stale or the draft is no longer editable");
+    [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(serializeValidationDefinition(rules, metrics)), session.user.id]));
+    if (!rows[0]) throw new ConflictException({ code: "admin.validationDraftStale", message: "Validation draft revision is stale or the draft is no longer editable" });
     return draft(rows[0]);
   }
 
@@ -522,7 +530,7 @@ export class ValidationAuthoringService {
       const rules = [...this.rowRules(row), candidate];
       const updated = mutationRows<VersionRow>(await manager.query(`with updated as (update validation.version
         set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 and created_by=$4 and status='draft' returning *) select * from updated`,
-      [id, session.organization.id, JSON.stringify(rules), session.user.id]));
+      [id, session.organization.id, JSON.stringify(serializeValidationDefinition(rules, this.rowMetrics(row))), session.user.id]));
       return draft(updated[0]!);
     });
   }
@@ -543,7 +551,7 @@ export class ValidationAuthoringService {
       if (!found) throw new NotFoundException(`Validation rule ${ruleId} was not found`);
       const updated = mutationRows<VersionRow>(await manager.query(`with updated as (update validation.version
         set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 and created_by=$4 and status='draft' returning *) select * from updated`,
-      [id, session.organization.id, JSON.stringify(rules), session.user.id]));
+      [id, session.organization.id, JSON.stringify(serializeValidationDefinition(rules, this.rowMetrics(row))), session.user.id]));
       return draft(updated[0]!);
     });
   }
@@ -577,10 +585,11 @@ export class ValidationAuthoringService {
         throw new UnprocessableEntityException({ message: "Validation publication failed", diagnostics: validation.diagnostics });
       }
       const sourceRules = this.rowRules(row);
-      const sourceSha256 = createHash("sha256").update(JSON.stringify(sourceRules)).digest("hex");
+      const sourceSha256 = createHash("sha256").update(JSON.stringify(serializeValidationDefinition(sourceRules, this.rowMetrics(row)))).digest("hex");
       const baselines = row.cloned_from_id ? await manager.query<VersionRow[]>(`select * from validation.version
         where id=$1 and organization_id=$2 and status='published'`, [row.cloned_from_id, session.organization.id]) : [];
       const changes = ruleChanges(baselines[0] ? this.rowRules(baselines[0]) : [], sourceRules);
+      changes.metrics = metricChanges(baselines[0] ? this.rowMetrics(baselines[0]) : [], this.rowMetrics(row));
       const versions = await manager.query<Array<{ next_version: number }>>(
         "select coalesce(max(version),0)+1 as next_version from validation.version where organization_id=$1", [session.organization.id]);
       const published = mutationRows<VersionRow>(await manager.query(`with updated as (
@@ -597,7 +606,7 @@ export class ValidationAuthoringService {
       [session.organization.id, session.user.id, row.cloned_from_id, id, row.catalog_release_id,
         changeNote, JSON.stringify(changes), sourceSha256, validation.compiledSha256]);
       return { id, organizationId: session.organization.id, catalogReleaseId: row.catalog_release_id,
-        version: Number(published[0].version), displayName, status: "published", ruleIds: sourceRules.map(({ id }) => id),
+        version: Number(published[0].version), displayName, status: "published", ruleIds: sourceRules.map(({ id }) => id), metricIds: this.rowMetrics(row).map(({ id }) => id),
         sourceSha256, compiledSha256: validation.compiledSha256,
         publishedAt: new Date(published[0].published_at!).toISOString() };
     });
@@ -641,7 +650,8 @@ export class ValidationAuthoringService {
       }
       const ruleElements = [...new Set(version.compiled_bundle!.rules
         .filter((rule) => rule.enabled && rule.executionTargets.some((target) => target === "live" || target === "sign"))
-        .flatMap((rule) => [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])]))];
+        .flatMap((rule) => [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])])
+        .filter((elementId) => elementId !== "*"))];
       const exposed = await manager.query<Array<{ element_id: string }>>(`select distinct e.element_id
         from forms.form_field ff join catalog.element_definition e
           on e.release_id=$2 and e.element_identity_id=ff.catalog_element_identity_id
@@ -679,11 +689,15 @@ export class ValidationAuthoringService {
         await this.sessions.requireCapability(token, "validation:write", manager);
         const removed = new Set(expected);
         const retainedSources = sources.filter((rule) => !removed.has(rule.id));
+        const retainedDefinition = serializeValidationDefinition(retainedSources, this.rowMetrics(version));
         const nextId = randomUUID();
         const bundle: CompiledValidationBundle = { ...version.compiled_bundle, validationVersionId: nextId,
+          ...(version.compiled_bundle.metrics ? { metrics: version.compiled_bundle.metrics.map((metric) => ({ ...metric, validationVersionId: nextId,
+            ...(metric.applicabilityRule ? { applicabilityRule: { ...metric.applicabilityRule, validationVersionId: nextId } } : {}),
+            predicates: Object.fromEntries(Object.entries(metric.predicates).map(([key, rule]) => [key, { ...rule, validationVersionId: nextId }])) })) } : {}),
           rules: version.compiled_bundle.rules.filter((rule) => !removed.has(rule.ruleId))
             .map((rule) => ({ ...rule, validationVersionId: nextId })) };
-        const sourceSha256 = createHash("sha256").update(JSON.stringify(retainedSources)).digest("hex");
+        const sourceSha256 = createHash("sha256").update(JSON.stringify(retainedDefinition)).digest("hex");
         const compiledSha256 = compiledValidationBundleSha256(bundle);
         const displayName = `${version.display_name.slice(0, 99)} (form compatibility)`;
         const inserted = mutationRows<VersionRow>(await manager.query(`insert into validation.version
@@ -692,7 +706,7 @@ export class ValidationAuthoringService {
           select $1,$2,$3,$4,$5,coalesce(max(version),0)+1,'published',$6,$7::jsonb,$8,$9::jsonb,$10,$11,$12,$12,now()
           from validation.version where organization_id=$2 returning *`,
         [nextId, session.organization.id, catalogReleaseId, version.rule_id, id, displayName,
-          JSON.stringify(retainedSources), sourceSha256, JSON.stringify(bundle), compiledSha256, changeNote, session.user.id]));
+          JSON.stringify(retainedDefinition), sourceSha256, JSON.stringify(bundle), compiledSha256, changeNote, session.user.id]));
         await manager.query(`insert into validation.change_event
           (organization_id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
            change_note,rule_changes,source_sha256,compiled_sha256)
@@ -700,7 +714,7 @@ export class ValidationAuthoringService {
         [session.organization.id, session.user.id, id, nextId, catalogReleaseId, changeNote,
           JSON.stringify(ruleChanges(sources, retainedSources)), sourceSha256, compiledSha256]);
         version = { ...version, ...inserted[0]!, compiled_bundle: bundle, compiled_sha256: compiledSha256,
-          source_rule: retainedSources, source_sha256: sourceSha256 };
+          source_rule: retainedDefinition, source_sha256: sourceSha256 };
         id = nextId;
       } else if (Array.isArray(body.removeImpactedRuleIds) && body.removeImpactedRuleIds.length) {
         throw new ConflictException({ code: "admin.formValidationReviewChanged",
@@ -708,7 +722,7 @@ export class ValidationAuthoringService {
       }
       const previous = await manager.query<Array<{
         form_version_id: string; catalog_release_id: string; validation_version_id: string;
-        source_rule: ValidationRuleSource | ValidationRuleSource[];
+        source_rule: ValidationRuleSource | ValidationRuleSource[] | ValidationDefinition;
       }>>(`select active.form_version_id,active.catalog_release_id,active.validation_version_id,previous.source_rule
         from app_identity.active_configuration_bundle active
         join validation.version previous on previous.id=active.validation_version_id
@@ -740,6 +754,7 @@ export class ValidationAuthoringService {
           activated_by=excluded.activated_by,change_note=excluded.change_note,activated_at=now()
         `, [session.organization.id, id, formVersionId, session.user.id, changeNote]);
       const changes = ruleChanges(previous[0] ? this.rowRules(previous[0]) : [], this.rowRules(version));
+      changes.metrics = metricChanges(previous[0] ? this.rowMetrics(previous[0]) : [], this.rowMetrics(version));
       await manager.query(`insert into app_identity.configuration_event
         (organization_id,actor_id,action,result,form_version_id,catalog_release_id,validation_version_id,
          previous_form_version_id,previous_catalog_release_id,previous_validation_version_id,
@@ -776,8 +791,9 @@ export class ValidationAuthoringService {
   private async validateRow(manager: Pick<EntityManager, "query">, row: VersionRow): Promise<ValidationDraftResult> {
     const catalog = await this.validationCatalog(manager, row.catalog_release_id);
     const rules = this.rowRules(row);
+    const library = compileMetricLibrary(this.rowMetrics(row), row.id, catalog);
     const results = rules.map((rule) => {
-      try { return compileValidationRule(rule, row.id, catalog); }
+      try { return compileValidationRule(rule, row.id, catalog, library.metrics); }
       catch (error) {
         return { compiled: undefined, diagnostics: [{ severity: "error" as const, code: "compile" as const, ruleId: rule.id,
           message: error instanceof Error ? `Rule compilation failed: ${error.message}` : "Rule compilation failed" }] };
@@ -788,7 +804,7 @@ export class ValidationAuthoringService {
       if (!rules[index]!.enabled) return { ...item, severity: "warning" as const, message: `Disabled rule: ${item.message}` };
       if (item.code === "occurrence-bound") return { ...item, severity: "error" as const };
       return item;
-    })).concat([...advisories.values()].flat());
+    })).concat([...advisories.values()].flat(), library.diagnostics);
     if (results.some(({ compiled }, index) => rules[index]!.enabled && !compiled)
       || diagnostics.some(({ severity }) => severity === "error")) return { valid: false, diagnostics };
     const seen = new Set<string>();
@@ -798,9 +814,11 @@ export class ValidationAuthoringService {
       if (seen.has(key)) return [];
       seen.add(key); return [compiled];
     });
-    const compiledBundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
-      validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: compiledRules };
-    for (const rule of compiledRules.filter(({ enabled }) => enabled)) {
+    const hasMetrics = this.rowMetrics(row).length > 0;
+    const compiledBundle: CompiledValidationBundle = { schemaVersion: hasMetrics ? 2 : 1, languageVersion: hasMetrics ? "2.0.0" : "1.0.0",
+      validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: compiledRules,
+      ...(hasMetrics ? { metrics: library.metrics } : {}) };
+    for (const rule of compiledRules.filter((rule) => rule.enabled && !rule.references.metricIds?.length)) {
       for (const target of rule.executionTargets) {
         try {
           evaluateValidationBundle({ ...compiledBundle, rules: [rule] }, SMOKE_DOCUMENT, target,
@@ -834,7 +852,7 @@ export class ValidationAuthoringService {
         select o.element_id,o.code,o.code_system,o.display as label,coalesce(c.enabled,true) as enabled
         from catalog.element_option o left join catalog.element_option_configuration c
           on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
-          and c.code_system=o.code_system and c.code=o.code where o.release_id=$1
+          and c.code_system=o.code_system and c.code=o.code where o.release_id=$1 and o.source_kind='inline'
         union all
         select vse.element_id,o.code,o.code_system,o.display as label,coalesce(c.enabled,true) as enabled
         from catalog.value_set_element vse join catalog.value_set_option o
@@ -863,6 +881,9 @@ export class ValidationAuthoringService {
 
   private rule(value: unknown, nameMaximum = 120, imported = false): ValidationRuleSource {
     const body = record(value);
+    const unresolved = body.unresolved;
+    if (unresolved !== undefined && (!Array.isArray(unresolved) || unresolved.length > 50 || unresolved.some((value) => typeof value !== "string" || value.length > 2000)))
+      throw new UnprocessableEntityException("Invalid unresolved rule mappings");
     const severity = body.severity;
     const targets = body.executionTargets;
     const reviewPriority = body.reviewPriority;
@@ -922,6 +943,7 @@ export class ValidationAuthoringService {
       messageParameters = values as ValidationRuleSource["messageParameters"];
     }
     return { id: uuidText(body.id, "rule.id"), name: requiredText(body.name, "rule.name", nameMaximum),
+      ...(unresolved ? { unresolved: unresolved as string[] } : {}),
       enabled: body.enabled, severity: severity as ValidationRuleSource["severity"],
       ...(targets.includes("review") ? { reviewPriority: (reviewPriority ?? "medium") as ValidationRuleSource["reviewPriority"] } : {}),
       executionTargets: targets as ValidationRuleSource["executionTargets"],
@@ -931,7 +953,55 @@ export class ValidationAuthoringService {
       ...(localization ? { localization } : {}), ...(messageParameters ? { messageParameters } : {}) };
   }
 
-  private rowRules(row: Pick<VersionRow, "source_rule">): ValidationRuleSource[] {
-    return Array.isArray(row.source_rule) ? row.source_rule : [row.source_rule];
+  private rowMetrics(row: Pick<VersionRow, "source_rule">): MetricSource[] {
+    return readValidationDefinition(row.source_rule).metrics;
   }
+  private metric(value: unknown): MetricSource {
+    const body = record(value);
+    if (typeof body.enabled !== "boolean" || typeof body.reviewEnabled !== "boolean")
+      throw new UnprocessableEntityException("Metric enabled and reviewEnabled must be Boolean");
+    if (body.unresolved !== undefined && (!Array.isArray(body.unresolved) || body.unresolved.length > 50 ||
+      body.unresolved.some((value) => typeof value !== "string" || value.length > 2000)))
+      throw new UnprocessableEntityException("Invalid unresolved metric mappings");
+    const localization = body.localization === undefined ? undefined : record(body.localization);
+    const sv = localization?.sv === undefined ? undefined : record(localization.sv);
+    if (localization && (localization.schemaVersion !== 1 || sv && [sv.name, sv.description].some((value) =>
+      value !== undefined && (typeof value !== "string" || value.length > 2000)))) throw new UnprocessableEntityException("Invalid metric localization");
+    if (body.provenance !== undefined && (!Array.isArray(body.provenance) || body.provenance.length > 20 || body.provenance.some((item) =>
+      !item || typeof item !== "object" || Array.isArray(item) ||
+      ["standard", "sourceIdentity", "sourceRelease", "originalExpression", "originalMessage"].some((key) => typeof item[key] !== "string" || !item[key].trim()) ||
+      Object.values(item).some((value) => typeof value !== "string" || value.length > 20000))))
+      throw new UnprocessableEntityException("Invalid metric provenance");
+    if (body.description !== undefined && (typeof body.description !== "string" || body.description.length > 4000))
+      throw new UnprocessableEntityException("Metric description must contain at most 4,000 characters");
+    return { id: uuidText(body.id, "metric.id"), name: requiredText(body.name, "metric.name", 120),
+      description: typeof body.description === "string" ? body.description : "",
+      enabled: body.enabled, reviewEnabled: body.reviewEnabled, unit: requiredText(body.unit, "metric.unit", 64),
+      source: requiredText(body.source, "metric.source", 16384),
+      ...(body.applicability ? { applicability: requiredText(body.applicability, "metric.applicability", 16384) } : {}),
+      ...(localization ? { localization: localization as unknown as MetricSource["localization"] } : {}),
+      ...(body.provenance ? { provenance: body.provenance as MetricSource["provenance"] } : {}),
+      ...(body.unresolved ? { unresolved: body.unresolved as string[] } : {}) };
+  }
+  private parseMetrics(value: unknown, previous: MetricSource[]): MetricSource[] {
+    if (!Array.isArray(value) || value.length > 256) throw new UnprocessableEntityException("metrics must contain at most 256 definitions");
+    const metrics = value.map((item) => {
+      const metric = this.metric(item), prior = previous.find((item) => item.id === metric.id);
+      return prior ? { ...metric, provenance: prior.provenance } : metric;
+    });
+    if (new Set(metrics.map((metric) => metric.id)).size !== metrics.length) throw new UnprocessableEntityException("Metric identities must be unique");
+    if (previous.some((metric) => !metrics.some((item) => item.id === metric.id)))
+      throw new UnprocessableEntityException("Existing metrics must be disabled rather than removed from Validation history");
+    return metrics;
+  }
+
+  private rowRules(row: Pick<VersionRow, "source_rule">): ValidationRuleSource[] {
+    return readValidationDefinition(row.source_rule).rules;
+  }
+}
+
+function metricChanges(before: MetricSource[], after: MetricSource[]) {
+  return { additions: after.filter((metric) => !before.some((prior) => prior.id === metric.id)).map((metric) => metric.id),
+    modifications: after.filter((metric) => before.some((prior) => prior.id === metric.id && JSON.stringify(prior) !== JSON.stringify(metric))).map((metric) => metric.id),
+    disablements: after.filter((metric) => !metric.enabled && before.some((prior) => prior.id === metric.id && prior.enabled)).map((metric) => metric.id) };
 }

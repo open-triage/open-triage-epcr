@@ -4,12 +4,12 @@ import test from "node:test";
 
 const catalog = JSON.parse(await readFile(new URL("../../../defines/catalog/catalog_nemsis-3.5.1.json", import.meta.url), "utf8"));
 const form = JSON.parse(await readFile(new URL("../../../defines/forms/form_sweden.json", import.meta.url), "utf8"));
-const validation = JSON.parse(await readFile(new URL("../../../defines/validation/validation_sweden.json", import.meta.url), "utf8"));
+const validation = JSON.parse(await readFile(new URL("../../../defines/validation/validation_nemsis-full.json", import.meta.url), "utf8"));
 const script = await readFile(new URL("../scripts/seed-install-definitions.mjs", import.meta.url), "utf8");
 const migrate = await readFile(new URL("../scripts/migrate.mjs", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-test("Sweden offers a NEMSIS-compatible form and only rules supported by that form", () => {
+test("Sweden remains a NEMSIS-compatible form without payment fields", () => {
   assert.equal(form.schemaVersion, 1);
   assert.equal(form.key, "sweden");
   assert.equal(form.catalogKey, "nemsis-3.5.1");
@@ -25,16 +25,19 @@ test("Sweden offers a NEMSIS-compatible form and only rules supported by that fo
   assert.equal(Object.hasOwn(form.definition, "locales"), false);
   assert.equal(fields.length, 215);
   assert.equal(fieldIds.size, 215);
-  assert.equal(validation.rules.length, 426);
-  assert.equal(validation.rules.filter((rule) => rule.enabled).length, 357);
   assert.ok(fields.every((field) => field.source?.kind === "nemsis" && !field.source.elementId.startsWith("ePayment.")));
-  assert.equal(validation.rules.filter((rule) => rule.primaryTargetElementId.startsWith("ePayment.") && !rule.enabled).length, 52);
+  assert.ok([...fieldIds].every((id) => catalogIds.has(id)));
+});
+
+test("the full NEMSIS validation retains catalog references and imported rule wording", () => {
+  const catalogIds = new Set(catalog.elements.map(({ id }) => id));
+  assert.equal(validation.key, "nemsis-full");
+  assert.equal(validation.rules.length, 712);
   for (const rule of validation.rules) {
-    assert.ok(catalogIds.has(rule.primaryTargetElementId), `${rule.name} targets an absent catalog element`);
-    if (rule.enabled) assert.ok(fieldIds.has(rule.primaryTargetElementId), `${rule.name} targets a hidden form element`);
-    for (const reference of rule.source.matchAll(/"(e[A-Za-z]+\.\d+)"/g)) {
+    assert.ok(rule.primaryTargetElementId === "*" || catalogIds.has(rule.primaryTargetElementId),
+      `${rule.name} targets an absent catalog element`);
+    for (const reference of rule.source.matchAll(/"([de][A-Za-z]+\.\d+)"/g)) {
       assert.ok(catalogIds.has(reference[1]), `${rule.name} references absent ${reference[1]}`);
-      if (rule.enabled) assert.ok(fieldIds.has(reference[1]), `${rule.name} references hidden ${reference[1]}`);
     }
   }
   for (const id of ["eMedications.05", "eMedications.06"]) {

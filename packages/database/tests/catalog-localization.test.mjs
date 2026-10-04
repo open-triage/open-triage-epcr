@@ -27,7 +27,7 @@ test("one Swedish definition covers every identity in the current catalog", asyn
   assert.equal(result.coverage.reviewPending.length, 0);
   assert.deepEqual(result.coverage.sourceChanges, []);
   const shipped = await shippedSeed();
-  assert.deepEqual(Object.keys(shipped), ["schemaVersion", "language", "catalog", "validationRules"]);
+  assert.deepEqual(Object.keys(shipped), ["schemaVersion", "language", "catalog", "validationRules", "validationMetrics"]);
   assert.equal(shipped.schemaVersion, 1);
   assert.equal(shipped.language, "sv");
   assert.equal(shipped.catalog.elements["eVitals.10"].sourceLabel, "Heart Rate");

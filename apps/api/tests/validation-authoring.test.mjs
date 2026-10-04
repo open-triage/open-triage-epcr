@@ -359,6 +359,43 @@ test("rule library applies organization-scoped filters, stable pagination, prove
     "library lookup is constrained to the authenticated organization and its catalog");
 });
 
+test("rule library filters effective review priority independently of documentation severity", async () => {
+  const reviewRule = { ...sourceRule, executionTargets: ["sign", "review"] };
+  const rules = [
+    { ...reviewRule, id: randomUUID(), name: "High warning", reviewPriority: "high", severity: "warning" },
+    { ...reviewRule, id: randomUUID(), name: "High error", reviewPriority: "high" },
+    { ...reviewRule, id: randomUUID(), name: "Medium", reviewPriority: "medium" },
+    { ...reviewRule, id: randomUUID(), name: "Legacy medium" },
+    { ...reviewRule, id: randomUUID(), name: "Low", reviewPriority: "low" },
+    { ...reviewRule, id: randomUUID(), name: "None", reviewPriority: "none" },
+    sourceRule,
+    { ...sourceRule, id: randomUUID(), name: "Unused priority", reviewPriority: "high" },
+  ];
+  const subject = service({ query: async (sql) => {
+    if (sql.includes("from validation.version")) return [{ id: versionId, catalog_release_id: "catalog", source_rule: rules }];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident Number", base_datatype: "string" }];
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } });
+  for (const [reviewPriority, names] of [
+    ["high", ["High error", "High warning"]], ["medium", ["Legacy medium", "Medium"]],
+    ["low", ["Low"]], ["none", ["None"]],
+  ]) {
+    const page = await subject.library("session", { reviewPriority });
+    assert.deepEqual(page.items.map(({ rule }) => rule.name), names);
+    assert.equal(page.total, names.length);
+  }
+  const combined = await subject.library("session", { reviewPriority: "high", severity: "warning", executionTarget: "sign" });
+  assert.deepEqual(combined.items.map(({ rule }) => rule.name), ["High warning"]);
+  const first = await subject.library("session", { reviewPriority: "high", limit: 1 });
+  assert.equal(first.total, 2);
+  assert.ok(first.nextCursor);
+  const second = await subject.library("session", { reviewPriority: "high", limit: 1, cursor: first.nextCursor });
+  assert.deepEqual(second.items.map(({ rule }) => rule.name), ["High warning"]);
+  assert.equal(second.nextCursor, null);
+  assert.equal((await subject.library("session", { reviewPriority: "" })).total, rules.length);
+});
+
 test("multiple rules targeting the same element stay valid in the library and draft validation", async () => {
   const localization = { schemaVersion: 1, sv: { name: "Antal", message: "Kontrollera antal" } };
   const rules = [
@@ -446,9 +483,11 @@ test("wording validity filters include incomplete English and Swedish without in
 test("disabled invalid rules remain authored but do not block publication or enter the executable bundle", async () => {
   const disabled = { ...sourceRule, id: randomUUID(), name: "Incomplete imported rule", enabled: false,
     source: "require unknownConstruct()", sourceKind: "nemsis" };
+  const unmapped = { ...sourceRule, id: randomUUID(), name: "Unmapped trauma eligibility", enabled: false,
+    source: 'require equals("local.EligibleMajorTrauma", true)', unresolved: ["Map trauma eligibility"] };
   const manager = { query: async (sql) => {
     if (sql.includes("select * from validation.version")) return [{ id: versionId, organization_id: organizationId,
-      catalog_release_id: "catalog", rule_id: ruleId, revision: 1, display_name: "Draft", source_rule: [sourceRule, disabled],
+      catalog_release_id: "catalog", rule_id: ruleId, revision: 1, display_name: "Draft", source_rule: [sourceRule, disabled, unmapped],
       status: "draft", version: null, compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null }];
     if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident Number", base_datatype: "string" }];
     if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
@@ -458,6 +497,10 @@ test("disabled invalid rules remain authored but do not block publication or ent
   assert.equal(result.valid, true);
   assert.deepEqual(result.compiledBundle.rules.map(({ ruleId }) => ruleId), [ruleId]);
   assert.ok(result.diagnostics.some(({ ruleId: diagnosticRule, severity }) => diagnosticRule === disabled.id && severity === "warning"));
+  const mappingWarnings = result.diagnostics.filter(({ ruleId }) => ruleId === unmapped.id);
+  assert.ok(mappingWarnings.some(({ message }) => message.includes("Map trauma eligibility")));
+  assert.ok(mappingWarnings.some(({ message }) => message.includes("local.EligibleMajorTrauma")));
+  assert.ok(mappingWarnings.every(({ severity }) => severity === "warning"));
 });
 
 test("a published version clones onto a same-or-newer published Catalog and returns upgrade diagnostics", async () => {
@@ -559,7 +602,7 @@ test("Validation history is organization isolated and exposes immutable lifecycl
   assert.equal(events[0].occurredAt, "2026-09-18T12:00:00.000Z");
 });
 
-test("activation atomically selects and audits one compatible Form, Catalog, and Validation bundle", async () => {
+test("activation retains general element checks and audits one compatible Form, Catalog, and Validation bundle", async () => {
   const formVersionId = randomUUID();
   const catalogReleaseId = randomUUID();
   const previousFormVersionId = randomUUID();
@@ -573,6 +616,9 @@ test("activation atomically selects and audits one compatible Form, Catalog, and
       severity: "error", executionTargets: ["live", "sign"], primaryTarget: { elementId: "eResponse.03" },
       message: sourceRule.message, scope: { kind: "report" }, assertion: { operator: "present", elementId: "eResponse.03" },
       references: { elementIds: ["eResponse.03"], groupIds: [], codeReferences: [] } }] };
+  const generalRule = { ...sourceRule, id: randomUUID(), name: "Not values are exclusive", primaryTargetElementId: "*",
+    source: 'require allElements("unique-nv")' };
+  compiledBundle.rules.push(compileValidationRule(generalRule, versionId, new Set(["eResponse.03"])).compiled);
   const compiledSha256 = compiledValidationBundleSha256(compiledBundle);
   const formSha256 = canonicalDefinitionSha256(formDefinition);
   const catalogSha256 = "c".repeat(64);
@@ -582,7 +628,7 @@ test("activation atomically selects and audits one compatible Form, Catalog, and
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("select vv.*")) return [{ id: versionId, organization_id: organizationId,
       catalog_release_id: catalogReleaseId, rule_id: ruleId, cloned_from_id: null, revision: 1,
-      display_name: "Published", source_rule: [sourceRule], status: "published", version: 2,
+      display_name: "Published", source_rule: [sourceRule, generalRule], status: "published", version: 2,
       source_sha256: "s".repeat(64), compiled_bundle: compiledBundle, compiled_sha256: compiledSha256,
       form_id: randomUUID(), form_definition: formDefinition, form_definition_sha256: formSha256,
       catalog_artifact_sha256: catalogSha256, catalog_sealed: true }];
@@ -604,6 +650,7 @@ test("activation atomically selects and audits one compatible Form, Catalog, and
   assert.equal(activated.catalogArtifactSha256, catalogSha256);
   assert.equal(activated.validationCompiledSha256, compiledSha256);
   assert.equal(activated.previousFormVersionId, previousFormVersionId);
+  assert.deepEqual(calls.find(({ sql }) => sql.includes("from forms.form_field")).parameters[2], ["eResponse.03"]);
   const audit = calls.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
   assert.equal(audit.parameters[8], "Restore reviewed configuration");
   assert.deepEqual(JSON.parse(audit.parameters[12]).to, { formVersionId, catalogReleaseId, validationVersionId: versionId });

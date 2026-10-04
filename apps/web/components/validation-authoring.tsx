@@ -1,5 +1,6 @@
 "use client";
 
+import { MetricLibrary } from "./metric-library";
 import { listAccessRemoved } from "../app/list-refresh";
 
 import { AuthoringDraftToolbar } from "./authoring-draft-toolbar";
@@ -12,7 +13,7 @@ import { importCanonicalDefinitionFile } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import { compileValidationRule, explainValidationRule, formatValidationSource, reviewPriorityOfRule, validationRuleText, validationRuleValidity,
+import { compileMetricLibrary, compileValidationRule, explainValidationRule, formatValidationSource, reviewPriorityOfRule, validationRuleText, validationRuleValidity,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -55,7 +56,8 @@ export function validationCatalog(definition: CatalogDefinitionView["definition"
         code: choice.code, codeSystem: element.codeSystem, label: choice.label, enabled: true })) : [])] };
 }
 
-export function ValidationReferenceAssistance({ catalog, elementId, onElementIdChange }: {
+export function ValidationReferenceAssistance({ catalog, elementId, onElementIdChange, idPrefix = "validation" }: {
+  readonly idPrefix?: string;
   readonly catalog: ValidationCatalog;
   readonly elementId: string;
   readonly onElementIdChange: (elementId: string) => void;
@@ -63,8 +65,8 @@ export function ValidationReferenceAssistance({ catalog, elementId, onElementIdC
   const t = useAdminText();
   const relevantCodes = (catalog.codes ?? []).filter((code) => code.elementId === elementId && code.enabled !== false);
   return <aside aria-label={t("admin.ruleReferenceAssistance")}>
-    <label htmlFor="validation-reference-element"><AdminText messageKey="admin.elementReference" /></label>
-    <select id="validation-reference-element" value={elementId}
+    <label htmlFor={`${idPrefix}-reference-element`}><AdminText messageKey="admin.elementReference" /></label>
+    <select id={`${idPrefix}-reference-element`} value={elementId}
       onChange={(event) => onElementIdChange(event.target.value)}>
       <option value=""><AdminText messageKey="admin.selectAnElement" /></option>
       {elementId && !catalog.elements.some((element) => element.elementId === elementId) &&
@@ -72,16 +74,16 @@ export function ValidationReferenceAssistance({ catalog, elementId, onElementIdC
       {catalog.elements.map((element) =>
         <option key={element.elementId} value={element.elementId}>{element.elementId} — {element.label}</option>)}
     </select>
-    <label htmlFor="validation-reference-code"><AdminText messageKey="admin.codeReferenceFor" /></label>
-    <input id="validation-reference-code" type="search" list="validation-code-references"
-      placeholder="code-system|code" aria-describedby="validation-reference-note" />
-    <datalist id="validation-code-references">{relevantCodes.map((code) =>
+    <label htmlFor={`${idPrefix}-reference-code`}><AdminText messageKey="admin.codeReferenceFor" /></label>
+    <input id={`${idPrefix}-reference-code`} type="search" list={`${idPrefix}-code-references`}
+      placeholder="code-system|code" aria-describedby={`${idPrefix}-reference-note`} />
+    <datalist id={`${idPrefix}-code-references`}>{relevantCodes.map((code) =>
       <option key={`${code.codeSystem}:${code.code}`} value={`${code.codeSystem}|${code.code}`}>{code.label}</option>)}</datalist>
-    <small id="validation-reference-note"><AdminText messageKey="admin.labelsAreCurrent" /></small>
+    <small id={`${idPrefix}-reference-note`}><AdminText messageKey="admin.labelsAreCurrent" /></small>
   </aside>;
 }
 
-export type ValidationRuleFilters = { search: string; element: string; source: string; severity: string;
+export type ValidationRuleFilters = { search: string; element: string; source: string; severity: string; reviewPriority: string;
   executionTarget: string; enabled: string; validity: string };
 
 export function ValidationRuleFilterControls({ value, onChange, elements = [] }: {
@@ -106,6 +108,10 @@ export function ValidationRuleFilterControls({ value, onChange, elements = [] }:
     <label><AdminText messageKey="admin.severity" /> <select value={value.severity} onChange={(event) => change("severity", event.target.value)}>
       <option value=""><AdminText messageKey="admin.allSeverities" /></option><option value="none"><AdminText messageKey="admin.none" /></option><option value="error"><AdminText messageKey="admin.error" /></option><option value="warning"><AdminText messageKey="admin.warning" /></option>
       <option value="information"><AdminText messageKey="admin.information" /></option></select></label>
+    <label><AdminText messageKey="admin.reviewPriority" /> <select value={value.reviewPriority} onChange={(event) => change("reviewPriority", event.target.value)}>
+      <option value=""><AdminText messageKey="admin.allPriorities" /></option><option value="high"><AdminText messageKey="admin.priorityHigh" /></option>
+      <option value="medium"><AdminText messageKey="admin.priorityMedium" /></option><option value="low"><AdminText messageKey="admin.priorityLow" /></option>
+      <option value="none"><AdminText messageKey="admin.none" /></option></select></label>
     <label><AdminText messageKey="admin.target" /> <select value={value.executionTarget} onChange={(event) => change("executionTarget", event.target.value)}>
       <option value=""><AdminText messageKey="admin.allTargets" /></option><option value="live"><AdminText messageKey="admin.live" /></option><option value="sign"><AdminText messageKey="admin.sign" /></option>
       <option value="review"><AdminText messageKey="admin.review" /></option></select></label>
@@ -150,14 +156,17 @@ function DiagnosticDetails({ diagnostics }: { readonly diagnostics: ValidationDr
   </details>;
 }
 
-export function ValidationResultFeedback({ result, ruleCount }: {
+export function ValidationResultFeedback({ result, ruleCount, metricCount = 0 }: {
   readonly result: ValidationDraftResult;
   readonly ruleCount: number;
+  readonly metricCount?: number;
 }) {
   const t = useAdminText();
+  const errors = result.diagnostics.filter(({ severity }) => severity === "error");
   const warnings = result.diagnostics.filter(({ severity }) => severity === "warning");
   if (result.valid) return <div className="validation-result" role="status">
     <strong><AdminText messageKey="admin.validationPassed" /></strong> {t("admin.countRulesChecked", { count: ruleCount })}
+    {metricCount > 0 && <span> {t("metrics.countChecked", { count: metricCount })}</span>}
     {warnings.length > 0 && <span> {t("admin.countWarnings", { count: warnings.length })}</span>}
     {warnings.length > 0 && <>
       <p><AdminText messageKey="admin.warningsDoNot" /></p>
@@ -167,12 +176,18 @@ export function ValidationResultFeedback({ result, ruleCount }: {
       {result.explanation && <p className="validation-result-explanation">{result.explanation}</p>}
     </details>}
   </div>;
-  return <div className="validation-result validation-result-error" role="alert">
-    <strong>{t("admin.validationFoundCount", { count: result.diagnostics.length })}</strong>
-    <ul>{result.diagnostics.slice(0, 3).map((item, index) =>
+  return <><div className="validation-result validation-result-error" role="alert">
+    <strong>{t("admin.validationFoundCount", { count: errors.length })}</strong>
+    <ul>{errors.slice(0, 3).map((item, index) =>
       <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>
-    {result.diagnostics.length > 3 && <DiagnosticDetails diagnostics={result.diagnostics} />}
-  </div>;
+    {errors.length > 3 && <DiagnosticDetails diagnostics={errors} />}
+  </div>
+    {warnings.length > 0 && <div className="validation-result" role="status">
+      <strong>{t("admin.countWarnings", { count: warnings.length })}</strong>
+      <p><AdminText messageKey="admin.warningsDoNot" /></p>
+      <DiagnosticDetails diagnostics={warnings} />
+    </div>}
+  </>;
 }
 
 export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated, active = true, language = "sv" }: {
@@ -220,7 +235,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [libraryError, setLibraryError] = useState(false);
   const [libraryRefresh, setLibraryRefresh] = useState(0);
   const [loadedLibraryFilters, setLoadedLibraryFilters] = useState("");
-  const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "",
+  const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "", reviewPriority: "",
     executionTarget: "", enabled: "", validity: "" });
   const draftRevision = draft?.revision;
   useUnsavedChanges(dirty || !!changeNote || !!displayName || !!activationNote);
@@ -326,7 +341,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     change((current) => ({ ...current, rules: current.rules.map((rule, index) => index === selectedRuleIndex ? update(rule) : rule) }));
   }
   const inlineValidation = useMemo(() => draft && catalog && selectedRule
-    ? compileValidationRule(selectedRule, draft.id, catalog) : null, [draft, catalog, selectedRule]);
+    ? compileValidationRule(selectedRule, draft.id, catalog, compileMetricLibrary(draft.metrics ?? [], draft.id, catalog).metrics) : null, [draft, catalog, selectedRule]);
   const explanation = inlineValidation?.compiled && catalog ? explainValidationRule(inlineValidation.compiled, catalog) : null;
   const visibleCatalogElements = catalog?.elements.filter(({ elementId }) => !hiddenElementIds.includes(elementId)) ?? [];
   const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
@@ -429,6 +444,9 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       })}><AdminText messageKey="admin.validateDraft" /></button>
     </AuthoringDraftToolbar>
     <p>{t("admin.draftRevisionRevisionBound", { revision: draft.revision, catalog: draft.catalogReleaseId })}</p>
+    <MetricLibrary draft={draft} catalog={catalog} canWrite={canWrite} busy={busy}
+      onChange={(metrics) => change((current) => ({ ...current, metrics }))}
+      assistance={catalog && <ValidationReferenceAssistance idPrefix="metric" catalog={catalog} elementId={referenceElementId} onElementIdChange={setReferenceElementId} />} />
     <section className="validation-library" aria-labelledby="validation-library-heading">
       <h3 id="validation-library-heading"><AdminText messageKey="admin.ruleLibrary" /></h3>
       <ValidationRuleFilterControls value={filters} elements={visibleCatalogElements}
@@ -483,6 +501,13 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     </section>
     {selectedRule && <fieldset className="validation-rule-editor" disabled={!canWrite}>
       <legend><AdminText messageKey="admin.conditionalValidationRule" /></legend>
+      {!!draft.metrics?.length && <details><summary>{t("metrics.references")}</summary>
+        <ul>{draft.metrics.map((metric) => <li key={metric.id}>{metric.name} ({metric.unit})
+          <pre><code>{`metricAvailable("${metric.id}")\nmetricCompare("${metric.id}", "less-or-equal", 60, "${metric.unit}")`}</code></pre></li>)}</ul>
+      </details>}
+      {!!selectedRule.unresolved?.length && <label className="validation-rule-row">{t("metrics.unresolved")}<textarea rows={4}
+        value={selectedRule.unresolved.join("\n")} onChange={(event) => changeRule((rule) => ({ ...rule, unresolved: event.target.value.split("\n").filter((line) => line.trim()) }))} /></label>}
+
       <div className="validation-rule-row"><label htmlFor="validation-wording-language"><AdminText messageKey="admin.wordingLanguage" /></label>
         <select id="validation-wording-language" value={wordingLanguage}
           onChange={(event) => setWordingLanguage(event.target.value as "en" | "sv")}>
@@ -577,7 +602,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         {item.line ? `Line ${item.line}, column ${item.column}: ` : ""}{item.message}</li>)}
     </ul></div>}
     {explanation && <details aria-label={t("admin.generatedRuleExplanation")}><summary><AdminText messageKey="admin.explanation" /></summary><p>{explanation}</p></details>}
-    {validation && <ValidationResultFeedback result={validation} ruleCount={draft.rules.length} />}
+    {validation && <ValidationResultFeedback result={validation} ruleCount={draft.rules.length} metricCount={draft.metrics?.length} />}
 
     <section className="form-publication-review">
       {canPublish && <>

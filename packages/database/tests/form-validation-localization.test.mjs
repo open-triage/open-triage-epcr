@@ -8,7 +8,7 @@ import { applyFormValidationLocalization } from "../scripts/lib/form-validation-
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..", "defines");
 
-test("both installed profiles carry localized validation wording and no form wording", async () => {
+test("installed profiles carry localized validation wording and no form wording", async () => {
   const definitions = await readInstallDefinitions(root);
   for (const profile of definitions.pairs) {
     assert.equal(Object.hasOwn(profile.form.definition, "locales"), false);
@@ -22,13 +22,14 @@ test("both installed profiles carry localized validation wording and no form wor
     assert.equal(count.localization.sv.reviewedSource?.message, count.message);
     assert.equal(count.source, profile.validation.rules.find((rule) => rule.id === count.id).source);
   }
-  const sweden = definitions.pairs.find(({ key }) => key === "sweden");
-  assert.match(sweden.validation.rules[0].localization.sv.message, /hjärtstopp minst en gång/);
+  const arrestMinimum = definitions.defaultPair.validation.rules.find((rule) => rule.primaryTargetElementId === "eArrest.01"
+    && rule.source.includes("minimum("));
+  assert.match(arrestMinimum.localization.sv.message, /hjärtstopp minst en gång/);
 });
 
 test("stale validation source wording rejects seed activation", async () => {
   const definitions = await readInstallDefinitions(root);
-  const profile = definitions.pairs.find(({ key }) => key === "sweden");
+  const profile = definitions.defaultPair;
   const form = structuredClone(profile.form);
   const validation = structuredClone(profile.validation);
   validation.rules[0].name = "Changed source";
@@ -40,11 +41,36 @@ test("stale validation source wording rejects seed activation", async () => {
 
 });
 
+test("installed metrics carry Swedish wording and reject changed English source text", async () => {
+  const definitions = await readInstallDefinitions(root);
+  const profile = definitions.defaultPair;
+  assert.equal(profile.validation.metrics.length, 6);
+  assert.ok(profile.validation.metrics.every((metric) => metric.localization?.sv?.name && metric.localization.sv.description));
+  assert.match(profile.validation.metrics[0].localization.sv.name, /första defibrillering/);
+  const changed = structuredClone(profile.validation);
+  changed.metrics[0].description = "Changed source description";
+  await assert.rejects(applyFormValidationLocalization(root, profile.form, changed), /Stale Swedish metric text/);
+});
+
+test("missing-only localization fills known rules without changing custom wording or unknown rules", async () => {
+  const validation = JSON.parse(await readFile(path.join(root, "validation/validation_nemsis-full.json"), "utf8"));
+  const original = structuredClone(validation);
+  validation.rules[0].localization = { schemaVersion: 1, sv: { name: "Egen svensk benämning" } };
+  const unknown = { ...structuredClone(validation.rules[0]), id: "custom-rule", name: "Custom source", message: "Custom message", localization: undefined };
+  validation.rules.push(unknown);
+  await applyFormValidationLocalization(root, { key: "custom" }, validation, { missingOnly: true, allowUnmatched: true });
+  assert.equal(validation.rules[0].localization.sv.name, "Egen svensk benämning");
+  assert.ok(validation.rules[0].localization.sv.message);
+  assert.equal(unknown.localization, undefined);
+  assert.deepEqual(validation.rules.slice(0, -1).map(({ localization, ...rule }) => rule), original.rules.map(({ localization, ...rule }) => rule));
+  assert.deepEqual(validation.metrics.map(({ localization, ...metric }) => metric), original.metrics);
+});
+
 test("one maximal validation seed coexists with definitive catalog wording", async () => {
   const seed = JSON.parse(await readFile(path.join(root, "localization/localization_sv.json"), "utf8"));
   const catalog = JSON.parse(await readFile(path.join(root, "localization/localization_sv.json"), "utf8"));
-  assert.equal(Object.keys(seed.validationRules).length, 706);
-  assert.deepEqual(Object.keys(seed).sort(), ["catalog", "language", "schemaVersion", "validationRules"]);
+  assert.equal(Object.keys(seed.validationRules).length, 715);
+  assert.deepEqual(Object.keys(seed).sort(), ["catalog", "language", "schemaVersion", "validationMetrics", "validationRules"]);
   assert.equal(Object.hasOwn(catalog, "formPresentation"), false);
   assert.equal(catalog.catalog.groups.eResponseSection.name, "Uppdrag");
   assert.equal(catalog.catalog.groups.eNarrativeSection.name, "Anteckning");

@@ -13,6 +13,7 @@ import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encounterDocument } from "./encounter-document.persistence.js";
 import { reviewScope } from "../review/review-scope.js";
+import { normalizedMetricEvidence, restrictedMetricInputs } from "../review/metric-evidence.js";
 
 type ReportRow = {
   id: string;
@@ -132,7 +133,21 @@ export class ReviewValidationService {
       `, [session.organization.id, report.id, Number(report.revision), validationVersionId,
         version.compiled_sha256, session.user.id, outcome, JSON.stringify(findings),
         JSON.stringify(failures), evaluatedAt]));
-      return evaluation(inserted[0]!);
+      const response = evaluation(inserted[0]!);
+      if (!scope.identifying && response.findings.some((finding) => finding.metricEvidence?.length)) {
+        const inputs = [...new Set(response.findings.flatMap((finding) =>
+          (finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)))];
+        const visible = new Set((await manager.query<Array<{ element_id: string }>>(`
+          select element_id from catalog.analytics_element_mapping
+          where release_id=$1 and element_id=any($2::text[]) and not identifying
+        `, [report.catalog_release_id, inputs])).map((row) => row.element_id));
+        const restricted = await restrictedMetricInputs(manager, [report.id], inputs);
+        // Persist full immutable evidence, but return only inputs this reviewer can read.
+        response.findings = response.findings.map((finding) => !finding.metricEvidence ? finding : ({ ...finding,
+          metricEvidence: finding.metricEvidence.filter((metric) => metric.inputElementIds.every((id) => visible.has(id) &&
+            !restricted.has(`${report.id}:${id}`))).map(normalizedMetricEvidence) }));
+      }
+      return response;
     });
   }
 }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "key": "nemsis-full",
   "name": "NEMSIS full",
   "catalogKey": "nemsis-3.5.1",
@@ -17,7 +17,10 @@
       "primaryTargetElementId": "dAgency.01",
       "message": "EMS Agency Unique State ID requires at least 1 documented occurrence(s)",
       "source": "for each(\"HeaderGroup\")\nrequire minimum(\"dAgency.01\", 1)",
-      "id": "5ae8f177-55f6-4ffa-ae2b-b3b1b4354d07"
+      "id": "5ae8f177-55f6-4ffa-ae2b-b3b1b4354d07",
+      "unresolved": [
+        "Map the agency demographic value dAgency.01 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "name": "EMS Agency Unique State ID documented maximum",
@@ -31,7 +34,10 @@
       "primaryTargetElementId": "dAgency.01",
       "message": "EMS Agency Unique State ID permits at most 1 documented occurrence(s)",
       "source": "for each(\"HeaderGroup\")\nrequire maximum(\"dAgency.01\", 1)",
-      "id": "e0c1cb71-0ee9-4fa6-a67b-7e600893062b"
+      "id": "e0c1cb71-0ee9-4fa6-a67b-7e600893062b",
+      "unresolved": [
+        "Map the agency demographic value dAgency.01 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "name": "EMS Agency Number documented minimum",
@@ -45,7 +51,10 @@
       "primaryTargetElementId": "dAgency.02",
       "message": "EMS Agency Number requires at least 1 documented occurrence(s)",
       "source": "for each(\"HeaderGroup\")\nrequire minimum(\"dAgency.02\", 1)",
-      "id": "4f7ff19d-219c-4bf1-a856-e5b73c69cc14"
+      "id": "4f7ff19d-219c-4bf1-a856-e5b73c69cc14",
+      "unresolved": [
+        "Map the agency demographic value dAgency.02 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "name": "EMS Agency Number documented maximum",
@@ -59,7 +68,10 @@
       "primaryTargetElementId": "dAgency.02",
       "message": "EMS Agency Number permits at most 1 documented occurrence(s)",
       "source": "for each(\"HeaderGroup\")\nrequire maximum(\"dAgency.02\", 1)",
-      "id": "7ba73008-01fa-4b1a-a6f0-477931c084c8"
+      "id": "7ba73008-01fa-4b1a-a6f0-477931c084c8",
+      "unresolved": [
+        "Map the agency demographic value dAgency.02 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "name": "EMS Agency State documented minimum",
@@ -73,7 +85,10 @@
       "primaryTargetElementId": "dAgency.04",
       "message": "EMS Agency State requires at least 1 documented occurrence(s)",
       "source": "for each(\"HeaderGroup\")\nrequire minimum(\"dAgency.04\", 1)",
-      "id": "029e5262-013b-405d-a63d-e6d893277ed1"
+      "id": "029e5262-013b-405d-a63d-e6d893277ed1",
+      "unresolved": [
+        "Map the agency demographic value dAgency.04 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "name": "EMS Agency State documented maximum",
@@ -87,7 +102,10 @@
       "primaryTargetElementId": "dAgency.04",
       "message": "EMS Agency State permits at most 1 documented occurrence(s)",
       "source": "for each(\"HeaderGroup\")\nrequire maximum(\"dAgency.04\", 1)",
-      "id": "5aa80899-eec3-4169-aa8d-f2bd0efb6be2"
+      "id": "5aa80899-eec3-4169-aa8d-f2bd0efb6be2",
+      "unresolved": [
+        "Map the agency demographic value dAgency.04 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "name": "Date/Time Airway Device Placement Confirmation documented maximum",
@@ -209,7 +227,9 @@
           }
         }
       },
-      "messageParameters": { "minimum": 1 },
+      "messageParameters": {
+        "minimum": 1
+      },
       "source": "for each(\"PatientCareReportGroup\")\nrequire minimum(\"eArrest.01\", 1)",
       "id": "dfa2e52d-5b0e-4c5a-a857-215a01ee1120"
     },
@@ -7582,7 +7602,7 @@
     {
       "id": "4714c692-01fc-4bbc-a7c9-2df037347f0c",
       "name": "When the element has a Pertinent Negative, it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
-      "enabled": false,
+      "enabled": true,
       "severity": "error",
       "executionTargets": [
         "live",
@@ -7613,7 +7633,7 @@
     {
       "id": "97bb4c82-dd81-4476-a637-c93deb8f308c",
       "name": "When the element is empty, it should have a Not Value (Not Applicable, Not Recorded, or Not Reporting, if allowed for the element) or a Pertinent Negative (if allowed for the element), or it should be omitted (if the element is optional).",
-      "enabled": false,
+      "enabled": true,
       "severity": "error",
       "executionTargets": [
         "live",
@@ -7644,7 +7664,7 @@
     {
       "id": "ae0d332e-1123-4dbc-a3d4-cc2c5a7c5e0f",
       "name": "When the element has a Not Value (Not Applicable, Not Recorded, or Not Reporting), it should be empty.",
-      "enabled": false,
+      "enabled": true,
       "severity": "error",
       "executionTargets": [
         "live",
@@ -7675,7 +7695,7 @@
     {
       "id": "9639f323-fac1-4c1a-a5f8-767c30f79f43",
       "name": "When the element has a Not Value, no other value should be recorded.",
-      "enabled": false,
+      "enabled": true,
       "severity": "warning",
       "executionTargets": [
         "live",
@@ -7706,7 +7726,7 @@
     {
       "id": "c4381040-c41c-4626-a2e4-38c6d477fcb6",
       "name": "When the element has a Pertinent Negative, no other value should be recorded.",
-      "enabled": false,
+      "enabled": true,
       "severity": "warning",
       "executionTargets": [
         "live",
@@ -7763,7 +7783,10 @@
           "targetExpression": "., ancestor::nem:Header/nem:DemographicGroup/nem:dAgency.02"
         }
       ],
-      "sourceKind": "nemsis"
+      "sourceKind": "nemsis",
+      "unresolved": [
+        "Map the agency demographic value dAgency.02 into the report's HeaderGroup before enabling this rule."
+      ]
     },
     {
       "id": "494c7295-09e0-4a7b-ae17-3517833114e9",
@@ -13243,6 +13266,307 @@
         }
       ],
       "sourceKind": "nemsis"
+    },
+    {
+      "id": "9c530637-35a3-40ef-a2b8-17ee153d2c9e",
+      "name": "Trauma-center destination",
+      "message": "Trauma-center destination",
+      "source": "when all(member(\"eArrest.01\", \"3001001\"), any(member(\"eInjury.03\", \"2903001\", \"2903003\", \"2903005\", \"2903007\", \"2903009\", \"2903011\", \"2903013\", \"2903015\", \"2903017\", \"2903019\", \"2903021\", \"2903023\", \"2903025\", \"2903027\", \"2903029\", \"2903031\", \"2903033\", \"2903035\", \"2903037\", \"2903039\", \"2903041\"), member(\"eInjury.04\", \"2904001\", \"2904003\", \"2904005\", \"2904007\", \"2904009\", \"2904011\", \"2904013\", \"2904015\", \"2904017\", \"2904019\", \"2904021\", \"2904023\", \"2904025\", \"2904027\", \"2904029\", \"2904031\", \"2904033\", \"2904035\", \"2904037\", \"2904039\")))\nrequire member(\"eDisposition.23\", \"9908021\", \"9908023\", \"9908025\", \"9908027\", \"9908029\")",
+      "primaryTargetElementId": "eDisposition.23",
+      "enabled": false,
+      "severity": "none",
+      "reviewPriority": "none",
+      "executionTargets": [
+        "review"
+      ],
+      "sourceKind": "agency",
+      "unresolved": [
+        "Confirm how the 2006 CDC/ACS major-trauma definition maps to the catalog’s 2021 trauma-triage criteria, including age boundaries; the current predicate is a candidate mapping only.",
+        "Define accepted trauma-center levels. The destination predicate currently lists catalog levels 1–5 and must be narrowed to the approved levels before enabling."
+      ],
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-5",
+          "originalExpression": "when equals(\"local.EligibleMajorTrauma\", true)\nrequire member(\"eDisposition.02\", \"LOCAL-TRAUMA-CENTER\")",
+          "originalMessage": "Map 2006 CDC/ACS trauma triage, including physiological/anatomical/mechanism criteria and age boundaries. Exclude cardiac arrest and map approved trauma-center destinations.",
+          "context": "Interim; partially mapped to recorded trauma-triage criteria, explicit no cardiac arrest, and destination hospital capability. Disabled pending trauma-definition and accepted-level decisions.",
+          "subject": "Measure 5"
+        }
+      ]
+    },
+    {
+      "id": "15d9bbee-c4d4-46b1-b2ab-7914f05dff12",
+      "name": "Pain reduced",
+      "message": "Pain reduced",
+      "source": "when metricAvailable(\"a960ca00-e309-4fde-98af-9c10c2a224b4\")\nrequire metricCompare(\"a960ca00-e309-4fde-98af-9c10c2a224b4\", \"less-than\", 0, \"score\")",
+      "primaryTargetElementId": "eVitals.27",
+      "enabled": true,
+      "severity": "none",
+      "reviewPriority": "none",
+      "executionTargets": [
+        "review"
+      ],
+      "sourceKind": "agency",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-6.1",
+          "originalExpression": "when equals(\"local.EligiblePainPair\", true)\nrequire metricCompare(\"a960ca00-e309-4fde-98af-9c10c2a224b4\", \"less-than\", 0, \"score\")",
+          "originalMessage": "Complete and enable the shared pain metric and its eligible-pair mapping. Select pass percentage for this rate.",
+          "context": "Configured as one pain-reduction outcome for all records with two numeric pain observations at distinct times. No age restriction. Pass means last score is lower than first; unchanged or increased pain fails. Replaces separate relieved/worsened/unchanged outcomes.",
+          "subject": "Measure 6.1"
+        }
+      ]
+    },
+    {
+      "id": "aa3b3267-90b9-4edd-9ef3-5659c5f2fd52",
+      "name": "Pain intervention",
+      "message": "Pain intervention",
+      "source": "for each(\"eVitals.VitalGroup\")\nwhen all(member(\"eVitals.28\", \"3328003\"), compareValue(\"eVitals.27\", \"greater-or-equal\", 7), compareValue(\"eVitals.27\", \"less-or-equal\", 10))\nrequire any(coded(\"eMedications.03\", \"RxNorm\", \"161\"), coded(\"eMedications.03\", \"RxNorm\", \"4337\"), coded(\"eMedications.03\", \"RxNorm\", \"3423\"), coded(\"eMedications.03\", \"RxNorm\", \"6130\"), coded(\"eMedications.03\", \"RxNorm\", \"35827\"), coded(\"eMedications.03\", \"RxNorm\", \"7052\"))",
+      "primaryTargetElementId": "eMedications.03",
+      "enabled": true,
+      "severity": "none",
+      "reviewPriority": "none",
+      "executionTargets": [
+        "review"
+      ],
+      "sourceKind": "agency",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-6.4",
+          "originalExpression": "when equals(\"local.EligiblePainIntervention\", true)\nrequire equals(\"local.PainInterventionGiven\", true)",
+          "originalMessage": "PARKED: explicitly define age-appropriate scales, eligible pain population, and accepted medication/procedure interventions before enabling.",
+          "context": "Historical source was parked. Configured as a separate medication-occurrence outcome for any recorded numeric pain score 7–10, without an age restriction. Accepted RxNorm ingredients from the bound catalog: acetaminophen 161, fentanyl 4337, hydromorphone 3423, ketamine 6130, ketorolac 35827, morphine 7052. Medication timing is intentionally not required. Measures documented analgesic occurrence; does not infer indication, assess dosing or include non-drug interventions.",
+          "subject": "Measure 6.4"
+        },
+        {
+          "standard": "NASEMSO National Model EMS Clinical Guidelines",
+          "sourceRelease": "2022-03",
+          "sourceIdentity": "https://nasemso.org/wp-content/uploads/National-Model-EMS-Clinical-Guidelines_2022.pdf",
+          "subject": "Pain Management, printed pages 93–94",
+          "originalExpression": "for each(\"eVitals.VitalGroup\")\nwhen all(member(\"eVitals.28\", \"3328003\"), compareValue(\"eVitals.27\", \"greater-or-equal\", 7), compareValue(\"eVitals.27\", \"less-or-equal\", 10))\nrequire any(coded(\"eMedications.03\", \"RxNorm\", \"161\"), coded(\"eMedications.03\", \"RxNorm\", \"4337\"), coded(\"eMedications.03\", \"RxNorm\", \"3423\"), coded(\"eMedications.03\", \"RxNorm\", \"6130\"), coded(\"eMedications.03\", \"RxNorm\", \"35827\"), coded(\"eMedications.03\", \"RxNorm\", \"7052\"))",
+          "originalMessage": "Pain-management medication choices intersected with the bound eMedications.03 catalog.",
+          "context": "Catalog adaptation: selected six listed analgesics; excluded drugs absent from this catalog and medications outside this pain-management list. Occurrence-only check requested by configuration."
+        }
+      ]
+    },
+    {
+      "id": "dfa328c7-4488-488f-9080-79343707da34",
+      "name": "12-lead performed",
+      "message": "12-lead performed",
+      "source": "when all(any(all(member(\"ePatient.16\", \"2516009\"), compareValue(\"ePatient.15\", \"greater-or-equal\", 35)), all(member(\"ePatient.16\", \"2516007\"), compareValue(\"ePatient.15\", \"greater-or-equal\", 420))), any(coded(\"eSituation.11\", \"ICD-10-CM\", \"R07.9\"), coded(\"eSituation.12\", \"ICD-10-CM\", \"R07.9\")))\nrequire any(coded(\"eProcedures.03\", \"SNOMED-CT\", \"268400002\"), member(\"eVitals.04\", \"3304007\", \"3304009\"))",
+      "primaryTargetElementId": "eProcedures.03",
+      "enabled": true,
+      "severity": "none",
+      "reviewPriority": "none",
+      "executionTargets": [
+        "review"
+      ],
+      "sourceKind": "agency",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-7",
+          "originalExpression": "when equals(\"local.EligibleCardiacChestPain\", true)\nrequire coded(\"eProcedures.03\", \"LOCAL\", \"12-LEAD\")",
+          "originalMessage": "Map primary/secondary cardiac chest-pain impressions and age units; resolve the source's >35 versus <35 boundary. Map approved 12-lead procedure codes.",
+          "context": "Catalog mapping: primary/secondary chest pain R07.9, age >=35 years or >=420 months (source denominator excludes <35), and SNOMED-CT 268400002 or a recorded left/right 12-lead ECG type. Other age units or missing age do not establish eligibility.",
+          "subject": "Measure 7"
+        }
+      ]
+    },
+    {
+      "id": "09d81b18-c80e-43b9-88c6-4b1b979032c8",
+      "name": "Aspirin administered",
+      "message": "Aspirin administered",
+      "source": "when all(any(all(member(\"ePatient.16\", \"2516009\"), compareValue(\"ePatient.15\", \"greater-or-equal\", 35)), all(member(\"ePatient.16\", \"2516007\"), compareValue(\"ePatient.15\", \"greater-or-equal\", 420))), any(coded(\"eSituation.11\", \"ICD-10-CM\", \"R07.9\"), coded(\"eSituation.12\", \"ICD-10-CM\", \"R07.9\")), not(any(coded(\"eHistory.08\", \"ICD-10-CM\", \"K27.4\"), coded(\"eHistory.08\", \"ICD-10-CM\", \"K25.9\"), coded(\"eHistory.08\", \"ICD-10-CM\", \"K92.2\"))))\nrequire coded(\"eMedications.03\", \"RxNorm\", \"1191\")",
+      "primaryTargetElementId": "eMedications.03",
+      "enabled": false,
+      "severity": "none",
+      "reviewPriority": "none",
+      "executionTargets": [
+        "review"
+      ],
+      "sourceKind": "agency",
+      "unresolved": [
+        "Map aspirin-specific allergy and current anticoagulant exclusions; the bundled allergy and current-medication lists do not contain the required specific choices.",
+        "Confirm complete intestinal/stomach ulcer and bleeding exclusions and how undocumented history is handled; only K27.4, K25.9 and K92.2 are mapped so far."
+      ],
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-8",
+          "originalExpression": "when equals(\"local.EligibleAspirinChestPain\", true)\nrequire coded(\"eMedications.03\", \"LOCAL\", \"ASPIRIN\")",
+          "originalMessage": "Map chest-pain eligibility and age boundary, aspirin allergies, intestinal/stomach bleeding or ulcers, and anticoagulant exclusions. Map approved aspirin administration codes.",
+          "context": "Partially mapped: chest pain R07.9, age >=35 years or >=420 months, known ulcer/GI-bleed history codes, and administered aspirin RxNorm 1191. Disabled until all contraindication exclusions are defined.",
+          "subject": "Measure 8"
+        }
+      ]
+    },
+    {
+      "id": "73011eb2-dd76-4b14-a767-365bd4a517b6",
+      "name": "STEMI specialty destination",
+      "message": "STEMI specialty destination",
+      "source": "for each(\"eVitals.CardiacRhythmGroup\")\nwhen all(any(all(member(\"ePatient.16\", \"2516009\"), compareValue(\"ePatient.15\", \"greater-or-equal\", 35)), all(member(\"ePatient.16\", \"2516007\"), compareValue(\"ePatient.15\", \"greater-or-equal\", 420))), member(\"eVitals.03\", \"9901051\", \"9901053\", \"9901055\", \"9901057\", \"9901058\"), member(\"eVitals.04\", \"3304007\", \"3304009\"))\nrequire member(\"eDisposition.23\", \"9908031\", \"9908033\")",
+      "primaryTargetElementId": "eDisposition.23",
+      "enabled": true,
+      "severity": "none",
+      "reviewPriority": "none",
+      "executionTargets": [
+        "review"
+      ],
+      "sourceKind": "agency",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-9",
+          "originalExpression": "when equals(\"local.EligibleStemi\", true)\nrequire member(\"eDisposition.02\", \"LOCAL-CATH-CENTER\")",
+          "originalMessage": "Map field 12-lead STEMI criteria and the age-35 boundary. Map accepted emergency interventional catheterization destinations.",
+          "context": "Interim source adapted to NEMSIS 3.5.1: age >=35 years or >=420 months; a STEMI rhythm and left/right 12-lead type in the same cardiac rhythm observation; destination hospital capability PCI-capable or PCI-capable 24/7. Uses recorded capability rather than a local facility-name list.",
+          "subject": "Measure 9"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "id": "04274756-4a02-4670-8924-f2997979fb62",
+      "name": "PSAP to first defibrillation",
+      "description": "Seconds from PSAP contact (eTimes.01) to the first recorded AED or manual defibrillation (eProcedures.01/.03). All records are eligible; missing inputs give no value.",
+      "enabled": true,
+      "reviewEnabled": true,
+      "unit": "s",
+      "source": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.01\"\n  },\n  \"end\": {\n    \"operator\": \"first\",\n    \"groupId\": \"eProcedures.ProcedureGroup\",\n    \"elementId\": \"eProcedures.01\",\n    \"timeElementId\": \"eProcedures.01\",\n    \"unit\": \"timestamp\",\n    \"where\": \"any(coded(\\\"eProcedures.03\\\", \\\"SNOMED-CT\\\", \\\"450661000124102\\\"), coded(\\\"eProcedures.03\\\", \\\"SNOMED-CT\\\", \\\"426220008\\\"))\"\n  },\n  \"unit\": \"s\"\n}",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-3.1-3.2",
+          "originalExpression": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.01\"\n  },\n  \"end\": {\n    \"operator\": \"first\",\n    \"groupId\": \"eProcedures.ProcedureGroup\",\n    \"elementId\": \"eProcedures.01\",\n    \"timeElementId\": \"eProcedures.01\",\n    \"unit\": \"timestamp\",\n    \"where\": \"coded(\\\"eProcedures.03\\\", \\\"LOCAL\\\", \\\"DEFIBRILLATION\\\")\"\n  },\n  \"unit\": \"s\"\n}",
+          "originalMessage": "First qualifying manual/AED defibrillation after PSAP contact; arrest before EMS arrival.",
+          "context": "Catalog mapping to NEMSIS 3.5.1; all records eligible by configuration, without the historical population restrictions.",
+          "subject": "Measure 3.1-3.2"
+        }
+      ]
+    },
+    {
+      "id": "7ea9f0b9-f0db-4284-9a09-b0a4f207e5a2",
+      "name": "PSAP to initial rhythm analysis",
+      "description": "Seconds from PSAP contact (eTimes.01) to the first documented cardiac rhythm, including AED shockable/non-shockable findings and excluding artifact. Uses the same vital observation time (eVitals.01). All records are eligible.",
+      "enabled": true,
+      "reviewEnabled": true,
+      "unit": "s",
+      "source": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.01\"\n  },\n  \"end\": {\n    \"operator\": \"first\",\n    \"groupId\": \"eVitals.VitalGroup\",\n    \"elementId\": \"eVitals.01\",\n    \"timeElementId\": \"eVitals.01\",\n    \"unit\": \"timestamp\",\n    \"where\": \"member(\\\"eVitals.03\\\", \\\"9901001\\\", \\\"9901003\\\", \\\"9901007\\\", \\\"9901009\\\", \\\"9901011\\\", \\\"9901013\\\", \\\"9901015\\\", \\\"9901017\\\", \\\"9901019\\\", \\\"9901021\\\", \\\"9901023\\\", \\\"9901025\\\", \\\"9901027\\\", \\\"9901029\\\", \\\"9901030\\\", \\\"9901031\\\", \\\"9901033\\\", \\\"9901035\\\", \\\"9901037\\\", \\\"9901039\\\", \\\"9901041\\\", \\\"9901043\\\", \\\"9901045\\\", \\\"9901047\\\", \\\"9901049\\\", \\\"9901051\\\", \\\"9901053\\\", \\\"9901055\\\", \\\"9901057\\\", \\\"9901058\\\", \\\"9901059\\\", \\\"9901061\\\", \\\"9901063\\\", \\\"9901065\\\", \\\"9901067\\\", \\\"9901069\\\", \\\"9901071\\\")\"\n  },\n  \"unit\": \"s\"\n}",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-4.1-4.2",
+          "originalExpression": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.01\"\n  },\n  \"end\": {\n    \"operator\": \"first\",\n    \"groupId\": \"eVitals.VitalGroup\",\n    \"elementId\": \"eVitals.01\",\n    \"timeElementId\": \"eVitals.01\",\n    \"unit\": \"timestamp\",\n    \"where\": \"coded(\\\"eVitals.03\\\", \\\"LOCAL\\\", \\\"ANALYZED-RHYTHM\\\")\"\n  },\n  \"unit\": \"s\"\n}",
+          "originalMessage": "First qualifying rhythm observation, correlated with its vital timestamp; arrest before EMS arrival.",
+          "context": "Catalog mapping to NEMSIS 3.5.1; all records eligible by configuration, without the historical population restrictions.",
+          "subject": "Measure 4.1-4.2"
+        }
+      ]
+    },
+    {
+      "id": "a960ca00-e309-4fde-98af-9c10c2a224b4",
+      "name": "Pain change (last minus first)",
+      "description": "Last minus first numeric 0–10 pain score (eVitals.27/.28), ordered by eVitals.01. Requires at least two qualifying observations at distinct times. Negative values indicate reduced pain. All records are eligible.",
+      "enabled": true,
+      "reviewEnabled": true,
+      "unit": "score",
+      "source": "{\n  \"operator\": \"difference\",\n  \"left\": {\n    \"operator\": \"last\",\n    \"groupId\": \"eVitals.VitalGroup\",\n    \"elementId\": \"eVitals.27\",\n    \"timeElementId\": \"eVitals.01\",\n    \"unit\": \"score\",\n    \"where\": \"all(member(\\\"eVitals.28\\\", \\\"3328003\\\"), compareValue(\\\"eVitals.27\\\", \\\"greater-or-equal\\\", 0), compareValue(\\\"eVitals.27\\\", \\\"less-or-equal\\\", 10))\",\n    \"minimumDistinctTimes\": 2\n  },\n  \"right\": {\n    \"operator\": \"first\",\n    \"groupId\": \"eVitals.VitalGroup\",\n    \"elementId\": \"eVitals.27\",\n    \"timeElementId\": \"eVitals.01\",\n    \"unit\": \"score\",\n    \"where\": \"all(member(\\\"eVitals.28\\\", \\\"3328003\\\"), compareValue(\\\"eVitals.27\\\", \\\"greater-or-equal\\\", 0), compareValue(\\\"eVitals.27\\\", \\\"less-or-equal\\\", 10))\",\n    \"minimumDistinctTimes\": 2\n  }\n}",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-6.1-6.3",
+          "originalExpression": "{\n  \"operator\": \"difference\",\n  \"left\": {\n    \"operator\": \"last\",\n    \"groupId\": \"eVitals.VitalGroup\",\n    \"elementId\": \"eVitals.27\",\n    \"timeElementId\": \"eVitals.01\",\n    \"unit\": \"score\",\n    \"where\": \"all(compareValue(\\\"eVitals.27\\\", \\\"greater-or-equal\\\", 0), compareValue(\\\"eVitals.27\\\", \\\"less-or-equal\\\", 10))\"\n  },\n  \"right\": {\n    \"operator\": \"first\",\n    \"groupId\": \"eVitals.VitalGroup\",\n    \"elementId\": \"eVitals.27\",\n    \"timeElementId\": \"eVitals.01\",\n    \"unit\": \"score\",\n    \"where\": \"all(compareValue(\\\"eVitals.27\\\", \\\"greater-or-equal\\\", 0), compareValue(\\\"eVitals.27\\\", \\\"less-or-equal\\\", 10))\"\n  }\n}",
+          "originalMessage": "Negative values indicate relief. Select two 0–10 scores at distinct clinical times. Pass percentages of the corresponding rules give each outcome rate.",
+          "context": "Catalog mapping to NEMSIS 3.5.1; all records eligible by configuration, without the historical population restrictions.",
+          "subject": "Measure 6.1-6.3"
+        }
+      ]
+    },
+    {
+      "id": "c405423f-a16a-4cb3-9910-c85208e7c46a",
+      "name": "PSAP to patient contact",
+      "description": "Seconds from eTimes.01 to eTimes.07, following the named interval endpoints. All records are eligible; missing timestamps give no value and negative intervals are invalid.",
+      "enabled": true,
+      "reviewEnabled": true,
+      "unit": "s",
+      "source": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.01\"\n  },\n  \"end\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.07\"\n  },\n  \"unit\": \"s\"\n}",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-10.1-10.2",
+          "originalExpression": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.01\"\n  },\n  \"end\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.07\"\n  },\n  \"unit\": \"s\"\n}",
+          "originalMessage": "Use the named formula endpoints; the 2009 scene/transport text repeats response endpoint descriptions. This template follows the interval formula. Mean and p90 share the same eligible reports.",
+          "context": "Catalog mapping to NEMSIS 3.5.1; all records eligible by configuration, without the historical population restrictions.",
+          "subject": "Measure 10.1-10.2"
+        }
+      ]
+    },
+    {
+      "id": "0f5764eb-31c3-445c-bb99-0994efd41846",
+      "name": "Patient contact to scene departure",
+      "description": "Seconds from eTimes.07 to eTimes.09, following the named interval endpoints. All records are eligible; missing timestamps give no value and negative intervals are invalid.",
+      "enabled": true,
+      "reviewEnabled": true,
+      "unit": "s",
+      "source": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.07\"\n  },\n  \"end\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.09\"\n  },\n  \"unit\": \"s\"\n}",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-10.3-10.4",
+          "originalExpression": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.07\"\n  },\n  \"end\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.09\"\n  },\n  \"unit\": \"s\"\n}",
+          "originalMessage": "Use the named formula endpoints; the 2009 scene/transport text repeats response endpoint descriptions. This template follows the interval formula. Mean and p90 share the same eligible reports.",
+          "context": "Catalog mapping to NEMSIS 3.5.1; all records eligible by configuration, without the historical population restrictions.",
+          "subject": "Measure 10.3-10.4"
+        }
+      ]
+    },
+    {
+      "id": "fe64871b-142c-40f1-91f9-8f6b8648e360",
+      "name": "Scene departure to destination",
+      "description": "Seconds from eTimes.09 to eTimes.11, following the named interval endpoints. All records are eligible; missing timestamps give no value and negative intervals are invalid.",
+      "enabled": true,
+      "reviewEnabled": true,
+      "unit": "s",
+      "source": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.09\"\n  },\n  \"end\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.11\"\n  },\n  \"unit\": \"s\"\n}",
+      "provenance": [
+        {
+          "standard": "EMS Performance Measures",
+          "dataset": "NEMSIS 2.2 → bound catalog",
+          "sourceRelease": "2009-12",
+          "sourceIdentity": "https://www.ems.gov/assets/EMS_Performance_Measures_2009.pdf#measure-10.5-10.6",
+          "originalExpression": "{\n  \"operator\": \"elapsed\",\n  \"start\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.09\"\n  },\n  \"end\": {\n    \"operator\": \"timestamp\",\n    \"elementId\": \"eTimes.11\"\n  },\n  \"unit\": \"s\"\n}",
+          "originalMessage": "Use the named formula endpoints; the 2009 scene/transport text repeats response endpoint descriptions. This template follows the interval formula. Mean and p90 share the same eligible reports.",
+          "context": "Catalog mapping to NEMSIS 3.5.1; all records eligible by configuration, without the historical population restrictions.",
+          "subject": "Measure 10.5-10.6"
+        }
+      ]
     }
   ]
 }

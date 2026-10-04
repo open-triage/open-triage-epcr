@@ -72,7 +72,7 @@ export const cloneValidationVersion = (csrfToken: string, sourceVersionId: strin
   catalogRequest<ValidationDraft>(`validation-versions/${sourceVersionId}/clone`, csrfToken, {
     method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
   });
-export type ValidationRuleQuery = { search?: string; element?: string; source?: string; severity?: string;
+export type ValidationRuleQuery = { search?: string; element?: string; source?: string; severity?: string; reviewPriority?: string;
   executionTarget?: string; enabled?: string; validity?: string; cursor?: string; limit?: number | "all" };
 export const loadValidationRules = (query: ValidationRuleQuery = {}) =>
   catalogRequest<ValidationRulePage>(`validation-rules${queryString(query as Record<string, string | number | undefined>)}`);
@@ -82,7 +82,7 @@ export const createValidationDraft = (csrfToken: string, catalogReleaseId: strin
   });
 export const saveValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
   catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}`, csrfToken, {
-    method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rules: draft.rules })
+    method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rules: draft.rules, ...(draft.metrics ? { metrics: draft.metrics } : {}) })
   });
 export const deleteValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
   catalogRequest<void>(`validation-drafts/${draft.id}`, csrfToken, {

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
+import { readValidationDefinition } from "@open-triage/contracts";
 import { FormAuthoringService } from "../../../apps/api/dist/admin/form-authoring.service.js";
 import { ValidationAuthoringService } from "../../../apps/api/dist/admin/validation-authoring.service.js";
 import { FormPublicationService } from "../../../apps/api/dist/forms/form-publication.service.js";
@@ -18,8 +19,11 @@ function stable(value) {
     .map(([key, item]) => [key, stable(item)]));
 }
 
-function ruleFingerprint(rules) {
-  return createHash("sha256").update(JSON.stringify(stable(rules.map(({ id: _id, ...rule }) => rule)))).digest("hex");
+function ruleFingerprint(value) {
+  const { rules, metrics } = readValidationDefinition(value);
+  const normalizedRules = rules.map(({ id: _id, ...rule }) => rule);
+  return createHash("sha256").update(JSON.stringify(stable(metrics.length
+    ? { rules: normalizedRules, metrics } : normalizedRules))).digest("hex");
 }
 
 function templateRules(template, organizationId) {

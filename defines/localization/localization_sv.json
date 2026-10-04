@@ -27237,6 +27237,98 @@
       "sourceMessage": "Level of Care Provided per Protocol should be recorded (with a value other than \"No Care Provided\") when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
       "name": "Vårdnivå enligt protokoll ska dokumenteras med ett annat värde än ”Ingen vård given” när patientbedömning och vård är ”Patienten bedömdes och fick vård”",
       "message": "Vårdnivå enligt protokoll ska dokumenteras med ett annat värde än ”Ingen vård given” när patientbedömning och vård är ”Patienten bedömdes och fick vård”."
+    },
+    "9c530637-35a3-40ef-a2b8-17ee153d2c9e": {
+      "sourceName": "Trauma-center destination",
+      "sourceMessage": "Trauma-center destination",
+      "name": "Destination traumacentrum",
+      "message": "Destination traumacentrum"
+    },
+    "15d9bbee-c4d4-46b1-b2ab-7914f05dff12": {
+      "sourceName": "Pain reduced",
+      "sourceMessage": "Pain reduced",
+      "name": "Smärta minskad",
+      "message": "Smärta minskad"
+    },
+    "aa3b3267-90b9-4edd-9ef3-5659c5f2fd52": {
+      "sourceName": "Pain intervention",
+      "sourceMessage": "Pain intervention",
+      "name": "Smärtbehandling",
+      "message": "Smärtbehandling"
+    },
+    "dfa328c7-4488-488f-9080-79343707da34": {
+      "sourceName": "12-lead performed",
+      "sourceMessage": "12-lead performed",
+      "name": "12-avlednings-EKG utfört",
+      "message": "12-avlednings-EKG utfört"
+    },
+    "09d81b18-c80e-43b9-88c6-4b1b979032c8": {
+      "sourceName": "Aspirin administered",
+      "sourceMessage": "Aspirin administered",
+      "name": "Acetylsalicylsyra administrerad",
+      "message": "Acetylsalicylsyra administrerad"
+    },
+    "73011eb2-dd76-4b14-a767-365bd4a517b6": {
+      "sourceName": "STEMI specialty destination",
+      "sourceMessage": "STEMI specialty destination",
+      "name": "Destination PCI-centrum vid STEMI",
+      "message": "Destination PCI-centrum vid STEMI"
+    },
+    "a7a70b47-f58e-4fb8-bc32-30d451901bdc": {
+      "sourceName": "Pain relieved",
+      "sourceMessage": "Pain relieved",
+      "name": "Smärta lindrad",
+      "message": "Smärta lindrad"
+    },
+    "780cef82-944b-46ea-b20c-04e59d4439ef": {
+      "sourceName": "Pain worsened",
+      "sourceMessage": "Pain worsened",
+      "name": "Smärta förvärrad",
+      "message": "Smärta förvärrad"
+    },
+    "aa7e0064-9a76-4058-b748-6ffecb856afe": {
+      "sourceName": "Pain unchanged",
+      "sourceMessage": "Pain unchanged",
+      "name": "Oförändrad smärta",
+      "message": "Oförändrad smärta"
+    }
+  },
+  "validationMetrics": {
+    "04274756-4a02-4670-8924-f2997979fb62": {
+      "sourceName": "PSAP to first defibrillation",
+      "sourceDescription": "Seconds from PSAP contact (eTimes.01) to the first recorded AED or manual defibrillation (eProcedures.01/.03). All records are eligible; missing inputs give no value.",
+      "name": "Tid från kontakt med larmcentral till första defibrillering",
+      "description": "Sekunder från kontakt med larmcentral (eTimes.01) till den första dokumenterade defibrilleringen med AED eller manuell defibrillator (eProcedures.01/.03). Alla journaler kan ingå. Om nödvändiga uppgifter saknas beräknas inget värde."
+    },
+    "7ea9f0b9-f0db-4284-9a09-b0a4f207e5a2": {
+      "sourceName": "PSAP to initial rhythm analysis",
+      "sourceDescription": "Seconds from PSAP contact (eTimes.01) to the first documented cardiac rhythm, including AED shockable/non-shockable findings and excluding artifact. Uses the same vital observation time (eVitals.01). All records are eligible.",
+      "name": "Tid från kontakt med larmcentral till första rytmanalys",
+      "description": "Sekunder från kontakt med larmcentral (eTimes.01) till den första dokumenterade hjärtrytmen, inklusive AED-bedömning av defibrillerbar eller icke-defibrillerbar rytm och med artefakter uteslutna. Använder tiden för samma observation av vitalparametrar (eVitals.01). Alla journaler kan ingå."
+    },
+    "a960ca00-e309-4fde-98af-9c10c2a224b4": {
+      "sourceName": "Pain change (last minus first)",
+      "sourceDescription": "Last minus first numeric 0–10 pain score (eVitals.27/.28), ordered by eVitals.01. Requires at least two qualifying observations at distinct times. Negative values indicate reduced pain. All records are eligible.",
+      "name": "Förändring i smärta (sista minus första skattningen)",
+      "description": "Den sista minus den första numeriska smärtskattningen på skalan 0–10 (eVitals.27/.28), ordnade efter eVitals.01. Kräver minst två giltiga observationer vid olika tidpunkter. Negativa värden innebär minskad smärta. Alla journaler kan ingå."
+    },
+    "c405423f-a16a-4cb3-9910-c85208e7c46a": {
+      "sourceName": "PSAP to patient contact",
+      "sourceDescription": "Seconds from eTimes.01 to eTimes.07, following the named interval endpoints. All records are eligible; missing timestamps give no value and negative intervals are invalid.",
+      "name": "Tid från kontakt med larmcentral till patientkontakt",
+      "description": "Sekunder från kontakt med larmcentral (eTimes.01) till patientkontakt (eTimes.07). Alla journaler kan ingå. Om tidsstämplar saknas beräknas inget värde. Negativa tidsintervall är ogiltiga."
+    },
+    "0f5764eb-31c3-445c-bb99-0994efd41846": {
+      "sourceName": "Patient contact to scene departure",
+      "sourceDescription": "Seconds from eTimes.07 to eTimes.09, following the named interval endpoints. All records are eligible; missing timestamps give no value and negative intervals are invalid.",
+      "name": "Tid från patientkontakt till avfärd från platsen",
+      "description": "Sekunder från patientkontakt (eTimes.07) till avfärd från platsen (eTimes.09). Alla journaler kan ingå. Om tidsstämplar saknas beräknas inget värde. Negativa tidsintervall är ogiltiga."
+    },
+    "fe64871b-142c-40f1-91f9-8f6b8648e360": {
+      "sourceName": "Scene departure to destination",
+      "sourceDescription": "Seconds from eTimes.09 to eTimes.11, following the named interval endpoints. All records are eligible; missing timestamps give no value and negative intervals are invalid.",
+      "name": "Tid från avfärd från platsen till ankomst till destinationen",
+      "description": "Sekunder från avfärd från platsen (eTimes.09) till ankomst till destinationen (eTimes.11). Alla journaler kan ingå. Om tidsstämplar saknas beräknas inget värde. Negativa tidsintervall är ogiltiga."
     }
   }
 }

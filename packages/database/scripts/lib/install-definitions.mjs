@@ -29,13 +29,16 @@ export async function readInstallDefinitions(root) {
 
   const formFiles = (await readdir(path.join(root, "forms")))
     .filter((file) => /^form_.+\.json$/.test(file)).sort();
+  const validationFiles = new Set(await readdir(path.join(root, "validation")));
   const pairs = [];
   for (const file of formFiles) {
     const key = file.slice("form_".length, -".json".length);
     const form = await json(path.join(root, "forms", file));
     const validationFile = `validation_${key}.json`;
+    if (form.default !== true && !validationFiles.has(validationFile)) continue;
     const validation = await json(path.join(root, "validation", validationFile));
-    if (form.schemaVersion !== 1 || validation.schemaVersion !== 1 || form.key !== key
+    if (form.schemaVersion !== 1
+        || !(validation.schemaVersion === 1 || validation.schemaVersion === 2 && Array.isArray(validation.metrics)) || form.key !== key
         || validation.key !== key || validation.formKey !== form.key
         || validation.catalogKey !== form.catalogKey || !catalogs.has(form.catalogKey)
         || !form.name || !Array.isArray(form.definition?.sections) || !Array.isArray(validation.rules)) {

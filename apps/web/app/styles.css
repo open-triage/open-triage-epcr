@@ -1146,3 +1146,24 @@ fieldset { min-inline-size: 0; }
 
 .admin-directory-row:has([data-list-row-action]):hover { background: color-mix(in srgb, var(--green) 8%, transparent); cursor: pointer; }
 .admin-directory-row[aria-selected="true"] { background: color-mix(in srgb, var(--green) 14%, transparent); }
+
+.metric-library { min-width: 0; }
+.metric-library-table { width: 100%; min-width: 680px; border-collapse: collapse; }
+.metric-library-table th, .metric-library-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.metric-library-table th small { display: block; font-weight: 400; font-size: var(--text-caption); }
+.metric-library-table tbody tr { cursor: pointer; }
+.metric-library-table tbody tr:hover { background: color-mix(in srgb, var(--green) 7%, transparent); }
+.metric-library-table tbody tr.is-selected { background: color-mix(in srgb, var(--green) 14%, transparent); }
+.metric-library-table tbody tr:focus-within { outline: 2px solid var(--green-dark); outline-offset: -2px; }
+.metric-library .validation-rule-table-scroll { max-height: 18rem; }
+.metric-library pre, .validation-rule-editor pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.metric-library .validation-rule-editor > p, .metric-library details { overflow-wrap: anywhere; }
+.metric-library .validation-rule-row > label { font-weight: inherit; }
+@media (max-width: 640px) {
+  .metric-library .validation-rule-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .metric-library .validation-rule-row:has(input[type="checkbox"]) { grid-template-columns: minmax(0, 1fr) 44px; }
+  .metric-library .validation-rule-row:has(input[type="checkbox"]) input { justify-self: center; }
+}
+
+.metric-evidence { overflow-wrap: anywhere; }
+.metric-evidence ul { max-height: 16rem; overflow: auto; padding-left: 20px; }
