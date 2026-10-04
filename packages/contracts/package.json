@@ -9,6 +9,7 @@
   "exports": {
     ".": { "types": "./src/index.ts", "default": "./dist/index.js" },
     "./patient-key": { "types": "./patient-key.d.ts", "default": "./patient-key.mjs" },
+    "./synthetic-record-generator": { "types": "./synthetic-record-generator.d.ts", "default": "./synthetic-record-generator.mjs" },
     "./quality-rules": { "types": "./quality-rules.d.ts", "default": "./quality-rules.mjs" },
     "./validation-group-scope": { "types": "./validation-group-scope.d.ts", "default": "./validation-group-scope.mjs" },
     "./quality-normalization-policy.json": "./quality-normalization-policy.json",

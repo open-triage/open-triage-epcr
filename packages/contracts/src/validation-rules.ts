@@ -1,3 +1,4 @@
+import { evaluateMetric, type CompiledMetric, type MetricResult, type DefinitionState } from "./metrics.js";
 import { encounterValueFacets, type EncounterDocument, type EncounterValue } from "./index.js";
 import { NEMSIS_351_CATALOG_OCCURRENCE_GROUPS, NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS, NEMSIS_351_EMS_MESSAGE_REPAIRS } from "./nemsis-3.5.1-ems.generated.js";
 
@@ -48,6 +49,7 @@ export interface ValidationRuleSource {
   /** `when <boolean>` is optional; `require <boolean>` is mandatory. */
   source: string;
   /** Origin metadata is retained when the editable normalized copy changes. */
+  unresolved?: string[];
   sourceKind?: ValidationRuleSourceKind;
   provenance?: ValidationRuleProvenance[];
 }
@@ -88,11 +90,14 @@ export interface ValidationDiagnostic {
     | "compile" | "smoke-evaluation" | "exact-duplicate" | "similar-rule" | "possible-conflict" | "wording" | "message-parameters";
   message: string;
   ruleId: string;
+  definitionKind?: "metric" | "rule";
   line?: number;
   column?: number;
 }
 
 export type CompiledValidationExpression =
+  | { operator: "metric-available"; metricId: string }
+  | { operator: "metric-compare"; metricId: string; comparison: ValidationComparison; value: number; unit: string }
   | { operator: "constant"; value: boolean }
   | { operator: "any-payload" }
   | { operator: "present"; elementId: string }
@@ -142,8 +147,8 @@ export class ValidationResourceLimitError extends Error {
 }
 
 export interface CompiledValidationRule {
-  schemaVersion: 1;
-  languageVersion: typeof VALIDATION_LANGUAGE_VERSION;
+  schemaVersion: 1 | 2;
+  languageVersion: "1.0.0" | "2.0.0";
   ruleId: string;
   validationVersionId: string;
   name: string;
@@ -158,15 +163,16 @@ export interface CompiledValidationRule {
   messageParameters?: ValidationRuleSource["messageParameters"];
   applicability?: CompiledValidationExpression;
   assertion: CompiledValidationExpression;
-  references: { elementIds: string[]; groupIds?: string[]; codes: Array<{ elementId: string; codeSystem: string; code: string }> };
+  references: { elementIds: string[]; metricIds?: string[]; groupIds?: string[]; codes: Array<{ elementId: string; codeSystem: string; code: string }> };
 }
 
 export interface CompiledValidationBundle {
-  schemaVersion: 1;
-  languageVersion: typeof VALIDATION_LANGUAGE_VERSION;
+  schemaVersion: 1 | 2;
+  languageVersion: "1.0.0" | "2.0.0";
   validationVersionId: string;
   catalogReleaseId: string;
   rules: CompiledValidationRule[];
+  metrics?: CompiledMetric[];
 }
 
 /** Repair only recognizable generated legacy requirements, preserving stored
@@ -236,6 +242,7 @@ export interface ValidationFinding {
   message: string;
   primaryTarget: { elementId: string; groupInstanceId?: string; occurrenceId?: string };
   inputFingerprint: string;
+  metricEvidence?: MetricResult[];
 }
 
 /** Wording warnings are independent of whether a rule compiles successfully. */
@@ -427,6 +434,15 @@ class ExpressionParser {
     this.punctuation("(");
     if (functionName.value === "always" || functionName.value === "never") {
       this.punctuation(")"); return { operator: "constant", value: functionName.value === "always" };
+    }
+    if (functionName.value === "metricAvailable" || functionName.value === "metricCompare") {
+      const metricId = this.stringArgument("Expected a stable metric identity");
+      if (functionName.value === "metricAvailable") { this.punctuation(")"); return { operator: "metric-available", metricId }; }
+      this.punctuation(","); const comparison = this.stringArgument("Expected comparison");
+      this.punctuation(","); const value = Number(this.take("number", "Expected a numeric threshold").value);
+      this.punctuation(","); const unit = this.stringArgument("Expected the metric unit"); this.punctuation(")");
+      if (!isComparison(comparison) || !Number.isFinite(value)) throw new ParseFailure("Invalid metric comparison", functionName.offset);
+      return { operator: "metric-compare", metricId, comparison, value, unit };
     }
     if (functionName.value === "anyPayload") { this.punctuation(")"); return { operator: "any-payload" }; }
     if (functionName.value === "present") {
@@ -671,6 +687,8 @@ function location(source: string, offset: number): { line: number; column: numbe
 
 function escape(value: string): string { return JSON.stringify(value); }
 function formatExpression(expression: CompiledValidationExpression, depth = 0): string {
+  if (expression.operator === "metric-available") return `metricAvailable(${escape(expression.metricId)})`;
+  if (expression.operator === "metric-compare") return `metricCompare(${escape(expression.metricId)}, ${escape(expression.comparison)}, ${expression.value}, ${escape(expression.unit)})`;
   if (expression.operator === "constant") return expression.value ? "always()" : "never()";
   if (expression.operator === "any-payload") return "anyPayload()";
   if (expression.operator === "present") return `present(${escape(expression.elementId)})`;
@@ -737,7 +755,7 @@ function catalogParts(catalog: ReadonlySet<string> | ValidationCatalog): {
 
 type ExpressionReference = { elementId: string; expression: CompiledValidationExpression };
 function referencedExpressions(expression: CompiledValidationExpression): ExpressionReference[] {
-  if (expression.operator === "constant" || expression.operator === "any-payload" ||
+  if (expression.operator === "metric-available" || expression.operator === "metric-compare" || expression.operator === "constant" || expression.operator === "any-payload" ||
     expression.operator === "minimum-groups" || expression.operator === "maximum-groups") return [];
   if (expression.operator === "all" || expression.operator === "any") return expression.operands.flatMap(referencedExpressions);
   if (expression.operator === "not") return referencedExpressions(expression.operand);
@@ -762,7 +780,7 @@ function expectedLiteralType(datatype: string): "string" | "number" | "boolean" 
 }
 
 export function compileValidationRule(rule: ValidationRuleSource, validationVersionId: string,
-  catalog: ReadonlySet<string> | ValidationCatalog): { compiled?: CompiledValidationRule; diagnostics: ValidationDiagnostic[] } {
+  catalog: ReadonlySet<string> | ValidationCatalog, metrics: readonly CompiledMetric[] = []): { compiled?: CompiledValidationRule; diagnostics: ValidationDiagnostic[] } {
   const diagnostics: ValidationDiagnostic[] = [];
   let parsed: ParsedSource;
   try { parsed = parseSource(rule.source); }
@@ -771,6 +789,7 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     diagnostics.push({ severity: "error", code: failure.code, ruleId: rule.id, message: failure.message, ...location(rule.source, failure.offset) });
     return { diagnostics };
   }
+  for (const message of rule.unresolved ?? []) diagnostics.push({ severity: "error", code: "catalog-reference", ruleId: rule.id, message: `Complete source mapping: ${message}` });
   const localized = rule.localization;
   if (localized !== undefined && (localized.schemaVersion !== 1 ||
     (localized.sv !== undefined && (typeof localized.sv !== "object" || localized.sv === null ||
@@ -794,6 +813,17 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
   if (placeholders.some((key) => !/^[A-Za-z][A-Za-z0-9_]*$/.test(key) || parameters?.[key] === undefined))
     diagnostics.push({ severity: "error", code: "message-parameters", ruleId: rule.id,
       message: "Message references an undefined or malformed named parameter" });
+  const metricReferences = [...(parsed.applicability ? walkExpressions(parsed.applicability) : []), ...walkExpressions(parsed.assertion)]
+    .filter((expression): expression is Extract<CompiledValidationExpression, { metricId: string }> => "metricId" in expression);
+  const metricIds = [...new Set(metricReferences.map((expression) => expression.metricId))].sort();
+  for (const reference of metricReferences) {
+    const metric = metrics.find((candidate) => candidate.id === reference.metricId);
+    if (!metric || !metric.enabled || metric.validationVersionId !== validationVersionId)
+      diagnostics.push({ severity: "error", code: "catalog-reference", ruleId: rule.id,
+        message: `Metric ${reference.metricId} is missing, disabled, invalid, or bound to another Validation version` });
+    else if (reference.operator === "metric-compare" && reference.unit !== metric.unit)
+      diagnostics.push({ severity: "error", code: "datatype", ruleId: rule.id, message: `Metric ${metric.id} requires unit ${metric.unit}` });
+  }
   const known = catalogParts(catalog);
   const expressions = [...(parsed.applicability ? referencedExpressions(parsed.applicability) : []), ...referencedExpressions(parsed.assertion)];
   for (const reference of expressions) {
@@ -879,13 +909,14 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
   if (rule.reviewPriority !== undefined && !["none", "high", "medium", "low"].includes(rule.reviewPriority))
     diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id, message: "Invalid review priority" });
   if (diagnostics.some(({ severity }) => severity === "error")) return { diagnostics };
-  const elements = [...new Set(expressions.map(({ elementId }) => elementId))].sort();
+  const elements = [...new Set([...expressions.map(({ elementId }) => elementId),
+    ...metrics.filter((metric) => metricIds.includes(metric.id)).flatMap((metric) => metric.references.elementIds)])].sort();
   const codes = expressions.map(({ expression }) => expression)
     .filter((expression): expression is Extract<CompiledValidationExpression, { operator: "coded" }> => expression.operator === "coded")
     .map(({ elementId, codeSystem, code }) => ({ elementId, codeSystem, code }))
     .sort((left, right) => `${left.elementId}|${left.codeSystem}|${left.code}`.localeCompare(`${right.elementId}|${right.codeSystem}|${right.code}`));
   return { diagnostics, compiled: {
-    schemaVersion: VALIDATION_COMPILED_SCHEMA_VERSION, languageVersion: VALIDATION_LANGUAGE_VERSION,
+    schemaVersion: metricIds.length ? 2 : 1, languageVersion: metricIds.length ? "2.0.0" : "1.0.0",
     ruleId: rule.id, validationVersionId, name: rule.name.trim(), enabled: rule.enabled,
     severity: rule.severity, executionTargets: [...new Set(rule.executionTargets)].sort(),
     ...(rule.executionTargets.includes("review") ? { reviewPriority: reviewPriorityOfRule(rule) } : {}),
@@ -894,7 +925,7 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     ...(rule.messageParameters ? { messageParameters: rule.messageParameters } : {}),
     ...(parsed.scopeGroupId ? { scope: { groupId: parsed.scopeGroupId, iteration: "each" as const } } : {}),
     ...(parsed.applicability ? { applicability: parsed.applicability } : {}), assertion: parsed.assertion,
-    references: { elementIds: elements, ...(groupIds.length ? { groupIds } : {}), codes },
+    references: { elementIds: elements, ...(metricIds.length ? { metricIds } : {}), ...(groupIds.length ? { groupIds } : {}), codes },
   } };
 }
 
@@ -910,6 +941,8 @@ function labelFor(elementId: string, catalog: ValidationCatalog): string {
 }
 
 function explainExpression(expression: CompiledValidationExpression, catalog: ValidationCatalog): string {
+  if (expression.operator === "metric-available") return `metric ${expression.metricId} is available`;
+  if (expression.operator === "metric-compare") return `metric ${expression.metricId} is ${expression.comparison} ${expression.value} ${expression.unit}`;
   if (expression.operator === "constant") return expression.value ? "always" : "never";
   if (expression.operator === "any-payload") return "some element in this scope has an ordinary payload without a Pertinent Negative";
   if (expression.operator === "present") return `${labelFor(expression.elementId, catalog)} has a documented value`;
@@ -976,7 +1009,7 @@ function fingerprintInputs(inputs: readonly unknown[]): string {
 type DocumentElement = { element: { id: string; values: readonly EncounterValue[] }; groupInstanceId: string; order: number };
 type DocumentGroupInstance = { groupId: string; groupInstanceId: string; parentInstanceId?: string };
 type EvaluationState = { timestamp: number; steps: number; maxSteps: number; maxValues: number; globalElements?: DocumentElement[];
-  scopeElementIds?: ReadonlySet<string>; groupInstances?: DocumentGroupInstance[] };
+  scopeElementIds?: ReadonlySet<string>; groupInstances?: DocumentGroupInstance[]; metric?: (id: string) => MetricResult };
 function tick(state: EvaluationState, amount = 1): void {
   state.steps += amount;
   if (state.steps > state.maxSteps) throw new ValidationResourceLimitError(`Validation traversal exceeds ${state.maxSteps} steps`);
@@ -1014,6 +1047,13 @@ function referencedElements(elements: DocumentElement[], elementId: string, stat
 }
 function evaluateExpression(expression: CompiledValidationExpression, elements: DocumentElement[], state: EvaluationState): boolean {
   tick(state);
+  if (expression.operator === "metric-available" || expression.operator === "metric-compare") {
+    const metric = state.metric?.(expression.metricId);
+    if (expression.operator === "metric-available") return metric?.state === "valid";
+    if (!metric || metric.state !== "valid" || metric.value === null) throw new MetricUnavailableError(metric);
+    if (metric.unit !== expression.unit) throw new ValidationCompatibilityError("Metric comparison unit mismatch");
+    return compareValues(metric.value, expression.comparison, expression.value);
+  }
   if (expression.operator === "constant") return expression.value;
   if (expression.operator === "any-payload") return elements.some(({ element }) => element.values.some((value) => {
     const facets = encounterValueFacets(value); return facets.hasValue && !facets.hasPertinentNegative;
@@ -1132,9 +1172,19 @@ function violatingAllElements(invariant: Extract<CompiledValidationExpression, {
   })());
 }
 
+class MetricUnavailableError extends Error {
+  constructor(readonly result?: MetricResult) { super(result?.reason ?? "Required metric is unavailable"); }
+}
+export interface ValidationRuleOutcome {
+  ruleId: string; validationVersionId: string; state: DefinitionState; value: boolean | null;
+  reason?: string; occurrences: Array<{ groupInstanceId?: string; value: boolean }>;
+  metricEvidence: MetricResult[];
+}
+type EvaluationOptions = { outcomes?: ValidationRuleOutcome[]; metricCache?: Map<string, MetricResult> };
 export function evaluateValidationBundle(bundle: CompiledValidationBundle, document: EncounterDocument,
-  executionTarget: ValidationExecutionTarget, context: ValidationEvaluationContext): ValidationFinding[] {
-  if (bundle.schemaVersion !== VALIDATION_COMPILED_SCHEMA_VERSION || bundle.languageVersion !== VALIDATION_LANGUAGE_VERSION) {
+  executionTarget: ValidationExecutionTarget, context: ValidationEvaluationContext, options: EvaluationOptions = {}): ValidationFinding[] {
+  if (!(bundle.schemaVersion === 1 && bundle.languageVersion === "1.0.0" && !bundle.metrics?.length ||
+    bundle.schemaVersion === 2 && bundle.languageVersion === "2.0.0")) {
     throw new ValidationCompatibilityError(`Unsupported validation bundle ${bundle.schemaVersion}/${bundle.languageVersion}`);
   }
   if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(context.timestamp)) {
@@ -1151,6 +1201,16 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
   }
   const state: EvaluationState = { timestamp, steps: 0, maxSteps: Math.min(requestedSteps, MAX_TRAVERSAL_STEPS),
     maxValues: Math.min(requestedValues, MAX_VALUES) };
+  const cache = options.metricCache ?? new Map<string, MetricResult>();
+  state.metric = (id) => {
+    let result = cache.get(id);
+    if (!result) {
+      const metric = bundle.metrics?.find((metric) => metric.id === id && metric.validationVersionId === bundle.validationVersionId);
+      if (!metric) throw new ValidationCompatibilityError(`Metric ${id} is absent from the shared version`);
+      result = evaluateMetric(metric, document, context); cache.set(id, result);
+    }
+    return result;
+  };
   let order = 0;
   const elements = document.groups.flatMap((group) => group.instances.flatMap((instance) =>
     instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId, order: order++ }))));
@@ -1190,12 +1250,15 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     });
   };
   return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget) &&
-    (executionTarget === "review" ? reviewPriorityOfRule(rule) !== "none" : rule.severity !== "none")).flatMap((rule) => {
+    (options.outcomes || (executionTarget === "review" ? reviewPriorityOfRule(rule) !== "none" : rule.severity !== "none"))).flatMap((rule) => {
+    const outcome: ValidationRuleOutcome = { ruleId: rule.ruleId, validationVersionId: bundle.validationVersionId,
+      state: "not-applicable", value: null, occurrences: [], metricEvidence: [] };
+    options.outcomes?.push(outcome);
     const ruleScope = legacyGeneratedRuleScope(rule) ?? rule.scope;
     const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string; scopeElementIds?: ReadonlySet<string>;
       groupInstances: DocumentGroupInstance[] }> = ruleScope
       ? scopedRows(ruleScope.groupId) : [{ elements, groupInstances }];
-    return scopes.flatMap((scope) => {
+    return scopes.flatMap<ValidationFinding>((scope) => {
     state.scopeElementIds = scope.scopeElementIds;
     state.groupInstances = scope.groupInstances;
     const nodeCount = walkExpressions(rule.assertion).length + (rule.applicability ? walkExpressions(rule.applicability).length : 0);
@@ -1206,8 +1269,15 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
       uniqueNemsisContextGuards, rule.message, rule.primaryTarget.elementId, rule.references?.elementIds ?? []);
     if (legacyContextElement && evaluateExpression({ operator: "undocumented", elementId: legacyContextElement },
       scope.elements, state)) return [];
-    if (rule.applicability && !evaluateExpression(rule.applicability, scope.elements, state)) return [];
-    if (evaluateExpression(rule.assertion, scope.elements, state)) return [];
+    if (rule.applicability && !evaluateExpression(rule.applicability, scope.elements, state)) {
+      outcome.metricEvidence = (rule.references?.metricIds ?? []).flatMap((id) => cache.has(id) ? [cache.get(id)!] : []);
+      return [];
+    }
+    const passed = evaluateExpression(rule.assertion, scope.elements, state);
+    outcome.state = "valid"; outcome.value = outcome.value === false ? false : passed;
+    outcome.occurrences.push({ ...(scope.rootGroupInstanceId ? { groupInstanceId: scope.rootGroupInstanceId } : {}), value: passed });
+    outcome.metricEvidence = (rule.references?.metricIds ?? []).flatMap((id) => cache.has(id) ? [cache.get(id)!] : []);
+    if (passed || (executionTarget === "review" ? reviewPriorityOfRule(rule) === "none" : rule.severity === "none")) return [];
     if (rule.primaryTarget.elementId === "*" && rule.assertion.operator === "all-elements") {
       return violatingAllElements(rule.assertion.invariant, scope.elements, rule.assertion.excludedElementIds).map((match) => ({
         validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity === "none" ? "information" : rule.severity,
@@ -1228,6 +1298,8 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     // Evaluation time is not a clinician-authored input. Including it here made
     // an acknowledged warning acquire a new identity on every refresh (and at
     // signing), even when the documented values had not changed.
+    const metricEvidence = (rule.references?.metricIds ?? []).flatMap((id) => cache.has(id) ? [cache.get(id)!] : []);
+    relevantInputs.push(...metricEvidence.map((metric) => ({ elementId: `metric:${metric.metricId}`, groupInstanceId: "", ...metric })));
     const uniqueMatch = matches.length === 1 ? matches[0] : undefined;
     const uniqueGroupInstanceId = uniqueMatch?.groupInstanceId ?? (matches.length === 0 ? scope.rootGroupInstanceId : undefined);
     return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity === "none" ? "information" : rule.severity,
@@ -1235,7 +1307,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
         rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
         ...(uniqueGroupInstanceId ? { groupInstanceId: uniqueGroupInstanceId } : {}),
         ...(uniqueMatch?.element.values.length === 1 ? { occurrenceId: uniqueMatch.element.values[0]!.occurrenceId } : {}) },
-      inputFingerprint: fingerprintInputs(relevantInputs) } satisfies ValidationFinding];
+      inputFingerprint: fingerprintInputs(relevantInputs), ...(metricEvidence.length ? { metricEvidence } : {}) } satisfies ValidationFinding];
     });
   });
 }
@@ -1256,9 +1328,10 @@ export function evaluateValidationBundleSafely(bundle: CompiledValidationBundle,
   }] };
   const findings: ValidationFinding[] = [];
   const failures: ValidationRuntimeFailure[] = [];
+  const metricCache = new Map<string, MetricResult>();
   for (const rule of targetRules) {
     try {
-      findings.push(...evaluateValidationBundle({ ...bundle, rules: [rule] }, document, executionTarget, context)
+      findings.push(...evaluateValidationBundle({ ...bundle, rules: [rule] }, document, executionTarget, context, { metricCache })
         .filter((finding) => !isNemsisDemographicElementId(finding.primaryTarget.elementId)));
     } catch (error) {
       failures.push({ validationVersionId: bundle.validationVersionId, ruleId: rule?.ruleId ?? "unknown", executionTarget,
@@ -1270,4 +1343,28 @@ export function evaluateValidationBundleSafely(bundle: CompiledValidationBundle,
     }
   }
   return { findings, failures };
+}
+
+/** Outcome analysis shares the clinical evaluator, without suppressing successful or priority-None rules. */
+export function evaluateValidationOutcomes(bundle: CompiledValidationBundle, document: EncounterDocument,
+  executionTarget: ValidationExecutionTarget, context: ValidationEvaluationContext): { outcomes: ValidationRuleOutcome[] } {
+  const outcomes: ValidationRuleOutcome[] = [];
+  const metricCache = new Map<string, MetricResult>();
+  if (bundle.rules.length > MAX_RULES_PER_EVALUATION) throw new ValidationResourceLimitError("Too many rules");
+  for (const rule of bundle.rules.filter((rule) => rule.executionTargets.includes(executionTarget))) {
+    if (!rule.enabled) { outcomes.push({ ruleId: rule.ruleId, validationVersionId: bundle.validationVersionId, state: "failed",
+      value: null, reason: "Rule is disabled", occurrences: [], metricEvidence: [] }); continue; }
+    const current: ValidationRuleOutcome[] = [];
+    try {
+      evaluateValidationBundle({ ...bundle, rules: [rule] }, document, executionTarget, context, { outcomes: current, metricCache });
+      outcomes.push(...current);
+    } catch (reason) {
+      outcomes.push({ ruleId: rule.ruleId, validationVersionId: bundle.validationVersionId,
+        state: reason instanceof MetricUnavailableError && reason.result && reason.result.state !== "valid" && reason.result.state !== "not-applicable"
+          ? reason.result.state : "failed", value: null,
+        reason: reason instanceof Error ? reason.message : "Evaluation failed", occurrences: current[0]?.occurrences ?? [],
+        metricEvidence: (rule.references?.metricIds ?? []).flatMap((id) => metricCache.has(id) ? [metricCache.get(id)!] : []) });
+    }
+  }
+  return { outcomes };
 }

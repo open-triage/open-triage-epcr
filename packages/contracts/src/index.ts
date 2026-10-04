@@ -11,7 +11,7 @@ export {
   compileValidationRule,
   compiledValidationBundleSha256,
   evaluateValidationBundle,
-  evaluateValidationBundleSafely,
+  evaluateValidationBundleSafely, evaluateValidationOutcomes, type ValidationRuleOutcome,
   explainValidationRule,
   formatOccurrenceSource,
   formatRequiredElementSource,
@@ -689,6 +689,7 @@ export interface RecoveredProtectedReportKey {
 }
 
 export const DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES = 50 * 1024 * 1024;
+export const DEFAULT_SYNTHETIC_RETENTION_HOURS = 24;
 export const DEFAULT_IMAGE_MEDIA_LIMIT_BYTES = 10 * 1024 * 1024;
 export const MIN_REPORT_MEDIA_ALLOWANCE_BYTES = 1024 * 1024;
 export const MAX_REPORT_MEDIA_ALLOWANCE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -748,6 +749,8 @@ export interface AgencyMediaSettings {
   language: string;
   regionalFormat: "en-US" | "sv-SE" | null;
   timeZone: string | null;
+  /** Hours after server creation; null disables automatic demo-record deletion. */
+  syntheticRetentionHours: number | null;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -765,6 +768,8 @@ export interface UpdateAgencyMediaSettingsCommand {
   language: string;
   regionalFormat?: "en-US" | "sv-SE" | null;
   timeZone?: string | null;
+  /** Omitted preserves the current policy; null disables automatic deletion. */
+  syntheticRetentionHours?: number | null;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -1264,6 +1269,7 @@ export interface ValidationDraft {
   revision: number;
   displayName: string;
   rules: import("./validation-rules.js").ValidationRuleSource[];
+  metrics?: import("./metrics.js").MetricSource[];
   /** Catalog-upgrade diagnostics are populated when cloning a published version. */
   diagnostics?: import("./validation-rules.js").ValidationDiagnostic[];
   updatedAt: string;
@@ -1298,12 +1304,14 @@ export interface PublishedValidationVersion {
   displayName: string;
   status: "published";
   ruleIds: string[];
+  metricIds?: string[];
   sourceSha256: string;
   compiledSha256: string;
   publishedAt: string;
 }
 
 export interface ValidationRuleChanges {
+  metrics?: { additions: string[]; modifications: string[]; disablements: string[] };
   additions: Array<{ ruleId: string; name: string }>;
   modifications: Array<{ ruleId: string; fields: string[] }>;
   disablements: Array<{ ruleId: string }>;
@@ -1387,11 +1395,13 @@ export interface ClinicalFormConfiguration {
   customFields?: Record<string, CatalogDraftCustomElement>;
   customGroups?: Record<string, CatalogDraftCustomGroup>;
   /** Group wording from the same immutable catalog as the fields. */
-  catalogGroups?: Record<string, { name: string; localization?: {
+  catalogGroups?: Record<string, { name: string; parentId?: string | null; localization?: {
     schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };
   } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    /** Pinned datatype and group structure shared by CLI and browser synthetic generation. */
+    generation?: import("../synthetic-record-generator.js").GenerationElement;
     /** Effective unified order for enabled codes and NOT values on a field. */
     choiceOrder?: NonNullable<FormDraftField["choicePolicy"]>;
     name?: string;
@@ -1918,3 +1928,7 @@ export type EncounterDocument = {
   /** Compatible document-level extensions are retained on load and save. */
   readonly [extension: string]: unknown;
 };
+
+export * from "./analytics.js";
+
+export * from "./metrics.js";
