@@ -13,7 +13,7 @@ const dashboard = {
   databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
 };
 const agencySettings = {
-  organizationId: "organization-id", language: "en", reportMediaAllowanceBytes: 50 * 1024 * 1024,
+  organizationId: "organization-id", language: "en", syntheticRetentionHours: 24 as number | null, reportMediaAllowanceBytes: 50 * 1024 * 1024,
   defaultReportMediaAllowanceBytes: 50 * 1024 * 1024, storageGrowthWarning: false, revision: 4,
   updatedAt: "2026-09-24T10:00:00.000Z",
   appearance: {
@@ -160,7 +160,7 @@ test("Demo can inspect Agency Settings without write controls", async ({ page })
   await expect(page.getByRole("button", { name: "Agency Settings" })).toBeVisible();
   await page.getByRole("button", { name: "Agency Settings" }).click();
   await expect(page.getByRole("heading", { name: "Agency Settings" })).toBeVisible();
-  await expect(page.locator(".agency-settings fieldset")).toHaveCount(6);
+  await expect(page.locator(".agency-settings fieldset")).toHaveCount(7);
   for (const fieldset of await page.locator(".agency-settings fieldset").all()) await expect(fieldset).toHaveAttribute("disabled", "");
   await expect(page.getByText(/changing them requires settings:write authority/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
@@ -917,4 +917,57 @@ test("agency button and text colors preview, save, and style controls after relo
   await page.getByRole("button", { name: "Element catalog", exact: true }).click();
   await expect(page.getByRole("button", { name: "Delete catalog draft", exact: true })).toHaveCSS("background-color", "rgb(159, 36, 29)");
   await expect(page.getByRole("button", { name: "Save draft", exact: true })).toHaveCSS("background-color", "rgb(0, 120, 58)");
+});
+
+
+test("agency demo wipe accepts large hours, saves blank as disabled, and survives reload", async ({ page }, testInfo) => {
+  const capabilities = ["settings:read", "settings:write"];
+  let savedSettings = { ...agencySettings, appearance: { ...agencySettings.appearance, accentColor: "#593585", accentDarkColor: "#402363" }, imageMediaLimitBytes: 10 * 1024 * 1024,
+    defaultImageMediaLimitBytes: 10 * 1024 * 1024, regionalFormat: null, timeZone: null };
+  const writes: Array<number | null> = [];
+  await page.route("**/api/installation", route => route.fulfill({ json: {
+    settings: productionSettings, appearance: { ...savedSettings.appearance, accentColor: "#593585", accentDarkColor: "#402363" },
+  } }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", route => route.fulfill({ json: {
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["settings"], capabilities,
+    activeConfiguration: null, dashboard: null,
+  } }));
+  await page.route("**/api/admin/agency-settings", route => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON();
+      expect(body.expectedRevision).toBe(savedSettings.revision);
+      writes.push(body.syntheticRetentionHours);
+      savedSettings = { ...savedSettings, syntheticRetentionHours: body.syntheticRetentionHours, revision: savedSettings.revision + 1 };
+    }
+    return route.fulfill({ json: savedSettings });
+  });
+  await signInAsCombinedOwner(page, capabilities);
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  const hours = page.getByLabel("Automatically wipe after (hours)", { exact: true });
+  const save = page.getByRole("button", { name: "Save", exact: true });
+  await expect(hours).toHaveValue("24");
+  await expect(hours).not.toHaveAttribute("max");
+  await expect(save).toBeDisabled();
+  for (const invalid of ["0", "-1", "1.5"]) {
+    await hours.fill(invalid);
+    await expect(save).toBeDisabled();
+    await expect(hours).toHaveAttribute("aria-invalid", "true");
+  }
+  await hours.fill("100000");
+  await save.click();
+  await expect(page.locator(".agency-settings-notice")).toBeVisible();
+  expect(writes).toEqual([100000]);
+  await hours.fill("");
+  await save.click();
+  await expect(save).toBeDisabled();
+  expect(writes).toEqual([100000, null]);
+  await page.reload();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await expect(hours).toHaveValue("");
+  await expect(save).toBeDisabled();
+  await hours.scrollIntoViewIfNeeded();
+  await expect(hours).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("demo-retention.png") });
 });

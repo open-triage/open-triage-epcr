@@ -1009,169 +1009,239 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await t.test("purges every synthetic note artifact at 24 hours and rejects delayed resurrection", async () => {
+  await t.test("agency demo retention can be disabled, has no product maximum, and pins existing deadlines", async () => {
     await client.query("begin");
     try {
       const organizationId = SYNTHETIC_DEMO_FIXTURE.organizationId;
       const userId = SYNTHETIC_DEMO_FIXTURE.userId;
       const unitId = randomUUID();
-      const incidentId = randomUUID();
-      const assignmentId = randomUUID();
-      const patientId = randomUUID();
-      const reportId = randomUUID();
-      const textNoteId = randomUUID();
-      const photoNoteId = randomUUID();
-      const audioNoteId = randomUUID();
-      const commandId = randomUUID();
-      const recoveryHandle = randomUUID();
-      const localRecordId = randomUUID();
-      const releaseId = (await client.query(
-        "select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
-      )).rows[0].id;
-      const photoBytes = Buffer.from("synthetic-photo-bytes");
-      const audioBytes = Buffer.from("synthetic-audio-bytes");
-      const photoSha256 = createHash("sha256").update(photoBytes).digest("hex");
-      const audioSha256 = createHash("sha256").update(audioBytes).digest("hex");
-
+      const releaseId = (await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'")).rows[0].id;
       await client.query(`insert into app_identity.operational_unit
         (id, organization_id, call_sign, name, default_form_id, synthetic)
-        values ($1, $2, $3, 'Expiry test unit',
-          '32000000-0000-4000-8000-000000000012', true)`,
-      [unitId, organizationId, `EXP-${unitId.slice(0, 8)}`]);
-      await client.query(`insert into clinical.incident
-        (id, organization_id, operational_state, synthetic)
-        values ($1, $2, 'assigned', true)`, [incidentId, organizationId]);
-      await client.query(`insert into clinical.call_assignment
-        (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
-         status, synthetic, synthetic_generated_by)
-        values ($1, $2, $3, $4, 'EXPIRY-TEST', clock_timestamp(),
-          'assigned', true, $5)`,
-      [assignmentId, organizationId, unitId, incidentId, userId]);
-      await client.query(`insert into clinical.patient
-        (id, organization_id, identity_state, pseudonymous_key)
-        values ($1, $2, 'unknown', $3)`,
-      [patientId, organizationId,
-        createHash("sha256").update(patientId).digest("hex")]);
-      await client.query(`insert into clinical.report
-        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
-         form_version_id, catalog_release_id, documenting_user_id, synthetic,
-         synthetic_generated_by, synthetic_source_assignment_id)
-        values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
-          '32000000-0000-4000-8000-000000000011', $5, $6, true, $6, $7)`,
-      [reportId, organizationId, incidentId, patientId, releaseId, userId, assignmentId]);
-      await client.query(`update clinical.call_assignment
-        set status = 'opened', report_id = $2 where id = $1`, [assignmentId, reportId]);
-      await client.query(`insert into clinical.report_change
-        (report_id, revision, idempotency_key, author_id, changes)
-        values ($1, 1, $2, $3, '[]')`, [reportId, commandId, userId]);
-      await client.query(`insert into clinical.report_note
-        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
-         content, created_by, updated_by)
-        values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic text note', $4, $4)`,
-      [textNoteId, organizationId, reportId, userId]);
-      await client.query(`insert into clinical.report_photo_note
-        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
-         caption, content_type, byte_size, sha256, width, height, created_by, updated_by)
-        values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic photo', 'image/jpeg',
-          $4, $5, 32, 32, $6, $6)`,
-      [photoNoteId, organizationId, reportId, photoBytes.byteLength, photoSha256, userId]);
-      await client.query(`insert into clinical.report_photo_blob
-        (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
-      [organizationId, reportId, photoNoteId, photoBytes]);
-      await client.query(`insert into clinical.report_audio_note
-        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
-         caption, content_type, byte_size, sha256, duration_milliseconds,
-         processing_state, created_by, updated_by)
-        values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic audio', 'audio/mp4',
-          $4, $5, 1000, 'processing', $6, $6)`,
-      [audioNoteId, organizationId, reportId, audioBytes.byteLength, audioSha256, userId]);
-      await client.query(`insert into clinical.report_audio_blob
-        (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
-      [organizationId, reportId, audioNoteId, audioBytes]);
-      await client.query(`insert into clinical.report_note_target_state
-        (report_id, note_type, note_id, revision, command_id, actor_id, action)
-        values ($1, 'audio', $2, 1, $3, $4, 'create')`,
-      [reportId, audioNoteId, commandId, userId]);
-      await client.query(`insert into clinical_audit.report_note_mutation_event
-        (organization_id, report_id, note_id, note_type, command_id, actor_id,
-         action, result, report_revision)
-        values ($1, $2, $3, 'audio', $4, $5, 'create', 'applied', 1)`,
-      [organizationId, reportId, audioNoteId, commandId, userId]);
-      await client.query(`insert into clinical_audit.report_media_access_event
-        (organization_id, report_id, note_id, media_type, actor_id, action, result)
-        values ($1, $2, $3, 'photo', $4, 'open', 'allowed')`,
-      [organizationId, reportId, photoNoteId, userId]);
-
-      const wrappingVersion = (await client.query(`select version
-        from offline_recovery.wrapping_key_version where state = 'active'
-        order by version desc limit 1`)).rows[0].version;
-      assert.ok((await client.query(`select * from offline_recovery.register_report_key(
-        $1, $2, $3, $4, $5, $6, $7)`,
-      [reportId, organizationId, userId, recoveryHandle, wrappingVersion,
-        Buffer.alloc(12, 1), Buffer.alloc(48, 2)])).rowCount >= 1);
-      assert.equal((await client.query(`select * from offline_recovery.record_browser_ciphertext_write(
-        $1, $2, $3, $4, $5, 1, $6)`,
-      [reportId, organizationId, userId, recoveryHandle, localRecordId, "a".repeat(64)])).rowCount, 1);
-
-      const expiry = (await client.query(
-        "select expires_at + interval '1 second' as purge_at from clinical.report where id = $1",
-        [reportId]
-      )).rows[0].purge_at;
-      const purged = (await client.query(
-        "select retention.purge_expired_synthetic_records($1) as result", [expiry]
-      )).rows[0].result;
-      assert.deepEqual(purged, { assignments: 1, reports: 1 });
-
-      const remaining = (await client.query(`select
-        (select count(*)::integer from clinical.report where id = $1) as reports,
-        (select count(*)::integer from clinical.report_note where report_id = $1) as text_notes,
-        (select count(*)::integer from clinical.report_photo_note where report_id = $1) as photos,
-        (select count(*)::integer from clinical.report_photo_blob where report_id = $1) as photo_bytes,
-        (select count(*)::integer from clinical.report_audio_note where report_id = $1) as audio,
-        (select count(*)::integer from clinical.report_audio_blob where report_id = $1) as audio_bytes,
-        (select count(*)::integer from clinical.report_note_target_state where report_id = $1) as processing_state,
-        (select count(*)::integer from clinical_audit.report_note_mutation_event where report_id = $1) as mutation_events,
-        (select count(*)::integer from clinical_audit.report_media_access_event where report_id = $1) as access_events,
-        (select count(*)::integer from offline_recovery.report_key_envelope where report_id = $1) as recovery_keys,
-        (select count(*)::integer from offline_recovery.report_browser_ciphertext where report_id = $1) as browser_cache,
-        (select count(*)::integer from offline_recovery.report_recovery_grant where report_id = $1) as recovery_grants`,
-      [reportId])).rows[0];
-      assert.deepEqual(remaining, {
-        reports: 0, text_notes: 0, photos: 0, photo_bytes: 0, audio: 0,
-        audio_bytes: 0, processing_state: 0, mutation_events: 0, access_events: 0,
-        recovery_keys: 0, browser_cache: 0, recovery_grants: 0
-      });
-      assert.equal((await client.query(`select count(*)::integer as count
-        from clinical_audit.synthetic_purge_tombstone
-        where (record_type = 'report' and record_id = $1)
-           or (record_type = 'assignment' and record_id = $2)`,
-      [reportId, assignmentId])).rows[0].count, 2);
-      assert.equal((await client.query(`select count(*)::integer as count
-        from offline_recovery.report_purge_tombstone where report_id = $1`,
-      [reportId])).rows[0].count, 1);
-
-      await rejectsSql(client, `insert into clinical.report
-        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
-         form_version_id, catalog_release_id, documenting_user_id)
-        values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
-          '32000000-0000-4000-8000-000000000011', $5, $6)`,
-      [reportId, organizationId, incidentId, patientId, releaseId, userId], "23505");
-      await rejectsSql(client, `insert into clinical.report_note
-        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
-         content, created_by, updated_by)
-        values ($1, $2, $3, clock_timestamp(), 0, 'Delayed note', $4, $4)`,
-      [randomUUID(), organizationId, reportId, userId], "23503");
-      await rejectsSql(client, `insert into clinical.report_photo_blob
-        (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
-      [organizationId, reportId, photoNoteId, photoBytes], "23503");
-      assert.equal((await client.query(`select * from offline_recovery.register_report_key(
-        $1, $2, $3, $4, $5, $6, $7)`,
-      [reportId, organizationId, userId, randomUUID(), wrappingVersion,
-        Buffer.alloc(12, 3), Buffer.alloc(48, 4)])).rowCount, 0);
-    } finally {
-      await client.query("rollback");
-    }
+        values ($1, $2, $3, 'Retention test', '32000000-0000-4000-8000-000000000012', true)`,
+      [unitId, organizationId, `RET-${unitId.slice(0, 8)}`]);
+      async function createGeneratedRecords() {
+        const incidentId = randomUUID(), assignmentId = randomUUID(), patientId = randomUUID(), reportId = randomUUID();
+        await client.query(`insert into clinical.incident (id, organization_id, operational_state, synthetic)
+          values ($1, $2, 'assigned', true)`, [incidentId, organizationId]);
+        await client.query(`insert into clinical.call_assignment
+          (id, organization_id, unit_id, incident_id, call_number, dispatched_at, status, synthetic, synthetic_generated_by, expires_at)
+          values ($1, $2, $3, $4, 'RETENTION', clock_timestamp(), 'assigned', true, $5, clock_timestamp() + interval '2 hours')`,
+        [assignmentId, organizationId, unitId, incidentId, userId]);
+        await client.query(`insert into clinical.patient (id, organization_id, identity_state, pseudonymous_key)
+          values ($1, $2, 'unknown', $3)`, [patientId, organizationId, createHash("sha256").update(patientId).digest("hex")]);
+        await client.query(`insert into clinical.report
+          (id, organization_id, incident_id, patient_id, agency_demographic_version_id, form_version_id,
+           catalog_release_id, documenting_user_id, synthetic, synthetic_generated_by, synthetic_source_assignment_id, expires_at)
+          values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006', '32000000-0000-4000-8000-000000000011',
+            $5, $6, true, $6, $7, clock_timestamp() + interval '2 hours')`,
+        [reportId, organizationId, incidentId, patientId, releaseId, userId, assignmentId]);
+        await client.query("update clinical.call_assignment set status = 'opened', report_id = $2 where id = $1", [assignmentId, reportId]);
+        return { assignmentId, reportId };
+      }
+      async function lifecycles(record) {
+        return (await client.query(`select id, expires_at, extract(epoch from (expires_at - created_at)) / 3600 as hours
+          from clinical.report where id = $1 union all select id, expires_at,
+          extract(epoch from (expires_at - created_at)) / 3600 from clinical.call_assignment where id = $2`,
+        [record.reportId, record.assignmentId])).rows;
+      }
+      const defaultRecord = await createGeneratedRecords();
+      assert.deepEqual((await lifecycles(defaultRecord)).map(row => Number(row.hours)), [24, 24]);
+      await client.query("update app_identity.agency_settings set synthetic_retention_hours = null where organization_id = $1", [organizationId]);
+      const permanent = await createGeneratedRecords();
+      assert.deepEqual((await lifecycles(permanent)).map(row => row.expires_at), [null, null]);
+      await client.query("update app_identity.agency_settings set synthetic_retention_hours = 100000 where organization_id = $1", [organizationId]);
+      const longLived = await createGeneratedRecords();
+      assert.deepEqual((await lifecycles(longLived)).map(row => Number(row.hours)), [100000, 100000]);
+      assert.deepEqual((await lifecycles(defaultRecord)).map(row => Number(row.hours)), [24, 24]);
+      assert.deepEqual((await lifecycles(permanent)).map(row => row.expires_at), [null, null]);
+      for (const table of ["call_assignment", "report"]) {
+        const id = table === "report" ? permanent.reportId : permanent.assignmentId;
+        await rejectsSql(client, `update clinical.${table} set expires_at = clock_timestamp() + interval '1 hour' where id = $1`, [id], "P0001");
+      }
+      for (const hours of [0, -1]) await rejectsSql(client,
+        "update app_identity.agency_settings set synthetic_retention_hours = $2 where organization_id = $1", [organizationId, hours], "23514");
+      await client.query("select retention.purge_expired_synthetic_records(clock_timestamp() + interval '25 hours')");
+      assert.equal((await lifecycles(defaultRecord)).length, 0);
+      assert.equal((await lifecycles(longLived)).length, 2);
+      assert.equal((await lifecycles(permanent)).length, 2);
+      assert.equal((await client.query("select 1 from clinical_audit.synthetic_purge_tombstone where record_id = any($1::uuid[])",
+        [[permanent.reportId, permanent.assignmentId]])).rowCount, 0);
+    } finally { await client.query("rollback"); }
   });
+
+  for (const retentionHours of [24, 72]) {
+    await t.test(`purges every synthetic note artifact at ${retentionHours} hours and rejects delayed resurrection`, async () => {
+      await client.query("begin");
+      try {
+        const organizationId = SYNTHETIC_DEMO_FIXTURE.organizationId;
+        const userId = SYNTHETIC_DEMO_FIXTURE.userId;
+        await client.query("update app_identity.agency_settings set synthetic_retention_hours = $2 where organization_id = $1", [organizationId, retentionHours]);
+        const unitId = randomUUID();
+        const incidentId = randomUUID();
+        const assignmentId = randomUUID();
+        const patientId = randomUUID();
+        const reportId = randomUUID();
+        const textNoteId = randomUUID();
+        const photoNoteId = randomUUID();
+        const audioNoteId = randomUUID();
+        const commandId = randomUUID();
+        const recoveryHandle = randomUUID();
+        const localRecordId = randomUUID();
+        const releaseId = (await client.query(
+          "select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
+        )).rows[0].id;
+        const photoBytes = Buffer.from("synthetic-photo-bytes");
+        const audioBytes = Buffer.from("synthetic-audio-bytes");
+        const photoSha256 = createHash("sha256").update(photoBytes).digest("hex");
+        const audioSha256 = createHash("sha256").update(audioBytes).digest("hex");
+
+        await client.query(`insert into app_identity.operational_unit
+          (id, organization_id, call_sign, name, default_form_id, synthetic)
+          values ($1, $2, $3, 'Expiry test unit',
+            '32000000-0000-4000-8000-000000000012', true)`,
+        [unitId, organizationId, `EXP-${unitId.slice(0, 8)}`]);
+        await client.query(`insert into clinical.incident
+          (id, organization_id, operational_state, synthetic)
+          values ($1, $2, 'assigned', true)`, [incidentId, organizationId]);
+        await client.query(`insert into clinical.call_assignment
+          (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
+           status, synthetic, synthetic_generated_by)
+          values ($1, $2, $3, $4, 'EXPIRY-TEST', clock_timestamp(),
+            'assigned', true, $5)`,
+        [assignmentId, organizationId, unitId, incidentId, userId]);
+        await client.query(`insert into clinical.patient
+          (id, organization_id, identity_state, pseudonymous_key)
+          values ($1, $2, 'unknown', $3)`,
+        [patientId, organizationId,
+          createHash("sha256").update(patientId).digest("hex")]);
+        await client.query(`insert into clinical.report
+          (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+           form_version_id, catalog_release_id, documenting_user_id, synthetic,
+           synthetic_generated_by, synthetic_source_assignment_id)
+          values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
+            '32000000-0000-4000-8000-000000000011', $5, $6, true, $6, $7)`,
+        [reportId, organizationId, incidentId, patientId, releaseId, userId, assignmentId]);
+        await client.query(`update clinical.call_assignment
+          set status = 'opened', report_id = $2 where id = $1`, [assignmentId, reportId]);
+        await client.query(`insert into clinical.report_change
+          (report_id, revision, idempotency_key, author_id, changes)
+          values ($1, 1, $2, $3, '[]')`, [reportId, commandId, userId]);
+        await client.query(`insert into clinical.report_note
+          (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+           content, created_by, updated_by)
+          values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic text note', $4, $4)`,
+        [textNoteId, organizationId, reportId, userId]);
+        await client.query(`insert into clinical.report_photo_note
+          (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+           caption, content_type, byte_size, sha256, width, height, created_by, updated_by)
+          values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic photo', 'image/jpeg',
+            $4, $5, 32, 32, $6, $6)`,
+        [photoNoteId, organizationId, reportId, photoBytes.byteLength, photoSha256, userId]);
+        await client.query(`insert into clinical.report_photo_blob
+          (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+        [organizationId, reportId, photoNoteId, photoBytes]);
+        await client.query(`insert into clinical.report_audio_note
+          (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+           caption, content_type, byte_size, sha256, duration_milliseconds,
+           processing_state, created_by, updated_by)
+          values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic audio', 'audio/mp4',
+            $4, $5, 1000, 'processing', $6, $6)`,
+        [audioNoteId, organizationId, reportId, audioBytes.byteLength, audioSha256, userId]);
+        await client.query(`insert into clinical.report_audio_blob
+          (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+        [organizationId, reportId, audioNoteId, audioBytes]);
+        await client.query(`insert into clinical.report_note_target_state
+          (report_id, note_type, note_id, revision, command_id, actor_id, action)
+          values ($1, 'audio', $2, 1, $3, $4, 'create')`,
+        [reportId, audioNoteId, commandId, userId]);
+        await client.query(`insert into clinical_audit.report_note_mutation_event
+          (organization_id, report_id, note_id, note_type, command_id, actor_id,
+           action, result, report_revision)
+          values ($1, $2, $3, 'audio', $4, $5, 'create', 'applied', 1)`,
+        [organizationId, reportId, audioNoteId, commandId, userId]);
+        await client.query(`insert into clinical_audit.report_media_access_event
+          (organization_id, report_id, note_id, media_type, actor_id, action, result)
+          values ($1, $2, $3, 'photo', $4, 'open', 'allowed')`,
+        [organizationId, reportId, photoNoteId, userId]);
+
+        const wrappingVersion = (await client.query(`select version
+          from offline_recovery.wrapping_key_version where state = 'active'
+          order by version desc limit 1`)).rows[0].version;
+        assert.ok((await client.query(`select * from offline_recovery.register_report_key(
+          $1, $2, $3, $4, $5, $6, $7)`,
+        [reportId, organizationId, userId, recoveryHandle, wrappingVersion,
+          Buffer.alloc(12, 1), Buffer.alloc(48, 2)])).rowCount >= 1);
+        assert.equal((await client.query(`select * from offline_recovery.record_browser_ciphertext_write(
+          $1, $2, $3, $4, $5, 1, $6)`,
+        [reportId, organizationId, userId, recoveryHandle, localRecordId, "a".repeat(64)])).rowCount, 1);
+
+        const deadlines = (await client.query(`select extract(epoch from (expires_at - created_at)) / 3600 as hours
+          from clinical.report where id = $1 union all
+          select extract(epoch from (expires_at - created_at)) / 3600 from clinical.call_assignment where id = $2`,
+        [reportId, assignmentId])).rows;
+        assert.deepEqual(deadlines.map(row => Number(row.hours)), [retentionHours, retentionHours]);
+        const expiry = (await client.query(
+          "select expires_at + interval '1 second' as purge_at from clinical.report where id = $1",
+          [reportId]
+        )).rows[0].purge_at;
+        const purged = (await client.query(
+          "select retention.purge_expired_synthetic_records($1) as result", [expiry]
+        )).rows[0].result;
+        assert.deepEqual(purged, { assignments: 1, reports: 1 });
+
+        const remaining = (await client.query(`select
+          (select count(*)::integer from clinical.report where id = $1) as reports,
+          (select count(*)::integer from clinical.report_note where report_id = $1) as text_notes,
+          (select count(*)::integer from clinical.report_photo_note where report_id = $1) as photos,
+          (select count(*)::integer from clinical.report_photo_blob where report_id = $1) as photo_bytes,
+          (select count(*)::integer from clinical.report_audio_note where report_id = $1) as audio,
+          (select count(*)::integer from clinical.report_audio_blob where report_id = $1) as audio_bytes,
+          (select count(*)::integer from clinical.report_note_target_state where report_id = $1) as processing_state,
+          (select count(*)::integer from clinical_audit.report_note_mutation_event where report_id = $1) as mutation_events,
+          (select count(*)::integer from clinical_audit.report_media_access_event where report_id = $1) as access_events,
+          (select count(*)::integer from offline_recovery.report_key_envelope where report_id = $1) as recovery_keys,
+          (select count(*)::integer from offline_recovery.report_browser_ciphertext where report_id = $1) as browser_cache,
+          (select count(*)::integer from offline_recovery.report_recovery_grant where report_id = $1) as recovery_grants`,
+        [reportId])).rows[0];
+        assert.deepEqual(remaining, {
+          reports: 0, text_notes: 0, photos: 0, photo_bytes: 0, audio: 0,
+          audio_bytes: 0, processing_state: 0, mutation_events: 0, access_events: 0,
+          recovery_keys: 0, browser_cache: 0, recovery_grants: 0
+        });
+        assert.equal((await client.query(`select count(*)::integer as count
+          from clinical_audit.synthetic_purge_tombstone
+          where (record_type = 'report' and record_id = $1)
+             or (record_type = 'assignment' and record_id = $2)`,
+        [reportId, assignmentId])).rows[0].count, 2);
+        assert.equal((await client.query(`select count(*)::integer as count
+          from offline_recovery.report_purge_tombstone where report_id = $1`,
+        [reportId])).rows[0].count, 1);
+
+        await rejectsSql(client, `insert into clinical.report
+          (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+           form_version_id, catalog_release_id, documenting_user_id)
+          values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
+            '32000000-0000-4000-8000-000000000011', $5, $6)`,
+        [reportId, organizationId, incidentId, patientId, releaseId, userId], "23505");
+        await rejectsSql(client, `insert into clinical.report_note
+          (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+           content, created_by, updated_by)
+          values ($1, $2, $3, clock_timestamp(), 0, 'Delayed note', $4, $4)`,
+        [randomUUID(), organizationId, reportId, userId], "23503");
+        await rejectsSql(client, `insert into clinical.report_photo_blob
+          (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+        [organizationId, reportId, photoNoteId, photoBytes], "23503");
+        assert.equal((await client.query(`select * from offline_recovery.register_report_key(
+          $1, $2, $3, $4, $5, $6, $7)`,
+        [reportId, organizationId, userId, randomUUID(), wrappingVersion,
+          Buffer.alloc(12, 3), Buffer.alloc(48, 4)])).rowCount, 0);
+      } finally {
+        await client.query("rollback");
+      }
+    });
+
+  }
 
   await t.test("activation cannot rewrite an older report's configuration pins", async () => {
     const reportId = "32000000-0000-4000-8000-00000000000e";

@@ -21,6 +21,7 @@ type SettingsRow = {
   language: string;
   regional_format: "en-US" | "sv-SE" | null;
   time_zone: string | null;
+  synthetic_retention_hours: string | number | null;
   report_media_allowance_bytes: string | number;
   image_media_limit_bytes: string | number;
   brand_text: string;
@@ -99,10 +100,14 @@ export class AgencySettingsService {
           expectedRevision: command.expectedRevision, actualRevision });
       }
       const appearanceChanged = JSON.stringify(this.appearance(currentSettings)) !== JSON.stringify(command.appearance);
+      const syntheticRetentionHours = command.syntheticRetentionHours === undefined
+        ? currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)
+        : command.syntheticRetentionHours;
       const demographicChanged = !this.sameDemographic(currentDemographic, command.demographics);
       if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
           Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
           currentSettings.language === command.language &&
+          (currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)) === syntheticRetentionHours &&
           currentSettings.regional_format === (command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat) &&
           currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
 
@@ -113,6 +118,7 @@ export class AgencySettingsService {
           logo_png_data_url = $7, accent_color = $8, accent_dark_color = $9,
           browser_theme_color = $10, pwa_background_color = $11, pwa_name = $12,
           pwa_short_name = $13, destructive_color = $14, inactive_button_color = $19, text_color = $20,
+          synthetic_retention_hours = $21,
           revision = revision + 1,
           updated_at = clock_timestamp(), updated_by = $15
         where organization_id = $1 and revision = $2 returning *
@@ -124,7 +130,7 @@ export class AgencySettingsService {
         command.appearance.pwaName, command.appearance.pwaShortName, command.appearance.destructiveColor,
         session.user.id, command.language, command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat,
         command.timeZone === undefined ? currentSettings.time_zone : command.timeZone,
-        command.appearance.inactiveButtonColor, command.appearance.textColor]));
+        command.appearance.inactiveButtonColor, command.appearance.textColor, syntheticRetentionHours]));
       const updated = updatedRows[0];
       if (!updated) throw new ConflictException("Agency Settings revision is stale");
       const updatedDemographic = demographicChanged
@@ -198,8 +204,9 @@ export class AgencySettingsService {
        old_accent_dark_color,new_accent_dark_color,old_browser_theme_color,new_browser_theme_color,
        old_pwa_background_color,new_pwa_background_color,old_pwa_name,new_pwa_name,
        old_pwa_short_name,new_pwa_short_name,old_language,new_language,old_regional_format,new_regional_format,old_time_zone,new_time_zone,
-       old_inactive_button_color,new_inactive_button_color,old_text_color,new_text_color)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
+       old_inactive_button_color,new_inactive_button_color,old_text_color,new_text_color,
+       old_synthetic_retention_hours,new_synthetic_retention_hours)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40)`,
     [organizationId, actorId, prior.revision, updated.revision,
       prior.report_media_allowance_bytes, updated.report_media_allowance_bytes,
       prior.image_media_limit_bytes, updated.image_media_limit_bytes,
@@ -213,7 +220,8 @@ export class AgencySettingsService {
       oldAppearance.pwaName, newAppearance.pwaName,
       oldAppearance.pwaShortName, newAppearance.pwaShortName, prior.language, updated.language,
       prior.regional_format, updated.regional_format, prior.time_zone, updated.time_zone,
-      oldAppearance.inactiveButtonColor, newAppearance.inactiveButtonColor, oldAppearance.textColor, newAppearance.textColor]);
+      oldAppearance.inactiveButtonColor, newAppearance.inactiveButtonColor, oldAppearance.textColor, newAppearance.textColor,
+      prior.synthetic_retention_hours, updated.synthetic_retention_hours]);
   }
 
   private logoSha256(value: string | null): string | null {
@@ -247,6 +255,7 @@ export class AgencySettingsService {
       effectiveFrom: new Date(demographic.effective_from).toISOString(),
     };
     return { organizationId: row.organization_id, language: row.language, regionalFormat: row.regional_format, timeZone: row.time_zone, reportMediaAllowanceBytes,
+      syntheticRetentionHours: row.synthetic_retention_hours === null ? null : Number(row.synthetic_retention_hours),
       imageMediaLimitBytes: Number(row.image_media_limit_bytes),
       appearance: this.appearance(row), demographics, revision: Number(row.revision),
       defaultReportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES,

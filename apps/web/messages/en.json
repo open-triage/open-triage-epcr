@@ -1664,5 +1664,9 @@
   "metrics.references": "Metric references",
   "metrics.evidence": "Metric evidence",
   "platform.error.admin.validationDraftStale": "The Validation draft changed in another workspace. Your edits are retained. Reload the draft before saving again.",
-  "metrics.countChecked": "{count} metrics checked."
+  "metrics.countChecked": "{count} metrics checked.",
+  "settings.demoRecords": "Demo records",
+  "settings.demoWipeHours": "Automatically wipe after (hours)",
+  "settings.demoWipeHelp": "Leave blank to disable automatic deletion. Applies to newly created demo calls and reports, including signed reports. Existing records keep their current deadlines.",
+  "settings.demoWipeInvalid": "Enter a positive whole number of hours, or leave blank for no automatic wipe."
 }

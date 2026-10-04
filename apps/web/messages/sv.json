@@ -1662,5 +1662,9 @@
   "metrics.references": "Måttreferenser",
   "metrics.evidence": "Måttunderlag",
   "platform.error.admin.validationDraftStale": "Valideringsutkastet ändrades i en annan arbetsyta. Dina ändringar finns kvar. Läs in utkastet igen innan du sparar.",
-  "metrics.countChecked": "{count} mått kontrollerade."
+  "metrics.countChecked": "{count} mått kontrollerade.",
+  "settings.demoRecords": "Demoposter",
+  "settings.demoWipeHours": "Radera automatiskt efter (timmar)",
+  "settings.demoWipeHelp": "Lämna tomt för att inaktivera automatisk radering. Gäller nya demosamtal och journaler, inklusive signerade journaler. Befintliga poster behåller sina nuvarande tidsgränser.",
+  "settings.demoWipeInvalid": "Ange ett positivt heltal i timmar, eller lämna tomt för att inte radera automatiskt."
 }

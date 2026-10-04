@@ -99,7 +99,9 @@ The login form never exposes or prefills fixture credentials. Demonstration and
 production deployments use the same ownership, password, authorization, publication,
 export, and ordinary ten-year clinical-retention policy. Synthetic clinical records
 are created explicitly by users with Clinical Demo authority and expire according to
-their own immutable 24-hour record provenance.
+the agency’s demo-record policy at creation (24 hours by default). Agency Settings
+accepts positive whole hours without a product maximum; a blank value disables
+automatic deletion for new records. Existing record deadlines remain unchanged.
 
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
 incident, patient, and command identities. The API derives the analytical patient

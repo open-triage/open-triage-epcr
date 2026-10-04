@@ -14,7 +14,7 @@ Build a database-backed Users and Roles administration feature based exclusively
 
 Replace broad Catalog and Forms authorization with separate read, write, and publish capabilities. Apply role changes immediately by resolving current role versions at the server authorization boundary on every request. Prevent self-modification, privilege escalation, and lower-privileged administrators from disabling or stripping access from more privileged users.
 
-Replace installation-level clinical-demo behavior with a protected Clinical Demo role. Give authorized users online banner tools to generate, populate, clear, and delete synthetic work. Synthetic calls and reports receive their own 24-hour expiry. A demonstration installation otherwise uses the same ownership, authentication, authorization, and retention behavior as production, with only two additional fixture users.
+Replace installation-level clinical-demo behavior with a protected Clinical Demo role. Give authorized users online banner tools to generate, populate, clear, and delete synthetic work. Synthetic calls and reports receive their own creation-time expiry from Agency Settings (24 hours by default; blank disables expiry). A demonstration installation otherwise uses the same ownership, authentication, authorization, and retention behavior as production, with only two additional fixture users.
 
 This feature is a complete vertical slice spanning schema, application services, APIs, Admin UI, owner and fixture bootstrap, audit-event creation, existing Catalog/Form authorization, and Clinical Demo behavior. Existing installations may be wiped and freshly bootstrapped; legacy authorization data does not require migration.
 
@@ -88,7 +88,7 @@ This feature is a complete vertical slice spanning schema, application services,
 66. As a Clinical Demo user, I want to delete any open synthetic draft after confirmation, so that I can restart without waiting for a validation failure.
 67. As a clinician, I want demo actions unable to modify ordinary or signed reports, so that synthetic tooling cannot damage clinical records.
 68. As a security owner, I want every demo-only mutation checked by the server, so that hidden controls or forged requests cannot bypass the Clinical Demo role.
-69. As a privacy owner, I want generated synthetic calls and reports removed 24 hours after server creation, so that demo records do not accumulate.
+69. As a privacy owner, I want generated synthetic calls and reports removed after the agency-configured number of hours from server creation (24 by default, with automatic deletion disabled when blank), so that demo records do not accumulate.
 70. As an offline user, I want expired local synthetic data removed and delayed synchronization rejected, so that purged records cannot return.
 71. As a demonstration operator, I want the demo installation to use normal production ownership and security, so that evaluation reflects the real product.
 72. As a demo administrator, I want `demo` / `opentriagedemo` to use the protected Demo role, so that current demonstration workflows remain available.
@@ -227,7 +227,7 @@ This feature is a complete vertical slice spanning schema, application services,
 - Opening a synthetic call never generates a replacement automatically.
 - Populate and Clear operate only on an open synthetic draft. Delete is available for any open synthetic draft after confirmation, regardless of validation state. No demo action applies to an ordinary report or signed record.
 - The server requires `clinical:demo` for synthetic-call generation, synthetic-draft deletion, and draft mutations that add or remove demo-owned provenance.
-- Every generated synthetic call and resulting report has immutable synthetic provenance and an expiry exactly 24 hours after server creation.
+- Every generated synthetic call and resulting report has immutable synthetic provenance and an immutable expiry based on the agency’s positive whole-hour setting at server creation, defaulting to 24 hours. There is no product maximum; a blank setting means no automatic expiry for new records. Later setting changes preserve existing deadlines.
 - Expiry deletes signed and unsigned synthetic records and dependent clinical data consistently, retains only non-PHI purge audit facts, removes local browser copies, and permanently rejects delayed queues that target a purged report.
 
 ### 10. Demonstration Fixtures
@@ -303,7 +303,7 @@ Good tests verify externally observable behavior and durable safety properties r
 - Test server denial of generation, provenance mutation, and deletion without live `clinical:demo`.
 - Test one-unit and multi-unit generation, one-unopened-call idempotency per user/unit, no automatic replacement after open, and ordinary-call isolation.
 - Test Populate, Clear, and Delete across synthetic draft, ordinary draft, validation state, and signed-record boundaries.
-- Test exact 24-hour server expiry for calls and signed/unsigned reports, dependent deletion, minimal audit facts, browser cleanup, and permanent delayed-sync rejection.
+- Test default and custom server expiry, disabled expiry, and immutable existing deadlines for calls and signed/unsigned reports, dependent deletion, minimal audit facts, browser cleanup, and permanent delayed-sync rejection.
 - Test the `demo` / `opentriagedemo` fixture behavior, protected Demo role assignment, lack of credential prefill, ordinary owner requirement, and bootstrap idempotency after administrative changes.
 
 ### Database and Scale
