@@ -4,6 +4,7 @@ import { effectiveCatalogFields } from "./field-choice-policy.js";
 import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
 
 type FieldRow = {
+  generation?: ClinicalFormConfiguration["catalogFields"][string]["generation"];
   element_id: string;
   name: string;
   description: string | null;
@@ -68,6 +69,11 @@ export async function clinicalFormConfiguration(
       && rule.executionTargets.some((target) => target === "live" || target === "sign")
       && !isNemsisDemographicElementId(rule.primaryTarget.elementId)
       && !rule.references?.elementIds?.some(isNemsisDemographicElementId)) } : undefined;
+  for (const rule of clientBundle?.rules ?? []) {
+    for (const id of [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])]) {
+      if (id && !elementIds.includes(id)) elementIds.push(id);
+    }
+  }
   return {
     definition: versions[0].canonical_definition,
     customFields: Object.fromEntries(custom.map((row) => [row.id, snapshotById.get(row.id) ?? row.definition])),
@@ -105,6 +111,12 @@ export async function catalogFieldsConfiguration(
       from catalog.release where id=$1
     )
     select e.element_id, e.name, e.description,
+           jsonb_build_object('id', e.element_id, 'base', e.base_datatype, 'path', e.group_path,
+             'minimum', e.min_occurs, 'maximum', e.max_occurs,
+             'definition', jsonb_build_object('datatype', e.definition->'datatype',
+               'valueSource', jsonb_build_object('kind', e.definition->'valueSource'->>'kind'),
+               'permittedNotValues', coalesce(e.definition->'permittedNotValues', '[]'::jsonb),
+               'permittedPertinentNegatives', coalesce(e.definition->'permittedPertinentNegatives', '[]'::jsonb))) as generation,
            cr.elements->e.element_id as localization,
            (select coalesce(jsonb_agg(jsonb_build_object('key', o.source_kind || ':' || o.code,
              'localization', cr.special_choices->e.element_id->o.source_kind->o.code)
@@ -166,6 +178,7 @@ export async function catalogFieldsConfiguration(
     choicesByElement.set(choice.element_id, current);
   }
   return Object.fromEntries(fields.map((field) => [field.element_id, {
+      ...(field.generation ? { generation: field.generation } : {}),
       name: field.name,
       description: field.description ?? "",
       ...(field.localization ? { localization: field.localization } : {}),
@@ -188,14 +201,15 @@ export async function catalogGroupsConfiguration(
   catalogReleaseId: string,
 ): Promise<NonNullable<ClinicalFormConfiguration["catalogGroups"]>> {
   const groups = await manager.query<Array<{
-    group_id: string; name: string;
+    group_id: string; name: string; parent_group_id?: string | null;
     localization: NonNullable<ClinicalFormConfiguration["catalogGroups"]>[string]["localization"];
   }>>(`with wording as materialized (
       select provenance->'groupLocalization' as groups from catalog.release where id=$1
     )
-    select g.group_id, g.name, r.groups->g.group_id as localization
+    select g.group_id, g.name, g.parent_group_id, r.groups->g.group_id as localization
     from catalog.group_definition g cross join wording r
     where g.release_id=$1`, [catalogReleaseId]);
-  return Object.fromEntries(groups.map(({ group_id, name, localization }) =>
-    [group_id, { name, ...(localization ? { localization } : {}) }]));
+  return Object.fromEntries(groups.map(({ group_id, name, parent_group_id, localization }) =>
+    [group_id, { name, ...(parent_group_id !== undefined ? { parentId: parent_group_id } : {}),
+      ...(localization ? { localization } : {}) }]));
 }

@@ -84,6 +84,13 @@ by an owner. The account has no authority until the
 organization has a normal installation owner; follow
 [`docs/runbooks/identity-recovery.md`](docs/runbooks/identity-recovery.md) for owner setup.
 
+Generate varied synthetic reports from an agency's active form and validation
+with `npm run generate:synthetic -- --agency UUID --count 100
+--from 2026-09-01 --to 2026-09-30`. See the
+[synthetic record CLI runbook](docs/runbooks/synthetic-record-generation.md) for
+random user assignment, distributions, dry runs, and draft output. No user password
+is required; add `--username USER` to select a fixed clinician.
+
 To ingest one vendor snapshot explicitly, pass the file and caller-owned organization
 and source context to the JSON-output CLI:
 
