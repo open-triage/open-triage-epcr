@@ -1,5 +1,5 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
-import { DEMO_FALLBACK_DATE, hasDemoProvenance } from "./demo-provenance";
+import { clinicianOwnedAttributes, DEMO_FALLBACK_DATE, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
 import { stableDraftId } from "./draft-report";
 import type { EncounterDefinition } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
@@ -200,6 +200,10 @@ export function saveCanonicalEvent(document: EncounterDocument, event: Encounter
   if (event.kind === "note") return document;
   document = ensureEventSection(document, event);
   const updatedAt = timestamp(document, event, zone);
+  if (event.medication && document.groups.find(({ id }) => id === "eMedications.MedicationGroup")?.instances
+    .some(({ instanceId }) => instanceId === event.id)) {
+    return updateMedicationEvent(document, event, definition, updatedAt);
+  }
   const removedIds = eventSubtreeIds(document, event.id);
   let groups = document.groups.map((group) => ({ ...group, instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)) }));
   for (const { groupId, instance } of eventInstances(document, event, definition, updatedAt)) {
@@ -209,6 +213,81 @@ export function saveCanonicalEvent(document: EncounterDocument, event: Encounter
       : [...groups, { id: groupId, instances: [instance] }];
   }
   return { ...document, encounter: { ...document.encounter, updatedAt }, groups };
+}
+
+/** The dialog edits a subset of an administration; retain its stored identities and other documentation. */
+function updateMedicationEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition,
+  updatedAt: string): EncounterDocument {
+  let groups = document.groups;
+  for (const { groupId, instance: generated } of eventInstances(document, event, definition, updatedAt)) {
+    const group = groups.find(({ id }) => id === groupId);
+    // Match the dose displayed by encounterEvents when more than one exists.
+    const current = groupId === "eMedications.MedicationGroup"
+      ? group?.instances.find(({ instanceId }) => instanceId === event.id)
+      : group?.instances.filter((instance) => instance.parentInstanceId === event.id && documented(instance)).at(-1);
+    const managed = new Set(groupId === "eMedications.MedicationGroup"
+      ? ["eMedications.01", "eMedications.03", "eMedications.04", "eMedications.07"]
+      : ["eMedications.05", "eMedications.06"]);
+    const replacements = new Map(generated.elements.map((element) => [element.id, {
+      ...element,
+      values: element.values.map((value, index) => {
+        const previous = current?.elements.find(({ id }) => id === element.id)?.values[index];
+        if (!previous) return value;
+        const unchanged = value.kind === "scalar" && previous.kind === "scalar" && value.value === previous.value ||
+          value.kind === "coded" && previous.kind === "coded" && value.code === previous.code && value.system === previous.system;
+        const attributes = { ...withoutDemoProvenance(previous.attributes), ...value.attributes };
+        return { ...(unchanged ? previous : value), occurrenceId: previous.occurrenceId,
+          attributes: Object.keys(attributes).length ? attributes : undefined };
+      }),
+    }]));
+    const elements = (current?.elements ?? []).flatMap((element) => {
+      if (!managed.has(element.id)) return [element];
+      const replacement = replacements.get(element.id);
+      replacements.delete(element.id);
+      return replacement ? [replacement] : [];
+    });
+    const instance = { ...current, ...generated, instanceId: current?.instanceId ?? generated.instanceId,
+      parentInstanceId: current?.parentInstanceId ?? generated.parentInstanceId,
+      attributes: { ...clinicianOwnedAttributes(current?.attributes), ...generated.attributes },
+      elements: [...elements, ...replacements.values()] };
+    groups = group ? groups.map((item) => item !== group ? item : { ...group,
+      instances: current ? group.instances.map((item) => item === current ? instance : item) : [...group.instances, instance] })
+      : [...groups, { id: groupId, instances: [instance] }];
+  }
+  return { ...document, encounter: { ...document.encounter, updatedAt }, groups };
+}
+
+/** Recover queued edits produced by the former dialog, which recreated populated administrations. */
+export function repairRecreatedMedicationEvents(document: EncounterDocument, baseline: EncounterDocument,
+  definition: EncounterDefinition, zone: string | null = null): EncounterDocument {
+  for (const event of encounterEvents(document, definition, zone).filter(({ medication }) => medication)) {
+    const previous = baseline.groups.find(({ id }) => id === "eMedications.MedicationGroup")?.instances
+      .find(({ instanceId }) => instanceId === event.id);
+    const current = document.groups.find(({ id }) => id === "eMedications.MedicationGroup")?.instances
+      .find(({ instanceId }) => instanceId === event.id);
+    const oldId = previous && element(previous, "eMedications.03")?.values[0]?.occurrenceId;
+    const localId = current && element(current, "eMedications.03")?.values[0]?.occurrenceId;
+    const recreatedId = `${event.id}:medication`;
+    if (!oldId || !localId || oldId === localId ||
+      ![recreatedId, stableDraftId(document.encounter.id, `occurrence:${recreatedId}`)].includes(localId)) continue;
+    const repaired = saveCanonicalEvent(baseline, event, definition, zone);
+    const localIds = eventSubtreeIds(document, event.id);
+    const repairedIds = eventSubtreeIds(repaired, event.id);
+    const groups = document.groups.map((group) => ({ ...group,
+      instances: group.instances.filter(({ instanceId }) => !localIds.has(instanceId) && !repairedIds.has(instanceId)) }));
+    for (const group of repaired.groups) {
+      const instances = group.instances.filter(({ instanceId }) => repairedIds.has(instanceId));
+      if (!instances.length) continue;
+      const target = groups.find(({ id }) => id === group.id);
+      if (target) {
+        const position = group.instances.findIndex(({ instanceId }) => repairedIds.has(instanceId));
+        target.instances.splice(Math.min(position, target.instances.length), 0, ...instances);
+      }
+      else groups.push({ ...group, instances });
+    }
+    document = { ...document, groups };
+  }
+  return document;
 }
 
 export function removeCanonicalEvent(document: EncounterDocument, eventId: string): EncounterDocument {

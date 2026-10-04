@@ -43,7 +43,8 @@ import {
 import { pendingDraftTargets, reconcileActiveReportDocument } from "./active-report-reconciliation";
 import type { PresentationMode } from "./presentation-mode";
 import { bundledEncounterDefinition, type ShellAction, type ShellState } from "./standard-encounter";
-import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { repairRecreatedMedicationEvents } from "./canonical-events";
+import { DEMO_CLEAR_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
 import { recordFeedbackInteraction } from "./feedback-telemetry";
@@ -128,12 +129,9 @@ export function useReportWorkspace({
   useEffect(() => {
     const authorized = () => canUseClinicalDemoDraftActions(report) && navigator.onLine &&
       browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true;
-    const populated = () => { if (authorized()) pendingDemoAction.current = "populate"; };
     const cleared = () => { if (authorized()) pendingDemoAction.current = "clear"; };
-    window.addEventListener(DEMO_POPULATE_EVENT, populated);
     window.addEventListener(DEMO_CLEAR_EVENT, cleared);
     return () => {
-      window.removeEventListener(DEMO_POPULATE_EVENT, populated);
       window.removeEventListener(DEMO_CLEAR_EVENT, cleared);
     };
   }, [report, session.capabilities]);
@@ -414,11 +412,13 @@ export function useReportWorkspace({
           groupIds: new Set([...(queuedTargets?.groupIds ?? []), ...(localTargets?.groupIds ?? [])]),
           occurrenceIds: new Set([...(queuedTargets?.occurrenceIds ?? []), ...(localTargets?.occurrenceIds ?? [])]),
         } : undefined;
-        const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
+        let merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
         const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document, undefined, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
         revision.current = response.resource.reportRevision;
         if (queued) {
           if (recoverConflictingQueue.current) {
+            merged = repairRecreatedMedicationEvents(merged, response.resource.document, bundledEncounterDefinition,
+              shellRef.current.timeZone ?? null);
             const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged, serverDraft, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
