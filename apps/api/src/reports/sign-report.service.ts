@@ -663,13 +663,16 @@ export class SignReportService {
     report: ReportRow,
     signedAt: string
   ): Promise<{ date: string; source: SignedReportResult["reportingDateSource"] }> {
-    if (report.reporting_date) return { date: report.reporting_date, source: "service-date" };
     const rows = await manager.query<Array<{ clinical_date: string | null; server_date: string | null }>>(`select
-      least(min(value_date), min((value_datetime at time zone 'UTC')::date),
-            min((documented_time at time zone 'UTC')::date)) as clinical_date,
-      min((server_received_time at time zone 'UTC')::date) as server_date
+      ((min(value_datetime) filter (
+        where element_id ~ '^eTimes[.][0-9]{2}$' and value_kind = 'datetime'
+          and isfinite(value_datetime) and absence_code is null
+          and not_value_code is null and pertinent_negative_code is null
+      )) at time zone 'UTC')::date::text as clinical_date,
+      min((server_received_time at time zone 'UTC')::date)::text as server_date
       from clinical.element_occurrence where report_id = $1 and tombstoned_at is null`, [report.id]);
     if (rows[0]?.clinical_date) return { date: rows[0].clinical_date, source: "earliest-clinical-time" };
+    if (report.reporting_date) return { date: report.reporting_date, source: "service-date" };
     if (rows[0]?.server_date) return { date: rows[0].server_date, source: "earliest-server-time" };
     return { date: signedAt.slice(0, 10), source: "signing-time" };
   }

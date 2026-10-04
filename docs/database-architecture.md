@@ -214,9 +214,11 @@ all groups with zero or multiple local candidates and requires an explicit
 `element`, `inherited`, or `non-temporal` resolution before runtime.
 
 The wide table uses yearly service-date partitions; repeatable elements use
-monthly partitions. A signed report uses the explicit service date, otherwise the
-earliest valid clinical/operational timestamp, earliest server timestamp, and
-finally signing time. The selected source is always exposed. Amendments that
+monthly partitions. A signed report uses the UTC date of its earliest valid
+documented eTimes value, then falls back to an explicit service date, earliest
+server timestamp, and finally signing time. Birth dates, unrelated date fields,
+and documentation timestamps do not determine the eTimes date. The selected
+source is always exposed. Amendments that
 correct the date move the projections to the corrected partitions.
 
 ## Projection and operations
