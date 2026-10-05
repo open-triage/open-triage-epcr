@@ -1,3 +1,9 @@
+# Bug fixes
+
+When fixing bugs, always strive to address the underlying cause rather than
+patching only the specific instance. Investigate other affected paths and fix
+the shared behavior at the appropriate level.
+
 # UI development
 
 Before developing UI, read [the UI style guide](docs/design/ui-style-guide.md).
