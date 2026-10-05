@@ -32,6 +32,7 @@ import { availableUiLanguages, resolveMessage, type AgencyLanguage } from "../ap
 import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { AdminShell } from "./admin-shell";
+import { useVisiblePolling } from "./use-visible-polling";
 import { ReviewShell } from "./review-shell";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
@@ -121,11 +122,10 @@ export function ClinicianSessionGate({ children }: {
       }).catch(() => { if (!controller.signal.aborted) setStoredReviewAttention(null); });
     };
     load();
-    const interval = window.setInterval(load, 30_000);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => { controller.abort(); window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
+    return () => controller.abort();
   }, [session, online, attentionSessionKey, reviewAttentionDataset, reviewAttentionRevision]);
+  useVisiblePolling(() => setReviewAttentionRevision((value) => value + 1), 30_000,
+    online && !!session && hasReviewMode(session.capabilities), attentionSessionKey, false);
   const [generatedAssignmentId, setGeneratedAssignmentId] = useState<string | null>(null);
   const [logoutWarning, setLogoutWarning] = useState<ProtectedLogoutSummary | null>(null);
   const [lockingSession, setLockingSession] = useState(false);
@@ -494,7 +494,7 @@ export function ClinicianSessionGate({ children }: {
       </section>}
       {presentationMode !== "admin" && presentationMode !== "review" && <div className="call-directory" hidden={activeReport !== null || openingCall !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
-        <AssignedCalls session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
+        <AssignedCalls paused={activeReport !== null || openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
           setCompletionNotice(null);
           await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
