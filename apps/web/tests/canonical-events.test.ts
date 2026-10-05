@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { encounterEvents, removeCanonicalEvent, repairRecreatedMedicationEvents, saveCanonicalEvent } from "../app/canonical-events";
+import { encounterEvents, removeCanonicalEvent, repairRecreatedCanonicalEvents, saveCanonicalEvent } from "../app/canonical-events";
 import { draftMutationDelta, encounterDocumentToDraftMutations, recoveryMutationBatches, shellStateToDraftMutations } from "../app/draft-report";
 import { ENCOUNTER_EXTENSION_KEY, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
@@ -44,7 +44,7 @@ test("retry repairs a medication edit queued by the old dialog without losing th
   const editedEvent = { ...event, medication: { ...event.medication!, medicationCode: "7052", label: "Morphine" } };
   // The old dialog removed the subtree before regenerating its values and dose group.
   const legacy = saveCanonicalEvent(removeCanonicalEvent(document, event.id), editedEvent, bundledEncounterDefinition);
-  const repaired = repairRecreatedMedicationEvents(legacy, document, bundledEncounterDefinition);
+  const repaired = repairRecreatedCanonicalEvents(legacy, document, bundledEncounterDefinition);
   const expected = saveCanonicalEvent(document, editedEvent, bundledEncounterDefinition);
   const baseline = encounterDocumentToDraftMutations("report-1", document);
   const actualMutations = encounterDocumentToDraftMutations("report-1", repaired, baseline);
@@ -52,7 +52,79 @@ test("retry repairs a medication edit queued by the old dialog without losing th
   const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
   assert.deepEqual(actualMutations.groups.toSorted(byId), expectedMutations.groups.toSorted(byId));
   assert.deepEqual(actualMutations.occurrences.toSorted(byId), expectedMutations.occurrences.toSorted(byId));
-  assert.strictEqual(repairRecreatedMedicationEvents(document, document, bundledEncounterDefinition), document);
+  assert.strictEqual(repairRecreatedCanonicalEvents(document, document, bundledEncounterDefinition), document);
+});
+
+for (const kind of ["vitals", "procedure"] as const) {
+  test(`editing populated ${kind} preserves source identities and documentation outside the projection`, () => {
+    let document = populateStationaryDemoData(INITIAL_SHELL_STATE.encounter.document);
+    const event = encounterEvents(document, bundledEncounterDefinition).find((candidate) => candidate[kind])!;
+    const rootGroup = document.groups.find(({ instances }) => instances.some(({ instanceId }) => instanceId === event.id))!;
+    const root = rootGroup.instances.find(({ instanceId }) => instanceId === event.id)!;
+    const extra = { id: "extension-field", values: [{ kind: "scalar" as const, occurrenceId: "extension-value", value: "Keep me" }] };
+    const child = { id: "extension-group", instances: [{ instanceId: "extension-child", parentInstanceId: root.instanceId,
+      elements: [extra] }] };
+    document = { ...document, groups: [...document.groups.map((group) => group !== rootGroup ? group : { ...group,
+      instances: group.instances.map((instance) => instance !== root ? instance : { ...instance,
+        attributes: { ...instance.attributes, externalAnnotation: "Keep me" }, elements: [...instance.elements, extra] }) }), child] };
+    const editedEvent = kind === "vitals"
+      ? { ...event, vitals: { ...event.vitals!, heartRate: "83", systolic: "122" } }
+      : { ...event, procedure: { ...event.procedure!, attempts: 3 } };
+    const baseline = encounterDocumentToDraftMutations("report-1", document);
+    const edited = saveCanonicalEvent(document, editedEvent, bundledEncounterDefinition);
+    assert.strictEqual(repairRecreatedCanonicalEvents(edited, document, bundledEncounterDefinition), edited);
+    const projected = encounterDocumentToDraftMutations("report-1", edited, baseline);
+    assert.deepEqual(projected.groups.map(({ id }) => id), baseline.groups.map(({ id }) => id));
+    assert.deepEqual(projected.occurrences.map(({ id }) => id), baseline.occurrences.map(({ id }) => id));
+    const savedRoot = edited.groups.find(({ id }) => id === rootGroup.id)!.instances.find(({ instanceId }) => instanceId === event.id)!;
+    assert.deepEqual(savedRoot.elements.find(({ id }) => id === extra.id), extra);
+    assert.equal(savedRoot.attributes?.externalAnnotation, "Keep me");
+    assert.deepEqual(edited.groups.find(({ id }) => id === child.id), child);
+    const savedEvent = encounterEvents(edited, bundledEncounterDefinition).find(({ id }) => id === event.id)!;
+    if (kind === "vitals") {
+      assert.equal(savedEvent.vitals!.heartRate, "83");
+      assert.equal(savedEvent.vitals!.systolic, "122");
+    } else assert.equal(savedEvent.procedure!.attempts, 3);
+
+    // Simulate a legacy queued edit that recreated the entire subtree.
+    const legacy = saveCanonicalEvent(removeCanonicalEvent(document, event.id), editedEvent, bundledEncounterDefinition);
+    const repaired = repairRecreatedCanonicalEvents(legacy, document, bundledEncounterDefinition);
+    const byGroup = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
+    assert.deepEqual(repaired.groups.toSorted(byGroup), edited.groups.toSorted(byGroup));
+    assert.strictEqual(repairRecreatedCanonicalEvents(document, document, bundledEncounterDefinition), document);
+  });
+}
+
+test("clearing projected nested values preserves their group and unrelated values", () => {
+  const document = populateStationaryDemoData(INITIAL_SHELL_STATE.encounter.document);
+  const event = encounterEvents(document, bundledEncounterDefinition).find(({ vitals }) => vitals)!;
+  const cleared = saveCanonicalEvent(document, { ...event, vitals: { ...EMPTY_VITALS, nullValues: {} } }, bundledEncounterDefinition);
+  assert.deepEqual(cleared.groups.map((group) => [group.id, group.instances.map(({ instanceId }) => instanceId)]),
+    document.groups.map((group) => [group.id, group.instances.map(({ instanceId }) => instanceId)]));
+  assert.deepEqual(encounterEvents(cleared, bundledEncounterDefinition).find(({ id }) => id === event.id)!.vitals,
+    { ...EMPTY_VITALS, nullValues: {} });
+});
+
+test("reordering and removing projected selections retains identities of surviving values", () => {
+  const populated = populateStationaryDemoData(INITIAL_SHELL_STATE.encounter.document);
+  const event = encounterEvents(populated, bundledEncounterDefinition).find(({ procedure }) => procedure)!;
+  let document = saveCanonicalEvent(populated, { ...event, procedure: { ...event.procedure!, complications: ["a", "b", "c"] } }, bundledEncounterDefinition);
+  const hidden = { kind: "null" as const, occurrenceId: "unprojected-selection", notValue: { code: "7701003" } };
+  document = { ...document, groups: document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) =>
+    instance.instanceId !== event.id ? instance : { ...instance, elements: instance.elements.map((element) =>
+      element.values.some((value) => value.kind === "coded" && value.code === "a")
+        ? { ...element, values: [hidden, ...element.values] } : element) }) })) };
+  const values = document.groups.flatMap(({ instances }) => instances).find(({ instanceId }) => instanceId === event.id)!
+    .elements.flatMap(({ values }) => values).filter((value) => value.kind === "coded" && ["a", "b", "c"].includes(value.code));
+  const editedEvent = encounterEvents(document, bundledEncounterDefinition).find(({ id }) => id === event.id)!;
+  document = saveCanonicalEvent(document, { ...editedEvent, procedure: { ...editedEvent.procedure!, complications: ["c", "a", "d"] } }, bundledEncounterDefinition);
+  const retained = document.groups.flatMap(({ instances }) => instances).find(({ instanceId }) => instanceId === event.id)!
+    .elements.flatMap(({ values }) => values).filter((value) => value.kind === "coded" && ["a", "b", "c", "d"].includes(value.code));
+  assert.deepEqual(retained.slice(0, 2).map(({ occurrenceId }) => occurrenceId), [values[2]!.occurrenceId, values[0]!.occurrenceId]);
+  const ids = document.groups.flatMap(({ instances }) => instances.flatMap(({ elements }) => elements.flatMap(({ values }) => values.map(({ occurrenceId }) => occurrenceId))));
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(document.groups.flatMap(({ instances }) => instances.flatMap(({ elements }) => elements.flatMap(({ values }) => values)))
+    .find(({ occurrenceId }) => occurrenceId === hidden.occurrenceId), hidden);
 });
 
 test("quick capture preserves invalid times for correction rather than normalizing or rejecting the entry", () => {

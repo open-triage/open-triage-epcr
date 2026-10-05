@@ -43,7 +43,7 @@ import {
 import { pendingDraftTargets, reconcileActiveReportDocument } from "./active-report-reconciliation";
 import type { PresentationMode } from "./presentation-mode";
 import { bundledEncounterDefinition, type ShellAction, type ShellState } from "./standard-encounter";
-import { repairRecreatedMedicationEvents } from "./canonical-events";
+import { repairRecreatedCanonicalEvents } from "./canonical-events";
 import { DEMO_CLEAR_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
@@ -417,7 +417,7 @@ export function useReportWorkspace({
         revision.current = response.resource.reportRevision;
         if (queued) {
           if (recoverConflictingQueue.current) {
-            merged = repairRecreatedMedicationEvents(merged, response.resource.document, bundledEncounterDefinition,
+            merged = repairRecreatedCanonicalEvents(merged, response.resource.document, bundledEncounterDefinition,
               shellRef.current.timeZone ?? null);
             const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged, serverDraft, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);

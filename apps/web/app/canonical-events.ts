@@ -195,61 +195,83 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
   return [];
 }
 
+type EventSources = Map<string, Map<string, EncounterGroupInstance>>;
+
+function sameValue(a: EncounterValue, b: EncounterValue): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "scalar" && b.kind === "scalar") return a.value === b.value;
+  if (a.kind === "coded" && b.kind === "coded") return a.code === b.code && a.system === b.system;
+  if (a.kind === "pertinent-negative" && b.kind === "pertinent-negative") return a.code === b.code;
+  if (a.kind === "null" && b.kind === "null") return JSON.stringify(a.notValue) === JSON.stringify(b.notValue);
+  return false;
+}
+
+/** Merge the dialog's projection into its source occurrences, never replace the stored subtree. */
 export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, zone: string | null = null): EncounterDocument {
-  // App-native notes never enter the NEMSIS encounter document.
   if (event.kind === "note") return document;
   document = ensureEventSection(document, event);
   const updatedAt = timestamp(document, event, zone);
-  if (event.medication && document.groups.find(({ id }) => id === "eMedications.MedicationGroup")?.instances
-    .some(({ instanceId }) => instanceId === event.id)) {
-    return updateMedicationEvent(document, event, definition, updatedAt);
-  }
-  const removedIds = eventSubtreeIds(document, event.id);
-  let groups = document.groups.map((group) => ({ ...group, instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)) }));
-  for (const { groupId, instance } of eventInstances(document, event, definition, updatedAt)) {
-    const existing = groups.find((group) => group.id === groupId);
-    groups = existing
-      ? groups.map((group) => group === existing ? { ...group, instances: [...group.instances, instance] } : group)
-      : [...groups, { id: groupId, instances: [instance] }];
-  }
-  return { ...document, encounter: { ...document.encounter, updatedAt }, groups };
-}
-
-/** The dialog edits a subset of an administration; retain its stored identities and other documentation. */
-function updateMedicationEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition,
-  updatedAt: string): EncounterDocument {
+  const sources: EventSources = new Map();
+  const previousEvent = readEncounterEvents(document, definition, zone, sources).find(({ id }) => id === event.id);
+  const before = previousEvent ? eventInstances(document, previousEvent, definition, timestamp(document, previousEvent, zone)) : [];
+  const after = eventInstances(document, event, definition, updatedAt);
   let groups = document.groups;
-  for (const { groupId, instance: generated } of eventInstances(document, event, definition, updatedAt)) {
-    const group = groups.find(({ id }) => id === groupId);
-    // Match the dose displayed by encounterEvents when more than one exists.
-    const current = groupId === "eMedications.MedicationGroup"
-      ? group?.instances.find(({ instanceId }) => instanceId === event.id)
-      : group?.instances.filter((instance) => instance.parentInstanceId === event.id && documented(instance)).at(-1);
-    const managed = new Set(groupId === "eMedications.MedicationGroup"
-      ? ["eMedications.01", "eMedications.03", "eMedications.04", "eMedications.07"]
-      : ["eMedications.05", "eMedications.06"]);
-    const replacements = new Map(generated.elements.map((element) => [element.id, {
-      ...element,
-      values: element.values.map((value, index) => {
-        const previous = current?.elements.find(({ id }) => id === element.id)?.values[index];
-        if (!previous) return value;
-        const unchanged = value.kind === "scalar" && previous.kind === "scalar" && value.value === previous.value ||
-          value.kind === "coded" && previous.kind === "coded" && value.code === previous.code && value.system === previous.system;
+  const occurrenceIds = new Set(document.groups.flatMap(({ instances }) => instances.flatMap(({ elements }) =>
+    elements.flatMap(({ values }) => values.map(({ occurrenceId }) => occurrenceId)))));
+  // Include formerly projected groups so clearing a field removes only its represented values.
+  for (const groupId of new Set([...before, ...after].map((item) => item.groupId))) {
+    const previousProjection = before.find((item) => item.groupId === groupId)?.instance;
+    const generated = after.find((item) => item.groupId === groupId)?.instance;
+    const current = sources.get(event.id)?.get(groupId);
+    if (!generated && !current) continue;
+    const managed = new Set([...(previousProjection?.elements ?? []), ...(generated?.elements ?? [])].map(({ id }) => id));
+    const replacements = new Map([...managed].map((id) => {
+      const stored = current?.elements.find((element) => element.id === id);
+      const projected = previousProjection?.elements.find((element) => element.id === id);
+      const next = generated?.elements.find((element) => element.id === id);
+      const representedIds = new Set<string>();
+      const represented = (projected?.values ?? []).flatMap((value, index) => {
+        const source = stored?.values.find((candidate) => !representedIds.has(candidate.occurrenceId) && sameValue(candidate, value))
+          ?? stored?.values[index];
+        if (!source || representedIds.has(source.occurrenceId)) return [];
+        representedIds.add(source.occurrenceId);
+        return [source];
+      });
+      const used = new Set<string>();
+      const values = (next?.values ?? []).map((value, index) => {
+        // Match unchanged selections before falling back to position for single-value edits.
+        const previous = represented.find((candidate) => !used.has(candidate.occurrenceId) && sameValue(candidate, value))
+          ?? (represented.length === 1 && next?.values.length === 1 ? represented[index] : undefined);
+        if (!previous) {
+          let occurrenceId = value.occurrenceId;
+          let suffix = 0;
+          while (occurrenceIds.has(occurrenceId)) {
+            occurrenceId = stableDraftId(document.encounter.id, `canonical-value:${value.occurrenceId}:${++suffix}`);
+          }
+          occurrenceIds.add(occurrenceId);
+          return { ...value, occurrenceId };
+        }
+        used.add(previous.occurrenceId);
         const attributes = { ...withoutDemoProvenance(previous.attributes), ...value.attributes };
-        return { ...(unchanged ? previous : value), occurrenceId: previous.occurrenceId,
+        return { ...(sameValue(previous, value) ? previous : value), occurrenceId: previous.occurrenceId,
           attributes: Object.keys(attributes).length ? attributes : undefined };
-      }),
-    }]));
+      });
+      // Values outside the projection belong to other documentation.
+      values.push(...(stored?.values.filter(({ occurrenceId }) => !representedIds.has(occurrenceId)) ?? []));
+      return [id, values.length ? { ...stored, ...next, id, values } : undefined] as const;
+    }));
     const elements = (current?.elements ?? []).flatMap((element) => {
       if (!managed.has(element.id)) return [element];
       const replacement = replacements.get(element.id);
       replacements.delete(element.id);
       return replacement ? [replacement] : [];
     });
-    const instance = { ...current, ...generated, instanceId: current?.instanceId ?? generated.instanceId,
-      parentInstanceId: current?.parentInstanceId ?? generated.parentInstanceId,
-      attributes: { ...clinicianOwnedAttributes(current?.attributes), ...generated.attributes },
-      elements: [...elements, ...replacements.values()] };
+    const instance: EncounterGroupInstance = { ...current, ...generated,
+      instanceId: current?.instanceId ?? generated!.instanceId,
+      parentInstanceId: current?.parentInstanceId ?? generated?.parentInstanceId,
+      attributes: { ...clinicianOwnedAttributes(current?.attributes), ...generated?.attributes },
+      elements: [...elements, ...[...replacements.values()].filter((item) => item !== undefined)] };
+    const group = groups.find(({ id }) => id === groupId);
     groups = group ? groups.map((item) => item !== group ? item : { ...group,
       instances: current ? group.instances.map((item) => item === current ? instance : item) : [...group.instances, instance] })
       : [...groups, { id: groupId, instances: [instance] }];
@@ -257,19 +279,23 @@ function updateMedicationEvent(document: EncounterDocument, event: EncounterEven
   return { ...document, encounter: { ...document.encounter, updatedAt }, groups };
 }
 
-/** Recover queued edits produced by the former dialog, which recreated populated administrations. */
-export function repairRecreatedMedicationEvents(document: EncounterDocument, baseline: EncounterDocument,
+/** Recover legacy queued edits identified by regenerated projection occurrence identities. */
+export function repairRecreatedCanonicalEvents(document: EncounterDocument, baseline: EncounterDocument,
   definition: EncounterDefinition, zone: string | null = null): EncounterDocument {
-  for (const event of encounterEvents(document, definition, zone).filter(({ medication }) => medication)) {
-    const previous = baseline.groups.find(({ id }) => id === "eMedications.MedicationGroup")?.instances
-      .find(({ instanceId }) => instanceId === event.id);
-    const current = document.groups.find(({ id }) => id === "eMedications.MedicationGroup")?.instances
-      .find(({ instanceId }) => instanceId === event.id);
-    const oldId = previous && element(previous, "eMedications.03")?.values[0]?.occurrenceId;
-    const localId = current && element(current, "eMedications.03")?.values[0]?.occurrenceId;
-    const recreatedId = `${event.id}:medication`;
-    if (!oldId || !localId || oldId === localId ||
-      ![recreatedId, stableDraftId(document.encounter.id, `occurrence:${recreatedId}`)].includes(localId)) continue;
+  const baselineSources: EventSources = new Map();
+  readEncounterEvents(baseline, definition, zone, baselineSources);
+  const localSources: EventSources = new Map();
+  for (const event of readEncounterEvents(document, definition, zone, localSources)) {
+    const comparable = eventInstances(document, event, definition, timestamp(document, event, zone)).flatMap(({ groupId, instance }) =>
+      instance.elements.flatMap((element) => element.values.flatMap((value, index) => {
+        const oldId = baselineSources.get(event.id)?.get(groupId)?.elements.find(({ id }) => id === element.id)?.values[index]?.occurrenceId;
+        const localId = localSources.get(event.id)?.get(groupId)?.elements.find(({ id }) => id === element.id)?.values[index]?.occurrenceId;
+        return oldId && localId ? [{ oldId, localId, generatedId: value.occurrenceId }] : [];
+      })));
+    // A legacy replacement regenerates the whole projection. A newly added value alone is not evidence.
+    if (!comparable.some(({ oldId, localId }) => oldId !== localId) ||
+      !comparable.every(({ localId, generatedId }) =>
+        [generatedId, stableDraftId(document.encounter.id, `occurrence:${generatedId}`)].includes(localId))) continue;
     const repaired = saveCanonicalEvent(baseline, event, definition, zone);
     const localIds = eventSubtreeIds(document, event.id);
     const repairedIds = eventSubtreeIds(repaired, event.id);
@@ -320,16 +346,31 @@ function eventSubtreeIds(document: EncounterDocument, eventId: string): Set<stri
 }
 
 export function encounterEvents(document: EncounterDocument, definition: EncounterDefinition, zone: string | null = null): ReadonlyArray<EncounterEvent> {
+  return readEncounterEvents(document, definition, zone);
+}
+
+function readEncounterEvents(document: EncounterDocument, definition: EncounterDefinition, zone: string | null,
+  sources?: EventSources): ReadonlyArray<EncounterEvent> {
+  const remember = (eventId: string, instance: EncounterGroupInstance) => {
+    if (!sources) return;
+    const group = document.groups.find(({ instances }) => instances.includes(instance));
+    if (!group) return;
+    const eventSources = sources.get(eventId) ?? new Map<string, EncounterGroupInstance>();
+    eventSources.set(group.id, instance);
+    sources.set(eventId, eventSources);
+  };
   const events: EncounterEvent[] = [];
   const dosage = new Map(document.groups.find((group) => group.id === "eMedications.DosageGroup")?.instances
     .filter(documented).map((instance) => [instance.parentInstanceId ?? instance.instanceId.replace(/:dosage$/, ""), instance]) ?? []);
   for (const group of document.groups) for (const instance of group.instances) {
     if (!documented(instance) || group.id === "eMedications.DosageGroup") continue;
+    remember(instance.instanceId, instance);
     const observed = dateAndTime(scalar(instance, group.id === "eVitals.VitalGroup" ? "eVitals.01" : group.id === "eProcedures.ProcedureGroup" ? "eProcedures.01" : "eMedications.01") || instance.attributes?.[DOCUMENTED_TIME], zone);
     if (group.id === "eVitals.VitalGroup") {
       const values = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} } as VitalValues;
       definition.events.vitals.fields.forEach((field) => {
         const fieldInstance = instanceForElement(document, instance, field.reference);
+        if (fieldInstance) remember(instance.instanceId, fieldInstance);
         const value = fieldInstance ? element(fieldInstance, field.reference)?.values[0] : undefined;
         if (value?.kind === "scalar") values[field.id] = String(value.value);
         else if (value?.kind === "null" && value.notValue) values.nullValues[field.id] = value.notValue.code;
@@ -354,6 +395,7 @@ export function encounterEvents(document: EncounterDocument, definition: Encount
       const medication = coded(instance, "eMedications.03");
       if (!medication) continue;
       const dose = dosage.get(instance.instanceId);
+      if (dose) remember(instance.instanceId, dose);
       const administration: MedicationAdministration = {
         medicationCode: medication.code, codeType: medication.system === "SNOMED-CT" ? "SNOMED-CT" : "RxNorm", label: medication.display,
         dose: dose ? scalar(dose, "eMedications.05") : typeof medication.attributes?.dose === "string" ? medication.attributes.dose : "",
