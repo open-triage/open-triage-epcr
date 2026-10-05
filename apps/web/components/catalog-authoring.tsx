@@ -89,6 +89,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const [copySourceId, setCopySourceId] = useState<string | null>(null);
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
+  const draftId = draft?.id;
+  const draftRevision = draft && "revision" in draft ? draft.revision : null;
   const showError = useCallback((reason: unknown) => { setError(adminError(reason, "admin.catalogOperationFailed")); }, [adminError]);
   useEffect(() => {
     const load = async () => canWrite
@@ -103,15 +105,23 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
             editingCustomId?: string | null; query?: string; editingLanguage?: "en" | "sv"; selectedListKey?: string;
           } | null;
           if (saved?.draft?.id === loadedDraft.id && saved.draft.revision === loadedDraft.revision) {
+            let restored = saved;
+            try {
+              const view = JSON.parse(window.sessionStorage.getItem(`${storageKey}:view`) ?? "null") as {
+                draftId: string; revision: number; editor?: typeof editor; query?: string;
+                editingLanguage?: typeof editingLanguage; selectedListKey?: string;
+              } | null;
+              if (view?.draftId === loadedDraft.id && view.revision === loadedDraft.revision) restored = { ...saved, ...view };
+            } catch { /* Invalid view state must not discard a recoverable draft. */ }
             setDraft(saved.draft); setDirty(Boolean(saved.dirty));
-            if (saved.editor) setEditor(saved.editor);
+            if (restored.editor) setEditor(restored.editor);
             if (saved.customText) setCustomText(saved.customText);
             if (saved.codedDetails) setCodedDetails(saved.codedDetails);
             if (saved.newGroup) setNewGroup({ ...saved.newGroup, swedishTitle: saved.newGroup.swedishTitle ?? "" });
             if (saved.editingCustomId) setEditingCustomId(saved.editingCustomId);
-            if (saved.query) setQuery(saved.query);
-            if (saved.editingLanguage) setEditingLanguage(saved.editingLanguage);
-            if (saved.selectedListKey) setSelectedListKey(saved.selectedListKey);
+            if (restored.query) setQuery(restored.query);
+            if (restored.editingLanguage) setEditingLanguage(restored.editingLanguage);
+            if (restored.selectedListKey) setSelectedListKey(restored.selectedListKey);
             return;
           }
         } catch { /* A stale browser snapshot must never replace the server draft. */ }
@@ -122,11 +132,21 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
   useEffect(() => {
     if (!loaded || !storageKey) return;
     if (draft && "revision" in draft) {
-      try { window.sessionStorage.setItem(storageKey, JSON.stringify({ draft, dirty, editor, customText, codedDetails,
-        newGroup, editingCustomId, query, editingLanguage, selectedListKey })); }
+      try { window.sessionStorage.setItem(storageKey, JSON.stringify({ draft, dirty, customText, codedDetails,
+        newGroup, editingCustomId })); }
       catch { window.queueMicrotask(() => setError(t("admin.catalogStorageFull"))); }
     } else window.sessionStorage.removeItem(storageKey);
-  }, [loaded, storageKey, draft, dirty, editor, customText, codedDetails, newGroup, editingCustomId, query, editingLanguage, selectedListKey, t]);
+  }, [loaded, storageKey, draft, dirty, customText, codedDetails, newGroup, editingCustomId, t]);
+  useEffect(() => {
+    if (!loaded || !storageKey) return;
+    // Navigation and filter changes must not serialize the entire catalog draft.
+    if (draftId && draftRevision !== null) {
+      try { window.sessionStorage.setItem(`${storageKey}:view`, JSON.stringify({ draftId,
+        revision: draftRevision, editor, query, editingLanguage, selectedListKey })); }
+      catch { window.queueMicrotask(() => setError(t("admin.catalogStorageFull"))); }
+    } else window.sessionStorage.removeItem(`${storageKey}:view`);
+  }, [loaded, storageKey, draftId, draftRevision,
+    editor, query, editingLanguage, selectedListKey, t]);
   useEffect(() => {
     if (!active) return;
     let current = true;
@@ -145,15 +165,20 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
     return () => { current = false; };
   }, [loaded, selectedVersionId, hasAuthoringDraft, draft?.id, showError]);
   const issues = useMemo(() => draft ? catalogTranslationIssues(draft.definition, editingLanguage) : [], [draft, editingLanguage]);
+  const hiddenElements = useMemo(() => new Set(draft?.definition.hiddenElementIds), [draft?.definition.hiddenElementIds]);
+  const search = query.trim().toLowerCase();
   const visible = useMemo(() => elementFilter === "custom" ? [] : draft?.definition.elements.filter((element) =>
-    !draft.definition.hiddenElementIds?.includes(element.elementId) &&
+    !hiddenElements.has(element.elementId) &&
     (!showMissing || !(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim()) &&
-    `${element.elementId} ${element.label} ${element.localization?.sv?.label ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query, editingLanguage, showMissing, elementFilter]);
-  const visibleCustom = elementFilter === "fixed" ? [] : draft?.definition.customElements?.filter((item) =>
+    `${element.elementId} ${element.label} ${element.localization?.sv?.label ?? ""}`.toLowerCase().includes(search)) ?? [], [draft, search, hiddenElements, editingLanguage, showMissing, elementFilter]);
+  const visibleCustom = useMemo(() => elementFilter === "fixed" ? [] : draft?.definition.customElements?.filter((item) =>
     (!showMissing || !(editingLanguage === "en" ? item.title : item.localization?.sv?.label)?.trim()) &&
-    `${item.namespace}.${item.slug} ${item.title} ${item.localization?.sv?.label ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
-  const visibleGroups = NEMSIS_DATA_MODEL.groups.filter((group) => draft?.definition.elements.some((element) =>
-    !draft.definition.hiddenElementIds?.includes(element.elementId) && element.storageSemantics.groupPath.includes(group.id)));
+    `${item.namespace}.${item.slug} ${item.title} ${item.localization?.sv?.label ?? ""}`.toLowerCase().includes(search)) ?? [], [draft, search, editingLanguage, showMissing, elementFilter]);
+  const visibleGroups = useMemo(() => {
+    const ids = new Set(draft?.definition.elements.flatMap((element) => hiddenElements.has(element.elementId)
+      ? [] : element.storageSemantics.groupPath));
+    return NEMSIS_DATA_MODEL.groups.filter((group) => ids.has(group.id));
+  }, [draft?.definition.elements, hiddenElements]);
   const listOptions = useMemo(() => {
     if (!draft) return [];
     const options: { key: string; elementId: string; list?: CatalogDraftCodeList; custom?: CatalogDraftCustomCodedElement }[] = draft.definition.codeLists.flatMap((list) =>
@@ -173,7 +198,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
     return options;
   }, [draft, organizationId]);
   const selectedOption = listOptions.find(({ key }) => key === selectedListKey) ?? listOptions[0];
-  const correlationOptions = draft ? customCorrelationOptions(draft.definition) : [];
+  const correlationOptions = useMemo(() => draft ? customCorrelationOptions(draft.definition) : [], [draft]);
   const correlationLabel = (groupId?: string) => customCorrelationLabel(groupId, editingLanguage);
   const selectedList = selectedOption?.list;
   const selectedElement = draft?.definition.elements.find((element) => element.elementId === selectedOption?.elementId);
@@ -413,7 +438,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       const cloned = await cloneCatalogDraft(csrfToken, newDisplayName, selectedVersionId);
       setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.catalogDraftCreated"));
     })}>
-    {canPublish && <DefinitionFileImport kind="catalog" busy={busy} hasDraft={hasAuthoringDraft}
+    {canPublish && <DefinitionFileImport enabled={loaded && active} kind="catalog" busy={busy} hasDraft={hasAuthoringDraft}
       onImport={(file) => action(async () => {
         const imported = await importCanonicalDefinitionFile(csrfToken, "catalog", file, selectedVersionId || undefined);
         setStatus(t("admin.definitionImported"));

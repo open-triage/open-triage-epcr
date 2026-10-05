@@ -22,8 +22,7 @@ test("authoring and preview use one field policy for codes and NOT values", () =
   const markup = renderToStaticMarkup(createElement(FormSectionElements,
     { definition, catalogFields, onChange() {} }));
   assert.match(markup, /Edit choices and order/);
-  assert.match(markup, /Not Recorded/);
-  assert.doesNotMatch(markup, /NOT 7701003/);
+  assert.doesNotMatch(markup, /type="checkbox"/, "collapsed choice editors defer their controls until opened");
   const preview = previewCatalogFields(definition, catalogFields);
   assert.deepEqual(preview["ePatient.25"]?.codeChoices?.map((choice) => choice.code), ["9906001"]);
   assert.deepEqual(preview["ePatient.25"]?.exceptionalChoices?.map((choice) => choice.key), ["not-value:7701003"]);
@@ -41,9 +40,8 @@ test("catalog adoption marks new choices disabled and exposes unavailable select
   ] } } satisfies ClinicalFormConfiguration["catalogFields"];
   const markup = renderToStaticMarkup(createElement(FormSectionElements, { definition, catalogFields: catalog,
     newChoicesByField: { sex: [{ kind: "code", code: "new", codeSystem: "NEMSIS" }] }, onChange() {} }));
-  assert.match(markup, /New in target catalog · disabled until selected/);
-  assert.match(markup, /Unavailable in target catalog; uncheck to resolve/);
-  assert.ok(markup.indexOf("retired") < markup.indexOf("New choice"), "enabled order precedes new disabled choices");
+  assert.match(markup, /1 new choices/);
+  assert.doesNotMatch(markup, /type="checkbox"/);
   const historical = previewCatalogFields(definition, { "ePatient.25": { ...catalogFields["ePatient.25"], codeChoices: [
     ...catalogFields["ePatient.25"].codeChoices, { code: "retired", codeSystem: "NEMSIS", label: "Historical choice" }
   ] } });

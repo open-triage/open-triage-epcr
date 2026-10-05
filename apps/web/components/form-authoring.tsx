@@ -248,6 +248,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
           const availableIds = new Set(available.map(choiceIdentity));
           const newIds = new Set((newChoicesByField?.[field.key] ?? []).map(choiceIdentity));
           const selectedIds = new Set(selected.map(choiceIdentity));
+          const selectedPositions = new Map(selected.map((choice, index) => [choiceIdentity(choice), index]));
           const reviewChoices = [...selected, ...available.filter((choice) => !selectedIds.has(choiceIdentity(choice)))];
           const choicesOpen = expandedChoices.has(field.key);
           const choicesPanelId = `${choicesId}-${field.key}`;
@@ -285,7 +286,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
               {reviewChoices.length === 0 && <span aria-label={t("admin.formNoChoices")}>—</span>}
               </div>
               {reviewChoices.length > 0 && <div className="form-choice-lists" id={choicesPanelId} hidden={!choicesOpen}>
-                  {(["code", "not-value"] as const).map((kind) => {
+                  {choicesOpen && (["code", "not-value"] as const).map((kind) => {
                     const choices = reviewChoices.filter((choice) => choice.kind === kind);
                     if (choices.length === 0) return null;
                     return <div className="form-choice-list" key={kind}>
@@ -302,7 +303,7 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                           onChange(updateFieldChoices(definition, field.key, next), `Reordered choices for ${label}.`);
                         }} renderItem={(choice, _index, choiceHandle) => {
                           const identity = choiceIdentity(choice);
-                          const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
+                          const position = selectedPositions.get(identity) ?? -1;
                           const unavailable = !availableIds.has(identity);
                           const choiceLabel = formChoiceLabel(choice, field, catalogFields, customFields, language);
                           return <><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}

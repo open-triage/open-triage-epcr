@@ -66,6 +66,9 @@ export const activateStationaryForm = (csrfToken: string, formVersionId: string,
 export const searchFormCatalog = (id: string, query: string) =>
   catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`);
 
+export const loadFormElementConfiguration = (id: string, elementId: string) =>
+  catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?elementId=${encodeURIComponent(elementId)}`);
+
 export const loadValidationDraft = () => catalogRequest<ValidationDraft | null>("validation-draft", undefined, undefined, { value: null });
 export const loadValidationVersions = () => catalogRequest<AuthoringVersionOption[]>("validation-versions");
 export const cloneValidationVersion = (csrfToken: string, sourceVersionId: string, catalogReleaseId: string, displayName: string) =>
@@ -202,7 +205,8 @@ export const cancelOwnershipTransfer = (csrfToken: string, command: CancelOwners
     { method: "DELETE", body: JSON.stringify(command) });
 
 export type CanonicalFile = { file: string; package?: { name?: string; version?: string; sha256?: string }; error?: string; compatible: boolean };
-export const loadCanonicalFiles = (kind: string) => catalogRequest<CanonicalFile[]>(`canonical/${kind}`);
+export const loadCanonicalFiles = (kind: string, signal?: AbortSignal) =>
+  catalogRequest<CanonicalFile[]>(`canonical/${kind}`, undefined, { signal });
 export const importCanonicalFile = (csrfToken: string, kind: string, content: unknown) =>
   catalogRequest<{ id: string }>(`canonical/${kind}/import`, csrfToken, { method: "POST", body: JSON.stringify(content) });
 export const exportCanonicalFile = (csrfToken: string, kind: string, id: string) =>

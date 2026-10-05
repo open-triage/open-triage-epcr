@@ -10,9 +10,11 @@ export function fixedGroupName(groupId: string, language: "en" | "sv"): string {
 }
 
 export function customCorrelationOptions(definition: CatalogDraftDefinition) {
-  const visible = definition.elements.filter((element) => !definition.hiddenElementIds?.includes(element.elementId));
+  const hidden = new Set(definition.hiddenElementIds);
+  const visibleGroups = new Set(definition.elements.flatMap((element) => hidden.has(element.elementId)
+    ? [] : element.storageSemantics.groupPath));
   return NEMSIS_DATA_MODEL.groups.filter((group) => group.repeating && group.id !== "PatientCareReportGroup" &&
-    group.path.includes("PatientCareReportGroup") && visible.some((element) => element.storageSemantics.groupPath.includes(group.id)));
+    group.path.includes("PatientCareReportGroup") && visibleGroups.has(group.id));
 }
 
 export function customCorrelationLabel(groupId: string | undefined, language: "en" | "sv"): string {

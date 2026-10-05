@@ -13,7 +13,7 @@ import { importCanonicalDefinitionFile } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import { compileMetricLibrary, compileValidationRule, explainValidationRule, formatValidationSource, reviewPriorityOfRule, validationRuleText, validationRuleValidity,
+import { compileMetricLibrary, compileValidationRule, explainValidationRule, filterValidationRuleLibrary, formatValidationSource, reviewPriorityOfRule, validationRuleText, validationRuleValidity,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -234,10 +234,12 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [library, setLibrary] = useState<ValidationRulePage | null>(null);
   const [libraryError, setLibraryError] = useState(false);
   const [libraryRefresh, setLibraryRefresh] = useState(0);
-  const [loadedLibraryFilters, setLoadedLibraryFilters] = useState("");
+  const [loadedLibraryVersion, setLoadedLibraryVersion] = useState<string | null>(null);
   const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "", reviewPriority: "",
     executionTarget: "", enabled: "", validity: "" });
-  const draftRevision = draft?.revision;
+  const libraryVersion = draft ? `${draft.id}:${draft.revision}` : null;
+  const visibleRules = useMemo(() => library ? filterValidationRuleLibrary(library.items, filters) : [], [library, filters]);
+  const ruleIndexes = useMemo(() => new Map(draft?.rules.map((rule, index) => [rule.id, index])), [draft?.rules]);
   useUnsavedChanges(dirty || !!changeNote || !!displayName || !!activationNote);
 
   useEffect(() => { activationReviewRef.current?.focus(); }, [activationReview]);
@@ -283,17 +285,17 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   }, [active, adminError]);
 
   useEffect(() => {
-    if (!draftRevision) return;
+    if (!libraryVersion) return;
     let current = true;
-    loadValidationRules({ ...filters, limit: "all" }).then((page) => { if (current) {
-      setLibrary(page); setLoadedLibraryFilters(JSON.stringify(filters)); setLibraryError(false);
+    loadValidationRules({ limit: "all" }).then((page) => { if (current) {
+      setLibrary(page); setLoadedLibraryVersion(libraryVersion); setLibraryError(false);
     } })
       .catch((reason: unknown) => { if (current) {
         if (listAccessRemoved(reason)) setLibrary(null);
         setLibraryError(true);
       } });
     return () => { current = false; };
-  }, [draftRevision, filters, adminError, libraryRefresh]);
+  }, [libraryVersion, libraryRefresh]);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
@@ -336,14 +338,17 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     setDraft((current) => current ? update(current) : current); setDirty(true); setValidation(null); setStatus(t("admin.unsavedChanges2"));
   }
   const selectedRule = draft?.rules[selectedRuleIndex] ?? null;
-  const wordingIssues = draft ? validationTranslationIssues(draft.rules, language === "sv" ? "sv" : "en") : [];
+  const wordingIssues = useMemo(() => draft ? validationTranslationIssues(draft.rules, language === "sv" ? "sv" : "en") : [], [draft, language]);
   function changeRule(update: (rule: ValidationDraft["rules"][number]) => ValidationDraft["rules"][number]) {
     change((current) => ({ ...current, rules: current.rules.map((rule, index) => index === selectedRuleIndex ? update(rule) : rule) }));
   }
   const inlineValidation = useMemo(() => draft && catalog && selectedRule
     ? compileValidationRule(selectedRule, draft.id, catalog, compileMetricLibrary(draft.metrics ?? [], draft.id, catalog).metrics) : null, [draft, catalog, selectedRule]);
   const explanation = inlineValidation?.compiled && catalog ? explainValidationRule(inlineValidation.compiled, catalog) : null;
-  const visibleCatalogElements = catalog?.elements.filter(({ elementId }) => !hiddenElementIds.includes(elementId)) ?? [];
+  const visibleCatalogElements = useMemo(() => {
+    const hidden = new Set(hiddenElementIds);
+    return catalog?.elements.filter(({ elementId }) => !hidden.has(elementId)) ?? [];
+  }, [catalog, hiddenElementIds]);
   const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
   const targetCatalogId = selectedTargetCatalogId || selectedVersion?.catalogReleaseId || catalogReleaseId;
   const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId ?? "";
@@ -375,7 +380,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       setHiddenElementIds(definition.definition.hiddenElementIds ?? []);
       setActivationReview(null); setPublished(null); setDraft(cloned); setDisplayName(""); setDirty(false); setParameterDrafts({}); setStatus(t("admin.validationDraftCreated"));
     })}>
-    {canPublish && <DefinitionFileImport kind="validation" busy={busy} hasDraft={Boolean(draft && !published)}
+    {canPublish && <DefinitionFileImport enabled={loaded && active} kind="validation" busy={busy} hasDraft={Boolean(draft && !published)}
       onImport={(file) => action(async () => {
         const imported = await importCanonicalDefinitionFile(csrfToken, "validation", file, targetCatalogId || undefined);
         setStatus(t("admin.definitionImported"));
@@ -451,18 +456,18 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <h3 id="validation-library-heading"><AdminText messageKey="admin.ruleLibrary" /></h3>
       <ValidationRuleFilterControls value={filters} elements={visibleCatalogElements}
         onChange={setFilters} />
-      {library && loadedLibraryFilters !== JSON.stringify(filters) && <p role="status">{t("list.refreshRetained")}</p>}
+      {library && loadedLibraryVersion !== libraryVersion && <p role="status">{t("list.refreshRetained")}</p>}
       {libraryError && <><p role="alert">{t("admin.ruleLibraryIs")}{library && ` ${t("list.refreshRetained")}`}</p>
         <button type="button" onClick={() => setLibraryRefresh((value) => value + 1)}>{t("list.retry")}</button></>}
-      <p role="status">{library ? `${library.total} matching rule${library.total === 1 ? "" : "s"}.` : t("admin.loadingRules")}</p>
+      <p role="status">{library ? `${visibleRules.length} matching rule${visibleRules.length === 1 ? "" : "s"}.` : t("admin.loadingRules")}</p>
       <div className="validation-rule-table-scroll" tabIndex={0} role="region" aria-label={t("admin.validationRules")}><table className="validation-rule-table">
         <caption className="sr-only"><AdminText messageKey="admin.validationRules" /></caption>
         <colgroup>{["name", "element", "source", "severity", "priority", "targets", "state", "validity"].map((column) =>
           <col key={column} className={`validation-rule-${column}-column`} />)}</colgroup>
         <thead><tr><th scope="col"><AdminText messageKey="admin.rule" /></th><th scope="col"><AdminText messageKey="admin.element" /></th>
           <th scope="col"><AdminText messageKey="admin.source" /></th><th scope="col"><AdminText messageKey="admin.severity" /></th><th scope="col"><AdminText messageKey="admin.reviewPriority" /></th><th scope="col"><AdminText messageKey="admin.targets" /></th>
-          <th scope="col"><AdminText messageKey="admin.state" /></th><th scope="col"><AdminText messageKey="admin.validity" /></th></tr></thead><tbody>{(library?.items ?? []).map((item) => {
-        const index = draft.rules.findIndex(({ id }) => id === item.rule.id);
+          <th scope="col"><AdminText messageKey="admin.state" /></th><th scope="col"><AdminText messageKey="admin.validity" /></th></tr></thead><tbody>{visibleRules.map((item) => {
+        const index = ruleIndexes.get(item.rule.id) ?? -1;
         const validity = validationRuleValidity(item.rule, item.validity !== "invalid", item.diagnostics);
         const validityLabel = t(validity === "invalid" ? "admin.invalid" : validity === "warning" ? "admin.warning" : "admin.valid");
         const issues = [...new Set([

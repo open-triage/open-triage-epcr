@@ -74,13 +74,13 @@ export async function clinicalFormConfiguration(
       if (id && !elementIds.includes(id)) elementIds.push(id);
     }
   }
+  const catalog = await loadCatalogFieldConfigurations(manager, catalogReleaseId, elementIds, true);
   return {
     definition: versions[0].canonical_definition,
     customFields: Object.fromEntries(custom.map((row) => [row.id, snapshotById.get(row.id) ?? row.definition])),
     customGroups: await customGroupsConfiguration(manager, catalogReleaseId),
     catalogFields: effectiveCatalogFields(versions[0].canonical_definition,
-      await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
-      await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds, true)),
+      catalog.enabled, catalog.available),
     catalogGroups: await catalogGroupsConfiguration(manager, catalogReleaseId),
     ...(clientBundle ? { validation: { versionId: validationVersionId!,
       compiledSha256: compiledValidationBundleSha256(clientBundle), bundle: clientBundle } } : {}),
@@ -101,6 +101,17 @@ export async function catalogFieldsConfiguration(
   elementIds: readonly string[],
   includeLegacyDisabled = false,
 ): Promise<ClinicalFormConfiguration["catalogFields"]> {
+  const catalog = await loadCatalogFieldConfigurations(manager, catalogReleaseId, elementIds, includeLegacyDisabled);
+  return includeLegacyDisabled ? catalog.available : catalog.enabled;
+}
+
+/** Assemble enabled and historical choices together so report opening reads the catalog only once. */
+async function loadCatalogFieldConfigurations(
+  manager: Pick<EntityManager, "query">,
+  catalogReleaseId: string,
+  elementIds: readonly string[],
+  includeLegacyDisabled: boolean,
+): Promise<{ enabled: ClinicalFormConfiguration["catalogFields"]; available: ClinicalFormConfiguration["catalogFields"] }> {
 
   // Extract each translation map once. Re-reading the large, compressed provenance
   // document for every field/choice made a full form take seconds to assemble.
@@ -132,7 +143,7 @@ export async function catalogFieldsConfiguration(
     from catalog.element_definition e cross join wording cr
     where e.release_id = $1 and e.element_id = any($2::text[])
   `, [catalogReleaseId, elementIds]) : [];
-  const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
+  const choices = elementIds.length ? await manager.query<(ChoiceRow & { enabled?: boolean })[]>(`
     with wording as materialized (
       select provenance->'codeListLocalization' as lists,
         provenance->'codeListCustomMappings' as mappings from catalog.release where id=$1
@@ -140,7 +151,7 @@ export async function catalogFieldsConfiguration(
     select * from (select vse.element_id, option.code, option.code_system, option.display as label, option.source_display as source_label,
            cr.lists->value_set.value_set_id->'values'->option.code_system->option.code as localization,
            cr.mappings->value_set.value_set_id->option.code_system->>option.code as nemsis_code,
-           value_set.published_at as terminology_version, configured.sort_order
+           value_set.published_at as terminology_version, configured.sort_order, coalesce(configured.enabled, true) as enabled
     from catalog.value_set_element vse
     cross join wording cr
     join catalog.value_set value_set on value_set.release_id = vse.release_id
@@ -156,7 +167,7 @@ export async function catalogFieldsConfiguration(
     select option.element_id, option.code, option.code_system, option.display as label, option.display as source_label,
            cr.lists->('inline:' || option.element_id)->'values'->option.code_system->option.code as localization,
            cr.mappings->('inline:' || option.element_id)->option.code_system->>option.code as nemsis_code,
-           null::text as terminology_version, configured.sort_order
+           null::text as terminology_version, configured.sort_order, coalesce(configured.enabled, true) as enabled
     from catalog.element_option option
     cross join wording cr
     left join catalog.element_option_configuration configured
@@ -168,6 +179,7 @@ export async function catalogFieldsConfiguration(
     order by element_id, sort_order nulls last, label, code_system, code
   `, [catalogReleaseId, elementIds, includeLegacyDisabled]) : [];
   const choicesByElement = new Map<string, ClinicalFormConfiguration["catalogFields"][string]["codeChoices"]>();
+  const enabledChoicesByElement = new Map<string, ClinicalFormConfiguration["catalogFields"][string]["codeChoices"]>();
   for (const choice of choices) {
     const current = choicesByElement.get(choice.element_id) ?? [];
     current.push({ code: choice.code, codeSystem: choice.code_system, label: choice.label,
@@ -176,8 +188,11 @@ export async function catalogFieldsConfiguration(
       ...(choice.localization ? { localization: choice.localization } : {}),
       ...(choice.terminology_version ? { terminologyVersion: new Date(choice.terminology_version).toISOString() } : {}) });
     choicesByElement.set(choice.element_id, current);
+    const enabled = enabledChoicesByElement.get(choice.element_id) ?? [];
+    if (choice.enabled !== false) enabled.push(current.at(-1)!);
+    enabledChoicesByElement.set(choice.element_id, enabled);
   }
-  return Object.fromEntries(fields.map((field) => [field.element_id, {
+  const available = Object.fromEntries(fields.map((field) => [field.element_id, {
       ...(field.generation ? { generation: field.generation } : {}),
       name: field.name,
       description: field.description ?? "",
@@ -193,6 +208,10 @@ export async function catalogFieldsConfiguration(
       supportsPertinentNegatives: field.supports_pertinent_negatives,
       ...(choicesByElement.has(field.element_id) ? { codeChoices: choicesByElement.get(field.element_id) } : {}),
     }]));
+  const enabled = Object.fromEntries(Object.entries(available).map(([id, field]) => [id, {
+    ...field, ...(enabledChoicesByElement.has(id) ? { codeChoices: enabledChoicesByElement.get(id) } : {}),
+  }]));
+  return { available, enabled };
 }
 
 /** Group wording is loaded from the report or preview's pinned catalog release. */

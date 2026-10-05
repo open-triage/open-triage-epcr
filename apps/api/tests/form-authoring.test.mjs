@@ -292,7 +292,7 @@ test("catalog search returns the full searchable clinical catalog and excludes d
   const page = await service.searchCatalog("owner-session", draftId, { query: " Patient ", offset: "40" });
   assert.equal(page.items.length, 41);
   assert.equal(page.nextOffset, null);
-  assert.deepEqual(calls[1].parameters, [catalogId, "patient", session.organization.id]);
+  assert.deepEqual(calls[1].parameters, [catalogId, "patient", session.organization.id, null]);
   assert.match(calls[1].sql, /element_id like 'e%\.%'/);
 });
 
@@ -321,6 +321,30 @@ test("new form picker uses revised wording and omits retired custom definitions"
   assert.equal(page.items[0].description, "Revised wording");
   const searched = await service.searchCatalog("owner-session", draftId, { query: "revised wording" });
   assert.deepEqual(searched.items.map((item) => item.customElementDefinitionId), [activeId]);
+  const selected = await service.searchCatalog("owner-session", draftId, { elementId: "org.example.ems.Note" });
+  assert.equal(selected.customFields[activeId].definition, "Revised wording");
+  assert.equal(selected.customFields[retiredId], undefined);
+});
+
+test("exact form element lookups return pinned choices before the field is saved", async () => {
+  const calls = [];
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("select fv.catalog_release_id")) return [{ catalog_release_id: catalogId }];
+    if (sql.includes("union all") && sql.includes("group_path")) return [{ element_id: "ePatient.25",
+      name: "Sex", description: "", base_datatype: "string", group_path: ["ePatientSection"] }];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "ePatient.25", min_occurs: 0, max_occurs: 1 }];
+    if (sql.includes("from catalog.value_set_element")) return [{ element_id: "ePatient.25", code: "9906001",
+      code_system: "NEMSIS", label: "Female", terminology_version: null }];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ manager, query: manager.query }, { requireCapability: async () => session });
+  const page = await service.searchCatalog("session", draftId, { elementId: "ePatient.25" });
+  assert.equal(page.items[0].elementId, "ePatient.25");
+  assert.equal(page.catalogFields["ePatient.25"].codeChoices[0].code, "9906001");
+  assert.deepEqual(calls[1].parameters, [catalogId, "", organizationId, "ePatient.25"]);
+  assert.match(calls[0].sql, /fv.created_by=\$3/);
+  assert.deepEqual(calls[0].parameters, [draftId, organizationId, session.user.id]);
 });
 
 test("duplicate element placement fails API validation before persistence", async () => {

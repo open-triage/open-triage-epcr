@@ -4,9 +4,8 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import {
   compileValidationRule, compileMetricLibrary, readValidationDefinition, serializeValidationDefinition,
   type MetricSource, type ValidationDefinition,
-  validationRuleWordingStatuses,
+  filterValidationRuleLibrary,
   validationRuleValidity,
-  reviewPriorityOfRule,
   compiledValidationBundleSha256,
   evaluateValidationBundle,
   explainValidationRule,
@@ -177,9 +176,15 @@ function ruleAdvisories(rules: ValidationRuleSource[]): Map<string, ValidationDi
   };
   for (const rule of rules) if (!rule.localization?.sv?.name?.trim() || !rule.localization.sv.message?.trim())
     add(rule, "wording", "Swedish rule name or message is missing; English wording will be used.");
-  for (let left = 0; left < rules.length; left += 1) for (let right = left + 1; right < rules.length; right += 1) {
-    const first = rules[left]!; const second = rules[right]!;
-    if (canonicalRule(first) === canonicalRule(second)) {
+  const duplicates = new Map<string, ValidationRuleSource[]>();
+  for (const rule of rules) {
+    const key = canonicalRule(rule);
+    const matching = duplicates.get(key) ?? [];
+    matching.push(rule); duplicates.set(key, matching);
+  }
+  for (const matching of duplicates.values()) {
+    for (let left = 0; left < matching.length; left += 1) for (let right = left + 1; right < matching.length; right += 1) {
+      const first = matching[left]!; const second = matching[right]!;
       add(first, "exact-duplicate", `Exact duplicate of ${second.name}; it will execute only once.`);
       add(second, "exact-duplicate", `Exact duplicate of ${first.name}; it will execute only once.`);
     }
@@ -230,30 +235,8 @@ export class ValidationAuthoringService {
       return { rule, source: sourceKind(rule), validity: validationRuleValidity(rule, Boolean(result.compiled), diagnostics),
         diagnostics };
     });
-    const search = typeof query.search === "string" ? query.search.trim().toLocaleLowerCase() : "";
-    const element = typeof query.element === "string" ? query.element.trim() : "";
-    const wantedSource = typeof query.source === "string" ? query.source : "";
-    const severity = typeof query.severity === "string" ? query.severity : "";
-    const reviewPriority = typeof query.reviewPriority === "string" ? query.reviewPriority : "";
-    const executionTarget = typeof query.executionTarget === "string" ? query.executionTarget : "";
-    const enabled = typeof query.enabled === "string" ? query.enabled : "";
-    const validity = typeof query.validity === "string" ? query.validity : "";
-    const filtered = analyzed.filter((item) => {
-      const haystack = [item.rule.name, item.rule.message, item.rule.source, item.rule.primaryTargetElementId,
-        ...(item.rule.provenance ?? []).flatMap((source) => [source.sourceIdentity, source.originalExpression, source.originalMessage])]
-        .join(" ").toLocaleLowerCase();
-      return (!search || haystack.includes(search))
-        && (!element || item.rule.primaryTargetElementId === element || item.rule.source.includes(`"${element}"`))
-        && (!wantedSource || item.source === wantedSource)
-        && (!severity || item.rule.severity === severity)
-        && (!reviewPriority || item.rule.executionTargets.includes("review") && reviewPriorityOfRule(item.rule) === reviewPriority)
-        && (!executionTarget || item.rule.executionTargets.includes(executionTarget as never))
-        && (!enabled || String(item.rule.enabled) === enabled)
-        && (!validity || item.validity === validity
-          || validationRuleWordingStatuses(item.rule).some((status) => status === validity)
-          || validity === "wording" && (validationRuleWordingStatuses(item.rule).length > 0
-            || item.diagnostics.some(({ code }) => code === "wording")));
-    }).sort((first, second) => first.rule.name.localeCompare(second.rule.name) || first.rule.id.localeCompare(second.rule.id));
+    const filtered = filterValidationRuleLibrary(analyzed, query)
+      .sort((first, second) => first.rule.name.localeCompare(second.rule.name) || first.rule.id.localeCompare(second.rule.id));
     const requestedLimit = Number(query.limit ?? 25);
     const limit = query.limit === "all" ? filtered.length
       : Number.isSafeInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 25;
