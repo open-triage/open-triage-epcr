@@ -164,35 +164,6 @@ Operators should follow the [demo deployment runbook](docs/demo-deployment.md)
 for required credentials and infrastructure, release safeguards, failure
 recovery, and the strict synthetic-data boundary.
 
-## Prototype interaction model
-
-- The active application uses one clinically neutral, versioned standard encounter
-  definition. Complaint data is ordinary encounter content and never selects,
-  enables, hides, requires, reorders, or otherwise changes form behavior.
-- Synthetic seed data contains dispatch information and timestamps only through
-  arrival on scene. The patient, incident, address, and identifiers are explicitly
-  fictional and never represent a complete clinical record.
-- A sticky quick-action rail keeps vitals, medications, procedures, notes, and
-  patient information available near the top of the screen.
-- Medication and procedure capture begin with offline searchable catalogs, then
-  advance to documentation details after selection.
-- Quick capture is intentionally non-blocking: incomplete or unusual entries can
-  be saved immediately. Validation is deferred to the warnings-and-errors
-  checklist and becomes blocking only when the encounter is signed.
-- Checklist findings open the affected entry. The offending picker control is
-  framed red for an error or amber for a warning and clears as soon as the draft
-  value validates. Vitals retain explicit unavailable and pertinent-negative
-  choices behind the compact `×` control.
-- Timeline dots summarize each event's current validation state: green is clear,
-  amber is warning, and red is error.
-- Product owner decision (2026-09-10): the obsolete completed-summary view and its configurable
-  event ordering are unsupported and are not mapped to the live timeline. Stored browser state that
-  still selects that view is moved intact to the explicit raw-recovery key. The live timeline,
-  clinical note summary field, and vital-sign summary remain independent supported behavior.
-- Patient quick capture covers selected demographics plus medical history,
-  current medications, and allergies from the NEMSIS `ePatient` and `eHistory`
-  domains.
-
 ## Architecture rule
 
 NEMSIS identifiers are source metadata, not application structure. Form sections, labels,
