@@ -2,7 +2,8 @@
 
 When fixing bugs, always strive to address the underlying cause rather than
 patching only the specific instance. Investigate other affected paths and fix
-the shared behavior at the appropriate level.
+the shared behavior at the appropriate level. Add regression tests to capture
+the failure mode.
 
 # UI development
 
