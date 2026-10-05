@@ -2,13 +2,21 @@
 imagePullSecrets:
   - name: ghcr-pull
 
+publicSite:
+  enabled: true
+
 ingress:
   className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     - secretName: open-triage-tls
       hosts:
         - demo.opentriage.org
         - api.demo.opentriage.org
+    - secretName: open-triage-public-site-tls
+      hosts:
+        - opentriage.org
 
 secrets:
   api:

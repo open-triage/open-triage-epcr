@@ -36,6 +36,11 @@ Before the first deployment, operators must provide:
   `hsts-preload: "false"`;
 - DNS for `demo.opentriage.org` and `api.demo.opentriage.org` pointing to that
   Ingress;
+- an apex A record for `opentriage.org` pointing to the same Ingress, and
+  cert-manager's existing `letsencrypt-prod` ClusterIssuer. The demo Ingress
+  requests the automatically renewed certificate stored in
+  `open-triage-public-site-tls`. The demo values enable its public one-pager;
+  other installations leave `publicSite.enabled` disabled;
 - access from the cluster to
   `ghcr.io/open-triage/open-triage-{api,web}`. If the packages are private,
   provision a pull credential outside the workflow and expose it through the
@@ -62,6 +67,15 @@ The committed, non-secret
 those cluster-owned Secrets in place. The workflow passes this file to Helm
 validation and every automated upgrade so a release cannot silently discard
 private-registry access or public TLS configuration.
+
+The same web image serves a small public homepage at `https://opentriage.org`,
+with links to the demo and public GitHub source. nginx selects its standalone
+static files by hostname, without loading the clinical app or registering its
+service worker. Preview the page at `/landing/` on a local web server. The
+homepage assets live in `apps/web/public/landing/` and are included in the
+Next.js static export. Configure the base-domain DNS before deploying the
+enabled public-site route; cert-manager issues its certificate through the
+existing nginx HTTP-01 solver.
 
 ## Manual redeployment
 
