@@ -4,6 +4,7 @@ import type { AnalyticsCatalogCounts, AnalyticsCatalogCountsRequest, AnalyticsCa
 import { resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { useRegionalFormat } from "../app/regional-format";
 import { AnalyticsRequestError, analyticsRequest } from "./analytics-api";
+import { useDebouncedValue } from "./use-debounced-value";
 import { activateListRow } from "./list-row-action";
 
 export function AnalyticsPicker({ purpose, element, selected, selectedElementIds, definition, language, csrfToken, onElement, onValues, onClose, onDenied }: {
@@ -14,7 +15,7 @@ export function AnalyticsPicker({ purpose, element, selected, selectedElementIds
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<AnalyticsCatalogPage<AnalyticsElement | AnalyticsCatalogValue> | null>(null);
   const [choices, setChoices] = useState(selected);
@@ -52,10 +53,6 @@ export function AnalyticsPicker({ purpose, element, selected, selectedElementIds
     modal?.querySelector("input")?.focus();
     return () => modal?.close();
   }, []);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search), 200);
-    return () => window.clearTimeout(timer);
-  }, [search]);
   useEffect(() => {
     if (search !== debouncedSearch) return;
     const controller = new AbortController();

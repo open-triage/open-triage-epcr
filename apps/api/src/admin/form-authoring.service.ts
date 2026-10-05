@@ -155,6 +155,7 @@ export class FormAuthoringService {
   async searchCatalog(token: string, id: string, input: Record<string, unknown>): Promise<FormCatalogElementPage> {
     const session = await this.authorize(token, "forms:read");
     const query = typeof input.query === "string" ? input.query.trim().slice(0, 100).toLowerCase() : "";
+    const elementId = typeof input.elementId === "string" ? input.elementId.trim().slice(0, 200) : null;
     const drafts = await this.dataSource.query<Array<{ catalog_release_id: string }>>(`
       select fv.catalog_release_id from forms.form_version fv join forms.form f on f.id=fv.form_id
       where fv.id=$1 and f.organization_id=$2 and fv.created_by=$3 and fv.status='draft'
@@ -163,26 +164,29 @@ export class FormAuthoringService {
     const rows = await this.dataSource.query<Array<{
       element_id: string; name: string; description: string; base_datatype: string; group_path: string[];
       custom_element_definition_id?: string;
+      custom_definition?: NonNullable<ClinicalFormConfiguration["customFields"]>[string];
     }>>(`
       select element_id,name,description,base_datatype,group_path,
-        null::uuid as custom_element_definition_id
+        null::uuid as custom_element_definition_id, null::jsonb as custom_definition
       from catalog.element_definition
       where release_id=$1 and element_id like 'e%.%'
         and element_id not in (select jsonb_array_elements_text(coalesce(
           (select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)))
+        and ($4::text is null or element_id=$4)
         and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
       union all
       select ced.namespace || '.' || ced.slug,ced.title,
-        coalesce(ced.definition->>'definition',''),ced.base_datatype,array[]::text[],ced.id
+        coalesce(ced.definition->>'definition',''),ced.base_datatype,array[]::text[],ced.id,ced.definition
       from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
       where ced.organization_id=$3 and ced.retired_at is null
+        and ($4::text is null or ced.namespace || '.' || ced.slug=$4)
         and ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
       order by element_id
-    `, [drafts[0].catalog_release_id, query, session.organization.id]);
+    `, [drafts[0].catalog_release_id, query, session.organization.id, elementId]);
     const snapshot = rows.some((row) => row.custom_element_definition_id) ?
       await releaseCustomDefinitions(this.dataSource.manager, drafts[0].catalog_release_id) : null;
     const byId = new Map((snapshot ?? []).map((item) => [item.id, item]));
-    return { items: rows.filter((row) => {
+    const items = rows.filter((row) => {
       if (!row.custom_element_definition_id) return true;
       const pinned = byId.get(row.custom_element_definition_id);
       return pinned?.retired !== true && (!query ||
@@ -193,8 +197,19 @@ export class FormAuthoringService {
         description: pinned?.definition ?? row.description, baseDatatype: row.base_datatype, groupPath: row.group_path,
         ...(row.custom_element_definition_id ? { customElementDefinitionId: row.custom_element_definition_id } : {}),
         ...(pinned?.groupDefinitionId ? { customGroupDefinitionId: pinned.groupDefinitionId } : {}) };
-    }),
-      nextOffset: null };
+    });
+    if (elementId && !items.length) throw new NotFoundException("The selected catalog element is unavailable");
+    return { items, nextOffset: null,
+      ...(elementId ? {
+        catalogFields: await catalogFieldsConfiguration(this.dataSource.manager, drafts[0].catalog_release_id,
+          rows.filter((row) => !row.custom_element_definition_id).map((row) => row.element_id), true),
+        customFields: Object.fromEntries(rows.filter((row) => row.custom_element_definition_id &&
+          items.some((item) => item.customElementDefinitionId === row.custom_element_definition_id))
+          .flatMap((row) => {
+            const definition = byId.get(row.custom_element_definition_id!) ?? row.custom_definition;
+            return definition ? [[row.custom_element_definition_id!, definition]] : [];
+          })),
+      } : {}) };
   }
 
   async save(token: string, id: string, input: unknown): Promise<StationaryFormDraft> {

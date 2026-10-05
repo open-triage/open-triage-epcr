@@ -35,6 +35,7 @@ import {
   restoreRecoveredReport,
 } from "../app/offline-reports";
 import { TransientNotice } from "./transient-notice";
+import { useVisiblePolling } from "./use-visible-polling";
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import {
@@ -83,7 +84,6 @@ export function OpenReports({
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; pauseEpoch.current += 1; }, [paused]);
   const recoveryReauthentication = useRef(new RecoveryReauthenticationGate());
-  const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
   const t = useCallback((key: string, params?: Record<string, string | number>) => resolveMessage(language, key, params), [language]);
   const showReports = useCallback((next: OpenReportSummary[]) => {
@@ -249,18 +249,6 @@ export function OpenReports({
   }, [csrfToken, reopen, t]);
 
   useEffect(() => {
-    if (paused) return;
-    let pollTimer: number | null = null;
-    const startOrPausePolling = () => {
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      pollTimer = document.visibilityState === "visible"
-        ? window.setInterval(() => void refresh(), ASSIGNED_CALL_POLL_INTERVAL_MS)
-        : null;
-    };
-    const visibilityChanged = () => {
-      if (document.visibilityState === "visible") void refresh();
-      startOrPausePolling();
-    };
     queueMicrotask(() => {
       const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
       if (cached.length) {
@@ -268,21 +256,11 @@ export function OpenReports({
         setReports(cached);
         setLoaded(true);
       }
-      void refresh();
     });
-    startOrPausePolling();
-    document.addEventListener("visibilitychange", visibilityChanged);
-    return () => {
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      document.removeEventListener("visibilitychange", visibilityChanged);
-    };
-  }, [refresh, session.user.id, paused]);
-
-  useEffect(() => {
-    if (handledRefreshRequest.current === refreshRequest) return;
-    handledRefreshRequest.current = refreshRequest;
-    void refresh();
-  }, [refresh, refreshRequest]);
+  }, [session.user.id]);
+  // This also checks whether the active report was completed elsewhere.
+  useVisiblePolling(refresh, ASSIGNED_CALL_POLL_INTERVAL_MS, !paused,
+    `${session.organization.id}:${session.user.id}:${refreshRequest}`);
 
   return (
     <section className="assigned-calls open-reports" aria-labelledby="open-reports-title">

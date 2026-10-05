@@ -1,4 +1,5 @@
 export { SUPPORTED_UI_LANGUAGES, isSupportedUiLanguage } from "./ui-languages.generated.js";
+export { filterValidationRuleLibrary } from "./validation-rule-library.js";
 
 export interface HealthResponse {
   status: "ok";
@@ -1496,6 +1497,9 @@ export interface FormCatalogElement {
 export interface FormCatalogElementPage {
   items: FormCatalogElement[];
   nextOffset: number | null;
+  /** Included for an exact element lookup so newly added fields can be edited before saving. */
+  catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  customFields?: ClinicalFormConfiguration["customFields"];
 }
 
 export type AssignmentStatus = "assigned";

@@ -4,6 +4,7 @@ import type { ClinicianSession, ReviewCriterionRoute, ReviewEligibleReviewer, Re
 import { useEffect, useRef, useState } from "react";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { FieldHelp } from "./field-help";
+import { useVisiblePolling } from "./use-visible-polling";
 import { useAvailableHeight } from "./use-available-height";
 import { listAccessRemoved } from "../app/list-refresh";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
@@ -18,6 +19,7 @@ export function ReviewSettingsPanel({ session, language, online, section, active
   active: boolean;
   section?: ReviewSettingsSection;
 }) {
+  const administrator = session.capabilities?.includes("review:admin") ?? false;
   const dataset = session.capabilities?.includes("clinical:demo") ? "synthetic" : "real";
   const [refresh, setRefresh] = useState(0);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
@@ -64,7 +66,7 @@ export function ReviewSettingsPanel({ session, language, online, section, active
     (!!amendmentPolicy && clearanceDraft !== amendmentPolicy.clearance) || (!!overduePolicy && deadlineHours !== overduePolicy.deadlineHours));
 
   useEffect(() => {
-    if (!online || !session.capabilities?.includes("review:admin")) return;
+    if (!active || !online || !administrator) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/backlog?dataset=${dataset}`);
     if (!url) return;
@@ -77,10 +79,10 @@ export function ReviewSettingsPanel({ session, language, online, section, active
       setBacklogError(true);
     } });
     return () => controller.abort();
-  }, [dataset, online, refresh, session.capabilities]);
+  }, [active, dataset, online, refresh, administrator]);
 
   useEffect(() => {
-    if (!online || !session.capabilities?.includes("review:admin")) return;
+    if (!active || !online || !administrator) return;
     const controller = new AbortController();
     const url = apiRequestUrl("/api/review/overdue-policy");
     if (!url) return;
@@ -93,10 +95,10 @@ export function ReviewSettingsPanel({ session, language, online, section, active
       }
     }).catch(() => { if (!controller.signal.aborted) setOverduePolicy((previous) => deadlineDirty.current ? previous : null); });
     return () => controller.abort();
-  }, [online, refresh, session.capabilities]);
+  }, [active, online, refresh, administrator]);
 
   useEffect(() => {
-    if (!online || !session.capabilities?.includes("review:admin")) return;
+    if (!active || !online || !administrator) return;
     const controller = new AbortController();
     const routeUrl = apiRequestUrl("/api/review/routes");
     const reviewersUrl = apiRequestUrl("/api/review/eligible-reviewers");
@@ -114,10 +116,10 @@ export function ReviewSettingsPanel({ session, language, online, section, active
     } })
       .finally(() => { if (!controller.signal.aborted) setRoutingLoading(false); });
     return () => controller.abort();
-  }, [online, refresh, session.capabilities]);
+  }, [active, online, refresh, administrator]);
 
   useEffect(() => {
-    if (!online || !session.capabilities?.includes("review:admin")) return;
+    if (!active || !online || !administrator) return;
     const controller = new AbortController();
     const url = apiRequestUrl("/api/review/amendment-policy");
     if (!url) return;
@@ -130,10 +132,10 @@ export function ReviewSettingsPanel({ session, language, online, section, active
       }
     }).catch(() => { if (!controller.signal.aborted) setAmendmentPolicy((previous) => clearanceDirty.current ? previous : null); });
     return () => controller.abort();
-  }, [online, refresh, session.capabilities]);
+  }, [active, online, refresh, administrator]);
 
   useEffect(() => {
-    if (!online) return;
+    if (!active || !online || !administrator) return;
     const controller = new AbortController();
     const url = apiRequestUrl("/api/review/outcomes");
     if (!url) return;
@@ -146,7 +148,7 @@ export function ReviewSettingsPanel({ session, language, online, section, active
       setOutcomesError(true);
     } });
     return () => controller.abort();
-  }, [online, refresh]);
+  }, [active, online, refresh, administrator]);
 
   async function saveRoute(route: ReviewCriterionRoute) {
     if (routingError || pendingRoutes.current.has(route.criterionId)) return;
@@ -236,15 +238,8 @@ export function ReviewSettingsPanel({ session, language, online, section, active
     finally { setPolicyBusy(null); }
   }
 
-  useEffect(() => {
-    if (!online) return;
-    const update = () => { if (document.visibilityState === "visible") setRefresh((value) => value + 1); };
-    const timer = window.setInterval(update, 15000);
-    window.addEventListener("focus", update);
-    document.addEventListener("visibilitychange", update);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", update);
-      document.removeEventListener("visibilitychange", update); };
-  }, [online]);
+  useVisiblePolling(() => setRefresh((value) => value + 1), 15_000,
+    active && online && administrator, "", false);
 
   useEffect(() => {
     if (!section || !active || !online) return;

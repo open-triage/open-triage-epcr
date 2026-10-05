@@ -13,7 +13,7 @@ import { AdminText, useAdminError, useAdminText } from "../app/admin-localizatio
 
 import type { AuthoringVersionOption, FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
-import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadCatalogVersions, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadCatalogVersions, loadFormElementConfiguration, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
 import { PlatformRequestError } from "../app/platform-errors";
@@ -32,7 +32,7 @@ export function formAuthority(capabilities: ReadonlyArray<string>): {
 export function openStationaryFormPreview(draft: StationaryFormDraft): boolean {
   const key = `open-triage:stationary-form-preview:${crypto.randomUUID()}`;
   localStorage.setItem(key, JSON.stringify(draft));
-  const preview = window.open(`/admin-preview?draft=${encodeURIComponent(key)}`, "_blank");
+  const preview = window.open(`/admin-preview/?draft=${encodeURIComponent(key)}`, "_blank");
   if (preview) preview.opener = null;
   if (!preview) localStorage.removeItem(key);
   return Boolean(preview);
@@ -172,10 +172,15 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   }
   function add(sectionKey: string, element: FormCatalogElement) {
     if (!draft) return;
-    try {
-      change(addFormElement(draft.definition, sectionKey, element),
-        `Added ${element.elementId}.`);
-    } catch (reason) { setError(adminError(reason, "admin.stationaryFormOperation")); }
+    void action(async () => {
+      const metadata = await loadFormElementConfiguration(draft.id, element.elementId);
+      const definition = addFormElement(draft.definition, sectionKey, element);
+      setDraft({ ...draft, definition,
+        catalogFields: { ...draft.catalogFields, ...metadata.catalogFields },
+        customFields: { ...draft.customFields, ...metadata.customFields } });
+      setDirty(true); setStatus(`Unsaved changes. Added ${element.elementId}.`);
+      setPendingRemoval(null);
+    });
   }
   async function activate(formId: string, validationId: string, note: string,
     publication?: PublishedStationaryForm, removedRuleIds?: readonly string[]) {
@@ -226,7 +231,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       const cloned = await cloneStationaryFormDraft(csrfToken, targetCatalogId, newDisplayName, selectedVersionId);
       setPublished(null); setActivated(false); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.stationaryFormDraftCreated"));
     })}>
-    {canPublish && <DefinitionFileImport kind="form" busy={busy} hasDraft={Boolean(draft && !published)}
+    {canPublish && <DefinitionFileImport enabled={loaded && active} kind="form" busy={busy} hasDraft={Boolean(draft && !published)}
       onImport={(file) => action(async () => {
         const imported = await importCanonicalDefinitionFile(csrfToken, "form", file, targetCatalogId || undefined);
         setStatus(t("admin.definitionImported"));

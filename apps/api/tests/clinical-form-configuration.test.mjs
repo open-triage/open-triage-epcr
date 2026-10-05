@@ -3,6 +3,39 @@ import test from "node:test";
 import { compiledValidationBundleSha256 } from "@open-triage/contracts";
 import { clinicalFormConfiguration } from "../dist/forms/clinical-form-configuration.js";
 
+test("report opening reads choices once, preserving pinned selections while excluding disabled legacy choices", async () => {
+  let fieldsRead = 0;
+  let choicesRead = 0;
+  const manager = { query: async (sql, params) => {
+    if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [
+      { key: "care", fields: [
+        { key: "pinned", source: { kind: "nemsis", elementId: "eAirway.03" }, choicePolicy: [
+          { kind: "code", code: "old", codeSystem: "LOCAL" }] },
+        { key: "legacy", source: { kind: "nemsis", elementId: "eAirway.04" } },
+      ] }
+    ] } }];
+    if (sql.includes("from catalog.element_definition")) {
+      fieldsRead++;
+      return ["eAirway.03", "eAirway.04"].map(element_id => ({ element_id, min_occurs: 0, max_occurs: 1 }));
+    }
+    if (sql.includes("from catalog.value_set_element")) {
+      choicesRead++;
+      assert.equal(params[2], true);
+      return ["eAirway.03", "eAirway.04"].flatMap(element_id => [
+        { element_id, code: "old", code_system: "LOCAL", label: "Historical", enabled: false },
+        { element_id, code: "new", code_system: "LOCAL", label: "Current", enabled: true },
+      ]);
+    }
+    if (sql.includes("from catalog.group_definition") || sql.includes("customGroupDefinitions")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const config = await clinicalFormConfiguration(manager, "form", "release");
+  assert.deepEqual(config.catalogFields["eAirway.03"].codeChoices.map(c => c.code), ["old"]);
+  assert.deepEqual(config.catalogFields["eAirway.04"].codeChoices.map(c => c.code), ["new"]);
+  assert.equal(fieldsRead, 1);
+  assert.equal(choicesRead, 1);
+});
+
 test("a newly published form receives agency custom codes from its pinned catalog", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [

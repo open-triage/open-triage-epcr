@@ -52,6 +52,8 @@ test("generated nginx config contains the restrictive CSP and browser hardening 
   assert.match(output, /add_header Referrer-Policy "strict-origin-when-cross-origin" always/);
   assert.match(output, /add_header Permissions-Policy "camera=\(self\), microphone=\(self\), geolocation=\(\)" always/);
   assert.match(output, /add_header X-Frame-Options "DENY" always/);
+  assert.equal((output.match(/absolute_redirect off;/g) ?? []).length, 2,
+    "both virtual hosts keep directory redirects on the public TLS origin");
 });
 
 test("generation fails rather than weakening CSP for inline styles", async () => {

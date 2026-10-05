@@ -154,6 +154,38 @@ test("rehydrated encounter documents stamp the schema, document type, and model 
   assert.equal(document.modelVersion, ENCOUNTER_MODEL_VERSION);
 });
 
+test("edited dispatch occurrences rehydrate current values instead of retained dispatch provenance", () => {
+  const row = {
+    id: "0beb9656-4dee-4514-90c1-f57198158cd4", element_id: "eScene.09",
+    value_kind: "coded", code: "Y92.0", code_display: "Private residence",
+    provenance_detail: {
+      sourceValue: { kind: "coded", occurrenceId: "dispatch-location", code: "Y92.03", display: "Apartment/condo" },
+      clinicianValue: { kind: "coded", code: "Y92.0" },
+    },
+  };
+  assert.deepEqual(storedEncounterValue({ ...row, provenance_kind: "dispatch" }), {
+    ...row.provenance_detail.sourceValue, occurrenceId: row.id,
+  });
+  for (const provenance_kind of ["clinician", "demo", "amendment"]) {
+    assert.deepEqual(storedEncounterValue({ ...row, provenance_kind }), {
+      occurrenceId: row.id, kind: "coded", code: "Y92.0", display: "Private residence",
+    }, provenance_kind);
+    for (const [columns, expected] of [
+      [{ value_kind: "text", value_text: "Corrected address" }, { kind: "scalar", value: "Corrected address" }],
+      [{ value_kind: "integer", value_integer: "118" }, { kind: "scalar", value: 118 }],
+      [{ value_kind: "numeric", value_numeric: "1.2" }, { kind: "scalar", value: 1.2 }],
+      [{ value_kind: "boolean", value_boolean: false }, { kind: "scalar", value: false }],
+      [{ value_kind: "null", absence_code: "7701003" }, { kind: "null", notValue: { code: "7701003" } }],
+      [{ value_kind: "pertinent-negative", absence_code: "8801019" }, { kind: "pertinent-negative", code: "8801019" }],
+      [{ value_kind: "absent" }, { kind: "absent" }],
+    ]) {
+      assert.deepEqual(storedEncounterValue({ ...row, ...columns, provenance_kind }), {
+        occurrenceId: row.id, ...expected,
+      }, `${provenance_kind}: ${columns.value_kind}`);
+    }
+  }
+});
+
 test("stored scalar values rehydrate lexical, precision, offset, binary, and source attributes", () => {
   const common = {
     id: "62000000-0000-4000-8000-000000000060", group_instance_id: "group", element_id: "test", ordinal: 0,

@@ -5,6 +5,7 @@ import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
 import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVisiblePolling } from "./use-visible-polling";
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import {
@@ -24,7 +25,9 @@ export function AssignedCalls({
   refreshRequest = 0,
   suppressedCallNumbers = [],
   focusAssignmentId = null,
+  paused = false,
 }: {
+  readonly paused?: boolean;
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly onOpeningChange?: (call: AssignedCall | null) => void;
@@ -42,12 +45,11 @@ export function AssignedCalls({
   const openingRef = useRef(false);
   const refreshEpoch = useRef(0);
   const callsRef = useRef<AssignedCall[]>([]);
-  const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
 
   const refresh = useCallback(async () => {
-    if (openingRef.current) return;
+    if (paused || openingRef.current) return;
     const epoch = refreshEpoch.current;
     try {
       const response = await fetchAssignedCalls();
@@ -61,7 +63,7 @@ export function AssignedCalls({
       if (openingRef.current || refreshEpoch.current !== epoch) return;
       setError(refreshError instanceof Error ? refreshError.message : t("calls.refreshFailed"));
     }
-  }, [suppressedCallNumbers, t]);
+  }, [paused, suppressedCallNumbers, t]);
 
   const open = useCallback(async (call: AssignedCall) => {
     if (openingRef.current) return;
@@ -94,33 +96,8 @@ export function AssignedCalls({
     }
   }, [csrfToken, onOpened, onOpeningChange, t]);
 
-  useEffect(() => {
-    let pollTimer: number | null = null;
-    const startOrPausePolling = () => {
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      pollTimer = document.visibilityState === "visible"
-        ? window.setInterval(() => void refresh(), ASSIGNED_CALL_POLL_INTERVAL_MS)
-        : null;
-    };
-    const visibilityChanged = () => {
-      if (document.visibilityState === "visible") void refresh();
-      startOrPausePolling();
-    };
-
-    queueMicrotask(() => void refresh());
-    startOrPausePolling();
-    document.addEventListener("visibilitychange", visibilityChanged);
-    return () => {
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      document.removeEventListener("visibilitychange", visibilityChanged);
-    };
-  }, [refresh]);
-
-  useEffect(() => {
-    if (handledRefreshRequest.current === refreshRequest) return;
-    handledRefreshRequest.current = refreshRequest;
-    void refresh();
-  }, [refresh, refreshRequest]);
+  useVisiblePolling(refresh, ASSIGNED_CALL_POLL_INTERVAL_MS, !paused,
+    `${session.organization.id}:${session.user.id}:${refreshRequest}`);
 
   useEffect(() => {
     if (!focusAssignmentId || !calls.some(({ id }) => id === focusAssignmentId)) return;

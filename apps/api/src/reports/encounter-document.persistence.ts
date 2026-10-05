@@ -297,7 +297,9 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
     ...(row.not_value_code ? { notValue: { code: row.not_value_code, ...(row.not_value_display ? { display: row.not_value_display } : {}) } } : {}),
     ...(row.pertinent_negative_code ? { pertinentNegative: { code: row.pertinent_negative_code, ...(row.pertinent_negative_display ? { display: row.pertinent_negative_display } : {}) } } : {}) };
   const source = row.provenance_detail?.sourceValue;
-  if (record(source)) return { ...source, ...common } as EncounterValue;
+  // Preserve untouched dispatch values losslessly. Once ownership changes, the
+  // normalized columns are authoritative; sourceValue remains historical evidence.
+  if (row.provenance_kind === "dispatch" && record(source)) return { ...source, ...common } as EncounterValue;
   if (row.value_kind === "coded") return { ...common, kind: "coded", code: row.code!, ...(row.code_system ? { system: row.code_system } : {}), ...(row.code_display ? { display: row.code_display } : {}), ...(row.terminology_version ? { terminologyVersion: row.terminology_version } : {}) } as EncounterValue;
   if (row.value_kind === "null") return { ...common, kind: "null", ...(row.absence_code ? { notValue: { code: row.absence_code, ...(row.absence_display ? { display: row.absence_display } : {}) } } : {}) } as EncounterValue;
   if (row.value_kind === "pertinent-negative") return { ...common, kind: "pertinent-negative", code: row.absence_code!, ...(row.absence_display ? { display: row.absence_display } : {}) } as EncounterValue;

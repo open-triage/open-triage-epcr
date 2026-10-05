@@ -5,6 +5,8 @@ import type { ClinicianSession, ReviewAttentionKind, ReviewAttentionResponse, Re
   ReviewQueueResponse, ReviewQueueItem, ReviewItemDetail, ReviewCriterionRoute,
   ReviewEligibleReviewer, ReviewOutcomeOption, ReviewOverdueExceptionCode, ReviewBulkResult } from "@open-triage/contracts";
 import { useEffect, useRef, useState } from "react";
+import { useDebouncedValue } from "./use-debounced-value";
+import { useVisiblePolling } from "./use-visible-polling";
 import { useAvailableHeight } from "./use-available-height";
 import { activateListRow } from "./list-row-action";
 import { listAccessRemoved } from "../app/list-refresh";
@@ -42,6 +44,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const reportTrigger = useRef<HTMLElement | null>(null);
   const [assignment, setAssignment] = useState<"all" | "mine" | "unassigned">("all");
   const [search, setSearch] = useState("");
+  const settledSearch = useDebouncedValue(search);
   const [moreFilters, setMoreFilters] = useState(false);
   const [queue, setQueue] = useState<ReviewQueueResponse | null>(null);
   const [queueError, setQueueError] = useState(false);
@@ -60,11 +63,13 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const [queueFrom, setQueueFrom] = useState("");
   const [queueTo, setQueueTo] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [detailRefresh, setDetailRefresh] = useState(0);
   const [queueRefresh, setQueueRefresh] = useState(0);
   const [selected, setSelected] = useState<string | null>(callWindow?.reportId ?? null);
   const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
   const [selectedReportItemId, setSelectedReportItemId] = useState<string | null>(callWindow?.itemId ?? null);
   const selectedItemId = selectedItem?.id ?? selectedReportItemId;
+  const hasSelectedItem = !!selectedItemId;
   const [itemDetail, setItemDetail] = useState<ReviewItemDetail | null>(null);
   const [itemError, setItemError] = useState(false);
 
@@ -101,24 +106,12 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const [detailError, setDetailError] = useState(false);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
 
-  useEffect(() => {
-    if (!online) return;
-    const update = () => { if (document.visibilityState === "visible") setRefresh((value) => value + 1); };
-    const timer = window.setInterval(update, 15000);
-    window.addEventListener("focus", update);
-    document.addEventListener("visibilitychange", update);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", update);
-      document.removeEventListener("visibilitychange", update); };
-  }, [online]);
-
-  useEffect(() => {
-    if (!online || callWindow || tab !== "queue" || fullReportOpen) return;
-    // Refresh the visible queue promptly without reloading report details or analysis.
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") setQueueRefresh((value) => value + 1);
-    }, 3_000);
-    return () => window.clearInterval(timer);
-  }, [online, callWindow, tab, fullReportOpen]);
+  const reviewVisible = !!callWindow || tab === "queue";
+  const queueVisible = reviewVisible && !callWindow && !fullReportOpen;
+  useVisiblePolling(() => setDetailRefresh((value) => value + 1), 15_000,
+    online && reviewVisible, "", false);
+  useVisiblePolling(() => setQueueRefresh((value) => value + 1), 3_000,
+    online && queueVisible, "", false);
 
   const closingNeedsAssignment = !!itemDetail && itemDetail.assigneeId !== session.user.id;
   const canAssignToSelf = administrator && !itemReviewersError && itemReviewersFor === selectedItemId &&
@@ -179,7 +172,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const activeBulkSelection = bulkSelection.key === loadedQueueScope ? bulkSelection.items : {};
 
   useEffect(() => {
-    if (!online || callWindow || tab !== "queue") return;
+    if (!online || !queueVisible || search !== settledSearch) return;
     const controller = new AbortController();
     const query = new URLSearchParams({ dataset, page: String(queuePage) });
     query.set("assignment", assignment);
@@ -201,7 +194,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setQueueError(true);
     } });
     return () => controller.abort();
-  }, [dataset, online, queuePage, priority, status, attentionFilter, criterion, queueFrom, queueTo, assignment, search, refresh, queueRefresh, callWindow, tab, bulkScopeKey]);
+  }, [dataset, online, queuePage, priority, status, attentionFilter, criterion, queueFrom, queueTo, assignment, search, refresh, queueRefresh, queueVisible, bulkScopeKey, settledSearch]);
 
   useEffect(() => { if (!callWindow) onAttentionRefresh(dataset); }, [dataset, refresh, onAttentionRefresh, callWindow]);
 
@@ -212,7 +205,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   }
 
   useEffect(() => {
-    if (!online || !selected || reportSource !== "signed") return;
+    if (!online || !reviewVisible || !selected || reportSource !== "signed") return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/reports/${selected}?dataset=${dataset}`);
     if (!url) return;
@@ -225,10 +218,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setDetailError(true);
     } });
     return () => controller.abort();
-  }, [dataset, online, selected, reportSource, refresh]);
+  }, [dataset, online, reviewVisible, selected, reportSource, refresh, detailRefresh]);
 
   useEffect(() => {
-    if (!online || !selectedItemId || reportSource !== "draft") return;
+    if (!online || !reviewVisible || !selectedItemId || reportSource !== "draft") return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/items/${selectedItemId}/draft?dataset=${dataset}`);
     if (!url) return;
@@ -240,10 +233,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setDetailError(true);
     } });
     return () => controller.abort();
-  }, [dataset, online, selectedItemId, reportSource, refresh]);
+  }, [dataset, online, reviewVisible, selectedItemId, reportSource, refresh, detailRefresh]);
 
   useEffect(() => {
-    if (!online || !selectedItemId) return;
+    if (!online || !reviewVisible || !selectedItemId) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/items/${selectedItemId}?dataset=${dataset}`);
     if (!url) return;
@@ -256,10 +249,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setItemError(true);
     } });
     return () => controller.abort();
-  }, [dataset, online, selectedItemId, refresh]);
+  }, [dataset, online, reviewVisible, selectedItemId, refresh, detailRefresh]);
 
   useEffect(() => {
-    if (!online || callWindow || !administrator) return;
+    if (!online || !queueVisible || !administrator) return;
     const controller = new AbortController();
     const url = apiRequestUrl("/api/review/routes");
     if (!url) return;
@@ -276,10 +269,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setReviewersError(true);
     } });
     return () => controller.abort();
-  }, [online, refresh, administrator, callWindow]);
+  }, [online, refresh, detailRefresh, administrator, queueVisible]);
 
   useEffect(() => {
-    if (!online || !selectedItemId || !administrator) return;
+    if (!online || !reviewVisible || !selectedItemId || !administrator) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/eligible-reviewers?itemId=${selectedItemId}&dataset=${dataset}`);
     if (!url) return;
@@ -292,10 +285,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setItemReviewersError(true);
     } });
     return () => controller.abort();
-  }, [online, selectedItemId, dataset, refresh, administrator]);
+  }, [online, reviewVisible, selectedItemId, dataset, refresh, detailRefresh, administrator]);
 
   useEffect(() => {
-    if (!online) return;
+    if (!online || !reviewVisible || !hasSelectedItem) return;
     const controller = new AbortController();
     const url = apiRequestUrl("/api/review/outcomes");
     if (!url) return;
@@ -308,7 +301,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setOutcomesError(true);
     } });
     return () => controller.abort();
-  }, [online, refresh]);
+  }, [online, refresh, detailRefresh, reviewVisible, hasSelectedItem]);
 
   async function submitReviewAction(item: ReviewItemDetail) {
     if (actionBusy || workflowBusy || actionInvalid) return;

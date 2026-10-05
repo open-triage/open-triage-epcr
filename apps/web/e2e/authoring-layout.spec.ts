@@ -27,6 +27,7 @@ test.beforeAll(async () => {
       import {addFormElement,FormElementPicker,FormSectionElements} from './components/form-authoring';
       import {ValidationAuthoring} from './components/validation-authoring';
       import {CatalogAuthoring} from './components/catalog-authoring';
+      import {StationaryFormAuthoring} from './components/stationary-form-authoring';
       function Form(){const [query,setQuery]=useState('');const [definition,setDefinition]=useState({schemaVersion:1,sections:[
         {key:'response',name:'Response',fields:[
           {key:'service',source:{kind:'nemsis',elementId:'eResponse.05'},choicePolicy:[
@@ -46,7 +47,8 @@ test.beforeAll(async () => {
           <output hidden data-testid="definition">{JSON.stringify(definition)}</output></div>;}
       createRoot(document.getElementById('root')).render(location.search.includes('validation')?
         <ValidationAuthoring language="en" csrfToken="fixture" catalogReleaseId="catalog" capabilities={['validation:read','validation:write']}/>:location.search.includes('catalog')?
-        <CatalogAuthoring language="en" csrfToken="fixture" capabilities={['catalog:read','catalog:write']}/>:<Form/>);`
+        <CatalogAuthoring language="en" csrfToken="fixture" ownerId="fixture-owner" organizationId="fixture-org" capabilities={['catalog:read','catalog:write']}/>:location.search.includes('stationary')?
+        <StationaryFormAuthoring language="en" csrfToken="fixture" catalogReleaseId="catalog" capabilities={['forms:read','forms:write']}/>:<Form/>);`
     } });
   script = result.outputFiles[0]!.text;
 });
@@ -89,6 +91,49 @@ test("form columns align and adapt to a narrow viewport", async ({ page }, testI
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("form-layout.png"), fullPage: true });
+});
+
+test("an added coded element has choices and can be previewed before saving", async ({ page }) => {
+  const draft = { id: "draft", formId: "form", catalogReleaseId: "catalog", clonedFromId: "source",
+    revision: 1, definitionSha256: "digest", diagnostics: [], updatedAt: "2026-10-05T10:00:00Z",
+    definition: { schemaVersion: 1, sections: [{ key: "patient", name: "Patient", fields: [
+      { key: "name", source: { kind: "nemsis", elementId: "ePatient.02" } }
+    ] }] }, catalogFields: {} };
+  await page.route("**/api/admin/form-draft", route => route.fulfill({ json: draft }));
+  let metadataRequests = 0;
+  await page.route("**/api/admin/form-drafts/draft/catalog-elements?*", route => {
+    const exact = new URL(route.request().url()).searchParams.get("elementId");
+    if (exact) metadataRequests++;
+    return route.fulfill({ json: { items: [{ elementId: "ePatient.25", name: "Sex", description: "",
+      baseDatatype: "string", groupPath: ["ePatientSection"] }], nextOffset: null,
+      ...(exact ? { catalogFields: { "ePatient.25": { minOccurs: 0, maxOccurs: 1, nillable: true,
+        supportsNotValues: true, codeChoices: [{ code: "9906001", codeSystem: "", label: "Female" }] } } } : {}) } });
+  });
+  await page.goto("/__authoring-layout?stationary");
+  await page.getByRole("button", { name: "Add elements", exact: true }).click();
+  await page.getByRole("searchbox").fill("ePatient.25");
+  await page.getByRole("button", { name: "Add ePatient.25", exact: true }).click();
+  const edit = page.getByRole("button", { name: "Edit choices and order", exact: true });
+  await expect(edit).toBeVisible();
+  expect(metadataRequests).toBe(1);
+  await edit.click();
+  await expect(page.getByRole("checkbox", { name: "Female", exact: true })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Female", exact: true }).uncheck();
+  await page.getByRole("button", { name: "Close choices and order", exact: true }).click();
+  await edit.click();
+  await expect(page.getByRole("checkbox", { name: "Female", exact: true })).not.toBeChecked();
+  await page.evaluate(() => { (window as unknown as { previewUrl: string; previewDraft: unknown }).previewUrl = "";
+    window.open = ((url: string) => {
+      (window as unknown as { previewUrl: string }).previewUrl = url;
+      const key = new URL(url, location.origin).searchParams.get("draft")!;
+      (window as unknown as { previewDraft: unknown }).previewDraft = JSON.parse(localStorage.getItem(key)!);
+      return { opener: window };
+    }) as typeof window.open;
+  });
+  await page.getByRole("button", { name: "Preview form", exact: true }).click();
+  const preview = await page.evaluate(() => (window as unknown as { previewUrl: string; previewDraft: typeof draft }).previewDraft);
+  expect(preview.catalogFields).toHaveProperty(["ePatient.25"]);
+  expect(await page.evaluate(() => (window as unknown as { previewUrl: string }).previewUrl)).toMatch(/^\/admin-preview\/\?draft=/);
 });
 
 test("group rows rename in place and add elements to the selected group", async ({ page }, testInfo) => {
@@ -184,6 +229,7 @@ test("ordinary and NOT values have separate sortable lists and responsive column
   await page.goto("/__authoring-layout");
   const edit = page.getByRole("button", { name: "Edit choices and order", exact: true });
   await expect(edit).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("list", { name: "Choices for eResponse.05", includeHidden: true })).toHaveCount(0);
   const before = await edit.boundingBox();
   await edit.click();
   const close = page.getByRole("button", { name: "Close choices and order", exact: true });
@@ -284,6 +330,77 @@ test("validation library keeps compact rows and a roomy scroller at desktop and 
     await rows.last().press("Space");
     await expect(page.getByLabel("Name (en)")).toHaveValue("Patient name check 30");
   }
+});
+
+test("validation filters use the loaded library and preserve edits across filters and failed refreshes", async ({ page }) => {
+  let requests = 0;
+  let failRefresh = false;
+  await page.route("**/api/admin/validation-rules?*", route => {
+    requests++;
+    expect(new URL(route.request().url()).searchParams.size).toBe(1);
+    if (failRefresh) return route.fulfill({ status: 503, json: { message: "Unavailable" } });
+    return route.fulfill({ json: { total: rules.length, nextCursor: null, items: rules.map(rule => ({
+      rule, source: "agency", validity: "invalid", diagnostics: [],
+    })) } });
+  });
+  await page.route("**/api/admin/validation-drafts/draft", async route => {
+    const saved = route.request().postDataJSON();
+    await route.fulfill({ json: { ...saved, id: "draft", revision: 2, catalogReleaseId: "catalog" } });
+  });
+  await page.goto("/__authoring-layout?validation");
+  const rows = page.getByRole("region", { name: "Validation rules", exact: true }).locator("tbody tr");
+  await expect(rows).toHaveCount(30);
+  await rows.last().press("Enter");
+  await page.getByLabel("Name (en)").fill("Unsaved rule name");
+  const filters = page.locator(".validation-library-filters");
+  await filters.getByRole("searchbox").fill("check 1");
+  await expect(rows).toHaveCount(11);
+  await filters.getByRole("combobox", { name: "Documentation severity", exact: true }).selectOption("warning");
+  await expect(rows).toHaveCount(0);
+  await filters.getByRole("combobox", { name: "Documentation severity", exact: true }).selectOption("error");
+  await expect(rows).toHaveCount(11);
+  await filters.getByRole("combobox", { name: "Validity", exact: true }).selectOption("missing-swedish");
+  await expect(rows).toHaveCount(11);
+  await filters.getByRole("combobox", { name: "Validity", exact: true }).selectOption("");
+  await filters.getByRole("searchbox").fill("");
+  await expect(rows).toHaveCount(30);
+  await expect(rows.last()).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Name (en)")).toHaveValue("Unsaved rule name");
+  expect(requests).toBe(1);
+  failRefresh = true;
+  await page.getByRole("button", { name: "Save Validation draft", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(rows).toHaveCount(30);
+  await filters.getByRole("searchbox").fill("check 1");
+  await expect(rows).toHaveCount(11);
+  expect(requests).toBe(2);
+  failRefresh = false;
+  await page.getByRole("button", { name: "Retry loading", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(rows).toHaveCount(11);
+  expect(requests).toBe(3);
+});
+
+test("catalog filters persist their view without rewriting the draft", async ({ page }) => {
+  await page.goto("/__authoring-layout?catalog");
+  const search = page.getByRole("searchbox");
+  await expect(search).toBeVisible();
+  await page.evaluate(() => {
+    const writes: { key: string; length: number }[] = [];
+    (window as unknown as { storageWrites: typeof writes }).storageWrites = writes;
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) { writes.push({ key, length: value.length }); original.call(this, key, value); };
+  });
+  await search.pressSequentially("ePatient.30");
+  const rows = page.locator(".catalog-elements tbody tr");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("ePatient.30");
+  const writes = await page.evaluate(() => (window as unknown as { storageWrites: { key: string; length: number }[] }).storageWrites);
+  expect(writes.length).toBeGreaterThan(0);
+  expect(writes.every(({ key, length }) => key.endsWith(":view") && length < 500)).toBe(true);
+  await page.reload();
+  await expect(search).toHaveValue("ePatient.30");
+  await expect(rows).toHaveCount(1);
 });
 
 test("validation rows select a rule and help opens an overlay without resizing the table", async ({ page }, testInfo) => {

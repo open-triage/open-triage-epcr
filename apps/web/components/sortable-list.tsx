@@ -17,6 +17,7 @@ export function SortableList<T>({ items, identity, label, onMove, renderItem, di
   const [drag, setDrag] = useState<{ key: string; target: string; keyboard: boolean } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const ids = items.map(identity);
+  const movableIds = items.filter(canDrag).map(identity);
   const move = (key: string, target: string) => {
     const from = ids.indexOf(key), to = ids.indexOf(target);
     if (!disabled && from >= 0 && to >= 0 && from !== to && canDrag(items[from]!) && canDrag(items[to]!)) {
@@ -34,7 +35,7 @@ export function SortableList<T>({ items, identity, label, onMove, renderItem, di
   return <><Root className={className} aria-label={ariaLabel}>
     {items.map((item, index) => {
       const key = identity(item);
-      const handle = !disabled && canDrag(item) && items.filter(canDrag).length > 1 ? <button type="button" className="sort-handle" style={{ touchAction: "none" }}
+      const handle = !disabled && canDrag(item) && movableIds.length > 1 ? <button type="button" className="sort-handle" style={{ touchAction: "none" }}
         aria-label={`${language === "sv" ? "Ordna" : "Reorder"} ${label(item)}`} aria-describedby={`${id}-help`} aria-pressed={drag?.key === key}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
@@ -61,7 +62,6 @@ export function SortableList<T>({ items, identity, label, onMove, renderItem, di
           } else if (drag?.key === key && drag.keyboard && ["ArrowUp", "ArrowDown", "Home", "End", "Escape"].includes(event.key)) {
             event.preventDefault(); event.stopPropagation();
             if (event.key === "Escape") { setDrag(null); return; }
-            const movableIds = items.filter(canDrag).map(identity);
             const current = movableIds.indexOf(drag.target);
             const next = event.key === "Home" ? 0 : event.key === "End" ? movableIds.length - 1
               : Math.max(0, Math.min(movableIds.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)));
