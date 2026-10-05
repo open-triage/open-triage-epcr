@@ -25,6 +25,14 @@ spec:
   tls: {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
+    {{- if .Values.publicSite.enabled }}
+    - host: opentriage.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ include "open-triage.fullname" $ }}-web, port: { name: http } } }
+    {{- end }}
     - host: {{ .Values.web.host }}
       http:
         paths:

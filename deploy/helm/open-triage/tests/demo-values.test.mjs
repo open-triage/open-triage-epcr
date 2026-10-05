@@ -52,3 +52,14 @@ test("demo batch workloads remain schedulable on the single-node cluster", () =>
   assert.match(migration, /requests:\n\s+cpu: 10m\n\s+memory: 64Mi/);
   assert.match(projector, /requests:\n\s+cpu: 25m\n\s+memory: 128Mi/);
 });
+
+test("the demo routes the base-domain public site to web with its own TLS certificate", () => {
+  const output = renderDemo();
+  assert.match(output, /hosts:\n\s+- opentriage\.org\n\s+secretName: open-triage-public-site-tls/);
+  assert.match(output, /cert-manager\.io\/cluster-issuer: letsencrypt-prod/);
+  assert.match(output, /host: opentriage\.org\n\s+http:\n\s+paths:\n\s+- path: \/\n\s+pathType: Prefix\n\s+backend: \{ service: \{ name: open-triage-web, port: \{ name: http \} \} \}/);
+
+  const defaultIngress = execFileSync("helm", ["template", "open-triage", chart,
+    "--show-only", "templates/ingress.yaml"], { encoding: "utf8" });
+  assert.doesNotMatch(defaultIngress, /host: opentriage\.org/);
+});

@@ -72,6 +72,11 @@ syntheticExpiry:
     limits: { cpu: 100m, memory: 128Mi }
 
 imagePullSecrets: []
+# The web image also serves the fixed opentriage.org public one-pager.
+# Enable only where DNS and an ingress.tls certificate cover that domain.
+publicSite:
+  enabled: false
+
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile: { type: RuntimeDefault }
