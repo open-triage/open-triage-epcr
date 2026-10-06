@@ -114,7 +114,7 @@ integration('unified analytics enforces scope, live draft/custom discovery, sign
   t.after(async()=>{await client.query('rollback');await client.end();});await client.query('begin');
   const fixture=(await client.query(`select r.*,gi.id root_id,(select id from forms.form_section where form_version_id=r.form_version_id limit 1) section_id from clinical.report r
     join clinical.group_instance gi on gi.report_id=r.id and gi.group_id='PatientCareReportGroup' and gi.tombstoned_at is null
-    where r.status='draft' and r.synthetic order by r.id limit 1`)).rows[0];
+    where r.status='draft' and r.synthetic and (r.expires_at is null or r.expires_at>now()) order by r.id limit 1`)).rows[0];
   assert.ok(fixture,'seed the local synthetic draft fixture before integration tests');
   const publicId=randomUUID(),privateId=randomUUID(),secondId=randomUUID();
   const definitions=[publicId,privateId,secondId].map((id,index)=>({id,namespace:'org.unifiedtest',slug:`field${id.replaceAll('-','')}`,

@@ -93,7 +93,13 @@ export class AnalyticsService {
   }
   private async prepareQuery(database: EntityManager, scope: ReviewScope, input: AnalyticsDefinition, additionalElements: string[] = []) {
     const library = await configuredAnalyticsLibrary(database, scope);
-    const fields = [...library.elements, ...await catalogElements(database, scope)];
+    // Configured definitions and Records have authoritative metadata without
+    // recorded-field discovery. Only selected clinical fields need that scan.
+    const selectedIds = [input?.metric, input?.groupBy,
+      ...(Array.isArray(input?.filters) ? input.filters.map((filter) => filter?.element) : []), ...additionalElements];
+    const needsRecordedFields = selectedIds.some((id) => id && id !== "records" && !/^(metric|rule):/.test(id));
+    const recordedFields = needsRecordedFields ? await catalogElements(database, scope) : [recordsElement];
+    const fields = [...library.elements, ...recordedFields];
     if (/^(metric|rule):/.test(input?.metric ?? "") && !fields.some((field) => field.id === input.metric))
       throw new ConflictException("Configured definition changed or is unavailable; select it again");
     const definition = validateAnalytics(input, fields);

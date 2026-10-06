@@ -48,8 +48,22 @@ test('discovery memory is bounded and retains recently used entries', async () =
 
 function fixture() {
   const base = { user: { id: 'user' }, organization: { id: 'org' }, capabilities: ['review:all'] };
-  const state = { session: base, denied: false, authorizations: 0, elements: 0, values: 0 };
+  const state = { session: base, denied: false, authorizations: 0, elements: 0, values: 0, sourceReads: 0 };
   const manager = { query: async sql => {
+    if (sql.includes('from app_identity.active_configuration_bundle')) return [];
+    if (sql.includes('from operations.projection_health')) return [{ observed_at: new Date('2026-10-06T09:00:00Z'),
+      oldest_backlog_age_seconds: null, persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0,
+      last_run_status: 'succeeded', is_read_only_replica: false, replay_lag_seconds: null }];
+    if (sql.includes('from app_identity.organization')) return [{ time_zone: 'UTC',
+      start: new Date('2026-08-01T00:00:00Z'), end_exclusive: new Date('2026-10-06T00:00:00Z') }];
+    if (sql.includes('from analytics.review_volume_source')) {
+      state.sourceReads++;
+      return [{ report_id: 'report', reporting_date: '2026-09-01', projected_at: new Date('2026-10-06T09:00:00Z'),
+        revision: '1', amendment: 0, field_values: { 'eVitals.06': 120 }, field_absences: {} }];
+    }
+    if (sql.includes('from analytics.review_repeated_field_source')) return [{ report_id: 'report', id: 'occurrence',
+      element: 'eVitals.06', value: 120, unit: 'mm[Hg]', group_ordinal: 0, element_ordinal: 0 }];
+    if (sql.includes('from typed join jsonb_to_recordset')) return [];
     if (sql.includes('from typed group by element')) {
       state.elements++;
       return [{ element: 'eVitals.06', count: '3', units: [] }];
@@ -61,11 +75,12 @@ function fixture() {
     }
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
-  const service = new AnalyticsService({ transaction: async (_level, run) => run(manager) }, { get: async () => {
+  const database = { transaction: async (_level, run) => run(manager) };
+  const service = new AnalyticsService(database, { get: async () => {
     state.authorizations++;
     if (state.denied) throw new Error('Session expired');
     return state.session;
-  } }, {});
+  } }, { analyticsDatabase: async () => database });
   return { state, service, base };
 }
 
@@ -85,6 +100,39 @@ test('search, pagination, grouping, filtering and values reuse authorized discov
   await service.values('token', 'eVitals.06', '120');
   await service.values('token', 'eVitals.06', '', '2');
   assert.equal(state.values, 3, 'value search and page have distinct entries');
+});
+
+const recordsDefinition = { version: 1, metric: 'records', aggregation: 'count', visualization: 'line',
+  from: '2026-08-01', through: '2026-10-05', groupBy: null, timeGrouping: 'week', filters: [] };
+
+test('record graphs, picker counts and exports skip occurrence discovery but read live reports and authorize each request', async () => {
+  const { service, state } = fixture();
+  const result = await service.query('token', recordsDefinition);
+  assert.equal(result.completeness.valid, 1);
+  assert.deepEqual(await service.counts('token', { definition: recordsDefinition,
+    selection: { purpose: 'metric', ids: ['records'] } }),
+  { total: 1, included: 1, elements: [{ id: 'records', included: 1 }], values: [] });
+  const csv = await service.export('token', { definition: recordsDefinition, expectedRevision: result.exportRevision, kind: 'records' });
+  assert.ok(csv.includes('report'));
+  assert.equal(state.elements, 0);
+  assert.equal(state.sourceReads, 3);
+  assert.equal(state.authorizations, 3);
+  state.session = { ...state.session, capabilities: [] };
+  await assert.rejects(service.query('token', recordsDefinition), error => error.status === 403);
+  assert.equal(state.sourceReads, 3);
+});
+
+test('recorded filters and picker candidates still load current field metadata', async () => {
+  const { service, state } = fixture();
+  const definition = { ...recordsDefinition, filters: [{ element: 'eVitals.06', values: [{ type: 'number', value: 120 }] }] };
+  assert.equal((await service.query('token', definition)).completeness.valid, 1);
+  assert.equal(state.elements, 1);
+  const result = await service.counts('token', { definition: recordsDefinition,
+    selection: { purpose: 'filter', ids: ['eVitals.06'] } });
+  assert.equal(result.elements[0].included, 1);
+  assert.equal(state.elements, 2);
+  await assert.rejects(service.query('token', { ...recordsDefinition, filters: {} }), error => error.status === 400);
+  await assert.rejects(service.query('token', { ...recordsDefinition, filters: [null] }), error => error.status === 400);
 });
 
 test('discovery isolates every scope and rejects revoked sessions and permissions on hits', async () => {

@@ -42,6 +42,11 @@ export const catalogSourceSql = `with scoped_reports as materialized (
 ), versions as (
   select r.id report_id,r.catalog_release_id,o.id occurrence_id,to_jsonb(o) value,0 sequence,'base' action,'' change_id
   from scoped_reports r join clinical.element_occurrence o on o.report_id=r.id where o.tombstoned_at is null
+    -- Discard nonanalytical base fields before materializing JSON occurrences.
+    -- Amendment overlays still read their complete original/corrected values.
+    and (o.element_id=any($5::text[]) or exists (
+      select 1 from custom_definitions custom where custom.catalog_release_id=r.catalog_release_id
+        and custom.definition->>'id'=o.element_identity_id::text))
   union all
   select c.report_id,c.catalog_release_id,coalesce(c.target_element_occurrence_id,(c.corrected_value->>'id')::uuid),
     coalesce(c.original_value,to_jsonb(o),'{}'::jsonb)||coalesce(c.corrected_value,'{}'::jsonb),c.sequence,c.action,c.change_id::text
@@ -49,6 +54,13 @@ export const catalogSourceSql = `with scoped_reports as materialized (
 ), effective as (
   select distinct on (report_id,occurrence_id) * from versions
   order by report_id,occurrence_id,sequence desc,change_id desc
+), medication_units as materialized (
+  -- Resolve units once per medication group. A correlated scan of effective
+  -- rereads the entire occurrence set for every dose and spills to disk.
+  select distinct on (report_id,value->>'group_instance_id') report_id,
+    value->>'group_instance_id' group_instance_id,value->>'code' code
+  from effective where value->>'element_id'='eMedications.06' and action<>'remove'
+  order by report_id,value->>'group_instance_id',occurrence_id
 ), permitted as (
   select e.report_id,e.catalog_release_id,e.value,
     case when custom.definition is not null then ${customIdentitySql("custom.definition->>'id'", "custom.definition")} else e.value->>'element_id' end element,
@@ -75,11 +87,11 @@ export const catalogSourceSql = `with scoped_reports as materialized (
     when datatype='string' and length(value->>'value_text')<=256 then jsonb_build_object('type','string','value',value->'value_text')
     when datatype='dateTime' then jsonb_build_object('type','datetime','value',value->'value_datetime')
     else null end identity,
-    case when value->>'element_id'='eMedications.05' then (select unit.value->>'code' from effective unit
-      where unit.report_id=p.report_id and unit.value->>'group_instance_id'=p.value->>'group_instance_id'
-        and unit.value->>'element_id'='eMedications.06' and unit.action<>'remove' limit 1)
+    case when value->>'element_id'='eMedications.05' then unit.code
       else value->'source_attributes'->>'unit' end unit
   from permitted p
+    left join medication_units unit on p.value->>'element_id'='eMedications.05'
+      and unit.report_id=p.report_id and unit.group_instance_id=p.value->>'group_instance_id'
   union all
   select r.id,r.catalog_release_id,
     jsonb_build_object('code_display',case when $7::boolean then coalesce(u.display_name,r.documenting_user_id::text) else r.documenting_user_id::text end),
