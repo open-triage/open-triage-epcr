@@ -4,7 +4,8 @@ import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
-import { DEFAULT_SYNTHETIC_RETENTION_HOURS } from "@open-triage/contracts";
+import { DEFAULT_SYNTHETIC_RETENTION_HOURS, DEFAULT_AGENCY_AUTHENTICATION_LIMITS,
+  MAX_AGENCY_AUTHENTICATION_ATTEMPTS } from "@open-triage/contracts";
 import React, { FormEvent, useCallback, useEffect, useState } from "react";
 import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { applyAgencyColors } from "../app/installation-settings";
@@ -21,6 +22,7 @@ function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsComma
   const demographics = settings.demographics;
   return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
     syntheticRetentionHours: settings.syntheticRetentionHours === undefined ? DEFAULT_SYNTHETIC_RETENTION_HOURS : settings.syntheticRetentionHours,
+    authenticationLimits: { ...(settings.authenticationLimits ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS) },
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
     appearance: { ...settings.appearance },
@@ -43,6 +45,8 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   const [allowanceMib, setAllowanceMib] = useState("50");
   const [imageLimitMib, setImageLimitMib] = useState("10");
   const [retentionHours, setRetentionHours] = useState(String(DEFAULT_SYNTHETIC_RETENTION_HOURS));
+  const [accountAttemptLimit, setAccountAttemptLimit] = useState(String(DEFAULT_AGENCY_AUTHENTICATION_LIMITS.accountAttemptsPer15Minutes));
+  const [networkAttemptLimit, setNetworkAttemptLimit] = useState(String(DEFAULT_AGENCY_AUTHENTICATION_LIMITS.networkAttemptsPer5Minutes));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -54,6 +58,8 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
       if (!current) return;
       setSettings(loaded);
       setDraft(editable(loaded));
+      setAccountAttemptLimit(String(loaded.authenticationLimits?.accountAttemptsPer15Minutes ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.accountAttemptsPer15Minutes));
+      setNetworkAttemptLimit(String(loaded.authenticationLimits?.networkAttemptsPer5Minutes ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.networkAttemptsPer5Minutes));
       setAllowanceMib(String(loaded.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(loaded.imageMediaLimitBytes / MEBIBYTE));
       setRetentionHours(loaded.syntheticRetentionHours === null ? "" : String(loaded.syntheticRetentionHours ?? DEFAULT_SYNTHETIC_RETENTION_HOURS));
@@ -77,12 +83,17 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   const validRetentionHours = proposedRetentionHours === null ||
     (Number.isSafeInteger(proposedRetentionHours) && proposedRetentionHours > 0);
   const warning = validAllowance && showsStorageGrowthWarning(proposedBytes, settings?.defaultReportMediaAllowanceBytes);
+  const authenticationLimits = { accountAttemptsPer15Minutes: Number(accountAttemptLimit),
+    networkAttemptsPer5Minutes: Number(networkAttemptLimit) };
+  const validAttemptLimit = (value: number) => Number.isSafeInteger(value) && value >= 1 && value <= MAX_AGENCY_AUTHENTICATION_ATTEMPTS;
+  const validAuthenticationLimits = Object.values(authenticationLimits).every(validAttemptLimit);
   const complete = !!draft && draft.appearance.brandText.trim() && draft.appearance.helperText.trim() &&
     draft.appearance.pwaName.trim() && draft.appearance.pwaShortName.trim() &&
     draft.demographics.agencyUniqueStateId.trim() && draft.demographics.agencyNumber.trim() &&
     /^[0-9]{2}$/.test(draft.demographics.stateCode);
   const unchanged = !!settings && !!draft && JSON.stringify({ ...draft, expectedRevision: settings.revision,
     syntheticRetentionHours: proposedRetentionHours,
+    authenticationLimits,
     reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes }) === JSON.stringify(editable(settings));
 
   useUnsavedChanges(!!draft && !unchanged);
@@ -110,14 +121,17 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settings || !draft || !validAllowance || !validImageLimit || !validRetentionHours || !complete || !canWrite) return;
+    if (!settings || !draft || !validAllowance || !validImageLimit || !validRetentionHours || !validAuthenticationLimits || !complete || !canWrite) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       const updated = await updateAgencyMediaSettings(csrfToken, { ...draft,
         syntheticRetentionHours: proposedRetentionHours,
+        authenticationLimits,
         expectedRevision: settings.revision, reportMediaAllowanceBytes: proposedBytes,
         imageMediaLimitBytes: proposedImageBytes });
       setSettings(updated); setDraft(editable(updated));
+      setAccountAttemptLimit(String(updated.authenticationLimits?.accountAttemptsPer15Minutes ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.accountAttemptsPer15Minutes));
+      setNetworkAttemptLimit(String(updated.authenticationLimits?.networkAttemptsPer5Minutes ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.networkAttemptsPer5Minutes));
       setAllowanceMib(String(updated.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(updated.imageMediaLimitBytes / MEBIBYTE));
       setRetentionHours(updated.syntheticRetentionHours === null ? "" : String(updated.syntheticRetentionHours ?? DEFAULT_SYNTHETIC_RETENTION_HOURS));
@@ -173,6 +187,22 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
           onChange={(event) => setRetentionHours(event.target.value)} />
         <small id="synthetic-retention-help">{t("settings.demoWipeHelp")}</small>
         {!validRetentionHours && <p className="admin-error" role="alert">{t("settings.demoWipeInvalid")}</p>}
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{t("settings.loginLimits")}</legend>
+        <label htmlFor="authentication-account-attempt-limit"><strong>{t("settings.loginAccountLimit")}</strong></label>
+        <input id="authentication-account-attempt-limit" type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
+          step="1" required value={accountAttemptLimit} aria-describedby="authentication-limits-help"
+          aria-invalid={!validAttemptLimit(authenticationLimits.accountAttemptsPer15Minutes)}
+          onChange={(event) => setAccountAttemptLimit(event.target.value)} />
+        <label htmlFor="authentication-network-attempt-limit"><strong>{t("settings.loginNetworkLimit")}</strong></label>
+        <input id="authentication-network-attempt-limit" type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
+          step="1" required value={networkAttemptLimit} aria-describedby="authentication-limits-help"
+          aria-invalid={!validAttemptLimit(authenticationLimits.networkAttemptsPer5Minutes)}
+          onChange={(event) => setNetworkAttemptLimit(event.target.value)} />
+        <small id="authentication-limits-help">{t("settings.loginLimitsHelp")}</small>
+        {!validAuthenticationLimits && <p className="admin-error" role="alert">{t("settings.loginLimitsInvalid", { max: MAX_AGENCY_AUTHENTICATION_ATTEMPTS })}</p>}
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
@@ -259,7 +289,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
       <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>
       {!canWrite && <p>{t("settings.readOnly")}</p>}
       {canWrite && <div className="form-actions"><button type="submit"
-        disabled={busy || !validAllowance || !validImageLimit || !validRetentionHours || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
+        disabled={busy || !validAllowance || !validImageLimit || !validRetentionHours || !validAuthenticationLimits || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
     </form>}
   </section>;
 }

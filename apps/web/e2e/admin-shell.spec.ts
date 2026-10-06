@@ -160,7 +160,7 @@ test("Demo can inspect Agency Settings without write controls", async ({ page })
   await expect(page.getByRole("button", { name: "Agency Settings" })).toBeVisible();
   await page.getByRole("button", { name: "Agency Settings" }).click();
   await expect(page.getByRole("heading", { name: "Agency Settings" })).toBeVisible();
-  await expect(page.locator(".agency-settings fieldset")).toHaveCount(7);
+  await expect(page.locator(".agency-settings fieldset")).toHaveCount(8);
   for (const fieldset of await page.locator(".agency-settings fieldset").all()) await expect(fieldset).toHaveAttribute("disabled", "");
   await expect(page.getByText(/changing them requires settings:write authority/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
@@ -970,4 +970,64 @@ test("agency demo wipe accepts large hours, saves blank as disabled, and survive
   await expect(hours).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("demo-retention.png") });
+});
+
+test("agency login limits validate, persist, and retain the agency palette", async ({ page }, testInfo) => {
+  const capabilities = ["settings:read", "settings:write"];
+  let savedSettings = { ...agencySettings,
+    appearance: { ...agencySettings.appearance, accentColor: "#593585", accentDarkColor: "#402363" },
+    authenticationLimits: { accountAttemptsPer15Minutes: 20, networkAttemptsPer5Minutes: 60 },
+    imageMediaLimitBytes: 10 * 1024 * 1024, defaultImageMediaLimitBytes: 10 * 1024 * 1024,
+    regionalFormat: null, timeZone: null };
+  const writes: unknown[] = [];
+  await page.route("**/api/installation", route => route.fulfill({ json: {
+    settings: productionSettings, appearance: savedSettings.appearance,
+  } }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", route => route.fulfill({ json: {
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["settings"], capabilities,
+    activeConfiguration: null, dashboard: null,
+  } }));
+  await page.route("**/api/admin/agency-settings", route => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON();
+      expect(body.expectedRevision).toBe(savedSettings.revision);
+      writes.push(body.authenticationLimits);
+      savedSettings = { ...savedSettings, authenticationLimits: body.authenticationLimits, revision: savedSettings.revision + 1 };
+    }
+    return route.fulfill({ json: savedSettings });
+  });
+  await signInAsCombinedOwner(page, capabilities);
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  const account = page.getByLabel("Attempts per account in 15 minutes", { exact: true });
+  const network = page.getByLabel("Attempts from one network in 5 minutes", { exact: true });
+  const save = page.getByRole("button", { name: "Save", exact: true });
+  await expect(account).toHaveValue("20");
+  await expect(network).toHaveValue("60");
+  await expect(save).toBeDisabled();
+  for (const field of [account, network]) {
+    for (const invalid of ["", "0", "-1", "1.5", "1001"]) {
+      await field.fill(invalid);
+      await expect(save).toBeDisabled();
+      await expect(field).toHaveAttribute("aria-invalid", "true");
+    }
+    await field.fill("100");
+  }
+  await network.fill("200");
+  await expect(save).toHaveCSS("background-color", "rgb(89, 53, 133)");
+  await save.click();
+  expect(writes).toEqual([{ accountAttemptsPer15Minutes: 100, networkAttemptsPer5Minutes: 200 }]);
+  await expect(save).toBeDisabled();
+  await page.reload();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await expect(account).toHaveValue("100");
+  await expect(network).toHaveValue("200");
+  await account.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("login-limits-mobile.png") });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("group", { name: "Login attempt limits", exact: true }).evaluate(element => element.scrollIntoView({ block: "center" }));
+  await expect(account).toBeVisible();
+  await expect(network).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("login-limits-desktop.png") });
 });

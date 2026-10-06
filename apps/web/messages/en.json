@@ -1687,5 +1687,10 @@
   "analytics.evidence": "Contributing reports and evidence",
   "analytics.evidenceReport": "Report",
   "analytics.evidenceReason": "Explanation",
-  "metrics.countChecked": "{count} metrics checked."
+  "metrics.countChecked": "{count} metrics checked.",
+  "settings.loginLimits": "Login attempt limits",
+  "settings.loginAccountLimit": "Attempts per account in 15 minutes",
+  "settings.loginNetworkLimit": "Attempts from one network in 5 minutes",
+  "settings.loginLimitsHelp": "Successful and failed password checks count, including password confirmation and password changes. The network limit is shared by this agency’s users on the same Wi-Fi or public IP address. Changes apply to the next attempt without clearing existing counters. Failed-password delays and installation-wide protections still apply.",
+  "settings.loginLimitsInvalid": "Enter a whole number between 1 and {max} for each limit."
 }

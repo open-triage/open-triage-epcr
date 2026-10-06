@@ -22,6 +22,8 @@ type SettingsRow = {
   regional_format: "en-US" | "sv-SE" | null;
   time_zone: string | null;
   synthetic_retention_hours: string | number | null;
+  authentication_account_attempt_limit: number;
+  authentication_network_attempt_limit: number;
   report_media_allowance_bytes: string | number;
   image_media_limit_bytes: string | number;
   brand_text: string;
@@ -104,9 +106,12 @@ export class AgencySettingsService {
         ? currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)
         : command.syntheticRetentionHours;
       const demographicChanged = !this.sameDemographic(currentDemographic, command.demographics);
+      const authenticationLimits = command.authenticationLimits ?? this.authenticationLimits(currentSettings);
       if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
           Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
           currentSettings.language === command.language &&
+          currentSettings.authentication_account_attempt_limit === authenticationLimits.accountAttemptsPer15Minutes &&
+          currentSettings.authentication_network_attempt_limit === authenticationLimits.networkAttemptsPer5Minutes &&
           (currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)) === syntheticRetentionHours &&
           currentSettings.regional_format === (command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat) &&
           currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
@@ -119,6 +124,7 @@ export class AgencySettingsService {
           browser_theme_color = $10, pwa_background_color = $11, pwa_name = $12,
           pwa_short_name = $13, destructive_color = $14, inactive_button_color = $19, text_color = $20,
           synthetic_retention_hours = $21,
+          authentication_account_attempt_limit = $22, authentication_network_attempt_limit = $23,
           revision = revision + 1,
           updated_at = clock_timestamp(), updated_by = $15
         where organization_id = $1 and revision = $2 returning *
@@ -130,7 +136,8 @@ export class AgencySettingsService {
         command.appearance.pwaName, command.appearance.pwaShortName, command.appearance.destructiveColor,
         session.user.id, command.language, command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat,
         command.timeZone === undefined ? currentSettings.time_zone : command.timeZone,
-        command.appearance.inactiveButtonColor, command.appearance.textColor, syntheticRetentionHours]));
+        command.appearance.inactiveButtonColor, command.appearance.textColor, syntheticRetentionHours,
+        authenticationLimits.accountAttemptsPer15Minutes, authenticationLimits.networkAttemptsPer5Minutes]));
       const updated = updatedRows[0];
       if (!updated) throw new ConflictException("Agency Settings revision is stale");
       const updatedDemographic = demographicChanged
@@ -205,8 +212,10 @@ export class AgencySettingsService {
        old_pwa_background_color,new_pwa_background_color,old_pwa_name,new_pwa_name,
        old_pwa_short_name,new_pwa_short_name,old_language,new_language,old_regional_format,new_regional_format,old_time_zone,new_time_zone,
        old_inactive_button_color,new_inactive_button_color,old_text_color,new_text_color,
-       old_synthetic_retention_hours,new_synthetic_retention_hours)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40)`,
+       old_synthetic_retention_hours,new_synthetic_retention_hours,
+       old_authentication_account_attempt_limit,new_authentication_account_attempt_limit,
+       old_authentication_network_attempt_limit,new_authentication_network_attempt_limit)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)`,
     [organizationId, actorId, prior.revision, updated.revision,
       prior.report_media_allowance_bytes, updated.report_media_allowance_bytes,
       prior.image_media_limit_bytes, updated.image_media_limit_bytes,
@@ -221,7 +230,14 @@ export class AgencySettingsService {
       oldAppearance.pwaShortName, newAppearance.pwaShortName, prior.language, updated.language,
       prior.regional_format, updated.regional_format, prior.time_zone, updated.time_zone,
       oldAppearance.inactiveButtonColor, newAppearance.inactiveButtonColor, oldAppearance.textColor, newAppearance.textColor,
-      prior.synthetic_retention_hours, updated.synthetic_retention_hours]);
+      prior.synthetic_retention_hours, updated.synthetic_retention_hours,
+      prior.authentication_account_attempt_limit, updated.authentication_account_attempt_limit,
+      prior.authentication_network_attempt_limit, updated.authentication_network_attempt_limit]);
+  }
+
+  private authenticationLimits(row: SettingsRow): AgencyMediaSettings["authenticationLimits"] {
+    return { accountAttemptsPer15Minutes: row.authentication_account_attempt_limit,
+      networkAttemptsPer5Minutes: row.authentication_network_attempt_limit };
   }
 
   private logoSha256(value: string | null): string | null {
@@ -256,6 +272,7 @@ export class AgencySettingsService {
     };
     return { organizationId: row.organization_id, language: row.language, regionalFormat: row.regional_format, timeZone: row.time_zone, reportMediaAllowanceBytes,
       syntheticRetentionHours: row.synthetic_retention_hours === null ? null : Number(row.synthetic_retention_hours),
+      authenticationLimits: this.authenticationLimits(row),
       imageMediaLimitBytes: Number(row.image_media_limit_bytes),
       appearance: this.appearance(row), demographics, revision: Number(row.revision),
       defaultReportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES,

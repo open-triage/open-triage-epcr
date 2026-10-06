@@ -14,6 +14,7 @@
     "prepare:kubernetes": "node scripts/prepare-kubernetes-secrets.mjs",
     "db:reset:development": "npm run reset:development -w @open-triage/database --",
     "feedback:validate": "node scripts/feedback-validation.mjs",
+    "load:test:demo": "node scripts/load-test-demo.mjs",
     "build": "npm run audit:nemsis-catalog && npm run check:nemsis-catalog-guardrails && npm run check:canonical-definitions && npm run check:stationary-layout && npm run check:database && npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
     "generate:stationary-layout": "node apps/web/scripts/generate-stationary-layout.mjs",
     "generate:database": "npm run generate -w @open-triage/database",

@@ -1,6 +1,7 @@
 import { UnprocessableEntityException } from "@nestjs/common";
 import {
   DEFAULT_AGENCY_APPEARANCE,
+  MAX_AGENCY_AUTHENTICATION_ATTEMPTS,
   isSupportedUiLanguage,
   MAX_REPORT_MEDIA_ALLOWANCE_BYTES,
   MIN_REPORT_MEDIA_ALLOWANCE_BYTES,
@@ -138,12 +139,25 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
   if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
     throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+  }
+  let authenticationLimits: UpdateAgencyMediaSettingsCommand["authenticationLimits"];
+  if (body.authenticationLimits !== undefined) {
+    const limits = body.authenticationLimits as Record<string, unknown> | null;
+    const keys = ["accountAttemptsPer15Minutes", "networkAttemptsPer5Minutes"];
+    if (!limits || typeof limits !== "object" || Array.isArray(limits) ||
+        Object.keys(limits).some((key) => !keys.includes(key)) ||
+        keys.some((key) => !Number.isSafeInteger(limits[key]) || Number(limits[key]) < 1 ||
+          Number(limits[key]) > MAX_AGENCY_AUTHENTICATION_ATTEMPTS)) {
+      throw new UnprocessableEntityException(`authenticationLimits must contain accountAttemptsPer15Minutes and networkAttemptsPer5Minutes as integers between 1 and ${MAX_AGENCY_AUTHENTICATION_ATTEMPTS}`);
+    }
+    authenticationLimits = { accountAttemptsPer15Minutes: Number(limits.accountAttemptsPer15Minutes),
+      networkAttemptsPer5Minutes: Number(limits.networkAttemptsPer5Minutes) };
   }
   if (body.syntheticRetentionHours !== undefined && body.syntheticRetentionHours !== null &&
       (!Number.isSafeInteger(body.syntheticRetentionHours) || Number(body.syntheticRetentionHours) < 1)) {
@@ -179,6 +193,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     catch { throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null"); }
   }
   return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(authenticationLimits === undefined ? {} : { authenticationLimits }),
     ...(body.syntheticRetentionHours === undefined ? {} : { syntheticRetentionHours: body.syntheticRetentionHours as number | null }),
     ...(body.regionalFormat === undefined ? {} : { regionalFormat: body.regionalFormat }),
     ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone as string | null }), reportMediaAllowanceBytes: allowance,

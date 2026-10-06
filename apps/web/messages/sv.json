@@ -1685,5 +1685,10 @@
   "analytics.evidence": "Bidragande rapporter och underlag",
   "analytics.evidenceReport": "Rapport",
   "analytics.evidenceReason": "Förklaring",
-  "metrics.countChecked": "{count} mått kontrollerade."
+  "metrics.countChecked": "{count} mått kontrollerade.",
+  "settings.loginLimits": "Gränser för inloggningsförsök",
+  "settings.loginAccountLimit": "Försök per konto under 15 minuter",
+  "settings.loginNetworkLimit": "Försök från ett nätverk under 5 minuter",
+  "settings.loginLimitsHelp": "Både lyckade och misslyckade lösenordskontroller räknas, även lösenordsbekräftelse och lösenordsbyten. Nätverksgränsen delas av organisationens användare på samma wifi eller publika IP-adress. Ändringar gäller från nästa försök utan att nollställa befintliga räknare. Fördröjningar vid felaktiga lösenord och installationens övergripande skydd gäller fortfarande.",
+  "settings.loginLimitsInvalid": "Ange ett heltal mellan 1 och {max} för varje gräns."
 }

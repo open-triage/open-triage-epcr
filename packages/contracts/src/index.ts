@@ -745,6 +745,17 @@ export interface ReportMediaPolicy {
   settingsRevision: number;
 }
 
+export interface AgencyAuthenticationLimits {
+  accountAttemptsPer15Minutes: number;
+  networkAttemptsPer5Minutes: number;
+}
+
+export const DEFAULT_AGENCY_AUTHENTICATION_LIMITS: Readonly<AgencyAuthenticationLimits> = {
+  accountAttemptsPer15Minutes: 20,
+  networkAttemptsPer5Minutes: 60,
+};
+export const MAX_AGENCY_AUTHENTICATION_ATTEMPTS = 1_000;
+
 export interface AgencyMediaSettings {
   organizationId: string;
   language: string;
@@ -752,6 +763,7 @@ export interface AgencyMediaSettings {
   timeZone: string | null;
   /** Hours after server creation; null disables automatic demo-record deletion. */
   syntheticRetentionHours: number | null;
+  authenticationLimits: AgencyAuthenticationLimits;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -771,6 +783,8 @@ export interface UpdateAgencyMediaSettingsCommand {
   timeZone?: string | null;
   /** Omitted preserves the current policy; null disables automatic deletion. */
   syntheticRetentionHours?: number | null;
+  /** Omitted preserves the current password-attempt limits. */
+  authenticationLimits?: AgencyAuthenticationLimits;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
