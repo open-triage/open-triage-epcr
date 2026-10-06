@@ -68,6 +68,11 @@ those cluster-owned Secrets in place. The workflow passes this file to Helm
 validation and every automated upgrade so a release cannot silently discard
 private-registry access or public TLS configuration.
 
+The same values file selects the `pool-6inz100pf` node pool for the web, API,
+migration hook, and all scheduled app jobs. Nodes in that pool must finish
+DigitalOcean's readiness checks before workloads can schedule. The selector
+does not move cluster infrastructure or retire the older node pool.
+
 The same web image serves a small public homepage at `https://opentriage.org`,
 with links to the demo and public GitHub source. nginx selects its standalone
 static files by hostname, without loading the clinical app or registering its
@@ -88,7 +93,7 @@ Helm uses `--atomic`, `--wait`, and a ten-minute timeout. Failed migrations,
 readiness probes, or rollouts fail the workflow and restore the prior Helm
 release. Database migrations are forward-only and remain committed as
 documented in the chart README. Both one-replica Deployments use `Recreate`, so
-the one-node demo may be briefly unavailable while pods are replaced.
+the demo may be briefly unavailable while pods are replaced.
 
 Smoke verification logs only named pass/fail stages and HTTP status codes. It
 does not print bearer tokens, login responses, or assigned-call response bodies.

@@ -1,4 +1,7 @@
 # Non-secret values for the fixed public DOKS demo deployment.
+nodeSelector:
+  doks.digitalocean.com/node-pool: pool-6inz100pf
+
 imagePullSecrets:
   - name: ghcr-pull
 
@@ -34,9 +37,8 @@ secrets:
 
 migration:
   bootstrapSynthetic: true
-  # The public demo runs on a single small node. Keep the pre-upgrade hook
-  # schedulable while the existing minute-level maintenance jobs wind down;
-  # the container may still burst to the chart's 500m CPU limit.
+  # Retain lightweight hook requests; the container may still burst to the
+  # chart's 500m CPU limit.
   resources:
     requests:
       cpu: 10m
@@ -46,8 +48,7 @@ migration:
   pgOptions: "-c lock_timeout=45s -c statement_timeout=8min"
 
 analytics:
-  # Avoid starving future hooks when the projector overlaps the health and
-  # synthetic-retention jobs on the single-node demo cluster.
+  # Retain lightweight requests when the projector overlaps maintenance jobs.
   resources:
     requests:
       cpu: 25m

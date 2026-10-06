@@ -80,6 +80,11 @@ The committed demo reference values contain no credentials. They preserve the
 cluster-owned `ghcr-pull` image pull Secret, `open-triage-tls` certificate, and
 workload database Secrets during repeatable upgrades.
 
+The optional top-level `nodeSelector` applies to every app workload, including
+the migration hook and all CronJobs. It defaults to no placement restriction.
+The demo reference values select `doks.digitalocean.com/node-pool: pool-6inz100pf`
+so app pods stay on the larger demo pool across upgrades and node replacements.
+
 Helm runs a forward-only migration Job before each install or upgrade. The Job
 reads `DATABASE_URL` only from the migration Secret and must succeed before Helm
 updates the application Deployments. Applied migration versions and checksums
@@ -113,8 +118,8 @@ separate pre-rollout migration mechanism: a Helm hook cannot consume a Secret
 that the same release has not created yet. Never point two workload entries at
 the same Secret.
 
-Set `web.replicas` and `api.replicas` to `3` when the cluster has three worker
-nodes. The current defaults are deliberately one replica for a one-node demo.
+The demo retains one web and one API replica on its selected pool. Configure
+replicas and rollout strategies for the installation's availability requirements.
 
 Chart 0.2.0 requires the rebuilt, unprivileged web image listening on port 8080;
 the Service still exposes port 80. Do not reuse earlier web images listening on 80.

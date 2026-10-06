@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { loadAll } from "js-yaml";
 
 const chart = fileURLToPath(new URL("..", import.meta.url));
 const demoValues = fileURLToPath(new URL("../demo-reference.values.yaml", import.meta.url));
@@ -39,7 +40,7 @@ test("demo values preserve public TLS and workload-specific cluster-owned databa
   assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|stringData:/);
 });
 
-test("demo batch workloads remain schedulable on the single-node cluster", () => {
+test("demo batch workloads retain lightweight resource requests", () => {
   const output = renderDemo();
   const migration = output.slice(
     output.indexOf("# Source: open-triage/templates/migration-job.yaml"),
@@ -51,6 +52,37 @@ test("demo batch workloads remain schedulable on the single-node cluster", () =>
 
   assert.match(migration, /requests:\n\s+cpu: 10m\n\s+memory: 64Mi/);
   assert.match(projector, /requests:\n\s+cpu: 25m\n\s+memory: 128Mi/);
+});
+
+function workloadPods(output) {
+  return loadAll(output).filter(Boolean).flatMap((object) => {
+    const pod = object.kind === "CronJob"
+      ? object.spec.jobTemplate.spec.template.spec
+      : ["Deployment", "Job"].includes(object.kind) ? object.spec.template.spec : undefined;
+    return pod ? [{ name: object.metadata.name, pod }] : [];
+  });
+}
+
+test("every demo workload, including the migration hook, targets the larger node pool", () => {
+  const workloads = workloadPods(renderDemo());
+  assert.deepEqual(workloads.map(({ name }) => name).sort(), [
+    "open-triage-analytics-health", "open-triage-analytics-projector",
+    "open-triage-api", "open-triage-migration", "open-triage-review-worker",
+    "open-triage-synthetic-expiry", "open-triage-web",
+  ]);
+  for (const { name, pod } of workloads) {
+    assert.deepEqual(pod.nodeSelector, { "doks.digitalocean.com/node-pool": "pool-6inz100pf" }, name);
+  }
+});
+
+test("other installations can omit placement or select their own nodes", () => {
+  const render = (...extra) => execFileSync("helm", ["template", "open-triage", chart, ...extra], { encoding: "utf8" });
+  for (const { name, pod } of workloadPods(render())) {
+    assert.equal(pod.nodeSelector, undefined, name);
+  }
+  for (const { name, pod } of workloadPods(render("--set", "nodeSelector.workload=clinical"))) {
+    assert.deepEqual(pod.nodeSelector, { workload: "clinical" }, name);
+  }
 });
 
 test("the demo routes the base-domain public site to web with its own TLS certificate", () => {

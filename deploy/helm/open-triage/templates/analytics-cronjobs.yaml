@@ -15,6 +15,9 @@ spec:
       backoffLimit: 1
       template:
         spec:
+          {{- with .Values.nodeSelector }}
+          nodeSelector: {{- toYaml . | nindent 12 }}
+          {{- end }}
           imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 12 }}
           automountServiceAccountToken: false
           securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
@@ -50,6 +53,9 @@ spec:
       backoffLimit: 0
       template:
         spec:
+          {{- with .Values.nodeSelector }}
+          nodeSelector: {{- toYaml . | nindent 12 }}
+          {{- end }}
           imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 12 }}
           automountServiceAccountToken: false
           securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
