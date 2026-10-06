@@ -3,8 +3,9 @@
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse } from "@open-triage/contracts";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
-import { sessionRequestToken } from "../app/clinician-session";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { RecoveryReauthenticationRequiredError } from "../app/protected-clinical-storage";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useVisiblePolling } from "./use-visible-polling";
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -42,6 +43,8 @@ export function AssignedCalls({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
+  const [reauthenticating, setReauthenticating] = useState(false);
   const openingRef = useRef(false);
   const refreshEpoch = useRef(0);
   const callsRef = useRef<AssignedCall[]>([]);
@@ -71,12 +74,14 @@ export function AssignedCalls({
     refreshEpoch.current += 1;
     onOpeningChange?.(call);
     setOpeningId(call.id);
+    setReauthenticationId(null);
     setError(null);
     try {
       const opened = await openAssignedCall(csrfToken, call.id);
       // Keep the selected card and its progress state until the protected
       // workspace is ready; preparation may require additional round trips.
       await onOpened?.(opened, call);
+      setReauthenticationId(null);
       const nextCalls = callsRef.current.filter((candidate) => candidate.id !== call.id);
       if (opened.replacementAssignment && !nextCalls.some((candidate) => candidate.id === opened.replacementAssignment!.id)) {
         nextCalls.unshift(opened.replacementAssignment);
@@ -85,6 +90,12 @@ export function AssignedCalls({
       setCalls(nextCalls);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
+      if (openError instanceof RecoveryReauthenticationRequiredError) {
+        setReauthenticationId(call.id);
+        window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>(
+          `[data-assignment-id="${CSS.escape(call.id)}"] input[name="currentPassword"]`)?.focus());
+        return;
+      }
       setError(openError instanceof Error ? openError.message : t("calls.openFailed"));
       window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(
         `[data-assignment-id="${CSS.escape(call.id)}"] button`)?.focus());
@@ -96,7 +107,20 @@ export function AssignedCalls({
     }
   }, [csrfToken, onOpened, onOpeningChange, t]);
 
-  useVisiblePolling(refresh, ASSIGNED_CALL_POLL_INTERVAL_MS, !paused,
+  const reauthenticateAndOpen = async (event: FormEvent<HTMLFormElement>, call: AssignedCall) => {
+    event.preventDefault();
+    setReauthenticating(true);
+    setError(null);
+    const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
+    try {
+      await reauthenticateClinicianSession(password, csrfToken);
+      await open(call);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("reports.reauthFailed"));
+    } finally { setReauthenticating(false); }
+  };
+
+  useVisiblePolling(refresh, ASSIGNED_CALL_POLL_INTERVAL_MS, !paused && reauthenticationId === null,
     `${session.organization.id}:${session.user.id}:${refreshRequest}`);
 
   useEffect(() => {
@@ -131,9 +155,21 @@ export function AssignedCalls({
                 <div><dt>{t("calls.priority")}</dt><dd>{call.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
                 <div><dt>{t("calls.unitNotified")}</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region, zone)}</time></dd></div>
               </dl>
-              <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
+              <button type="button" onClick={() => void open(call)} disabled={openingId !== null || reauthenticating}>
                 {openingId === call.id ? t("calls.opening") : t("calls.open")}
               </button>
+              {reauthenticationId === call.id && <form className="report-reauthentication"
+                onSubmit={(event) => void reauthenticateAndOpen(event, call)}>
+                <p id={`assigned-recovery-help-${call.id}`}>{t("reports.reauthHelp")}</p>
+                <label>{t("reports.currentPassword")}<input name="currentPassword" type="password"
+                  autoComplete="current-password" aria-describedby={`assigned-recovery-help-${call.id}`} required /></label>
+                <button type="submit" disabled={reauthenticating}>
+                  {reauthenticating ? t("reports.confirming") : t("reports.confirmRecover")}
+                </button>
+                <button type="button" disabled={reauthenticating} onClick={() => setReauthenticationId(null)}>
+                  {t("mobile.dialog.cancel")}
+                </button>
+              </form>}
             </li>
           ))}
         </ul>

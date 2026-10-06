@@ -7,7 +7,7 @@ import type {
 } from "@open-triage/contracts";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
-import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { CLINICIAN_REAUTHENTICATED_EVENT, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
@@ -41,6 +41,7 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import {
   flushProtectedReport,
   prepareProtectedReport,
+  pendingProtectedRecoveryHandles,
   recoverProtectedReport,
   RecoveryReauthenticationRequiredError,
 } from "../app/protected-clinical-storage";
@@ -82,8 +83,16 @@ export function OpenReports({
   const refreshing = useRef(false);
   const pauseEpoch = useRef(0);
   const pausedRef = useRef(paused);
-  useEffect(() => { pausedRef.current = paused; pauseEpoch.current += 1; }, [paused]);
+  useEffect(() => {
+    pausedRef.current = paused; pauseEpoch.current += 1;
+    return () => { pausedRef.current = true; pauseEpoch.current += 1; };
+  }, [paused]);
   const recoveryReauthentication = useRef(new RecoveryReauthenticationGate());
+  useEffect(() => {
+    const reauthenticated = () => recoveryReauthentication.current.reauthenticated();
+    window.addEventListener(CLINICIAN_REAUTHENTICATED_EVENT, reauthenticated);
+    return () => window.removeEventListener(CLINICIAN_REAUTHENTICATED_EVENT, reauthenticated);
+  }, []);
   const csrfToken = sessionRequestToken(session);
   const t = useCallback((key: string, params?: Record<string, string | number>) => resolveMessage(language, key, params), [language]);
   const showReports = useCallback((next: OpenReportSummary[]) => {
@@ -135,6 +144,7 @@ export function OpenReports({
     if (pausedRef.current || refreshing.current) return;
     const epoch = pauseEpoch.current;
     refreshing.current = true;
+    let directoryLoaded = false;
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
       const response = await fetchOpenReports();
@@ -142,21 +152,6 @@ export function OpenReports({
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
       const removed = reportsRef.current.filter((report) => completedIds.has(report.reportId));
-      for (const reportId of completedReportIds) {
-        if (!recoveryReauthentication.current.shouldAttempt(reportId)) continue;
-        if (cachedOpenReportSummaries(window.localStorage, session.user.id).some((cached) => cached.reportId === reportId)) continue;
-        try {
-          const recovered = await recoverProtectedReport(csrfToken, reportId, {
-            onNoRetainedWork: () => recoveryReauthentication.current.checked(reportId),
-          });
-          if (recovered && restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered)) {
-            recoveryReauthentication.current.checked(reportId);
-          }
-        } catch (recoveryError) {
-          if (!(recoveryError instanceof RecoveryReauthenticationRequiredError)) throw recoveryError;
-          recoveryReauthentication.current.requireReauthentication(reportId);
-        }
-      }
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
       response.openCalls.forEach((report) => cacheOpenReportSummary(window.localStorage, session, report));
@@ -171,9 +166,42 @@ export function OpenReports({
         ? cachedOpenReportSummaries(window.localStorage, session.user.id)
         : response.openCalls).filter((report) => !completedIds.has(report.reportId));
       showReports(visible);
+      directoryLoaded = true;
       setLoaded(true);
       setError(null);
+      if (activeReportId && completedIds.has(activeReportId)
+          && !nextDraftChange(window.localStorage, activeReportId)) onCompleted?.(activeReportId);
       await syncCachedReports();
+      // Render the authoritative directory before any recovery request. Only
+      // locked local pending work needs probing; a fresh browser has none.
+      const pendingHandles = completedReportIds.length ? await pendingProtectedRecoveryHandles() : new Set<string>();
+      let recoveredCompletedWork = false;
+      for (const reportId of completedReportIds) {
+        if (pausedRef.current || pauseEpoch.current !== epoch) return;
+        if (!pendingHandles.size) break;
+        if (!recoveryReauthentication.current.shouldAttempt(reportId)) continue;
+        if (cachedOpenReportSummaries(window.localStorage, session.user.id).some((cached) => cached.reportId === reportId)) continue;
+        try {
+          const recovered = await recoverProtectedReport(csrfToken, reportId, {
+            pendingHandles,
+            isCurrent: () => !pausedRef.current && pauseEpoch.current === epoch,
+            onNoRetainedWork: () => recoveryReauthentication.current.checked(reportId),
+          });
+          if (pausedRef.current || pauseEpoch.current !== epoch) return;
+          if (recovered && restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered)) {
+            recoveryReauthentication.current.checked(reportId);
+            recoveredCompletedWork = true;
+          }
+        } catch (recoveryError) {
+          if (!(recoveryError instanceof RecoveryReauthenticationRequiredError)) throw recoveryError;
+          recoveryReauthentication.current.requireReauthentication();
+          // Fresh credentials are a session-wide prerequisite. Do not send one
+          // identical failing request for every completed report.
+          break;
+        }
+      }
+      if (pausedRef.current || pauseEpoch.current !== epoch) return;
+      if (recoveredCompletedWork) await syncCachedReports();
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
       const syncedVisible = (browserRequestConfiguration().mode === "server"
         ? cachedOpenReportSummaries(window.localStorage, session.user.id)
@@ -182,16 +210,16 @@ export function OpenReports({
       if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
         ? t("reports.completedOne", { call: removed[0]!.callNumber })
         : t("reports.completedMany", { count: removed.length }));
-      if (activeReportId && completedIds.has(activeReportId)
-          && !nextDraftChange(window.localStorage, activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
       if (pausedRef.current || pauseEpoch.current !== epoch) return;
       if (refreshError instanceof Error && refreshError.message === "Your shift session has ended.") {
         onSessionEnded?.();
         return;
       }
-      const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
-      showReports(cached.length ? cached : reportsRef.current);
+      if (!directoryLoaded) {
+        const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
+        showReports(cached.length ? cached : reportsRef.current);
+      }
       setLoaded(true);
       setError(refreshError instanceof Error ? refreshError.message : t("reports.refreshFailed"));
     } finally {
@@ -208,7 +236,8 @@ export function OpenReports({
         opened = await reopenOpenReport(csrfToken, report.reportId);
         const recovered = await recoverProtectedReport(csrfToken, report.reportId);
         if (recovered) restoreRecoveredReport(window.localStorage, session.user.id, report.reportId, recovered);
-        else await prepareProtectedReport(csrfToken, report.reportId);
+        else await prepareProtectedReport(csrfToken, report.reportId, (payload) =>
+          restoreRecoveredReport(window.localStorage, session.user.id, report.reportId, payload));
         cacheReopenedReport(window.localStorage, session, opened);
         await flushProtectedReport(report.reportId);
       } catch (error) {
@@ -274,7 +303,8 @@ export function OpenReports({
             setCreating(true); setError(null);
             try {
               const opened = await createNewPatientReport(session);
-              await prepareProtectedReport(csrfToken, opened.report.id);
+              await prepareProtectedReport(csrfToken, opened.report.id, (payload) =>
+                restoreRecoveredReport(window.localStorage, session.user.id, opened.report.id, payload));
               await onReopened?.(opened);
               await refresh();
             } catch (reason) {

@@ -6,12 +6,13 @@ test("automatic recovery stops after 428 until explicit reauthentication succeed
   const gate = new RecoveryReauthenticationGate();
   assert.equal(gate.shouldAttempt("completed-report"), true);
 
-  gate.requireReauthentication("completed-report");
+  gate.requireReauthentication();
   assert.equal(gate.shouldAttempt("completed-report"), false);
-  assert.equal(gate.shouldAttempt("another-report"), true);
+  assert.equal(gate.shouldAttempt("another-report"), false);
 
   gate.reauthenticated();
   assert.equal(gate.shouldAttempt("completed-report"), true);
+  assert.equal(gate.shouldAttempt("another-report"), true);
 });
 
 test("completed-report recovery checks run once until explicit reauthentication", () => {

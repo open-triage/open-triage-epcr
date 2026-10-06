@@ -328,8 +328,8 @@ test("idle refreshes reuse protected ciphertext and do not repeat completed-repo
   for (let poll = 0; poll < 3; poll += 1) await refresh();
   expect(receipts).toBe(initialReceipts);
   expect((await encryptedRecords(page))[0]!.ciphertextRevision).toBe(original.ciphertextRevision);
-  expect(recoveryChecks).toBe(1);
-  expect(expiredGrantChecks).toBe(2);
+  expect(recoveryChecks).toBe(0);
+  expect(expiredGrantChecks).toBe(0);
   expect(activePolls).toBeGreaterThanOrEqual(4);
 });
 
@@ -385,11 +385,11 @@ test("a second browser recovers its own offline copy without replacing the first
     expect(adopted.checkpointScope).toBe("browser");
     expect(adopted.localRecordId).not.toBe(original.localRecordId);
     expect(browserScopedReceipts).toBeGreaterThan(0);
+    await second.getByRole("button", { name: "Stationary", exact: true }).click();
     await otherContext.setOffline(true);
     await second.evaluate(() => window.dispatchEvent(new Event("offline")));
-    await second.getByRole("button", { name: "Add clinical note" }).click();
-    await second.getByLabel("Note summary").fill("Second browser offline copy");
-    await second.getByRole("button", { name: "Add to timeline" }).click();
+    await second.getByRole("textbox", { name: "First Name", exact: true }).fill("Second-browser-offline");
+    await second.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
     await expect(second.locator(".sync-status")).toHaveText("Pending sync");
     await expect.poll(async () => Number((await encryptedRecords(second))[0]?.ciphertextRevision))
       .toBeGreaterThan(Number(adopted.ciphertextRevision));
@@ -397,6 +397,179 @@ test("a second browser recovers its own offline copy without replacing the first
   } finally {
     await otherContext.close();
   }
+});
+
+for (const needsReauthentication of [false, true]) {
+  test(`opening an assigned call adopts an existing browser's key${needsReauthentication ? " after reauthentication" : ""}`, async ({ page, browser }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    const first = await installRoutes(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open call", exact: true }).click();
+    await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+    const original = (await encryptedRecords(page))[0]!;
+    const otherContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    try {
+      const second = await otherContext.newPage();
+      const routes = await installRoutes(second, true, first.recovery());
+      if (needsReauthentication) routes.restart();
+      let registrations = 0;
+      await second.route(`**/api/reports/${reportId}/protected-key-envelope`, route => {
+        registrations += 1;
+        return route.fulfill({ status: 409 });
+      });
+      // Opening consumes the assignment. Polling must not remove the card that
+      // is still asking for credentials to finish opening its protected report.
+      await second.route("**/api/calls/assigned", route => route.fulfill({ json: {
+        assignedCalls: registrations === 0 ? [assignedCall] : [], canceledAssignmentIds: [],
+      } }));
+      await second.goto(page.url());
+      await second.getByRole("button", { name: "Open call", exact: true }).click();
+      if (needsReauthentication) {
+        await expect(second.getByLabel("Current password")).toBeFocused();
+        await second.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+        await expect(second.getByLabel("Current password")).toBeVisible();
+        await second.screenshot({ path: test.info().outputPath("assigned-call-reauthentication.png"), fullPage: true });
+        await second.getByLabel("Current password").fill("current-password");
+        await second.getByRole("button", { name: "Confirm and recover" }).click();
+      }
+      await expect(second.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
+      await expect(second.getByText("Offline storage unavailable", { exact: true })).toHaveCount(0);
+      await expect.poll(async () => (await encryptedRecords(second)).length).toBe(1);
+      const adopted = (await encryptedRecords(second))[0]!;
+      expect(adopted.checkpointScope).toBe("browser");
+      expect(adopted.localRecordId).not.toBe(original.localRecordId);
+      expect(adopted.recoveryHandle).toBe(original.recoveryHandle);
+      expect(registrations).toBe(needsReauthentication ? 2 : 1);
+      expect((await encryptedRecords(page))[0]!.localRecordId).toBe(original.localRecordId);
+    } finally { await otherContext.close(); }
+  });
+}
+
+test("hundreds of completed reports do not delay the directory or trigger recovery in a fresh browser", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, true, { recoveryHandle: "unused", reportKeyBase64: Buffer.alloc(32).toString("base64") });
+  let checks = 0;
+  await page.route("**/api/reports/open", route => route.fulfill({ json: {
+    openCalls: [{ reportId, callNumber: "OPEN-NOW", lastSavedAt: new Date().toISOString(), syncStatus: "saved",
+      validationErrorCount: 0, revision: 1, formVersionId: openedAssignment.report.formVersionId,
+      catalogReleaseId: openedAssignment.report.catalogReleaseId }],
+    completedReportIds: Array.from({ length: 450 }, (_, index) => `completed-${index}`),
+  } }));
+  await page.route("**/api/reports/*/recovery-grants", route => { checks++; return route.fulfill({ status: 404 }); });
+  await page.goto("/");
+  await expect(page.getByText("OPEN-NOW", { exact: true })).toBeVisible();
+  await expect(page.getByText("Loading open reports…", { exact: true })).toHaveCount(0);
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.waitForTimeout(300);
+  expect(checks).toBe(0);
+});
+
+test("a stalled completed-report recovery leaves open reports usable and preserves pending ciphertext", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, true, { recoveryHandle: "unused", reportKeyBase64: Buffer.alloc(32).toString("base64") });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Reopen report" })).toBeVisible();
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("open-triage-protected-clinical-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction("encrypted-reports", "readwrite");
+        transaction.objectStore("encrypted-reports").put({ localRecordId: "pending-opaque-record", schemaVersion: 1,
+          algorithm: "AES-256-GCM", recoveryHandle: "pending-opaque-handle", recoveryDeadline: "2099-01-01T00:00:00Z",
+          ciphertextRevision: 2, synchronizedRevision: 1, updatedAt: new Date().toISOString(),
+          nonce: new ArrayBuffer(12), ciphertext: new ArrayBuffer(16) });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally { database.close(); }
+  });
+  let checks = 0;
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/reports/open", route => route.fulfill({ json: {
+    openCalls: [{ reportId, callNumber: "VISIBLE-DURING-RECOVERY", lastSavedAt: new Date().toISOString(),
+      syncStatus: "saved", validationErrorCount: 0, revision: 1, formVersionId: openedAssignment.report.formVersionId,
+      catalogReleaseId: openedAssignment.report.catalogReleaseId }], completedReportIds: ["finished-with-pending-work"],
+  } }));
+  await page.route("**/api/reports/finished-with-pending-work/recovery-grants", async route => {
+    checks++; await held; await route.fulfill({ status: 404 });
+  });
+  try {
+    await page.reload();
+    await expect.poll(() => checks).toBe(1);
+    await expect(page.getByText("VISIBLE-DURING-RECOVERY", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reopen report" })).toBeEnabled();
+    expect((await encryptedRecords(page))[0]!.localRecordId).toBe("pending-opaque-record");
+  } finally { release(); }
+});
+
+test("completed-report recovery still submits retained pending work after the directory is displayed", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
+  const command = { commandId: "60000000-0000-4000-8000-000000000099", expectedRevision: 1, groups: [], occurrences: [] };
+  const key = await page.evaluate(async ({ report, user, callNumber, command }) => {
+    const raw = crypto.getRandomValues(new Uint8Array(32));
+    const key = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt"]);
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const payload = { schemaVersion: 1, report: { report, ownerUserId: user, callNumber,
+      workflowState: "open", syncStatus: "pending", lastSavedAt: new Date().toISOString(), validationErrorCount: 0,
+      queuedChanges: [{ command, attempted: false }] } };
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, tagLength: 128,
+      additionalData: new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, recoveryHandle: "retained-handle", ciphertextRevision: 2 })) },
+    key, new TextEncoder().encode(JSON.stringify(payload)));
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("open-triage-protected-clinical-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction("encrypted-reports", "readwrite");
+        transaction.objectStore("encrypted-reports").put({ localRecordId: "retained-record", schemaVersion: 1,
+          algorithm: "AES-256-GCM", recoveryHandle: "retained-handle", recoveryDeadline: "2099-01-01T00:00:00Z",
+          ciphertextRevision: 2, synchronizedRevision: 1, updatedAt: new Date().toISOString(), nonce: nonce.buffer, ciphertext });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally { database.close(); }
+    return btoa(String.fromCharCode(...raw));
+  }, { report: openedAssignment.report, user: session.user.id, callNumber: assignedCall.callNumber, command });
+  await page.route("**/api/reports/open", route => route.fulfill({ json: { openCalls: [],
+    completedReportIds: [reportId, "unnecessary-historical-check"] } }));
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let checks = 0;
+  await page.route("**/api/reports/*/recovery-grants", async route => {
+    checks++;
+    await held;
+    await route.fulfill({ json: { schemaVersion: 1, envelopeVersion: 1, recoveryHandle: "retained-handle",
+      grant: "single-use", expiresAt: "2099-01-01T00:00:00Z", reportStatus: "signed" } });
+  });
+  await page.route(`**/api/reports/${reportId}/recovery-grants/consume`, route => route.fulfill({ json: {
+    reportKeyBase64: key, wrappingKeyVersion: 1,
+  } }));
+  let submitted = false;
+  await page.route(`**/api/reports/${reportId}/draft-changes`, route => {
+    expect(route.request().postDataJSON()).toEqual(command);
+    submitted = true;
+    return route.fulfill({ json: { id: reportId, status: "signed", revision: 2 } });
+  });
+  try {
+    await page.reload();
+    await expect.poll(() => checks).toBe(1);
+    await expect(page.getByText("Loading open reports…", { exact: true })).toHaveCount(0);
+    expect(submitted).toBe(false);
+    release();
+    await expect.poll(() => submitted).toBe(true);
+    await expect.poll(async () => (await encryptedRecords(page)).length).toBe(0);
+    expect(checks).toBe(1);
+  } finally { release(); }
 });
 
 test("switching presentations preserves a queued draft save", async ({ page }) => {
@@ -579,7 +752,7 @@ for (const kind of ["photo", "audio"] as const) {
     const readiness = page.getByRole("region", { name: "Note readiness" });
     await expect(readiness).toContainText(`${kind === "photo" ? "Photo" : "Audio"} note is failed`);
     await readiness.getByRole("button").click();
-    await page.getByRole("dialog").getByRole("button", { name: `Delete ${kind}`, exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: `Delete ${kind}`, exact: true }).click();
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await expect(readiness.getByRole("button")).toHaveCount(0);
@@ -646,11 +819,11 @@ test("logout locks pending ciphertext, reveals nothing to another user, and lets
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
 
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await page.getByRole("button", { name: "Add clinical note" }).click();
-  await page.getByLabel("Note summary").fill("Retained only for the original clinician");
-  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await page.getByRole("textbox", { name: "First Name", exact: true }).fill("Retained-original");
+  await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
 
   await page.getByRole("button", { name: "Log out" }).click();
@@ -665,7 +838,7 @@ test("logout locks pending ciphertext, reveals nothing to another user, and lets
   await page.getByLabel("Username").fill("other");
   await page.getByLabel("Password").fill("irrelevant-password");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByText("Different Clinician", { exact: true })).toBeVisible();
+  await expect(page.getByRole("banner")).toContainText("Signed in as Different Clinician");
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reopen report" })).toHaveCount(0);
   await expect(page.getByText(/recover/i)).toHaveCount(0);
@@ -675,5 +848,5 @@ test("logout locks pending ciphertext, reveals nothing to another user, and lets
   await page.getByLabel("Password").fill("irrelevant-password");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("button", { name: "Reopen report" }).click();
-  await expect(page.getByText("Retained only for the original clinician", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("Retained-original");
 });
