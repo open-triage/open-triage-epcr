@@ -1,6 +1,6 @@
 {
   "name": "@open-triage/database",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
@@ -38,7 +38,7 @@
     "install:synthetic:runtime": "node scripts/migrate.mjs && node scripts/load-nemsis-catalog.mjs && node scripts/bootstrap-synthetic-installation.mjs && node scripts/seed-initial-validation-versions.mjs && node scripts/seed-install-definitions.mjs"
   },
   "dependencies": {
-    "@open-triage/contracts": "0.1.2",
+    "@open-triage/contracts": "0.1.3",
     "pg": "^8.23.0"
   }
 }

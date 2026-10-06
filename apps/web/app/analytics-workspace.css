@@ -1,11 +1,19 @@
 .review-workspace-selector { display: flex; margin-bottom: 12px; }
-.review-workspace-selector .review-tabs { margin: 0; padding: 0; border: 0; background: transparent; gap: 6px; }
-.review-workspace-selector .review-tabs button { min-width: 128px; font-size: 20px; font-weight: 700; }
+.review-workspace-selector .review-tabs { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; gap: 6px; }
+.review-workspace-selector .review-tabs button { flex: 1 1 0; min-width: 0; font-size: 20px; font-weight: 700; }
 .analytics-workspace { display: grid; grid-template-columns: 320px minmax(0,1fr); min-height: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; height: var(--available-height, 75vh); }
 .analytics-rail { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--green) 3%, var(--paper)); }
 .analytics-rail fieldset { margin: 0; padding: 18px 20px; border: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-width: 0; min-height: 0; }
 .analytics-rail legend { padding: 18px 0 0; font-size: var(--text-body); font-weight: 700; }
 .analytics-control-label { display: block; margin-bottom: 6px; font-size: var(--text-caption); font-weight: 700; }
+.analytics-saved-controls { display: grid; gap: 8px; min-width: 0; }
+.analytics-saved-controls button { min-width: 0; padding-inline: 6px; }
+.analytics-saved-controls small { display: block; overflow-wrap: anywhere; }
+.analytics-saved-controls p { margin: 0; }
+.analytics-saved-list:not([hidden]) { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.analytics-saved-list[hidden] { display: none; }
+.analytics-saved-dialog .analytics-picker-results { max-height: min(400px, 50dvh); }
+.analytics-saved-dialog form { display: grid; gap: 12px; }
 .analytics-rail small, .analytics-caption, .analytics-result-footer, .analytics-apply p { color: var(--muted); font-size: var(--text-caption); }
 .analytics-visualizations { display: flex; gap: 4px; }
 .analytics-visualizations button { flex: 1; padding-inline: 6px; }

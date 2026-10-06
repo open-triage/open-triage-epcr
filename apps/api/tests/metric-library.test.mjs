@@ -286,18 +286,31 @@ test('selector counts batch configured inputs and apply authorized dates, filter
       return parameters[0].map(id => ({ id, created_at: context.timestamp, updated_at: context.timestamp, form_id: 'form', form_version: 1,
         catalog_standard: 'NEMSIS', catalog_version: '3.5.1', catalog_dataset: 'EMSDataSet', catalog_release_id: 'catalog', revision: '1', amendment: 0 }));
     }
-    if (sql.includes('from clinical.group_instance')) return parameters[0].flatMap(id => [
+    if (sql.includes('from clinical.group_instance')) {
+      assert.match(sql, /parent\.report_id=child\.report_id/);
+      assert.deepEqual(parameters[2], ['observations'], 'selector groups retain empty instances and correlation ancestry');
+      return parameters[0].flatMap(id => [
       { id: `${id}-root`, report_id: id, group_id: 'root', ordinal: 0 },
       { id: `${id}-observations`, report_id: id, group_id: 'observations', ordinal: 0, parent_group_instance_id: `${id}-root` },
-    ]);
-    if (sql.includes('from clinical.element_occurrence')) return parameters[0].flatMap(id => [
+      ]);
+    }
+    if (sql.includes('from clinical.element_occurrence')) {
+      assert.match(sql, /element_id=any\(\$2::text\[\]\)/);
+      assert.deepEqual(parameters[1], ['code', 'start', 'time'], 'input union includes rule metric dependencies');
+      return parameters[0].flatMap(id => [
       { id: `${id}-start`, report_id: id, group_instance_id: `${id}-root`, element_id: 'start', ordinal: 0, value_kind: 'datetime', value_datetime: context.timestamp },
       ...(id === 'missing' ? [] : [
         { id: `${id}-time`, report_id: id, group_instance_id: `${id}-observations`, element_id: 'time', ordinal: 0, value_kind: 'datetime', value_datetime: `2026-10-04T00:0${id === 'fail' ? 2 : 1}:00Z` },
         { id: `${id}-code`, report_id: id, group_instance_id: `${id}-observations`, element_id: 'code', ordinal: 0, value_kind: 'coded', code: 'shock', code_system: 'test' },
       ]),
-    ]);
-    if (sql.includes('from clinical.amendment a')) return [];
+      ]);
+    }
+    if (sql.includes('from clinical.amendment a')) {
+      assert.deepEqual(parameters[1], ['code', 'start', 'time']);
+      assert.match(sql, /c\.corrected_value->>'element_id'/);
+      assert.match(sql, /c\.original_value->>'element_id'/);
+      return [];
+    }
     throw new Error(`Unexpected query: ${sql}`);
   } };
   const database = { transaction: async (isolation, callback) => { assert.equal(isolation, 'REPEATABLE READ'); return callback(manager); } };
@@ -310,7 +323,7 @@ test('selector counts batch configured inputs and apply authorized dates, filter
   assert.deepEqual(counts, { total: 3, included: 2, elements: [
     { id: 'records', included: 3 }, { id: 'metric:version:metric', included: 2 }, { id: 'rule:version:rule', included: 2 },
   ], values: [] });
-  for (const prefix of ['select id,report_id,parent_group_instance_id', 'select * from clinical.element_occurrence', 'select a.report_id,c.action'])
+  for (const prefix of ['with recursive selected_groups', 'select * from clinical.element_occurrence', 'select a.report_id,c.action'])
     assert.equal(queries.filter(sql => sql.trimStart().startsWith(prefix)).length, 1, 'one input read per table for the whole picker page');
   const graph = await service.query('test', definition);
   assert.equal(graph.completeness.total, 3);

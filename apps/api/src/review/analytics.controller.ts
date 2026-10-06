@@ -1,10 +1,34 @@
-import { Body, Controller, Get, Header, Headers, Post, Query, Res } from "@nestjs/common";
-import type { AnalyticsCatalogCountsRequest, AnalyticsDefinition } from "@open-triage/contracts";
+import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
+import type { AnalyticsCatalogCountsRequest, AnalyticsDefinition, AnalyticsSaveVisualizationCommand } from "@open-triage/contracts";
 import { AnalyticsService } from "./analytics.service.js";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 @Controller("review/analytics")
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
+  @Get("saved")
+  @Header("Cache-Control", "no-store, private")
+  saved(@Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
+    return this.analytics.saved(bearerToken(authorization, cookie));
+  }
+  @Get("saved/:id")
+  @Header("Cache-Control", "no-store, private")
+  openSaved(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
+    return this.analytics.openSaved(bearerToken(authorization, cookie), id);
+  }
+  @Post("saved")
+  @Header("Cache-Control", "no-store, private")
+  save(@Body() command: AnalyticsSaveVisualizationCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string) {
+    return this.analytics.save(bearerToken(authorization, cookie), undefined, command, csrfToken);
+  }
+  @Post("saved/:id")
+  @Header("Cache-Control", "no-store, private")
+  updateSaved(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() command: AnalyticsSaveVisualizationCommand, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string, @Headers("x-csrf-token") csrfToken?: string) {
+    return this.analytics.save(bearerToken(authorization, cookie), id, command, csrfToken);
+  }
   @Get("elements")
   @Header("Cache-Control", "no-store, private")
   elements(@Query("search") search?: string, @Query("page") page?: string, @Query("purpose") purpose?: string,

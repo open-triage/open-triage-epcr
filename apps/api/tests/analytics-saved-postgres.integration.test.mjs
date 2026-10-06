@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
+import { AnalyticsService } from '../dist/review/analytics.service.js';
+import { ReviewService } from '../dist/review/review.service.js';
+
+const integration = process.env.DATABASE_URL ? test : test.skip;
+integration('personal visualizations persist parameters, enforce current access and csrf, and stay separate from legacy analyses', async t => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  await client.query('begin');
+  t.after(async () => { await client.query('rollback'); await client.end(); });
+  const fixture = (await client.query(`select organization_id,documenting_user_id from clinical.report
+    where synthetic and status='signed' and (expires_at is null or expires_at>now()) limit 1`)).rows[0];
+  assert.ok(fixture, 'seed a local synthetic report before integration tests');
+  let session = { organization: { id: fixture.organization_id }, user: { id: fixture.documenting_user_id }, capabilities: ['review:all', 'clinical:demo'] };
+  const queries = [];
+  const manager = { query: async (sql, params) => { queries.push(sql); return (await client.query(sql, params)).rows; } };
+  const database = { ...manager, manager, transaction: async (level, run) => (typeof level === 'function' ? level : run)(manager) };
+  const sessions = { get: async () => session, assertCsrf: async (_token, csrf) => { if (csrf !== 'valid') throw new Error('Invalid CSRF'); } };
+  const service = new AnalyticsService(database, sessions, { analyticsDatabase: async () => { throw new Error('Saving/loading must not run an analysis'); } });
+  const legacy = new ReviewService(database, sessions);
+  await client.query('set local role open_triage_api_runtime');
+  const definition = { version: 1, metric: 'records', aggregation: 'percentage', visualization: 'bar', from: '2026-08-01',
+    through: '2026-10-05', groupBy: null, timeGrouping: 'month', filters: [] };
+  const command = { commandId: randomUUID(), name: 'Personal fixture', definition };
+  await assert.rejects(service.save('test', undefined, command, 'invalid'), /CSRF/);
+  const saved = await service.save('test', undefined, command, 'valid');
+  assert.equal(saved.version, 1);
+  assert.deepEqual(await service.save('test', undefined, command, 'valid'), saved, 'retries are idempotent');
+  await assert.rejects(service.save('test', undefined, { ...command, name: 'Changed command' }, 'valid'), error => error.status === 409);
+  assert.ok((await service.saved('test')).some(item => item.id === saved.id));
+  assert.ok(!(await legacy.savedAnalyses('test')).some(item => item.id === saved.id));
+  await assert.rejects(legacy.openSavedAnalysis('test', saved.id, 'synthetic'), error => error.status === 404);
+  const opened = await service.openSaved('test', saved.id);
+  assert.deepEqual(opened.definition, definition);
+  assert.equal(opened.elements.find(element => element.id === 'records').datatype, 'records');
+  assert.ok(queries.every(sql => !sql.includes('review_volume_source') && !sql.includes('projection_health')), 'parameters do not generate a figure');
+  const update = { commandId: randomUUID(), name: 'Revised fixture', expectedVersion: 1, definition: { ...definition, aggregation: 'count', visualization: 'line' } };
+  const updated = await service.save('test', saved.id, update, 'valid');
+  assert.equal(updated.version, 2);
+  assert.deepEqual((await service.openSaved('test', saved.id)).definition, update.definition);
+  await assert.rejects(service.save('test', saved.id, { ...update, commandId: randomUUID() }, 'valid'), error => error.status === 409);
+  const own = session;
+  session = { ...own, user: { id: randomUUID() } };
+  assert.ok(!(await service.saved('test')).some(item => item.id === saved.id));
+  await assert.rejects(service.openSaved('test', saved.id), error => error.status === 404);
+  await assert.rejects(service.save('test', saved.id, { ...update, commandId: randomUUID(), expectedVersion: 2 }, 'valid'), error => error.status === 404);
+  session = { ...own, organization: { id: randomUUID() } };
+  await assert.rejects(service.openSaved('test', saved.id), error => error.status === 404);
+  session = { ...own, capabilities: [] };
+  await assert.rejects(service.saved('test'), error => error.status === 403);
+  await assert.rejects(service.openSaved('test', saved.id), error => error.status === 403);
+});

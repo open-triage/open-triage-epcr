@@ -19,7 +19,13 @@ test('grouped charts and tables display names instead of code identities', async
   for (const visualization of ['Line', 'Bar', 'Table']) {
     await page.getByRole('button', { name: visualization, exact: true }).click();
     await page.getByRole('button', { name: 'Update visualization' }).click();
-    const labels = visualization === 'Table' ? page.locator('.analytics-table tbody th') : page.locator('.analytics-legend li');
+    if (visualization === 'Bar') {
+      await expect(page.locator('.analytics-bar-label')).toHaveText(['Critical', 'Lower Acuity']);
+      await expect(page.locator('.analytics-legend')).toHaveCount(0);
+      await expect(page.locator('.analytics-result')).not.toContainText('1. Critical');
+    }
+    const labels = visualization === 'Table' ? page.locator('.analytics-table tbody th')
+      : visualization === 'Bar' ? page.locator('.analytics-bar-label') : page.locator('.analytics-legend li');
     await expect(labels).toHaveText(['Critical', 'Lower Acuity']);
     await expect(page.locator('.analytics-result')).not.toContainText(/2305001|2305005/);
   }
@@ -87,6 +93,79 @@ test('failed and delayed refreshes retain applied results and newer controls',as
   await page.getByRole('tab',{name:'Review',exact:true}).click();await page.getByRole('tab',{name:'Analytics',exact:true}).click();await expect(page.getByLabel('Time grouping')).toHaveValue('month');
 });
 
+test('the visualization button cancels a pending query and ignores its late response', async ({ page }) => {
+  const state = await setupAnalytics(page);
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  await page.getByRole('button', { name: 'Update visualization' }).click();
+  await expect(page.locator('.analytics-result').getByRole('img')).toBeVisible();
+  const previous = await page.locator('.analytics-context > strong').textContent();
+  let release = () => {};
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  state.queryHook = async (route, definition) => {
+    await wait;
+    await route.fulfill({ json: { ...analyticsFixture(definition), summary: 99 } }).catch(() => {});
+  };
+  await page.getByLabel('Time grouping').selectOption('day');
+  await page.getByRole('button', { name: 'Update visualization' }).click();
+  await expect.poll(() => state.queries.length).toBe(2);
+  await page.getByLabel('Time grouping').selectOption('month');
+  await page.locator('.analytics-rail').getByLabel('From', { exact: true }).fill('');
+  const cancel = page.getByRole('button', { name: 'Cancel visualization' });
+  await expect(cancel).toBeEnabled();
+  const aborted = page.waitForEvent('requestfailed', request => request.url().endsWith('/analytics/query'));
+  await cancel.click();
+  await expect(page.getByText('Visualization update cancelled.', { exact: true })).toBeVisible();
+  await expect(page.locator('.analytics-result')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('.analytics-context > strong')).toHaveText(previous!);
+  await expect(page.getByLabel('Time grouping')).toHaveValue('month');
+  await expect(page.getByRole('button', { name: 'Update visualization' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Export', exact: false }).first()).toBeDisabled();
+  await page.locator('.analytics-rail').getByLabel('From', { exact: true }).fill(state.queries[0]!.from);
+  state.queryHook = undefined;
+  await page.getByRole('button', { name: 'Update visualization' }).click();
+  await expect.poll(() => state.queries.length).toBe(3);
+  await expect(page.getByText('All choices applied', { exact: true })).toBeVisible();
+  release();
+  expect((await aborted).failure()?.errorText).toContain('ABORTED');
+  await expect(page.locator('.analytics-context > strong')).toHaveText(previous!);
+});
+
+test('bar labels wrap directly below their bars at desktop and mobile widths', async ({ page }) => {
+  const state = await setupAnalytics(page);
+  const names = ['Emergency department arrival with advanced treatment and continued observation after a prolonged transport',
+    'Regional specialty destination with prolonged transport and continued monitoring during transfer of patient care'];
+  state.queryHook = async (route, definition) => {
+    const result = analyticsFixture(definition);
+    result.series = result.series.map((series, index) => ({ ...series, groupLabel: names[index]! }));
+    await route.fulfill({ json: result });
+  };
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  await page.getByRole('button', { name: 'Group by No grouping' }).click();
+  await page.getByRole('row', { name: 'Select Dispatch priority' }).click();
+  await page.getByRole('button', { name: 'Bar', exact: true }).click();
+  await page.getByRole('button', { name: 'Update visualization' }).click();
+  await expect(page.locator('.analytics-bar-label')).toHaveCount(2);
+  expect(await page.locator('.analytics-bar-label').first().locator('tspan').count()).toBeGreaterThan(1);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const positions = await page.locator('.analytics-chart').evaluate(svg => {
+      const chart = svg.getBoundingClientRect();
+      return [...svg.querySelectorAll('.analytics-bar-label')].map(label => {
+        const box = label.getBoundingClientRect(), bar = label.parentElement!.querySelector('rect')!.getBoundingClientRect();
+        return { center: (box.left + box.right) / 2, barCenter: (bar.left + bar.right) / 2,
+          top: box.top, barBottom: bar.bottom, bottom: box.bottom, chartBottom: chart.bottom };
+      });
+    });
+    for (const position of positions) {
+      expect(Math.abs(position.center - position.barCenter)).toBeLessThan(1);
+      expect(position.top).toBeGreaterThan(position.barBottom);
+      expect(position.bottom).toBeLessThan(positions[0]!.chartBottom);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `/tmp/analytics-bar-labels-${width}.png`, fullPage: true });
+  }
+});
+
 test('mobile, enlarged text, agency colors and keyboard dialogs remain usable',async({page})=>{
   await page.setViewportSize({width:390,height:844});await setupAnalytics(page);await page.getByRole('tab',{name:'Analytics',exact:true}).click();
   await page.evaluate(()=>{document.documentElement.style.setProperty('--green','#5b2788');document.documentElement.style.fontSize='20px';});
@@ -96,4 +175,108 @@ test('mobile, enlarged text, agency colors and keyboard dialogs remain usable',a
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.evaluate(()=>window.scrollTo(0,0));
   await page.screenshot({path:'/tmp/unified-analytics-mobile.png',fullPage:true});
+});
+
+test('personal visualization parameters save, survive reload, restore controls and update without generating a query', async ({ page }) => {
+  const state = await setupAnalytics(page);
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  await page.getByRole('button', { name: 'Bar', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Aggregation', exact: true }).selectOption('percentage');
+  await page.locator('.analytics-rail').getByLabel('From', { exact: true }).fill('2026-08-01');
+  await page.locator('.analytics-rail').getByLabel('Through', { exact: true }).fill('2026-10-05');
+  await page.getByRole('button', { name: 'Group by No grouping' }).click();
+  await page.getByRole('row', { name: 'Select Dispatch priority' }).click();
+  await page.getByRole('button', { name: 'Add filter', exact: false }).click();
+  await page.getByRole('row', { name: 'Select Custom assessment' }).click();
+  await page.getByRole('checkbox', { name: 'High', exact: true }).check();
+  await page.getByRole('button', { name: 'Use 1 values' }).click();
+  await page.getByRole('button', { name: 'Save visualization', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add new visualization', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('My medication view');
+  state.saveFailure = true;
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Saved visualizations are unavailable');
+  await expect(page.getByRole('dialog').getByLabel('Name', { exact: true })).toHaveValue('My medication view');
+  state.saveFailure = false;
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  expect(state.saveCommands[0]!.commandId).toBe(state.saveCommands[1]!.commandId);
+  expect(state.queries).toHaveLength(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  await page.locator('.analytics-rail').getByLabel('From', { exact: true }).fill('');
+  await page.getByRole('combobox', { name: 'Saved visualizations', exact: true }).selectOption({ label: 'My medication view' });
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Bar', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('combobox', { name: 'Aggregation', exact: true })).toHaveValue('percentage');
+  await expect(page.locator('.analytics-rail').getByLabel('From', { exact: true })).toHaveValue('2026-08-01');
+  await expect(page.locator('.analytics-rail').getByLabel('Through', { exact: true })).toHaveValue('2026-10-05');
+  await expect(page.getByRole('button', { name: 'Group by Dispatch priority' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove filter: Custom assessment' })).toBeVisible();
+  expect(state.queries).toHaveLength(0);
+  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Saved visualizations', exact: true }).selectOption({ label: 'My medication view' });
+  await expect(page.getByRole('button', { name: 'Bar', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByLabel('Time grouping').selectOption('month');
+  await page.getByRole('button', { name: 'Save visualization', exact: true }).click();
+  const commandsBeforeReplace = state.saveCommands.length;
+  await page.getByRole('dialog').getByRole('cell', { name: 'My medication view', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Replace visualization?' })).toBeVisible();
+  expect(state.saveCommands).toHaveLength(commandsBeforeReplace);
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  expect((await new AxeBuilder({ page }).include('.analytics-saved-dialog').analyze()).violations).toEqual([]);
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  const replace = page.getByRole('button', { name: 'Replace visualization: My medication view', exact: true });
+  await expect(replace).toBeFocused();
+  expect(state.saved[0]!.version).toBe(1);
+  await replace.press('Enter');
+  state.saveFailure = true;
+  await page.getByRole('dialog').getByRole('button', { name: 'Replace', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Saved visualizations are unavailable');
+  await expect(page.getByRole('dialog', { name: 'Replace visualization?' })).toBeVisible();
+  state.saveFailure = false;
+  await page.getByRole('dialog').getByRole('button', { name: 'Replace', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  expect(state.saveCommands[commandsBeforeReplace]!.commandId).toBe(state.saveCommands[commandsBeforeReplace + 1]!.commandId);
+  expect(state.saved).toHaveLength(1);
+  expect(state.saved[0]!.version).toBe(2);
+  expect(state.saved[0]!.definition).toMatchObject({ visualization: 'line', timeGrouping: 'month' });
+  await page.getByRole('button', { name: 'Save visualization', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add new visualization', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Add new visualization', exact: true })).toBeFocused();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add new visualization', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Second view');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  expect(state.saved).toHaveLength(2);
+  await page.getByRole('button', { name: 'Update visualization' }).click();
+  await expect(page.locator('.analytics-result').getByRole('img')).toBeVisible();
+  expect(state.queries).toHaveLength(1);
+  state.savedListFailure = true;
+  await page.getByRole('button', { name: 'Save visualization', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Saved visualizations are unavailable');
+  await expect(page.getByRole('dialog').getByRole('cell', { name: 'My medication view', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('cell', { name: 'Second view', exact: true })).toBeVisible();
+  state.savedListFailure = false;
+  await page.getByRole('dialog').getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toBeHidden();
+  expect((await new AxeBuilder({ page }).include('.analytics-saved-dialog').analyze()).violations).toEqual([]);
+  await page.screenshot({ path: '/tmp/analytics-saved-visualizations.png', fullPage: true });
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save visualization', exact: true })).toBeFocused();
+  const dropdown = await page.getByRole('combobox', { name: 'Saved visualizations', exact: true }).boundingBox();
+  const saveButton = await page.getByRole('button', { name: 'Save visualization', exact: true }).boundingBox();
+  expect(dropdown!.y + dropdown!.height).toBeLessThanOrEqual(saveButton!.y);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Save visualization', exact: true }).click();
+  await page.screenshot({ path: '/tmp/analytics-saved-visualizations-desktop.png', fullPage: true });
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  state.savedAccessDenied = true;
+  await page.getByRole('button', { name: 'Save visualization', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.getByRole('combobox', { name: 'Saved visualizations', exact: true }).getByRole('option')).toHaveCount(1);
+  await expect(page.locator('.analytics-saved-controls')).not.toContainText('Second view');
 });

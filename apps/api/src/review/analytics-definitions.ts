@@ -90,17 +90,29 @@ export async function contributeConfiguredDefinitions(database: Pick<EntityManag
   [ids, scope.organizationId, scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId]);
   if (rows.length !== reports.length) throw new ConflictException("Analytical report access changed; refresh the result");
   const compatibleIds = rows.filter((row) => definitions.some(({ configured }) => row.catalog_release_id === configured.catalogReleaseId)).map((row) => row.id);
+  // Compiled rule references also include the inputs of referenced metrics.
+  // Limit clinical reads to the selected definitions so unrelated fields do not
+  // consume their input budget or enter encounter-document assembly.
+  const inputElementIds = [...new Set(definitions.flatMap(({ definition, rule }) =>
+    (definition ?? rule)!.references.elementIds))].sort();
+  const inputGroupIds = [...new Set(definitions.flatMap(({ definition, rule }) => [
+    ...((definition ?? rule)!.references.groupIds ?? []),
+    ...(rule?.references.metricIds ?? []).flatMap((id) => bundle.metrics?.find((metric) => metric.id === id)?.references.groupIds ?? []),
+  ]))].sort();
   type GroupRow = Parameters<typeof assembleEncounterDocument>[1][number] & { report_id: string };
   type ValueRow = Parameters<typeof assembleEncounterDocument>[2][number] & { report_id: string; identifying?: boolean };
-  const groupRows = compatibleIds.length ? await database.query<GroupRow[]>(`select id,report_id,parent_group_instance_id,group_id,ordinal,documented_time,correlation_id
-    from clinical.group_instance where report_id=any($1::uuid[]) and tombstoned_at is null order by report_id,group_id,ordinal,id limit 50001`, [compatibleIds]) : [];
   const valueRows = compatibleIds.length ? await database.query<ValueRow[]>(`select * from clinical.element_occurrence
-    where report_id=any($1::uuid[]) and tombstoned_at is null order by report_id,element_id,ordinal,id limit 50001`, [compatibleIds]) : [];
+    where report_id=any($1::uuid[]) and element_id=any($2::text[]) and tombstoned_at is null
+    order by report_id,element_id,ordinal,id limit 50001`, [compatibleIds, inputElementIds]) : [];
   const overlays = compatibleIds.length ? await database.query<Array<{ report_id: string; action: string;
     target_element_occurrence_id: string | null; corrected_value: Partial<ValueRow> | null }>>(`
     select a.report_id,c.action,c.target_element_occurrence_id,c.corrected_value from clinical.amendment a
-      join clinical.amendment_change c on c.amendment_id=a.id where a.report_id=any($1::uuid[]) order by a.sequence,c.id limit 50001`, [compatibleIds]) : [];
-  if (groupRows.length > 50000 || valueRows.length > 50000 || overlays.length > 50000)
+      join clinical.amendment_change c on c.amendment_id=a.id
+      left join clinical.element_occurrence o on o.report_id=a.report_id and o.id=c.target_element_occurrence_id
+    where a.report_id=any($1::uuid[]) and coalesce(c.corrected_value->>'element_id',c.corrected_value->>'elementId',
+      c.original_value->>'element_id',c.original_value->>'elementId',o.element_id)=any($2::text[])
+    order by a.sequence,c.id limit 50001`, [compatibleIds, inputElementIds]) : [];
+  if (valueRows.length > 50000 || overlays.length > 50000)
     throw new BadRequestException("Configured analysis exceeds 50,000 input rows; narrow the query");
   const values = new Map(valueRows.map((row) => [row.id, row]));
   for (const overlay of overlays) {
@@ -111,6 +123,20 @@ export async function contributeConfiguredDefinitions(database: Pick<EntityManag
       values.set(next.id, next);
     }
   }
+  // Retain selected groups (including empty selector groups) and their complete
+  // ancestry for correlation. Other report sections cannot affect evaluation.
+  const occurrenceGroupIds = [...new Set([...values.values()].map((value) => value.group_instance_id))];
+  const groupRows = compatibleIds.length ? await database.query<GroupRow[]>(`with recursive selected_groups as (
+    select id,report_id,parent_group_instance_id,group_id,ordinal,documented_time,correlation_id
+    from clinical.group_instance where report_id=any($1::uuid[]) and tombstoned_at is null
+      and (id=any($2::uuid[]) or group_id=any($3::text[]))
+    union
+    select parent.id,parent.report_id,parent.parent_group_instance_id,parent.group_id,parent.ordinal,parent.documented_time,parent.correlation_id
+    from clinical.group_instance parent join selected_groups child on parent.id=child.parent_group_instance_id
+      and parent.report_id=child.report_id where parent.tombstoned_at is null
+  ) select * from selected_groups order by report_id,group_id,ordinal,id limit 50001`,
+  [compatibleIds, occurrenceGroupIds, inputGroupIds]) : [];
+  if (groupRows.length > 50000) throw new BadRequestException("Configured analysis exceeds 50,000 input rows; narrow the query");
   const groupsByReport = new Map<string, GroupRow[]>(), valuesByReport = new Map<string, ValueRow[]>();
   for (const group of groupRows) { const groups = groupsByReport.get(group.report_id) ?? []; groups.push(group); groupsByReport.set(group.report_id, groups); }
   for (const value of values.values()) { const rows = valuesByReport.get(value.report_id) ?? []; rows.push(value); valuesByReport.set(value.report_id, rows); }

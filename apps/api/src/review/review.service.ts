@@ -391,6 +391,7 @@ export class ReviewService implements OnModuleDestroy {
       select id,owner_id,name,shared,version,updated_at
       from clinical.review_saved_analysis
       where organization_id=$1 and (owner_id=$2 or shared)
+        and definition->>'kind' is distinct from 'analytics-visualization'
       order by shared desc,updated_at desc,id`, [scope.organizationId, scope.userId]);
     return rows.map((row) => savedAnalysis(row, scope));
   }
@@ -403,7 +404,8 @@ export class ReviewService implements OnModuleDestroy {
     const row = (await this.database.query<SavedAnalysisRow[]>(`
       select id,owner_id,name,definition,shared,version,updated_at
       from clinical.review_saved_analysis
-      where id=$1 and organization_id=$2 and (owner_id=$3 or shared)`,
+      where id=$1 and organization_id=$2 and (owner_id=$3 or shared)
+        and definition->>'kind' is distinct from 'analytics-visualization'`,
     [id, scope.organizationId, scope.userId]))[0];
     if (!row) throw new NotFoundException("Saved analysis is not available in your organization");
     // The stored definition is a template. Every open computes fresh rows with
@@ -464,7 +466,8 @@ export class ReviewService implements OnModuleDestroy {
       if (id) {
         const current = (await manager.query<SavedAnalysisRow[]>(`
           select id,owner_id,name,definition,shared,version,updated_at
-          from clinical.review_saved_analysis where id=$1 and organization_id=$2 for update`,
+          from clinical.review_saved_analysis where id=$1 and organization_id=$2
+            and definition->>'kind' is distinct from 'analytics-visualization' for update`,
         [id, scope.organizationId]))[0];
         if (!current || (!current.shared && current.owner_id !== scope.userId))
           throw new NotFoundException("Saved analysis is not available in your organization");
@@ -779,8 +782,7 @@ export class ReviewService implements OnModuleDestroy {
     const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
       scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null,
       permittedReportIds];
-    const source = `from analytics.${filterField && "repeating" in filterField ?
-      "review_field_source_with_identity" : "review_field_source"} source
+    const source = `from analytics.review_field_source_with_identity source
       where source.reporting_date between $1::date and $2::date
         and source.organization_id = $3::uuid and source.synthetic = $4::boolean
         and ($5::boolean or source.documenting_user_id = $6::uuid)

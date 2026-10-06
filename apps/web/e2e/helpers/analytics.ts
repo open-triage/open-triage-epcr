@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 import settings from '@open-triage/contracts/config/installation.production.json';
-import type { AnalyticsCatalogCountsRequest, AnalyticsDefinition, AnalyticsElement, AnalyticsResult } from '@open-triage/contracts';
+import type { AnalyticsCatalogCountsRequest, AnalyticsDefinition, AnalyticsElement, AnalyticsResult, AnalyticsSavedVisualization, AnalyticsSaveVisualizationCommand } from '@open-triage/contracts';
 export const analyticsFields: AnalyticsElement[] = [
   {id:'records',label:'Records',datatype:'records',kind:'categorical',unit:null,operations:['distribution'],aggregations:['count','percentage'],units:[],recordCount:12,grouping:false,filtering:false},
   {id:'metric:shared-version:response',label:'Response time',datatype:'number',kind:'numeric',unit:'min',operations:['mean','median','minimum','maximum'],aggregations:['mean','median','minimum','maximum'],units:['min'],recordCount:0,grouping:false,filtering:false,
@@ -34,6 +34,7 @@ export async function setupAnalytics(page: Page, options: {demo?:boolean;own?:bo
   const item={id:'123e4567-e89b-42d3-a456-426614174001',reportId:'123e4567-e89b-42d3-a456-426614174002',reportNumber:'PCR-123',criterionId:'criterion',criterionName:'Clinical review',priority:'high',status:'new',assigneeId:null,
     version:1,firstMatchedAt:'2026-10-01T12:00:00Z',reportingDate:'2026-10-01',signedAt:'2026-10-01T12:00:00Z',findings:[]};
   const state={queries:[] as AnalyticsDefinition[],catalog:[] as URL[],exports:[] as Array<{kind:string;definition:AnalyticsDefinition;expectedRevision:string}>,
+    saved:[] as Array<AnalyticsSavedVisualization & { definition: AnalyticsDefinition }>, saveCommands:[] as AnalyticsSaveVisualizationCommand[], saveFailure:false, savedListFailure:false, savedAccessDenied:false,
     counts:[] as AnalyticsCatalogCountsRequest[],countMode:'ready' as 'ready'|'fail'|'empty',
     queryError:false,exportMode:'download' as 'download'|'refresh'|'deny',queryHook:undefined as ((route:Route,definition:AnalyticsDefinition)=>Promise<void>)|undefined};
   const dataset=options.demo?'synthetic':'real',scope=options.own?'own':'all';
@@ -47,6 +48,26 @@ export async function setupAnalytics(page: Page, options: {demo?:boolean;own?:bo
     if(path===`/api/review/items/${item.id}`) return route.fulfill({json:{...item,assignmentHistory:[],progressHistory:[],comments:[],commentsRestricted:true}});
     if(path===`/api/review/reports/${item.reportId}`) return route.fulfill({json:{id:item.reportId,reportingDate:'2026-10-01',signedAt:'2026-10-01T12:00:00Z',amendmentSequence:0,groups:[],values:[],notes:[]}});
     if(['/api/review/routes','/api/review/eligible-reviewers','/api/review/outcomes'].includes(path)) return route.fulfill({json:[]});
+    if(path.startsWith('/api/review/analytics/saved') && state.savedAccessDenied) return route.fulfill({status:403,json:{message:'Access revoked'}});
+    if(path==='/api/review/analytics/saved' && route.request().method()==='GET') return state.savedListFailure
+      ? route.fulfill({status:503,json:{message:'Saved visualizations are unavailable. Please retry.'}})
+      : route.fulfill({json:state.saved});
+    if(path.startsWith('/api/review/analytics/saved')) {
+      const id=path.split('/')[5];
+      if(route.request().method()==='GET') {
+        const saved=state.saved.find(item=>item.id===id);
+        if(!saved)return route.fulfill({status:404,json:{message:'Saved visualization is unavailable'}});
+        return route.fulfill({json:{saved,definition:saved.definition,elements:fields,filters:saved.definition.filters.map(filter=>({element:filter.element,
+          values:filter.values.map(identity=>({identity,label:String(identity.value),recordCount:0}))}))}});
+      }
+      const command=route.request().postDataJSON() as AnalyticsSaveVisualizationCommand;state.saveCommands.push(command);
+      if(state.saveFailure)return route.fulfill({status:503,json:{message:'Saved visualizations are unavailable. Please retry.'}});
+      const current=id?state.saved.find(item=>item.id===id):undefined;
+      const saved={id:current?.id??`123e4567-e89b-42d3-a456-${String(state.saved.length+1).padStart(12,'0')}`,
+        name:command.name,definition:command.definition,version:(current?.version??0)+1,updatedAt:new Date().toISOString()};
+      state.saved=[saved,...state.saved.filter(item=>item.id!==saved.id)];
+      return route.fulfill({json:saved});
+    }
     const catalogContext={page:1,pageSize:50,scope,dataset,coverage:'readable-history'};
     if(path==='/api/review/analytics/elements') {
       state.catalog.push(url);const search=(url.searchParams.get('search')??'').toLowerCase();

@@ -219,7 +219,8 @@ integration('unified analytics enforces scope, live draft/custom discovery, sign
   const signedRecord=(await client.query(`select r.*,p.reporting_date::text projected_date,g.id root_id from clinical.report r
     join analytics.review_volume_source p on p.report_id=r.id
     join clinical.group_instance g on g.report_id=r.id and g.group_id='PatientCareReportGroup'
-    where r.organization_id=$1 and r.synthetic and r.status='signed' and r.catalog_release_id=$2 limit 1`,
+    where r.organization_id=$1 and r.synthetic and r.status='signed' and r.catalog_release_id=$2
+      and (r.expires_at is null or r.expires_at>now()) limit 1`,
     [fixture.organization_id,fixture.catalog_release_id])).rows[0];
   assert.ok(signedRecord);
   const source=(await client.query('select to_jsonb(o) value from clinical.element_occurrence o where id=$1',[occurrences[4]])).rows[0].value;

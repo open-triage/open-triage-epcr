@@ -27,6 +27,24 @@ export interface AnalyticsDefinition {
   reducer?: "first" | "last" | "minimum" | "maximum";
   unit?: string;
 }
+export interface AnalyticsSavedVisualization {
+  id: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+}
+export interface AnalyticsSaveVisualizationCommand {
+  commandId: string;
+  name: string;
+  definition: AnalyticsDefinition;
+  expectedVersion?: number;
+}
+export interface AnalyticsOpenedVisualization {
+  saved: AnalyticsSavedVisualization;
+  definition: AnalyticsDefinition;
+  elements: AnalyticsElement[];
+  filters: Array<{ element: string; values: AnalyticsCatalogValue[] }>;
+}
 export interface AnalyticsCatalogPage<T> {
   items: T[];
   total: number;

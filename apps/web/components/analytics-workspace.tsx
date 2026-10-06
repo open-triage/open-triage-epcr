@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnalyticsCatalogValue, AnalyticsDefinition, AnalyticsElement, AnalyticsResult, ClinicianSession } from "@open-triage/contracts";
+import type { AnalyticsCatalogValue, AnalyticsDefinition, AnalyticsElement, AnalyticsResult, AnalyticsSavedVisualization, ClinicianSession } from "@open-triage/contracts";
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
 import { clinicalInstantParts, useAgencyTimeZone } from "../app/agency-time-zone";
 import { useRegionalFormat } from "../app/regional-format";
@@ -8,6 +8,7 @@ import { useAvailableHeight } from "./use-available-height";
 import { AnalyticsPicker } from "./analytics-picker";
 import { AnalyticsResultView } from "./analytics-result";
 import { AnalyticsEvidence } from "./analytics-evidence";
+import { AnalyticsSavedVisualizations } from "./analytics-saved-visualizations";
 import { analyticsRequest, analyticsSignature, AnalyticsRequestError } from "./analytics-api";
 
 const records: AnalyticsElement = { id: "records", label: "Records", datatype: "records", kind: "categorical", unit: null,
@@ -24,6 +25,7 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
   const [fields, setFields] = useState<Record<string, AnalyticsElement>>({ records });
   const [filterLabels, setFilterLabels] = useState<Record<string, AnalyticsCatalogValue[]>>({});
   const [result, setResult] = useState<AnalyticsResult | null>(null);
+  const [saved, setSaved] = useState<AnalyticsSavedVisualization | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,7 +44,7 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
     request.current?.abort(); generation.current++;
     setDraft((previous) => ({ version: 1, metric: "records", aggregation: "count", visualization: previous.visualization,
       from: previous.from, through: previous.through, groupBy: null, timeGrouping: previous.timeGrouping, filters: [] }));
-    setNotice(""); setResult(null); setFields({ records }); setFilterLabels({}); setPicker(null); setExportOpen(false); setBusy(false); setExporting(false);
+    setNotice(""); setResult(null); setSaved(null); setFields({ records }); setFilterLabels({}); setPicker(null); setExportOpen(false); setBusy(false); setExporting(false);
     setError(resolveMessage(language, "analytics.denied"));
   }, [language]);
   useEffect(() => () => { request.current?.abort(); generation.current++; }, []);
@@ -74,6 +76,10 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
     else if (element) setPicker({ purpose: "filter", element });
   };
   async function apply() {
+    if (request.current && busy) {
+      request.current.abort(); request.current = null; generation.current++;
+      setBusy(false); setNotice(t("cancelled")); return;
+    }
     if (!online || invalidDates || invalidQualifier) return;
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     const current = ++generation.current; setBusy(true); setError(""); setNotice("");
@@ -85,7 +91,7 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
       if (controller.signal.aborted || generation.current !== current) return;
       if (cause instanceof AnalyticsRequestError && [401, 403].includes(cause.status)) { clearProtected(); return; }
       setError(cause instanceof Error ? resolveErrorMessage(language, cause.message, "analytics.unavailable") : t("unavailable"));
-    } finally { if (generation.current === current) setBusy(false); }
+    } finally { if (generation.current === current) { request.current = null; setBusy(false); } }
   }
   async function download(kind: "aggregate" | "records") {
     if (!canExport || !result) return;
@@ -111,6 +117,16 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
   return <div className="analytics-workspace" ref={workspace}>
     <form className="analytics-rail" onSubmit={(event) => { event.preventDefault(); void apply(); }}>
       <fieldset disabled={!online || exporting}><legend>{t("controls")}</legend>
+        <AnalyticsSavedVisualizations key={`${session.organization.id}:${session.user.id}`} definition={draft} saved={saved}
+          language={language} csrfToken={csrf} disabled={!online || exporting || busy} canSave={!invalidDates && !invalidQualifier} active={active}
+          onDenied={clearProtected} onSaved={(value) => { setSaved(value); setNotice(t("visualizationSaved", { name: value.name })); }}
+          onRestore={(opened) => {
+            request.current?.abort(); request.current = null; generation.current++; setBusy(false); setError("");
+            setSaved(opened.saved); setDraft(opened.definition);
+            setFields(Object.fromEntries(opened.elements.map((field) => [field.id, field])));
+            setFilterLabels(Object.fromEntries(opened.filters.map((filter) => [filter.element, filter.values])));
+            setNotice(t("visualizationLoaded"));
+          }} />
         <div><span className="analytics-control-label" id="analytics-visualization-label">{t("visualization")}</span>
           <div className="analytics-visualizations" role="group" aria-labelledby="analytics-visualization-label">
             {(["line", "bar", "table"] as const).map((visualization) => <button type="button" key={visualization} aria-pressed={draft.visualization === visualization}
@@ -145,7 +161,8 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
           <button type="button" className="analytics-add-filter" onClick={() => openPicker({ purpose: "filter" })}>{t("addFilter")}</button></div>
       </fieldset>
       <div className="analytics-apply"><p role="status">{busy ? t("updating") : dirty ? t("unapplied") : t("applied")}</p>
-        <button className="button-primary" type="submit" disabled={!online || busy || exporting || invalidDates || !!invalidQualifier}>{t("update")}<span aria-hidden="true"> →</span></button></div>
+        <button className="button-primary" type={busy ? "button" : "submit"} onClick={busy ? () => void apply() : undefined}
+          disabled={!online || exporting || !busy && (invalidDates || !!invalidQualifier)}>{t(busy ? "cancelUpdate" : "update")}<span aria-hidden="true">{busy ? "×" : "→"}</span></button></div>
     </form>
     <section className="analytics-result" aria-label={t("result")} aria-busy={busy}>
       <header className="analytics-result-header"><div>

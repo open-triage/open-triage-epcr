@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, Injectable } from "@nestjs/comm
 import { InjectDataSource } from "@nestjs/typeorm";
 import { createHash } from "node:crypto";
 import { DataSource, type EntityManager } from "typeorm";
-import type { AnalyticsCatalogCounts, AnalyticsCatalogCountsRequest, AnalyticsCatalogPage, AnalyticsCatalogValue, AnalyticsDefinition, AnalyticsElement, AnalyticsResult, AnalyticsValue } from "@open-triage/contracts";
+import type { AnalyticsCatalogCounts, AnalyticsCatalogCountsRequest, AnalyticsCatalogPage, AnalyticsCatalogValue, AnalyticsDefinition, AnalyticsElement, AnalyticsResult, AnalyticsValue, AnalyticsOpenedVisualization, AnalyticsSaveVisualizationCommand } from "@open-triage/contracts";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { ReviewService } from "./review.service.js";
 import { reviewScope, type ReviewScope } from "./review-scope.js";
@@ -12,6 +12,7 @@ import { catalogElements, catalogLabelKey, catalogPage, catalogPagination, catal
 import { loadAnalyticsReports } from "./analytics-source.js";
 import { unifiedAnalyticsCsv } from "./analytics-csv.js";
 import { AnalyticsDiscoveryCache } from "./analytics-discovery-cache.js";
+import { listVisualizations, readVisualization, savedVisualization, validateSaveVisualization, writeVisualization } from "./analytics-saved.js";
 
 @Injectable()
 export class AnalyticsService {
@@ -53,6 +54,32 @@ export class AnalyticsService {
   async query(token: string, input: AnalyticsDefinition) {
     return (await this.calculate(token, input)).result;
   }
+  async saved(token: string) {
+    return listVisualizations(this.database.manager, reviewScope(await this.sessions.get(token)));
+  }
+  async openSaved(token: string, id: string): Promise<AnalyticsOpenedVisualization> {
+    const scope = reviewScope(await this.sessions.get(token));
+    return this.database.transaction("REPEATABLE READ", async (database) => {
+      const row = await readVisualization(database, scope, id);
+      const { fields, definition } = await this.prepareDefinition(database, scope, row.definition.parameters);
+      const labels = await catalogSelectedLabels(database, scope, definition.filters.flatMap((filter) =>
+        filter.values.map((identity) => ({ element: filter.element, identity }))));
+      return { saved: savedVisualization(row), definition, elements: fields, filters: definition.filters.map((filter) => ({
+        element: filter.element, values: filter.values.map((identity) => ({ identity,
+          label: labels.get(catalogLabelKey(filter.element, identity)) ?? String(identity.value), recordCount: 0 })),
+      })) };
+    });
+  }
+  async save(token: string, id: string | undefined, command: AnalyticsSaveVisualizationCommand, csrfToken?: string) {
+    validateSaveVisualization(id, command);
+    await this.sessions.assertCsrf(token, csrfToken);
+    return this.database.transaction(async (database) => {
+      await this.sessions.assertCsrf(token, csrfToken, database);
+      const scope = reviewScope(await this.sessions.get(token, new Date(), false, database));
+      const { definition } = await this.prepareDefinition(database, scope, command.definition);
+      return writeVisualization(database, scope, id, command, definition);
+    });
+  }
   async counts(token: string, input: AnalyticsCatalogCountsRequest): Promise<AnalyticsCatalogCounts> {
     const scope = reviewScope(await this.sessions.get(token));
     const selection = input?.selection;
@@ -92,7 +119,7 @@ export class AnalyticsService {
         included: countAnalyticsRecords(matched, definition, metric, selection.element, identity).included })) : [] };
     });
   }
-  private async prepareQuery(database: EntityManager, scope: ReviewScope, input: AnalyticsDefinition, additionalElements: string[] = []) {
+  private async prepareDefinition(database: EntityManager, scope: ReviewScope, input: AnalyticsDefinition, additionalElements: string[] = []) {
     const library = await configuredAnalyticsLibrary(database, scope);
     // Configured definitions and Records have authoritative metadata without
     // recorded-field discovery. Only selected clinical fields need that scan.
@@ -106,6 +133,10 @@ export class AnalyticsService {
       throw new ConflictException("Configured definition changed or is unavailable; select it again");
     const definition = validateAnalytics(input, fields);
     const metric = fields.find((field) => field.id === definition.metric)!;
+    return { library, fields, definition, metric };
+  }
+  private async prepareQuery(database: EntityManager, scope: ReviewScope, input: AnalyticsDefinition, additionalElements: string[] = []) {
+    const { library, fields, definition, metric } = await this.prepareDefinition(database, scope, input, additionalElements);
     const [health] = await database.query<Array<{ observed_at: Date; oldest_backlog_age_seconds: string | null;
       persistent_failure_count: number; retrying_count: number; stale_run_count: number; last_run_status: string | null;
       is_read_only_replica: boolean; replay_lag_seconds: string | null }>>(`select h.*,r.is_read_only_replica,r.replay_lag_seconds

@@ -63,6 +63,8 @@ test("Review distribution preserves missing, absence, and report denominators", 
   assert.deepEqual(analysisQuery.parameters.slice(2), [session.organization.id, true, false,
     session.user.id, "eSituation.11", "eDisposition.30", "eSituation.09", "C", null]);
   assert.match(analysisQuery.sql, /source.organization_id = \$3::uuid/);
+  assert.match(analysisQuery.sql, /from analytics.review_field_source_with_identity source/,
+    'record-level source reads use the authorized view that includes report identity');
   assert.match(analysisQuery.sql, /limit 501/);
 });
 
