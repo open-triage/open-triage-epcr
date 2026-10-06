@@ -76,8 +76,9 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
     coalesce(to_jsonb(numeric_value),to_jsonb(code)) value,unit_code unit,absence_kind absence,
     group_id,group_instance_id,parent_group_instance_id,null::text[] instance_path,group_ordinal,element_ordinal,clinical_time,code label
     from analytics.review_repeated_field_source where organization_id=$1 and synthetic=$2 and ($3 or documenting_user_id=$4)
-      and report_id=any($5::uuid[]) and element_id=any($6::text[]) order by report_id,element_occurrence_id limit 20001`,
-  [...params.slice(0, 4), reportIds, repeatIds]) : [];
+      and report_id=any($5::uuid[]) and element_id=any($6::text[])
+      and reporting_date between $7::date and $8::date order by report_id,element_occurrence_id limit 20001`,
+  [...params.slice(0, 4), reportIds, repeatIds, definition.from, definition.through]) : [];
   const custom = customIds.length ? await database.query<OccurrenceRow[]>(`select c.report_id,c.element_occurrence_id id,
     ${customIdentitySql("c.custom_definition_id", "c.custom_definition")} element,
     case when c.value_kind in ('numeric','integer') then to_jsonb(coalesce(c.normalized_numeric,c.value_numeric,c.value_integer::numeric))
@@ -89,8 +90,9 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
     from analytics.review_custom_field_source c join analytics.review_volume_source p on p.report_id=c.report_id and p.reporting_date=c.reporting_date
     where c.organization_id=$1 and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
       and c.report_id=any($5::uuid[]) and ${customIdentitySql("c.custom_definition_id", "c.custom_definition")}=any($6::text[])
-      and (not c.is_identifying or $7) order by c.report_id,c.element_occurrence_id limit 20001`,
-  [...params.slice(0, 4), reportIds, customIds, scope.identifying]) : [];
+      and (not c.is_identifying or $7) and c.reporting_date between $8::date and $9::date
+    order by c.report_id,c.element_occurrence_id limit 20001`,
+  [...params.slice(0, 4), reportIds, customIds, scope.identifying, definition.from, definition.through]) : [];
   if (repeated.length + custom.length > 20000) throw new BadRequestException("Analysis exceeds the 20,000-occurrence limit; narrow the query");
   for (const row of [...repeated, ...custom]) {
     const field = selected.find((field) => field.id === row.element)!;

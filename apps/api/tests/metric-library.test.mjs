@@ -258,6 +258,7 @@ test('installation reseeding leaves existing publications alone when no optional
 test('selector counts batch configured inputs and apply authorized dates, filters and metric eligibility', async () => {
   const version = bundle(), ids = ['pass', 'fail', 'missing', 'outside-filter'];
   const queries = [];
+  const configuredReportReads = [];
   let stale = false;
   const manager = { query: async (sql, parameters) => {
     queries.push(sql);
@@ -278,7 +279,9 @@ test('selector counts batch configured inputs and apply authorized dates, filter
         field_values: { 'eArrest.01': report_id === 'outside-filter' ? 'B' : 'A' }, field_absences: {} }));
     }
     if (sql.includes('from jsonb_to_recordset')) return [];
+    if (sql.includes('from typed join jsonb_to_recordset')) return [];
     if (sql.includes('from clinical.report r')) {
+      configuredReportReads.push(parameters[0]);
       assert.deepEqual(parameters.slice(1), ['org', true, false, 'author']);
       return parameters[0].map(id => ({ id, created_at: context.timestamp, updated_at: context.timestamp, form_id: 'form', form_version: 1,
         catalog_standard: 'NEMSIS', catalog_version: '3.5.1', catalog_dataset: 'EMSDataSet', catalog_release_id: 'catalog', revision: '1', amendment: 0 }));
@@ -309,6 +312,10 @@ test('selector counts batch configured inputs and apply authorized dates, filter
   ], values: [] });
   for (const prefix of ['select id,report_id,parent_group_instance_id', 'select * from clinical.element_occurrence', 'select a.report_id,c.action'])
     assert.equal(queries.filter(sql => sql.trimStart().startsWith(prefix)).length, 1, 'one input read per table for the whole picker page');
+  const graph = await service.query('test', definition);
+  assert.equal(graph.completeness.total, 3);
+  assert.deepEqual(configuredReportReads.at(-1), ['pass', 'fail', 'missing'],
+    'graphs exclude filtered reports before loading configured clinical inputs');
   const values = await service.counts('test', { definition, selection: { purpose: 'values', element: 'eArrest.01',
     values: [{ value: 'A', type: 'code' }, { type: 'code', value: 'B' }] } });
   assert.deepEqual(values, { total: 3, included: 2, elements: [], values: [

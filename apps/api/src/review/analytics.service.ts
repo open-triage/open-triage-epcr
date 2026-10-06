@@ -21,9 +21,9 @@ export class AnalyticsService {
   constructor(@InjectDataSource() private readonly database: DataSource,
     private readonly sessions: ClinicianSessionService, private readonly review: ReviewService) {}
 
-  private discoveryElements(scope: ReviewScope) {
-    return this.discoveredElements.get(JSON.stringify(scope), () =>
-      this.database.transaction("REPEATABLE READ", (database) => catalogElements(database, scope)));
+  private discoveryElements(scope: ReviewScope, includeOperational = false) {
+    return this.discoveredElements.get(JSON.stringify([scope, includeOperational]), () =>
+      this.database.transaction("REPEATABLE READ", (database) => catalogElements(database, scope, undefined, includeOperational)));
   }
 
   async elements(token: string, search?: string, page?: string, purpose?: string) {
@@ -34,7 +34,8 @@ export class AnalyticsService {
     // while sharing recorded discovery across purposes, searches and pages.
     const configured = purpose === "group" || purpose === "filter" ? [] : await this.database.transaction("REPEATABLE READ",
       async (database) => (await configuredAnalyticsLibrary(database, scope)).elements);
-    const candidates = purpose === "metric" ? [recordsElement, ...configured] : [...configured, ...await this.discoveryElements(scope)];
+    const candidates = purpose === "metric" ? [recordsElement, ...configured]
+      : [...configured, ...await this.discoveryElements(scope, !purpose)];
     const elements = candidates.filter((field) =>
       (purpose === "group" ? field.grouping : purpose === "filter" ? field.filtering : true) &&
       `${field.id} ${field.label}`.toLowerCase().includes(pagination.search.toLowerCase()));
@@ -98,7 +99,8 @@ export class AnalyticsService {
     const selectedIds = [input?.metric, input?.groupBy,
       ...(Array.isArray(input?.filters) ? input.filters.map((filter) => filter?.element) : []), ...additionalElements];
     const needsRecordedFields = selectedIds.some((id) => id && id !== "records" && !/^(metric|rule):/.test(id));
-    const recordedFields = needsRecordedFields ? await catalogElements(database, scope) : [recordsElement];
+    const recordedFields = needsRecordedFields ? await catalogElements(database, scope,
+      selectedIds.filter((id): id is string => typeof id === "string" && id !== "records" && !/^(metric|rule):/.test(id))) : [recordsElement];
     const fields = [...library.elements, ...recordedFields];
     if (/^(metric|rule):/.test(input?.metric ?? "") && !fields.some((field) => field.id === input.metric))
       throw new ConflictException("Configured definition changed or is unavailable; select it again");
@@ -129,7 +131,11 @@ export class AnalyticsService {
     const scope = reviewScope(await this.sessions.get(token));
     const reporting = await this.review.analyticsDatabase();
     return reporting.transaction("REPEATABLE READ", async (database) => {
-      const { library, fields, definition, metric, health, backlog, lag, region, reports } = await this.prepareQuery(database, scope, input);
+      const { library, fields, definition, metric, health, backlog, lag, region, reports: availableReports } = await this.prepareQuery(database, scope, input);
+      // Apply clinical filters before evaluating configured metrics/rules or
+      // resolving labels, as picker counts already do. Excluded reports cannot
+      // contribute to a graph and must not consume its clinical-input budget.
+      const reports = matchingAnalyticsReports(availableReports, definition);
       await contributeConfiguredDefinition(database, scope, reports, metric, library);
       const labels = await catalogSelectedLabels(database, scope, [
         ...definition.filters.flatMap((filter) => filter.values.map((identity) => ({ element: filter.element, identity }))),

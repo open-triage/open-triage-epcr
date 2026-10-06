@@ -48,8 +48,9 @@ test('discovery memory is bounded and retains recently used entries', async () =
 
 function fixture() {
   const base = { user: { id: 'user' }, organization: { id: 'org' }, capabilities: ['review:all'] };
-  const state = { session: base, denied: false, authorizations: 0, elements: 0, values: 0, sourceReads: 0 };
-  const manager = { query: async sql => {
+  const state = { session: base, denied: false, authorizations: 0, elements: 0, values: 0, sourceReads: 0, queries: [] };
+  const manager = { query: async (sql, params) => {
+    state.queries.push({ sql, params });
     if (sql.includes('from app_identity.active_configuration_bundle')) return [];
     if (sql.includes('from operations.projection_health')) return [{ observed_at: new Date('2026-10-06T09:00:00Z'),
       oldest_backlog_age_seconds: null, persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0,
@@ -81,7 +82,7 @@ function fixture() {
     if (state.denied) throw new Error('Session expired');
     return state.session;
   } }, { analyticsDatabase: async () => database });
-  return { state, service, base };
+  return { state, service, base, manager };
 }
 
 test('search, pagination, grouping, filtering and values reuse authorized discovery', async () => {
@@ -100,6 +101,8 @@ test('search, pagination, grouping, filtering and values reuse authorized discov
   await service.values('token', 'eVitals.06', '120');
   await service.values('token', 'eVitals.06', '', '2');
   assert.equal(state.values, 3, 'value search and page have distinct entries');
+  assert.equal(state.queries.filter(({ sql }) => sql.includes('from analytics.review_operational_time_source')).length, 0,
+    'grouping, filtering and value discovery do not scan nongroupable operational metrics');
 });
 
 const recordsDefinition = { version: 1, metric: 'records', aggregation: 'count', visualization: 'line',
@@ -131,8 +134,45 @@ test('recorded filters and picker candidates still load current field metadata',
     selection: { purpose: 'filter', ids: ['eVitals.06'] } });
   assert.equal(result.elements[0].included, 1);
   assert.equal(state.elements, 2);
+  for (const { params } of state.queries.filter(({ sql }) => sql.includes('from typed group by element')))
+    assert.deepEqual(params[4], ['eVitals.06'], 'metadata scans only requested filter and picker fields');
+  assert.equal(state.queries.filter(({ sql }) => sql.includes('from analytics.review_operational_time_source')).length, 0,
+    'clinical filters do not discover unrelated operational intervals');
   await assert.rejects(service.query('token', { ...recordsDefinition, filters: {} }), error => error.status === 400);
   await assert.rejects(service.query('token', { ...recordsDefinition, filters: [null] }), error => error.status === 400);
+});
+
+test('value search and label resolution narrow occurrence discovery to the selected field', async () => {
+  const { service, state } = fixture();
+  await service.values('token', 'eVitals.06');
+  assert.deepEqual(state.queries.find(({ sql }) => sql.includes('choices as (')).params[4], ['eVitals.06']);
+  await service.query('token', { ...recordsDefinition, filters: [{ element: 'eVitals.06', values: [{ type: 'number', value: 120 }] }] });
+  assert.deepEqual(state.queries.find(({ sql }) => sql.includes('from typed join jsonb_to_recordset')).params[4], ['eVitals.06']);
+});
+
+test('Records with an Adenosine filter resolves labels only for the matching population', async () => {
+  const { service, state, manager } = fixture();
+  const originalQuery = manager.query;
+  manager.query = async (sql, params) => {
+    if (sql.includes('from typed group by element')) return [{ element: 'eMedications.03', count: '2', units: [] }];
+    if (sql.includes('from analytics.review_volume_source')) return ['adenosine', 'other'].map(report_id => ({
+      report_id, reporting_date: '2026-09-01', revision: '1', amendment: 0, projected_at: new Date('2026-10-06'),
+      field_values: {}, field_absences: {},
+    }));
+    if (sql.includes('from analytics.review_repeated_field_source')) return [
+      { report_id: 'adenosine', id: 'dose-1', element: 'eMedications.03', value: '296', group_ordinal: 0, element_ordinal: 0 },
+      { report_id: 'other', id: 'dose-2', element: 'eMedications.03', value: '287', group_ordinal: 0, element_ordinal: 0 },
+    ];
+    if (sql.includes('from jsonb_to_recordset')) return [];
+    return originalQuery(sql, params);
+  };
+  const result = await service.query('token', { ...recordsDefinition,
+    filters: [{ element: 'eMedications.03', values: [{ type: 'code', value: '296' }] }] });
+  assert.equal(result.completeness.total, 1);
+  const labels = state.queries.find(({ sql }) => sql.includes('from typed join jsonb_to_recordset'));
+  assert.deepEqual(labels.params[4], ['eMedications.03']);
+  assert.deepEqual(JSON.parse(labels.params[7]), [{ element: 'eMedications.03', identity: { type: 'code', value: '296' } }],
+    'excluded medications must not enlarge the graph label lookup');
 });
 
 test('discovery isolates every scope and rejects revoked sessions and permissions on hits', async () => {

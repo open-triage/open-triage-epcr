@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { catalogSourceSql } from '../dist/review/analytics-catalog.js';
+import { catalogParams, catalogSourceSql } from '../dist/review/analytics-catalog.js';
+
+test('narrow medication discovery retains its correlated unit and custom identities', () => {
+  const scope = { organizationId: 'org', userId: 'user', defaultDataset: 'synthetic', reports: 'own', identifying: false };
+  assert.deepEqual(catalogParams(scope, ['eMedications.05', 'eMedications.05', 'custom:identity:hash'])[4],
+    ['eMedications.05', 'custom:identity:hash', 'eMedications.06']);
+  assert.deepEqual(catalogParams(scope, ['record.documenting-user'])[4], ['record.documenting-user']);
+});
 
 const integration = process.env.DATABASE_URL ? test : test.skip;
 integration('medication unit discovery scans effective occurrences once and keeps report/group correlation', async t => {
@@ -48,4 +55,32 @@ integration('medication unit discovery scans effective occurrences once and keep
     for (const child of node.Plans ?? []) visit(child);
   };
   visit(plan.Plan);
+});
+
+integration('catalog occurrences retain scalar semantics without carrying large dispatch and provenance payloads', async t => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(() => client.end());
+  const fixture = (await client.query(`select id,organization_id,catalog_release_id,documenting_user_id from clinical.report
+    where synthetic and status='signed' and (expires_at is null or expires_at>now()) limit 1`)).rows[0];
+  assert.ok(fixture, 'seed a nonexpired signed local synthetic report before integration tests');
+  const group = randomUUID();
+  const payload = 'fictional-fixture'.repeat(10000);
+  const rows = [{ id: randomUUID(), report_id: fixture.id, catalog_release_id: fixture.catalog_release_id,
+    group_instance_id: group, element_id: 'eMedications.05', value_kind: 'numeric', value_numeric: 42.5,
+    source_attributes: { unit: 'fallback', dispatchPayload: payload }, provenance_detail: { payload }, identifying: false },
+  { id: randomUUID(), report_id: fixture.id, catalog_release_id: fixture.catalog_release_id,
+    group_instance_id: group, element_id: 'eMedications.06', value_kind: 'coded', code: '3706013', identifying: false }];
+  const source = catalogSourceSql.replace(/^with /, '').replaceAll('clinical.element_occurrence o', 'fixture_occurrences o');
+  const sql = `with fixture_occurrences as (
+    select (jsonb_populate_record(null::clinical.element_occurrence,entry)).* from jsonb_array_elements($8::jsonb) entry
+  ), ${source} select value,identity,unit from typed where element='eMedications.05' and value->>'group_instance_id'=$9`;
+  const scope = { organizationId: fixture.organization_id, userId: fixture.documenting_user_id,
+    reports: 'all', defaultDataset: 'synthetic', identifying: false };
+  const [dose] = (await client.query(sql, [...catalogParams(scope, ['eMedications.05']), JSON.stringify(rows), group])).rows;
+  assert.deepEqual(dose.identity, { type: 'number', value: 42.5 });
+  assert.equal(dose.unit, '3706013');
+  assert.deepEqual(dose.value.source_attributes, { unit: 'fallback' });
+  assert.equal(dose.value.provenance_detail, undefined);
+  assert.ok(JSON.stringify(dose.value).length < 1000, 'large source payloads must not enter catalog sorts');
 });

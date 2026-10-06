@@ -19,6 +19,15 @@ export const standardElements: AnalyticsElement[] = [...reviewFields, ...repeate
 export const customIdentitySql = (id: string, definition: string) =>
   `('custom:' || (${id})::text || ':' || md5((${definition} - 'title' - 'localization' - 'retired' - 'usage')::text))`;
 
+// The catalog needs scalar values and their analytical metadata, not the full
+// occurrence's dispatch payload, provenance, audit actor or other source data.
+const catalogOccurrenceSql = (alias: string) => `jsonb_strip_nulls(jsonb_build_object(
+  ${["element_id", "element_identity_id", "group_instance_id", "value_kind", "value_numeric", "value_integer",
+    "value_boolean", "value_date", "value_datetime", "code", "code_display", "not_value_code",
+    "pertinent_negative_code", "identifying", "tombstoned_at"].map((key) => `'${key}',${alias}.${key}`).join(",")},
+  'value_text',left(${alias}.value_text,257),
+  'source_attributes',jsonb_build_object('unit',${alias}.source_attributes->'unit')))`;
+
 // Live discovery deliberately uses the existing API's clinical read privileges,
 // not private projections or an analyst grant. Every base and amendment row is
 // rooted in the same authorized, nonexpired report set. No query-date predicate.
@@ -31,6 +40,7 @@ export const catalogSourceSql = `with scoped_reports as materialized (
   select release.id catalog_release_id,entry definition from catalog.release release
     join (select distinct catalog_release_id from scoped_reports) scope on scope.catalog_release_id=release.id
     cross join lateral jsonb_array_elements(coalesce(release.provenance->'customElementDefinitions','[]'::jsonb)) entry
+    where 'custom:*'=any($5::text[]) or ${customIdentitySql("entry->>'id'", "entry")}=any($5::text[])
 ) , amendments as (
   select r.id report_id,r.catalog_release_id,c.target_element_occurrence_id,c.action,c.id change_id,a.sequence,
     c.original_value,
@@ -40,7 +50,7 @@ export const catalogSourceSql = `with scoped_reports as materialized (
     join clinical.amendment_change c on c.amendment_id=a.id
     cross join (select '{"elementOccurrenceId":"id","reportId":"report_id","catalogReleaseId":"catalog_release_id","elementId":"element_id","elementIdentityId":"element_identity_id","groupInstanceId":"group_instance_id","valueKind":"value_kind","valueNumeric":"value_numeric","valueInteger":"value_integer","valueBoolean":"value_boolean","valueDate":"value_date","valueDateTime":"value_datetime","valueText":"value_text","codeDisplay":"code_display","codeSystem":"code_system","sourceAttributes":"source_attributes","notValueCode":"not_value_code","pertinentNegativeCode":"pertinent_negative_code","absenceCode":"absence_code"}'::jsonb mapping) aliases
 ), versions as (
-  select r.id report_id,r.catalog_release_id,o.id occurrence_id,to_jsonb(o) value,0 sequence,'base' action,'' change_id
+  select r.id report_id,r.catalog_release_id,o.id occurrence_id,${catalogOccurrenceSql("o")} value,0 sequence,'base' action,'' change_id
   from scoped_reports r join clinical.element_occurrence o on o.report_id=r.id where o.tombstoned_at is null
     -- Discard nonanalytical base fields before materializing JSON occurrences.
     -- Amendment overlays still read their complete original/corrected values.
@@ -49,7 +59,7 @@ export const catalogSourceSql = `with scoped_reports as materialized (
         and custom.definition->>'id'=o.element_identity_id::text))
   union all
   select c.report_id,c.catalog_release_id,coalesce(c.target_element_occurrence_id,(c.corrected_value->>'id')::uuid),
-    coalesce(c.original_value,to_jsonb(o),'{}'::jsonb)||coalesce(c.corrected_value,'{}'::jsonb),c.sequence,c.action,c.change_id::text
+    coalesce(c.original_value,${catalogOccurrenceSql("o")},'{}'::jsonb)||coalesce(c.corrected_value,'{}'::jsonb),c.sequence,c.action,c.change_id::text
   from amendments c left join clinical.element_occurrence o on o.report_id=c.report_id and o.id=c.target_element_occurrence_id
 ), effective as (
   select distinct on (report_id,occurrence_id) * from versions
@@ -98,24 +108,30 @@ export const catalogSourceSql = `with scoped_reports as materialized (
     '${userElement.id}',null::jsonb,'User','coded',
     jsonb_build_object('type','code','value',r.documenting_user_id::text),null::text
   from scoped_reports r left join app_identity.app_user u on u.id=r.documenting_user_id and u.organization_id=r.organization_id
+  where '${userElement.id}'=any($5::text[])
 )`;
-export function catalogParams(scope: ReviewScope) {
+export function catalogParams(scope: ReviewScope, elementIds?: string[]) {
+  const selected = elementIds ?? [...[...reviewFields, ...repeatedReviewFields].map((field) => field.id),
+    "eMedications.06", userElement.id, "custom:*"];
+  const elements = [...new Set([...selected, ...(selected.includes("eMedications.05") ? ["eMedications.06"] : [])])];
   return [scope.organizationId, scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId,
-    [...[...reviewFields, ...repeatedReviewFields].map((field) => field.id), "eMedications.06"],
+    elements,
     standardElements.filter((field) => field.kind === "numeric").map((field) => field.id), scope.identifying];
 }
 interface CatalogRow { element: string; label: string; datatype: string; definition: Record<string, unknown> | null;
   count: string; units: string[]; repeating: boolean; oversized: boolean }
-export async function catalogElements(database: Pick<EntityManager, "query">, scope: ReviewScope): Promise<AnalyticsElement[]> {
+export async function catalogElements(database: Pick<EntityManager, "query">, scope: ReviewScope,
+  elementIds?: string[], includeOperational = true): Promise<AnalyticsElement[]> {
   const rows = await database.query<CatalogRow[]>(`${catalogSourceSql}
     select element,max(label) label,min(datatype) datatype,min(definition::text)::jsonb definition,
       bool_or(datatype='string' and length(value->>'value_text')>256) oversized,
       count(distinct report_id)::text count,array_remove(array_agg(distinct unit),null) units,
       bool_or(coalesce(definition->>'recurrence','')='multiple' or definition->>'correlatesTo' is not null
         or definition->>'groupDefinitionId' is not null) repeating
-    from typed group by element order by element`, catalogParams(scope));
+    from typed group by element order by element`, catalogParams(scope, elementIds));
   const result: AnalyticsElement[] = [];
   for (const row of rows) {
+    if (elementIds && !elementIds.includes(row.element)) continue;
     const standard = [userElement, ...standardElements].find((field) => field.id === row.element);
     if (standard) { result.push({ ...standard, recordCount: Number(row.count), units: [...new Set([...standard.units, ...row.units])].sort() }); continue; }
     if (!row.definition) continue;
@@ -130,15 +146,17 @@ export async function catalogElements(database: Pick<EntityManager, "query">, sc
       ...(!supported ? { unsupportedReason: "Long text and opaque values are not available for analytics" } : {}) });
   }
   // Operational metrics are calculated from the existing signed endpoint view.
-  const operational = await database.query<Array<{ response: string; scene: string; transport: string }>>(`select
+  const operational = includeOperational && (!elementIds || operationalTimeFields.some((field) => elementIds.includes(field.id)))
+    ? await database.query<Array<{ response: string; scene: string; transport: string }>>(`select
     count(*) filter (where etimes_03 is not null or etimes_06 is not null)::text response,
     count(*) filter (where etimes_06 is not null or etimes_09 is not null)::text scene,
     count(*) filter (where etimes_09 is not null or etimes_11 is not null)::text transport
     from analytics.review_operational_time_source p join clinical.report r on r.id=p.report_id
     where p.organization_id=$1 and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
-      and (r.expires_at is null or r.expires_at>now())`, catalogParams(scope).slice(0, 4));
+      and (r.expires_at is null or r.expires_at>now())`, catalogParams(scope).slice(0, 4)) : [];
   for (const key of ["response", "scene", "transport"] as const) if (Number(operational[0]?.[key]) > 0) {
     const field = standardElements.find((field) => field.id === `review.duration.${key}`)!;
+    if (elementIds && !elementIds.includes(field.id)) continue;
     result.push({ ...field, recordCount: Number(operational[0]![key]) });
   }
   return [recordsElement, ...result.sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))];
@@ -165,7 +183,7 @@ export async function catalogValues(database: Pick<EntityManager, "query">, scop
   ), searched as (select * from choices where strpos(lower(label),lower($9))>0 or strpos(lower(identity->>'value'),lower($9))>0)
     select page.*,total.total from (select count(*)::text total from searched) total
     left join lateral (select * from searched order by label,identity::text limit 50 offset $10) page on true`,
-  [...catalogParams(scope), element.id, search, (page - 1) * 50]);
+  [...catalogParams(scope, [element.id]), element.id, search, (page - 1) * 50]);
   return catalogPage(rows.filter((row) => row.identity !== null).map((row) => ({ identity: row.identity, label: row.label, recordCount: Number(row.count) })),
     Number(rows[0]?.total ?? 0), page, scope);
 }
@@ -183,6 +201,6 @@ export async function catalogSelectedLabels(database: Pick<EntityManager, "query
       join catalog.value_set_option option on option.release_id=link.release_id and option.value_set_id=link.value_set_id
       where link.release_id=typed.catalog_release_id and link.element_id=typed.value->>'element_id'
         and option.code=typed.value->>'code' order by option.code_system limit 1) option on true
-    group by typed.element,typed.identity`, [...catalogParams(scope), JSON.stringify(unique)]);
+    group by typed.element,typed.identity`, [...catalogParams(scope, unique.map((selection) => selection.element)), JSON.stringify(unique)]);
   return new Map(rows.map((row) => [catalogLabelKey(row.element, row.identity), row.label]));
 }
