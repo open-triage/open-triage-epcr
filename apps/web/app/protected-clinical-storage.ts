@@ -559,6 +559,16 @@ export function retainedProtectedRecords(
     record.synchronizedRevision < record.ciphertextRevision && !protectedRecordExpired(record, now));
 }
 
+/** Opaque handles only: background recovery must not enumerate historical reports
+ * when this browser has no locked, unsynchronized work to recover. */
+export async function pendingProtectedRecoveryHandles(): Promise<Set<string>> {
+  if (!("indexedDB" in globalThis)) return new Set();
+  const unlocked = new Set([...contexts.values()].map(({ envelope }) => envelope.recoveryHandle));
+  return new Set(retainedProtectedRecords(await allRecords())
+    .filter(({ recoveryHandle }) => !unlocked.has(recoveryHandle))
+    .map(({ recoveryHandle }) => recoveryHandle));
+}
+
 /**
  * Ends readable access before changing browser identity. Pending writes settle
  * first, then all keys/decrypted payloads and disposable ciphertext are removed.
@@ -857,7 +867,8 @@ export function applyProtectedAuthorityResponse(reportId: string,
   return true;
 }
 
-export async function prepareProtectedReport(csrfToken: string, reportId: string): Promise<boolean> {
+export async function prepareProtectedReport(csrfToken: string, reportId: string,
+  onRecovered?: (payload: RecoveredProtectedPayload) => void): Promise<boolean> {
   if (browserRequestConfiguration().mode !== "server") return false;
   if (contexts.has(reportId)) return true;
   if (!("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) {
@@ -881,7 +892,13 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
       raw.fill(0);
       if (response.status === 409) {
         releaseLock();
-        publishStatus(reportId, { mode: "online-only", explanation: "Protected recovery belongs to another browser profile; connected server saves remain available." });
+        // Another browser can have opened the same assignment first. Adopt the
+        // existing key through normal authorization instead of abandoning offline
+        // storage or replacing that browser's encrypted work.
+        const recovered = await recoverProtectedReport(csrfToken, reportId);
+        if (recovered) onRecovered?.(recovered);
+        if (contexts.has(reportId)) return true;
+        publishStatus(reportId, { mode: "online-only", explanation: "Protected report recovery is unavailable; connected server saves remain available." });
         return false;
       }
       throw new Error(response.status === 401 ? "Your shift session has ended." : "Protected offline storage could not be prepared.");
@@ -908,7 +925,8 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
 export async function recoverProtectedReport(
   csrfToken: string,
   reportId: string,
-  options: { readonly onNoRetainedWork?: () => void } = {},
+  options: { readonly onNoRetainedWork?: () => void; readonly pendingHandles?: Set<string>;
+    readonly isCurrent?: () => boolean } = {},
 ): Promise<RecoveredProtectedPayload | null> {
   if (browserRequestConfiguration().mode !== "server" || contexts.has(reportId) ||
       !("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) return null;
@@ -920,6 +938,7 @@ export async function recoverProtectedReport(
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ schemaVersion: 1, envelopeVersion: 1 }),
   }));
+  if (options.isCurrent?.() === false) return null;
   if (grantResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
   if (grantResponse.status === 404 || grantResponse.status === 410) {
     // Records deliberately contain no report identifier or other label. A
@@ -936,7 +955,12 @@ export async function recoverProtectedReport(
     schemaVersion: 1; envelopeVersion: 1; recoveryHandle: string; grant: string; expiresAt: string;
     reportStatus: "draft" | "signed";
   };
+  if (options.pendingHandles && !options.pendingHandles.has(grant.recoveryHandle)) {
+    options.onNoRetainedWork?.();
+    return null;
+  }
   const record = await recordForRecoveryHandle(grant.recoveryHandle);
+  if (options.isCurrent?.() === false) return null;
   if (Date.parse(grant.expiresAt) <= Date.now() || (record && (record.schemaVersion !== 1 ||
       record.algorithm !== "AES-256-GCM" || protectedRecordExpired(record)))) return null;
   if (!record && grant.reportStatus === "signed") {
@@ -975,6 +999,7 @@ export async function recoverProtectedReport(
     if (recoveredReportId !== undefined && recoveredReportId !== reportId) {
       throw new Error("Protected report recovery is unavailable.");
     }
+    if (options.isCurrent?.() === false) return null;
     const context = {
       key,
       localRecordId: record?.localRecordId ?? crypto.randomUUID(),
@@ -1001,6 +1026,7 @@ export async function recoverProtectedReport(
     publishStatus(reportId, grant.reportStatus === "signed"
       ? { mode: "locked", explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note." }
       : writableStorageStatus({ persistentStorage }));
+    options.pendingHandles?.delete(grant.recoveryHandle);
     return record ? protectedPayload : null;
   } finally {
     raw?.fill(0);

@@ -18,7 +18,7 @@ import { LanguageSelector } from "./language-selector";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
 import type { ActiveDraftReport } from "../app/draft-report";
-import { cacheOpenedReport, cacheReopenedReport, clearProtectedRuntimeReports } from "../app/offline-reports";
+import { cacheOpenedReport, cacheReopenedReport, clearProtectedRuntimeReports, restoreRecoveredReport } from "../app/offline-reports";
 import {
   hasAdminMode,
   hasClinicalMode,
@@ -497,7 +497,8 @@ export function ClinicianSessionGate({ children }: {
         <AssignedCalls paused={activeReport !== null || openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
           setCompletionNotice(null);
-          await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
+          await prepareProtectedReport(sessionRequestToken(session), opened.report.id, (payload) =>
+            restoreRecoveredReport(window.localStorage, session.user.id, opened.report.id, payload));
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
           await flushProtectedReport(opened.report.id);
           setDismissedActiveReportNoticeId(null);

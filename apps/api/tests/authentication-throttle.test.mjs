@@ -4,12 +4,15 @@ import { createPasswordVerifier } from "../dist/identity/password.js";
 import { beginAuthenticationAttempt, finishAuthenticationAttempt } from "../dist/sessions/authentication-throttle.js";
 import { ClinicianSessionService } from "../dist/sessions/clinician-session.service.js";
 
-function throttleDatabase() {
+function throttleDatabase(policies = new Map()) {
   const state = new Map();
   const statements = [];
   const manager = { query: async (sql, parameters = []) => {
     const normalized = sql.replace(/\s+/g, " ").trim();
     statements.push({ sql: normalized, parameters });
+    if (normalized.startsWith("select settings.organization_id")) {
+      return policies.has(parameters[0]) ? [policies.get(parameters[0])] : [];
+    }
     if (normalized.startsWith("insert into app_identity.authentication_throttle")) {
       const now = parameters.at(-2);
       const rows = [];
@@ -28,7 +31,7 @@ function throttleDatabase() {
       }
       return [rows, rows.length];
     }
-    if (normalized.startsWith("update app_identity.authentication_throttle throttle")) {
+    if (normalized.includes("update app_identity.authentication_throttle throttle")) {
       const now = parameters.at(-1);
       for (let offset = 0; offset < parameters.length - 1; offset += 2) {
         const [scope, keyDigest] = parameters.slice(offset, offset + 2);
@@ -123,4 +126,54 @@ test("sign-in failures remain generic for existing and unknown usernames", async
     assert.fail("sign-in should fail");
   }
   assert.deepEqual(await failureFor(true), await failureFor(false));
+});
+
+test("agency limits admit 50 successful shared-account logins and retain the configured cap", async () => {
+  const policy = { organization_id: 'demo-agency', authentication_account_attempt_limit: 75,
+    authentication_network_attempt_limit: 150 };
+  const policies = new Map([['shared-demo', policy]]);
+  const database = throttleDatabase(policies);
+  const now = new Date('2026-10-06T09:00:00Z');
+  const attempts = await Promise.all(Array.from({ length: 50 }, () =>
+    beginAuthenticationAttempt(database.manager, ' Shared-Demo ', '203.0.113.41', now)));
+  assert.equal(attempts.filter(Boolean).length, 50);
+  await Promise.all(attempts.map(attempt => finishAuthenticationAttempt(database.manager, attempt, true, now)));
+  const account = [...database.state.values()].find(row => row.scope === 'account');
+  assert.equal(account.attemptCount, 50, 'successful attempts still count');
+  assert.equal(account.failureCount, 0);
+  policy.authentication_account_attempt_limit = 50;
+  assert.equal(await beginAuthenticationAttempt(database.manager, 'shared-demo', '203.0.113.41', now), undefined);
+  policy.authentication_account_attempt_limit = 100;
+  assert.ok(await beginAuthenticationAttempt(database.manager, 'shared-demo', '203.0.113.41', now));
+  assert.equal(account.attemptCount, 52, 'changing policy must not reset counters');
+});
+
+test("network allowances are shared within an agency and isolated between agencies", async () => {
+  const first = { organization_id: 'agency-one', authentication_account_attempt_limit: 100,
+    authentication_network_attempt_limit: 2 };
+  const second = { ...first, organization_id: 'agency-two', authentication_network_attempt_limit: 10 };
+  const database = throttleDatabase(new Map([['first', first], ['colleague', first], ['second', second]]));
+  const now = new Date('2026-10-06T09:00:00Z');
+  assert.ok(await beginAuthenticationAttempt(database.manager, 'first', '203.0.113.41', now));
+  assert.ok(await beginAuthenticationAttempt(database.manager, 'colleague', '203.0.113.41', now));
+  assert.equal(await beginAuthenticationAttempt(database.manager, 'first', '203.0.113.41', now), undefined);
+  assert.ok(await beginAuthenticationAttempt(database.manager, 'second', '203.0.113.41', now));
+  assert.ok(await beginAuthenticationAttempt(database.manager, 'first', '203.0.113.42', now));
+});
+
+test("raised agency limits preserve progressive failure delays and the installation cap", async () => {
+  const policy = { organization_id: 'demo-agency', authentication_account_attempt_limit: 1000,
+    authentication_network_attempt_limit: 1000 };
+  const database = throttleDatabase(new Map([['shared-demo', policy]]));
+  const now = new Date('2026-10-06T09:00:00Z');
+  for (let i = 0; i < 3; i++) {
+    const attempt = await beginAuthenticationAttempt(database.manager, 'shared-demo', '203.0.113.41', now);
+    assert.ok(attempt);
+    await finishAuthenticationAttempt(database.manager, attempt, false, now);
+  }
+  assert.equal(await beginAuthenticationAttempt(database.manager, 'shared-demo', '203.0.113.41', now), undefined);
+  const fresh = throttleDatabase(new Map([['shared-demo', policy]]));
+  const attempts = await Promise.all(Array.from({ length: 301 }, () =>
+    beginAuthenticationAttempt(fresh.manager, 'shared-demo', '203.0.113.41', now)));
+  assert.equal(attempts.filter(Boolean).length, 300);
 });

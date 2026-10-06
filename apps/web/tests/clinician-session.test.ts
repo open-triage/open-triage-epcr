@@ -3,15 +3,43 @@ import test from "node:test";
 import type { ClinicianSession } from "@open-triage/contracts";
 import {
   CLINICIAN_SESSION_STORAGE_KEY,
+  CLINICIAN_REAUTHENTICATED_EVENT,
   authenticateRestartedClinicianSession,
   clearClinicianSession,
   changeClinicianPassword,
   createClinicianSession,
   endClinicianSession,
   loadClinicianSession,
+  reauthenticateClinicianSession,
   sessionIsActive,
   storeClinicianSession
 } from "../app/clinician-session";
+
+test("successful reauthentication resumes all recovery gates, while a rejected password does not", async () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const originalMode = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const events = new EventTarget();
+  let notifications = 0;
+  events.addEventListener(CLINICIAN_REAUTHENTICATED_EVENT, () => { notifications++; });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: events });
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  try {
+    globalThis.fetch = async () => new Response(null, { status: 401 });
+    await assert.rejects(reauthenticateClinicianSession("rejected", "csrf"));
+    assert.equal(notifications, 0);
+    const result = { reauthenticatedUntil: "2099-01-01T00:00:00Z" };
+    globalThis.fetch = async () => Response.json(result);
+    assert.deepEqual(await reauthenticateClinicianSession("accepted", "csrf"), result);
+    assert.equal(notifications, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (originalMode === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalMode;
+  }
+});
 
 const session: ClinicianSession = {
   accessToken: "demo-token",

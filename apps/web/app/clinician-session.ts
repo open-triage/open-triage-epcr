@@ -111,6 +111,8 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
   return response.json() as Promise<ClinicianSession>;
 }
 
+export const CLINICIAN_REAUTHENTICATED_EVENT = "open-triage:session-reauthenticated";
+
 export async function reauthenticateClinicianSession(currentPassword: string,
   csrfToken: string): Promise<ReauthenticationResult> {
   const url = apiRequestUrl("/api/sessions/reauthenticate");
@@ -121,5 +123,7 @@ export async function reauthenticateClinicianSession(currentPassword: string,
     body: JSON.stringify({ currentPassword })
   }));
   if (!response.ok) throw await platformRequestError(response);
-  return response.json() as Promise<ReauthenticationResult>;
+  const result = await response.json() as ReauthenticationResult;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CLINICIAN_REAUTHENTICATED_EVENT));
+  return result;
 }

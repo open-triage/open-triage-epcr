@@ -1126,6 +1126,8 @@ fieldset { min-inline-size: 0; }
 .session-bar { color: var(--accent-contrast); }
 .session-bar .feedback-trigger { min-width: 44px; width: 44px; }
 .agency-color-grid input { height: 44px; min-height: 44px; }
+.report-reauthentication { display: grid; gap: 12px; margin-top: 12px; }
+.report-reauthentication p { margin: 0; }
 :where(.admin-ownership-transfer, .report-reauthentication) label { display: grid; gap: 6px; }
 :where(.admin-ownership-transfer, .report-reauthentication) fieldset { display: grid; gap: 12px; }
 :where(.admin-ownership-transfer, .report-reauthentication) :is(input, select, textarea) { width: 100%; }

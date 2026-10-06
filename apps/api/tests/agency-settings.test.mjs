@@ -14,6 +14,7 @@ const appearance = { ...DEFAULT_AGENCY_APPEARANCE, brandText: "County EMS", pwaN
 const demographics = { agencyUniqueStateId: "STATE-1", agencyNumber: "AGENCY-1", stateCode: "36",
   stateDisplay: "New York", stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null };
 const settingsRow = (revision = 1, bytes = 50 * 1024 * 1024) => ({
+  authentication_account_attempt_limit: 20, authentication_network_attempt_limit: 60,
   synthetic_retention_hours: "24", organization_id: organizationId, language: "en", regional_format: null, time_zone: null, report_media_allowance_bytes: bytes, image_media_limit_bytes: 10 * 1024 * 1024, revision,
   brand_text: appearance.brandText, helper_text: appearance.helperText, logo_png_data_url: null,
   accent_color: appearance.accentColor, accent_dark_color: appearance.accentDarkColor,
@@ -362,7 +363,7 @@ test("demo retention saves per agency, audits changes, preserves omitted policy,
     const saved = await service.update("session", { ...command(current.revision), syntheticRetentionHours: hours });
     assert.equal(saved.syntheticRetentionHours, hours);
     assert.equal(saved.revision, before.revision + 1);
-    assert.deepEqual(calls.findLast(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(38),
+    assert.deepEqual(calls.findLast(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(38, 40),
       [before.synthetic_retention_hours, hours]);
     await assert.rejects(service.update("session", { ...command(before.revision), syntheticRetentionHours: 24 }), ConflictException);
     const writes = calls.filter(({ sql }) => sql.includes("update app_identity.agency_settings")).length;
@@ -372,4 +373,49 @@ test("demo retention saves per agency, audits changes, preserves omitted policy,
   await service.update("session", { ...command(current.revision), syntheticRetentionHours: null });
   const saved = await service.update("session", { ...command(current.revision), language: "sv" });
   assert.equal(saved.syntheticRetentionHours, null);
+});
+
+test('authentication limits validate both bounded integers without silently coercing or disabling protection', () => {
+  const limits = { accountAttemptsPer15Minutes: 100, networkAttemptsPer5Minutes: 200 };
+  assert.deepEqual(validateUpdateAgencyMediaSettings({ ...command(), authenticationLimits: limits }).authenticationLimits, limits);
+  assert.equal(validateUpdateAgencyMediaSettings(command()).authenticationLimits, undefined);
+  for (const invalid of [null, [], {}, { ...limits, extra: 1 },
+    ...[0, -1, 1.5, 1001, '100', null].flatMap(value => [
+      { ...limits, accountAttemptsPer15Minutes: value }, { ...limits, networkAttemptsPer5Minutes: value }])]) {
+    assert.throws(() => validateUpdateAgencyMediaSettings({ ...command(), authenticationLimits: invalid }), UnprocessableEntityException);
+  }
+});
+
+test('authentication policy changes are agency-scoped, revisioned, audited, and preserved by older clients', async () => {
+  let current = settingsRow();
+  const calls = [];
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    if (sql.includes('update app_identity.agency_settings')) {
+      current = { ...current, revision: current.revision + 1, language: parameters[15],
+        authentication_account_attempt_limit: parameters[21], authentication_network_attempt_limit: parameters[22] };
+      return [[current], 1];
+    }
+    if (sql.includes('for update')) return [current];
+    if (sql.includes('agency_demographic_version')) return [demographicRow()];
+    return [];
+  } };
+  const service = new AgencySettingsService({ transaction: work => work(manager) }, {
+    requireCapability: async (_token, capability) => {
+      assert.equal(capability, 'settings:write');
+      return { organization: { id: organizationId }, user: { id: actorId } };
+    }
+  });
+  const limits = { accountAttemptsPer15Minutes: 100, networkAttemptsPer5Minutes: 200 };
+  const saved = await service.update('session', { ...command(), authenticationLimits: limits });
+  assert.deepEqual(saved.authenticationLimits, limits);
+  assert.equal(saved.revision, 2);
+  const mutation = calls.find(call => call.sql.includes('update app_identity.agency_settings'));
+  assert.equal(mutation.parameters[0], organizationId);
+  assert.match(mutation.sql, /where organization_id = \$1 and revision = \$2/);
+  const audit = calls.find(call => call.sql.includes('agency_settings_change_event'));
+  assert.deepEqual(audit.parameters.slice(40), [20, 100, 60, 200]);
+  const preserved = await service.update('session', { ...command(2), language: 'sv' });
+  assert.deepEqual(preserved.authenticationLimits, limits);
+  await assert.rejects(service.update('session', { ...command(), authenticationLimits: limits }), ConflictException);
 });

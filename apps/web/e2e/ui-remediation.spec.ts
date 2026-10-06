@@ -536,6 +536,7 @@ test("stationary encounter fills the available screen without a page scrollbar",
   await page.route("**/api/calls/assigned", route => route.fulfill({ json: assigned }));
   await page.route("**/api/calls/*/open", route => route.fulfill({ json: opened }));
   await page.route("**/api/reports/*/protected-key-envelope", route => route.fulfill({ status: 409, json: {} }));
+  await page.route("**/api/reports/*/recovery-grants", route => route.fulfill({ status: 404 }));
   await page.setViewportSize({ width: 1280, height: 900 });
   await open(page, "session");
   await page.getByRole("button", { name: "Stationary", exact: true }).click();

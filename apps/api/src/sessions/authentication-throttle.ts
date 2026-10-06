@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { EntityManager } from "typeorm";
+import { DEFAULT_AGENCY_AUTHENTICATION_LIMITS } from "@open-triage/contracts";
 import { mutationRows } from "../database/mutation-result.js";
 
 type Scope = "account" | "network" | "installation";
@@ -31,20 +32,34 @@ function keyedDigest(scope: Scope, value: string): string {
   return createHmac("sha256", secret()).update(`open-triage-auth-throttle-v1\0${scope}\0${value}`).digest("hex");
 }
 
-function buckets(username: string, networkSource: string | undefined): Bucket[] {
+type AgencyPolicy = { organization_id: string; authentication_account_attempt_limit: number;
+  authentication_network_attempt_limit: number };
+
+function buckets(username: string, networkSource: string | undefined, policy: AgencyPolicy | undefined): Bucket[] {
   const result: Bucket[] = [
-    { scope: "account", keyDigest: keyedDigest("account", username.trim().toLowerCase()), windowSeconds: 900, maxAttempts: 20 },
+    { scope: "account", keyDigest: keyedDigest("account", username.trim().toLowerCase()), windowSeconds: 900,
+      maxAttempts: policy?.authentication_account_attempt_limit ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.accountAttemptsPer15Minutes },
     { scope: "installation", keyDigest: keyedDigest("installation", "current"), windowSeconds: 60, maxAttempts: 300 }
   ];
   if (networkSource) {
-    result.push({ scope: "network", keyDigest: keyedDigest("network", networkSource), windowSeconds: 300, maxAttempts: 60 });
+    // Agencies sharing a venue or proxy must not consume each other's allowance.
+    // Unknown usernames retain the default network bucket and installation cap.
+    const source = policy ? `${policy.organization_id}\0${networkSource}` : networkSource;
+    result.push({ scope: "network", keyDigest: keyedDigest("network", source), windowSeconds: 300,
+      maxAttempts: policy?.authentication_network_attempt_limit ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.networkAttemptsPer5Minutes });
   }
   return result.sort((left, right) => left.scope.localeCompare(right.scope));
 }
 
 export async function beginAuthenticationAttempt(manager: Pick<EntityManager, "query">, username: string,
   networkSource: string | undefined, now: Date): Promise<AuthenticationThrottle | undefined> {
-  const attempt = { buckets: buckets(username, networkSource) };
+  const policies = await manager.query<AgencyPolicy[]>(`select settings.organization_id,
+      settings.authentication_account_attempt_limit, settings.authentication_network_attempt_limit
+    from app_identity.local_credential credential
+    join app_identity.app_user account on account.id = credential.user_id
+    join app_identity.agency_settings settings on settings.organization_id = account.organization_id
+    where credential.username = $1`, [username.trim().toLowerCase()]);
+  const attempt = { buckets: buckets(username, networkSource, policies[0]) };
   await manager.query(`delete from app_identity.authentication_throttle
     where ctid in (select ctid from app_identity.authentication_throttle
       where expires_at < $1 order by expires_at limit 100)`, [now]);
@@ -65,6 +80,7 @@ export async function beginAuthenticationAttempt(manager: Pick<EntityManager, "q
     select input.scope, input.key_digest, input.window_seconds, input.max_attempts,
       ${nowParameter}, 1, 0, ${nowParameter}, ${expiryParameter}
     from (values ${values}) input(scope, key_digest, window_seconds, max_attempts)
+    order by input.scope, input.key_digest
     on conflict (scope, key_digest) do update set
       window_seconds = excluded.window_seconds,
       max_attempts = excluded.max_attempts,
@@ -103,14 +119,25 @@ export async function finishAuthenticationAttempt(manager: Pick<EntityManager, "
   }).join(", ");
   parameters.push(now);
   const nowParameter = `$${parameters.length}`;
+  // UPDATE's physical row order can change after concurrent upserts. Lock every
+  // bucket in the same order as beginAuthenticationAttempt before updating it.
+  // A materialized locking CTE keeps this atomic even without an outer transaction.
+  const lockedBuckets = `with locked_buckets as materialized (
+    select throttle.scope, throttle.key_digest
+    from app_identity.authentication_throttle throttle
+    join (values ${values}) input(scope, key_digest)
+      on throttle.scope = input.scope and throttle.key_digest = input.key_digest
+    order by throttle.scope, throttle.key_digest
+    for update of throttle
+  )`;
   if (succeeded) {
-    await manager.query(`update app_identity.authentication_throttle throttle
+    await manager.query(`${lockedBuckets} update app_identity.authentication_throttle throttle
       set last_success_at = ${nowParameter}::timestamptz
-      from (values ${values}) input(scope, key_digest)
+      from locked_buckets input
       where throttle.scope = input.scope and throttle.key_digest = input.key_digest`, parameters);
     return;
   }
-  await manager.query(`update app_identity.authentication_throttle throttle set
+  await manager.query(`${lockedBuckets} update app_identity.authentication_throttle throttle set
       failure_count = throttle.failure_count + 1,
       last_failure_at = ${nowParameter}::timestamptz,
       blocked_until = case
@@ -126,6 +153,6 @@ export async function finishAuthenticationAttempt(manager: Pick<EntityManager, "
             ${nowParameter}::timestamptz + interval '60 seconds')
         else throttle.blocked_until
       end
-    from (values ${values}) input(scope, key_digest)
+    from locked_buckets input
     where throttle.scope = input.scope and throttle.key_digest = input.key_digest`, parameters);
 }

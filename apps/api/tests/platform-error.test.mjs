@@ -68,3 +68,21 @@ test("agency language never changes API status, parameters, or canonical finding
   assert.deepEqual(filtered(exception, "/api/reports/r/sign", "en"),
     filtered(exception, "/api/reports/r/sign", "sv"));
 });
+
+test("unexpected failures log bounded route and SQLSTATE metadata without sensitive exception details", () => {
+  const filter = new PlatformErrorFilter();
+  const logged = [];
+  filter.logger = { error: entry => logged.push(entry) };
+  const exception = Object.assign(new Error("patient secret and password"), {
+    query: "clinical values", parameters: ["private"], driverError: { code: "23503", detail: "patient identifier" },
+  });
+  let body;
+  filter.catch(exception, { switchToHttp: () => ({
+    getRequest: () => ({ path: "/api/reports/private-id?token=secret", method: "DELETE", route: { path: "/api/reports/:id" } }),
+    getResponse: () => ({ status: () => ({ json: value => { body = value; } }) }),
+  }) });
+  assert.deepEqual(logged, [{ event: "request.failed", status: 500, domain: "reports", method: "DELETE",
+    route: "/api/reports/:id", sqlState: "23503" }]);
+  assert.equal(body.message, "Internal server error");
+  assert.doesNotMatch(JSON.stringify(logged), /private|patient|secret|password|clinical values/);
+});
