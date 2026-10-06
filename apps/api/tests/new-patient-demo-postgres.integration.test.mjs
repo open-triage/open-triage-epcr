@@ -7,6 +7,8 @@ import { ConflictException, NotFoundException, UnauthorizedException } from "@ne
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
+import { FormPublicationService } from "../dist/forms/form-publication.service.js";
+import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 
 const integration = process.env.DATABASE_URL ? test : test.skip;
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -66,10 +68,9 @@ integration("new demo patients support the generated-report lifecycle without a 
       assertCsrf: async (_token, csrf) => { if (csrf !== "proof") throw new UnauthorizedException(); },
     };
     const service = new DraftReportService(db, sessions);
-    if (!(await manager.query("select organization_id from app_identity.active_configuration_bundle where organization_id=$1",
-      [organizationId])).length) {
-      // Fresh CI databases have the published fixture form but have not activated
-      // a validation bundle. Prepare one through the ordinary authoring workflow.
+    {
+      // Publish a fresh, minimal Form and Validation bundle in the rollback
+      // transaction so coverage does not depend on local or legacy configuration.
       const baseline = (await manager.query(`select fv.id,fv.catalog_release_id
         from forms.agency_stationary_default d join forms.form_version fv on fv.id=d.form_version_id
         where d.organization_id=$1`, [organizationId]))[0];
@@ -80,6 +81,21 @@ integration("new demo patients support the generated-report lifecycle without a 
       await manager.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by,note)
         select $1,$2,id,$3,'Rollback configuration author' from app_identity.role
         where organization_id=$1 and system_key='administrator'`, [organizationId, actorId, userId]);
+      const formId = randomUUID();
+      const formVersionId = randomUUID();
+      const definition = { schemaVersion: 1, sections: [{ key: "narrative", fields: [
+        { key: "narrative", source: { kind: "nemsis", elementId: "eNarrative.01" } },
+      ] }] };
+      const definitionSha256 = canonicalDefinitionSha256(definition);
+      await manager.query(`insert into forms.form(id,organization_id,slug,name)
+        values($1,$2,$3,'Rollback new patient form')`, [formId, organizationId, `rollback-${formId}`]);
+      await manager.query(`insert into forms.form_version(id,form_id,catalog_release_id,version,
+        canonical_definition,definition_sha256,created_by)
+        values($1,$2,$3,1,$4::jsonb,$5,$6)`, [formVersionId, formId, baseline.catalog_release_id,
+        JSON.stringify(definition), definitionSha256, actorId]);
+      await new FormPublicationService(db).publish(formVersionId, {
+        publishedBy: actorId, definitionSha256, changeNote: "Rollback regression fixture",
+      }, organizationId);
       const validations = new ValidationAuthoringService(db, sessions);
       const draft = await validations.create("fixture-owner", {
         catalogReleaseId: baseline.catalog_release_id, displayName: "Rollback new patient policy",
@@ -90,7 +106,7 @@ integration("new demo patients support the generated-report lifecycle without a 
         expectedRevision: draft.revision, displayName: draft.displayName, changeNote: "Rollback regression fixture",
       });
       await validations.activate("fixture-owner", published.id, {
-        formVersionId: baseline.id, catalogReleaseId: baseline.catalog_release_id, changeNote: "Rollback regression fixture",
+        formVersionId, catalogReleaseId: baseline.catalog_release_id, changeNote: "Rollback regression fixture",
       });
       actorId = userId;
     }
