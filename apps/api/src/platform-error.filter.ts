@@ -1,4 +1,4 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from "@nestjs/common";
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
 
 export type PlatformError = { code: string; params: Record<string, string | number> };
 
@@ -67,15 +67,30 @@ export function identifyPlatformError(status: number, path: string, body: Record
 
 @Catch()
 export class PlatformErrorFilter implements ExceptionFilter<unknown> {
+  private readonly logger = new Logger(PlatformErrorFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
-    const request = http.getRequest<{ path: string }>();
+    const request = http.getRequest<{ path: string; method?: string; route?: { path?: string } }>();
     const response = http.getResponse<{ status(code: number): { json(body: unknown): void } }>();
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const original = exception instanceof HttpException ? exception.getResponse() : { message: "Internal server error" };
     const body: Record<string, unknown> = typeof original === "string" ? { message: original } :
       original && typeof original === "object" ? { ...original as Record<string, unknown> } : {};
     const identity = identifyPlatformError(status, request.path, body);
+    if (status >= 500) {
+      // Never log exception messages, SQL, parameters, bodies, headers, or raw
+      // URLs: any of these may contain clinical data or credentials.
+      const driver = exception && typeof exception === "object"
+        ? exception as { driverError?: { code?: unknown }; code?: unknown } : {};
+      const sqlState = driver.driverError?.code ?? driver.code;
+      const route = request.route?.path;
+      this.logger.error({ event: "request.failed", status, domain: errorDomain(request.path),
+        method: /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(request.method ?? "") ? request.method : "unknown",
+        ...(typeof route === "string" && /^\/[a-zA-Z/:_-]{1,160}$/.test(route) ? { route } : {}),
+        ...(typeof sqlState === "string" && /^[0-9A-Z]{5}$/.test(sqlState) ? { sqlState } : {}),
+      });
+    }
     response.status(status).json({ ...body, statusCode: status, ...identity });
   }
 }
