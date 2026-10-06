@@ -177,6 +177,39 @@ test('mobile, enlarged text, agency colors and keyboard dialogs remain usable',a
   await page.screenshot({path:'/tmp/unified-analytics-mobile.png',fullPage:true});
 });
 
+test('saved visualization dialogs hydrate, close when unavailable and stay closed on reconnect', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const state = await setupAnalytics(page);
+  let savedLookups = 0;
+  page.on('request', request => { if (request.url().endsWith('/api/review/analytics/saved') && request.method() === 'GET') savedLookups++; });
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  const saveButton = page.getByRole('button', { name: 'Save visualization', exact: true });
+  await expect(saveButton).toBeEnabled();
+  await page.getByRole('button', { name: 'Bar', exact: true }).click();
+  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  expect(savedLookups).toBe(1);
+  state.savedListFailure = true;
+  await saveButton.click();
+  await expect(page.getByRole('dialog', { name: 'Save visualization', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Saved visualizations are unavailable');
+  await page.context().setOffline(true);
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(saveButton).toBeDisabled();
+  state.savedListFailure = false;
+  await page.context().setOffline(false);
+  await expect(saveButton).toBeEnabled();
+  await expect(page.locator('.analytics-saved-controls').getByRole('alert')).toBeHidden();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await saveButton.click();
+  await expect(page.getByRole('dialog', { name: 'Save visualization', exact: true })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(saveButton).toBeFocused();
+  expect(state.queries).toHaveLength(0);
+  expect(state.saveCommands).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
 test('personal visualization parameters save, survive reload, restore controls and update without generating a query', async ({ page }) => {
   const state = await setupAnalytics(page);
   await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
