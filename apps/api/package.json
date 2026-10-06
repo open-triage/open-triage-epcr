@@ -13,7 +13,7 @@
     "identity:account:runtime": "node dist/identity/identity-account.cli.entry.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs",
+    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/new-patient-demo-postgres.integration.test.mjs",
     "review:work": "npm run build && node dist/review/review-worker.entry.js",
     "review:watch": "node --env-file-if-exists=../../.env.local scripts/watch-review.mjs"
   },

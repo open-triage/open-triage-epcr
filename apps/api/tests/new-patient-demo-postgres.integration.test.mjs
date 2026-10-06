@@ -9,6 +9,9 @@ import { DraftReportService } from "../dist/reports/draft-report.service.js";
 
 const integration = process.env.DATABASE_URL ? test : test.skip;
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
+process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-000000000001";
+process.env.PATIENT_KEY_VERSION ??= "1";
+process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
 integration("new demo patients support the generated-report lifecycle without a call assignment", async () => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
