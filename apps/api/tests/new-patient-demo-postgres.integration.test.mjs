@@ -6,6 +6,7 @@ import pg from "pg";
 import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
+import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
 
 const integration = process.env.DATABASE_URL ? test : test.skip;
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
@@ -65,6 +66,34 @@ integration("new demo patients support the generated-report lifecycle without a 
       assertCsrf: async (_token, csrf) => { if (csrf !== "proof") throw new UnauthorizedException(); },
     };
     const service = new DraftReportService(db, sessions);
+    if (!(await manager.query("select organization_id from app_identity.active_configuration_bundle where organization_id=$1",
+      [organizationId])).length) {
+      // Fresh CI databases have the published fixture form but have not activated
+      // a validation bundle. Prepare one through the ordinary authoring workflow.
+      const baseline = (await manager.query(`select fv.id,fv.catalog_release_id
+        from forms.agency_stationary_default d join forms.form_version fv on fv.id=d.form_version_id
+        where d.organization_id=$1`, [organizationId]))[0];
+      assert.ok(baseline, "seed the published demonstration form first");
+      actorId = randomUUID();
+      await manager.query(`insert into app_identity.app_user(id,organization_id,display_name)
+        values($1,$2,'Rollback configuration author')`, [actorId, organizationId]);
+      await manager.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by,note)
+        select $1,$2,id,$3,'Rollback configuration author' from app_identity.role
+        where organization_id=$1 and system_key='administrator'`, [organizationId, actorId, userId]);
+      const validations = new ValidationAuthoringService(db, sessions);
+      const draft = await validations.create("fixture-owner", {
+        catalogReleaseId: baseline.catalog_release_id, displayName: "Rollback new patient policy",
+      }, { importedRules: [{ id: randomUUID(), name: "Fictional narrative", enabled: false, severity: "error",
+        executionTargets: ["live", "sign"], primaryTargetElementId: "eNarrative.01",
+        message: "Fictional narrative required", source: 'require present("eNarrative.01")' }] });
+      const published = await validations.publish("fixture-owner", draft.id, {
+        expectedRevision: draft.revision, displayName: draft.displayName, changeNote: "Rollback regression fixture",
+      });
+      await validations.activate("fixture-owner", published.id, {
+        formVersionId: baseline.id, catalogReleaseId: baseline.catalog_release_id, changeNote: "Rollback regression fixture",
+      });
+      actorId = userId;
+    }
     const command = () => ({ commandId: randomUUID(), reportId: randomUUID(), incidentId: randomUUID(),
       patientId: randomUUID(), organizationId, documentingUserId: actorId, patientIdentityState: "unknown" });
     await client.query("set local role open_triage_api_runtime");
