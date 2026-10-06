@@ -44,7 +44,7 @@ test("prototype deletion atomically removes a clinician-owned synthetic draft wi
   const service = new DraftReportService(transactional(manager), sessions());
 
   assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId, "csrf-proof"), { deleted: true, reportId });
-  assert.match(calls[0].sql, /r\.status = 'draft' and r\.synthetic and ca\.synthetic/);
+  assert.match(calls[0].sql, /r\.status = 'draft' and r\.synthetic and r\.synthetic_generated_by = \$3/);
   assert.deepEqual(calls[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
   assert.ok(calls.find(({ sql }) => /set_config\('open_triage\.prototype_delete_report'/.test(sql)));
   assert.ok(calls.find(({ sql }) => /delete from clinical\.call_assignment where report_id/.test(sql)));

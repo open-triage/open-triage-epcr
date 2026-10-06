@@ -193,6 +193,8 @@ export class DraftReportService {
     const digest = commandSha256(command);
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        const currentSession = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+        const synthetic = currentSession.capabilities?.includes("clinical:demo") === true;
         await this.lockCommand(manager, command.commandId);
         const replay = await this.replay<DraftReportResult>(manager, command.commandId, "create-draft", digest, command.reportId);
         if (replay) return replay;
@@ -231,9 +233,9 @@ export class DraftReportService {
         }
 
         await manager.query(`
-          insert into clinical.incident (id, organization_id)
-          values ($1, $2) on conflict (id) do nothing
-        `, [command.incidentId, command.organizationId]);
+          insert into clinical.incident (id, organization_id, synthetic)
+          values ($1, $2, $3) on conflict (id) do nothing
+        `, [command.incidentId, command.organizationId, synthetic]);
         await manager.query(`
           insert into clinical.patient
             (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
@@ -257,14 +259,15 @@ export class DraftReportService {
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
              form_version_id, catalog_release_id, validation_version_id, documenting_user_id,
-             form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,
+             synthetic, synthetic_generated_by)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           on conflict (id) do nothing returning id
         `, [command.reportId, command.organizationId, command.incidentId, command.patientId,
           active[0].agency_demographic_version_id, active[0].form_version_id,
           active[0].catalog_release_id, active[0].validation_version_id, command.documentingUserId,
           active[0].form_definition_sha256,active[0].catalog_artifact_sha256,
-          active[0].validation_compiled_sha256]));
+          active[0].validation_compiled_sha256, synthetic, synthetic ? session.user.id : null]));
         if (insertedReports.length) {
           await seedDispatchEncounter(manager, command.reportId, active[0].catalog_release_id,
             command.documentingUserId, null, await nextPcrNumber(manager));
@@ -310,12 +313,7 @@ export class DraftReportService {
         await this.lockCommand(manager, command.commandId);
         const rows = await manager.query<ReportRow[]>(`
           select clinical.report.*, clock_timestamp() as server_received_time,
-                 exists (
-                   select 1 from clinical.call_assignment ca
-                   where ca.report_id = clinical.report.id
-                     and ca.organization_id = clinical.report.organization_id
-                     and ca.synthetic and ca.synthetic_generated_by = $3
-                 ) as demo_mutable
+                 (synthetic and synthetic_generated_by = $3) as demo_mutable
           from clinical.report
           where id = $1 and organization_id = $2 and documenting_user_id = $3
           for update
@@ -811,7 +809,7 @@ export class DraftReportService {
              organization.deployment_timezone as agency_time_zone,
              r.updated_at as last_saved_at, r.expires_at,
              r.revision, r.form_version_id, r.catalog_release_id,
-             (r.synthetic and coalesce(ca.synthetic, false) and ca.synthetic_generated_by = $2) as demo_mutable,
+             (r.synthetic and r.synthetic_generated_by = $2) as demo_mutable,
              count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
                as validation_error_count
       from clinical.report r
@@ -888,7 +886,7 @@ export class DraftReportService {
                ou.call_sign as unit_call_sign, organization.deployment_timezone as agency_time_zone,
                r.dispatch_canceled_at,
                r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id,
-               (r.synthetic and ca.synthetic and ca.synthetic_generated_by = $3) as demo_mutable,
+               (r.synthetic and r.synthetic_generated_by = $3) as demo_mutable,
                r.expires_at
         from clinical.report r
         left join clinical.call_assignment ca on ca.report_id = r.id and ca.organization_id = r.organization_id
@@ -948,11 +946,9 @@ export class DraftReportService {
       const session = await this.sessions.requireCapability(accessToken, "clinical:demo", manager);
       const reports = await manager.query<Array<{ patient_id: string }>>(`
         select r.patient_id from clinical.report r
-        join clinical.call_assignment ca
-          on ca.report_id = r.id and ca.organization_id = r.organization_id
         where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
-          and r.status = 'draft' and r.synthetic and ca.synthetic
-          and ca.synthetic_generated_by = $3
+          and r.status = 'draft' and r.synthetic
+          and r.synthetic_generated_by = $3
         for update
       `, [reportId, session.organization.id, session.user.id]);
       const report = reports[0];
