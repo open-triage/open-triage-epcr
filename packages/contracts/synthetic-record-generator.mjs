@@ -117,7 +117,17 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
   const fieldsById = new Map(fields.map(field => [fieldId(field), field]));
   const timeline = operationalTimeline(dispatchedAt, random, preserveExisting ? now : undefined);
   const protectedElements = new Set(preserveExisting ? source.groups.flatMap(group => group.instances.flatMap(instance =>
-    instance.elements.filter(element => element.values.some(value => value.attributes?.['x-open-triage-demo'] !== PROVENANCE))
+    instance.elements.filter(element => element.values.some(value => {
+      if (value.attributes?.['x-open-triage-demo'] === PROVENANCE) return false;
+      // Only explicitly dispatch-owned source values may be repaired. Clinician
+      // edits and values with unknown ownership remain protected, even if invalid.
+      if (instance.attributes?.['x-open-triage-owner'] !== 'dispatch' || value.kind !== 'coded') return true;
+      const restricted = fieldsById.get(element.id)?.choicePolicy !== undefined
+        || configuration.catalogFields[element.id]?.choiceOrder !== undefined
+        || metadata.get(element.id)?.definition.valueSource?.kind === 'inline-enumerated';
+      return !restricted || choices(element.id).some(choice => choice.code === value.code
+        && (choice.codeSystem ?? '') === (value.system ?? ''));
+    }))
       .map(element => element.id))) : []);
   const values = id => document.groups.flatMap(group => group.instances.flatMap(instance =>
     instance.elements.filter(element => element.id === id).flatMap(element => element.values)));
@@ -227,6 +237,27 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         if (want) set(id, pick(allowed, random));
         else { const alternatives = choices(id).filter(choice => !allowed.map(String).includes(String(choice.code)));
           if (alternatives.length) set(id, pick(alternatives, random).code); else set(id); }
+        break;
+      }
+      case 'starts-with-element': {
+        const prefixId = expression.prefixElementId;
+        const currentValue = ordinary(values(id)[0]);
+        const currentPrefix = ordinary(values(prefixId)[0]);
+        // Related code lists may cover different territories. Choose a permitted
+        // pair rather than repeatedly drawing a county for an unsupported state.
+        // Existing clinician values constrain the pair and must never be replaced.
+        const candidates = elementId => protectedElements.has(elementId)
+          ? values(elementId).map(ordinary).filter(value => value !== undefined)
+          : choices(elementId).map(choice => choice.code);
+        const pairs = candidates(id).flatMap(value => candidates(prefixId)
+          .filter(prefix => String(value).startsWith(String(prefix)) === want)
+          .map(prefix => ({ value, prefix })));
+        const preferred = pairs.filter(pair => pair.prefix === currentPrefix);
+        const retained = pairs.filter(pair => pair.value === currentValue);
+        const selected = pick(preferred.length ? preferred : retained.length ? retained : pairs, random);
+        if (!selected) throw new Error(`No compatible enabled values for ${id} and ${prefixId}`);
+        if (selected.value !== currentValue) set(id, selected.value);
+        if (selected.prefix !== currentPrefix) set(prefixId, selected.prefix);
         break;
       }
       case 'compare-literal': case 'compare-elements': {

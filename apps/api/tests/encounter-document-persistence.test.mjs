@@ -1,9 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ENCOUNTER_DOCUMENT_SCHEMA, ENCOUNTER_DOCUMENT_TYPE, ENCOUNTER_MODEL_VERSION } from "@open-triage/contracts";
-import { dispatchEntityId, encounterDocument, nextPcrNumber, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+import { assembleEncounterDocument, dispatchEntityId, encounterDocument, nextPcrNumber, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
 
 const reportId = "42000000-0000-4000-8000-000000000002";
+
+test("encounter documents distinguish untouched dispatch groups from clinician, demo and mixed ownership", () => {
+  const report = { id: reportId, created_at: "2026-10-06T12:00:00Z", updated_at: "2026-10-06T12:00:00Z",
+    form_id: "form", form_version: 1, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet" };
+  for (const [provenance, expected] of [
+    [["dispatch"], "dispatch"], [["clinician"], "clinician"], [["dispatch", "clinician"], "clinician"],
+    [["demo"], undefined], [["dispatch", "demo"], undefined], [[], undefined],
+  ]) {
+    const group = { id: "scene", group_id: "eSceneSection", parent_group_instance_id: null,
+      ordinal: 0, documented_time: null, correlation_id: null };
+    const occurrences = provenance.map((kind, ordinal) => ({ id: `value-${ordinal}`, group_instance_id: "scene",
+      element_id: "eScene.09", value_kind: "coded", code: "Y92.03", code_system: "ICD-10-CM", code_display: "Apartment/condo",
+      ordinal, provenance_kind: kind, provenance_detail: null }));
+    const document = assembleEncounterDocument(report, [group], occurrences);
+    assert.equal(document.groups[0].instances[0].attributes?.["x-open-triage-owner"], expected, provenance.join(","));
+    assert.equal(document.groups[0].instances[0].elements[0]?.values[0]?.code, provenance.length ? "Y92.03" : undefined);
+  }
+});
 
 test("server PCR numbers preserve sequence order and minimum width", async () => {
   const numbers = ["1", "2", "1000000000"];

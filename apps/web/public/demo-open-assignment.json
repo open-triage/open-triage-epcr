@@ -273,18 +273,6 @@
               "parentInstanceId": "synthetic-pcr-1",
               "elements": [
                 {
-                  "id": "eScene.09",
-                  "values": [
-                    {
-                      "kind": "coded",
-                      "occurrenceId": "synthetic-location-type",
-                      "code": "Y92.03",
-                      "system": "ICD-10-CM",
-                      "display": "Apartment/condo"
-                    }
-                  ]
-                },
-                {
                   "id": "eScene.11",
                   "values": [
                     {
@@ -381,6 +369,6 @@
   "replacementAssignment": null,
   "generatedFrom": {
     "path": "packages/contracts/examples/dispatch/synthetic-assignment-01.json",
-    "sha256": "b0980c0779e9bc537b16ee8b4979648be88ea3790c5ec8d23f5e5788e28800ee"
+    "sha256": "b4f19c04792b5bda578f9dcb2e6adb0e6d0f8403e5a95e3c6efbdf07609aed8a"
   }
 }

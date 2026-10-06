@@ -379,8 +379,10 @@ export function assembleEncounterDocument(report: ReportDocumentRow, groups: Sto
     const target = byGroup.get(group.group_id) ?? { id: group.group_id, instances: [] };
     const groupOccurrences = occurrences.filter((item) => item.group_instance_id === group.id);
     const clinicianOwned = groupOccurrences.some((item) => item.provenance_kind === "clinician");
+    const dispatchOwned = groupOccurrences.length > 0 && groupOccurrences.every((item) => item.provenance_kind === "dispatch");
     const attributes = {
       ...(clinicianOwned ? { "x-open-triage-owner": "clinician" } : {}),
+      ...(dispatchOwned ? { "x-open-triage-owner": "dispatch" } : {}),
       ...(group.correlation_id?.startsWith("demo:stationary-populate-v1:") ? { "x-open-triage-demo": "stationary-populate-v1" } : {}),
       ...(group.documented_time ? { documentedTime: new Date(group.documented_time).toISOString() } : {}),
     };

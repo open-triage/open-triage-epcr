@@ -173,6 +173,7 @@ test("synthetic dispatch lifecycle validates against the strict envelope and pin
   for (const [index, message] of messages.entries()) {
     assert.ok(validateSchema(message), `${examplePaths[index]}: ${ajv.errorsText(validateSchema.errors)}`);
     validateAgainstCatalog(message);
+    assert.equal(findElement(message, "eScene.09"), undefined, `${examplePaths[index]} must leave Incident Location Type for clinical documentation`);
   }
 
   assert.deepEqual(messages.map(({ revision }) => revision), [...Array(10).fill(1), 2, 3]);

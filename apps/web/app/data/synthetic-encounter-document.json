@@ -264,18 +264,6 @@
           "parentInstanceId": "synthetic-pcr-1",
           "elements": [
             {
-              "id": "eScene.09",
-              "values": [
-                {
-                  "kind": "coded",
-                  "occurrenceId": "synthetic-location-type",
-                  "code": "Y92.03",
-                  "system": "ICD-10-CM",
-                  "display": "Apartment/condo"
-                }
-              ]
-            },
-            {
               "id": "eScene.11",
               "values": [
                 {

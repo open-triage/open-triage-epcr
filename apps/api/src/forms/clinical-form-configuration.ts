@@ -32,9 +32,53 @@ type ChoiceRow = {
   sort_order: number | null;
 };
 
+type ConfigurationManager = Pick<EntityManager, "query"> & Partial<Pick<EntityManager, "connection">>;
+type CachedConfiguration = { configuration: ClinicalFormConfiguration; bytes: number };
+// Published configuration contains no patient data. Scope reuse to one database
+// connection owner, and bound both the number and serialized size of retained bundles.
+const configurationCaches = new WeakMap<object, Map<string, CachedConfiguration>>();
+const MAX_CACHED_CONFIGURATIONS = 8;
+const MAX_CACHED_CONFIGURATION_BYTES = 16 * 1024 * 1024;
+
 /** Loads only immutable, report-pinned configuration; the current agency default is deliberately irrelevant. */
 export async function clinicalFormConfiguration(
-  manager: Pick<EntityManager, "query">,
+  manager: ConfigurationManager,
+  formVersionId: string,
+  catalogReleaseId: string,
+  validationVersionId?: string | null,
+  validationCompiledSha256?: string | null,
+): Promise<ClinicalFormConfiguration> {
+  const owner = manager.connection ?? manager;
+  let cache = configurationCaches.get(owner);
+  if (!cache) {
+    cache = new Map();
+    configurationCaches.set(owner, cache);
+  }
+  const key = JSON.stringify([formVersionId, catalogReleaseId, validationVersionId ?? null, validationCompiledSha256 ?? null]);
+  const cached = cache.get(key);
+  if (cached) {
+    cache.delete(key);
+    cache.set(key, cached);
+    // Callers may customize their response; never expose the retained snapshot.
+    return structuredClone(cached.configuration);
+  }
+  const configuration = await loadClinicalFormConfiguration(manager, formVersionId, catalogReleaseId,
+    validationVersionId, validationCompiledSha256);
+  const bytes = Buffer.byteLength(JSON.stringify(configuration));
+  if (bytes <= MAX_CACHED_CONFIGURATION_BYTES) {
+    cache.set(key, { configuration: structuredClone(configuration), bytes });
+    let retainedBytes = [...cache.values()].reduce((total, entry) => total + entry.bytes, 0);
+    while (cache.size > MAX_CACHED_CONFIGURATIONS || retainedBytes > MAX_CACHED_CONFIGURATION_BYTES) {
+      const oldest = cache.keys().next().value!;
+      retainedBytes -= cache.get(oldest)!.bytes;
+      cache.delete(oldest);
+    }
+  }
+  return configuration;
+}
+
+async function loadClinicalFormConfiguration(
+  manager: ConfigurationManager,
   formVersionId: string,
   catalogReleaseId: string,
   validationVersionId?: string | null,

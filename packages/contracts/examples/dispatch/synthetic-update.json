@@ -45,7 +45,6 @@
       { "id": "ePatient.03", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-first-name", "value": "PATIENT" }] }
     ] }] },
     { "id": "eSceneSection", "instances": [{ "instanceId": "synthetic-scene-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
-      { "id": "eScene.09", "values": [{ "kind": "coded", "occurrenceId": "synthetic-location-type", "code": "Y92.03", "system": "ICD-10-CM", "display": "Apartment/condo" }] },
       { "id": "eScene.11", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-gps", "value": "40.750600,-73.997200" }] },
       { "id": "eScene.15", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-street", "value": "123 SYNTHETIC EXAMPLE AVENUE" }] },
       { "id": "eScene.16", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-apartment", "value": "APT 4S" }] },

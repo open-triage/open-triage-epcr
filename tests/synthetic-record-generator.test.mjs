@@ -141,3 +141,68 @@ test('hidden fields are omitted and unsupported catalog formats fail explicitly'
   text.model.elements[2].definition.datatype.constraints = { pattern: '(?=unusual)unusual-[xyz]{17}' };
   assert.throws(() => generateDocument({ ...text, random: seededRandom('unsupported') }), /unsupported catalog format/);
 });
+
+function prefixFixture({ protectedCounty, protectedState, countyCodes = ['36061'], stateCodes = ['06', '36'] } = {}) {
+  const input = fixture();
+  for (const [id, codes] of [['local.county', countyCodes], ['local.state', stateCodes]]) {
+    input.model.elements.push({ id, base: 'string', minimum: 1, maximum: 1, path: ['PatientCareReportGroup'],
+      definition: { datatype: { constraints: {} }, valueSource: { kind: 'inline-enumerated' } } });
+    input.configuration.definition.sections[0].fields.push({ key: id, source: { kind: 'nemsis', elementId: id } });
+    input.configuration.catalogFields[id] = { codeChoices: codes.map(code => ({ code, label: code, codeSystem: '' })) };
+  }
+  const rule = compileValidationRule({ id: 'county-state', name: 'County and state', enabled: true, severity: 'warning',
+    executionTargets: ['live', 'sign'], primaryTargetElementId: 'local.county', message: 'County must belong to state',
+    source: 'require startsWith("local.county", "local.state")' }, input.bundle.validationVersionId,
+  new Set(input.model.elements.map(element => element.id)));
+  assert.deepEqual(rule.diagnostics, []);
+  input.bundle.rules.push(rule.compiled);
+  input.preserveExisting = true;
+  input.source.groups.push({ id: 'PatientCareReportGroup', instances: [{ instanceId: 'existing-report', elements:
+    [['local.county', protectedCounty], ['local.state', protectedState]].filter(([, code]) => code !== undefined)
+      .map(([id, code]) => ({ id, values: [{ kind: 'coded', occurrenceId: `existing:${id}`, code }] })),
+  }] });
+  return input;
+}
+
+test('prefix validation repairs related catalog choices, including a prefix with no matching enabled child', () => {
+  const input = prefixFixture();
+  // Always choose the first state (06), which has no county in this catalog.
+  const { document } = generateDocument({ ...input, random: () => 0.1, maxPasses: 3 });
+  assert.equal(value(document, 'local.county').code, '36061');
+  assert.equal(value(document, 'local.state').code, '36');
+  assert.deepEqual(validationProblems(input.bundle, document, input.now.toISOString()), []);
+});
+
+for (const existing of [{ protectedCounty: '36061' }, { protectedState: '36', countyCodes: ['06001', '36061'] }]) {
+  test(`prefix repair preserves an existing ${existing.protectedCounty ? 'county' : 'state'}`, () => {
+    const input = prefixFixture(existing);
+    const original = structuredClone(input.source);
+    const { document } = generateDocument({ ...input, random: () => 0.1, maxPasses: 3 });
+    for (const element of original.groups[0].instances[0].elements) assert.deepEqual(value(document, element.id), element.values[0]);
+    assert.deepEqual(input.source, original);
+    assert.deepEqual(validationProblems(input.bundle, document, input.now.toISOString()), []);
+  });
+}
+
+test('prefix repair fails without changing protected or disallowed choices when no compatible pair exists', () => {
+  for (const options of [{ protectedCounty: '36061', protectedState: '06' }, { protectedState: '06' }, { stateCodes: ['06'] }]) {
+    const input = prefixFixture(options);
+    const original = structuredClone(input.source);
+    assert.throws(() => generateDocument({ ...input, random: () => 0.1, maxPasses: 3 }), /Could not satisfy active validation.*county-state/);
+    assert.deepEqual(input.source, original);
+  }
+});
+
+test('prefix repair respects form choice policies on both related fields', () => {
+  const input = prefixFixture({ countyCodes: ['06001', '36061'], stateCodes: ['06', '36'] });
+  input.configuration.definition.sections[0].fields.find(field => field.key === 'local.county').choicePolicy = [
+    { kind: 'code', code: '36061', codeSystem: '' },
+  ];
+  const { document } = generateDocument({ ...input, random: () => 0.1, maxPasses: 3 });
+  assert.equal(value(document, 'local.county').code, '36061');
+  assert.equal(value(document, 'local.state').code, '36');
+  input.configuration.definition.sections[0].fields.find(field => field.key === 'local.state').choicePolicy = [
+    { kind: 'code', code: '06', codeSystem: '' },
+  ];
+  assert.throws(() => generateDocument({ ...input, random: () => 0.1, maxPasses: 3 }), /Could not satisfy active validation.*county-state/);
+});

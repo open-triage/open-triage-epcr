@@ -211,7 +211,8 @@ test("coded metadata and exceptional variants survive the local-document and dra
   const selection = codedSelectionFromOption(external.options[0]!);
   assert.equal(selection.kind, "coded");
   if (selection.kind !== "coded") throw new Error("expected coded selection");
-  const edited = editStationaryCodedValue(document, sceneTarget, selection, () => "unused");
+  const { occurrenceId, ...newSceneTarget } = sceneTarget;
+  const edited = editStationaryCodedValue(document, newSceneTarget, selection, () => occurrenceId);
   const bytes = new Map<string, string>();
   const storage = {
     getItem: (key: string) => bytes.get(key) ?? null,

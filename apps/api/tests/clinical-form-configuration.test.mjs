@@ -3,6 +3,86 @@ import test from "node:test";
 import { compiledValidationBundleSha256 } from "@open-triage/contracts";
 import { clinicalFormConfiguration } from "../dist/forms/clinical-form-configuration.js";
 
+function configurationReader(connection = {}) {
+  const reads = [];
+  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation",
+    catalogReleaseId: "release", rules: [] };
+  const digest = compiledValidationBundleSha256(bundle);
+  return { reads, digest, manager: { connection, query: async (sql, params) => {
+    reads.push([sql, params]);
+    if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1,
+      sections: [{ key: params[0], fields: [] }] } }];
+    if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: digest }];
+    if (sql.includes("customGroupDefinitions") || sql.includes("from catalog.group_definition")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } } };
+}
+
+test("opening reports reuses published configuration across transactions without sharing mutable responses", async () => {
+  const owner = {};
+  const first = configurationReader(owner), next = configurationReader(owner);
+  const original = await clinicalFormConfiguration(first.manager, "form", "release", "validation", first.digest);
+  const expected = structuredClone(original);
+  original.definition.sections[0].key = "changed by response consumer";
+  original.validation.bundle.rules.push({ ruleId: "not-published" });
+  const reused = await clinicalFormConfiguration(next.manager, "form", "release", "validation", first.digest);
+  assert.deepEqual(reused, expected);
+  assert.ok(first.reads.length > 0);
+  assert.equal(next.reads.length, 0);
+  reused.definition.sections.length = 0;
+  assert.deepEqual(await clinicalFormConfiguration(next.manager, "form", "release", "validation", first.digest), expected);
+});
+
+test("configuration reuse respects every pinned version, integrity digest and database owner", async () => {
+  const reader = configurationReader();
+  await clinicalFormConfiguration(reader.manager, "form", "release", "validation", reader.digest);
+  const count = reader.reads.length;
+  await assert.rejects(clinicalFormConfiguration(reader.manager, "form", "release", "validation", "0".repeat(64)), /integrity/);
+  assert.ok(reader.reads.length > count);
+  for (const [form, release, validation] of [["new-form", "release", "validation"],
+    ["form", "new-release", "validation"], ["form", "release", "new-validation"]]) {
+    const before = reader.reads.length;
+    await clinicalFormConfiguration(reader.manager, form, release, validation, reader.digest);
+    assert.ok(reader.reads.length > before);
+  }
+  const other = configurationReader();
+  await clinicalFormConfiguration(other.manager, "form", "release", "validation", other.digest);
+  assert.ok(other.reads.length > 0);
+});
+
+test("configuration cache evicts least recently used bundles and retries failed loads", async () => {
+  const reader = configurationReader();
+  for (let index = 0; index < 8; index++) await clinicalFormConfiguration(reader.manager, `form-${index}`, "release");
+  const beforeReuse = reader.reads.length;
+  await clinicalFormConfiguration(reader.manager, "form-0", "release");
+  assert.equal(reader.reads.length, beforeReuse);
+  await clinicalFormConfiguration(reader.manager, "form-8", "release");
+  const beforeEvicted = reader.reads.length;
+  await clinicalFormConfiguration(reader.manager, "form-1", "release");
+  assert.ok(reader.reads.length > beforeEvicted);
+  const failing = configurationReader();
+  const query = failing.manager.query;
+  failing.manager.query = async () => { throw new Error("database unavailable"); };
+  await assert.rejects(clinicalFormConfiguration(failing.manager, "form", "release"), /database unavailable/);
+  failing.manager.query = query;
+  assert.equal((await clinicalFormConfiguration(failing.manager, "form", "release")).definition.sections[0].key, "form");
+});
+
+test("oversized published configurations are returned without being retained", async () => {
+  const reader = configurationReader();
+  const query = reader.manager.query;
+  reader.manager.query = async (sql, params) => {
+    const rows = await query(sql, params);
+    if (sql.includes("from forms.form_version")) rows[0].canonical_definition.description = "x".repeat(16 * 1024 * 1024);
+    return rows;
+  };
+  await clinicalFormConfiguration(reader.manager, "large-form", "release");
+  const before = reader.reads.length;
+  const again = await clinicalFormConfiguration(reader.manager, "large-form", "release");
+  assert.ok(reader.reads.length > before);
+  assert.equal(again.definition.description.length, 16 * 1024 * 1024);
+});
+
 test("report opening reads choices once, preserving pinned selections while excluding disabled legacy choices", async () => {
   let fieldsRead = 0;
   let choicesRead = 0;

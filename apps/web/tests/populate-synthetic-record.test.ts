@@ -7,6 +7,7 @@ import { syntheticEncounter } from "../app/standard-encounter";
 import { clearStationaryDemoData } from "../app/stationary-demo-data";
 import { hasDemoProvenance } from "../app/demo-provenance";
 import { encounterDocumentToDraftMutations, recoveryMutationBatches } from "../app/draft-report";
+import { validateStationaryRecord } from "../app/stationary-validation";
 
 const now = new Date("2026-10-04T12:00:00Z");
 function fixture(source = 'require equals("eVitals.10", 72)') {
@@ -92,4 +93,84 @@ test("Populate rejects missing or corrupt pinned configuration", () => {
     validation: { ...configuration.validation!, compiledSha256: "wrong" } }, now), /pinned validation/);
   delete configuration.catalogFields["eVitals.10"]!.generation;
   assert.throws(() => populateSyntheticRecord(document, configuration, now), /pinned catalog.*eVitals.10/);
+});
+
+function locationFixture() {
+  const { document, configuration } = fixture();
+  const codeChoices = [{ code: "Y92.0", codeSystem: "ICD-10-CM", label: "Private residence" }];
+  configuration.definition.sections.push({ key: "scene", fields: [{ key: "location", source: { kind: "nemsis", elementId: "eScene.09" },
+    choicePolicy: codeChoices.map(({ code, codeSystem }) => ({ kind: "code", code, codeSystem })) }] });
+  configuration.catalogFields["eScene.09"] = {
+    agencyRequired: false, minOccurs: 1, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: false,
+    codeChoices, choiceOrder: codeChoices.map(({ code, codeSystem }) => ({ kind: "code", code, codeSystem })),
+    generation: { id: "eScene.09", base: "string", path: ["eSceneSection"], minimum: 1, maximum: 1,
+      definition: { datatype: { constraints: { pattern: "Y92\\.[0-9]{1,3}" } }, valueSource: { kind: "external-code-system" } } },
+  };
+  configuration.catalogGroups!["eSceneSection"] = { name: "Scene", parentId: "PatientCareReportGroup" };
+  const scene = document.groups.find(group => group.id === "eSceneSection")!.instances[0]!;
+  Object.assign(scene, { attributes: { "x-open-triage-owner": "dispatch" } });
+  // Older open reports can still contain the location from the former dispatch fixture.
+  const location = { id: "eScene.09", values: [{ kind: "coded" as const, occurrenceId: "legacy-dispatch-location",
+    code: "Y92.03", system: "ICD-10-CM", display: "Apartment/condo" }] };
+  Object.assign(scene, { elements: [...scene.elements, location] });
+  return { document, configuration, scene, location };
+}
+
+test("Populate supplies the missing Incident Location Type from the report's pinned choices", () => {
+  const { document, configuration, scene } = locationFixture();
+  Object.assign(scene, { elements: scene.elements.filter(element => element.id !== "eScene.09") });
+  const populated = populateSyntheticRecord(document, configuration, now);
+  const selected = populated.groups.find(group => group.id === "eSceneSection")!.instances[0]!.elements
+    .find(element => element.id === "eScene.09")!.values[0]!;
+  assert.equal(selected.kind === "coded" && selected.code, "Y92.0");
+  assert.ok(hasDemoProvenance(selected.attributes));
+  assert.deepEqual(validateStationaryRecord(populated, configuration, now.toISOString()), []);
+});
+
+test("Populate replaces a disallowed dispatch location with a pinned choice and saves it as demo data", () => {
+  const { document, configuration, location } = locationFixture();
+  const original = structuredClone(document);
+  assert.ok(validateStationaryRecord(document, configuration, now.toISOString())
+    .some(finding => finding.message === "Y92.03 is not permitted for eScene.09."));
+  const populated = populateSyntheticRecord(document, configuration, now);
+  const selected = populated.groups.find(group => group.id === "eSceneSection")!.instances[0]!.elements
+    .find(element => element.id === "eScene.09")!.values[0]!;
+  assert.equal(selected.kind === "coded" && selected.code, "Y92.0");
+  assert.equal(selected.occurrenceId, location.values[0]!.occurrenceId);
+  assert.ok(hasDemoProvenance(selected.attributes));
+  assert.deepEqual(validateStationaryRecord(populated, configuration, now.toISOString()), []);
+  assert.deepEqual(document, original);
+  const previous = encounterDocumentToDraftMutations(document.encounter.id, document);
+  const batches = recoveryMutationBatches(encounterDocumentToDraftMutations(document.encounter.id, populated, previous), previous);
+  assert.ok(batches.some(batch => batch.demoAction === "populate" && batch.occurrences.some(occurrence =>
+    occurrence.elementId === "eScene.09" && occurrence.value?.kind === "coded" && occurrence.value.code === "Y92.0")));
+});
+
+test("Populate preserves permitted dispatch choices and all clinician-owned location values", () => {
+  for (const owner of ["dispatch", "clinician", undefined]) {
+    const { document, configuration, scene, location } = locationFixture();
+    Object.assign(scene, { attributes: owner ? { "x-open-triage-owner": owner } : undefined });
+    if (owner === "dispatch") Object.assign(location, { values: [{ kind: "coded", occurrenceId: "location", code: "Y92.0", system: "ICD-10-CM" }] });
+    const original = structuredClone(location);
+    const populated = populateSyntheticRecord(document, configuration, now);
+    assert.deepEqual(populated.groups.find(group => group.id === "eSceneSection")!.instances[0]!.elements
+      .find(element => element.id === "eScene.09"), original, owner ?? "unknown ownership");
+  }
+});
+
+test("Populate repairs a dispatch code-system mismatch using the pinned code-system identity", () => {
+  const { document, configuration, location } = locationFixture();
+  const choice = { code: "Y92.03", codeSystem: "ICD-10-CM", label: "Apartment/condo" };
+  const policy = [{ kind: "code" as const, code: choice.code, codeSystem: choice.codeSystem }];
+  configuration.catalogFields["eScene.09"] = { ...configuration.catalogFields["eScene.09"]!, codeChoices: [choice], choiceOrder: policy };
+  configuration.definition.sections.at(-1)!.fields[0]!.choicePolicy = policy;
+  Object.assign(location.values[0]!, { system: "https://www.cdc.gov/nchs/icd/icd-10-cm/" });
+  assert.ok(validateStationaryRecord(document, configuration, now.toISOString())
+    .some(finding => finding.message === "Y92.03 is not permitted for eScene.09."));
+  const populated = populateSyntheticRecord(document, configuration, now);
+  const selected = populated.groups.find(group => group.id === "eSceneSection")!.instances[0]!.elements
+    .find(element => element.id === "eScene.09")!.values[0]!;
+  assert.equal(selected.kind === "coded" && selected.code, "Y92.03");
+  assert.equal(selected.kind === "coded" && selected.system, "ICD-10-CM");
+  assert.deepEqual(validateStationaryRecord(populated, configuration, now.toISOString()), []);
 });
