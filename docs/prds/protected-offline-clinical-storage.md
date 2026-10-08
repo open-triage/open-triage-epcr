@@ -1,5 +1,12 @@
 # Protected Offline Clinical Storage PRD
 
+> **Implemented (2026-10-08).** The plaintext-storage problem below describes
+> the pre-feature state. Current server-backed workflows persist encrypted
+> clinical working copies and use online, report-scoped recovery after restart.
+> See the [operating guarantees and exclusions](../protected-offline-clinical-storage.md)
+> and [browser compatibility policy](../browser-state-compatibility.md).
+> Device enrollment, inventory, vehicle pairing, and device revocation remain deferred.
+
 ## Problem Statement
 
 OpenTriage currently persists complete encounter documents, queued clinical

@@ -1,3 +1,10 @@
+> **Implemented and extended (2026-10-08).** Validation authoring, publication,
+> activation, and clinical execution are present. [Review](review.md) now supplies
+> the review workflow and UI that this initial slice deferred.
+> [Metric library](metric-library.md) extends the same configuration with continuous
+> metrics and rule dependencies. See the [validation rollout guide](../runbooks/validation-rollout.md)
+> and [metric runbook](../runbooks/metric-library.md) for current behavior.
+
 # Problem Statement
 
 OpenTriage currently spreads clinical validation across the Element Catalog, Form configuration, browser components, and server-side signing logic. Administrators cannot see the complete set of rules that affects a report, cannot consistently modify those rules, and cannot independently version validation behavior. Requiredness and occurrence controls are mixed with element-definition concerns, while some clinical rules exist only in application code.
@@ -173,7 +180,8 @@ Compile published validation definitions into deterministic, immutable rule bund
 - Error findings block signing. Warning findings require acknowledgement. Informational findings never block or require acknowledgement.
 - Execution targets are live, sign, and review, and a rule may select more than one.
 - Imported NEMSIS EMS rules default to live and sign.
-- Review-target evaluation is implemented server-side, but review workflow and user interface are deferred.
+- Review-target evaluation is implemented server-side. The initially deferred
+  workflow and user interface are now implemented under the [Review PRD](review.md).
 
 ## Language boundary
 

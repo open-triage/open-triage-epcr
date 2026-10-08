@@ -2,6 +2,19 @@
 > See [Unified analytics workspace](unified-analytics-workspace.md) for Analytics
 > controls, discovery, visualizations, and exports.
 
+> **Core workflow implemented; retrospective UI integration outstanding (2026-10-08).**
+> Queues, signed-report inspection, assignments, discussion, outcomes, independent
+> review, and overdue follow-up are present. Retrospective APIs and a
+> [standalone panel](../../apps/web/components/review-retrospective-panel.tsx) exist,
+> but the current Review/Admin shells do not mount that panel; its main-workspace
+> entry point remains unfinished. The problem statement below records
+> the pre-feature state. [Metric library](metric-library.md) now defines configured
+> metrics/rules in Analytics; [Unified Analytics](unified-analytics-workspace.md)
+> defines the current interface, including personal saved visualizations.
+> Older references to separate analysis screens or agency-shared saved-analysis
+> management do not describe the current workspace. Workload and legacy saved-analysis
+> backend contracts remain distinct from what that workspace exposes.
+
 # Problem Statement
 
 Clinicians and reviewers need to find reports requiring attention, document their conclusions, and understand patterns across the calls they are authorized to review. Administrators can already author validation rules with a server-side review execution target, but there is no operational review queue, assignment workflow, or Review workspace. Overdue unsigned drafts also need follow-up without entering the signed clinical analytics population.

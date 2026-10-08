@@ -1,5 +1,15 @@
 # Mobile Call Flow PRD
 
+> **Core workflow implemented; original demo assumptions superseded (2026-10-08).**
+> Assigned/open calls, report ownership, saving, and synchronization are present.
+> [Users and roles](users-roles.md) replaces prefilled credentials and automatic
+> replacement assignments with ordinary sign-in and explicit, authorized
+> **Generate call** actions. [Dispatch payload](dispatch-payload.md) defines the
+> current dispatch mapping; [protected offline storage](protected-offline-clinical-storage.md)
+> requires online recovery after a browser restart. [Stationary](stationary-workflow-mvp.md)
+> owns signing, and [Review](review.md) now provides authorized signed-report viewing.
+> Contradictory demo stories and exclusions below remain original milestone history.
+
 ## Problem Statement
 
 OpenTriage has a configurable clinical documentation interface and a revisioned clinical-report backend, but the mobile experience opens directly into one synthetic encounter. It does not represent the normal field workflow in which a clinician uses the phone associated operationally with an assigned unit, sees dispatched calls, opens a call exactly once, documents intermittently, and leaves an incomplete unsigned report available for later work.

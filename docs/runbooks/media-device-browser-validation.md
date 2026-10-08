@@ -1,8 +1,27 @@
 # Media device and browser validation
 
-This is the human verification gate for issue #502. Automated coverage is necessary but does not substitute for real-device capture, browser permission prompts, audio output, or responsive visual review. Record the exact OS and browser versions, tester, date, result, and any approved exception in this table. Do not close #502 until a human reviewer approves every representative row.
+This records human verification for issue #502. Automated coverage supports the
+device checks below but does not substitute for them.
 
-## Representative matrix
+## Confirmed capture coverage — 8 October 2026
+
+The project owner confirmed that **photo and audio capture are validated on
+Android/Chrome and iOS/Safari**. This supersedes the earlier blanket statement
+that real-device capture was unverified. Video capture is not part of this feature.
+
+| Platform | Confirmed coverage | Evidence |
+| --- | --- | --- |
+| Android · Chrome | Photo and audio capture | Project-owner confirmation, 2026-10-08; exact OS/browser versions not recorded. |
+| iOS · Safari | Photo and audio capture | Project-owner confirmation, 2026-10-08; exact OS/browser versions not recorded. |
+
+The confirmation does not distinguish current and previous browser versions or
+record results for every recovery, negative, and accessibility journey below.
+Those entries remain a checklist for the additional coverage; they do not mean
+the confirmed capture functionality is untested. Record exact versions, tester,
+date, results, and approved exceptions when completing these checks. Closure of
+the full issue requires review of that broader matrix.
+
+## Extended journey and version matrix
 
 | Platform | Exact version tested | Journeys | Result | Approved exception / evidence |
 | --- | --- | --- | --- | --- |
@@ -25,9 +44,9 @@ Using keyboard-only desktop navigation and the mobile screen readers used by the
 
 ## Automated evidence
 
-The web unit and Playwright suites cover capture capability/error copy, Text-note preservation, keyboard/dialog focus, filter toggles, live regions, button names, decorative thumbnail alternatives with descriptive surrounding controls, direct playback, responsive widths, protected offline staging/resume, readiness, and axe serious/critical violations. Playwright emulation and engines are supporting evidence only; the versioned rows above remain unverified until tested on the named real browsers/devices.
+The web unit and Playwright suites cover capture capability/error copy, Text-note preservation, keyboard/dialog focus, filter toggles, live regions, button names, decorative thumbnail alternatives with descriptive surrounding controls, direct playback, responsive widths, protected offline staging/resume, readiness, and axe serious/critical violations. Playwright emulation and engines are supporting evidence only. Platform-level capture validation is recorded above; version-specific full-journey results still need recording in the extended matrix.
 
-## Approval
+## Full-matrix approval
 
 - Reviewer: _Pending_
 - Date: _Pending_

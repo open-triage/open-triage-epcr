@@ -1,5 +1,13 @@
 # OpenTriage MVP PRD
 
+> **Historical milestone; superseded for current behavior (2026-10-08).**
+> This records the original single-scenario, browser-only prototype delivered
+> through issue #54. The current application has authenticated server-backed
+> reports, configurable forms, Stationary signing, Review, and Analytics.
+> See [Mobile call flow](flow-mobile.md), [Stationary workflow](stationary-workflow-mvp.md),
+> [Users and roles](users-roles.md), and the [current feature index](README.md).
+> The prototype's no-login/no-backend boundary and fixed validation are historical.
+
 ## Problem Statement
 
 Ambulance clinicians need to document patient care without a cumbersome interface interrupting clinical work or forcing them to reconstruct events afterward. Before OpenTriage invests in production infrastructure, comprehensive interoperability, administration, or regulatory hardening, it needs evidence that its core documentation interaction is meaningfully easier and smoother for care providers than their current workflow.

@@ -1,3 +1,13 @@
+> **Implemented and extended (2026-10-08).** The Review / Analytics selector,
+> unified Line/Bar/Table workspace, filters, and CSV exports are present.
+> [Metric library](metric-library.md) supersedes the original observed-field metric
+> picker: it now offers Records and enabled, Review-enabled configured metrics
+> and rules. Recorded fields remain available for supported grouping/filtering,
+> including documenting User. Personal saved visualizations are also implemented;
+> their earlier exclusion below has been removed. See the
+> [analytics runbook](../runbooks/unified-analytics.md) and
+> [saved-visualization component](../../apps/web/components/analytics-saved-visualizations.tsx).
+
 # Problem Statement
 
 Users need one predictable set of analytics controls and one central visualization to explore authorized records and inspect results.
@@ -124,6 +134,10 @@ Element identities, custom-definition identities, and coded value identities mus
 
 ## Catalog scope: all agency records
 
+These observed-value discovery requirements apply to grouping and filtering.
+The metric picker discovers the configured library under the
+[Metric library PRD](metric-library.md), independently of observed field values.
+
 - Discover documented elements and unique values across the agency's authorized record history, independently of the current query's dates, grouping, metric, and filters. A value that exists only outside the selected period remains selectable and can legitimately produce an empty result.
 - Include observed standard and custom elements; do not populate options with every possible schema/code-list entry when the agency has never documented them. Empty fields do not become observed catalog entries merely because an authoring definition exists.
 - Interpret “all agency records” within existing authorization and retention boundaries. Organization-wide reviewers receive organization-wide discovery. Self-review users receive discovery only from records they can access, with scope labeled accordingly. Catalog counts and search results must not leak other users' or other agencies' records.
@@ -136,6 +150,13 @@ Element identities, custom-definition identities, and coded value identities mus
 ## Metric and aggregation behavior
 
 Metric and Aggregation are separate controls. Aggregation appears immediately below Metric.
+
+The table below records the initial field-analysis contract. Current selectable
+metrics are Records, configured continuous metrics (also supporting p90), and
+configured Boolean rules with an explicit Pass/Fail outcome. The
+[metric runbook](../runbooks/metric-library.md) defines their denominators and limits;
+retained field-analysis backend contracts do not imply raw-field metric choices
+in the current picker.
 
 | Metric meaning | Available aggregation | Result meaning |
 | --- | --- | --- |
@@ -198,6 +219,15 @@ The following denominator rules make the reviewed Count/Percentage choices preci
 - No physical database table or index layout is prescribed by this PRD. Any required projection, discovery, or migration work must follow the repository's database workflow, preserve scope and amendment semantics, and use measured query behavior to choose storage/index changes.
 - Preserve stored analyses and existing backend contracts during migration. Add adapters or versioning where the separate aggregation field and multi-filter definition require it. Keep existing definitions available through their authorized backend contracts.
 
+### Personal saved visualizations
+
+The current workspace provides **Save visualization** and **Saved visualizations**.
+Users can save a named parameter set or confirm replacement of an existing one.
+These definitions are personal to the account and store controls, not report data
+or a frozen result. Loading restores the controls; **Update visualization** runs
+them against current authorized data. Saved definitions never expand access.
+Agency sharing and scheduled execution remain outside this workspace's scope.
+
 ## UI integration details
 
 Use the existing shared controls, agency CSS properties, typography, focus behavior, dialogs, and available-height layout patterns. Keep the rail and visualization within the desktop workspace, with bounded internal scrolling and reachable Update/Export actions. On mobile and enlarged-text layouts, allow vertical scrolling and full-width controls rather than clipping or shrinking text.
@@ -241,7 +271,7 @@ Relevant prior art includes the existing Review analysis tests for typed summari
 - Multiple analytics dashboards or concurrent visualization panels.
 - Visualization types beyond Line, Bar, and Table; preset-date selectors; and a separate Single value or Automatic visualization choice.
 - New review rules, routing, assignments, review-item workflow behavior, or changes to who may read records.
-- A new workload-analysis UI, saved-view management UI, scheduled reports, sharing, statistical inference, predictive analytics, arbitrary SQL, or a general-purpose BI designer.
+- A new workload-analysis UI, agency-shared saved-view management, scheduled reports, sharing, statistical inference, predictive analytics, arbitrary SQL, or a general-purpose BI designer. Personal saved visualizations are implemented as described above.
 - Unrestricted clinical-record exports, free-text exploration, new identifying-data permissions, or changing the existing signed eligibility of clinical statistics.
 - Implementing the production feature, applying migrations, or publishing implementation tickets as part of writing this PRD.
 

@@ -1,5 +1,17 @@
 # Users and Roles PRD
 
+> **Implemented and extended (2026-10-08).** Users/Roles administration, durable
+> sessions, ownership transfer, protected roles, and role-gated demo tooling are
+> present. [Review](review.md) supersedes the reserved-Reviewer and no-review-workflow
+> boundaries below; the Clinician role includes self-review, and Reviewer and
+> Review administrator roles are active. Later Validation and Agency Settings
+> features also extend the capability registry. Later protected-role revisions
+> grant Administrator the full registered capability set, including clinical and
+> Review access, and grant Demo that set except publication capabilities. These
+> replace the initial Administrator/Clinician separation below; custom roles can
+> still separate duties. See the [role regression coverage](../../packages/database/tests/admin-full-capabilities-postgres.integration.test.mjs).
+> The initial capability list below is not exhaustive today.
+
 ## Problem Statement
 
 OpenTriage has durable application users, local credentials, sessions, and a small set of directly assigned capabilities, but it does not yet provide a complete administrative model for managing people and access. Administrators cannot safely create, rename, disable, reactivate, or inspect users; manage active sessions; define reusable roles; explain historical permission changes; or transfer installation ownership without direct database or CLI intervention.
@@ -145,11 +157,13 @@ This feature is a complete vertical slice spanning schema, application services,
 ### 3. Protected Roles
 
 - Protected roles have stable system identities and explicit, immutable, versioned definitions. Registering a future capability does not add it to a protected role automatically.
-- Clinician contains `clinical:document` only.
-- Administrator contains every currently registered administrative capability and no clinical capability.
+- Clinician contains `clinical:document` and `review:self` under the later Review scope.
+- Administrator contains the full registered capability set under the later
+  protected-role revision, including clinical and Review capabilities.
 - Configuration Author contains `admin-dashboard:read`, `users:read`, `roles:read`, `catalog:read`, `catalog:write`, `forms:read`, and `forms:write`.
 - Clinical Demo contains `clinical:document` and `clinical:demo`.
-- Reviewer has a reserved system key but is hidden, unassignable, and otherwise nonfunctional in this release.
+- Reviewer is active with `review:all`; Review administrator adds `review:admin`.
+  Identifying access remains a separate capability.
 - Protected roles cannot be renamed, edited, deactivated, replaced by imports, or recreated as custom roles.
 - Administrator and Clinical Demo may be assigned or removed only by the current owner after recent reauthentication.
 - Clinician and Configuration Author follow normal role-assignment and non-escalation rules.

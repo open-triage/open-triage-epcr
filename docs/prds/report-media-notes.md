@@ -1,5 +1,15 @@
 # Report Media Notes PRD
 
+> **Implemented; capture validation updated 2026-10-08.** Text, live photo/audio
+> capture, encrypted staging, synchronization, Stationary viewing, and media
+> readiness gates are present. The project owner confirmed photo and audio
+> capture on Android/Chrome and iOS/Safari; exact browser versions were not
+> supplied. See the [device validation record](../runbooks/media-device-browser-validation.md)
+> for confirmed coverage and the additional journey checklist.
+> [Review](review.md) now supplies signed-note viewing within identifying-data
+> permissions. Synthetic media follows the report's agency-configured expiry,
+> defaulting to 24 hours; it is not an unconditional 24-hour lifetime.
+
 # Problem Statement
 
 OpenTriage's mobile workflow can capture a text note only by writing it into the
@@ -187,7 +197,8 @@ everything deferred.
 - Only one audio note plays at a time. Leaving the report or losing authorization stops playback.
 - Add a Stationary header toggle and docked sidebar approximately 360 pixels wide. Remember state locally; default closed.
 - Reuse the full Mobile timeline in Stationary with compact All and Notes filtering. Do not add Stationary capture creation.
-- Draft viewers expose permitted edit/delete actions. Signed rendering will be read-only in a future report viewer.
+- Draft viewers expose permitted edit/delete actions. The [Review viewer](review.md)
+  now provides read-only signed rendering within the user's identifying-data permissions.
 - Provide meaningful non-content alternatives using note type, time, author, and caption where present.
 
 ## Signing, retention, and integrity
@@ -196,7 +207,9 @@ everything deferred.
 - The signing transaction locks report and notes, rechecks authorization, revision, readiness, quota, and integrity, and freezes them atomically.
 - Extend the signed manifest with note identity, type, capture time, author, normalized text/caption, media digest, size, and MIME type.
 - Archive metadata and media with the report; emit none of it into NEMSIS XML.
-- Ordinary notes use report retention. Synthetic note data and artifacts expire with the report after 24 hours.
+- Ordinary notes use report retention. Synthetic note data and artifacts expire
+  with the report under the agency policy captured at creation: 24 hours by
+  default, a configured positive whole-hour lifetime, or no automatic expiry.
 - Purge removes dependent media, leaves only bounded non-clinical evidence, and prevents offline resurrection.
 
 ## Agency Settings
@@ -262,6 +275,7 @@ everything deferred.
 - Postgres media is a conscious first-version choice under a conservative default quota. It simplifies authorization, atomic signing, expiry, and deletion but increases database, WAL, replica, backup, and restore volume.
 - The exact allowed agency quota range is an engineering validation decision bounded by proven database, API, backup, and client behavior. The product decision fixes the default at 50 MB, not an unlimited maximum.
 - Image size is bounded by normalization and remaining report allowance only; there is no separate per-photo byte setting.
-- Signed-report viewing is deferred, but persistence must allow a future viewer to render notes without migration.
+- Signed-report viewing was deferred from this slice and is now implemented by
+  [Review](review.md), including permitted read-only notes and media.
 - Hardcoded-value audit findings are candidates, not automatically approved requirements. Each must be classified before migration.
 - This PRD records product intent and delivery boundaries; it does not itself authorize implementation.

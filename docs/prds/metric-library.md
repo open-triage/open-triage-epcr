@@ -1,3 +1,11 @@
+> **Implemented; current selector clarified 2026-10-08.** The Metric and Rule
+> libraries share Validation authoring/publication and feed Analytics. The current
+> picker offers Records and enabled, Review-enabled configured metrics/rules;
+> raw recorded fields remain available for supported grouping and filtering.
+> See the [metric runbook](../runbooks/metric-library.md) for actual calculations,
+> evaluation limits, and the unresolved mappings that keep the trauma-destination
+> and aspirin example rules disabled.
+
 # Problem Statement
 
 Agencies need to define the quantities and clinical checks used in Analytics and Review without changing application code. The existing Validation authoring workflow supports Boolean rules, but it cannot define a reusable continuous quantity such as a clinically meaningful time interval. Its finding-only evaluation results also cannot establish the eligible population for a rule's pass or failure rate.
@@ -148,7 +156,10 @@ Starter definitions are authored content consumed by these modules. They do not 
 
 ## Analytics discovery, aggregation, and exports
 
-- Extend the current Analytics selector to identify configured continuous metrics and configured Boolean rules as distinct choices. The broader existing field-analysis catalog remains supported; the two-kind restriction applies to agency-authored metric/rule definitions.
+- The Analytics metric selector identifies Records, configured continuous metrics,
+  and configured Boolean rules as distinct choices. Recorded fields remain
+  available for supported grouping and filtering. Existing field-analysis backend
+  contracts are retained, but do not add raw-field choices to this selector.
 - In this PRD, Review enabled applies to both definition kinds. For rules it uses the existing review execution target; metrics expose the corresponding authoring option. Also require the definition to be enabled and published.
 - Use the agency's active published shared Validation configuration as the default configured library. Resolve every selection to its definition kind, stable identity, shared version, and catalog binding. This is the implementation default; it does not introduce a separate historical-version management UI.
 - Discover configured definitions from configuration rather than observed report values, matching findings, the selected date range, or queue population. A configured definition with no contributing data remains selectable and returns an explained empty result.

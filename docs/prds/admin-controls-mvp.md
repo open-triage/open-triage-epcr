@@ -1,5 +1,16 @@
 # Admin Controls MVP PRD
 
+> **Historical delivery slice; implemented and extended (2026-10-08).**
+> Catalog/form authoring and activation are present. [Users and roles](users-roles.md),
+> [custom elements/form authoring](custom-elements-and-form-editor.md),
+> [Validation](validation-authoring.md), [localization](localization.md),
+> [media/agency settings](report-media-notes.md), and [Review](review.md) supersede
+> the relevant exclusions below. The current Admin shell exposes authorized,
+> functional panels; its earlier eleven-placeholder navigation policy is historical.
+> See the [feature index](README.md) for current boundaries and the
+> [validation runbook](../runbooks/admin-controls-mvp-representative-validation.md)
+> for the separate representative-user acceptance process.
+
 ## Problem Statement
 
 A Swedish EMS agency cannot currently configure and activate its Stationary documentation form without developer or database assistance. Form behavior, catalog metadata, validation, synthetic fixtures, and session behavior are spread across generated assets, database records, and application constants. This prevents an installation owner from adapting the product to local clinical practice and leaves no safe end-to-end proof that self-service clinical configuration is viable.
@@ -90,9 +101,15 @@ Success means a representative agency administrator completes the entire configu
 
 ### Admin Application Shell
 
-#### Approved unavailable-capability treatment
+#### Historical unavailable-capability treatment
 
-The product owner approved the current-release visibility rule on 2026-09-10
+The policy below applied to the original MVP. The current
+[Admin shell](../../apps/web/components/admin-shell.tsx) replaces it with
+capability-filtered Dashboard, Users, Roles, Element catalog, Stationary form,
+Validation rules, Agency Settings, and Review settings panels. Unimplemented
+destinations are not presented as the eleven original placeholders.
+
+The product owner approved the MVP-release visibility rule on 2026-09-10
 under cleanup issue 021: all eleven deferred Admin destinations remain visible
 and selectable in the Administration panels navigation. Selecting one shows its
 named panel with the explicit message `Unavailable in this release`; it must not

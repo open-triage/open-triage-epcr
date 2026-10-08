@@ -1,5 +1,18 @@
 # OpenTriage Demo PRD
 
+> **Original product vision; partially superseded (2026-10-08).** The problem
+> statement and exclusions below describe the early scaffold, not today's app.
+> [Users and roles](users-roles.md), [protected offline storage](protected-offline-clinical-storage.md),
+> [localization](localization.md), [media notes](report-media-notes.md), and
+> [Review](review.md) now supply capabilities excluded from this original scope.
+> Synthetic tools use role permissions and explicit generation; records use the
+> agency's expiry policy rather than an installation-wide demo reset.
+> [Custom elements and form authoring](custom-elements-and-form-editor.md) also
+> supersedes earlier default-value assumptions. The amendment backend and signed
+> Review viewer exist; clinician amendment authoring, general audit browsing, and
+> dedicated print/PDF output remain unimplemented parts of this broader vision.
+> See the [feature index](README.md) before treating a requirement here as delivered.
+
 ## Problem Statement
 
 Ambulance clinicians need an electronic patient care reporting system that supports rapid bedside capture, complete clinical documentation, trustworthy signing, and later correction without silently rewriting the medical record. Existing products may be costly, closed, difficult to adapt to regional practice, or structured around one interoperability standard rather than the needs of the clinicians and healthcare region using them.

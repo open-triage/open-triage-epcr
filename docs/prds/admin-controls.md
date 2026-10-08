@@ -1,5 +1,20 @@
 # Admin Controls PRD
 
+> **Broad scope, delivered in later slices (2026-10-08).** Local identity,
+> users/roles, Catalog/Form/Validation authoring, the operational dashboard, and
+> selected Agency Settings are implemented. [Users and roles](users-roles.md),
+> [custom elements/form authoring](custom-elements-and-form-editor.md),
+> [Validation](validation-authoring.md), [localization](localization.md),
+> [media notes](report-media-notes.md), and [Review](review.md) supersede this
+> document's older identity, defaults, demo, localization, and reviewer exclusions.
+> The fixture is one `demo` account; its synthetic expiry follows agency settings.
+> Later role revisions give Administrator full registered access and Demo access
+> without publication capabilities; the older Administrator/Clinician separation
+> below is superseded by the current [Users and Roles status](users-roles.md).
+> Dedicated unit/vehicle administration, general history/audit browsing, and
+> integration-management panels remain broader scope. Original problem statements
+> and unresolved-risk notes below are design history, not a current gap inventory.
+
 > Offline clinical persistence and grant behavior is specified by the
 > [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md).
 > It supersedes broader offline-grant statements here where the documents

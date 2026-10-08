@@ -1,5 +1,14 @@
 # Stationary Workflow MVP PRD
 
+> **Workflow implemented and extended (2026-10-08).** Mobile and Stationary edit
+> the same report; Stationary provides full-form validation and signing.
+> [Admin Controls MVP](admin-controls-mvp.md) and [custom elements/form authoring](custom-elements-and-form-editor.md)
+> supersede the checked-in-layout-only and no-authoring boundaries below.
+> [Validation authoring](validation-authoring.md) owns configurable checks,
+> [Users and roles](users-roles.md) owns role-gated demo tools, and
+> [Review](review.md) provides signed-report follow-up. [Media notes](report-media-notes.md)
+> adds the shared timeline sidebar. Mobile signing and crew handoff remain deferred.
+
 ## Problem Statement
 
 OpenTriage's current documentation workflow is optimized for mobile field use. A clinician can sign in, see calls assigned through their unit association, open a call, document a focused set of clinical events, save locally while offline, synchronize revisions, and return to an unsigned report. The mobile form intentionally exposes only a small quick-documentation profile, so it cannot collect every required NEMSIS value and cannot currently produce a signable complete report.
