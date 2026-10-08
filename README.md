@@ -35,7 +35,8 @@ For a short walkthrough:
 1. Choose **Mobile**, then **Generate call** in the demo controls. Select a unit
    if prompted and open the generated assignment. **New patient** can also start
    a report without a dispatch assignment.
-2. Add a vital-sign set and a text note. Open a timeline entry to inspect or edit it.
+2. Add a vital-sign set and a text, photo, or audio note. Open a timeline entry 
+   to inspect or edit it.
 3. Choose **Save & close**, switch to **Stationary**, and reopen the same report
    from **Open calls**. **Populate** can fill empty fields with demonstration data;
    **Clear** removes data added by that tool.
