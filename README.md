@@ -365,6 +365,8 @@ requirements, threat exclusions, and deferred device controls are documented in
 ### Start a production server with Kubernetes or Tanzu
 
 Use the [production installation runbook](docs/runbooks/kubernetes-production.md).
+The regional implementation target is a VMware vSphere Kubernetes Service (VKS)
+workload cluster running Kubernetes 1.36.
 It covers identifying your Tanzu edition, preparing a workload cluster, Harbor,
 PostgreSQL, ingress, DNS and TLS, generating private workload credentials,
 bootstrapping the owner, and checking the rollout. Production uses built containers

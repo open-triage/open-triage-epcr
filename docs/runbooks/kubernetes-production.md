@@ -8,6 +8,25 @@ Do not use the hosted demo values for a production installation.
 
 ## 1. Identify and prepare the platform
 
+### Regional implementation target
+
+Plan the regional installation for **Kubernetes 1.36 on a VKS 3.7 workload cluster**.
+Availability of 1.36 is an explicit planning assumption: the platform team reported
+1.31–1.34 currently available and 1.36 planned for autumn 2026. Its stated policy
+is the latest Kubernetes minor release plus three older releases (n-3), although
+delays in meeting that policy may occur.
+
+The DigitalOcean demo control plane reported **v1.36.3** on 9 October 2026. This
+provides a deployment baseline on the same Kubernetes minor version, rather than
+proof of VKS compatibility. Use the existing Helm chart and standard Kubernetes
+resources, and validate the selected Broadcom Kubernetes release and patch,
+worker architecture, Restricted Pod Security admission, registry access, ingress,
+database connectivity, migrations, and application smoke checks on the regional
+workload cluster. Use the VKS access path below; standalone TKG and TKGI instructions
+are alternatives for other installations.
+
+### Platform preparation
+
 If you do not know which Tanzu product you have, ask the platform administrator
 which row applies and request the workload cluster name, access method, supported
 CLI versions, namespace permissions, registry, ingress class, and database endpoint.

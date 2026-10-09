@@ -15,6 +15,12 @@ is after Helm, however, so it does not itself activate Helm's atomic rollback.
 
 ## Prerequisites and deployment targets
 
+On 9 October 2026, a read-only query of the demo cluster reported Kubernetes
+control-plane version **v1.36.3**. This is an observed baseline, not a version pin
+in this repository. The regional VKS installation is planned for Kubernetes 1.36;
+see the [production runbook](runbooks/kubernetes-production.md) for its platform
+assumptions and validation requirements.
+
 The `demo` GitHub environment must allow deployments from `main` and define:
 
 - secret `DIGITALOCEAN_ACCESS_TOKEN`, restricted in DigitalOcean to the demo
