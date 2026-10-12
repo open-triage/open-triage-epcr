@@ -43,8 +43,8 @@ integrationTest('Demo migration removes live publishing access and preserves rol
   await client.query(`insert into app_identity.app_user(id,organization_id,display_name)
     values ($1,$3,'Demo assignee'),($2,$3,'Ordinary installation owner')`, [userId, ownerId, organizationId]);
   await client.query(`insert into app_identity.installation_owner
-    (organization_id,user_id,established_by_operator_id) values ($1,$2,'integration-test')`,
-    [organizationId, ownerId]);
+    (user_id, established_by_operator_id) select $1, 'integration-test'
+    where not exists(select 1 from app_identity.installation_owner)`, [ownerId]);
   const priorRole = (await client.query(`select id,current_version_id from app_identity.role
     where organization_id=$1 and system_key='demo'`, [organizationId])).rows[0];
   const administrator = (await client.query(`select current_version_id from app_identity.role

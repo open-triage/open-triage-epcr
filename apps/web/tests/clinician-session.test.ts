@@ -1,3 +1,4 @@
+import { expectedApiUrl } from "./helpers/api-url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ClinicianSession } from "@open-triage/contracts";
@@ -129,9 +130,9 @@ test("server session adapters send credentials and map authentication failures",
     assert.deepEqual(await changeClinicianPassword("old password", "new password value", "csrf-proof"), session);
     await endClinicianSession("csrf-proof");
     assert.deepEqual(requests.map(({ url, init }) => [url, init?.method]), [
-      ["/api/sessions", "POST"],
-      ["/api/sessions/password", "POST"],
-      ["/api/sessions/current", "DELETE"],
+      [expectedApiUrl("/api/sessions"), "POST"],
+      [expectedApiUrl("/api/sessions/password"), "POST"],
+      [expectedApiUrl("/api/sessions/current"), "DELETE"],
     ]);
     assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 

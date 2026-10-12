@@ -3,12 +3,10 @@ import { DEFAULT_AGENCY_APPEARANCE } from "@open-triage/contracts";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-if (!apiBaseUrl) {
-  throw new Error("NEXT_PUBLIC_API_URL must be set for deployment tests");
-}
-const installationUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/installation`;
+const installationPath = `${!apiBaseUrl || apiBaseUrl === "same-origin" ? "" : apiBaseUrl.replace(/\/$/, "")}/api/installation`;
 
-test("the built static export starts and is served from the domain root", async ({ page, request }) => {
+test("the built static export starts and is served from the domain root", async ({ page, request, baseURL }) => {
+  const installationUrl = new URL(installationPath, baseURL).href;
   const response = await request.get("/");
   expect(response.status()).toBe(200);
   expect(response.headers()["permissions-policy"]).toBe("camera=(self), microphone=(self), geolocation=()");

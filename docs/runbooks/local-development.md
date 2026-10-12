@@ -225,3 +225,18 @@ This server binds loopback and is intended for local artifact checks. Production
 installations use the web image and Helm ingress with TLS. `npm start` does not
 load root `.env.local` or start the API/database. Organization registration and
 access checks still apply; DNS routing alone does not grant access to an agency.
+
+## Before pushing CI/CD fixes
+
+Run `npm run check:ci` to run typechecking, lint, all unit tests, a production
+same-origin build and browser smoke test, followed by database/API integration
+and scale checks in a disposable PostgreSQL 15 container matching CI. Install
+Playwright Chromium first (`npx playwright install chromium`). Docker must be
+running; on WSL without a Linux Docker client, use
+`DOCKER_COMMAND=docker.exe npm run check:ci`.
+
+This command does not load `.env.local` or use the development database. The
+browser unit suite tests unset, same-origin, and explicit API URL configurations.
+The disposable database is removed on completion, including test failure.
+Use this complete check rather than interpreting skipped database tests in
+`npm test` as database validation.

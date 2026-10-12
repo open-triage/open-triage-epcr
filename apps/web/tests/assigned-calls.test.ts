@@ -1,3 +1,4 @@
+import { expectedApiUrl } from "./helpers/api-url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssignedCall } from "@open-triage/contracts";
@@ -45,8 +46,8 @@ test("synthetic generation context and selected unit use only the live authentic
     const generated = await generateSyntheticCall("csrf-token", context.eligibleUnits[0]!.id);
     assert.equal(generated.assignment.id, "generated");
     assert.deepEqual(requests.map(({ url }) => url), [
-      "http://localhost:3001/api/calls/synthetic-generation",
-      "http://localhost:3001/api/calls/synthetic-generation",
+      expectedApiUrl("/api/calls/synthetic-generation"),
+      expectedApiUrl("/api/calls/synthetic-generation"),
     ]);
     assert.equal(requests[1]?.init?.method, "POST");
     assert.equal(new Headers(requests[1]?.init?.headers).get("x-csrf-token"), "csrf-token");
@@ -144,7 +145,7 @@ test("dispatch conflict dispositions are posted to the report server", async () 
   try {
     const result = await resolveDispatchConflict("token", "report", "conflict", "acknowledge");
     assert.equal(result.disposition, "acknowledge");
-    assert.equal(request?.url, "http://localhost:3001/api/reports/report/dispatch-conflicts/conflict");
+    assert.equal(request?.url, expectedApiUrl("/api/reports/report/dispatch-conflicts/conflict"));
     assert.equal(request?.init?.method, "POST");
     assert.equal(JSON.parse(String(request?.init?.body)).disposition, "acknowledge");
   } finally {

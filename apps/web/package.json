@@ -12,7 +12,7 @@
     "start": "npm run serve:static",
     "lint": "eslint .",
     "pretest": "npm run build -w @open-triage/contracts",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node scripts/test-server-configurations.mjs",
     "generate:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts",
     "check:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts --check",
     "test:a11y": "playwright test --config playwright.config.ts",

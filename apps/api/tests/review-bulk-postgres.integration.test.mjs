@@ -29,8 +29,7 @@ integrationTest("bulk claim and assignment report independent, stale, and scoped
     await client.query(migration("20261002290000_review_discussion"));
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic,
       owner.user_id reviewer_id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-    join app_identity.installation_owner owner on owner.organization_id=r.organization_id
-      and owner.user_id<>r.documenting_user_id where r.status='signed' limit 1`)).rows[0];
+    join app_identity.installation_owner owner on owner.user_id<>r.documenting_user_id where r.status='signed' limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report with a different installation owner is available");
   const initialQuery = async (sql, params) => (await client.query(sql, params)).rows;
   if (!await eligibleReviewer({ query: initialQuery }, candidate.organization_id,

@@ -16,16 +16,18 @@ test("the required gate fails closed when any validation is unsuccessful", () =>
     "database-validation": { result: "failure" },
     "web-deployment-validation": { result: "cancelled" },
     "helm-validation": { result: "skipped" },
+    "installation-config": { result: "failure" },
   };
 
   assert.deepEqual(unsuccessfulValidationJobs(results), [
     "database-validation",
     "helm-validation",
+    "installation-config",
     "web-deployment-validation",
   ]);
   assert.throws(
     () => requireSuccessfulValidations(results),
-    /database-validation, helm-validation, web-deployment-validation/,
+    /database-validation, helm-validation, installation-config, web-deployment-validation/,
   );
 });
 
@@ -66,6 +68,7 @@ test("the gate depends on every application, database, web, and Helm validation"
     "web-deployment-validation",
     "api-runtime-image-validation",
     "helm-validation",
+    "installation-config",
   ]) {
     assert.match(gate, new RegExp(`^      - ${job}$`, "m"));
   }
@@ -132,4 +135,15 @@ test("the Kubernetes web artifact is built for root hosting", async () => {
 
   assert.match(webValidation, /name: Test the root-hosted web artifact/);
   assert.doesNotMatch(webValidation, /NEXT_PUBLIC_BASE_PATH|open-triage-epcr-demo/);
+});
+
+// Configuration syntax and chart compatibility are read-only checks that must
+// fail on PRs, before the main-only publishing/deployment stages.
+test("operator configuration is validated on PRs and blocks publication", async () => {
+  const { load } = await import("js-yaml");
+  const { jobs } = load(await readFile(workflowPath, "utf8"));
+  assert.equal(jobs["installation-config"].if, undefined);
+  assert.equal(jobs["installation-config"].needs, "validate-deployment-revision");
+  assert.ok(jobs["validation-gate"].needs.includes("installation-config"));
+  assert.ok(jobs["publish-images"].needs.includes("validation-gate"));
 });

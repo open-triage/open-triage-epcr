@@ -62,9 +62,9 @@ test("the workflow publishes tested AMD64 images with narrowly scoped registry p
   const publishing = workflow.slice(workflow.indexOf("  publish-images:"));
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(publishing, /^    needs: installation-config$/m);
+  assert.match(publishing, /^    needs: \[validation-gate, installation-config\]$/m);
   const configuration = workflow.slice(workflow.indexOf("  installation-config:"), workflow.indexOf("  publish-images:"));
-  assert.match(configuration, /^    needs: validation-gate$/m);
+  assert.match(configuration, /^    needs: validate-deployment-revision$/m);
   assert.match(publishing, /^      packages: write$/m);
   assert.match(publishing, /^          platforms: linux\/amd64$/m);
   assert.match(publishing, /^          push: true$/m);

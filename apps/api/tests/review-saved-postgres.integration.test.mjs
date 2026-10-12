@@ -24,8 +24,7 @@ integrationTest("saved analyses keep ownership and re-evaluate shared results fo
     await client.query(migration("20261002300000_review_saved_analyses"));
   const users = (await client.query(`select r.organization_id,r.documenting_user_id owner_id,
       owner.user_id viewer_id from clinical.report r
-    join app_identity.installation_owner owner on owner.organization_id=r.organization_id
-      and owner.user_id<>r.documenting_user_id
+    join app_identity.installation_owner owner on owner.user_id<>r.documenting_user_id
     where r.status='signed' limit 1`)).rows[0];
   if (!users) return t.skip("No organization with two Review users is available");
   await client.query("select analytics_private.ensure_partitions(date '2026-10-01', date '2026-10-03')");

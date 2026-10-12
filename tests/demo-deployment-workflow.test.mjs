@@ -71,7 +71,7 @@ test("deployment verifies the run manifest and uses a bounded atomic Helm rollou
   assert.match(deploy, /exit "\$helm_status"/);
 });
 
-test("deployment snapshots operator settings and PR checks need no installation access", async () => {
+test("deployment snapshots operator settings and PR checks validate them before merging", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const config = workflow.slice(workflow.indexOf("  installation-config:"), workflow.indexOf("  publish-images:"));
   const deploy = workflow.slice(workflow.indexOf("  deploy-demo:"));

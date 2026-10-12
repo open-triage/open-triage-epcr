@@ -228,6 +228,7 @@ jobs:
       - web-deployment-validation
       - api-runtime-image-validation
       - helm-validation
+      - installation-config
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -239,11 +240,8 @@ jobs:
         run: node scripts/require-demo-validation.mjs
 
   installation-config:
-    name: Prepare / Installation configuration
-    if: >-
-      needs.validation-gate.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: validation-gate
+    name: Validate / Installation configuration
+    needs: validate-deployment-revision
     runs-on: ubuntu-latest
     environment: demo
     outputs:
@@ -283,9 +281,9 @@ jobs:
   publish-images:
     name: Publish / ${{ matrix.component }} linux/amd64
     if: >-
-      needs.installation-config.result == 'success' &&
+      needs.validation-gate.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: installation-config
+    needs: [validation-gate, installation-config]
     runs-on: ubuntu-latest
     permissions:
       contents: read
