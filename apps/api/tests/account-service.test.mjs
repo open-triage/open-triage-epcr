@@ -12,6 +12,7 @@ function instrumentedDataSource(respond = ({ sql }) =>
   const manager = { query: async (sql, parameters = []) => {
     const statement = { connection: "transaction-connection", sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(statement);
+    if (statement.sql.startsWith("select app_identity.organization_group")) return [{ id: parameters[0] }];
     return respond(statement);
   } };
   return {
@@ -149,4 +150,23 @@ test("CLI accepts passwords only through its reader and exposes immutable reset 
   assert.equal(events.some(({ parameters }) => parameters.includes("Temporary password 42!")), false);
   await assert.rejects(runIdentityAccountCli(dataSource,
     ["reset-user", "--username", "mutable-name", "--operator-id", "ops-ticket-42"], dependencies), /Unknown option/);
+});
+
+test("superadmin CLI normalizes the name, reads a temporary password privately, and audits atomically", async () => {
+  const { dataSource, events } = instrumentedDataSource();
+  const argv = ['create-superadmin', '--organization-id', 'organization-id', '--username', ' GLOBAL.Admin ',
+    '--display-name', 'Administrator', '--operator-id', operator.operatorId];
+  let reads = 0;
+  const dependencies = { readPassword: async () => { reads++; return 'Temporary password 42!'; }, osAccount: operator.osAccount, host: operator.host };
+  const account = await runIdentityAccountCli(dataSource, argv, dependencies);
+  assert.equal(account.username, 'global.admin');
+  assert.equal(reads, 1);
+  assert.equal(events.filter(event => event.sql.startsWith('insert into app_identity.installation_superadmin')).length, 1);
+  assert.equal(events.some(event => event.sql.startsWith('insert into app_identity.installation_owner')), false);
+  assert.ok(events.some(event => event.parameters.includes('superadmin.create') && event.parameters.includes('succeeded')));
+  const credential = events.find(event => event.sql.startsWith('insert into app_identity.local_credential'));
+  assert.equal(await verifyPassword('Temporary password 42!', credential.parameters[2]), true);
+  assert.equal(JSON.stringify(events).includes('Temporary password 42!'), false);
+  await assert.rejects(runIdentityAccountCli(dataSource, [...argv, '--password', 'unsafe'], dependencies), /Unknown option/);
+  assert.equal(reads, 1);
 });

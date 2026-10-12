@@ -45,12 +45,10 @@ export class UserProvisioningService {
         if (roles.size !== command.roleIds.length) {
           throw new UnprocessableEntityException("Every initial role must be active, assignable, and in this organization");
         }
-        const ownerRows = await manager.query<Array<{ owner: boolean }>>(`select exists (
-          select 1 from app_identity.installation_owner where organization_id = $1 and user_id = $2
-        ) owner`, [actor.organization.id, actor.user.id]);
+        const ownerRows = await manager.query<Array<{ owner: boolean }>>(`select (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1)) owner`, [actor.organization.id, actor.user.id]);
         const actorIsOwner = Boolean(ownerRows[0]?.owner);
         if ([...roles.values()].some((role) => role.systemKey === "administrator" || role.systemKey === "demo")) {
-          if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Demo");
+          if (!actorIsOwner) throw new ForbiddenException("Only the installation owner or a superadmin may assign Administrator or Demo");
         }
         const actorCapabilities = new Set(actor.capabilities ?? []);
         if (!actorIsOwner && [...roles.values()].some((role) =>
@@ -58,7 +56,7 @@ export class UserProvisioningService {
           throw new ForbiddenException("Administrators may assign only roles whose capabilities they possess");
         }
         await manager.query(
-          "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
+          "insert into app_identity.app_user (id, organization_id, display_name) values ($1, app_identity.organization_group($2), $3)",
           [userId, actor.organization.id, command.displayName]
         );
         await manager.query(`insert into app_identity.local_credential

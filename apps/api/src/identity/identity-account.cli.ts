@@ -99,6 +99,17 @@ export async function runIdentityAccountCli(
     return service.bootstrapOwner({ organizationId, username, displayName, operator,
       clinician: parsed.get("clinician") === true, temporaryPassword: await passwordReader() });
   }
+  if (command === "create-superadmin") {
+    assertOnly(parsed, ["organization-id", "username", "display-name", "operator-id"]);
+    const organizationId = value(parsed, "organization-id");
+    const username = value(parsed, "username");
+    const displayName = value(parsed, "display-name");
+    if (!organizationId || !username || !displayName || !operatorId) {
+      throw new Error("create-superadmin requires --organization-id, --username, --display-name, and --operator-id");
+    }
+    return service.createSuperadmin({ organizationId, username, displayName, operator,
+      temporaryPassword: await passwordReader() });
+  }
   if (command === "reset-owner") {
     assertOnly(parsed, ["organization-id", "operator-id"]);
     const organizationId = value(parsed, "organization-id");
@@ -111,5 +122,5 @@ export async function runIdentityAccountCli(
     if (!userId || !operatorId) throw new Error("reset-user requires --user-id and --operator-id");
     return service.resetUserPassword(userId, await passwordReader(), operator);
   }
-  throw new Error("Usage: identity-account bootstrap-owner|reset-owner|reset-user [options]; temporary password is read from stdin");
+  throw new Error("Usage: identity-account bootstrap-owner|create-superadmin|reset-owner|reset-user [options]; temporary password is read from stdin");
 }

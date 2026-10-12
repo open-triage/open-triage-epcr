@@ -38,7 +38,7 @@ function managerFor({ existing = [], histories = [], capabilities = [], assignme
       return histories.map(({ id, role_id }) => ({ id, role_id }));
     }
     if (sql.includes("from app_identity.capability capability")) return capabilities;
-    if (sql.includes("from app_identity.installation_owner")) return owners;
+    if (sql.includes("is_installation_superadmin")) return owners;
     if (sql.includes("count(distinct user_id)")) return assignments;
     if (sql.includes("lower(display_name)")) return [];
     if (sql.includes("select count(*) count from app_identity.role_version")) return [{ count: histories.length }];

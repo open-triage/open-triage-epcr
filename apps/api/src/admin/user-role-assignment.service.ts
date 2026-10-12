@@ -5,7 +5,7 @@ import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type TargetRow = {
-  id: string; display_name: string; username: string; active: boolean; revision: string | number; owner: boolean;
+  id: string; display_name: string; username: string; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
 };
 type RoleCapabilityRow = {
   id: string; display_name: string; active: boolean; protected: boolean; assignable: boolean;
@@ -33,17 +33,18 @@ export class UserRoleAssignmentService {
         where organization_id = $1 for update`, [actor.organization.id]);
       const targets = await manager.query<TargetRow[]>(`
         select u.id, u.display_name, credential.username, u.active, u.revision,
+          exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
           exists (select 1 from app_identity.installation_owner owner_record
             where owner_record.organization_id = u.organization_id and owner_record.user_id = u.id) owner
         from app_identity.app_user u
         join app_identity.local_credential credential on credential.user_id = u.id
-        where u.organization_id = $1 and u.id = $2
+        where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1) and u.id = $2
         for update of u
       `, [actor.organization.id, targetUserId]);
       const target = targets[0];
       if (!target) throw new NotFoundException("User was not found");
       if (target.id === actor.user.id) throw new ForbiddenException("Administrators cannot change their own roles");
-      if (target.owner) throw new ForbiddenException("The installation owner's roles cannot be changed here");
+      if (target.owner || target.superadmin) throw new ForbiddenException("Installation owner or superadmin roles cannot be changed here");
       if (Number(target.revision) !== command.expectedRevision) {
         throw new ConflictException("This user changed after it was loaded");
       }
@@ -81,10 +82,7 @@ export class UserRoleAssignmentService {
       const additions = command.roleIds.filter((id) => !currentRoleIds.includes(id));
       const removals = currentRoleIds.filter((id) => !command.roleIds.includes(id));
       const changed = [...additions, ...removals].map((id) => roles.get(id)!);
-      const ownerRows = await manager.query<Array<{ owner: boolean }>>(`select exists (
-        select 1 from app_identity.installation_owner
-        where organization_id = $1 and user_id = $2
-      ) owner`, [actor.organization.id, actor.user.id]);
+      const ownerRows = await manager.query<Array<{ owner: boolean }>>(`select (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1)) owner`, [actor.organization.id, actor.user.id]);
       const actorIsOwner = Boolean(ownerRows[0]?.owner);
       if (!actorIsOwner) {
         const actorCapabilities = new Set(actor.capabilities ?? []);
@@ -95,7 +93,7 @@ export class UserRoleAssignmentService {
       }
       if (changed.some((role) => role.systemKey && OWNER_ONLY_ROLE_KEYS.has(role.systemKey))) {
         if (!actorIsOwner) {
-          throw new ForbiddenException("Only the installation owner may assign or remove Administrator or Demo");
+          throw new ForbiddenException("Only the installation owner or a superadmin may assign or remove Administrator or Demo");
         }
         await this.sessions.requireRecentReauthentication(token, manager, now);
       }

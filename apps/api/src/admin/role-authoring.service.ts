@@ -50,8 +50,7 @@ export class RoleAuthoringService {
       select capability.key, capability.description, capability.administrative, capability.system_only,
         coalesce(array_agg(required.prerequisite_key order by required.prerequisite_key)
           filter (where required.prerequisite_key is not null), '{}') prerequisites,
-        exists (select 1 from app_identity.installation_owner
-          where organization_id = $1 and user_id = $2) owner
+        (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1)) owner
       from app_identity.capability capability
       left join app_identity.capability_prerequisite required
         on required.capability_key = capability.key
@@ -361,10 +360,7 @@ export class RoleAuthoringService {
       .filter((required) => !selected.has(required)).map((required) => `${item.key} requires ${required}`));
     if (missing.length) throw new UnprocessableEntityException({ message: "Capability prerequisites are missing", findings: missing });
     const owners = await manager.query<Array<{ owner: boolean }>>(`
-      select exists (
-        select 1 from app_identity.installation_owner
-        where organization_id = $1 and user_id = $2
-      ) owner
+      select (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1)) owner
     `, [session.organization.id, session.user.id]);
     if (!owners[0]?.owner) {
       const possessed = new Set(session.capabilities ?? []);
@@ -413,9 +409,7 @@ export class RoleAuthoringService {
   }
 
   private async assertCapabilityCeiling(manager: EntityManager, session: ClinicianSession, keys: string[]): Promise<void> {
-    const owners = await manager.query<Array<{ owner: boolean }>>(`select exists (
-      select 1 from app_identity.installation_owner where organization_id = $1 and user_id = $2
-    ) owner`, [session.organization.id, session.user.id]);
+    const owners = await manager.query<Array<{ owner: boolean }>>(`select (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1)) owner`, [session.organization.id, session.user.id]);
     if (!owners[0]?.owner && keys.some((key) => !session.capabilities?.includes(key))) {
       throw new ForbiddenException("You may change only capabilities currently granted to your account");
     }

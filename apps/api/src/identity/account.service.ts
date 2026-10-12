@@ -10,7 +10,7 @@ export const BUILT_IN_ROLES = {
 
 export type BuiltInAccountRole = keyof typeof BUILT_IN_ROLES;
 export type OperatorIdentity = { operatorId: string; osAccount: string; host: string };
-type OperatorCommand = "owner.bootstrap" | "owner.reset_password" | "user.reset_password";
+type OperatorCommand = "superadmin.create" | "owner.bootstrap" | "owner.reset_password" | "user.reset_password";
 type OperatorTarget = { organizationId?: string; userId?: string };
 
 export class AccountService {
@@ -24,21 +24,25 @@ export class AccountService {
     const userId = randomUUID();
     const username = input.username.trim().toLowerCase();
     return this.dataSource.transaction(async (manager) => {
+      const [group] = await manager.query<Array<{ id: string }>>(
+        "select app_identity.organization_group($1) id", [input.organizationId]);
+      if (!group?.id) throw new Error("No organization has that immutable ID");
+      const organizationId = group.id;
       await manager.query(
         "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
-        [userId, input.organizationId, input.displayName.trim()]
+        [userId, organizationId, input.displayName.trim()]
       );
       await manager.query(
         `insert into app_identity.local_credential
           (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
          values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
       );
-      await this.assignProtectedRoles(manager, input.organizationId, userId, BUILT_IN_ROLES[input.role],
+      await this.assignProtectedRoles(manager, organizationId, userId, BUILT_IN_ROLES[input.role],
         "Initial account provisioning");
       await manager.query(
         `insert into app_identity.authentication_event
           (organization_id, actor_id, action, result, target_user_id)
-         values ($1, $2, 'account.provision', 'succeeded', $2)`, [input.organizationId, userId]
+         values ($1, $2, 'account.provision', 'succeeded', $2)`, [organizationId, userId]
       );
       return { userId, username, role: input.role };
     });
@@ -59,9 +63,9 @@ export class AccountService {
         );
         if (!organizations[0]) throw new Error("No organization has that immutable ID");
         const existing = await manager.query<Array<{ user_id: string }>>(
-          "select user_id from app_identity.installation_owner where organization_id = $1", [input.organizationId]
+          "select user_id from app_identity.installation_owner"
         );
-        if (existing[0]) throw new Error("This organization already has an installation owner");
+        if (existing[0]) throw new Error("This installation already has an owner");
         await manager.query(
           "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
           [userId, input.organizationId, input.displayName.trim()]
@@ -83,6 +87,36 @@ export class AccountService {
         );
         await this.auditOperator(manager, "owner.bootstrap", target, input.operator, "succeeded");
         return { organizationId: input.organizationId, userId, username, clinician: true };
+      });
+    });
+  }
+
+  async createSuperadmin(input: {
+    organizationId: string; username: string; displayName: string;
+    temporaryPassword: string; operator: OperatorIdentity;
+  }): Promise<{ organizationId: string; userId: string; username: string }> {
+    const userId = randomUUID();
+    const target = { organizationId: input.organizationId, userId };
+    return this.withFailureAudit("superadmin.create", target, input.operator, async () => {
+      const verifier = await createPasswordVerifier(input.temporaryPassword);
+      const username = input.username.trim().toLowerCase();
+      return this.dataSource.transaction(async manager => {
+        const [group] = await manager.query<Array<{ id: string }>>(
+          "select app_identity.organization_group($1) id", [input.organizationId]);
+        if (!group?.id) throw new Error("No organization has that immutable ID");
+        target.organizationId = group.id;
+        await manager.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
+          [userId, group.id, input.displayName.trim()]);
+        await manager.query(`insert into app_identity.local_credential
+          (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
+          values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]);
+        await manager.query(`insert into app_identity.installation_superadmin (user_id, established_by_operator_id)
+          values ($1, $2)`, [userId, this.operator(input.operator).operatorId]);
+        await manager.query(`insert into app_identity.authentication_event
+          (organization_id, actor_id, action, result, target_user_id)
+          values ($1, $2, 'account.provision', 'succeeded', $2)`, [group.id, userId]);
+        await this.auditOperator(manager, "superadmin.create", target, input.operator, "succeeded");
+        return { organizationId: group.id, userId, username };
       });
     });
   }
