@@ -131,6 +131,7 @@ fieldset { min-inline-size: 0; }
 .session-bar button { min-height: 44px; padding: 4px 12px; border-color: rgb(255 255 255 / 65%); cursor: pointer; }
 .session-bar > button:focus-visible, .session-bar .language-trigger:focus-visible, .session-bar .feedback-trigger:focus-visible { outline-color: var(--accent-contrast); }
 .session-bar button:disabled { cursor: not-allowed; }
+.session-account { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; min-width: 0; }
 .session-identity { min-width: 0; overflow-wrap: anywhere; text-align: center; }
 .session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
 .session-bar-spacer { display: block; }
@@ -1172,3 +1173,28 @@ fieldset { min-inline-size: 0; }
 
 .metric-evidence { overflow-wrap: anywhere; }
 .metric-evidence ul { max-height: 16rem; overflow: auto; padding-left: 20px; }
+
+.agency-management { display: flex; flex-direction: column; min-height: 0; }
+.agency-management .agency-table { max-height: 48dvh; overflow: auto; }
+.agency-management thead th { position: sticky; top: 0; z-index: 1; }
+.agency-editor { display: grid; gap: 14px; padding: 0 18px 18px; }
+.agency-editor-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.agency-configuration-selectors { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.agency-configuration-selectors label { min-width: 0; }
+.agency-configuration-help { grid-column: 1 / -1; margin: 0; }
+.agency-editor-fields label, .session-agency-selector { display: grid; gap: 6px; }
+.agency-editor :is(input:not([type="checkbox"]), select), .session-agency-selector select {
+  min-height: 44px; min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 6px; background: #fff; color: var(--text-color); font-size: var(--text-control);
+}
+.agency-editor .agency-active { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.agency-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.agency-actions button { min-height: 44px; padding: 8px 12px; }
+.agency-pagination { justify-content: flex-end; padding: 12px 18px; }
+.session-agency-selector { flex: 0 1 220px; min-width: 0; width: 100%; font-size: var(--text-caption); max-width: 220px; }
+@media (max-width: 640px) {
+  .agency-editor-fields, .agency-configuration-selectors { grid-template-columns: minmax(0, 1fr); }
+  .session-agency-selector { max-width: 160px; }
+  .agency-management .agency-table { max-height: 55dvh; }
+}
+.review-agency-name { display: block; margin-top: 0.25rem; }

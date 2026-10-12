@@ -1,3 +1,4 @@
+import { expectedApiUrl } from "./helpers/api-url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -209,7 +210,7 @@ test("prototype record deletion uses a confirmed server-side DELETE with CSRF pr
   }) as typeof fetch;
 
   assert.deepEqual(await deleteDraftReport("csrf-proof", reportId), { deleted: true, reportId });
-  assert.equal(request?.input, `http://localhost:3001/api/reports/${reportId}`);
+  assert.equal(request?.input, expectedApiUrl(`/api/reports/${reportId}`));
   assert.equal(request?.init?.method, "DELETE");
   assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 });
@@ -344,7 +345,7 @@ test("signing sends the current revision, clinician attestation, and warning ack
   try {
     await signDraftReport("token", reportId, 8, "32000000-0000-4000-8000-000000000003", ["missing-vitals"]);
     const body = JSON.parse(String(request?.init?.body));
-    assert.equal(request?.input, `http://localhost:3001/api/reports/${reportId}/sign`);
+    assert.equal(request?.input, expectedApiUrl(`/api/reports/${reportId}/sign`));
     assert.equal(request?.init?.method, "POST");
     assert.equal(body.expectedRevision, 8);
     assert.equal(body.signerId, "32000000-0000-4000-8000-000000000003");
@@ -466,7 +467,7 @@ test("app-native note create, edit, and delete use revisioned report-note endpoi
   } finally {
     globalThis.fetch = originalFetch;
   }
-  assert.deepEqual(calls.map(({ input, init }) => [new URL(input).pathname, init?.method]), [
+  assert.deepEqual(calls.map(({ input, init }) => [new URL(input, "https://web.example.test").pathname, init?.method]), [
     [`/api/reports/${reportId}/notes`, "POST"],
     [`/api/reports/${reportId}/notes/${noteId}`, "POST"],
     [`/api/reports/${reportId}/notes/${noteId}`, "DELETE"],

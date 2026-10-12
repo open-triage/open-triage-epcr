@@ -9,3 +9,6 @@ artifacts
 coverage
 
 defines/*/local
+
+deploy/installations
+.worktrees

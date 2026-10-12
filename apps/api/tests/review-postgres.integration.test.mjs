@@ -69,7 +69,10 @@ integrationTest("Review operational time uses offset-aware signed endpoints and 
   await client.query("set local role open_triage_api_runtime");
   let session = { capabilities: ["review:self"], user: { id: userId },
     organization: { id: organizationId } };
-  const service = new ReviewService({ query: async (sql, params) => sql.includes("projection_health")
+  const service = new ReviewService({
+    // Each scenario already owns a rollback-only database transaction.
+    transaction: async function (_isolation, work) { return work(this); },
+    query: async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
       is_read_only_replica: false, replay_lag_seconds: null }]
@@ -132,8 +135,7 @@ integrationTest("Review claim stores one versioned assignment and immutable hist
   await ensureReviewWorkflowSchema(client);
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-    where r.status='signed' and exists (select 1 from app_identity.installation_owner owner
-      where owner.organization_id=r.organization_id) limit 1`)).rows[0];
+    where r.status='signed' and exists (select 1 from app_identity.installation_owner owner) limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report is available in the local database");
   const itemId = randomUUID();
   await client.query(`insert into clinical.review_item
@@ -173,8 +175,7 @@ integrationTest("Review administration reassigns eligible users and recovers dis
   await ensureReviewWorkflowSchema(client);
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-    where r.status='signed' and exists (select 1 from app_identity.installation_owner owner
-      where owner.organization_id=r.organization_id) limit 1`)).rows[0];
+    where r.status='signed' and exists (select 1 from app_identity.installation_owner owner) limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report with a configured organization is available");
   const itemId = randomUUID();
   const criterionId = randomUUID();
@@ -193,8 +194,7 @@ integrationTest("Review administration reassigns eligible users and recovers dis
   const service = new ReviewService(database, { get: async () => session, assertCsrf: async () => {} });
   const dataset = candidate.synthetic ? "synthetic" : "real";
   const eligible = await service.reviewers("unused", itemId, dataset);
-  const ownerId = (await client.query(`select user_id from app_identity.installation_owner
-    where organization_id=$1`, [candidate.organization_id])).rows[0]?.user_id;
+  const ownerId = (await client.query(`select user_id from app_identity.installation_owner`)).rows[0]?.user_id;
   const nonOwner = eligible.find((user) => user.id !== ownerId);
   if (!nonOwner) return t.skip("No eligible non-owner reviewer is available in the local organization");
   const firstReviewer = eligible.find((user) => user.id !== nonOwner.id) ?? nonOwner;
@@ -251,11 +251,10 @@ integrationTest("Review criterion routing is configured without validation-write
     join app_identity.app_user u on u.id=v.created_by and u.active
     where v.status='published' and rule.value->'executionTargets' ? 'review' limit 1`)).rows[0];
   if (!criterion) return t.skip("No published Review criterion is available");
-  const owner = (await client.query(`select user_id from app_identity.installation_owner
-    where organization_id=$1`, [criterion.organization_id])).rows[0];
+  const owner = (await client.query(`select user_id from app_identity.installation_owner`)).rows[0];
   if (!owner) await client.query(`insert into app_identity.installation_owner
-    (organization_id,user_id,established_by_operator_id) values ($1,$2,'review-test')`,
-  [criterion.organization_id, criterion.created_by]);
+    (user_id,established_by_operator_id) values ($1,'review-test')`,
+  [criterion.created_by]);
   const actorId = owner?.user_id ?? criterion.created_by;
   await client.query("set local role open_triage_api_runtime");
   let session = { user: { id: actorId }, organization: { id: criterion.organization_id },
@@ -359,7 +358,10 @@ integrationTest("Review volume counts patient reports separately within incident
   await client.query("set local role open_triage_api_runtime");
   let session = { capabilities: ["review:self"], user: { id: userId },
     organization: { id: organizationId } };
-  const service = new ReviewService({ query: async (sql, params) => sql.includes("projection_health")
+  const service = new ReviewService({
+    // Each scenario already owns a rollback-only database transaction.
+    transaction: async function (_isolation, work) { return work(this); },
+    query: async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
       is_read_only_replica: false, replay_lag_seconds: null }]
@@ -409,7 +411,10 @@ integrationTest("Review basic analysis uses the scoped effective projection, pre
   await client.query("set local role open_triage_api_runtime");
   let session = { capabilities: ["review:self"], user: { id: userId },
     organization: { id: organizationId } };
-  const service = new ReviewService({ query: async (sql, params) => sql.includes("projection_health")
+  const service = new ReviewService({
+    // Each scenario already owns a rollback-only database transaction.
+    transaction: async function (_isolation, work) { return work(this); },
+    query: async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
       is_read_only_replica: false, replay_lag_seconds: null }]

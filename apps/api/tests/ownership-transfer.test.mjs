@@ -31,7 +31,7 @@ function setup({ actorId = ownerId, recent = true, pending = null } = {}) {
         nominee_user_id: nomineeId, nominee_name: "Nominee" };
       return [[{ id: transferId }], 1];
     }
-    if (normalized.startsWith("update app_identity.installation_owner")) { activeOwnerId = parameters[1]; return []; }
+    if (normalized.startsWith("update app_identity.installation_owner")) { activeOwnerId = parameters[0]; return []; }
     if (normalized.includes("set status = 'accepted'")) { activeTransfer = { ...activeTransfer, status: "accepted",
       resolved_at: parameters[1], resolution_reason: "nominee_accepted" }; return []; }
     if (normalized.includes("set status = 'cancelled'")) { activeTransfer = { ...activeTransfer, status: "cancelled",

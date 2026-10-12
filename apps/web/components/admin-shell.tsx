@@ -13,12 +13,13 @@ import { ReviewSettingsPanel, type ReviewSettingsSection } from "./review-settin
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
+import { OrganizationManagement } from "./organization-management";
 
-type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings";
+type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
   ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
-  ["settings", "Agency Settings"], ["review-settings", "Review settings"]
+  ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -33,26 +34,28 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session, language = "en", online = true, reviewSettingsSection }: {
+export function AdminShell({ session, language = "en", online = true, reviewSettingsSection, onOpenAgency }: {
   readonly session: ClinicianSession;
   readonly language?: AgencyLanguage;
   readonly online?: boolean;
   readonly reviewSettingsSection?: ReviewSettingsSection;
+  readonly onOpenAgency?: (id: string) => Promise<void>;
 }) {
-  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} /></AdminLanguageContext.Provider>;
+  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} onOpenAgency={onOpenAgency} /></AdminLanguageContext.Provider>;
 }
 
-function AuthorizedAdminShell({ session, language, online, reviewSettingsSection }: {
+function AuthorizedAdminShell({ session, language, online, reviewSettingsSection, onOpenAgency }: {
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly online: boolean;
   readonly reviewSettingsSection?: ReviewSettingsSection;
+  readonly onOpenAgency?: (id: string) => Promise<void>;
 }) {
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
   const adminT = useAdminText();
   const panelKeys: Record<AdminPanel, string> = { Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
     "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
-    "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings" };
+    "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings", "Super-admin": "navigation.superAdmin" };
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contextRefresh, setContextRefresh] = useState(0);
@@ -119,6 +122,8 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
     {error && <><p className="admin-error" role="alert">{error}{context && ` ${t("list.refreshRetained")}`}</p>
       <button type="button" onClick={() => setContextRefresh((value) => value + 1)}>{t("list.retry")}</button></>}
     {!context && !error && <LoadingStatus className="admin-loading">{t("navigation.loadingConfiguration")}</LoadingStatus>}
+    {context && mounted("Super-admin") && (session.installationOwner || session.installationSuperadmin) && onOpenAgency &&
+      <div hidden={activePanel !== "Super-admin"}><OrganizationManagement active={activePanel === "Super-admin"} session={session} language={language} onOpenAgency={onOpenAgency} /></div>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
         <h2 id="active-configuration-heading"><AdminText messageKey="admin.activeConfiguration" /></h2>

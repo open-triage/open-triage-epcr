@@ -26,7 +26,7 @@ function setup({ target = {}, currentRoleIds = [roleA], roleRows, actorCapabilit
       username: "target.user", active: false, revision: "7", owner: false, ...target }];
     if (normalized.startsWith("select assignment.role_id")) return currentRoleIds.map((role_id) => ({ role_id }));
     if (normalized.startsWith("select role.id, role.display_name")) return roles;
-    if (normalized.startsWith("select exists") && normalized.includes("installation_owner")) return [{ owner: actorOwner }];
+    if (normalized.includes("is_installation_superadmin")) return [{ owner: actorOwner }];
     return [];
   } };
   const dataSource = { transaction: async (work) => {

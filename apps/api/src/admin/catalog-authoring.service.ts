@@ -109,6 +109,9 @@ export class CatalogAuthoringService {
         exists(select 1 from app_identity.active_configuration_bundle active
           where active.organization_id=$1 and active.catalog_release_id=cr.id) as active
       from catalog.release cr where cr.sealed and (
+        exists(select 1 from app_identity.agency_demographic_version demographic
+          where demographic.organization_id=$1 and demographic.catalog_release_id=cr.id)
+        or
         exists(select 1 from catalog.authoring_draft d
           where d.organization_id=$1 and d.published_release_id=cr.id)
         or exists(select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
@@ -154,6 +157,8 @@ export class CatalogAuthoringService {
             where active.organization_id=$1 and active.catalog_release_id=cr.id)) or
           (cr.id=$2::uuid and (exists(select 1 from catalog.authoring_draft d
             where d.organization_id=$1 and d.published_release_id=cr.id)
+            or exists(select 1 from app_identity.agency_demographic_version demographic
+              where demographic.organization_id=$1 and demographic.catalog_release_id=cr.id)
             or exists(select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
               where f.organization_id=$1 and fv.catalog_release_id=cr.id and fv.status='published')))) limit 1
       `, [session.organization.id, requestedSourceId ?? null]);

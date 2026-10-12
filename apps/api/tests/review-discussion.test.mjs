@@ -21,7 +21,7 @@ function fixture() {
       if (params[1] !== organization || (params[4] !== clinician && !params[3])) return [];
       return [{ ...item, version: String(item.version) }];
     }
-    if (sql.includes('from app_identity.app_user u')) return eligible
+    if (sql.includes('from app_identity.agency_user u')) return eligible
       ? [{ id: reviewer, display_name: 'Reviewer', all_access: true, self_access: false }] : [];
     if (sql.includes('from clinical.review_comment') && sql.includes('command_id=$2'))
       return comments.filter((entry) => entry.command_id === params[1]);

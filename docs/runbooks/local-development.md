@@ -43,7 +43,7 @@ values ('32000000-0000-4000-8000-000000000001', 'Demonstration EMS', 'UTC')
 on conflict (id) do nothing;
 ```
 
-Bootstrap the installation owner with a separate username and a password entered
+Bootstrap the installation owner (which needs no organization ID) with a separate username and a password entered
 at the prompt. Skip this step when the organization already has an owner; see the
 [identity recovery runbook](identity-recovery.md) for existing-account recovery.
 
@@ -53,7 +53,6 @@ at the prompt. Skip this step when the organization already has an owner; see th
   source ./.env.local
   set +a
   npm run identity:account -w @open-triage/api -- bootstrap-owner \
-    --organization-id 32000000-0000-4000-8000-000000000001 \
     --username local.owner \
     --display-name "Local Installation Owner" \
     --operator-id local-development-setup
@@ -128,7 +127,8 @@ npm run dev -- --check
 This also checks that app ports are free and may start Docker Desktop and the
 existing database container. Use it before launching the app.
 
-Open http://localhost:3000. The API is at http://localhost:3001 by default.
+Open http://localhost:3000 for the landing page or http://demo.localhost:3000
+for the demo agency. The API is at http://localhost:3001 by default.
 Verify `curl --fail http://localhost:3001/api/health`, sign in, and confirm the
 assigned-call screen loads. A successful demo login followed by a successful
 `GET /api/calls/assigned` confirms the database workflow. API health alone confirms
@@ -173,3 +173,70 @@ stop that workspace command, make PostgreSQL ready, and restart it.
 should be investigated from their assertions; successful HTTP startup does not
 mean the suite passed. Use `npm run test:workflow` for the startup regression
 tests and other root workflow checks.
+
+### Local agency subdomains
+
+In development, `http://localhost:3000` serves the public landing page. Its demo
+link opens `http://demo.localhost:3000`. Modern browsers resolve `*.localhost`
+to loopback without a hosts-file entry. The existing fictional demonstration
+organization uses `demo.localhost` while its configured hostname is empty.
+Explicit agency hostname assignments take precedence.
+
+For another agency, enter a subdomain such as `test` in Super-admin (with the
+local default hostname suffix `localhost`), then open `http://test.localhost:3000`.
+The browser uses the same subdomain on the API port, keeping agency cookies
+separate. Only active, registered agencies are accepted; unknown subdomains do
+not fall back to another agency. The HTTP origin allowance and landing-page
+routing apply only in development. `http://localhost:3000/admin/` remains the
+installation administration entry point.
+
+With the local servers running, verify landing navigation, demo login, reload,
+and cookie isolation with:
+
+```sh
+npx playwright test --config apps/web/playwright.local.config.ts
+```
+
+### Shared host routing
+
+Use `NEXT_PUBLIC_API_URL=same-origin` in `.env.local` (replace the older
+`http://localhost:3001` value). The development and local static servers share
+one edge router: `/api/*` goes to the API with the original `Host`, cookies, and
+request body; other requests go to the web app. The demo and production Helm
+installations use the same paths. Agency subdomains therefore do not need a
+separate API hostname or a different web build.
+
+`npm run dev` derives the private API upstream from `PORT`, defaults the landing
+host to `localhost`, and keeps the app on `demo.localhost:3000` or another
+registered agency host. Set `OPEN_TRIAGE_PUBLIC_SITE_HOST` to another hostname,
+or to an empty string to serve the app on every host.
+
+For a local production-build check, build the web with
+`NEXT_PUBLIC_API_URL=same-origin`, then run the static server separately from the
+API:
+
+```sh
+OPEN_TRIAGE_API_UPSTREAM=http://127.0.0.1:3001 \
+OPEN_TRIAGE_PUBLIC_SITE_HOST=localhost \
+PORT=3000 npm start -w @open-triage/web
+```
+
+This server binds loopback and is intended for local artifact checks. Production
+installations use the web image and Helm ingress with TLS. `npm start` does not
+load root `.env.local` or start the API/database. Organization registration and
+access checks still apply; DNS routing alone does not grant access to an agency.
+
+## Before pushing CI/CD fixes
+
+Run `npm run check:ci` to run typechecking, lint, all unit tests, a production
+same-origin build and browser smoke test, followed by database/API integration
+and scale checks in a disposable PostgreSQL 15 container matching CI. Install
+Playwright Chromium first (`npx playwright install chromium`). Docker must be
+running; on WSL without a Linux Docker client, use
+`DOCKER_COMMAND=docker.exe npm run check:ci`.
+
+This command does not load `.env.local` or use the development database. The
+browser unit suite tests unset, same-origin, and explicit API URL configurations.
+The disposable database is removed on completion, including test failure.
+Use this complete check rather than interpreting skipped database tests in
+`npm test` as database validation.

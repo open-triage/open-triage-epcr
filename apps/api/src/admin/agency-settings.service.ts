@@ -63,12 +63,14 @@ export class AgencySettingsService {
     private readonly sessions: ClinicianSessionService,
   ) {}
 
-  async publicConfiguration(): Promise<PublicInstallationConfiguration> {
+  async publicConfiguration(organizationId?: string | null): Promise<PublicInstallationConfiguration> {
     const rows = await this.dataSource.query<SettingsRow[]>(`
       select settings.* from app_identity.agency_settings settings
       join app_identity.organization organization on organization.id = settings.organization_id
+      where ($1::uuid is not null and organization.id = $1)
+        or ($1::uuid is null and (select count(*) from app_identity.organization) = 1)
       order by organization.created_at, organization.id limit 1
-    `);
+    `, [organizationId ?? null]);
     const appearance = rows[0] ? this.appearance(rows[0]) : { ...DEFAULT_AGENCY_APPEARANCE };
     const settings = selectedInstallationSettings();
     const regionalFormat = rows[0]?.regional_format;
@@ -91,62 +93,68 @@ export class AgencySettingsService {
   async update(sessionToken: string, command: UpdateAgencyMediaSettingsCommand): Promise<AgencyMediaSettings> {
     return this.dataSource.transaction(async (manager) => {
       const session = await this.sessions.requireCapability(sessionToken, "settings:write", manager);
-      await manager.query(`insert into app_identity.agency_settings (organization_id)
-        values ($1) on conflict (organization_id) do nothing`, [session.organization.id]);
-      const currentSettings = await this.settings(manager, session.organization.id, true);
-      const currentDemographic = await this.demographic(manager, session.organization.id);
-      if (!currentSettings || !currentDemographic) throw new NotFoundException("Agency Settings were not found");
-      const actualRevision = Number(currentSettings.revision);
-      if (actualRevision !== command.expectedRevision) {
-        throw new ConflictException({ message: "Agency Settings revision is stale",
-          expectedRevision: command.expectedRevision, actualRevision });
-      }
-      const appearanceChanged = JSON.stringify(this.appearance(currentSettings)) !== JSON.stringify(command.appearance);
-      const syntheticRetentionHours = command.syntheticRetentionHours === undefined
-        ? currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)
-        : command.syntheticRetentionHours;
-      const demographicChanged = !this.sameDemographic(currentDemographic, command.demographics);
-      const authenticationLimits = command.authenticationLimits ?? this.authenticationLimits(currentSettings);
-      if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
-          Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
-          currentSettings.language === command.language &&
-          currentSettings.authentication_account_attempt_limit === authenticationLimits.accountAttemptsPer15Minutes &&
-          currentSettings.authentication_network_attempt_limit === authenticationLimits.networkAttemptsPer5Minutes &&
-          (currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)) === syntheticRetentionHours &&
-          currentSettings.regional_format === (command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat) &&
-          currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
-
-      const updatedRows = mutationRows<SettingsRow>(await manager.query(`
-        update app_identity.agency_settings set
-          report_media_allowance_bytes = $3, image_media_limit_bytes = $4,
-          brand_text = $5, helper_text = $6, language = $16, regional_format = $17, time_zone = $18,
-          logo_png_data_url = $7, accent_color = $8, accent_dark_color = $9,
-          browser_theme_color = $10, pwa_background_color = $11, pwa_name = $12,
-          pwa_short_name = $13, destructive_color = $14, inactive_button_color = $19, text_color = $20,
-          synthetic_retention_hours = $21,
-          authentication_account_attempt_limit = $22, authentication_network_attempt_limit = $23,
-          revision = revision + 1,
-          updated_at = clock_timestamp(), updated_by = $15
-        where organization_id = $1 and revision = $2 returning *
-      `, [session.organization.id, command.expectedRevision, command.reportMediaAllowanceBytes,
-        command.imageMediaLimitBytes,
-        command.appearance.brandText, command.appearance.helperText, command.appearance.logoPngDataUrl,
-        command.appearance.accentColor, command.appearance.accentDarkColor,
-        command.appearance.browserThemeColor, command.appearance.pwaBackgroundColor,
-        command.appearance.pwaName, command.appearance.pwaShortName, command.appearance.destructiveColor,
-        session.user.id, command.language, command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat,
-        command.timeZone === undefined ? currentSettings.time_zone : command.timeZone,
-        command.appearance.inactiveButtonColor, command.appearance.textColor, syntheticRetentionHours,
-        authenticationLimits.accountAttemptsPer15Minutes, authenticationLimits.networkAttemptsPer5Minutes]));
-      const updated = updatedRows[0];
-      if (!updated) throw new ConflictException("Agency Settings revision is stale");
-      const updatedDemographic = demographicChanged
-        ? await this.appendDemographic(manager, session.organization.id, session.user.id, Number(updated.revision),
-            currentDemographic, command.demographics)
-        : currentDemographic;
-      await this.audit(manager, session.organization.id, session.user.id, currentSettings, updated);
-      return this.present(updated, updatedDemographic);
+      return this.updateInTransaction(manager, session.organization.id, session.user.id, command);
     });
+  }
+
+  /** Internal persistence shared by authorized settings updates and owner agency creation. */
+  async updateInTransaction(manager: EntityManager, organizationId: string, actorId: string,
+    command: UpdateAgencyMediaSettingsCommand): Promise<AgencyMediaSettings> {
+    await manager.query(`insert into app_identity.agency_settings (organization_id)
+      values ($1) on conflict (organization_id) do nothing`, [organizationId]);
+    const currentSettings = await this.settings(manager, organizationId, true);
+    const currentDemographic = await this.demographic(manager, organizationId);
+    if (!currentSettings || !currentDemographic) throw new NotFoundException("Agency Settings were not found");
+    const actualRevision = Number(currentSettings.revision);
+    if (actualRevision !== command.expectedRevision) {
+      throw new ConflictException({ message: "Agency Settings revision is stale",
+        expectedRevision: command.expectedRevision, actualRevision });
+    }
+    const appearanceChanged = JSON.stringify(this.appearance(currentSettings)) !== JSON.stringify(command.appearance);
+    const syntheticRetentionHours = command.syntheticRetentionHours === undefined
+      ? currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)
+      : command.syntheticRetentionHours;
+    const demographicChanged = !this.sameDemographic(currentDemographic, command.demographics);
+    const authenticationLimits = command.authenticationLimits ?? this.authenticationLimits(currentSettings);
+    if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
+        Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
+        currentSettings.language === command.language &&
+        currentSettings.authentication_account_attempt_limit === authenticationLimits.accountAttemptsPer15Minutes &&
+        currentSettings.authentication_network_attempt_limit === authenticationLimits.networkAttemptsPer5Minutes &&
+        (currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)) === syntheticRetentionHours &&
+        currentSettings.regional_format === (command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat) &&
+        currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
+
+    const updatedRows = mutationRows<SettingsRow>(await manager.query(`
+      update app_identity.agency_settings set
+        report_media_allowance_bytes = $3, image_media_limit_bytes = $4,
+        brand_text = $5, helper_text = $6, language = $16, regional_format = $17, time_zone = $18,
+        logo_png_data_url = $7, accent_color = $8, accent_dark_color = $9,
+        browser_theme_color = $10, pwa_background_color = $11, pwa_name = $12,
+        pwa_short_name = $13, destructive_color = $14, inactive_button_color = $19, text_color = $20,
+        synthetic_retention_hours = $21,
+        authentication_account_attempt_limit = $22, authentication_network_attempt_limit = $23,
+        revision = revision + 1,
+        updated_at = clock_timestamp(), updated_by = $15
+      where organization_id = $1 and revision = $2 returning *
+    `, [organizationId, command.expectedRevision, command.reportMediaAllowanceBytes,
+      command.imageMediaLimitBytes,
+      command.appearance.brandText, command.appearance.helperText, command.appearance.logoPngDataUrl,
+      command.appearance.accentColor, command.appearance.accentDarkColor,
+      command.appearance.browserThemeColor, command.appearance.pwaBackgroundColor,
+      command.appearance.pwaName, command.appearance.pwaShortName, command.appearance.destructiveColor,
+      actorId, command.language, command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat,
+      command.timeZone === undefined ? currentSettings.time_zone : command.timeZone,
+      command.appearance.inactiveButtonColor, command.appearance.textColor, syntheticRetentionHours,
+      authenticationLimits.accountAttemptsPer15Minutes, authenticationLimits.networkAttemptsPer5Minutes]));
+    const updated = updatedRows[0];
+    if (!updated) throw new ConflictException("Agency Settings revision is stale");
+    const updatedDemographic = demographicChanged
+      ? await this.appendDemographic(manager, organizationId, actorId, Number(updated.revision),
+          currentDemographic, command.demographics)
+      : currentDemographic;
+    await this.audit(manager, organizationId, actorId, currentSettings, updated);
+    return this.present(updated, updatedDemographic);
   }
 
   private settings(source: Pick<DataSource, "query"> | Pick<EntityManager, "query">, organizationId: string,

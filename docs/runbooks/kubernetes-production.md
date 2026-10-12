@@ -173,7 +173,7 @@ export OT_API_ORIGIN=https://api.epcr.your-agency.org
 docker login harbor.your-agency.org
 docker build -f deploy/docker/api.Dockerfile -t "$OT_REGISTRY/api:$OT_RELEASE" .
 docker build -f deploy/docker/web.Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL="$OT_API_ORIGIN" \
+  --build-arg NEXT_PUBLIC_API_URL=same-origin \
   --build-arg OPEN_TRIAGE_BUILD_SHA="$OT_RELEASE" \
   -t "$OT_REGISTRY/web:$OT_RELEASE" .
 docker push "$OT_REGISTRY/api:$OT_RELEASE"
@@ -295,11 +295,12 @@ sessions. Bootstrap the owner with an interactive, non-echoed temporary password
 ```sh
 kubectl --context "$OT_CONTEXT" -n "$OT_NAMESPACE" exec -it open-triage-installation-setup -- \
   npm run identity:account:runtime -w @open-triage/api -- bootstrap-owner \
-  --organization-id YOUR_ORGANIZATION_UUID --username YOUR_OWNER_USERNAME \
+  --username YOUR_OWNER_USERNAME \
   --display-name 'Installation owner' --operator-id YOUR_CHANGE_RECORD
 ```
 
 The runtime command uses compiled code and needs no build tools in the container.
+The owner is an installation account and does not require an organization ID.
 Owner bootstrap is one-time; use [identity recovery](identity-recovery.md) for an
 existing owner. The owner changes the temporary password at first sign-in. Do not
 run `bootstrap:synthetic`, the development reset, or use demo fixture credentials

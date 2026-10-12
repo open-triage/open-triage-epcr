@@ -21,7 +21,7 @@ function setup({ availableRoles = [roleId], capabilities = actor.capabilities, o
     if (event.sql.startsWith("select role.id, role.system_key")) {
       return availableRoles.map((id) => ({ id, system_key: systemKey, capability_key: roleCapability }));
     }
-    if (event.sql.startsWith("select exists") && event.sql.includes("installation_owner")) return [{ owner }];
+    if (event.sql.includes("is_installation_superadmin")) return [{ owner }];
     return [];
   } };
   const dataSource = { transaction: async (work) => {

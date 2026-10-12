@@ -191,3 +191,11 @@ test("an API stuck in its watcher after a startup failure is stopped when HTTP r
   assert.equal(children.length, 2);
   assert.ok(children.every((child) => child.signalCode));
 });
+
+test("development defaults to the shared same-origin edge and derives its private upstream", () => {
+  const { web } = developmentEnvironment("PORT=3456\nOPEN_TRIAGE_PUBLIC_SITE_HOST=public.localhost", {});
+  assert.equal(web.NEXT_PUBLIC_API_URL, "same-origin");
+  assert.equal(web.OPEN_TRIAGE_API_UPSTREAM, "http://127.0.0.1:3456");
+  assert.equal(web.OPEN_TRIAGE_PUBLIC_SITE_HOST, "public.localhost");
+  assert.equal(web.PORT, undefined);
+});

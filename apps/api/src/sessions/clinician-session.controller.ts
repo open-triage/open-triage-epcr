@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
-import type { ClinicianSession, EndClinicianSessionResponse, ReauthenticationResult } from "@open-triage/contracts";
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
+import type { AuthenticatedSession, ClinicianSession, EndClinicianSessionResponse, ReauthenticationResult } from "@open-triage/contracts";
 import { ClinicianSessionService } from "./clinician-session.service.js";
 import { validateChangePassword, validateCreateClinicianSession, validateReauthenticate } from "./clinician-session.validation.js";
 
@@ -42,7 +42,7 @@ export class ClinicianSessionController {
 
   @Post()
   async create(@Req() request: RequestLike, @Body() body: unknown, @Res({ passthrough: true }) response: SessionCookieResponse,
-    @Headers("user-agent") userAgent?: string): Promise<ClinicianSession> {
+    @Headers("user-agent") userAgent?: string): Promise<AuthenticatedSession> {
     const created = await this.sessions.create(validateCreateClinicianSession(body), new Date(), userAgent,
       requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
@@ -51,8 +51,15 @@ export class ClinicianSessionController {
 
   @Get("current")
   @Header("Cache-Control", "no-store, private")
-  current(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<ClinicianSession> {
-    return this.sessions.get(sessionToken(request, authorization), new Date(), true);
+  current(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AuthenticatedSession> {
+    return this.sessions.getAuthenticated(sessionToken(request, authorization), new Date(), true);
+  }
+
+  @Post("agency/:id")
+  @HttpCode(200)
+  switchAgency(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AuthenticatedSession> {
+    return this.sessions.switchAgency(sessionToken(request, authorization), id);
   }
 
   @Post("password")
@@ -61,7 +68,7 @@ export class ClinicianSessionController {
     @Req() request: RequestLike, @Body() body: unknown,
     @Res({ passthrough: true }) response: SessionCookieResponse,
     @Headers("authorization") authorization?: string
-  ): Promise<ClinicianSession> {
+  ): Promise<AuthenticatedSession> {
     const created = await this.sessions.changePassword(sessionToken(request, authorization), validateChangePassword(body),
       new Date(), request.headers["user-agent"], requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));

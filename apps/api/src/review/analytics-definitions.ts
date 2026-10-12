@@ -4,12 +4,23 @@ import { compiledValidationBundleSha256, readValidationDefinition, evaluateMetri
 import type { EntityManager } from "typeorm";
 import { assembleEncounterDocument } from "../reports/encounter-document.persistence.js";
 import type { AnalyticsReport } from "./analytics-engine.js";
-import type { ReviewScope } from "./review-scope.js";
+import { reviewOrganizations, type ReviewScope } from "./review-scope.js";
 import { normalizedMetricEvidence } from "./metric-evidence.js";
 
-export interface ConfiguredAnalyticsLibrary { bundle: CompiledValidationBundle | null; elements: AnalyticsElement[] }
+export interface ConfiguredAnalyticsLibrary { bundle: CompiledValidationBundle | null; elements: AnalyticsElement[];
+  agencies?: Array<{ organizationId: string; library: ConfiguredAnalyticsLibrary }> }
 /** Membership comes from the active configuration, even with no readable report observations. */
 export async function configuredAnalyticsLibrary(database: Pick<EntityManager, "query">, scope: ReviewScope): Promise<ConfiguredAnalyticsLibrary> {
+  const organizations = reviewOrganizations(scope);
+  if (organizations.length > 1) {
+    const agencies = [];
+    for (const organizationId of organizations) {
+      const library = await configuredAnalyticsLibrary(database, { ...scope, organizationId, organizationIds: [organizationId] });
+      agencies.push({ organizationId, library });
+    }
+    return { bundle: null, agencies, elements: agencies.flatMap(({ organizationId, library }) =>
+      library.elements.map((element) => ({ ...element, label: `${element.label} · ${scope.organizationNames?.[organizationId] ?? organizationId}` }))) };
+  }
   const [version] = await database.query<Array<{ id: string; version: number; catalog_release_id: string;
     compiled_bundle: CompiledValidationBundle; compiled_sha256: string; source_rule?: unknown }>>(`
     select v.id,v.version,v.catalog_release_id,v.compiled_bundle,v.compiled_sha256,v.source_rule
@@ -66,6 +77,14 @@ export async function contributeConfiguredDefinition(database: Pick<EntityManage
 }
 export async function contributeConfiguredDefinitions(database: Pick<EntityManager, "query">, scope: ReviewScope,
   reports: AnalyticsReport[], metrics: AnalyticsElement[], library: ConfiguredAnalyticsLibrary) {
+  if (library.agencies) {
+    for (const agency of library.agencies) {
+      const selected = metrics.filter((metric) => agency.library.elements.some((element) => element.id === metric.id));
+      if (selected.length) await contributeConfiguredDefinitions(database, { ...scope, organizationId: agency.organizationId,
+        organizationIds: [agency.organizationId] }, reports.filter((report) => report.organizationId === agency.organizationId), selected, agency.library);
+    }
+    return;
+  }
   if (!metrics.some((metric) => metric.configured) || !library.bundle) return;
   if (reports.length > 2000) throw new BadRequestException("Configured analysis exceeds 2,000 reports; narrow the period");
   if (!reports.length) return;

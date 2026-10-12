@@ -21,7 +21,7 @@ type UserCursor = {
 };
 type UserRow = {
   id: string; display_name: string; username: string; active: boolean; revision: string | number;
-  owner: boolean;
+  owner: boolean; superadmin: boolean;
   roles: AdminRoleSummary[] | string | null;
 };
 type RoleRow = {
@@ -93,9 +93,9 @@ export class UserRoleReadService {
     const cursor = decodeCursor(one(input.cursor), { state: selectedState, search, roleId });
     const rows = await this.dataSource.query<UserRow[]>(`
       select u.id, u.display_name, credential.username, u.active, u.revision,
+        exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
         exists (select 1 from app_identity.installation_owner installation_owner
-          where installation_owner.organization_id = u.organization_id
-            and installation_owner.user_id = u.id) as owner,
+          where installation_owner.user_id = u.id) as owner,
         coalesce((
           select jsonb_agg(jsonb_build_object(
             'id', role.id, 'displayName', role.display_name,
@@ -109,7 +109,7 @@ export class UserRoleReadService {
         ), '[]'::jsonb) as roles
       from app_identity.app_user u
       join app_identity.local_credential credential on credential.user_id = u.id
-      where u.organization_id = $1
+      where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1)
         and ($2 = 'all' or u.active = ($2 = 'active'))
         and ($3 = '' or lower(u.display_name) like $4 escape '\\' or credential.username like $4 escape '\\')
         and ($5::uuid is null or exists (
@@ -127,7 +127,7 @@ export class UserRoleReadService {
     const last = visible.at(-1);
     return {
       items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,
-        active: row.active, revision: Number(row.revision), owner: row.owner,
+        active: row.active, revision: Number(row.revision), owner: row.owner, superadmin: row.superadmin,
         roles: parsedJsonArray(row.roles) })),
       pageSize,
       nextCursor: rows.length > pageSize && last ? encodeCursor({ active: last.active,
@@ -143,8 +143,7 @@ export class UserRoleReadService {
       assignment_restricted: boolean; assignment_mutable: boolean;
     }>>(`select role.id, role.display_name, role.active, role.protected,
         role.system_key in ('administrator', 'demo') assignment_restricted,
-        exists (select 1 from app_identity.installation_owner
-          where organization_id = $1 and user_id = $2)
+        (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1))
         or ((role.system_key is null or role.system_key not in ('administrator', 'demo'))
           and not exists (
             select 1 from app_identity.role_version_capability definition

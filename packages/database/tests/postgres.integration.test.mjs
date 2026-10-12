@@ -261,8 +261,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         from app_identity.role where organization_id = $1 and system_key = 'administrator'`,
       [organizationId, ownerUserId]);
       await client.query(`insert into app_identity.installation_owner
-        (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
-      [organizationId, ownerUserId]);
+        (user_id, established_by_operator_id) values ($1, 'integration-test')`,
+      [ownerUserId]);
       for (const capability of ["validation:read", "validation:write", "validation:publish"]) {
         assert.equal((await client.query(
           "select app_identity.user_has_capability($1, $2, $3) allowed",
@@ -838,8 +838,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       where organization_id = $1 and system_key = 'administrator'`,
     [SYNTHETIC_DEMO_FIXTURE.organizationId, syntheticOwnerId]);
     await client.query(`insert into app_identity.installation_owner
-      (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
-    [SYNTHETIC_DEMO_FIXTURE.organizationId, syntheticOwnerId]);
+      (user_id, established_by_operator_id) values ($1, 'integration-test')`,
+    [syntheticOwnerId]);
 
     const afterOwner = JSON.parse((await execFileAsync(process.execPath, [bootstrap], { env: environment })).stdout);
     assert.equal(afterOwner.ownerConfigured, true);
@@ -2225,6 +2225,30 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         (organization_id, report_id, reason, authority_reference, placed_by)
         values ($1, $2, 'Late preservation request', 'CASE-LATE', 'legal-user') returning id`,
       [organizationId, ids.report]);
+      // Exercise the authority categories, not just the fixture owner: a global
+      // administrator and a same-agency administrator may reach the hold gate;
+      // unrelated agency administrators and inactive accounts may not.
+      const otherAgencyId = randomUUID();
+      await client.query("insert into app_identity.organization(id,name,deployment_timezone) values($1,'Other retention agency','UTC')", [otherAgencyId]);
+      for (const [scope, active, allowed] of [
+        ["installation", true, true], ["installation", false, false],
+        ["agency", true, true], ["other-agency", true, false],
+      ]) {
+        const userId = randomUUID();
+        const agency = scope === "other-agency" ? otherAgencyId : organizationId;
+        await client.query(`insert into app_identity.app_user(id,organization_id,account_scope,display_name,active)
+          values($1,$2,$3,'Retention authorization fixture',$4)`,
+        [userId, scope === "installation" ? null : agency, scope === "installation" ? "installation" : "agency", active]);
+        if (scope === "installation") {
+          await client.query("insert into app_identity.installation_superadmin(user_id,established_by_operator_id) values($1,'retention-test')", [userId]);
+        } else {
+          await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by)
+            select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='administrator'`,
+          [agency,userId,administratorId]);
+        }
+        await assert.rejects(client.query("select retention.delete_verified_batch($1,$2)", [batch,userId]),
+          allowed ? /legal hold now protects/ : /active installation administrator/, `${scope}, active=${active}`);
+      }
       await assert.rejects(
         client.query("select retention.delete_verified_batch($1, $2)", [batch, administratorId]),
         /legal hold now protects/

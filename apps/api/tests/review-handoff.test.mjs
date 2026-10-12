@@ -12,7 +12,7 @@ function fixture() {
     if (sql.includes('from app_identity.organization')) return [{ id: organization }];
     if (sql.includes('for update of i')) return [{ ...state, version: String(state.version) }];
     if (sql.includes('from clinical.review_assignment_history')) return assignments.filter((entry) => entry.command_id === params[1]);
-    if (sql.includes('from app_identity.app_user u')) return eligible && params[1] !== author ? [{ id: params[1], all_access: true }] : [];
+    if (sql.includes('from app_identity.agency_user u')) return eligible && params[1] !== author ? [{ id: params[1], all_access: true }] : [];
     if (sql.includes('update clinical.review_item')) {
       state.assignee_id = params[1]; state.version++;
       if (sql.includes("status='in-review'")) { state.status = 'in-review'; state.outcome_option_id = null; state.outcome_revision = null; }
@@ -150,7 +150,7 @@ test('item assignment identifies the eligible documenting clinician and respects
   const manager = { async query(sql) {
     if (sql.includes('from clinical.review_item')) return [{ documenting_user_id: author,
       independent_review: independent, assignee_id: reviewer, status: 'new' }];
-    if (sql.includes('from app_identity.app_user u')) return [
+    if (sql.includes('from app_identity.agency_user u')) return [
       { id: reviewer, display_name: 'Reviewer', all_access: true, self_access: false },
       { id: author, display_name: 'Clinician', all_access: false, self_access: true },
       { id: randomUUID(), display_name: 'Other clinician', all_access: false, self_access: true }];

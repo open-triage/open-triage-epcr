@@ -17,14 +17,16 @@ import { SessionAdministrationService } from "./session-administration.service.j
 import { OwnershipTransferService } from "./ownership-transfer.service.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
 import { AgencySettingsService } from "./agency-settings.service.js";
+import { OrganizationsController } from "./organizations.controller.js";
+import { OrganizationsService } from "./organizations.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
-  controllers: [AdminController, FormPublicationController],
+  controllers: [AdminController, FormPublicationController, OrganizationsController],
   providers: [CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
-    AgencySettingsService],
+    AgencySettingsService, OrganizationsService],
   exports: [AgencySettingsService]
 })
 export class AdminModule {}

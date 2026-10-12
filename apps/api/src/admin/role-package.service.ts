@@ -292,9 +292,7 @@ export class RolePackageService {
   }
 
   private async assertCeiling(manager: EntityManager, session: ClinicianSession, keys: string[]): Promise<void> {
-    const owners = await manager.query<Array<{ owner: boolean }>>(`select exists (
-      select 1 from app_identity.installation_owner where organization_id = $1 and user_id = $2
-    ) owner`, [session.organization.id, session.user.id]);
+    const owners = await manager.query<Array<{ owner: boolean }>>(`select (app_identity.is_installation_superadmin($2) and app_identity.user_can_access_organization($2, $1)) owner`, [session.organization.id, session.user.id]);
     if (!owners[0]?.owner && keys.some((key) => !session.capabilities?.includes(key))) {
       throw new ForbiddenException("The package exceeds your current capability ceiling");
     }

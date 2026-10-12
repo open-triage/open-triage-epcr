@@ -193,8 +193,13 @@ Authorized administrators can manage the following areas online:
 | **Stationary form** | Arrange sections and fields, control field choices, preview the form, and publish and activate compatible versions. |
 | **Validation rules** | Author documentation checks, review criteria, and numeric metrics in a shared versioned configuration. |
 | **Agency Settings** | Set agency language and regional formatting, time zone, branding, agency details, media limits, demo-record expiry, and available login limits. |
+| **Super-admin** | The installation owner creates independent agencies or child agencies, configures hostnames and manages access to every agency. |
 | **Review settings** | Configure routing, outcomes, independent review, and overdue follow-up. |
 | **Dashboard** | Inspect active configuration and operational counts. |
+
+Parent agencies and their children share staff, roles and reporting while keeping
+separate clinical forms and validation. See the [multi-organization runbook](docs/runbooks/multi-organization.md)
+for setup, isolation boundaries and subdomain hosting.
 
 English and Swedish interface translations are available. Catalog, form, and rule
 wording can carry versioned translations; missing translations fall back to English.

@@ -60,9 +60,9 @@ test("Review distribution preserves missing, absence, and report denominators", 
   assert.equal(result.population.scope, "own");
   const analysisQuery = queries.find(({ sql }) => sql.includes("review_field_source") &&
     sql.includes("limit 501"));
-  assert.deepEqual(analysisQuery.parameters.slice(2), [session.organization.id, true, false,
+  assert.deepEqual(analysisQuery.parameters.slice(2), [[session.organization.id], true, false,
     session.user.id, "eSituation.11", "eDisposition.30", "eSituation.09", "C", null]);
-  assert.match(analysisQuery.sql, /source.organization_id = \$3::uuid/);
+  assert.match(analysisQuery.sql, /source.organization_id=any\(\$3::uuid\[\]\)/);
   assert.match(analysisQuery.sql, /from analytics.review_field_source_with_identity source/,
     'record-level source reads use the authorized view that includes report identity');
   assert.match(analysisQuery.sql, /limit 501/);
@@ -109,9 +109,9 @@ test("operational time measures retain endpoint context, scope, and invalid deno
   assert.equal(result.population.scope, "own");
   const query = queries.find(({ sql }) => sql.includes("review_operational_time_source") &&
     sql.includes("group by 1"));
-  assert.deepEqual(query.parameters.slice(2), [session.organization.id, false, false,
+  assert.deepEqual(query.parameters.slice(2), [[session.organization.id], false, false,
     session.user.id, "eSituation.11", "eDisposition.30", "transported", null]);
-  assert.match(query.sql, /source.organization_id = \$3::uuid/);
+  assert.match(query.sql, /source.organization_id=any\(\$3::uuid\[\]\)/);
   assert.match(query.sql, /interval_source.etimes_06 >= interval_source.etimes_03/);
   await assert.rejects(service.analysis("token", definition({ fieldId: "eTimes.03",
     operation: "mean" })), { status: 400 });
@@ -153,7 +153,7 @@ test("repeated numeric analysis requires a reducer and keeps the scoped source q
   assert.equal(result.groups[0].summary, 100);
   assert.equal(result.sources[0].sourceValues[0].occurrenceId, "o1");
   const repeatedQuery = queries.find(({ sql }) => sql.includes("from analytics.review_field_source_with_identity source"));
-  assert.match(repeatedQuery.sql, /source.organization_id = \$3::uuid/);
+  assert.match(repeatedQuery.sql, /source.organization_id=any\(\$3::uuid\[\]\)/);
   assert.match(repeatedQuery.sql, /source.synthetic = \$4::boolean/);
   assert.match(repeatedQuery.sql, /source.documenting_user_id = \$6::uuid/);
 });
@@ -207,7 +207,7 @@ test("Review discovers projected historical custom fields and enforces privacy a
   assert.equal(result.groups[0].summary, 2.5);
   assert.equal(result.groups[0].absent, 1);
   assert.match(queries.find(({ sql }) => sql.includes("review_custom_field_source")).sql,
-    /report.organization_id=\$3::uuid/);
+    /report.organization_id=any\(\$3::uuid\[\]\)/);
   await assert.rejects(service.analysis("token", definition({ fieldId: customId,
     operation: "distribution" })), { status: 400 });
   assert.equal(result.groups[0].missing, 1);
@@ -282,8 +282,8 @@ test("Review exposes grouped custom operations and scopes parent-aware analysis"
   assert.deepEqual(result.groups.map(({ group, denominator, summary }) =>
     ({ group, denominator, summary })), [{ group: "A", denominator: 2, summary: 15 }]);
   const source = queries.find(({ sql }) => sql.includes("review_custom_field_source"));
-  assert.deepEqual(source.parameters.slice(2, 6), [session.organization.id, true, false, session.user.id]);
-  assert.match(source.sql, /report.organization_id=\$3::uuid/);
+  assert.deepEqual(source.parameters.slice(2, 6), [[session.organization.id], true, false, session.user.id]);
+  assert.match(source.sql, /report.organization_id=any\(\$3::uuid\[\]\)/);
   assert.match(queries.find(({ sql }) => sql.includes("review_custom_dictionary")).sql,
     /\(\$2::boolean or not identifying\)/);
 });

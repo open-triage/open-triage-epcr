@@ -36,20 +36,20 @@ function contrastText(color: string): string {
   return luminance > .179 ? "#000" : "#fff";
 }
 
-export function applyAgencyColors(appearance: AgencyAppearance, document: Document): void {
+export function applyAgencyColors(appearance: AgencyAppearance, document: Document, target: HTMLElement = document.documentElement): void {
   const destructive = appearance.destructiveColor ?? DEFAULT_AGENCY_APPEARANCE.destructiveColor;
   const destructiveHover = `#${[1, 3, 5].map((offset) => Math.round(parseInt(destructive.slice(offset, offset + 2), 16) * .8)
     .toString(16).padStart(2, "0")).join("")}`;
-  document.documentElement.style.setProperty("--accent-contrast", contrastText(appearance.accentColor));
-  document.documentElement.style.setProperty("--accent-dark-contrast", contrastText(appearance.accentDarkColor));
-  document.documentElement.style.setProperty("--destructive-contrast", contrastText(destructive));
-  document.documentElement.style.setProperty("--destructive-hover-contrast", contrastText(destructiveHover));
-  document.documentElement.style.setProperty("--green", appearance.accentColor);
-  document.documentElement.style.setProperty("--green-dark", appearance.accentDarkColor);
-  document.documentElement.style.setProperty("--destructive", appearance.destructiveColor ?? DEFAULT_AGENCY_APPEARANCE.destructiveColor);
-  document.documentElement.style.setProperty("--inactive-button", appearance.inactiveButtonColor ?? DEFAULT_AGENCY_APPEARANCE.inactiveButtonColor);
-  document.documentElement.style.setProperty("--text-color", appearance.textColor ?? DEFAULT_AGENCY_APPEARANCE.textColor);
-  document.documentElement.style.setProperty("--agency-pwa-background", appearance.pwaBackgroundColor);
+  target.style.setProperty("--accent-contrast", contrastText(appearance.accentColor));
+  target.style.setProperty("--accent-dark-contrast", contrastText(appearance.accentDarkColor));
+  target.style.setProperty("--destructive-contrast", contrastText(destructive));
+  target.style.setProperty("--destructive-hover-contrast", contrastText(destructiveHover));
+  target.style.setProperty("--green", appearance.accentColor);
+  target.style.setProperty("--green-dark", appearance.accentDarkColor);
+  target.style.setProperty("--destructive", appearance.destructiveColor ?? DEFAULT_AGENCY_APPEARANCE.destructiveColor);
+  target.style.setProperty("--inactive-button", appearance.inactiveButtonColor ?? DEFAULT_AGENCY_APPEARANCE.inactiveButtonColor);
+  target.style.setProperty("--text-color", appearance.textColor ?? DEFAULT_AGENCY_APPEARANCE.textColor);
+  target.style.setProperty("--agency-pwa-background", appearance.pwaBackgroundColor);
 }
 
 export function applyAgencyAppearance(appearance: AgencyAppearance, document: Document, language: string = "en"): void {

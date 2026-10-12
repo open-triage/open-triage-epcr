@@ -28,8 +28,7 @@ integrationTest("signed amendment decisions preserve conclusions and apply both 
       r.catalog_release_id,r.synthetic,s.id snapshot_id,s.signed_revision,
       s.validation_version_id,owner.user_id reviewer_id
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-    join app_identity.installation_owner owner on owner.organization_id=r.organization_id
-      and owner.user_id<>r.documenting_user_id
+    join app_identity.installation_owner owner on owner.user_id<>r.documenting_user_id
     where r.status='signed' and s.validation_version_id is not null limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report with a separate owner and validation version is available");
   const criterionId = randomUUID();

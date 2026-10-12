@@ -5,6 +5,18 @@ patching only the specific instance. Investigate other affected paths and fix
 the shared behavior at the appropriate level. Add regression tests to capture
 the failure mode.
 
+# CI/CD failures
+
+When fixing issues identified by CI/CD, improve upstream testing to catch the
+broader category of failure as early as possible, not just the specific instance.
+Seek to catch PR failures in local testing, and failures after merging to main
+in PR checks or local testing. Add shared checks or representative coverage for
+related paths and configurations alongside focused regression tests, and run
+the applicable earlier checks before pushing.
+
+Use `npm run check:ci` for the local application, browser deployment, database,
+and scale preflight; see `docs/runbooks/local-development.md` for prerequisites.
+
 # UI development
 
 Before developing UI, read [the UI style guide](docs/design/ui-style-guide.md).

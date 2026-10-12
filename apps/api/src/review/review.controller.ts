@@ -432,8 +432,9 @@ export class ReviewController {
   @Get("outcomes")
   @Header("Cache-Control", "no-store, private")
   outcomes(@Headers("authorization") authorization?: string,
-    @Headers("cookie") cookie?: string): Promise<ReviewOutcomeOption[]> {
-    return this.review.outcomes(bearerToken(authorization, cookie));
+    @Headers("cookie") cookie?: string, @Query("itemId") itemId?: string,
+    @Query("dataset") dataset?: string): Promise<ReviewOutcomeOption[]> {
+    return this.review.outcomes(bearerToken(authorization, cookie), itemId, dataset);
   }
 
   @Post("outcomes")

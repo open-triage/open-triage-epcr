@@ -10,7 +10,7 @@ web:
     runAsUser: 101
     allowPrivilegeEscalation: false
     capabilities: { drop: [ALL] }
-  host: demo.opentriage.org
+  host: epcr.example.com
   resources:
     requests: { cpu: 25m, memory: 32Mi }
     limits: { cpu: 250m, memory: 128Mi }
@@ -27,7 +27,7 @@ api:
     runAsUser: 1000
     allowPrivilegeEscalation: false
     capabilities: { drop: [ALL] }
-  host: api.demo.opentriage.org
+  host: api.epcr.example.com
   trustProxyHops: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
@@ -74,15 +74,23 @@ syntheticExpiry:
 imagePullSecrets: []
 # Optional placement shared by the web, API, migration, and scheduled jobs.
 nodeSelector: {}
-# The web image also serves the fixed opentriage.org public one-pager.
-# Enable only where DNS and an ingress.tls certificate cover that domain.
+# Optional landing host, served by the same portable web image.
+# Enable only where DNS and ingress.tls cover this host.
 publicSite:
   enabled: false
+  host: ""
+
+# Suffix for short organization hostnames; empty uses web.host.
+agencyBaseDomain: ""
 
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile: { type: RuntimeDefault }
 ingress:
+  # Route agency subdomains to the same installation. DNS and TLS must also
+  # cover these hosts. A wildcard ("*.opentriage.org") supports owner-created
+  # agencies without changing this list. Build web with NEXT_PUBLIC_API_URL=same-origin.
+  agencyHosts: []
   # Annotation behavior is separate from the cluster's IngressClass name.
   controller: nginx
   className: nginx

@@ -1,7 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import type { AnalyticsDefinition, AnalyticsElement, AnalyticsValue } from "@open-triage/contracts";
-import type { ReviewScope } from "./review-scope.js";
+import { reviewOrganizations, type ReviewScope } from "./review-scope.js";
 import type { AnalyticsOccurrence, AnalyticsReport } from "./analytics-engine.js";
 import { customIdentitySql, userElement } from "./analytics-catalog.js";
 
@@ -17,29 +17,29 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
   definition: AnalyticsDefinition, fields: AnalyticsElement[], additionalElements: string[] = []): Promise<AnalyticsReport[]> {
   const ids = [...new Set([definition.metric, definition.groupBy, ...definition.filters.map((filter) => filter.element), ...additionalElements].filter((id): id is string => !!id && id !== "records"))];
   const selected = fields.filter((field) => !field.configured && ids.includes(field.id));
-  const params = [scope.organizationId, scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId, definition.from, definition.through];
-  const rows = await database.query<Array<{ report_id: string; reporting_date: string; projected_at: Date;
+  const params = [reviewOrganizations(scope), scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId, definition.from, definition.through];
+  const rows = await database.query<Array<{ report_id: string; organization_id: string; reporting_date: string; projected_at: Date;
     documenting_user_id: string; documenting_user_label: string;
     revision: string; amendment: number; field_values: Record<string, unknown>; field_absences: Record<string, unknown>;
     etimes_03: Date | null; etimes_06: Date | null; etimes_09: Date | null; etimes_11: Date | null;
     etimes_03_absent: boolean; etimes_06_absent: boolean; etimes_09_absent: boolean; etimes_11_absent: boolean }>>(`
-    select p.report_id,p.reporting_date::text,p.projected_at,r.revision::text,
+    select p.report_id,p.organization_id,p.reporting_date::text,p.projected_at,r.revision::text,
       r.documenting_user_id,case when $7::boolean then coalesce(u.display_name,r.documenting_user_id::text) else r.documenting_user_id::text end documenting_user_label,
       coalesce((select max(a.sequence) from clinical.amendment a where a.report_id=r.id),0) amendment,
       f.field_values,f.field_absences,t.etimes_03,t.etimes_06,t.etimes_09,t.etimes_11,
       t.etimes_03_absent,t.etimes_06_absent,t.etimes_09_absent,t.etimes_11_absent
     from analytics.review_volume_source p join clinical.report r on r.id=p.report_id and r.organization_id=p.organization_id
-    left join app_identity.app_user u on u.id=r.documenting_user_id and u.organization_id=r.organization_id
+    left join app_identity.app_user u on u.id=r.documenting_user_id
     join analytics.review_field_source_with_identity f on f.report_id=p.report_id and f.reporting_date=p.reporting_date
     join analytics.review_operational_time_source t on t.report_id=p.report_id and t.reporting_date=p.reporting_date
-    where p.organization_id=$1 and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
+    where p.organization_id=any($1::uuid[]) and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
       and r.status='signed' and (r.expires_at is null or r.expires_at>now())
       and p.reporting_date between $5::date and $6::date
     order by p.report_id limit 20001`, [...params, scope.identifying]);
   if (rows.length > 20000) throw new BadRequestException("Analysis exceeds the 20,000-report limit; narrow the period");
   const reports = new Map<string, AnalyticsReport>();
   for (const row of rows) {
-    const report: AnalyticsReport = { id: row.report_id, date: row.reporting_date,
+    const report: AnalyticsReport = { id: row.report_id, organizationId: row.organization_id, date: row.reporting_date,
       revision: JSON.stringify([row.projected_at, row.revision, row.amendment]), values: [] };
     if (selected.some((field) => field.id === userElement.id)) report.values.push({
       id: `${row.report_id}:${userElement.id}`, element: userElement.id,
@@ -75,7 +75,7 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
   const repeated = repeatIds.length ? await database.query<OccurrenceRow[]>(`select report_id,element_occurrence_id id,element_id element,
     coalesce(to_jsonb(numeric_value),to_jsonb(code)) value,unit_code unit,absence_kind absence,
     group_id,group_instance_id,parent_group_instance_id,null::text[] instance_path,group_ordinal,element_ordinal,clinical_time,code label
-    from analytics.review_repeated_field_source where organization_id=$1 and synthetic=$2 and ($3 or documenting_user_id=$4)
+    from analytics.review_repeated_field_source where organization_id=any($1::uuid[]) and synthetic=$2 and ($3 or documenting_user_id=$4)
       and report_id=any($5::uuid[]) and element_id=any($6::text[])
       and reporting_date between $7::date and $8::date order by report_id,element_occurrence_id limit 20001`,
   [...params.slice(0, 4), reportIds, repeatIds, definition.from, definition.through]) : [];
@@ -88,7 +88,7 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
     coalesce(c.absence_kind,c.not_value_code,c.pertinent_negative_code) absence,
     c.group_id,c.group_instance_id,c.parent_group_instance_id,c.instance_path::text[],c.group_ordinal,c.element_ordinal,c.clinical_time,c.code label
     from analytics.review_custom_field_source c join analytics.review_volume_source p on p.report_id=c.report_id and p.reporting_date=c.reporting_date
-    where c.organization_id=$1 and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
+    where c.organization_id=any($1::uuid[]) and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
       and c.report_id=any($5::uuid[]) and ${customIdentitySql("c.custom_definition_id", "c.custom_definition")}=any($6::text[])
       and (not c.is_identifying or $7) and c.reporting_date between $8::date and $9::date
     order by c.report_id,c.element_occurrence_id limit 20001`,

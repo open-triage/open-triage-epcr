@@ -56,3 +56,13 @@ test("admin and capture messages use stable descriptive keys in both dictionarie
       assert.match(key, /^noteUi\.capture\.[a-z][A-Za-z0-9]*$/);
   }
 });
+
+test("agency management and switcher labels resolve in both dictionaries", () => {
+  const keys = ["admin.newAgency", "admin.agencyManagementHeading", "admin.subdomain", "admin.startingForm",
+    "admin.startingValidationRules", "admin.configurationUnused", "admin.superadmin",
+    "admin.connectToSwitchAgencies", "admin.closeReportsToSwitchAgencies", "admin.agencyOpenFailed"];
+  for (const key of keys) for (const language of ["en", "sv"] as const) {
+    assert.notEqual(resolveMessage(language, key), key);
+  }
+  assert.equal(resolveMessage("sv", "admin.configurationActivatedBy", { agencies: "Demo EMS" }), "Aktiverad av: Demo EMS");
+});

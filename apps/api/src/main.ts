@@ -6,6 +6,8 @@ import { AppModule } from "./app.module.js";
 import { validateAuthenticationThrottleConfiguration } from "./sessions/authentication-throttle.js";
 import { securityHeaders } from "./security-headers.js";
 import { PlatformErrorFilter } from "./platform-error.filter.js";
+import { agencyRequest, browserOrigin } from "./sessions/agency-context.js";
+import { AgencyDirectoryService } from "./sessions/agency-directory.service.js";
 
 async function bootstrap() {
   validateAuthenticationThrottleConfiguration();
@@ -15,6 +17,10 @@ async function bootstrap() {
     throw new Error("AUTH_TRUST_PROXY_HOPS must be an integer between 0 and 10");
   }
   app.set("trust proxy", trustProxyHops);
+  app.use((request: Parameters<typeof browserOrigin>[0], response: { status(code: number): { json(body: unknown): void } }, next: () => void) => {
+    try { agencyRequest.run({ origin: browserOrigin(request), organizationId: request.headers["x-organization-id"] }, next); }
+    catch { response.status(400).json({ message: "A valid application origin is required" }); }
+  });
   app.use(securityHeaders);
   // A canonical photo or fully populated encounter can produce a large command.
   // Keep one bounded JSON limit large enough for a normalized 2560 px JPEG or whole
@@ -24,7 +30,11 @@ async function bootstrap() {
   app.setGlobalPrefix("api");
   app.useGlobalFilters(new PlatformErrorFilter());
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      void app.get(AgencyDirectoryService).allowsOrigin(origin).then((allowed) => callback(null, allowed))
+        .catch(() => callback(null, false));
+    },
     exposedHeaders: ["ETag"],
     credentials: true,
   });

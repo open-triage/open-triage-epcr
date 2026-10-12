@@ -22,7 +22,7 @@ test('repeated and custom sources bound monthly partitions to the authorized rep
   assert.match(repeated.sql, /reporting_date between \$7::date and \$8::date/);
   assert.match(custom.sql, /c.reporting_date between \$8::date and \$9::date/);
   for (const { sql, params } of [repeated, custom]) {
-    assert.deepEqual(params.slice(0, 4), ['org', true, false, 'author']);
+    assert.deepEqual(params.slice(0, 4), [['org'], true, false, 'author']);
     assert.deepEqual(params[4], ['report']);
     assert.deepEqual(params.slice(-2), [definition.from, definition.through]);
     assert.match(sql, /report_id=any\(\$5::uuid\[\]\)/);

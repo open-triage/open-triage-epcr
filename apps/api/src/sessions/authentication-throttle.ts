@@ -32,12 +32,12 @@ function keyedDigest(scope: Scope, value: string): string {
   return createHmac("sha256", secret()).update(`open-triage-auth-throttle-v1\0${scope}\0${value}`).digest("hex");
 }
 
-type AgencyPolicy = { organization_id: string; authentication_account_attempt_limit: number;
+type AgencyPolicy = { organization_id: string; user_id: string; authentication_account_attempt_limit: number;
   authentication_network_attempt_limit: number };
 
-function buckets(username: string, networkSource: string | undefined, policy: AgencyPolicy | undefined): Bucket[] {
+function buckets(username: string, networkSource: string | undefined, policy: AgencyPolicy | undefined, namespace: string): Bucket[] {
   const result: Bucket[] = [
-    { scope: "account", keyDigest: keyedDigest("account", username.trim().toLowerCase()), windowSeconds: 900,
+    { scope: "account", keyDigest: keyedDigest("account", policy?.user_id ?? `${namespace}\0${username.trim().toLowerCase()}`), windowSeconds: 900,
       maxAttempts: policy?.authentication_account_attempt_limit ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.accountAttemptsPer15Minutes },
     { scope: "installation", keyDigest: keyedDigest("installation", "current"), windowSeconds: 60, maxAttempts: 300 }
   ];
@@ -52,14 +52,18 @@ function buckets(username: string, networkSource: string | undefined, policy: Ag
 }
 
 export async function beginAuthenticationAttempt(manager: Pick<EntityManager, "query">, username: string,
-  networkSource: string | undefined, now: Date): Promise<AuthenticationThrottle | undefined> {
-  const policies = await manager.query<AgencyPolicy[]>(`select settings.organization_id,
+  networkSource: string | undefined, now: Date, scope: { organizationId?: string; userId?: string; portalOnly?: boolean } = {}): Promise<AuthenticationThrottle | undefined> {
+  const policies = await manager.query<AgencyPolicy[]>(`select settings.organization_id, account.id user_id,
       settings.authentication_account_attempt_limit, settings.authentication_network_attempt_limit
     from app_identity.local_credential credential
     join app_identity.app_user account on account.id = credential.user_id
-    join app_identity.agency_settings settings on settings.organization_id = account.organization_id
-    where credential.username = $1`, [username.trim().toLowerCase()]);
-  const attempt = { buckets: buckets(username, networkSource, policies[0]) };
+    left join app_identity.agency_settings settings on settings.organization_id = account.organization_id
+    where credential.username = $1 and (
+      ($2::uuid is not null and account.id = $2) or ($2::uuid is null and (
+        ($3::uuid is not null and app_identity.user_can_access_organization(account.id, $3)) or
+        ($3::uuid is null and (not $4::boolean or app_identity.is_installation_superadmin(account.id))))))
+    limit 2`, [username.trim().toLowerCase(), scope.userId ?? null, scope.organizationId ?? null, scope.portalOnly ?? false]);
+  const attempt = { buckets: buckets(username, networkSource, policies.length === 1 ? policies[0] : undefined, scope.organizationId ?? "portal") };
   await manager.query(`delete from app_identity.authentication_throttle
     where ctid in (select ctid from app_identity.authentication_throttle
       where expires_at < $1 order by expires_at limit 100)`, [now]);

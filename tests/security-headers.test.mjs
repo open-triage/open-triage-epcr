@@ -62,3 +62,17 @@ test("generation fails rather than weakening CSP for inline styles", async () =>
 
   await assert.rejects(inlineScriptHashes(directory), /contains inline styles/);
 });
+
+test("same-origin agency hosting restricts API connections to the current hostname", () => {
+  assert.match(contentSecurityPolicy(["'sha256-test'"], "same-origin"), /connect-src 'self';/);
+});
+
+
+test("the portable web image substitutes the landing host at runtime", async () => {
+  const template = await readFile(new URL("../deploy/docker/nginx.conf", import.meta.url), "utf8");
+  const dockerfile = await readFile(new URL("../deploy/docker/web.Dockerfile", import.meta.url), "utf8");
+  assert.match(template, /server_name \$\{OPEN_TRIAGE_PUBLIC_SITE_HOST\};/);
+  assert.doesNotMatch(template, /opentriage\.org/);
+  assert.match(dockerfile, /ENV OPEN_TRIAGE_PUBLIC_SITE_HOST=public-site.invalid/);
+  assert.match(dockerfile, /COPY --from=build \/tmp\/nginx.conf \/etc\/nginx\/templates\/default.conf.template/);
+});

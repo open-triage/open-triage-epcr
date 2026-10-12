@@ -30,7 +30,7 @@ export async function inlineScriptHashes(exportDirectory) {
 }
 
 export function contentSecurityPolicy(scriptHashes, apiUrl) {
-  const apiOrigin = apiUrl ? new URL(apiUrl).origin : undefined;
+  const apiOrigin = apiUrl && apiUrl !== "same-origin" ? new URL(apiUrl).origin : undefined;
   return [
     "default-src 'none'",
     `script-src 'self' ${scriptHashes.join(" ")}`,

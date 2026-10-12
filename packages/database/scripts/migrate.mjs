@@ -7,6 +7,8 @@ import pg from "pg";
 const migrationName = /^(\d+)_([a-z0-9][a-z0-9_-]*)\.sql$/;
 const lockName = "open-triage-forward-only-migrations-v1";
 const compatibleMigrationChecksums = new Map([
+  // Agency-group terminology changes only comments and exception wording.
+  ["20261012101529", new Map([["c7a7a015006d0682c4eded66696d052fa9bb3af0eba5eb74dacd0b727ff1e4c1", "2b3f86444847bc49860236ce062aa9df447f3d97f38812c417078151ac4a0d97"]])],
   // Portable role revokes and ordered table creation preserve applied Review schemas.
   ["20261002120000", new Map([["2fb0dc3e1670662eb6bce33967db23cdd3a0025b998efc644f58b397a0b40e61", "d45b66b2f9435917b144baefbe2fb464f0c0ab00f116f1454789fc3d895731bc"]])],
   ["20261002130000", new Map([["e8baa0838c366b1a2edcc7bca8564a988ec0cce1c735ca7354f4da085f73e856", "19082b9b0c590aecee96911ce47ff92cd5706fa6e1732a6461738c852b091d1e"]])],

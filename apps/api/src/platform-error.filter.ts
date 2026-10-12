@@ -16,6 +16,13 @@ const knownMessages: Record<string, PlatformError> = {
   "The assignment was canceled before it could be opened": { code: "calls.callUnavailable", params: {} },
   "The call-opening command conflicts with existing clinical data": { code: "calls.commandConflict", params: {} },
   "That username is already reserved": { code: "admin.usernameReserved", params: {} },
+  "That hostname is already assigned to an agency": { code: "admin.hostnameReserved", params: {} },
+  "Agency changed; reload before saving": { code: "admin.agencyStale", params: {} },
+  "Use a hostname such as test.opentriage.org, without a scheme, port or path": { code: "admin.invalidHostname", params: {} },
+  "Choose a valid IANA time zone": { code: "admin.invalidTimeZone", params: {} },
+  "The owner's home agency must remain active": { code: "admin.ownerAgencyRequired", params: {} },
+  "No active agency is configured for this address": { code: "auth.agencyUnavailable", params: {} },
+  "This agency is not available to this account": { code: "auth.agencyUnavailable", params: {} },
   "Role version is stale": { code: "admin.roleStale", params: {} },
   "This feedback retry does not match the original draft": { code: "feedback.retryConflict", params: {} },
   "Report is already signed": { code: "reports.alreadySigned", params: {} },
@@ -26,7 +33,7 @@ const knownMessages: Record<string, PlatformError> = {
 
 function errorDomain(path: string): string {
   if (/^\/api\/sessions(?:\/|$)/.test(path)) return "auth";
-  if (/^\/api\/admin(?:\/|$)/.test(path)) return "admin";
+  if (/^\/api\/(?:admin|super-admin)(?:\/|$)/.test(path)) return "admin";
   if (/^\/api\/calls(?:\/|$)/.test(path)) return "calls";
   if (/^\/api\/reports(?:\/|$)/.test(path)) return "reports";
   if (/^\/api\/feedback(?:\/|$)/.test(path)) return "feedback";

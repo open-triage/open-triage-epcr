@@ -259,8 +259,7 @@ try {
       baselineConfiguration.formVersionId);
 
     const owner = await client.query(
-      "select exists (select 1 from app_identity.installation_owner where organization_id = $1) as configured",
-      [SYNTHETIC_DEMO_FIXTURE.organizationId],
+      "select exists (select 1 from app_identity.installation_owner) as configured",
     );
     await client.query("commit");
     console.log(JSON.stringify({

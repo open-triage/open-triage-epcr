@@ -3,6 +3,9 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 
+import { localRouting } from "./lib/local-routing.mjs";
+
+const route = localRouting();
 const port = Number(process.env.PORT ?? "3109");
 const basePath = (process.env.STATIC_BASE_PATH ?? "").replace(/\/$/, "");
 const root = resolve(process.cwd(), "out");
@@ -17,6 +20,7 @@ const contentTypes = {
 };
 
 createServer(async (request, response) => {
+  if (route(request, response)) return;
   const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
   if (basePath && pathname !== basePath && !pathname.startsWith(`${basePath}/`)) {
     response.writeHead(404).end("Not found");

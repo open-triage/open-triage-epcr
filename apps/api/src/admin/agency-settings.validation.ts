@@ -186,7 +186,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("regionalFormat must be en-US, sv-SE, or null");
   }
   if (body.timeZone !== undefined && body.timeZone !== null) {
-    if (typeof body.timeZone !== "string" || !/^(?:UTC|[A-Za-z_]+(?:\/[A-Za-z_+-]+)+)$/.test(body.timeZone)) {
+    if (typeof body.timeZone !== "string" || !/^(?:UTC|[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+)$/.test(body.timeZone)) {
       throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null");
     }
     try { new Intl.DateTimeFormat("en-US", { timeZone: body.timeZone }); }

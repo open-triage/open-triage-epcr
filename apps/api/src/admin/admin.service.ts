@@ -49,6 +49,7 @@ export class AdminService {
   async context(sessionToken: string): Promise<AdminContext> {
     const session = await this.sessions.get(sessionToken);
     const panels = authorizedPanels(session);
+    if (session.installationOwner || session.installationSuperadmin) panels.push("agencies");
     if (!panels.length) throw new UnauthorizedException("An administrative capability is required");
     const configurationReadable = panels.some((panel) => ["dashboard", "catalog", "forms", "validation"].includes(panel));
     const rows = configurationReadable ? await this.dataSource.query<ActiveConfigurationRow[]>(`
@@ -81,7 +82,7 @@ export class AdminService {
       select (select count(*) from clinical.call_assignment where organization_id = $1 and status = 'assigned') as available_calls,
              report_stats.ongoing_reports, report_stats.signed_reports, report_stats.signed_last_24_hours,
              error_stats.reports_with_errors,
-             (select count(*) from app_identity.app_user where organization_id = $1 and active) as active_users,
+             (select count(*) from app_identity.agency_user where organization_id = $1 and active) as active_users,
              (select count(*) from app_identity.operational_unit where organization_id = $1 and active) as active_units,
              pg_database_size(current_database()) as database_size_bytes,
              (select count(*) from pg_stat_activity where datname = current_database()) as database_connections,

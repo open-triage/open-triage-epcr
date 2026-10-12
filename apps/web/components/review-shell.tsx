@@ -290,7 +290,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   useEffect(() => {
     if (!online || !reviewVisible || !hasSelectedItem) return;
     const controller = new AbortController();
-    const url = apiRequestUrl("/api/review/outcomes");
+    const url = apiRequestUrl(`/api/review/outcomes?itemId=${encodeURIComponent(selectedItemId!)}&dataset=${dataset}`);
     if (!url) return;
     void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
       if (!response.ok) throw new Error(String(response.status));
@@ -301,7 +301,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       setOutcomesError(true);
     } });
     return () => controller.abort();
-  }, [online, refresh, detailRefresh, reviewVisible, hasSelectedItem]);
+  }, [online, refresh, detailRefresh, reviewVisible, hasSelectedItem, selectedItemId, dataset]);
 
   async function submitReviewAction(item: ReviewItemDetail) {
     if (actionBusy || workflowBusy || actionInvalid) return;
@@ -567,7 +567,9 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                     return { key: bulkScopeKey, items: next };
                   });
                 }} /></td>
-              <td><strong>{reportLabel(item.reportId, item.reportNumber)}</strong></td>
+              <td><strong>{reportLabel(item.reportId, item.reportNumber)}</strong>
+                {item.organization && session.agencies?.some((agency) => agency.parentOrganizationId === session.organization.id) &&
+                  <small className="review-agency-name">{item.organization.name}</small>}</td>
               <td><ReviewCriterionHelp id={`review-reason-${item.id}`} label={criterionLabel(item)}
                 description={item.criterionDescription ?? item.findings.map((finding) => finding.message).join(" · ")} /></td>
               <td><span className={`review-badge priority-${item.priority}`}>{t(`review.${item.priority}`)}</span></td>

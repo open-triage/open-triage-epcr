@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { loadAll } from "js-yaml";
 
 const chart = fileURLToPath(new URL("..", import.meta.url));
-const demoValues = fileURLToPath(new URL("../demo-reference.values.yaml", import.meta.url));
+const demoValues = fileURLToPath(new URL("../installation.example.values.yaml", import.meta.url));
 
 function renderDemo() {
   return execFileSync("helm", [
@@ -30,7 +30,7 @@ test("demo values preserve private image access for every workload", () => {
 test("demo values preserve public TLS and workload-specific cluster-owned database Secrets", () => {
   const output = renderDemo();
 
-  assert.match(output, /tls:\n\s+- hosts:\n\s+- demo\.opentriage\.org\n\s+- api\.demo\.opentriage\.org\n\s+secretName: open-triage-tls/);
+  assert.match(output, /tls:\n\s+- hosts:\n\s+- demo\.example\.com\n\s+- api\.demo\.example\.com\n\s+secretName: open-triage-tls/);
   for (const name of [
     "open-triage-api-database", "open-triage-migration-database",
     "open-triage-analytics-projector-database", "open-triage-analytics-health-database",
@@ -63,7 +63,7 @@ function workloadPods(output) {
   });
 }
 
-test("every demo workload, including the migration hook, targets the larger node pool", () => {
+test("every demo workload, including the migration hook, uses the installation-provided node pool", () => {
   const workloads = workloadPods(renderDemo());
   assert.deepEqual(workloads.map(({ name }) => name).sort(), [
     "open-triage-analytics-health", "open-triage-analytics-projector",
@@ -71,7 +71,7 @@ test("every demo workload, including the migration hook, targets the larger node
     "open-triage-synthetic-expiry", "open-triage-web",
   ]);
   for (const { name, pod } of workloads) {
-    assert.deepEqual(pod.nodeSelector, { "doks.digitalocean.com/node-pool": "pool-6inz100pf" }, name);
+    assert.deepEqual(pod.nodeSelector, { "doks.digitalocean.com/node-pool": "example-pool" }, name);
   }
 });
 
@@ -87,11 +87,11 @@ test("other installations can omit placement or select their own nodes", () => {
 
 test("the demo routes the base-domain public site to web with its own TLS certificate", () => {
   const output = renderDemo();
-  assert.match(output, /hosts:\n\s+- opentriage\.org\n\s+secretName: open-triage-public-site-tls/);
+  assert.match(output, /hosts:\n\s+- example\.com\n\s+secretName: open-triage-public-site-tls/);
   assert.match(output, /cert-manager\.io\/cluster-issuer: letsencrypt-prod/);
-  assert.match(output, /host: opentriage\.org\n\s+http:\n\s+paths:\n\s+- path: \/\n\s+pathType: Prefix\n\s+backend: \{ service: \{ name: open-triage-web, port: \{ name: http \} \} \}/);
+  assert.match(output, /host: "example\.com"\n\s+http:\n\s+paths:\n\s+- path: \/\n\s+pathType: Prefix\n\s+backend: \{ service: \{ name: open-triage-web, port: \{ name: http \} \} \}/);
 
   const defaultIngress = execFileSync("helm", ["template", "open-triage", chart,
     "--show-only", "templates/ingress.yaml"], { encoding: "utf8" });
-  assert.doesNotMatch(defaultIngress, /host: opentriage\.org/);
+  assert.doesNotMatch(defaultIngress, /host: example\.com/);
 });

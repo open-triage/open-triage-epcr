@@ -84,3 +84,19 @@ test("apply waits for jobs and rollout, while missing required keys stop deploym
   assert.ok(!bad.calls.some(({ args }) => args.includes("upgrade")));
   assert.throws(() => deploymentOptions(["--values", values]), /--context/);
 });
+
+test("production accepts additional agency/wildcard and public hosts only with TLS coverage", () => {
+  const objects = render("--set", "ingress.agencyHosts[0]=*.agency.test,ingress.tls[0].hosts[2]=*.agency.test,publicSite.enabled=true,publicSite.host=public.agency.test,ingress.tls[0].hosts[3]=public.agency.test,agencyBaseDomain=agency.test");
+  assert.doesNotThrow(() => deploymentContract(objects));
+  const deployment = (suffix) => objects.find((object) => object.kind === "Deployment" && object.metadata.name.endsWith(suffix));
+  assert.equal(deployment("-web").spec.template.spec.containers[0].env.find(({ name }) => name === "OPEN_TRIAGE_PUBLIC_SITE_HOST").value, "public.agency.test");
+  assert.equal(deployment("-api").spec.template.spec.containers[0].env.find(({ name }) => name === "AGENCY_BASE_DOMAIN").value, "agency.test");
+  for (const ingress of objects.filter(({ kind }) => kind === "Ingress")) ingress.spec.tls[0].hosts = ingress.spec.tls[0].hosts.filter((host) => host !== "*.agency.test");
+  assert.throws(() => deploymentContract(objects), /certificate Secret covering \*\.agency.test/);
+});
+
+
+test("extra agency hosts do not hide a conflicting web and API hostname", () => {
+  const objects = render("--set", "api.host=epcr.agency.test,ingress.agencyHosts[0]=other.agency.test,ingress.tls[0].hosts[2]=other.agency.test");
+  assert.throws(() => deploymentContract(objects), /distinct web and API hosts/);
+});

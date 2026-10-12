@@ -18,8 +18,8 @@ integrationTest("Review role grants and revocation follow the durable assignment
   await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
     values ($1, $3, 'Owner'), ($2, $3, 'Reviewer')`, [ownerId, reviewerId, organizationId]);
   await client.query(`insert into app_identity.installation_owner
-    (organization_id, user_id, established_by_operator_id) values ($1, $2, 'review-access-test')`,
-  [organizationId, ownerId]);
+    (user_id, established_by_operator_id) select $1, 'review-access-test'
+    where not exists(select 1 from app_identity.installation_owner)`, [ownerId]);
   const role = (await client.query(`select id from app_identity.role
     where organization_id = $1 and system_key = 'reviewer'`, [organizationId])).rows[0];
   assert.ok(role);

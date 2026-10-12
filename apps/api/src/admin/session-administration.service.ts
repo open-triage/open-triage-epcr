@@ -18,7 +18,7 @@ type SessionRow = {
 };
 type RevocationTarget = { id: string; revoked_at: Date | string | null; current: boolean; owner: boolean };
 type ResetTarget = {
-  id: string; active: boolean; revision: string | number; owner: boolean; actor_owner: boolean;
+  id: string; active: boolean; revision: string | number; owner: boolean; actor_owner: boolean; superadmin: boolean;
 };
 
 @Injectable()
@@ -38,12 +38,11 @@ export class SessionAdministrationService {
       select session.id, session.created_at, session.last_activity_at, session.expires_at,
              session.device_label, session.token_sha256 = $3 as current,
              exists (select 1 from app_identity.installation_owner owner_record
-               where owner_record.organization_id = app_user.organization_id
-                 and owner_record.user_id = app_user.id) as owner
+               where owner_record.user_id = app_user.id) as owner
       from app_identity.app_session session
       join app_identity.app_user app_user on app_user.id = session.user_id
       join app_identity.local_credential credential on credential.user_id = app_user.id
-      where app_user.organization_id = $1 and app_user.id = $2
+      where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2
         and session.revoked_at is null and session.expires_at > $4
         and session.credential_version = credential.credential_version
       order by session.last_activity_at desc, session.id
@@ -62,11 +61,10 @@ export class SessionAdministrationService {
       const rows = await manager.query<RevocationTarget[]>(`
         select session.id, session.revoked_at, session.token_sha256 = $4 as current,
                exists (select 1 from app_identity.installation_owner owner_record
-                 where owner_record.organization_id = app_user.organization_id
-                   and owner_record.user_id = app_user.id) as owner
+                 where owner_record.user_id = app_user.id) as owner
         from app_identity.app_session session
         join app_identity.app_user app_user on app_user.id = session.user_id
-        where app_user.organization_id = $1 and app_user.id = $2 and session.id = $3
+        where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2 and session.id = $3
         for update of session
       `, [actor.organization.id, targetUserId, sessionId, digest(token)]);
       const target = rows[0];
@@ -101,21 +99,20 @@ export class SessionAdministrationService {
       }
       const rows = await manager.query<ResetTarget[]>(`
         select app_user.id, app_user.active, app_user.revision,
+               exists (select 1 from app_identity.installation_superadmin where user_id=app_user.id) superadmin,
                exists (select 1 from app_identity.installation_owner target_owner
-                 where target_owner.organization_id = app_user.organization_id
-                   and target_owner.user_id = app_user.id) as owner,
+                 where target_owner.user_id = app_user.id) as owner,
                exists (select 1 from app_identity.installation_owner actor_owner
-                 where actor_owner.organization_id = app_user.organization_id
-                   and actor_owner.user_id = $3) as actor_owner
+                 where actor_owner.user_id = $3) as actor_owner
         from app_identity.app_user app_user
         join app_identity.local_credential credential on credential.user_id = app_user.id
-        where app_user.organization_id = $1 and app_user.id = $2
+        where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2
         for update of app_user, credential
       `, [actor.organization.id, targetUserId, actor.user.id]);
       const target = rows[0];
       if (!target) throw new NotFoundException("User was not found");
       if (target.id === actor.user.id) throw new ForbiddenException("Administrators cannot reset their own credential");
-      if (target.owner) throw new ForbiddenException("The installation owner credential cannot be reset here");
+      if (target.owner || target.superadmin) throw new ForbiddenException("Installation owner and superadmin credentials must be reset through the operator CLI");
       if (Number(target.revision) !== command.expectedRevision) {
         throw new ConflictException("This user changed after it was loaded");
       }
@@ -130,7 +127,7 @@ export class SessionAdministrationService {
           join app_identity.role_version_capability capability on capability.organization_id = version.organization_id
             and capability.role_id = version.role_id and capability.role_version_id = version.id
           join app_identity.capability definition on definition.key = capability.capability_key
-          where assignment.organization_id = $1 and assignment.user_id = $2 and assignment.ended_at is null
+          where app_identity.organization_group(assignment.organization_id) = app_identity.organization_group($1) and assignment.user_id = $2 and assignment.ended_at is null
             and definition.administrative and not (capability.capability_key = any($3::text[]))
         `, [actor.organization.id, target.id, actor.capabilities ?? []]);
         if (targetOnly.length) {

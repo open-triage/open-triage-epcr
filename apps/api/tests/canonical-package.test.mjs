@@ -185,16 +185,16 @@ for (const kind of ["catalog", "form", "validation"]) {
     const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
     process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
     try {
-      await writePackage(artifact(kind));
+      await writePackage(artifact(kind), "org");
       const folder = kind === "form" ? "forms" : kind;
       await writeFile(path.join(root, folder, "broken.json"), "not JSON");
       const calls = [];
-      const sessions = { requireCapability: async (_token, capability) => { calls.push(capability); } };
+      const sessions = { requireCapability: async (_token, capability) => { calls.push(capability); return { organization: { id: "org" } }; } };
       const service = new CanonicalPackageService({}, sessions, {}, {}, {});
       service.import = async (_token, selectedKind, content) => {
         calls.push(["import", selectedKind, content.sha256]); return { id: "published" };
       };
-      assert.deepEqual(await service.importFile("token", kind, { file: `${folder}/local/portable-v7.json` }), { id: "published" });
+      assert.deepEqual(await service.importFile("token", kind, { file: `${folder}/local/org/portable-v7.json` }), { id: "published" });
       assert.deepEqual(calls, [`${kind === "form" ? "forms" : kind}:publish`, ["import", kind, artifact(kind).sha256]]);
       for (const input of [null, {}, { file: "../../secret.json" }, { file: "forms/local/missing.json" }, { file: 1 }]) {
         await assert.rejects(service.importFile("token", kind, input), /Select|unavailable/);
@@ -214,7 +214,7 @@ test("listing files is read-only and does not import or export definitions", asy
   const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
   process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
   try {
-    await writePackage(artifact());
+    await writePackage(artifact(), "org");
     const { service, calls } = serviceFixture();
     service.import = service.persist = async () => { throw new Error("Unexpected mutation"); };
     const files = await service.list("token", "form");
@@ -233,4 +233,22 @@ test("file imports require publication authority before reading or mutating", as
   const service = new CanonicalPackageService({}, sessions, {}, {}, {});
   service.import = async () => { throw new Error("Unexpected mutation"); };
   await assert.rejects(service.importFile("token", "form", { file: "forms/example.json" }), /Forbidden/);
+});
+
+test("agency publications are isolated from other agencies and unscoped legacy exports", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "canonical-tenants-"));
+  const previous = process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+  process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
+  try {
+    await writePackage(artifact(), "agency-a");
+    await writePackage(artifact("validation"));
+    assert.equal((await discoverPackages("form", "agency-a")).length, 1);
+    assert.deepEqual(await discoverPackages("form", "agency-b"), []);
+    assert.deepEqual(await discoverPackages("validation", "agency-b"), []);
+    await assert.rejects(discoverPackages("form", "../agency-a"), /Invalid agency directory/);
+  } finally {
+    if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
+    else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
 });

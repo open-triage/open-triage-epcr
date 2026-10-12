@@ -30,6 +30,9 @@ spec:
           image: {{ include "open-triage.image" .Values.web.image | quote }}
           imagePullPolicy: {{ .Values.web.image.pullPolicy }}
           securityContext: {{- toYaml .Values.web.securityContext | nindent 12 }}
+          env:
+            - name: OPEN_TRIAGE_PUBLIC_SITE_HOST
+              value: {{ ternary .Values.publicSite.host "public-site.invalid" .Values.publicSite.enabled | quote }}
           ports: [{ name: http, containerPort: 8080 }]
           readinessProbe:
             httpGet: { path: /, port: http }

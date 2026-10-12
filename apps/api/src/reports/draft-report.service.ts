@@ -200,7 +200,7 @@ export class DraftReportService {
         if (replay) return replay;
 
         const users = await manager.query<Array<{ id: string }>>(`
-          select id from app_identity.app_user
+          select id from app_identity.agency_user
           where id = $1 and organization_id = $2 and active
         `, [command.documentingUserId, command.organizationId]);
         if (!users[0]) throw new UnprocessableEntityException("documentingUserId must be an active user in the organization");
@@ -330,7 +330,7 @@ export class DraftReportService {
         if (replay) return replay;
         await this.assertDemoMutationBoundary(manager, report, command);
         const authors = await manager.query<Array<{ id: string }>>(`
-          select id from app_identity.app_user where id = $1 and organization_id = $2 and active
+          select id from app_identity.agency_user where id = $1 and organization_id = $2 and active
         `, [command.authorId, report.organization_id]);
         if (!authors[0]) throw new UnprocessableEntityException("authorId must be an active user in the report organization");
 

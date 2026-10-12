@@ -62,13 +62,15 @@ test("the workflow publishes tested AMD64 images with narrowly scoped registry p
   const publishing = workflow.slice(workflow.indexOf("  publish-images:"));
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(publishing, /^    needs: validation-gate$/m);
+  assert.match(publishing, /^    needs: \[validation-gate, installation-config\]$/m);
+  const configuration = workflow.slice(workflow.indexOf("  installation-config:"), workflow.indexOf("  publish-images:"));
+  assert.match(configuration, /^    needs: validate-deployment-revision$/m);
   assert.match(publishing, /^      packages: write$/m);
   assert.match(publishing, /^          platforms: linux\/amd64$/m);
   assert.match(publishing, /^          push: true$/m);
   assert.match(
     publishing,
-    /^          - component: web\n            dockerfile: deploy\/docker\/web\.Dockerfile\n            build_args: \|\n              NEXT_PUBLIC_API_URL=https:\/\/api\.demo\.opentriage\.org\n              OPEN_TRIAGE_BUILD_SHA=\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}$/m,
+    /^          - component: web\n            dockerfile: deploy\/docker\/web\.Dockerfile\n            build_args: \|\n              NEXT_PUBLIC_API_URL=same-origin\n              OPEN_TRIAGE_BUILD_SHA=\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}$/m,
   );
   assert.match(publishing, /^          build-args: \$\{\{ matrix\.build_args \}\}$/m);
   assert.match(

@@ -32,15 +32,18 @@ helm template open-triage ./deploy/helm/open-triage \
 Treat that file as generated output: change the chart or values and render it
 again instead of editing it.
 
-Build the web image with the public API hostname embedded at build time:
+Build the web image with API requests routed through the current web hostname:
 
 ```sh
 docker build -f deploy/docker/web.Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org \
+  --build-arg NEXT_PUBLIC_API_URL=same-origin \
   -t ghcr.io/open-triage/open-triage-web:demo .
 docker build -f deploy/docker/api.Dockerfile \
   -t ghcr.io/open-triage/open-triage-api:demo .
 ```
+
+For additional agency hostnames, configure `ingress.agencyHosts`, DNS and TLS as
+described in the [multi-organization runbook](../../../docs/runbooks/multi-organization.md).
 
 Create the Secrets outside Helm before the first install (or retain existing
 ones when upgrading). Every Secret contains only `DATABASE_URL`, except the API
@@ -72,18 +75,30 @@ Install or upgrade the workloads without passing secret values to Helm:
 
 ```sh
 helm upgrade --install open-triage ./deploy/helm/open-triage \
-  --values ./deploy/helm/open-triage/demo-reference.values.yaml \
+  --values ./deploy/installations/installation.values.yaml \
   --namespace open-triage --create-namespace
 ```
 
-The committed demo reference values contain no credentials. They preserve the
-cluster-owned `ghcr-pull` image pull Secret, `open-triage-tls` certificate, and
-workload database Secrets during repeatable upgrades.
+Before using the command above, copy `installation.example.values.yaml` to
+`deploy/installations/installation.values.yaml` and set the installation's hosts,
+node selector, ingress/TLS settings, resource sizing and existing Secret names.
+The directory is ignored by Git and Docker. Keep an operator-owned backup outside
+the source repository. The example is for rendering tests, not a live deployment.
+For production, start from `production-reference.values.yaml` and follow the
+[production runbook](../../../docs/runbooks/kubernetes-production.md).
 
 The optional top-level `nodeSelector` applies to every app workload, including
 the migration hook and all CronJobs. It defaults to no placement restriction.
-The demo reference values select `doks.digitalocean.com/node-pool: pool-6inz100pf`
-so app pods stay on the larger demo pool across upgrades and node replacements.
+No live node-pool name is committed. `publicSite.enabled` additionally requires
+`publicSite.host`, supplied to the web container at runtime.
+Keep `NEXT_PUBLIC_API_URL` consistent with `api.host` when building the web image.
+
+For automated demo builds, upload the non-secret installation values to the
+GitHub `demo` environment's `DEMO_INSTALLATION_VALUES` variable. The workflow
+validates and snapshots that file for image building, deployment and smoke tests.
+See [demo operations](../../../docs/demo-deployment.md) for setup and transition
+from older releases. Database passwords and installation keys remain in cluster
+Secrets; the values file contains only references to those Secrets.
 
 Helm runs a forward-only migration Job before each install or upgrade. The Job
 reads `DATABASE_URL` only from the migration Secret and must succeed before Helm
@@ -130,3 +145,22 @@ Choose `ingress.controller: contour` or `nginx` separately from `className`.
 Contour requires `ingress.authenticationRateLimit.enabled: false`; configure
 any additional edge rate limits through the platform. API authentication throttling
 is independent of the ingress controller.
+
+All installation profiles use same-origin `/api` routing. Build the web image
+with `NEXT_PUBLIC_API_URL=same-origin` (the Dockerfile default); the image can
+then move between public demo and production installations without recompiling
+hostnames. Local development and the local static server use this same routing
+contract; see [local development](../../../docs/runbooks/local-development.md#shared-host-routing).
+
+Set `agencyBaseDomain` to the suffix used for short organization hostnames
+(default: `web.host`). Add agency DNS names or a wildcard to
+`ingress.agencyHosts` and cover each ingress host in `ingress.tls`. Wildcard DNS
+and certificates must be provisioned by the operator; the demo reference values
+only enable its existing explicit hosts. The preflight validates TLS coverage
+for all hosts, including agencies and the optional public landing host.
+
+To serve the landing page, set `publicSite.enabled=true` and `publicSite.host`.
+The chart passes that host to the web container as
+`OPEN_TRIAGE_PUBLIC_SITE_HOST` at runtime. The installation values select
+the public hostname. The landing
+page content remains the bundled OpenTriage public page.

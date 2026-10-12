@@ -121,7 +121,7 @@ test("credential reset validates revision and privilege, retains disabled state,
 test("credential reset rejects stale, owner, self, and more-capable targets before credential writes", async () => {
   for (const [configuration, pattern] of [
     [{ target: { revision: "8" } }, /changed after/],
-    [{ target: { owner: true } }, /owner credential/],
+    [{ target: { owner: true } }, /operator CLI/],
     [{ target: { id: actorId } }, /own credential/],
     [{ targetOnly: [{ capability_key: "roles:write" }] }, /more-capable/]
   ]) {

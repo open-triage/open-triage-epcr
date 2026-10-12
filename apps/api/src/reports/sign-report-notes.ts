@@ -45,7 +45,7 @@ export async function lockAndValidateReportNotes(manager: Queryable, report: {
     select note.id, note.content, note.captured_at, note.captured_utc_offset_minutes,
            note.created_by, author.display_name as author_display_name, author.active as author_active
     from clinical.report_note note
-    left join app_identity.app_user author
+    left join app_identity.agency_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
     where note.report_id = $1
     order by note.captured_at, note.id
@@ -60,7 +60,7 @@ export async function lockAndValidateReportNotes(manager: Queryable, report: {
     from clinical.report_photo_note note
     left join clinical.report_photo_blob blob
       on blob.organization_id = note.organization_id and blob.report_id = note.report_id and blob.note_id = note.id
-    left join app_identity.app_user author
+    left join app_identity.agency_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
     where note.report_id = $1
     order by note.captured_at, note.id
@@ -75,7 +75,7 @@ export async function lockAndValidateReportNotes(manager: Queryable, report: {
     from clinical.report_audio_note note
     left join clinical.report_audio_blob blob
       on blob.organization_id = note.organization_id and blob.report_id = note.report_id and blob.note_id = note.id
-    left join app_identity.app_user author
+    left join app_identity.agency_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
     where note.report_id = $1
     order by note.captured_at, note.id

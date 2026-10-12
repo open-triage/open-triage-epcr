@@ -104,7 +104,7 @@ test("temporary credentials sign in only before expiry and cannot outlive their 
   assert.equal(limited.session.expiresAt, expiresAt.toISOString());
   assert.equal("password_verifier" in limited.session, false);
   const insertion = before.events.find(({ sql }) => sql.startsWith("insert into app_identity.app_session"));
-  assert.equal(insertion.parameters.at(-1), "Chrome on Windows");
+  assert.equal(insertion.parameters[6], "Chrome on Windows");
   assert.equal(insertion.parameters.includes(rawUserAgent), false);
 
   const boundary = serviceAtBoundary();
@@ -269,6 +269,9 @@ test("sign-out revocation and audit commit together and roll back together", asy
   const csrfToken = "csrf-proof";
   const respond = (failAudit) => ({ sql }) => {
     if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
+    if (sql.includes("from app_identity.app_session s")) return [{ session_id: "session-id", user_id: "user-id",
+      organization_id: "organization-id", organization_name: "Test", display_name: "User", active: true,
+      created_at: new Date(), expires_at: new Date(Date.now()+3600000), credential_version: "1", session_credential_version: "1" }];
     if (sql.startsWith("update app_identity.app_session")) {
       return [{ id: "session-id", user_id: "user-id", organization_id: "organization-id" }];
     }

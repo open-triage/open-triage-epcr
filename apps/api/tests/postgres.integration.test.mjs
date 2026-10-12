@@ -38,7 +38,7 @@ import { SignReportService } from "../dist/reports/sign-report.service.js";
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const databaseUrl = process.env.DATABASE_URL;
+let databaseUrl = process.env.DATABASE_URL;
 process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-000000000001";
 process.env.PATIENT_KEY_VERSION ??= "1";
 process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
@@ -49,150 +49,35 @@ if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
 
 const integrationTest = databaseUrl ? test : test.skip;
 
+const migratedDatabases = new Set();
+// Installation-wide identity scenarios require independent installations, not
+// merely another agency in the same database. Always apply the full migration chain.
+function isolatedIntegrationTest(name, work) {
+  integrationTest(name, async (t) => {
+    const originalUrl = databaseUrl;
+    const admin = new pg.Client({ connectionString: originalUrl });
+    await admin.connect();
+    const name = `api_identity_${randomUUID().replaceAll("-", "")}`;
+    try {
+      await admin.query(`create database ${name}`);
+      const url = new URL(originalUrl); url.pathname = `/${name}`;
+      databaseUrl = process.env.DATABASE_URL = url.toString();
+      await t.test("independent installation", work);
+    } finally {
+      databaseUrl = process.env.DATABASE_URL = originalUrl;
+      await admin.query(`drop database if exists ${name} with (force)`);
+      await admin.end();
+    }
+  });
+}
+
 async function ensureFoundation(client) {
-  const existing = await client.query("select to_regclass('forms.form_version') as form_version");
-  if (!existing.rows[0].form_version) {
-    const migration = await readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8");
-    await client.query(migration);
+  if (!migratedDatabases.has(databaseUrl)) {
+    await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/migrate.mjs")], {
+      env: { ...process.env, DATABASE_URL: databaseUrl }, maxBuffer: 10 * 1024 * 1024,
+    });
+    migratedDatabases.add(databaseUrl);
   }
-  const identitySessions = await client.query("select to_regclass('app_identity.app_session') as app_session");
-  if (!identitySessions.rows[0].app_session) {
-    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906193136_identity_sessions.sql"), "utf8");
-    await client.query(migration);
-  }
-  const catalogDrafts = await client.query("select to_regclass('catalog.authoring_draft') as authoring_draft");
-  if (!catalogDrafts.rows[0].authoring_draft) {
-    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8");
-    await client.query(migration);
-  }
-  const codeListConfiguration = await client.query("select to_regclass('catalog.value_set_option_configuration') as configuration");
-  if (!codeListConfiguration.rows[0].configuration) {
-    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8");
-    await client.query(migration);
-  }
-  const inlineCodeListConfiguration = await client.query("select to_regclass('catalog.element_option_configuration') as configuration");
-  if (!inlineCodeListConfiguration.rows[0].configuration) {
-    const migration = await readFile(path.join(repoRoot,
-      "supabase/migrations/20260908114126_catalog_requiredness_and_inline_options.sql"), "utf8");
-    await client.query(migration);
-  }
-  const formRevision = await client.query(`select 1 from information_schema.columns
-    where table_schema='forms' and table_name='form_version' and column_name='revision'`);
-  if (!formRevision.rows[0]) {
-    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8");
-    await client.query(migration);
-  }
-  const agencyDefault = await client.query("select to_regclass('forms.agency_stationary_default') as agency_default");
-  if (!agencyDefault.rows[0].agency_default) {
-    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8");
-    await client.query(migration);
-  }
-  const reportPinValidator = await client.query(
-    "select to_regprocedure('clinical.validate_report_configuration_pin()') as validator"
-  );
-  if (!reportPinValidator.rows[0].validator) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"),
-      "utf8"
-    );
-    await client.query(migration);
-  }
-  const versionDisplayNames = await client.query(`select 1 from information_schema.columns
-    where table_schema='forms' and table_name='form_version' and column_name='display_name'`);
-  if (!versionDisplayNames.rows[0]) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"),
-      "utf8"
-    );
-    await client.query(migration);
-  }
-  const roleAuthorization = await client.query("select to_regclass('app_identity.role') as role");
-  if (!roleAuthorization.rows[0].role) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const installationOwner = await client.query("select to_regclass('app_identity.installation_owner') as owner");
-  if (!installationOwner.rows[0].owner) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const temporaryCredentialExpiry = await client.query(`select 1 from information_schema.columns
-    where table_schema='app_identity' and table_name='local_credential'
-      and column_name='temporary_password_expires_at'`);
-  if (!temporaryCredentialExpiry.rows[0]) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const userLifecycleRevision = await client.query(`select 1 from information_schema.columns
-    where table_schema='app_identity' and table_name='app_user' and column_name='revision'`);
-  if (!userLifecycleRevision.rows[0]) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const customRoleAuthoring = await client.query(
-    "select to_regprocedure('app_identity.prevent_protected_role_shadow()') as validator"
-  );
-  if (!customRoleAuthoring.rows[0].validator) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const roleVersionPresentation = await client.query(`select 1 from information_schema.columns
-    where table_schema='app_identity' and table_name='role_version' and column_name='display_name'`);
-  if (!roleVersionPresentation.rows[0]) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const recentReauthentication = await client.query(`select 1 from information_schema.columns
-    where table_schema='app_identity' and table_name='app_session' and column_name='reauthenticated_at'`);
-  if (!recentReauthentication.rows[0]) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911231000_role_assignment_reauthentication.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const sessionActivity = await client.query(`select 1 from information_schema.columns
-    where table_schema='app_identity' and table_name='app_session' and column_name='last_activity_at'`);
-  if (!sessionActivity.rows[0]) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const portableRoleActions = await client.query(`select pg_get_constraintdef(oid) definition
-    from pg_constraint where conname = 'authorization_event_action_check'
-      and conrelid = 'app_identity.authorization_event'::regclass`);
-  if (!portableRoleActions.rows[0]?.definition.includes("role.package_import")) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  const ownershipTransfer = await client.query("select to_regclass('app_identity.ownership_transfer') as transfer");
-  if (!ownershipTransfer.rows[0].transfer) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260911260000_ownership_transfer_nominations.sql"), "utf8"
-    );
-    await client.query(migration);
-  }
-  await client.query(`alter table app_identity.authentication_event drop constraint authentication_event_action_check,
-    add constraint authentication_event_action_check check (action in (
-      'account.provision', 'account.reset_password', 'account.identity_change', 'account.disable',
-      'account.reactivate', 'account.roles_change', 'authentication.sign_in',
-      'authentication.password_change', 'authentication.reauthenticate', 'authentication.sign_out',
-      'authentication.session_revoke'
-    ))`);
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -230,8 +115,7 @@ function singleClientDataSource(client) {
 
 async function ensureSyntheticOwner(client) {
   const existing = await client.query(
-    "select user_id from app_identity.installation_owner where organization_id = $1",
-    [SYNTHETIC_DEMO_FIXTURE.organizationId]
+    "select user_id from app_identity.installation_owner"
   );
   if (existing.rows[0]) return existing.rows[0].user_id;
   const owner = await new AccountService(singleClientDataSource(client)).bootstrapOwner({
@@ -245,7 +129,7 @@ async function ensureSyntheticOwner(client) {
   return owner.userId;
 }
 
-integrationTest("portable role packages round-trip atomically with immediate authority and preserved assignments", async (t) => {
+isolatedIntegrationTest("portable role packages round-trip atomically with immediate authority and preserved assignments", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -264,6 +148,7 @@ integrationTest("portable role packages round-trip atomically with immediate aut
     currentPassword: "Temporary!Portable-Owner-253", newPassword: "Permanent!Portable-Owner-253",
     csrfToken: temporary.session.csrfToken
   });
+  await sessions.switchAgency(active.sessionToken, organizationId);
   await sessions.reauthenticate(active.sessionToken, active.session.csrfToken, "Permanent!Portable-Owner-253");
   const packages = new RolePackageService(database, sessions);
   const roleId = randomUUID();
@@ -301,7 +186,7 @@ integrationTest("portable role packages round-trip atomically with immediate aut
   assert.doesNotMatch(JSON.stringify(audits.rows), /Portable Dispatch|Portable update|users:write|assigneeId/i);
 });
 
-integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
+isolatedIntegrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -322,6 +207,7 @@ integrationTest("provisioned local accounts require password replacement and use
     currentPassword: "Temporary!Password-253", newPassword: "Permanent!Owner-Password-253",
     csrfToken: ownerTemporary.session.csrfToken
   });
+  await sessions.switchAgency(ownerSession.sessionToken, organizationId);
   const administratorRole = await client.query(
     "select id from app_identity.role where organization_id = $1 and system_key = 'administrator'", [organizationId]
   );
@@ -358,6 +244,7 @@ integrationTest("provisioned local accounts require password replacement and use
     currentPassword: "Temporary!Password-253", newPassword: "Permanent!Password-253",
     csrfToken: limited.session.csrfToken
   });
+  await sessions.switchAgency(active.sessionToken, organizationId);
   assert.equal(active.session.passwordChangeRequired, false);
   await assert.rejects(sessions.get(limited.sessionToken), UnauthorizedException);
   assert.equal((await sessions.get(active.sessionToken)).organization.id, organizationId);
@@ -389,9 +276,9 @@ integrationTest("provisioned local accounts require password replacement and use
   await assert.rejects(sessions.get(beforeReset.sessionToken), UnauthorizedException);
   const reset = await sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" });
   assert.equal(reset.session.passwordChangeRequired, true);
-  assert.deepEqual(await accounts.resetOwnerPassword(organizationId, "Reset!Owner-Password-253",
+  assert.deepEqual(await accounts.resetOwnerPassword("Reset!Owner-Password-253",
     { operatorId: "integration-owner-recovery", osAccount: "test", host: "localhost" }),
-  { organizationId, userId: installationOwner.userId });
+  { userId: installationOwner.userId });
   await client.query("update app_identity.app_user set active = false, deactivated_at = now() where id = $1", [provisioned.userId]);
   await assert.rejects(sessions.get(reset.sessionToken, new Date(), true), UnauthorizedException);
   await assert.rejects(sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" }), UnauthorizedException);
@@ -405,7 +292,7 @@ integrationTest("provisioned local accounts require password replacement and use
   assert.ok(audit.rows.every(({ details }) => !/Password-253|token|csrf/i.test(details)));
   const operatorAudit = await client.query(`select command,target_organization_id,target_user_id,
     operator_id,os_account,host,result from app_identity.operator_identity_event
-    where target_organization_id = $1 order by id`, [organizationId]);
+    order by id`);
   assert.ok(operatorAudit.rows.some((event) => event.command === "user.reset_password"
     && event.target_user_id === provisioned.userId && event.operator_id === "integration-user-recovery"
     && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
@@ -416,7 +303,7 @@ integrationTest("provisioned local accounts require password replacement and use
   await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
 });
 
-integrationTest("session administration identifies current devices, contains individual sessions, and resets stale access", async (t) => {
+isolatedIntegrationTest("session administration identifies current devices, contains individual sessions, and resets stale access", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -427,22 +314,24 @@ integrationTest("session administration identifies current devices, contains ind
   const administration = new SessionAdministrationService(database, sessions);
   const organizationId = randomUUID();
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Session administration', 'UTC')", [organizationId]);
-  const owner = await accounts.bootstrapOwner({ organizationId, username: `owner.${randomUUID()}`,
+  const installationOwner = await accounts.bootstrapOwner({ organizationId, username: `owner.${randomUUID()}`,
     displayName: "Session Owner", clinician: false, temporaryPassword: "Temporary!Owner-Password-253",
     operator: { operatorId: "session-integration", osAccount: "test", host: "localhost" } });
+  const owner = await accounts.provision({ organizationId, username: `agency.admin.${randomUUID()}`,
+    displayName: "Agency session administrator", role: "administrator", temporaryPassword: "Temporary!Owner-Password-253" });
   const ownerTemporary = await sessions.create({ username: owner.username, password: "Temporary!Owner-Password-253" },
     new Date(), "Mozilla/5.0 (Windows NT 10.0) Chrome/142.0.1.9");
   const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
     currentPassword: "Temporary!Owner-Password-253", newPassword: "Permanent!Owner-Password-253",
     csrfToken: ownerTemporary.session.csrfToken
   }, new Date(), "Mozilla/5.0 (Windows NT 10.0) Chrome/142.0.1.9");
+  await sessions.switchAgency(ownerSession.sessionToken, organizationId);
   const ownerView = await administration.list(ownerSession.sessionToken, owner.userId);
   assert.equal(ownerView.items.length, 1);
   assert.equal(ownerView.items[0].current, true);
   assert.equal(ownerView.items[0].deviceLabel, "Chrome on Windows");
   assert.equal("sourceIp" in ownerView.items[0] || "geolocation" in ownerView.items[0], false);
-  await assert.rejects(administration.revoke(ownerSession.sessionToken, owner.userId, ownerView.items[0].id, {}),
-    ConflictException);
+  await assert.rejects(administration.list(ownerSession.sessionToken, installationOwner.userId), /User was not found/);
 
   const clinicianRole = await client.query(
     "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
@@ -486,7 +375,7 @@ integrationTest("session administration identifies current devices, contains ind
   assert.doesNotMatch(JSON.stringify(audits.rows), /password_verifier|token_sha256|csrf_sha256|source.?ip|geolocation|patient|Reset!Medic/i);
 });
 
-integrationTest("user lifecycle is atomic, permanently reserves names, revokes sessions, preserves credentials, and rejects stale concurrent writes", async (t) => {
+isolatedIntegrationTest("user lifecycle is atomic, permanently reserves names, revokes sessions, preserves credentials, and rejects stale concurrent writes", async (t) => {
   const firstClient = new pg.Client({ connectionString: databaseUrl });
   const secondClient = new pg.Client({ connectionString: databaseUrl });
   await Promise.all([firstClient.connect(), secondClient.connect()]);
@@ -506,6 +395,7 @@ integrationTest("user lifecycle is atomic, permanently reserves names, revokes s
     currentPassword: "Temporary!Owner-Lifecycle-253", newPassword: "Permanent!Owner-Lifecycle-253",
     csrfToken: ownerTemporary.session.csrfToken
   });
+  await ownerSessions.switchAgency(ownerSession.sessionToken, organizationId);
   const clinicianRole = (await firstClient.query(
     "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
   )).rows[0].id;
@@ -576,7 +466,7 @@ integrationTest("user lifecycle is atomic, permanently reserves names, revokes s
   assert.doesNotMatch(JSON.stringify(audit.rows), /password|verifier|token|csrf|secret/i);
 });
 
-integrationTest("concurrent owner bootstrap leaves exactly one fully privileged protected owner", async (t) => {
+isolatedIntegrationTest("concurrent owner bootstrap leaves exactly one fully privileged protected owner", async (t) => {
   const firstClient = new pg.Client({ connectionString: databaseUrl });
   const secondClient = new pg.Client({ connectionString: databaseUrl });
   await Promise.all([firstClient.connect(), secondClient.connect()]);
@@ -608,7 +498,7 @@ integrationTest("concurrent owner bootstrap leaves exactly one fully privileged 
   assert.equal(attempts.filter(({ status }) => status === "rejected").length, 1);
 
   const owner = (await firstClient.query(`select owner_record.user_id
-    from app_identity.installation_owner owner_record where organization_id = $1`, [organizationId])).rows[0];
+    from app_identity.installation_owner owner_record`)).rows[0];
   assert.ok(owner.user_id);
   assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'admin-dashboard:read') allowed`,
     [owner.user_id, organizationId])).rows[0].allowed, true);
@@ -619,21 +509,19 @@ integrationTest("concurrent owner bootstrap leaves exactly one fully privileged 
   assert.equal((await firstClient.query(`select count(*)::integer count
     from app_identity.user_role_assignment where organization_id = $1 and user_id = $2 and ended_at is null`,
     [organizationId, owner.user_id])).rows[0].count, 0);
-  assert.equal((await firstClient.query(`select count(*)::integer count from app_identity.installation_owner
-    where organization_id = $1`, [organizationId])).rows[0].count, 1);
+  assert.equal((await firstClient.query(`select count(*)::integer count from app_identity.installation_owner`)).rows[0].count, 1);
   assert.deepEqual((await firstClient.query(`select result from app_identity.operator_identity_event
-    where target_organization_id = $1 order by id`, [organizationId])).rows.map(({ result }) => result).sort(),
+    where command = 'owner.bootstrap' order by id`)).rows.map(({ result }) => result).sort(),
   ["failed", "succeeded"]);
 
-  await assert.rejects(firstClient.query("delete from app_identity.installation_owner where organization_id = $1",
-    [organizationId]), /cannot be removed/);
+  await assert.rejects(firstClient.query("delete from app_identity.installation_owner"), /cannot be removed/);
   await assert.rejects(firstClient.query("update app_identity.app_user set active = false where id = $1",
     [owner.user_id]), /cannot be disabled/);
   await assert.rejects(firstClient.query("delete from app_identity.local_credential where user_id = $1",
     [owner.user_id]), /credential cannot be removed/);
 });
 
-integrationTest("ownership moves only after an eligible nominee independently accepts", async (t) => {
+isolatedIntegrationTest("ownership moves only after an eligible nominee independently accepts", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -655,23 +543,23 @@ integrationTest("ownership moves only after an eligible nominee independently ac
     currentPassword: "Temporary!Owner-Transfer-253", newPassword: "Permanent!Owner-Transfer-253",
     csrfToken: ownerTemporary.session.csrfToken
   });
+  await sessions.switchAgency(ownerSession.sessionToken, organizationId);
   const nomineeTemporary = await sessions.create({ username: nominee.username, password: "Temporary!Nominee-Transfer-253" });
   const nomineeSession = await sessions.changePassword(nomineeTemporary.sessionToken, {
     currentPassword: "Temporary!Nominee-Transfer-253", newPassword: "Permanent!Nominee-Transfer-253",
     csrfToken: nomineeTemporary.session.csrfToken
   });
+  await sessions.switchAgency(nomineeSession.sessionToken, organizationId);
   await sessions.reauthenticate(ownerSession.sessionToken, ownerSession.session.csrfToken,
     "Permanent!Owner-Transfer-253");
   const pending = await transfers.initiate(ownerSession.sessionToken, { nomineeUserId: nominee.userId });
   assert.equal(pending.transfer.status, "pending");
-  assert.equal((await client.query("select user_id from app_identity.installation_owner where organization_id = $1",
-    [organizationId])).rows[0].user_id, owner.userId);
+  assert.equal((await client.query("select user_id from app_identity.installation_owner")).rows[0].user_id, owner.userId);
   await sessions.reauthenticate(nomineeSession.sessionToken, nomineeSession.session.csrfToken,
     "Permanent!Nominee-Transfer-253");
   const accepted = await transfers.accept(nomineeSession.sessionToken);
   assert.equal(accepted.owner.id, nominee.userId);
-  assert.equal((await client.query("select count(*)::integer count from app_identity.installation_owner where organization_id = $1",
-    [organizationId])).rows[0].count, 1);
+  assert.equal((await client.query("select count(*)::integer count from app_identity.installation_owner")).rows[0].count, 1);
   assert.equal((await client.query(`select count(*)::integer count
     from app_identity.user_role_assignment where organization_id = $1 and user_id = $2 and ended_at is null`,
   [organizationId, nominee.userId])).rows[0].count, 0);
@@ -679,7 +567,7 @@ integrationTest("ownership moves only after an eligible nominee independently ac
     [nominee.userId, organizationId])).rows[0].allowed, true);
 });
 
-integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {
+isolatedIntegrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -703,6 +591,7 @@ integrationTest("authorized Admin context resolves only the session organization
     currentPassword: "Temporary!Password-254", newPassword: "Permanent!Password-254",
     csrfToken: temporary.session.csrfToken
   });
+  await sessions.switchAgency(active.sessionToken, organizationId);
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1' limit 1");
   await client.query(`insert into app_identity.agency_demographic_version
     (organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,

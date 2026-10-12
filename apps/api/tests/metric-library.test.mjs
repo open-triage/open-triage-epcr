@@ -272,7 +272,7 @@ test('selector counts batch configured inputs and apply authorized dates, filter
       persistent_failure_count: stale ? 1 : 0, retrying_count: 0, stale_run_count: 0, last_run_status: 'success', is_read_only_replica: false, replay_lag_seconds: null }];
     if (sql.includes('from app_identity.organization')) return [{ time_zone: 'UTC', start: context.timestamp, end_exclusive: '2026-10-05T00:00:00Z' }];
     if (sql.includes('from analytics.review_volume_source')) {
-      assert.deepEqual(parameters.slice(0, 4), ['org', true, false, 'author']);
+      assert.deepEqual(parameters.slice(0, 4), [['org'], true, false, 'author']);
       assert.equal(parameters[4], parameters[5]);
       if (parameters[4] !== '2026-10-04') return [];
       return ids.map(report_id => ({ report_id, reporting_date: '2026-10-04', projected_at: context.timestamp, revision: '1', amendment: 0,
@@ -532,4 +532,34 @@ test('unresolved trauma and aspirin definitions cannot be enabled prematurely', 
     const syntax = compileValidationRule({ ...source, unresolved: [] }, 'ems', canonicalCatalog, emsLibrary.metrics);
     assert.ok(syntax.compiled, JSON.stringify(syntax.diagnostics));
   }
+});
+
+test('parent analytics keeps each child’s configured definitions and report inputs separate', async () => {
+  const versions = Object.fromEntries(['parent', 'child'].map(organizationId => {
+    const compiled = { ...bundle(), validationVersionId: organizationId };
+    return [organizationId, { id: organizationId, version: 1, catalog_release_id: 'catalog', compiled_bundle: compiled,
+      compiled_sha256: compiledValidationBundleSha256(compiled) }];
+  }));
+  const reads = [];
+  const database = { query: async (sql, params) => {
+    if (sql.includes('from app_identity.active_configuration_bundle')) return [versions[params[0]]];
+    if (sql.includes('from clinical.report r')) {
+      reads.push({ organizationId: params[1], ids: params[0] });
+      return params[0].map(id => ({ id, created_at: context.timestamp, updated_at: context.timestamp,
+        form_id: 'form', form_version: 1, catalog_standard: 'NEMSIS', catalog_version: '1',
+        catalog_dataset: 'EMSDataSet', catalog_release_id: 'catalog', revision: '1', amendment: 0 }));
+    }
+    return [];
+  } };
+  const scope = { organizationId: 'parent', organizationIds: ['parent', 'child'],
+    organizationNames: { parent: 'Parent', child: 'Child' }, identifying: true, reports: 'all', defaultDataset: 'real' };
+  const library = await configuredAnalyticsLibrary(database, scope);
+  assert.equal(library.elements.length, 4);
+  const metric = library.elements.find(element => element.id === 'metric:child:metric');
+  assert.match(metric.label, /Child/);
+  const reports = ['parent', 'child'].map(organizationId => ({ id: `${organizationId}-report`, organizationId, values: [], revision: '1' }));
+  await contributeConfiguredDefinition(database, scope, reports, metric, library);
+  assert.deepEqual(reads, [{ organizationId: 'child', ids: ['child-report'] }]);
+  assert.equal(reports[0].values.length, 0);
+  assert.equal(reports[1].values[0].element, metric.id);
 });

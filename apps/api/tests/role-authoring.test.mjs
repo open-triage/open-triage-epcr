@@ -23,7 +23,7 @@ test("custom role creation normalizes input and atomically installs an immutable
       { key: "users:read", description: "View users", administrative: true, system_only: false, prerequisite_key: null },
       { key: "users:write", description: "Change users", administrative: true, system_only: false, prerequisite_key: "users:read" }
     ];
-    if (sql.includes("from app_identity.installation_owner")) return [{ owner: true }];
+    if (sql.includes("is_installation_superadmin")) return [{ owner: true }];
     return [];
   } };
   const service = new RoleAuthoringService({ transaction: async (isolation, work) => {
@@ -91,7 +91,7 @@ test("non-owners may preserve but cannot add or remove a capability they do not 
     if (sql.includes("from app_identity.capability capability")) return [
       { key: "users:read", description: "View users", administrative: true, system_only: false, prerequisite_key: null }
     ];
-    if (sql.includes("installation_owner")) return [{ owner: false }];
+    if (sql.includes("is_installation_superadmin")) return [{ owner: false }];
     return [];
   } }) }, { requireCapability: async () => nonOwnerSession });
   await assert.rejects(service.update("opaque-session", roleId, { displayName: "Dispatch", description: null,
@@ -110,7 +110,7 @@ test("deactivation atomically closes every assignment and records only stable re
     if (sql.includes("select definition.capability_key")) return [
       { capability_key: "users:read", description: "View users", administrative: true, system_only: false }
     ];
-    if (sql.includes("installation_owner")) return [{ owner: true }];
+    if (sql.includes("is_installation_superadmin")) return [{ owner: true }];
     if (sql.includes("update app_identity.user_role_assignment")) return [[
       { id: "50000000-0000-4000-8000-000000000001", ended_at: endedAt }
     ], 1];
@@ -145,7 +145,7 @@ test("deactivation enforces self-assignment and the actor capability ceiling bef
       if (sql.includes("select definition.capability_key")) return [
         { capability_key: "catalog:publish", description: "Publish catalog", administrative: true, system_only: false }
       ];
-      if (sql.includes("installation_owner")) return [{ owner }];
+      if (sql.includes("is_installation_superadmin")) return [{ owner }];
       return [];
     }
   }) }, sessions);
@@ -168,7 +168,7 @@ test("reactivation creates a new definition version and never restores assignmen
     if (sql.includes("from app_identity.capability capability")) return [
       { key: "users:read", description: "View users", administrative: true, system_only: false, prerequisite_key: null }
     ];
-    if (sql.includes("installation_owner")) return [{ owner: true }];
+    if (sql.includes("is_installation_superadmin")) return [{ owner: true }];
     if (sql.includes("update app_identity.role")) return [{ id: roleId }];
     return [];
   } };
@@ -195,7 +195,7 @@ test("reactivation enforces self-assignment and capability-ceiling protections b
       if (sql.includes("lower(display_name)")) return [];
       if (sql.includes("from app_identity.capability capability")) return [{ key: "catalog:publish",
         description: "Publish catalog", administrative: true, system_only: false, prerequisite_key: null }];
-      if (sql.includes("installation_owner")) return [{ owner: false }];
+      if (sql.includes("is_installation_superadmin")) return [{ owner: false }];
       return [];
     }
   }) }, sessions);

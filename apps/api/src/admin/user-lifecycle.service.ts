@@ -6,7 +6,7 @@ import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type TargetRow = {
-  id: string; display_name: string; username: string; active: boolean; revision: string | number; owner: boolean;
+  id: string; display_name: string; username: string; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
 };
 type RoleRow = { id: string; display_name: string; active: boolean; protected: boolean };
 
@@ -23,21 +23,21 @@ export class UserLifecycleService {
       return await this.dataSource.transaction(async (manager) => {
         const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
         // Serialize eligibility changes with ownership acceptance, which locks this row first.
-        await manager.query(`select organization_id from app_identity.installation_owner
-          where organization_id = $1 for update`, [actor.organization.id]);
+        await manager.query(`select user_id from app_identity.installation_owner for update`);
         const targets = await manager.query<TargetRow[]>(`
           select u.id, u.display_name, credential.username, u.active, u.revision,
+          exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
             exists (select 1 from app_identity.installation_owner owner_record
-              where owner_record.organization_id = u.organization_id and owner_record.user_id = u.id) as owner
+              where owner_record.user_id = u.id) as owner
           from app_identity.app_user u
           join app_identity.local_credential credential on credential.user_id = u.id
-          where u.organization_id = $1 and u.id = $2
+          where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1) and u.id = $2
           for update of u, credential
         `, [actor.organization.id, targetUserId]);
         const target = targets[0];
         if (!target) throw new NotFoundException("User was not found");
         if (target.id === actor.user.id) throw new ForbiddenException("Administrators cannot change their own account");
-        if (target.owner) throw new ForbiddenException("The installation owner cannot be changed here");
+        if (target.owner || target.superadmin) throw new ForbiddenException("The installation owner or superadmin cannot be changed here");
         if (Number(target.revision) !== command.expectedRevision) {
           throw new ConflictException("This user changed after it was loaded");
         }
@@ -52,7 +52,7 @@ export class UserLifecycleService {
           join app_identity.role_version_capability capability on capability.organization_id = version.organization_id
             and capability.role_id = version.role_id and capability.role_version_id = version.id
           join app_identity.capability definition on definition.key = capability.capability_key
-          where assignment.organization_id = $1 and assignment.user_id = $2 and assignment.ended_at is null
+          where app_identity.organization_group(assignment.organization_id) = app_identity.organization_group($1) and assignment.user_id = $2 and assignment.ended_at is null
             and definition.administrative
             and not (capability.capability_key = any($3::text[]))
         `, [actor.organization.id, target.id, actor.capabilities ?? []]);
@@ -63,7 +63,7 @@ export class UserLifecycleService {
           from app_identity.user_role_assignment assignment
           join app_identity.role role on role.organization_id = assignment.organization_id
             and role.id = assignment.role_id and not role.hidden
-          where assignment.organization_id = $1 and assignment.user_id = $2 and assignment.ended_at is null
+          where app_identity.organization_group(assignment.organization_id) = app_identity.organization_group($1) and assignment.user_id = $2 and assignment.ended_at is null
           order by role.id for update of assignment
         `, [actor.organization.id, target.id]);
         const currentRoleIds = currentRoleRows.map(({ id }) => id);
