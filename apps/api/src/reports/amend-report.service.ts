@@ -85,7 +85,7 @@ export class AmendReportService {
             nextSequence
           });
         }
-        const authors = await manager.query<Array<{ id: string }>>(`select id from app_identity.app_user
+        const authors = await manager.query<Array<{ id: string }>>(`select id from app_identity.agency_user
           where id = $1 and organization_id = $2 and active`, [command.authorId, report.organization_id]);
         if (!authors[0]) {
           throw new UnprocessableEntityException("authorId must be an active user in the report organization");

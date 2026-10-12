@@ -60,7 +60,7 @@ test("workload API validates scope, dataset, bounds, and item counting", async (
   assert.deepEqual(result.groups, [{ key: "completed", count: 2 }, { key: "new", count: 1 }]);
   assert.match(calls[0].sql, /r.synthetic=\$2/);
   assert.match(calls[0].sql, /r.documenting_user_id=\$4/);
-  assert.deepEqual(calls[0].params.slice(0,4), [session.organization.id, false, false, session.user.id]);
+  assert.deepEqual(calls[0].params.slice(0,4), [[session.organization.id], false, false, session.user.id]);
   for (const invalid of [definition("invalid"), { ...definition("status"), filters: {
     from: "2020-01-01", to: "2026-10-02", dataset: "real" } },
   { ...definition("status"), filters: { from: "2026-10-01", to: "2026-10-02", dataset: "invalid" } }])

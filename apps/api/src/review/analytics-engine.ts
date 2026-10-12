@@ -9,6 +9,7 @@ export interface AnalyticsOccurrence {
   clinicalTime: string | null;
 }
 export interface AnalyticsReport {
+  organizationId?: string;
   id: string; date: string; revision: string; values: AnalyticsOccurrence[];
 }
 export interface AnalyticsContribution {

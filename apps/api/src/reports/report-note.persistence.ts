@@ -111,7 +111,7 @@ export async function reportTextNotes(manager: Queryable, reportId: string): Pro
            author.display_name as author_display_name,
            note.server_received_at, note.updated_at
     from clinical.report_note note
-    join app_identity.app_user author
+    join app_identity.agency_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
     where note.report_id = $1
   `, [reportId]);
@@ -122,7 +122,7 @@ export async function reportTextNotes(manager: Queryable, reportId: string): Pro
            note.server_received_at, note.updated_at, note.content_type,
            note.byte_size, note.sha256, note.width, note.height, note.processing_state
     from clinical.report_photo_note note
-    join app_identity.app_user author
+    join app_identity.agency_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
     where note.report_id = $1
   `, [reportId]);
@@ -133,7 +133,7 @@ export async function reportTextNotes(manager: Queryable, reportId: string): Pro
            note.server_received_at, note.updated_at, note.content_type,
            note.byte_size, note.sha256, note.duration_milliseconds, note.processing_state
     from clinical.report_audio_note note
-    join app_identity.app_user author
+    join app_identity.agency_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
     where note.report_id = $1
   `, [reportId]);

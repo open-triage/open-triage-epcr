@@ -7,30 +7,10 @@ export async function eligibleReviewers(manager: Pick<EntityManager, "query">, o
   authorId: string | null, independent = false, candidateId?: string): Promise<EligibleReviewer[]> {
   return manager.query<Array<EligibleReviewer & { self_access: boolean }>>(`
     select u.id,u.display_name,
-      (exists (select 1 from app_identity.installation_owner owner
-        where owner.organization_id=u.organization_id and owner.user_id=u.id)
-       or exists (select 1 from app_identity.user_role_assignment a
-        join app_identity.role role on role.id=a.role_id and role.organization_id=a.organization_id
-        join app_identity.role_version rv on rv.id=role.current_version_id
-          and rv.role_id=role.id and rv.organization_id=role.organization_id
-        join app_identity.role_version_capability cap on cap.role_version_id=rv.id
-          and cap.role_id=role.id and cap.organization_id=role.organization_id
-        where a.user_id=u.id and a.organization_id=u.organization_id and a.ended_at is null
-          and role.active and role.assignable and cap.capability_key='review:all')) as all_access,
-      (exists (select 1 from app_identity.installation_owner owner
-        where owner.organization_id=u.organization_id and owner.user_id=u.id)
-       or exists (select 1 from app_identity.user_role_assignment a
-        join app_identity.role role on role.id=a.role_id and role.organization_id=a.organization_id
-        join app_identity.role_version rv on rv.id=role.current_version_id
-          and rv.role_id=role.id and rv.organization_id=role.organization_id
-        join app_identity.role_version_capability cap on cap.role_version_id=rv.id
-          and cap.role_id=role.id and cap.organization_id=role.organization_id
-        where a.user_id=u.id and a.organization_id=u.organization_id and a.ended_at is null
-          and role.active and role.assignable and cap.capability_key='review:self')) as self_access
-    from app_identity.app_user u
+      app_identity.user_has_capability(u.id, $1, 'review:all') as all_access,
+      app_identity.user_has_capability(u.id, $1, 'review:self') as self_access
+    from app_identity.agency_user u
     where u.organization_id=$1 and u.active and ($2::uuid is null or u.id=$2)
-      and exists (select 1 from app_identity.installation_owner installation
-        where installation.organization_id=u.organization_id)
     order by u.display_name,u.id`, [organizationId, candidateId ?? null]).then((rows) =>
     rows.filter((row) => (!independent || row.id !== authorId) &&
       (row.all_access || (authorId === row.id && row.self_access))));

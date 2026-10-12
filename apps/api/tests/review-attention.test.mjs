@@ -24,8 +24,8 @@ test('attention counts are request-time scoped, dataset separated, and administr
   assert.equal(own.responses, 2);
   assert.equal(own.reopened, 3);
   assert.equal(own.unavailableAssignees, undefined);
-  assert.deepEqual(calls[0].params, ['agency-a', false, false, 'person-a']);
-  assert.match(calls[0].sql, /i\.organization_id=\$1 and r\.organization_id=\$1 and r\.synthetic=\$2/);
+  assert.deepEqual(calls[0].params, [['agency-a'], false, false, 'person-a']);
+  assert.match(calls[0].sql, /i\.organization_id=any\(\$1::uuid\[\]\) and r\.organization_id=any\(\$1::uuid\[\]\) and r\.synthetic=\$2/);
   assert.match(calls[0].sql, /\(\$3::boolean or r\.documenting_user_id=\$4\)/);
   assert.match(calls[0].sql, /i\.assignee_id=\$4 and i\.status<>'completed'/);
   assert.match(calls[0].sql, /r\.documenting_user_id=\$4 and i\.status='awaiting-clinician'/);
@@ -35,8 +35,8 @@ test('attention counts are request-time scoped, dataset separated, and administr
   const admin = await service.attention('token');
   assert.equal(admin.dataset, 'synthetic');
   assert.deepEqual([admin.unavailableAssignees, admin.unavailableRoutes, admin.processingFailures], [4, 5, 6]);
-  assert.deepEqual(calls[1].params, ['agency-b', true, true, 'person-b']);
-  assert.deepEqual(calls[3].params, ['agency-b', true, true, 'person-b']);
+  assert.deepEqual(calls[1].params, [['agency-b'], true, true, 'person-b']);
+  assert.deepEqual(calls[3].params, [['agency-b'], true, true, 'person-b']);
   current = session(['review:self', 'review:admin']);
   assert.equal((await service.attention('token')).unavailableAssignees, undefined);
   assert.match(calls.at(-1).sql, /filter \(where false\)::text responses/);
@@ -62,7 +62,7 @@ test('attention queue uses the same report scope and rejects administrative filt
     const pair = calls.splice(0);
     assert.equal(pair.length, 3);
     for (const call of pair) {
-      assert.match(call.sql, /i\.organization_id=\$1 and r\.organization_id=\$1 and r\.synthetic=\$2/);
+      assert.match(call.sql, /i\.organization_id=any\(\$1::uuid\[\]\) and r\.organization_id=any\(\$1::uuid\[\]\) and r\.synthetic=\$2/);
       assert.match(call.sql, /\(\$3::boolean or r\.documenting_user_id=\$4\)/);
       assert.ok(call.sql.includes(clause));
     }
@@ -79,6 +79,6 @@ test('processing backlog applies the same report scope to both failed and uneval
   const service = new ReviewService({ async query(sql, params) { calls.push({ sql, params }); return []; } },
     { get: async () => session(['review:all', 'review:admin']) });
   assert.deepEqual((await service.backlog('token', 'synthetic')).work, []);
-  assert.deepEqual(calls[0].params, ['agency-a', true, true, 'person-a']);
+  assert.deepEqual(calls[0].params, [['agency-a'], true, true, 'person-a']);
   assert.equal((calls[0].sql.match(/\(\$3::boolean or r\.documenting_user_id=\$4\)/g) ?? []).length, 2);
 });

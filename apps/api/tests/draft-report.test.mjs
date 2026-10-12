@@ -212,7 +212,7 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
     if (normalized.includes("pg_advisory_xact_lock")) return [];
     if (normalized.includes("select * from clinical.command_receipt")) return [];
     if (normalized.includes("from clinical.report") && normalized.includes("for update")) return [report];
-    if (normalized.includes("from app_identity.app_user")) return [{ id: userId }];
+    if (normalized.includes("from app_identity.agency_user")) return [{ id: userId }];
     if (normalized.includes("clock_timestamp()")) return [{ received_at: new Date() }];
     if (normalized.includes("from clinical.draft_target_state") && normalized.includes("for update")) return [];
     if (normalized.includes("from catalog.element_definition")) return [{

@@ -39,7 +39,7 @@ function fixture({ incompatible = false, route = 'unassigned', eligible = true, 
     if (sql.includes('from clinical.review_criterion_route where organization_id=')) return route === 'unassigned'
       ? [] : [{ route, named_user_id: route === 'named' ? namedReviewerId : null,
         independent_review: independent }];
-    if (sql.includes('from app_identity.app_user u')) return eligible
+    if (sql.includes('from app_identity.agency_user u')) return eligible
       ? [{ id: params[1], display_name: 'Reviewer', all_access: allAccess, self_access: true }] : [];
     if (sql.includes('insert into clinical.review_work')) return [{ id: workId }];
     if (sql.includes('from clinical.review_work w join clinical.signed_snapshot')) return state === 'pending' ? [work] : [];

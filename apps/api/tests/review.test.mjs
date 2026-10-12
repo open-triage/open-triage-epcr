@@ -113,15 +113,15 @@ test("volume validates filters, binds both scope dimensions, and suppresses stal
   assert.equal(result.total, 2);
   assert.deepEqual(result.definition.filters, { from: "2026-10-01", to: "2026-10-02", dataset: "real" });
   assert.equal(result.population.unit, "patient-report");
-  assert.deepEqual(calls[1].params, ["2026-10-01", "2026-10-02", "org-a", false, false, "user-a"]);
-  assert.match(calls[1].sql, /source\.organization_id = \$3/);
+  assert.deepEqual(calls[1].params, ["2026-10-01", "2026-10-02", ["org-a"], false, false, "user-a"]);
+  assert.match(calls[1].sql, /source\.organization_id=any\(\$3::uuid\[\]\)/);
   assert.match(calls[1].sql, /source\.synthetic = \$4/);
   assert.match(calls[1].sql, /source\.documenting_user_id = \$6/);
   assert.match(calls[1].sql, /count\(source\.report_id\)/);
   current = session(["review:all", "clinical:demo"], "user-b", "org-b");
   const all = await service.volume("token", undefined, "2026-10-01", "2026-10-02");
   assert.equal(all.population.scope, "all");
-  assert.deepEqual(calls[4].params.slice(2), ["org-b", true, true, "user-b"]);
+  assert.deepEqual(calls[4].params.slice(2), [["org-b"], true, true, "user-b"]);
   stale = true;
   const before = calls.length;
   const withheld = await service.volume("token", "real", "2026-10-01", "2026-10-02");
@@ -152,7 +152,7 @@ test("review queue filters are scoped before pagination and report links", async
   assert.equal(result.total, 1);
   assert.equal(result.items[0].reportId, "report-a");
   assert.equal(result.items[0].version, 0);
-  assert.deepEqual(calls[0].params.slice(0, 9), ["org-a", false, false, "user-a", null,
+  assert.deepEqual(calls[0].params.slice(0, 9), [["org-a"], false, false, "user-a", null,
     "high", "new", "2026-10-01", "2026-10-02"]);
   assert.match(calls[0].sql, /r\.documenting_user_id=\$4/);
   assert.match(calls[1].sql, /limit \$11 offset \$12/);
@@ -256,7 +256,7 @@ test("Review routing is admin-only, versioned, replay-safe, and validates named 
     if (sql.includes("select version from clinical.review_criterion_route")) return [{ version: String(state.version) }];
     if (sql.includes("from clinical.review_criterion_route_history"))
       return history.filter((event) => event.command_id === params[1]);
-    if (sql.includes("from app_identity.app_user u")) return eligible ? [{ id: namedId,
+    if (sql.includes("from app_identity.agency_user u")) return eligible ? [{ id: namedId,
       display_name: "Reviewer", all_access: true, self_access: false }] : [];
     if (sql.includes("update clinical.review_criterion_route set")) {
       state.route = params[2]; state.named_user_id = params[3];
@@ -322,7 +322,7 @@ test('queue search and assignment filters stay scoped, parameterized, and identi
   await service.queue('token', { assignment: 'unassigned', search: 'PCR-123' });
   assert.match(calls[0].sql, /i.assignee_id is null/);
   assert.match(calls[0].sql, /eRecord.01/);
-  assert.match(calls[1].sql, /u.organization_id=i.organization_id/);
+  assert.match(calls[1].sql, /u.id=i.assignee_id/);
   await assert.rejects(service.queue('token', { assignment: 'anyone' }), BadRequestException);
   await assert.rejects(service.queue('token', { search: 'x'.repeat(121) }), BadRequestException);
 });

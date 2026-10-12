@@ -1,7 +1,7 @@
 import type { EntityManager } from "typeorm";
 import { BadRequestException } from "@nestjs/common";
 import type { AnalyticsCatalogPage, AnalyticsCatalogValue, AnalyticsElement, AnalyticsValue } from "@open-triage/contracts";
-import type { ReviewScope } from "./review-scope.js";
+import { reviewOrganizations, type ReviewScope } from "./review-scope.js";
 import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./review-fields.js";
 
 export const numericAggregations = ["mean", "median", "minimum", "maximum", "p90"] as const;
@@ -33,7 +33,7 @@ const catalogOccurrenceSql = (alias: string) => `jsonb_strip_nulls(jsonb_build_o
 // rooted in the same authorized, nonexpired report set. No query-date predicate.
 export const catalogSourceSql = `with scoped_reports as materialized (
   select r.id,r.catalog_release_id,r.organization_id,r.status,r.documenting_user_id
-  from clinical.report r where r.organization_id=$1::uuid and r.synthetic=$2::boolean
+  from clinical.report r where r.organization_id=any($1::uuid[]) and r.synthetic=$2::boolean
     and ($3::boolean or r.documenting_user_id=$4::uuid)
     and (r.expires_at is null or r.expires_at>now())
 ) , custom_definitions as materialized (
@@ -107,14 +107,14 @@ export const catalogSourceSql = `with scoped_reports as materialized (
     jsonb_build_object('code_display',case when $7::boolean then coalesce(u.display_name,r.documenting_user_id::text) else r.documenting_user_id::text end),
     '${userElement.id}',null::jsonb,'User','coded',
     jsonb_build_object('type','code','value',r.documenting_user_id::text),null::text
-  from scoped_reports r left join app_identity.app_user u on u.id=r.documenting_user_id and u.organization_id=r.organization_id
+  from scoped_reports r left join app_identity.app_user u on u.id=r.documenting_user_id
   where '${userElement.id}'=any($5::text[])
 )`;
 export function catalogParams(scope: ReviewScope, elementIds?: string[]) {
   const selected = elementIds ?? [...[...reviewFields, ...repeatedReviewFields].map((field) => field.id),
     "eMedications.06", userElement.id, "custom:*"];
   const elements = [...new Set([...selected, ...(selected.includes("eMedications.05") ? ["eMedications.06"] : [])])];
-  return [scope.organizationId, scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId,
+  return [reviewOrganizations(scope), scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId,
     elements,
     standardElements.filter((field) => field.kind === "numeric").map((field) => field.id), scope.identifying];
 }
@@ -152,7 +152,7 @@ export async function catalogElements(database: Pick<EntityManager, "query">, sc
     count(*) filter (where etimes_06 is not null or etimes_09 is not null)::text scene,
     count(*) filter (where etimes_09 is not null or etimes_11 is not null)::text transport
     from analytics.review_operational_time_source p join clinical.report r on r.id=p.report_id
-    where p.organization_id=$1 and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
+    where p.organization_id=any($1::uuid[]) and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
       and (r.expires_at is null or r.expires_at>now())`, catalogParams(scope).slice(0, 4)) : [];
   for (const key of ["response", "scene", "transport"] as const) if (Number(operational[0]?.[key]) > 0) {
     const field = standardElements.find((field) => field.id === `review.duration.${key}`)!;

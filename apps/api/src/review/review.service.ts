@@ -6,7 +6,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { mutationRows } from "../database/mutation-result.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { recordMediaAccess } from "../reports/report-note-collaboration.js";
-import { reviewScope } from "./review-scope.js";
+import { reviewScope, reviewTargetScope, reviewOrganizations } from "./review-scope.js";
 import { normalizedMetricEvidence, restrictedMetricInputs } from "./metric-evidence.js";
 import type { ReviewScope } from "./review-scope.js";
 import { reviewFields, repeatedReviewFields, operationalTimeFields } from "./review-fields.js";
@@ -37,13 +37,13 @@ function validDate(value: string | undefined): value is string {
 const uuid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-async function attachReportingDates(database: EntityManager, organizationId: string,
+async function attachReportingDates(database: EntityManager, organizationId: string | string[],
   sources: NonNullable<ReviewAnalysisResult["sources"]>): Promise<NonNullable<ReviewAnalysisResult["sources"]>> {
   const ids = [...new Set(sources.map((source) => source.reportId))];
   if (!ids.length) return sources;
   const rows = await database.query<Array<{ report_id: string; reporting_date: string }>>(`
     select report_id,reporting_date::text from analytics.review_volume_source
-    where organization_id=$1::uuid and report_id=any($2::uuid[])`, [organizationId, ids]);
+    where organization_id=any($1::uuid[]) and report_id=any($2::uuid[])`, [Array.isArray(organizationId) ? organizationId : [organizationId], ids]);
   const dates = new Map(rows.map((row) => [row.report_id, row.reporting_date]));
   return sources.map((source) => ({ ...source, reportingDate: dates.get(source.reportId) }));
 }
@@ -316,13 +316,13 @@ export class ReviewService implements OnModuleDestroy {
           and h.reason in ('relevant-amendment','reopened-by-assignment')
           and h.item_version < completion.item_version
       ) reopening on true
-      where i.organization_id=$1 and r.synthetic=$2
+      where i.organization_id=any($1::uuid[]) and r.synthetic=$2
         and ($3::boolean or r.documenting_user_id=$4)
         and i.first_matched_at >= $5::date
         and i.first_matched_at < ($6::date + interval '1 day')
         and (i.kind='overdue-unsigned' or r.status='signed')
       order by i.id limit 20001`,
-    [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+    [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
       definition.filters.from, definition.filters.to]);
     if (rows.length > 20000) throw new BadRequestException("Review workload exceeds the item limit");
     return reduceWorkload(rows, definition, scope.reports, scope.organizationId, observedAt);
@@ -331,11 +331,11 @@ export class ReviewService implements OnModuleDestroy {
   async analysisReviewFilters(token: string, requestedDataset?: string): Promise<ReviewAnalysisReviewFilters> {
     const scope = reviewScope(await this.sessions.get(token));
     const dataset = this.dataset(requestedDataset, scope);
-    const params = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId];
+    const params = [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId];
     const criteria = await this.database.query<Array<{ id: string }>>(`
       select distinct i.criterion_id id from clinical.review_item i
       join clinical.report r on r.id=i.report_id and r.organization_id=i.organization_id
-      where i.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+      where i.organization_id=any($1::uuid[]) and r.synthetic=$2 and r.status='signed'
         and i.kind='criterion' and ($3::boolean or r.documenting_user_id=$4)
       order by id limit 501`, params);
     const outcomes = await this.database.query<Array<{ id: string; label: string }>>(`
@@ -345,7 +345,7 @@ export class ReviewService implements OnModuleDestroy {
       join clinical.report r on r.id=i.report_id and r.organization_id=i.organization_id
       join clinical.review_outcome_revision revision
         on revision.option_id=h.outcome_option_id and revision.revision=h.outcome_revision
-      where i.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+      where i.organization_id=any($1::uuid[]) and r.synthetic=$2 and r.status='signed'
         and i.kind='criterion' and ($3::boolean or r.documenting_user_id=$4)
         and h.outcome_option_id is not null
       order by h.outcome_option_id,h.recorded_at desc,h.id desc limit 501`, params);
@@ -364,8 +364,8 @@ export class ReviewService implements OnModuleDestroy {
       select custom_definition_id, title, datatype, recurrence, identifying,
         semantic_count, datatype_count, recurrence_count, privacy_count, grouped
       from analytics.review_custom_dictionary
-      where organization_id = $1::uuid and ($2::boolean or not identifying)
-      order by title, custom_definition_id`, [scope.organizationId, scope.identifying]);
+      where organization_id=any($1::uuid[]) and ($2::boolean or not identifying)
+      order by title, custom_definition_id`, [reviewOrganizations(scope), scope.identifying]);
     return [...[...reviewFields, ...repeatedReviewFields, ...operationalTimeFields].map((field) => ({ ...field,
       operations: field.kind === "categorical" ? ["distribution" as const] :
         ["mean" as const, "median" as const, "minimum" as const, "maximum" as const] })),
@@ -581,7 +581,7 @@ export class ReviewService implements OnModuleDestroy {
     const reviewIds = reviewFilter ? await database.query<Array<{ report_id: string }>>(`
       select distinct i.report_id from clinical.review_item i
       join clinical.report r on r.id=i.report_id and r.organization_id=i.organization_id
-      where i.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+      where i.organization_id=any($1::uuid[]) and r.synthetic=$2 and r.status='signed'
         and ($3::boolean or r.documenting_user_id=$4)
         and r.reporting_date between $5::date and $6::date
         and i.kind='criterion'
@@ -591,7 +591,7 @@ export class ReviewService implements OnModuleDestroy {
           where h.organization_id=i.organization_id and h.item_id=i.id
             and h.outcome_option_id=$8))
       order by i.report_id limit 20001`,
-    [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+    [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
       from, to, reviewFilter.criterionId ?? null, reviewFilter.outcomeOptionId ?? null]) : null;
     if (reviewIds && reviewIds.length > 20000)
       throw new BadRequestException("Review criterion filter exceeds the report limit");
@@ -611,7 +611,7 @@ export class ReviewService implements OnModuleDestroy {
           on occurrence.report_id = source.report_id and occurrence.reporting_date = source.reporting_date
           and occurrence.element_id = $7::text
         where source.reporting_date between $1::date and $2::date
-          and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+          and source.organization_id=any($3::uuid[]) and source.synthetic = $4::boolean
           and ($5::boolean or source.documenting_user_id = $6::uuid)
           and ($9::text is null or ${filterField && "repeating" in filterField ?
             `exists (select 1 from analytics.review_repeated_field_source f
@@ -621,7 +621,7 @@ export class ReviewService implements OnModuleDestroy {
           and ($11::uuid[] is null or source.report_id=any($11::uuid[]))
         order by source.report_id, occurrence.group_ordinal, occurrence.element_ordinal,
           occurrence.element_occurrence_id limit 20001`,
-      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+      [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
         field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null,
         permittedReportIds]);
       if (rows.length > 20000) throw new BadRequestException("Review analysis exceeds the repeated-value limit");
@@ -630,7 +630,7 @@ export class ReviewService implements OnModuleDestroy {
         throw new BadRequestException("Select a medication dosage unit");
       const reduced = reduceRepeated(rows, definition, unit);
       return { definition, field: { ...metadata, unit }, population, freshness, ...reduced,
-        sources: await attachReportingDates(database, scope.organizationId, reduced.sources ?? []) };
+        sources: await attachReportingDates(database, reviewOrganizations(scope), reduced.sources ?? []) };
     }
     if (field.source === "custom") {
       const reportRows = await database.query<CustomReportRow[]>(`
@@ -639,12 +639,12 @@ export class ReviewService implements OnModuleDestroy {
             as standard_group_value
         from analytics.review_field_source_with_identity source
         where source.reporting_date between $1::date and $2::date
-          and source.organization_id=$3::uuid and source.synthetic=$4::boolean
+          and source.organization_id=any($3::uuid[]) and source.synthetic=$4::boolean
           and ($5::boolean or source.documenting_user_id=$6::uuid)
           and ($8::text is null or source.field_values ->> $8::text = $9::text)
           and ($10::uuid[] is null or source.report_id=any($10::uuid[]))
         order by source.report_id limit 20001`,
-      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
+      [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all",
         scope.userId, groupField?.source === "custom" ? null : groupField?.id ?? null,
         filterField?.source === "custom" ? null : filterField?.id ?? null,
         filterField?.source === "custom" ? null : filter?.value ?? null, permittedReportIds]);
@@ -677,20 +677,20 @@ export class ReviewService implements OnModuleDestroy {
         join analytics.review_volume_source report on report.report_id=c.report_id
           and report.reporting_date=c.reporting_date and report.organization_id=c.organization_id
         where report.reporting_date between $1::date and $2::date
-          and report.organization_id=$3::uuid and report.synthetic=$4::boolean
+          and report.organization_id=any($3::uuid[]) and report.synthetic=$4::boolean
           and ($5::boolean or report.documenting_user_id=$6::uuid)
           and c.custom_definition_id=any($7::uuid[])
           and ($8::uuid[] is null or c.report_id=any($8::uuid[]))
         order by c.report_id, c.group_ordinal nulls first, c.element_ordinal,
           c.element_occurrence_id limit 20001`,
-      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
+      [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all",
         scope.userId, ids, permittedReportIds]);
       if (occurrences.length > 20000) throw new BadRequestException("Review analysis exceeds the occurrence limit");
       if (occurrences.some((row) => row.categorical_value && row.categorical_value.length > 256))
         throw new BadRequestException("Custom category exceeds chart limits");
       const reduced = reduceCustom(reportRows, occurrences, definition, field, groupField, filterField);
       return { definition, field: metadata, population, freshness, ...reduced,
-        sources: await attachReportingDates(database, scope.organizationId, reduced.sources ?? []) };
+        sources: await attachReportingDates(database, reviewOrganizations(scope), reduced.sources ?? []) };
     }
     if (field.source === "operational-time") {
       // IDs come from the fixed allowlist; no client supplied SQL identifier is interpolated.
@@ -724,7 +724,7 @@ export class ReviewService implements OnModuleDestroy {
           on interval_source.report_id=source.report_id
           and interval_source.reporting_date=source.reporting_date
         where source.reporting_date between $1::date and $2::date
-          and source.organization_id=$3::uuid and source.synthetic=$4::boolean
+          and source.organization_id=any($3::uuid[]) and source.synthetic=$4::boolean
           and ($5::boolean or source.documenting_user_id=$6::uuid)
           and ($8::text is null or ${filterField && "repeating" in filterField ?
             `exists (select 1 from analytics.review_repeated_field_source f
@@ -733,7 +733,7 @@ export class ReviewService implements OnModuleDestroy {
             "source.field_values ->> $8::text = $9::text"})
           and ($10::uuid[] is null or source.report_id=any($10::uuid[]))
         order by source.report_id limit 20001`,
-      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+      [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
         groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null, permittedReportIds]);
       if (sourceRows.length > 20000) throw new BadRequestException("Review export exceeds the report limit");
       const sources: NonNullable<ReviewAnalysisResult["sources"]> = sourceRows.map((row) => ({
@@ -761,7 +761,7 @@ export class ReviewService implements OnModuleDestroy {
           on interval_source.report_id = source.report_id
           and interval_source.reporting_date = source.reporting_date
         where source.reporting_date between $1::date and $2::date
-          and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+          and source.organization_id=any($3::uuid[]) and source.synthetic = $4::boolean
           and ($5::boolean or source.documenting_user_id = $6::uuid)
           and ($8::text is null or ${filterField && "repeating" in filterField ?
             `exists (select 1 from analytics.review_repeated_field_source f
@@ -770,7 +770,7 @@ export class ReviewService implements OnModuleDestroy {
             "source.field_values ->> $8::text = $9::text"})
           and ($10::uuid[] is null or source.report_id=any($10::uuid[]))
         group by 1 order by 1 nulls first limit 101`,
-      [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+      [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
         groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null, permittedReportIds]);
       if (rows.length > 100) throw new BadRequestException("Review analysis has too many groups");
       return { definition, field: metadata, population, freshness, sources,
@@ -779,12 +779,12 @@ export class ReviewService implements OnModuleDestroy {
           values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null
             ? null : Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) })) };
     }
-    const params = [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all",
+    const params = [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all",
       scope.userId, field.id, groupField?.id ?? null, filterField?.id ?? null, filter?.value ?? null,
       permittedReportIds];
     const source = `from analytics.review_field_source_with_identity source
       where source.reporting_date between $1::date and $2::date
-        and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+        and source.organization_id=any($3::uuid[]) and source.synthetic = $4::boolean
         and ($5::boolean or source.documenting_user_id = $6::uuid)
         and ($9::text is null or ${filterField && "repeating" in filterField ?
           `exists (select 1 from analytics.review_repeated_field_source f
@@ -893,17 +893,17 @@ export class ReviewService implements OnModuleDestroy {
       from generate_series($1::date, $2::date, interval '1 day') days(date)
       left join analytics.review_volume_source source
         on source.reporting_date = days.date::date
-        and source.organization_id = $3::uuid and source.synthetic = $4::boolean
+        and source.organization_id=any($3::uuid[]) and source.synthetic = $4::boolean
         and ($5::boolean or source.documenting_user_id = $6::uuid)
       group by days.date order by days.date`,
-    [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
+    [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId]);
     const points = rows.map((row) => ({ date: row.date, count: Number(row.count) }));
     const sourceRows = await database.query<Array<{ report_id: string; reporting_date: string }>>(`
       select report_id,reporting_date::text from analytics.review_volume_source
-      where reporting_date between $1::date and $2::date and organization_id=$3::uuid
+      where reporting_date between $1::date and $2::date and organization_id=any($3::uuid[])
         and synthetic=$4::boolean and ($5::boolean or documenting_user_id=$6::uuid)
       order by report_id limit 20001`,
-    [from, to, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
+    [from, to, reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId]);
     if (sourceRows.length > 20000) throw new BadRequestException("Review export exceeds the report limit");
     return { definition, population, freshness, points,
       total: points.reduce((sum, point) => sum + point.count, 0),
@@ -1003,7 +1003,7 @@ export class ReviewService implements OnModuleDestroy {
 
   async report(token: string, id: string, requestedDataset?: string): Promise<ReviewSignedReport> {
     return this.database.transaction("REPEATABLE READ", async (manager) => {
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "report");
       const dataset = this.dataset(requestedDataset, scope);
       const report = await this.scopedReport(manager, scope, id, dataset);
       const groups = await manager.query<Array<{ id: string; parent_group_instance_id: string | null;
@@ -1083,7 +1083,7 @@ export class ReviewService implements OnModuleDestroy {
 
   async overdueDraft(token: string, itemId: string, requestedDataset?: string): Promise<ReviewOverdueDraft> {
     return this.database.transaction("REPEATABLE READ", async (manager) => {
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), itemId, "item");
       const dataset = this.dataset(requestedDataset, scope);
       const [row] = await manager.query<Array<{ id: string; catalog_release_id: string; form_version_id: string;
         created_at: Date | string; deadline_at: Date | string;
@@ -1132,7 +1132,7 @@ export class ReviewService implements OnModuleDestroy {
   async attention(token: string, requestedDataset?: string): Promise<ReviewAttentionResponse> {
     const scope = reviewScope(await this.sessions.get(token));
     const dataset = this.dataset(requestedDataset, scope);
-    const parameters = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId];
+    const parameters = [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId];
     const responseWhere = scope.identifying ? outstandingResponse : "false";
     const [counts] = await this.database.query<Array<{ total: string; assignments: string; responses: string;
       reopened: string; unavailable_assignees: string }>>(`
@@ -1144,7 +1144,7 @@ export class ReviewService implements OnModuleDestroy {
         count(*) filter (where i.assignee_id is null and i.recovery_reason is not null
           and i.status<>'completed')::text unavailable_assignees
       from clinical.review_item i join clinical.report r on r.id=i.report_id
-      where i.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+      where i.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
         and ((i.kind='criterion' and r.status='signed') or i.kind='overdue-unsigned')
         and ($3::boolean or r.documenting_user_id=$4)`, parameters);
     const summary: ReviewAttentionResponse = { dataset, asOf: new Date().toISOString(),
@@ -1154,15 +1154,15 @@ export class ReviewService implements OnModuleDestroy {
     if (!scope.administrator) return summary;
     const [[routes], [failures]] = await Promise.all([
       this.database.query<Array<{ total: string }>>(`select count(*)::text total
-        from clinical.review_criterion_route where organization_id=$1 and recovery_reason is not null`,
-      [scope.organizationId]),
+        from clinical.review_criterion_route where organization_id=any($1::uuid[]) and recovery_reason is not null`,
+      [reviewOrganizations(scope)]),
       this.database.query<Array<{ total: string }>>(`select count(distinct failures.report_id)::text total from (
         select w.report_id from clinical.review_work w join clinical.report r on r.id=w.report_id
-        where w.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+        where w.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
           and ($3::boolean or r.documenting_user_id=$4) and w.state='failed'
         union all
         select r.id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-        where r.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+        where r.organization_id=any($1::uuid[]) and r.synthetic=$2 and r.status='signed'
           and ($3::boolean or r.documenting_user_id=$4) and s.validation_version_id is null
       ) failures`, parameters),
     ]);
@@ -1201,11 +1201,11 @@ export class ReviewService implements OnModuleDestroy {
       throw new ForbiddenException("Review administration is required");
     for (const value of [filters.from, filters.to]) if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value))
       throw new BadRequestException("Invalid Review date");
-    const params = [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId,
+    const params = [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
       filters.criterion ?? null, filters.priority ?? null, filters.status ?? null,
       filters.from ?? null, filters.to ?? null, filters.search?.trim() || null];
     const assignmentWhere = filters.assignment === "mine" ? "and i.assignee_id=$4" : filters.assignment === "unassigned" ? "and i.assignee_id is null" : "";
-    const where = `i.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+    const where = `i.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
       and ((i.kind='criterion' and r.status='signed') or i.kind='overdue-unsigned')
       and ($3::boolean or r.documenting_user_id=$4)
       and ($5::uuid is null or i.criterion_id=$5) and ($6::text is null or i.priority=$6)
@@ -1221,7 +1221,7 @@ export class ReviewService implements OnModuleDestroy {
     const [counts, rows, assignmentCounts] = await Promise.all([
       this.database.query<Array<{ total: string }>>(`select count(*)::text total from clinical.review_item i
         join clinical.report r on r.id=i.report_id where ${where}`, params),
-      this.database.query<Array<{ id: string; report_id: string; criterion_id: string; priority: string;
+      this.database.query<Array<{ id: string; organization_id: string; report_id: string; criterion_id: string; priority: string;
         status: string; assignee_id: string | null; version: string; recovery_reason: string | null;
         active_match: boolean; clearance_pending: boolean; reopened: boolean; closure_reason: string | null;
         catalog_release_id: string; report_number: string | null; criterion_name: string | null; criterion_description: string | null; assignee_name: string | null;
@@ -1231,10 +1231,10 @@ export class ReviewService implements OnModuleDestroy {
         reporting_date: string | null; signed_at: Date | string | null; findings: unknown;
         outcome_option_id: string | null; outcome_revision: number | null;
         outcome_label: string | null; outcome_meaning: string | null }>>(`
-        select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
+        select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,i.organization_id,
           ${scope.identifying ? reviewReportNumberSql : "null"} report_number,
           ${reviewCriterionNameSql} criterion_name,${reviewCriterionDescriptionSql} criterion_description,
-          ${scope.identifying ? "(select u.display_name from app_identity.app_user u where u.id=i.assignee_id and u.organization_id=i.organization_id)" : "null"} assignee_name,
+          ${scope.identifying ? "(select u.display_name from app_identity.app_user u where u.id=i.assignee_id )" : "null"} assignee_name,
           i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,i.exception_code,
           r.reporting_date,r.catalog_release_id,s.signed_at,i.outcome_option_id,i.outcome_revision,
           outcome.label as outcome_label,outcome.meaning as outcome_meaning,
@@ -1269,6 +1269,8 @@ export class ReviewService implements OnModuleDestroy {
       assignmentCounts: { all: Number(assignmentCounts[0]?.all ?? 0), mine: Number(assignmentCounts[0]?.mine ?? 0), unassigned: Number(assignmentCounts[0]?.unassigned ?? 0) },
       asOf: new Date().toISOString(), items: rows.map((row) => ({
         id: row.id, reportId: row.report_id, criterionId: row.criterion_id, priority: row.priority,
+        ...(scope.organizationNames?.[row.organization_id] ? { organization: {
+          id: row.organization_id, name: scope.organizationNames[row.organization_id]! } } : {}),
         ...(row.report_number ? { reportNumber: row.report_number } : {}),
         ...(row.criterion_name ? { criterionName: row.criterion_name } : {}),
       ...(row.criterion_description ? { criterionDescription: row.criterion_description } : {}),
@@ -1290,7 +1292,7 @@ export class ReviewService implements OnModuleDestroy {
   }
 
   async item(token: string, id: string, requestedDataset?: string): Promise<ReviewItemDetail> {
-    const scope = reviewScope(await this.sessions.get(token));
+    const scope = await reviewTargetScope(this.database.manager, reviewScope(await this.sessions.get(token)), id, "item");
     const dataset = this.dataset(requestedDataset, scope);
     const rows = await this.database.query<Array<{ id: string; report_id: string; criterion_id: string;
       priority: "high" | "medium" | "low"; status: ReviewItemDetail["status"];
@@ -1307,7 +1309,7 @@ export class ReviewService implements OnModuleDestroy {
       select i.id,i.report_id,i.criterion_id,i.priority,i.status,i.assignee_id,i.version,
         ${scope.identifying ? reviewReportNumberSql : "null"} report_number,
         ${reviewCriterionNameSql} criterion_name,${reviewCriterionDescriptionSql} criterion_description,
-        ${scope.identifying ? "(select u.display_name from app_identity.app_user u where u.id=i.assignee_id and u.organization_id=i.organization_id)" : "null"} assignee_name,
+        ${scope.identifying ? "(select u.display_name from app_identity.app_user u where u.id=i.assignee_id )" : "null"} assignee_name,
         i.recovery_reason,i.active_match,i.clearance_pending,i.reopened,i.closure_reason,i.first_matched_at,i.kind,i.deadline_at,i.deadline_source,i.resolution_reason,i.exception_code,
         r.reporting_date,r.catalog_release_id,r.documenting_user_id,s.signed_at,i.outcome_option_id,i.outcome_revision,
         outcome.label as outcome_label,outcome.meaning as outcome_meaning,
@@ -1437,7 +1439,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("A valid overdue exception reason is required");
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "item");
       if (!scope.administrator) throw new ForbiddenException("Review administration is required");
       const dataset = this.dataset(command.dataset, scope);
       // Match the signing path's report -> item lock order.
@@ -1487,7 +1489,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review claim command");
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "item");
       if (scope.reports !== "all") throw new ForbiddenException("Review-all access is required to claim items");
       await manager.query(`select id from app_identity.organization where id=$1 for share`,
         [scope.organizationId]);
@@ -1662,7 +1664,7 @@ export class ReviewService implements OnModuleDestroy {
   }
 
   async reviewers(token: string, itemId?: string, requestedDataset?: string): Promise<ReviewEligibleReviewer[]> {
-    const scope = reviewScope(await this.sessions.get(token));
+    const scope = await reviewTargetScope(this.database.manager, reviewScope(await this.sessions.get(token)), itemId, "item");
     if (!scope.administrator && !itemId) throw new ForbiddenException("Review administration is required");
     let authorId: string | null = null;
     let independent = false;
@@ -1767,7 +1769,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review assignment command");
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), itemId, "item");
       if (!scope.administrator && !forwarding) throw new ForbiddenException("Review administration is required");
       await manager.query(`select id from app_identity.organization where id=$1 for share`,
         [scope.organizationId]);
@@ -1828,8 +1830,9 @@ export class ReviewService implements OnModuleDestroy {
     return this.item(token, itemId, command.dataset);
   }
 
-  async outcomes(token: string): Promise<ReviewOutcomeOption[]> {
-    const scope = reviewScope(await this.sessions.get(token));
+  async outcomes(token: string, itemId?: string, requestedDataset?: string): Promise<ReviewOutcomeOption[]> {
+    const scope = await reviewTargetScope(this.database.manager, reviewScope(await this.sessions.get(token)), itemId);
+    if (itemId) await this.item(token, itemId, requestedDataset);
     const rows = await this.database.query<Array<{ id: string; revision: number; label: string;
       meaning: string; active: boolean }>>(`
       select option.id,revision.revision,revision.label,revision.meaning,revision.active
@@ -1909,7 +1912,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review comment command");
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "item");
       if (!scope.identifying)
         throw new ForbiddenException("Review identifying access is required for unrestricted discussion");
       const dataset = this.dataset(command.dataset, scope);
@@ -1971,7 +1974,7 @@ export class ReviewService implements OnModuleDestroy {
         command.outcomeOptionId !== undefined)) throw new BadRequestException("Invalid Review progress command");
     await this.database.transaction(async (manager) => {
       await this.sessions.assertCsrf(token, csrfToken, manager);
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "item");
       await manager.query(`select id from app_identity.organization where id=$1 for share`,
         [scope.organizationId]);
       const dataset = this.dataset(command.dataset, scope);
@@ -2054,16 +2057,16 @@ export class ReviewService implements OnModuleDestroy {
       from (
         select w.id,w.report_id,w.state,w.attempts,w.last_error,w.created_at
         from clinical.review_work w join clinical.report r on r.id=w.report_id
-        where w.organization_id=$1 and r.organization_id=$1 and r.synthetic=$2
+        where w.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
           and ($3::boolean or r.documenting_user_id=$4) and w.state <> 'complete'
         union all
         select r.id,r.id,'unevaluated'::text,0,'No pinned published Validation version'::text,s.signed_at
       from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
-        where r.organization_id=$1 and r.synthetic=$2 and r.status='signed'
+        where r.organization_id=any($1::uuid[]) and r.synthetic=$2 and r.status='signed'
           and ($3::boolean or r.documenting_user_id=$4)
           and s.validation_version_id is null
       ) backlog order by backlog.created_at desc limit 100`,
-    [scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
+    [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId]);
     return { dataset, asOf: new Date().toISOString(), work: rows.map((row) => ({
       id: row.id, reportId: row.report_id, state: row.state, attempts: row.attempts,
       lastError: row.last_error, createdAt: new Date(row.created_at).toISOString(),
@@ -2089,7 +2092,7 @@ export class ReviewService implements OnModuleDestroy {
 
   async media(token: string, id: string, noteId: string, type: "photo" | "audio", requestedDataset?: string) {
     return this.database.transaction(async (manager) => {
-      const scope = reviewScope(await this.sessions.get(token, new Date(), false, manager));
+      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "report");
       if (!scope.identifying) throw new ForbiddenException("Review identifying access is required for media");
       await this.scopedReport(manager, scope, id, this.dataset(requestedDataset, scope));
       const table = type === "photo" ? "report_photo" : "report_audio";
