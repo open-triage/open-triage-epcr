@@ -1590,6 +1590,8 @@
   "analytics.savedUnavailable": "Sparade visualiseringar är inte tillgängliga. Försök igen.",
   "analytics.cancelUpdate": "Avbryt visualisering",
   "analytics.cancelled": "Uppdateringen av visualiseringen avbröts.",
+  "analytics.generating": "Genererar visualisering…",
+  "analytics.generatingHint": "Det kan ta en stund. Du kan avbryta uppdateringen.",
   "analytics.updating": "Uppdaterar… Föregående resultat behålls.",
   "analytics.unapplied": "Ej tillämpade val",
   "analytics.applied": "Alla val tillämpade",

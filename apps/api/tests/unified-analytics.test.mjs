@@ -168,3 +168,23 @@ test('CSV preserves every cell, source row, missingness, percentage context and 
   const records=unifiedAnalyticsCsv(result,contributions,'records'); assert.equal(records.split('\r\n').filter(row=>row.startsWith('"a",')).length,1);
   assert.match(records,/"b","2026-03-28".*"missing"/);
 });
+
+test('large daily categorical analytics stay within the interactive aggregation budget', () => {
+  // 20,000 reports, 100 series and 200 days exercise both public size limits.
+  // Rescanning the full population for every cell does 400 million visits.
+  let dateReads = 0;
+  const reports = Array.from({ length: 20000 }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 0, 1 + index % 200)).toISOString().slice(0, 10);
+    return { ...report(String(index), [occurrence(category.id, String(index % 100))]),
+      get date() { dateReads++; return date; } };
+  });
+  const start = performance.now();
+  const result = aggregateAnalytics(reports, definition({ metric: category.id,
+    from: '2026-01-01', through: '2026-07-19' }), category);
+  const elapsed = performance.now() - start;
+  assert.equal(result.cells.length, 20000);
+  assert.equal(result.completeness.valid, 20000);
+  assert.equal(result.cells.reduce((sum, cell) => sum + cell.count, 0), 20000);
+  assert.ok(dateReads <= reports.length * 5, `Repeated report date scans: ${dateReads}`);
+  assert.ok(elapsed < 2000, `Aggregation took ${elapsed.toFixed(0)}ms (budget 2000ms)`);
+});

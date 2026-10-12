@@ -154,7 +154,8 @@ export function aggregateAnalytics(reports: AnalyticsReport[], definition: Analy
   const contributions: AnalyticsContribution[] = [];
   const series = new Map<string, AnalyticsResult["series"][number]>();
   const groupLabels = new Map<string, string | null>();
-  const memberships = new Map<string, Array<{ report: string; date: string; value: number | AnalyticsValue[] | null; state: string }>>();
+  type Member = { report: string; date: string; value: number | AnalyticsValue[] | null; state: string };
+  const memberships = new Map<string, Member[]>();
   const completeness = countsForMetric();
   const overallNumbers: number[] = [];
   const matched: AnalyticsReport[] = [];
@@ -205,12 +206,31 @@ export function aggregateAnalytics(reports: AnalyticsReport[], definition: Analy
   const ordered = [...series.values()].sort((a, b) => a.id.localeCompare(b.id));
   if (ordered.length > 100 || ordered.length * Math.max(1, buckets.length) > 20000)
     throw new BadRequestException("Analysis exceeds the 100-series or 20,000-cell limit; narrow the query");
-  const populationByBucket = new Map(buckets.map((bucket) => [bucket.key,
-    matched.filter((report) => report.date >= bucket.from && report.date <= bucket.through).length]));
+  // Index dates and memberships once. A categorical chart can have 20,000
+  // cells; filtering the entire group for each cell scales with cells × reports.
+  const bucketByDate = new Map<string, string>();
+  for (const bucket of buckets) for (let date = bucket.from; date <= bucket.through; date = nextDay(date))
+    bucketByDate.set(date, bucket.key);
+  const populationByBucket = new Map(buckets.map((bucket) => [bucket.key, 0]));
+  for (const report of matched) {
+    const key = bucketByDate.get(report.date);
+    if (key) populationByBucket.set(key, populationByBucket.get(key)! + 1);
+  }
+  const bucketMembers = new Map<string, Map<string, Member[]>>();
+  if (buckets.length) for (const [group, members] of memberships) {
+    const grouped = new Map<string, typeof members>();
+    for (const member of members) {
+      const key = bucketByDate.get(member.date);
+      if (!key) continue;
+      const entries = grouped.get(key) ?? [];
+      entries.push(member); grouped.set(key, entries);
+    }
+    bucketMembers.set(group, grouped);
+  }
   const cells: AnalyticsResult["cells"] = [];
   for (const item of ordered) for (const bucket of buckets.length ? buckets : [null]) {
-    const inBucket = (date: string) => !bucket || date >= bucket.from && date <= bucket.through;
-    const members = (memberships.get(valueKey(item.group)) ?? []).filter((member) => inBucket(member.date));
+    const groupKey = valueKey(item.group);
+    const members = (bucket ? bucketMembers.get(groupKey)?.get(bucket.key) : memberships.get(groupKey)) ?? [];
     const counts = countsForMetric();
     for (const member of members) { counts.total++; countState(counts, member.state); }
     const count = metric.datatype === "records" ? members.length : item.category ? members.filter((member) =>

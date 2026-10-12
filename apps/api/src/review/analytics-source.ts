@@ -17,6 +17,12 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
   definition: AnalyticsDefinition, fields: AnalyticsElement[], additionalElements: string[] = []): Promise<AnalyticsReport[]> {
   const ids = [...new Set([definition.metric, definition.groupBy, ...definition.filters.map((filter) => filter.element), ...additionalElements].filter((id): id is string => !!id && id !== "records"))];
   const selected = fields.filter((field) => !field.configured && ids.includes(field.id));
+  // Record counts and configured metrics need only the authorized population.
+  // Avoid constructing all scalar JSON and operational intervals for every report
+  // when the selected dimensions use neither source (also applies to picker counts).
+  const scalarFields = selected.filter((field) => field.source !== "custom" && !field.repeating && !field.interval && field.id !== userElement.id);
+  const needsTimes = selected.some((field) => field.interval);
+  const needsUser = selected.some((field) => field.id === userElement.id);
   const params = [reviewOrganizations(scope), scope.defaultDataset === "synthetic", scope.reports === "all", scope.userId, definition.from, definition.through];
   const rows = await database.query<Array<{ report_id: string; organization_id: string; reporting_date: string; projected_at: Date;
     documenting_user_id: string; documenting_user_label: string;
@@ -24,14 +30,14 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
     etimes_03: Date | null; etimes_06: Date | null; etimes_09: Date | null; etimes_11: Date | null;
     etimes_03_absent: boolean; etimes_06_absent: boolean; etimes_09_absent: boolean; etimes_11_absent: boolean }>>(`
     select p.report_id,p.organization_id,p.reporting_date::text,p.projected_at,r.revision::text,
-      r.documenting_user_id,case when $7::boolean then coalesce(u.display_name,r.documenting_user_id::text) else r.documenting_user_id::text end documenting_user_label,
+      r.documenting_user_id,case when $7::boolean then ${needsUser ? "coalesce(u.display_name,r.documenting_user_id::text)" : "r.documenting_user_id::text"} else r.documenting_user_id::text end documenting_user_label,
       coalesce((select max(a.sequence) from clinical.amendment a where a.report_id=r.id),0) amendment,
-      f.field_values,f.field_absences,t.etimes_03,t.etimes_06,t.etimes_09,t.etimes_11,
-      t.etimes_03_absent,t.etimes_06_absent,t.etimes_09_absent,t.etimes_11_absent
+      ${scalarFields.length ? "f.field_values,f.field_absences" : "'{}'::jsonb field_values,'{}'::jsonb field_absences"}
+      ${needsTimes ? ",t.etimes_03,t.etimes_06,t.etimes_09,t.etimes_11,t.etimes_03_absent,t.etimes_06_absent,t.etimes_09_absent,t.etimes_11_absent" : ""}
     from analytics.review_volume_source p join clinical.report r on r.id=p.report_id and r.organization_id=p.organization_id
-    left join app_identity.app_user u on u.id=r.documenting_user_id
-    join analytics.review_field_source_with_identity f on f.report_id=p.report_id and f.reporting_date=p.reporting_date
-    join analytics.review_operational_time_source t on t.report_id=p.report_id and t.reporting_date=p.reporting_date
+    ${needsUser ? "left join app_identity.app_user u on u.id=r.documenting_user_id" : ""}
+    ${scalarFields.length ? "join analytics.review_field_source_with_identity f on f.report_id=p.report_id and f.reporting_date=p.reporting_date" : ""}
+    ${needsTimes ? "join analytics.review_operational_time_source t on t.report_id=p.report_id and t.reporting_date=p.reporting_date" : ""}
     where p.organization_id=any($1::uuid[]) and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
       and r.status='signed' and (r.expires_at is null or r.expires_at>now())
       and p.reporting_date between $5::date and $6::date

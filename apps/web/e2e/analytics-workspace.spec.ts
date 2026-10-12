@@ -313,3 +313,76 @@ test('personal visualization parameters save, survive reload, restore controls a
   await expect(page.getByRole('combobox', { name: 'Saved visualizations', exact: true }).getByRole('option')).toHaveCount(1);
   await expect(page.locator('.analytics-saved-controls')).not.toContainText('Second view');
 });
+
+test('slow visualization requests show prominent progress until success or failure', async ({ page }) => {
+  const state = await setupAnalytics(page);
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  for (const retained of [false, true]) {
+    let release = () => {};
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    state.queryHook = async (route, definition) => {
+      await pending;
+      await route.fulfill(retained ? { status: 503, json: { message: 'Analytics is unavailable' } }
+        : { json: analyticsFixture(definition) });
+    };
+    await page.getByRole('button', { name: 'Update visualization' }).click();
+    const progress = page.locator('.analytics-progress');
+    await expect(progress).toContainText('Generating visualization…');
+    await expect(page.locator('.analytics-apply').getByRole('status')).toHaveText('Generating visualization…');
+    await expect(page.getByRole('button', { name: 'Cancel visualization' })).toBeEnabled();
+    await expect(page.locator('.analytics-result')).toHaveAttribute('aria-busy', 'true');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await progress.scrollIntoViewIfNeeded();
+      await expect(progress).toBeInViewport();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: `/tmp/analytics-progress-${retained}-${width}.png`, fullPage: true });
+    }
+    // A delayed response must leave cancellation and the status available.
+    await page.waitForTimeout(1200);
+    await expect(progress).toBeVisible();
+    if (retained) await expect(page.locator('.analytics-result').getByRole('img')).toBeVisible();
+    release();
+    await expect(progress).toBeHidden();
+    await expect(page.locator('.analytics-result')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('.analytics-result').getByRole('img')).toBeVisible();
+    if (retained) await expect(page.locator('.analytics-result').getByRole('alert')).toBeVisible();
+  }
+});
+
+test('large charts reuse formatters instead of constructing them for every cell', async ({ page }) => {
+  const state = await setupAnalytics(page);
+  state.queryHook = async (route, definition) => {
+    const result = analyticsFixture(definition);
+    result.buckets = Array.from({ length: 100 }, (_, index) => {
+      const day = new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10);
+      return { key: day, from: day, through: day };
+    });
+    result.series = Array.from({ length: 10 }, (_, index) => ({ ...result.series[0]!, id: String(index) }));
+    result.cells = result.series.flatMap(series => result.buckets.map(bucket => ({
+      ...result.cells[0]!, series: series.id, bucket: bucket.key,
+    })));
+    await route.fulfill({ json: result });
+  };
+  await page.getByRole('tab', { name: 'Analytics', exact: true }).click();
+  await page.evaluate(() => {
+    const counts = { number: 0, date: 0 };
+    Object.assign(window, { analyticsFormatterCounts: counts });
+    Intl.NumberFormat = new Proxy(Intl.NumberFormat, { construct(target, args) {
+      counts.number++; return Reflect.construct(target, args);
+    } });
+    Intl.DateTimeFormat = new Proxy(Intl.DateTimeFormat, { construct(target, args) {
+      counts.date++; return Reflect.construct(target, args);
+    } });
+  });
+  await page.getByRole('button', { name: 'Update visualization' }).click();
+  await expect(page.locator('.analytics-chart')).toBeVisible();
+  await expect(page.locator('.analytics-sr-only tbody tr')).toHaveCount(1000);
+  await expect(page.locator('.analytics-sr-only tbody tr').first()).toContainText('Jan 1');
+  const counts = await page.evaluate(() => (window as unknown as {
+    analyticsFormatterCounts: { number: number; date: number };
+  }).analyticsFormatterCounts);
+  // Allow framework rerenders and workspace formatting, but never per-cell constructors.
+  expect(counts.number).toBeLessThan(50);
+  expect(counts.date).toBeLessThan(50);
+});

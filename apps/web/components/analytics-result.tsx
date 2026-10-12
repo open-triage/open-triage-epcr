@@ -21,8 +21,19 @@ function wrapChartLabel(label: string, characters: number) {
 export function AnalyticsResultView({ result, language }: { result: AnalyticsResult; language: AgencyLanguage }) {
   const region = useRegionalFormat();
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, `analytics.${key}`, parameters);
-  const number = (value: number | null) => value === null ? t("unavailableValue") : new Intl.NumberFormat(region ?? language, { maximumFractionDigits: 2 }).format(value);
-  const date = (value: string) => new Intl.DateTimeFormat(region ?? language, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`));
+  // The accessible table formats every cell too. Constructing Intl formatters
+  // per value makes large charts spend seconds formatting before they can paint.
+  const numberFormatter = new Intl.NumberFormat(region ?? language, { maximumFractionDigits: 2 });
+  const dateFormatter = new Intl.DateTimeFormat(region ?? language, { month: "short", day: "numeric", timeZone: "UTC" });
+  const number = (value: number | null) => value === null ? t("unavailableValue") : numberFormatter.format(value);
+  const dates = new Map<string, string>();
+  const date = (value: string) => {
+    let label = dates.get(value);
+    if (label === undefined) { label = dateFormatter.format(new Date(`${value}T12:00:00Z`)); dates.set(value, label); }
+    return label;
+  };
+  const seriesById = new Map(result.series.map((series) => [series.id, series]));
+  const bucketsByKey = new Map(result.buckets.map((bucket) => [bucket.key, bucket]));
   const seriesLabel = (series: AnalyticsResult["series"][number]) => [result.group ? series.groupLabel ?? t("notDocumented") : null,
     (result.metric.configured?.kind === "rule" ? t(`outcome.${result.definition.outcome}`) : series.categoryLabel) ?? (result.metric.kind === "categorical" && result.metric.datatype !== "records" ? t("notDocumented") : null)]
     .filter(Boolean).join(" · ") || (result.metric.datatype === "records" ? t("records") : result.metric.label);
@@ -33,8 +44,8 @@ export function AnalyticsResultView({ result, language }: { result: AnalyticsRes
     <th>{t("series")}</th>{result.buckets.length > 0 && <th>{t("period")}</th>}<th>{t("value")}{unit && ` (${unit})`}</th>
     <th>{t("count")}</th><th>{t("numerator")}</th><th>{t("denominator")}</th><th>{t("missing")}</th><th>{t("absent")}</th><th>{t("invalid")}</th>{result.metric.configured && <><th>{t("notApplicable")}</th><th>{t("failed")}</th></>}
   </tr></thead><tbody>{result.cells.map((cell) => {
-    const series = result.series.find((series) => series.id === cell.series)!;
-    const bucket = result.buckets.find((bucket) => bucket.key === cell.bucket);
+    const series = seriesById.get(cell.series)!;
+    const bucket = cell.bucket === null ? undefined : bucketsByKey.get(cell.bucket);
     return <tr key={`${cell.series}:${cell.bucket}`}><th scope="row">{seriesLabel(series)}</th>
       {result.buckets.length > 0 && <td>{bucket ? `${date(bucket.from)} – ${date(bucket.through)}` : ""}</td>}
       <td>{number(cell.value)}</td><td>{number(cell.count)}</td><td>{number(cell.numerator)}</td><td>{number(cell.denominator)}</td>

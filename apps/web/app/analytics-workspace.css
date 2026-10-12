@@ -83,3 +83,10 @@
   .analytics-table { max-height: 500px; }
   .analytics-chart-scroll { flex: none; height: 420px; }
 }
+
+.analytics-progress { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 16px; margin-bottom: 16px; border: 2px solid var(--green); border-radius: 6px; background: var(--paper); color: var(--text-color); box-shadow: 0 2px 8px rgb(0 0 0 / 12%); }
+.analytics-progress strong { display: block; font-size: var(--text-control); }
+.analytics-progress span { font-size: var(--text-body); }
+.analytics-progress-spinner { width: 24px; height: 24px; flex-shrink: 0; border: 3px solid var(--line); border-top-color: var(--green); border-radius: 50%; animation: analytics-progress-spin 1s linear infinite; }
+@keyframes analytics-progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .analytics-progress-spinner { animation: none; } }

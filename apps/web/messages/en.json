@@ -1592,6 +1592,8 @@
   "analytics.savedUnavailable": "Saved visualizations are unavailable. Please retry.",
   "analytics.cancelUpdate": "Cancel visualization",
   "analytics.cancelled": "Visualization update cancelled.",
+  "analytics.generating": "Generating visualization…",
+  "analytics.generatingHint": "This may take a moment. You can cancel the update.",
   "analytics.updating": "Updating… Previous result retained.",
   "analytics.unapplied": "Unapplied choices",
   "analytics.applied": "All choices applied",

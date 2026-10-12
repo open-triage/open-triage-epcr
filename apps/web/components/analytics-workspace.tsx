@@ -160,11 +160,15 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
             <button type="button" aria-label={t("removeFilter", { element: fields[filter.element]?.label ?? filter.element })} onClick={() => update({ filters: draft.filters.filter((other) => other.element !== filter.element) })}>×</button></div>)}
           <button type="button" className="analytics-add-filter" onClick={() => openPicker({ purpose: "filter" })}>{t("addFilter")}</button></div>
       </fieldset>
-      <div className="analytics-apply"><p role="status">{busy ? t("updating") : dirty ? t("unapplied") : t("applied")}</p>
+      <div className="analytics-apply"><p role="status">{busy ? t("generating") : dirty ? t("unapplied") : t("applied")}</p>
         <button className="button-primary" type={busy ? "button" : "submit"} onClick={busy ? () => void apply() : undefined}
           disabled={!online || exporting || !busy && (invalidDates || !!invalidQualifier)}>{t(busy ? "cancelUpdate" : "update")}<span aria-hidden="true">{busy ? "×" : "→"}</span></button></div>
     </form>
     <section className="analytics-result" aria-label={t("result")} aria-busy={busy}>
+      {busy && <div className="analytics-progress" aria-hidden="true">
+        <span className="analytics-progress-spinner" />
+        <div><strong>{t("generating")}</strong><span>{t(result ? "updating" : "generatingHint")}</span></div>
+      </div>}
       <header className="analytics-result-header"><div>
         <p className="analytics-caption">{result ? t(`visualization.${result.definition.visualization}`) : t("title")}{result?.group && ` · ${result.group.label}`}</p>
         <h2>{result ? `${t(`aggregation.${result.definition.aggregation}`)} · ${result.metric.id === "records" ? t("records") : result.metric.label}` : t("start")}</h2>
@@ -182,7 +186,7 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
             {result.metric.configured && <><br />{t("notApplicable")}: {formatted(result.completeness.notApplicable ?? 0)} · {t("failed")}: {formatted(result.completeness.failed ?? 0)}</>}</div></div>
         <AnalyticsResultView result={result} language={language} />
         <AnalyticsEvidence result={result} language={language} />
-      </> : <p className="analytics-empty">{t("instructions")}</p>}
+      </> : !busy && <p className="analytics-empty">{t("instructions")}</p>}
       {draft.visualization === "line" && <div className="analytics-time-grouping"><label>{t("timeGrouping")}<select value={draft.timeGrouping} disabled={!online || exporting} onChange={(event) => update({ timeGrouping: event.target.value as AnalyticsDefinition["timeGrouping"] })}>
         {(["day", "week", "month"] as const).map((value) => <option key={value} value={value}>{t(`time.${value}`)}</option>)}
       </select></label><small>{t("calendar")}</small></div>}
