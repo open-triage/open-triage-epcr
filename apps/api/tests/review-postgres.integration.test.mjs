@@ -167,7 +167,7 @@ integrationTest("Review claim stores one versioned assignment and immutable hist
     { status: 404 });
 });
 
-integrationTest("Review administration reassigns eligible users and recovers disabled assignees", async (t) => {
+integrationTest("Review administration reassigns eligible users and recovers disabled assignees across bounded batches", async (t) => {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   t.after(async () => { await client.query("rollback"); await client.end(); });
@@ -176,8 +176,11 @@ integrationTest("Review administration reassigns eligible users and recovers dis
   const candidate = (await client.query(`select r.id,r.organization_id,r.documenting_user_id,r.synthetic
     from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     where r.status='signed' and exists (select 1 from app_identity.installation_owner owner) limit 1`)).rows[0];
-  if (!candidate) return t.skip("No signed report with a configured organization is available");
-  const itemId = randomUUID();
+  if (!candidate) {
+    assert.ok(!process.env.REQUIRE_DATABASE_INTEGRATION, "required integration setup must provide a signed report");
+    return t.skip("No signed report with a configured organization is available");
+  }
+  const itemId = "ffffffff-ffff-4fff-bfff-ffffffffffff";
   const criterionId = randomUUID();
   await client.query(`insert into validation.rule_identity (id,organization_id,created_by)
     values ($1,$2,$3)`, [criterionId, candidate.organization_id, candidate.documenting_user_id]);
@@ -185,6 +188,14 @@ integrationTest("Review administration reassigns eligible users and recovers dis
     (id,organization_id,report_id,criterion_id,priority,first_matched_at)
     values ($1,$2,$3,$4,'medium',now())`,
   [itemId, candidate.organization_id, candidate.id, criterionId]);
+  const reviewerIds = [randomUUID(), randomUUID()];
+  for (const userId of reviewerIds) {
+    await client.query(`insert into app_identity.app_user(id,organization_id,display_name)
+      values($1,$2,'Assignment recovery reviewer')`, [userId,candidate.organization_id]);
+    await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by)
+      select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='reviewer'`,
+    [candidate.organization_id,userId,candidate.documenting_user_id]);
+  }
   await client.query("set local role open_triage_api_runtime");
   const actor = candidate.documenting_user_id;
   const session = { user: { id: actor }, organization: { id: candidate.organization_id },
@@ -195,9 +206,9 @@ integrationTest("Review administration reassigns eligible users and recovers dis
   const dataset = candidate.synthetic ? "synthetic" : "real";
   const eligible = await service.reviewers("unused", itemId, dataset);
   const ownerId = (await client.query(`select user_id from app_identity.installation_owner`)).rows[0]?.user_id;
-  const nonOwner = eligible.find((user) => user.id !== ownerId);
-  if (!nonOwner) return t.skip("No eligible non-owner reviewer is available in the local organization");
-  const firstReviewer = eligible.find((user) => user.id !== nonOwner.id) ?? nonOwner;
+  const firstReviewer = eligible.find((user) => user.id === reviewerIds[0]);
+  const nonOwner = eligible.find((user) => user.id === reviewerIds[1]);
+  assert.ok(firstReviewer && nonOwner, "dedicated ordinary reviewers must be eligible");
   const first = await service.assign("unused", itemId, { commandId: randomUUID(), expectedVersion: 0,
     dataset, assigneeId: firstReviewer.id }, "valid");
   assert.equal(first.version, 1);
@@ -212,8 +223,23 @@ integrationTest("Review administration reassigns eligible users and recovers dis
     assert.equal(second.assignmentHistory.length, 2);
   }
   const latest = await service.item("unused", itemId, dataset);
+  // Force the target beyond a full worker batch. Random UUID ordering and an
+  // incidental seed size must not determine whether recovery gets exercised.
+  await client.query(`insert into clinical.review_item
+    (id,organization_id,report_id,criterion_id,priority,first_matched_at,assignee_id)
+    select ('00000000-0000-4000-9000-' || lpad(n::text,12,'0'))::uuid,
+      $1,$2,gen_random_uuid(),'medium',now(),$3 from generate_series(1,101) n`,
+  [candidate.organization_id,candidate.id,latest.assigneeId]);
   await client.query("update app_identity.app_user set active=false where id=$1", [latest.assigneeId]);
+  const backlog = Number((await client.query("select count(*) from clinical.review_item where assignee_id is not null")).rows[0].count);
   await reconcileReviewAssignments(database);
+  assert.equal((await service.item("unused", itemId, dataset)).assigneeId, latest.assigneeId,
+    "one bounded batch must leave the deliberately late target for a later pass");
+  for (let remaining = backlog; remaining > 0; remaining -= 100) {
+    await reconcileReviewAssignments(database);
+  }
+  assert.equal(Number((await client.query("select count(*) from clinical.review_item where assignee_id=$1",
+    [latest.assigneeId])).rows[0].count), 0, "all batches recover the disabled assignee");
   const recovered = await service.item("unused", itemId, dataset);
   assert.equal(recovered.assigneeId, null);
   assert.equal(recovered.recoveryReason, "assignee-ineligible");
