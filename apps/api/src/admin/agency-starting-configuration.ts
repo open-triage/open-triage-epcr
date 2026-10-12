@@ -1,5 +1,5 @@
 import { UnprocessableEntityException } from "@nestjs/common";
-import type { ClinicianSession, CreateAgencyCommand } from "@open-triage/contracts";
+import type { AuthenticatedSession, CreateAgencyCommand } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
@@ -10,7 +10,7 @@ import { CanonicalPackageService } from "./canonical-package.service.js";
 
 /** Called only inside owner-authorized agency creation. All writes join its transaction. */
 export async function installStartingConfiguration(database: DataSource, manager: EntityManager,
-  actor: ClinicianSession, token: string, organization: { id: string; name: string }, command: CreateAgencyCommand) {
+  actor: AuthenticatedSession, token: string, organization: { id: string; name: string }, command: CreateAgencyCommand) {
   if (!(actor.installationOwner || actor.installationSuperadmin)) throw new UnprocessableEntityException("Only the installation owner or a superadmin can copy starting configurations");
   const formId = command.startingFormVersionId;
   const validationId = command.startingValidationVersionId;

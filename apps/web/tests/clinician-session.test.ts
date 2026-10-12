@@ -129,9 +129,9 @@ test("server session adapters send credentials and map authentication failures",
     assert.deepEqual(await changeClinicianPassword("old password", "new password value", "csrf-proof"), session);
     await endClinicianSession("csrf-proof");
     assert.deepEqual(requests.map(({ url, init }) => [url, init?.method]), [
-      ["http://localhost:3001/api/sessions", "POST"],
-      ["http://localhost:3001/api/sessions/password", "POST"],
-      ["http://localhost:3001/api/sessions/current", "DELETE"],
+      ["/api/sessions", "POST"],
+      ["/api/sessions/password", "POST"],
+      ["/api/sessions/current", "DELETE"],
     ]);
     assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 
@@ -146,4 +146,14 @@ test("server session adapters send credentials and map authentication failures",
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
   }
+});
+
+
+test("installation sessions persist without an agency but unscoped ordinary sessions are rejected", () => {
+  const storage = memoryStorage();
+  const installation = { ...session, organization: null, installationOwner: true };
+  storeClinicianSession(storage, installation);
+  assert.deepEqual(loadClinicianSession(storage, new Date("2026-09-03T21:00:00.000Z")), installation);
+  storage.setItem(CLINICIAN_SESSION_STORAGE_KEY, JSON.stringify({ ...installation, installationOwner: false }));
+  assert.equal(loadClinicianSession(storage, new Date("2026-09-03T21:00:00.000Z")), null);
 });

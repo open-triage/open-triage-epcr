@@ -30,9 +30,13 @@ again before sending commands in another agency.
 A parent cannot be changed after creation. Moving historical patient data between
 agencies requires a separate migration. Disable an agency to withdraw access;
 there is no destructive agency deletion. Disabling a parent also withdraws access
-to its children. The owner's home agency must stay active. Ownership nomination
-and acceptance remain in the owner's home agency's user directory, and transfer
-authority over the entire installation.
+to its children. Owners and superadmins have installation identities without a
+home agency. They can sign in and manage agencies even when no agencies are active.
+The selected agency is session context, not account membership. Ownership nominations
+can be made from an agency's user directory and transfer authority over the entire
+installation; acceptance converts the successor to an installation account. Existing
+historical user references remain intact. Only one nomination may be pending across
+the installation.
 
 ## Set up a new agency
 

@@ -29,13 +29,12 @@ export class UserRoleAssignmentService {
     return this.dataSource.transaction(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "roles:assign", manager, now);
       // Serialize Administrator eligibility changes with ownership acceptance.
-      await manager.query(`select organization_id from app_identity.installation_owner
-        where organization_id = $1 for update`, [actor.organization.id]);
+      await manager.query(`select user_id from app_identity.installation_owner for update`);
       const targets = await manager.query<TargetRow[]>(`
         select u.id, u.display_name, credential.username, u.active, u.revision,
           exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
           exists (select 1 from app_identity.installation_owner owner_record
-            where owner_record.organization_id = u.organization_id and owner_record.user_id = u.id) owner
+            where owner_record.user_id = u.id) owner
         from app_identity.app_user u
         join app_identity.local_credential credential on credential.user_id = u.id
         where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1) and u.id = $2

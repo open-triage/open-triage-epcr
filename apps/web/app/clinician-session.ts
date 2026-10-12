@@ -1,5 +1,5 @@
 import { platformRequestError } from "./platform-errors";
-import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand,
+import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
@@ -14,16 +14,16 @@ const localDemoIdentity = {
   organization: { id: DEMO_ORGANIZATION_ID, name: "OpenTriage Synthetic EMS" }
 } as const;
 
-export function sessionIsActive(session: ClinicianSession, now = new Date()): boolean {
+export function sessionIsActive(session: AuthenticatedSession, now = new Date()): boolean {
   return Number.isFinite(Date.parse(session.expiresAt)) && Date.parse(session.expiresAt) > now.getTime();
 }
 
-export function loadClinicianSession(storage: Pick<Storage, "getItem" | "removeItem">, now = new Date()): ClinicianSession | null {
+export function loadClinicianSession(storage: Pick<Storage, "getItem" | "removeItem">, now = new Date()): AuthenticatedSession | null {
   const encoded = storage.getItem(CLINICIAN_SESSION_STORAGE_KEY);
   if (!encoded) return null;
   try {
-    const session = JSON.parse(encoded) as ClinicianSession;
-    if ((!session.csrfToken && !session.accessToken) || !session.user?.id || !session.organization?.id || !sessionIsActive(session, now)) {
+    const session = JSON.parse(encoded) as AuthenticatedSession;
+    if ((!session.csrfToken && !session.accessToken) || !session.user?.id || (!session.organization?.id && !(session.organization === null && (session.installationOwner || session.installationSuperadmin))) || !sessionIsActive(session, now)) {
       storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
       return null;
     }
@@ -34,13 +34,13 @@ export function loadClinicianSession(storage: Pick<Storage, "getItem" | "removeI
   }
 }
 
-export function sessionRequestToken(session: ClinicianSession): string {
+export function sessionRequestToken(session: AuthenticatedSession): string {
   return session.csrfToken ?? session.accessToken ?? "";
 }
 
-export function storeClinicianSession(storage: Pick<Storage, "setItem">, session: ClinicianSession): void {
+export function storeClinicianSession(storage: Pick<Storage, "setItem">, session: AuthenticatedSession): void {
   storage.setItem(CLINICIAN_SESSION_STORAGE_KEY, JSON.stringify(session));
-  bindBrowserOrganization(session.organization.id);
+  bindBrowserOrganization(session.organization?.id);
 }
 
 export function clearClinicianSession(storage: Pick<Storage, "removeItem">): void {
@@ -48,7 +48,7 @@ export function clearClinicianSession(storage: Pick<Storage, "removeItem">): voi
   bindBrowserOrganization(undefined);
 }
 
-export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<ClinicianSession> {
+export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<AuthenticatedSession> {
   const configuration = browserRequestConfiguration();
   const url = apiRequestUrl("/api/sessions", configuration);
   if (url) {
@@ -58,7 +58,7 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
       body: JSON.stringify(command)
     }));
     if (!response.ok) throw await platformRequestError(response);
-    return response.json() as Promise<ClinicianSession>;
+    return response.json() as Promise<AuthenticatedSession>;
   }
 
   // The clinician-only static prototype has no database-backed accounts. Its local
@@ -77,14 +77,14 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
 }
 
 /** Re-establishes server authority after a browser restart without trusting the persisted identity payload. */
-export async function authenticateRestartedClinicianSession(stored: ClinicianSession): Promise<ClinicianSession | null> {
+export async function authenticateRestartedClinicianSession(stored: AuthenticatedSession): Promise<AuthenticatedSession | null> {
   const url = apiRequestUrl("/api/sessions/current");
   if (!url) return stored;
   const response = await fetch(url, browserRequestInit({ method: "GET", cache: "no-store" }));
   if (response.status === 401) return null;
   if (!response.ok) throw await platformRequestError(response);
-  const authenticated = await response.json() as ClinicianSession;
-  if (authenticated.user.id !== stored.user.id || authenticated.organization.id !== stored.organization.id) return null;
+  const authenticated = await response.json() as AuthenticatedSession;
+  if (authenticated.user.id !== stored.user.id || authenticated.organization?.id !== stored.organization?.id) return null;
   return {
     ...authenticated,
     ...(stored.csrfToken ? { csrfToken: stored.csrfToken } : {}),
@@ -101,7 +101,7 @@ export async function endClinicianSession(csrfToken: string): Promise<void> {
   }));
 }
 
-export async function changeClinicianPassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<ClinicianSession> {
+export async function changeClinicianPassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<AuthenticatedSession> {
   const url = apiRequestUrl("/api/sessions/password");
   if (!url) throw new Error("Password replacement is unavailable in the static demonstration.");
   const response = await fetch(url, browserRequestInit({
@@ -110,7 +110,7 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
     body: JSON.stringify({ currentPassword, newPassword, csrfToken })
   }));
   if (!response.ok) throw await platformRequestError(response);
-  return response.json() as Promise<ClinicianSession>;
+  return response.json() as Promise<AuthenticatedSession>;
 }
 
 export const CLINICIAN_REAUTHENTICATED_EVENT = "open-triage:session-reauthenticated";

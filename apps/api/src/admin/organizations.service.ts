@@ -17,7 +17,7 @@ export class OrganizationsService {
   constructor(@InjectDataSource() private readonly database: DataSource, private readonly sessions: ClinicianSessionService) {}
 
   private async owner(token: string, manager = this.database.manager) {
-    const session = await this.sessions.get(token, new Date(), false, manager);
+    const session = await this.sessions.getAuthenticated(token, new Date(), false, manager);
     if (!(session.installationOwner || session.installationSuperadmin)) throw new ForbiddenException("Only the installation owner or a superadmin can manage agencies");
     return session;
   }
@@ -119,7 +119,6 @@ export class OrganizationsService {
         const [current] = await manager.query<AgencyRow[]>("select * from app_identity.organization where id=$1 for update", [id]);
         if (!current) throw new NotFoundException("Agency not found");
         if (Number(current.revision) !== command.expectedRevision) throw new ConflictException("Agency changed; reload before saving");
-        if (!command.active && actor.homeOrganizationId === id) throw new ConflictException("The owner's home agency must remain active");
         const rows = mutationRows<AgencyRow>(await manager.query(`update app_identity.organization
           set name=$2,hostname=$3,active=$4,revision=revision+1,updated_at=now() where id=$1 returning *`,
         [id, command.name, command.hostname, command.active]));

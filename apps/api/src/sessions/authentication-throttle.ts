@@ -57,7 +57,7 @@ export async function beginAuthenticationAttempt(manager: Pick<EntityManager, "q
       settings.authentication_account_attempt_limit, settings.authentication_network_attempt_limit
     from app_identity.local_credential credential
     join app_identity.app_user account on account.id = credential.user_id
-    join app_identity.agency_settings settings on settings.organization_id = account.organization_id
+    left join app_identity.agency_settings settings on settings.organization_id = account.organization_id
     where credential.username = $1 and (
       ($2::uuid is not null and account.id = $2) or ($2::uuid is null and (
         ($3::uuid is not null and app_identity.user_can_access_organization(account.id, $3)) or

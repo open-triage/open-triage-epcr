@@ -43,7 +43,7 @@ values ('32000000-0000-4000-8000-000000000001', 'Demonstration EMS', 'UTC')
 on conflict (id) do nothing;
 ```
 
-Bootstrap the installation owner with a separate username and a password entered
+Bootstrap the installation owner (which needs no organization ID) with a separate username and a password entered
 at the prompt. Skip this step when the organization already has an owner; see the
 [identity recovery runbook](identity-recovery.md) for existing-account recovery.
 
@@ -53,7 +53,6 @@ at the prompt. Skip this step when the organization already has an owner; see th
   source ./.env.local
   set +a
   npm run identity:account -w @open-triage/api -- bootstrap-owner \
-    --organization-id 32000000-0000-4000-8000-000000000001 \
     --username local.owner \
     --display-name "Local Installation Owner" \
     --operator-id local-development-setup

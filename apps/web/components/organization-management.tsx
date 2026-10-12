@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgencyConfigurationOption, AgencySummary, ClinicianSession, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
+import type { AgencyConfigurationOption, AgencySummary, AuthenticatedSession, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { useEffect, useState, type FormEvent } from "react";
 import { AgencySettingsPanel } from "./agency-settings";
 import { resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
@@ -34,7 +34,7 @@ function AgencyHostnameField({ hostname, suffix, language }: {
 
 export function OrganizationManagement({ session, language, onOpenAgency, active = true }: {
   readonly active?: boolean;
-  readonly session: ClinicianSession; readonly language: AgencyLanguage; readonly onOpenAgency: (id: string) => Promise<void>;
+  readonly session: AuthenticatedSession; readonly language: AgencyLanguage; readonly onOpenAgency: (id: string) => Promise<void>;
 }) {
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   const [data, setData] = useState<Awaited<ReturnType<typeof loadAgencies>> | null>(null);
@@ -145,9 +145,7 @@ export function OrganizationManagement({ session, language, onOpenAgency, active
         <AgencyHostnameField hostname={selected?.hostname ?? null} suffix={data?.hostnameSuffix ?? null} language={language} />
 
           <p>{t("admin.parent")}: {data?.agencies.find((agency) => agency.id === selected?.parentOrganizationId)?.name ?? t("admin.independentAgency")}</p>
-          <label className="agency-active"><input name="active" type="checkbox" defaultChecked={selected?.active}
-            disabled={selected?.id === session.homeOrganizationId} />{t("admin.active")}</label>
-          {selected?.id === session.homeOrganizationId && <input type="hidden" name="active" value="on" />}
+          <label className="agency-active"><input name="active" type="checkbox" defaultChecked={selected?.active} />{t("admin.active")}</label>
 
       </div>
       <div className="agency-actions"><button type="submit" disabled={busy}>{busy ? t("admin.saving") : t("admin.save")}</button>

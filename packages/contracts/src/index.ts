@@ -620,6 +620,12 @@ export interface ClinicianSession {
   workspaceAvailable?: boolean;
 }
 
+/** Authenticated installation administration before an agency workspace is selected. */
+export type InstallationSession = Omit<ClinicianSession, "organization" | "homeOrganizationId"> & {
+  organization: null;
+};
+export type AuthenticatedSession = ClinicianSession | InstallationSession;
+
 export interface AgencySummary {
   id: string;
   name: string;

@@ -38,8 +38,7 @@ export class SessionAdministrationService {
       select session.id, session.created_at, session.last_activity_at, session.expires_at,
              session.device_label, session.token_sha256 = $3 as current,
              exists (select 1 from app_identity.installation_owner owner_record
-               where owner_record.organization_id = app_user.organization_id
-                 and owner_record.user_id = app_user.id) as owner
+               where owner_record.user_id = app_user.id) as owner
       from app_identity.app_session session
       join app_identity.app_user app_user on app_user.id = session.user_id
       join app_identity.local_credential credential on credential.user_id = app_user.id
@@ -62,8 +61,7 @@ export class SessionAdministrationService {
       const rows = await manager.query<RevocationTarget[]>(`
         select session.id, session.revoked_at, session.token_sha256 = $4 as current,
                exists (select 1 from app_identity.installation_owner owner_record
-                 where owner_record.organization_id = app_user.organization_id
-                   and owner_record.user_id = app_user.id) as owner
+                 where owner_record.user_id = app_user.id) as owner
         from app_identity.app_session session
         join app_identity.app_user app_user on app_user.id = session.user_id
         where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2 and session.id = $3
@@ -103,8 +101,7 @@ export class SessionAdministrationService {
         select app_user.id, app_user.active, app_user.revision,
                exists (select 1 from app_identity.installation_superadmin where user_id=app_user.id) superadmin,
                exists (select 1 from app_identity.installation_owner target_owner
-                 where target_owner.organization_id = app_user.organization_id
-                   and target_owner.user_id = app_user.id) as owner,
+                 where target_owner.user_id = app_user.id) as owner,
                exists (select 1 from app_identity.installation_owner actor_owner
                  where actor_owner.user_id = $3) as actor_owner
         from app_identity.app_user app_user

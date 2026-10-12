@@ -11,10 +11,6 @@ function options(argv: string[]): ParsedOptions {
     if (!key?.startsWith("--")) throw new Error(`Unexpected argument ${key ?? ""}`);
     const name = key.slice(2);
     if (parsed.has(name)) throw new Error(`Duplicate option --${name}`);
-    if (name === "clinician") {
-      parsed.set(name, true);
-      continue;
-    }
     const optionValue = argv[index + 1];
     if (!optionValue || optionValue.startsWith("--")) throw new Error(`Missing value for ${key}`);
     parsed.set(name, optionValue);
@@ -76,7 +72,7 @@ export async function runIdentityAccountCli(
   dataSource: DataSource,
   argv: string[],
   dependencies: { readPassword?: () => Promise<string>; osAccount?: string; host?: string } = {}
-): Promise<Record<string, string | boolean>> {
+): Promise<Record<string, string | boolean | null>> {
   const command = argv[0];
   const parsed = options(argv.slice(1));
   const operatorId = value(parsed, "operator-id");
@@ -89,32 +85,29 @@ export async function runIdentityAccountCli(
   const service = new AccountService(dataSource);
 
   if (command === "bootstrap-owner") {
-    assertOnly(parsed, ["organization-id", "username", "display-name", "operator-id", "clinician"]);
-    const organizationId = value(parsed, "organization-id");
+    assertOnly(parsed, ["username", "display-name", "operator-id"]);
     const username = value(parsed, "username");
     const displayName = value(parsed, "display-name");
-    if (!organizationId || !username || !displayName || !operatorId) {
-      throw new Error("bootstrap-owner requires --organization-id, --username, --display-name, and --operator-id");
+    if (!username || !displayName || !operatorId) {
+      throw new Error("bootstrap-owner requires --username, --display-name, and --operator-id");
     }
-    return service.bootstrapOwner({ organizationId, username, displayName, operator,
-      clinician: parsed.get("clinician") === true, temporaryPassword: await passwordReader() });
+    return service.bootstrapOwner({ username, displayName, operator,
+      temporaryPassword: await passwordReader() });
   }
   if (command === "create-superadmin") {
-    assertOnly(parsed, ["organization-id", "username", "display-name", "operator-id"]);
-    const organizationId = value(parsed, "organization-id");
+    assertOnly(parsed, ["username", "display-name", "operator-id"]);
     const username = value(parsed, "username");
     const displayName = value(parsed, "display-name");
-    if (!organizationId || !username || !displayName || !operatorId) {
-      throw new Error("create-superadmin requires --organization-id, --username, --display-name, and --operator-id");
+    if (!username || !displayName || !operatorId) {
+      throw new Error("create-superadmin requires --username, --display-name, and --operator-id");
     }
-    return service.createSuperadmin({ organizationId, username, displayName, operator,
+    return service.createSuperadmin({ username, displayName, operator,
       temporaryPassword: await passwordReader() });
   }
   if (command === "reset-owner") {
-    assertOnly(parsed, ["organization-id", "operator-id"]);
-    const organizationId = value(parsed, "organization-id");
-    if (!organizationId || !operatorId) throw new Error("reset-owner requires --organization-id and --operator-id");
-    return service.resetOwnerPassword(organizationId, await passwordReader(), operator);
+    assertOnly(parsed, ["operator-id"]);
+    if (!operatorId) throw new Error("reset-owner requires --operator-id");
+    return service.resetOwnerPassword(await passwordReader(), operator);
   }
   if (command === "reset-user") {
     assertOnly(parsed, ["user-id", "operator-id"]);

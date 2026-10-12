@@ -95,8 +95,7 @@ export class UserRoleReadService {
       select u.id, u.display_name, credential.username, u.active, u.revision,
         exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
         exists (select 1 from app_identity.installation_owner installation_owner
-          where installation_owner.organization_id = u.organization_id
-            and installation_owner.user_id = u.id) as owner,
+          where installation_owner.user_id = u.id) as owner,
         coalesce((
           select jsonb_agg(jsonb_build_object(
             'id', role.id, 'displayName', role.display_name,

@@ -38,7 +38,7 @@ integration("isolated agencies share staff only within their parent group; owner
   process.env.AUTH_RATE_LIMIT_SECRET_BASE64 = randomBytes(32).toString("base64");
   try {
     const migrations = await readMigrations(fileURLToPath(new URL("../../../supabase/migrations", import.meta.url)));
-    await applyMigrations(client, migrations.filter(migration => migration.version !== '20261012142910'), { info() {} });
+    await applyMigrations(client, migrations, { info() {} });
     const root = randomUUID(), catalog = randomUUID();
     await client.query("insert into app_identity.organization(id,name,deployment_timezone) values ($1,'Owner agency','UTC')", [root]);
     await client.query(`insert into catalog.release(id,standard,version,dataset,artifact_schema_version,artifact_sha256,provenance,sealed)
@@ -55,11 +55,11 @@ integration("isolated agencies share staff only within their parent group; owner
     // the restricted API role, including agency creation and its seed triggers.
     const operatorDb = new DataSource({ type: "postgres", url: url.toString() }); await operatorDb.initialize();
     const password = "Synthetic!Agency-Password-42";
-    const owner = await new AccountService(operatorDb).bootstrapOwner({ organizationId: root, username: "owner",
-      displayName: "Owner", temporaryPassword: password, clinician: true,
+    const owner = await new AccountService(operatorDb).bootstrapOwner({ username: "owner",
+      displayName: "Owner", temporaryPassword: password,
       operator: { operatorId: "test", osAccount: "test", host: "localhost" } });
     await client.query("update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1", [owner.userId]);
-    // Upgrade a populated installation, preserving and globally reserving its owner.
+    // Replaying migrations preserves the installation owner and its global reservation.
     await applyMigrations(client, migrations, { info() {} });
     assert.equal((await client.query("select user_id from app_identity.global_username_reservation where username='owner'")).rows[0].user_id, owner.userId);
     await operatorDb.destroy();
@@ -270,7 +270,7 @@ integration("isolated agencies share staff only within their parent group; owner
     const operatorConnection = new DataSource({ type: 'postgres', url: url.toString() });
     await operatorConnection.initialize();
     try {
-      const cliOptions = name => ['create-superadmin', '--organization-id', other.id, '--username', name,
+      const cliOptions = name => ['create-superadmin', '--username', name,
         '--display-name', 'Superadmin', '--operator-id', 'test-operator'];
       const dependencies = { readPassword: async () => password, osAccount: 'test', host: 'localhost' };
       const ordinaryInput = (organizationId, username) => ({ organizationId, username, displayName: 'Race', role: 'clinician', temporaryPassword: password });
@@ -315,7 +315,7 @@ integration("isolated agencies share staff only within their parent group; owner
       // Ordinary agency administrators cannot take over a superadmin via password reset.
       await sessions.switchAgency(ownerLogin.sessionToken, other.id);
       await assert.rejects(new SessionAdministrationService(database, sessions).resetCredential(ownerLogin.sessionToken,
-        superadmin.userId, { expectedRevision: 1, temporaryPassword: password }), /operator CLI/);
+        superadmin.userId, { expectedRevision: 1, temporaryPassword: password }), /operator CLI|not found/);
       const audit = await client.query("select result from app_identity.operator_identity_event where command='superadmin.create'");
       assert.ok(audit.rows.some(row => row.result === 'succeeded'));
       assert.ok(audit.rows.some(row => row.result === 'failed'));
@@ -344,7 +344,7 @@ integration("isolated agencies share staff only within their parent group; owner
     assert.equal((await sessions.switchAgency(successorLogin.sessionToken, other.id)).installationOwner, true);
     assert.equal((await client.query("select app_identity.user_can_access_organization($1,$2) allowed", [owner.userId, other.id])).rows[0].allowed, false);
     assert.equal((await client.query("select count(*)::int total from app_identity.organization_user where user_id=$1 and organization_id=$2", [owner.userId, other.id])).rows[0].total, 1);
-    await assert.rejects(agencies.list(ownerLogin.sessionToken), /No workspace role|owner/);
+    await assert.rejects(agencies.list(ownerLogin.sessionToken), /No workspace role|owner|session has ended/);
   } finally {
     if (database.isInitialized) await database.destroy();
     if (priorSecret === undefined) delete process.env.AUTH_RATE_LIMIT_SECRET_BASE64; else process.env.AUTH_RATE_LIMIT_SECRET_BASE64 = priorSecret;

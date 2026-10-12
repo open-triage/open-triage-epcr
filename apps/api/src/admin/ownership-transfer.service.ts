@@ -33,7 +33,7 @@ export class OwnershipTransferService {
     now = new Date()): Promise<OwnershipTransferState> {
     const outcome = await this.dataSource.transaction<Outcome<OwnershipTransferState>>(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "users:read", manager, now);
-      const owner = await this.lockOwner(manager, actor.organization.id);
+      const owner = await this.lockOwner(manager);
       await this.settle(manager, actor.organization.id, now);
       if (owner.user_id !== actor.user.id) {
         await this.audit(manager, actor.organization.id, null, actor.user.id, "owner.transfer.conflict", "failed",
@@ -48,8 +48,9 @@ export class OwnershipTransferService {
         return { failure: "stale" };
       }
       const pending = await this.pending(manager, actor.organization.id);
-      if (pending) {
-        await this.audit(manager, actor.organization.id, pending.id, actor.user.id,
+      const otherPending = await manager.query("select id from app_identity.ownership_transfer where status='pending'");
+      if (pending || otherPending[0]) {
+        await this.audit(manager, actor.organization.id, pending?.id ?? null, actor.user.id,
           "owner.transfer.conflict", "failed", { reason: "transfer_already_pending" });
         return { failure: "conflict" };
       }
@@ -74,7 +75,7 @@ export class OwnershipTransferService {
   async accept(token: string, now = new Date()): Promise<OwnershipTransferState> {
     const outcome = await this.dataSource.transaction<Outcome<OwnershipTransferState>>(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "users:read", manager, now);
-      const owner = await this.lockOwner(manager, actor.organization.id);
+      const owner = await this.lockOwner(manager);
       await this.settle(manager, actor.organization.id, now);
       const transfer = await this.pending(manager, actor.organization.id);
       if (!transfer) {
@@ -103,9 +104,9 @@ export class OwnershipTransferService {
         return { failure: "ineligible" };
       }
       await manager.query(`update app_identity.installation_owner
-        set user_id = $2, established_at = $3, established_by_operator_id = 'accepted-owner-nomination'
-        where organization_id = $1 and user_id = $4`,
-      [actor.organization.id, actor.user.id, now, owner.user_id]);
+        set user_id = $1, established_at = $2, established_by_operator_id = 'accepted-owner-nomination'
+        where user_id = $3`,
+      [actor.user.id, now, owner.user_id]);
       await manager.query(`update app_identity.ownership_transfer set status = 'accepted', resolved_at = $2,
         resolved_by = $3, resolution_reason = 'nominee_accepted' where id = $1 and status = 'pending'`,
       [transfer.id, now, actor.user.id]);
@@ -125,7 +126,7 @@ export class OwnershipTransferService {
     now = new Date()): Promise<OwnershipTransferState> {
     const outcome = await this.dataSource.transaction<Outcome<OwnershipTransferState>>(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "users:read", manager, now);
-      const owner = await this.lockOwner(manager, actor.organization.id);
+      const owner = await this.lockOwner(manager);
       await this.settle(manager, actor.organization.id, now);
       const transfer = await this.pending(manager, actor.organization.id);
       if (!transfer) {
@@ -150,7 +151,7 @@ export class OwnershipTransferService {
 
   private async readState(manager: EntityManager, organizationId: string, actorId: string, now: Date,
     settle = true): Promise<OwnershipTransferState> {
-    const owner = await this.lockOwner(manager, organizationId);
+    const owner = await this.lockOwner(manager);
     if (settle) await this.settle(manager, organizationId, now);
     const rows = await manager.query<TransferRow[]>(`${this.transferSelect()}
       where transfer.organization_id = $1 order by transfer.initiated_at desc, transfer.id desc limit 1`, [organizationId]);
@@ -186,11 +187,11 @@ export class OwnershipTransferService {
     }
   }
 
-  private async lockOwner(manager: EntityManager, organizationId: string): Promise<OwnerRow> {
+  private async lockOwner(manager: EntityManager): Promise<OwnerRow> {
     const rows = await manager.query<OwnerRow[]>(`select owner_record.user_id, u.display_name
       from app_identity.installation_owner owner_record
-      join app_identity.app_user u on u.organization_id = owner_record.organization_id and u.id = owner_record.user_id
-      where owner_record.organization_id = $1 for update of owner_record`, [organizationId]);
+      join app_identity.app_user u on u.id = owner_record.user_id
+      for update of owner_record`);
     if (!rows[0]) throw new ConflictException("Installation ownership has not been established");
     return rows[0];
   }

@@ -2,7 +2,7 @@
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { PlatformRequestError } from "../app/platform-errors";
 
-import type { AssignedCall, ClinicianSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
+import type { AssignedCall, ClinicianSession, AuthenticatedSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
@@ -32,6 +32,7 @@ import { switchAgency } from "../app/agencies";
 import { availableUiLanguages, resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
+import { OrganizationManagement } from "./organization-management";
 import { AdminShell } from "./admin-shell";
 import { useVisiblePolling } from "./use-visible-polling";
 import { ReviewShell } from "./review-shell";
@@ -79,7 +80,8 @@ export function ClinicianSessionGate({ children }: {
   const t = useCallback((key: string, parameters?: Record<string, string | number>) =>
     resolveMessage(language, key, parameters), [language]);
   const [startupFailure, setStartupFailure] = useState<string | null>(null);
-  const [session, setSession] = useState<ClinicianSession | null>(null);
+  const [authenticatedSession, setSession] = useState<AuthenticatedSession | null>(null);
+  const session = authenticatedSession?.organization ? authenticatedSession as ClinicianSession : null;
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const openingHeading = useRef<HTMLHeadingElement>(null);
@@ -264,8 +266,8 @@ export function ClinicianSessionGate({ children }: {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
-    const remaining = Date.parse(session.expiresAt) - Date.now();
+    if (!authenticatedSession) return;
+    const remaining = Date.parse(authenticatedSession.expiresAt) - Date.now();
     if (remaining <= 0) {
       queueMicrotask(() => void lockAndEndLocalSession(t("login.sessionExpired")));
       return;
@@ -274,7 +276,7 @@ export function ClinicianSessionGate({ children }: {
       void lockAndEndLocalSession(t("login.sessionExpired"));
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timeout);
-  }, [lockAndEndLocalSession, session, t]);
+  }, [lockAndEndLocalSession, authenticatedSession, t]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -303,7 +305,7 @@ export function ClinicianSessionGate({ children }: {
 
   async function replacePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!session) return;
+    if (!authenticatedSession) return;
     setSubmitting(true);
     setMessage(null);
     const form = new FormData(event.currentTarget);
@@ -315,7 +317,7 @@ export function ClinicianSessionGate({ children }: {
     }
     try {
       const changed = await changeClinicianPassword(
-        String(form.get("currentPassword") ?? ""), next, sessionRequestToken(session)
+        String(form.get("currentPassword") ?? ""), next, sessionRequestToken(authenticatedSession)
       );
       storeClinicianSession(window.localStorage, changed);
       setSession(changed);
@@ -339,24 +341,24 @@ export function ClinicianSessionGate({ children }: {
   }
 
   async function logOut() {
-    const csrfToken = session ? sessionRequestToken(session) : "";
+    const csrfToken = authenticatedSession ? sessionRequestToken(authenticatedSession) : "";
     setLockingSession(true);
     await lockAndEndLocalSession(t("login.loggedOut"));
     if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
   }
 
   async function changeAgency(id: string) {
-    if (!session || !online) throw new Error(t("admin.connectToSwitchAgencies"));
+    if (!authenticatedSession || !online) throw new Error(t("admin.connectToSwitchAgencies"));
     if (activeReport || openingCall || protectedLogoutSummary().pendingReportCount > 0) {
       throw new Error(t("admin.closeReportsToSwitchAgencies"));
     }
     if (!confirmDiscardChanges(unsavedEditors.current.size > 0)) return;
     await lockProtectedClinicalStorage();
-    const changed = await switchAgency(sessionRequestToken(session), id);
+    const changed = await switchAgency(sessionRequestToken(authenticatedSession), id);
     clearProtectedRuntimeReports();
     clearFeedbackTelemetry();
     window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
-    storeClinicianSession(window.localStorage, { ...changed, csrfToken: session.csrfToken });
+    storeClinicianSession(window.localStorage, { ...changed, csrfToken: authenticatedSession.csrfToken });
     // Recreate all workspaces and in-memory caches at the new agency boundary.
     window.location.reload();
   }
@@ -386,7 +388,7 @@ export function ClinicianSessionGate({ children }: {
     </div>}
   </main>;
   if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p></main>;
-  if (!session) {
+  if (!authenticatedSession) {
     return (
       <main className="login-shell">
         <form className="login-card login-sign-in" onSubmit={signIn}>
@@ -416,7 +418,7 @@ export function ClinicianSessionGate({ children }: {
       </main>
     );
   }
-  if (session.passwordChangeRequired) {
+  if (authenticatedSession.passwordChangeRequired) {
     return <main className="login-shell">
       <form className="login-card" onSubmit={replacePassword}>
         <p className="eyebrow">{t("login.accountSecurity")}</p>
@@ -430,7 +432,7 @@ export function ClinicianSessionGate({ children }: {
       </form>
     </main>;
   }
-  if (session.workspaceAvailable === false || session.capabilities?.length === 0) {
+  if (authenticatedSession.workspaceAvailable === false || (session && session.capabilities?.length === 0)) {
     return <main className="login-shell">
       <section className="login-card" aria-labelledby="no-workspace-heading">
         <p className="eyebrow">{t("login.signedIn")}</p>
@@ -440,6 +442,19 @@ export function ClinicianSessionGate({ children }: {
       </section>
     </main>;
   }
+
+  if (!session) return <UnsavedChangesContext.Provider value={unsavedEditors.current}>
+    <div className="authenticated-shell admin-shell desktop-shell">
+      <header className="session-bar">
+        <span className="session-identity">{t("navigation.signedInAs", { name: authenticatedSession.user.displayName })}</span>
+        <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
+      </header>
+      <main className="admin-shell">
+        <header className="admin-heading"><h1>{t("navigation.superAdmin")}</h1></header>
+        <div className="admin-panel"><OrganizationManagement session={authenticatedSession} language={language} onOpenAgency={changeAgency} /></div>
+      </main>
+    </div>
+  </UnsavedChangesContext.Provider>;
 
   return (
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>

@@ -40,10 +40,10 @@ export default function ReviewCallPage() {
       })();
       void Promise.all([loadSession, loadInstallationConfiguration()]).then(([authenticated, configuration]) => {
         if (!active) return;
-        if (!authenticated?.capabilities?.some((value) => value === "review:all" || value === "review:self")) { setFailed(true); return; }
+        if (!authenticated?.organization || !authenticated.capabilities?.some((value) => value === "review:all" || value === "review:self")) { setFailed(true); return; }
         const selectedLanguage = query.get("language") ?? configuration.settings.language;
         applyAgencyAppearance(configuration.appearance, document, selectedLanguage);
-        setLanguage(selectedLanguage); setSession(authenticated); setInstallation(configuration);
+        setLanguage(selectedLanguage); setSession(authenticated as ClinicianSession); setInstallation(configuration);
         setCall({ reportId, itemId, dataset: dataset as "real" | "synthetic" });
       }).catch(() => { if (active) setFailed(true); });
     }

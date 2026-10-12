@@ -16,7 +16,7 @@ export class InstallationController {
     @Headers("authorization") authorization?: string): Promise<PublicInstallationConfiguration> {
     const agency = await this.agencies.forLogin();
     let organizationId = agency?.id;
-    try { organizationId = (await this.sessions.get(sessionToken(request, authorization), new Date(), true)).organization.id; }
+    try { organizationId = (await this.sessions.getAuthenticated(sessionToken(request, authorization), new Date(), true)).organization?.id; }
     catch (error) { if (!(error instanceof UnauthorizedException)) throw error; }
     return this.agencySettings.publicConfiguration(organizationId);
   }

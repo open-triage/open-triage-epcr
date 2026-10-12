@@ -11,7 +11,7 @@ export const BUILT_IN_ROLES = {
 export type BuiltInAccountRole = keyof typeof BUILT_IN_ROLES;
 export type OperatorIdentity = { operatorId: string; osAccount: string; host: string };
 type OperatorCommand = "superadmin.create" | "owner.bootstrap" | "owner.reset_password" | "user.reset_password";
-type OperatorTarget = { organizationId?: string; userId?: string };
+type OperatorTarget = { organizationId?: string | null; userId?: string };
 
 export class AccountService {
   constructor(private readonly dataSource: DataSource) {}
@@ -49,105 +49,71 @@ export class AccountService {
   }
 
   async bootstrapOwner(input: {
-    organizationId: string; username: string; displayName: string;
-    temporaryPassword: string; clinician: boolean; operator: OperatorIdentity;
-  }): Promise<{ organizationId: string; userId: string; username: string; clinician: boolean }> {
-    const userId = randomUUID();
-    const target = { organizationId: input.organizationId, userId };
-    return this.withFailureAudit("owner.bootstrap", target, input.operator, async () => {
-      const verifier = await createPasswordVerifier(input.temporaryPassword);
-      const username = input.username.trim().toLowerCase();
-      return this.dataSource.transaction(async (manager) => {
-        const organizations = await manager.query<Array<{ id: string }>>(
-          "select id from app_identity.organization where id = $1 for update", [input.organizationId]
-        );
-        if (!organizations[0]) throw new Error("No organization has that immutable ID");
-        const existing = await manager.query<Array<{ user_id: string }>>(
-          "select user_id from app_identity.installation_owner"
-        );
-        if (existing[0]) throw new Error("This installation already has an owner");
-        await manager.query(
-          "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
-          [userId, input.organizationId, input.displayName.trim()]
-        );
-        await manager.query(
-          `insert into app_identity.local_credential
-            (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
-           values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
-        );
-        await manager.query(
-          `insert into app_identity.installation_owner
-            (organization_id, user_id, established_by_operator_id)
-           values ($1, $2, $3)`, [input.organizationId, userId, this.operator(input.operator).operatorId]
-        );
-        await manager.query(
-          `insert into app_identity.authentication_event
-            (organization_id, actor_id, action, result, target_user_id)
-           values ($1, $2, 'account.provision', 'succeeded', $2)`, [input.organizationId, userId]
-        );
-        await this.auditOperator(manager, "owner.bootstrap", target, input.operator, "succeeded");
-        return { organizationId: input.organizationId, userId, username, clinician: true };
-      });
-    });
+    username: string; displayName: string; temporaryPassword: string; operator: OperatorIdentity;
+  }): Promise<{ userId: string; username: string }> {
+    return this.createInstallationAccount(input, "owner.bootstrap");
   }
 
   async createSuperadmin(input: {
-    organizationId: string; username: string; displayName: string;
-    temporaryPassword: string; operator: OperatorIdentity;
-  }): Promise<{ organizationId: string; userId: string; username: string }> {
+    username: string; displayName: string; temporaryPassword: string; operator: OperatorIdentity;
+  }): Promise<{ userId: string; username: string }> {
+    return this.createInstallationAccount(input, "superadmin.create");
+  }
+
+  private async createInstallationAccount(input: {
+    username: string; displayName: string; temporaryPassword: string; operator: OperatorIdentity;
+  }, command: "owner.bootstrap" | "superadmin.create") {
     const userId = randomUUID();
-    const target = { organizationId: input.organizationId, userId };
-    return this.withFailureAudit("superadmin.create", target, input.operator, async () => {
+    const target = { userId };
+    return this.withFailureAudit(command, target, input.operator, async () => {
       const verifier = await createPasswordVerifier(input.temporaryPassword);
       const username = input.username.trim().toLowerCase();
       return this.dataSource.transaction(async manager => {
-        const [group] = await manager.query<Array<{ id: string }>>(
-          "select app_identity.organization_group($1) id", [input.organizationId]);
-        if (!group?.id) throw new Error("No organization has that immutable ID");
-        target.organizationId = group.id;
-        await manager.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
-          [userId, group.id, input.displayName.trim()]);
+        // Serialize operator bootstrap with agency creation and authority expansion.
+        await manager.query("select pg_advisory_xact_lock(691631722)");
+        if (command === "owner.bootstrap") {
+          const existing = await manager.query("select user_id from app_identity.installation_owner");
+          if (existing[0]) throw new Error("This installation already has an owner");
+        }
+        await manager.query(`insert into app_identity.app_user (id, account_scope, display_name)
+          values ($1, 'installation', $2)`, [userId, input.displayName.trim()]);
         await manager.query(`insert into app_identity.local_credential
           (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
           values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]);
-        await manager.query(`insert into app_identity.installation_superadmin (user_id, established_by_operator_id)
+        const table = command === "owner.bootstrap" ? "installation_owner" : "installation_superadmin";
+        await manager.query(`insert into app_identity.${table} (user_id, established_by_operator_id)
           values ($1, $2)`, [userId, this.operator(input.operator).operatorId]);
         await manager.query(`insert into app_identity.authentication_event
-          (organization_id, actor_id, action, result, target_user_id)
-          values ($1, $2, 'account.provision', 'succeeded', $2)`, [group.id, userId]);
-        await this.auditOperator(manager, "superadmin.create", target, input.operator, "succeeded");
-        return { organizationId: group.id, userId, username };
+          (actor_id, action, result, target_user_id) values ($1, 'account.provision', 'succeeded', $1)`, [userId]);
+        await this.auditOperator(manager, command, target, input.operator, "succeeded");
+        return { userId, username };
       });
     });
   }
 
-  async resetOwnerPassword(organizationId: string, temporaryPassword: string, operator: OperatorIdentity):
-    Promise<{ organizationId: string; userId: string }> {
-    return this.withFailureAudit("owner.reset_password", { organizationId }, operator, async () => {
+  async resetOwnerPassword(temporaryPassword: string, operator: OperatorIdentity): Promise<{ userId: string }> {
+    return this.withFailureAudit("owner.reset_password", {}, operator, async () => {
       const verifier = await createPasswordVerifier(temporaryPassword);
-      return this.dataSource.transaction(async (manager) => {
-        const rows = await manager.query<Array<{ user_id: string }>>(
-          `select owner_record.user_id
-           from app_identity.installation_owner owner_record
-           join app_identity.local_credential credential on credential.user_id = owner_record.user_id
-           where owner_record.organization_id = $1 for update of owner_record, credential`, [organizationId]
-        );
-        const account = rows[0];
-        if (!account) throw new Error("This organization has no recoverable installation owner");
-        const target = { organizationId, userId: account.user_id };
-        await this.replacePassword(manager, account.user_id, verifier);
+      return this.dataSource.transaction(async manager => {
+        const rows = await manager.query<Array<{ user_id: string }>>(`select owner_record.user_id
+          from app_identity.installation_owner owner_record
+          join app_identity.local_credential credential on credential.user_id=owner_record.user_id
+          for update of owner_record, credential`);
+        if (!rows[0]) throw new Error("This installation has no recoverable owner");
+        const target = { userId: rows[0].user_id };
+        await this.replacePassword(manager, target.userId, verifier);
         await this.auditOperator(manager, "owner.reset_password", target, operator, "succeeded");
-        return { organizationId, userId: account.user_id };
+        return target;
       });
     });
   }
 
   async resetUserPassword(userId: string, temporaryPassword: string, operator: OperatorIdentity):
-    Promise<{ organizationId: string; userId: string }> {
+    Promise<{ organizationId: string | null; userId: string }> {
     return this.withFailureAudit("user.reset_password", { userId }, operator, async () => {
       const verifier = await createPasswordVerifier(temporaryPassword);
       return this.dataSource.transaction(async (manager) => {
-        const rows = await manager.query<Array<{ user_id: string; organization_id: string }>>(
+        const rows = await manager.query<Array<{ user_id: string; organization_id: string | null }>>(
           `select credential.user_id, app_user.organization_id
            from app_identity.local_credential credential
            join app_identity.app_user app_user on app_user.id = credential.user_id
