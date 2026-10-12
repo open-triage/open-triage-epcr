@@ -1,15 +1,19 @@
-agencyBaseDomain: opentriage.org
-
-# Non-secret values for the fixed public DOKS demo deployment.
+# Example only. Copy to an operator-owned installation values file.
+# Never commit the completed file; do not put credential values in it.
+agencyBaseDomain: example.com
+web:
+  host: demo.example.com
+api:
+  host: api.demo.example.com
 nodeSelector:
-  doks.digitalocean.com/node-pool: pool-6inz100pf
+  doks.digitalocean.com/node-pool: example-pool
 
 imagePullSecrets:
   - name: ghcr-pull
 
 publicSite:
   enabled: true
-  host: opentriage.org
+  host: example.com
 
 ingress:
   className: nginx
@@ -18,11 +22,11 @@ ingress:
   tls:
     - secretName: open-triage-tls
       hosts:
-        - demo.opentriage.org
-        - api.demo.opentriage.org
+        - demo.example.com
+        - api.demo.example.com
     - secretName: open-triage-public-site-tls
       hosts:
-        - opentriage.org
+        - example.com
 
 secrets:
   api:

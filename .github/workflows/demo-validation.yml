@@ -212,11 +212,11 @@ jobs:
       - name: Lint chart
         run: >-
           helm lint deploy/helm/open-triage
-          --values deploy/helm/open-triage/demo-reference.values.yaml
+          --values deploy/helm/open-triage/installation.example.values.yaml
       - name: Render Kubernetes manifests
         run: >-
           helm template open-triage deploy/helm/open-triage
-          --values deploy/helm/open-triage/demo-reference.values.yaml
+          --values deploy/helm/open-triage/installation.example.values.yaml
           > /dev/null
 
   validation-gate:
@@ -238,12 +238,54 @@ jobs:
           VALIDATION_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/require-demo-validation.mjs
 
-  publish-images:
-    name: Publish / ${{ matrix.component }} linux/amd64
+  installation-config:
+    name: Prepare / Installation configuration
     if: >-
       needs.validation-gate.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: validation-gate
+    runs-on: ubuntu-latest
+    environment: demo
+    outputs:
+      snapshot-name: installation-values-${{ github.run_id }}-${{ github.run_attempt }}
+      api-url: ${{ steps.installation.outputs.api-url }}
+      web-url: ${{ steps.installation.outputs.web-url }}
+      public-site-host: ${{ steps.installation.outputs.public-site-host }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.deployment_revision || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validate and snapshot operator-owned installation values
+        id: installation
+        env:
+          INSTALLATION_VALUES: ${{ vars.DEMO_INSTALLATION_VALUES }}
+        run: node scripts/installation-values.mjs --output "${{ runner.temp }}/installation.values.json"
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.19.0
+      - name: Validate the actual installation configuration
+        run: |
+          helm lint deploy/helm/open-triage --values "${{ runner.temp }}/installation.values.json"
+          helm template open-triage deploy/helm/open-triage --values "${{ runner.temp }}/installation.values.json" > /dev/null
+      - name: Retain this run's non-secret configuration snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: installation-values-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/installation.values.json
+          retention-days: 1
+          if-no-files-found: error
+
+  publish-images:
+    name: Publish / ${{ matrix.component }} linux/amd64
+    if: >-
+      needs.installation-config.result == 'success' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: installation-config
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -345,7 +387,7 @@ jobs:
     if: >-
       needs.publish-image-manifest.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: publish-image-manifest
+    needs: [publish-image-manifest, installation-config]
     runs-on: ubuntu-latest
     environment: demo
     permissions:
@@ -357,6 +399,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Download this run's installation configuration
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.installation-config.outputs.snapshot-name }}
+          path: ${{ runner.temp }}/installation
       - name: Download exact deployment image manifest
         uses: actions/download-artifact@v8
         with:
@@ -382,12 +429,6 @@ jobs:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
-      - name: Provision isolated demo workload credentials
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: >-
-          bash scripts/provision-demo-workload-secrets.sh
-          "${{ steps.images.outputs.api-repository }}:${{ steps.images.outputs.api-tag }}"
       - name: Atomically deploy tested images
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
@@ -419,7 +460,7 @@ jobs:
           monitor_pid=$!
           set +e
           helm upgrade --install open-triage deploy/helm/open-triage \
-            --values deploy/helm/open-triage/demo-reference.values.yaml \
+            --values "${{ runner.temp }}/installation/installation.values.json" \
             --namespace open-triage \
             --create-namespace \
             --atomic \
@@ -448,6 +489,6 @@ jobs:
             --sort-by='.metadata.creationTimestamp' --output wide | tail -80 || true
       - name: Verify the public HTTPS deployment
         env:
-          DEMO_WEB_URL: https://demo.opentriage.org
-          DEMO_API_URL: https://api.demo.opentriage.org
+          DEMO_WEB_URL: ${{ needs.installation-config.outputs.web-url }}
+          DEMO_API_URL: ${{ needs.installation-config.outputs.api-url }}
         run: node scripts/demo-smoke-test.mjs

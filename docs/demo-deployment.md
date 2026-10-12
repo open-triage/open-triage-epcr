@@ -21,72 +21,108 @@ in this repository. The regional VKS installation is planned for Kubernetes 1.36
 see the [production runbook](runbooks/kubernetes-production.md) for its platform
 assumptions and validation requirements.
 
+## Operator-owned installation configuration
+
+The repository contains reusable chart defaults and
+`deploy/helm/open-triage/installation.example.values.yaml`, a fictional example.
+Actual node-pool labels, hostnames, TLS and pull-Secret references, ingress
+settings, and resource overrides belong in an operator-owned values file.
+Changing a node pool does not require a source-code change.
+
+For a new installation:
+
+```sh
+mkdir -p deploy/installations
+cp deploy/helm/open-triage/installation.example.values.yaml deploy/installations/demo.values.yaml
+```
+
+Replace the example hosts and node selector, and set the installation's TLS
+Secret names, certificate issuer, pull Secret, workload Secret references and
+resource sizing. Set `nodeSelector: {}` to allow any suitable node. The shared
+selector applies to the web, API, migration hook and every scheduled app job.
+The example's small resource requests are illustrative; verify capacity for
+system pods, app pods, overlapping scheduled jobs and migration hooks.
+`deploy/installations/` is excluded from Git and Docker build contexts. Store a
+backup in your installation's configuration store; a local ignored file alone
+is not a backup. Keep credential values in cluster Secrets, not in this file.
+
 The `demo` GitHub environment must allow deployments from `main` and define:
 
-- secret `DIGITALOCEAN_ACCESS_TOKEN`, restricted in DigitalOcean to the demo
-  cluster resources required by `doctl`;
-- variable `DOKS_CLUSTER_NAME`, naming the existing demo cluster.
+- secret `DIGITALOCEAN_ACCESS_TOKEN`, restricted to the demo cluster resources;
+- variable `DOKS_CLUSTER_NAME`, naming the existing demo cluster;
+- variable `DEMO_INSTALLATION_VALUES`, containing the completed **non-secret YAML
+  values file**. Upload it without shell interpolation:
 
-`GITHUB_TOKEN` is supplied by Actions and receives `packages: write` only in the
-two image-publishing jobs. The deployment job has only `contents: read`. It
-exchanges the DigitalOcean token for a kubeconfig that expires after ten minutes
-and stores it only on the ephemeral runner. Do not add a kubeconfig or cluster
-certificate to GitHub secrets.
+```sh
+gh variable set DEMO_INSTALLATION_VALUES --env demo < deploy/installations/demo.values.yaml
+```
 
-Before the first deployment, operators must provide:
+Validate a local file before uploading it (use a new output filename each time):
 
-- an existing DOKS cluster with enough capacity for the chart's resource
-  requests, an `nginx` IngressClass, and HTTPS termination for both public
-  hosts; its ingress-nginx controller ConfigMap must set `hsts: "true"`,
-  `hsts-max-age: "31536000"`, `hsts-include-subdomains: "true"`, and
-  `hsts-preload: "false"`;
-- DNS for `demo.opentriage.org` and `api.demo.opentriage.org` pointing to that
-  Ingress;
-- an apex A record for `opentriage.org` pointing to the same Ingress, and
-  cert-manager's existing `letsencrypt-prod` ClusterIssuer. The demo Ingress
-  requests the automatically renewed certificate stored in
-  `open-triage-public-site-tls`. The demo values enable its public one-pager;
-  other installations can disable it or configure their own `publicSite.host`;
-- access from the cluster to
-  `ghcr.io/open-triage/open-triage-{api,web}`. If the packages are private,
-  provision a pull credential outside the workflow and expose it through the
-  chart's `imagePullSecrets` value or the namespace's default service account;
-- the `open-triage` namespace and its cluster-owned API, migration, analytics
-  projector, analytics health, retention, and operational-audit database
-  Secrets. Although Helm is invoked with
-  `--create-namespace`, a usable first deployment requires operators to create
-  the namespace and Secrets in advance because the pre-install migration hook
-  needs its dedicated Secret before Helm-managed resources exist. Follow the
-  [chart instructions](../deploy/helm/open-triage/README.md) for the required
-  keys and safe creation procedure;
-- the external PostgreSQL 15-or-newer/Supabase demo database referenced by the
-  workload Secrets, initialized only with fictional demo data.
+```sh
+node scripts/installation-values.mjs --input deploy/installations/demo.values.yaml \
+  --output /tmp/validated-installation.values.json
+helm lint deploy/helm/open-triage --values /tmp/validated-installation.values.json
+```
 
-The fixed automated targets are Helm release `open-triage`, namespace
-`open-triage`, web host `https://demo.opentriage.org`, and API host
-`https://api.demo.opentriage.org`. Changing any of them requires a reviewed
-workflow or chart change; they are not workflow inputs.
+A main-branch deployment validates the environment configuration before publishing
+images and snapshots it as a non-secret Actions artifact with one-day retention.
+The Helm rollout, runtime public-site hostname and public smoke-test URLs all
+come from that same snapshot. The portable web image uses same-origin `/api`
+routing. Missing settings,
+example hosts, missing TLS coverage, embedded workload credentials and image
+overrides fail validation. Image identities still come exclusively from the
+verified image manifest. Pull requests lint and render the fictional example
+without access to the demo environment. If the snapshot has expired, rerun the
+whole workflow, not just its deployment job. Environment changes apply on the
+next full deployment; retrying a failed downstream job reuses its original snapshot.
 
-The committed, non-secret
-`deploy/helm/open-triage/demo-reference.values.yaml` file also pins the existing
-`ghcr-pull` image pull Secret and `open-triage-tls` Ingress certificate. Keep
-those cluster-owned Secrets in place. The workflow passes this file to Helm
-validation and every automated upgrade so a release cannot silently discard
-private-registry access or public TLS configuration.
+The automated release and namespace remain `open-triage`. The pipeline receives
+`packages: write` only for image publishing; deployment has `contents: read` and
+uses a kubeconfig expiring after thirty minutes. Do not store kubeconfigs in
+GitHub secrets.
 
-The same values file selects the `pool-6inz100pf` node pool for the web, API,
-migration hook, and all scheduled app jobs. Nodes in that pool must finish
-DigitalOcean's readiness checks before workloads can schedule. The selector
-does not move cluster infrastructure or retire the older node pool.
+Before deploying, operators must supply a ready cluster with the selected nodes,
+working ingress/DNS and certificates for the configured hosts, registry access,
+and all referenced database Secrets in the `open-triage` namespace. Follow the
+[chart instructions](../deploy/helm/open-triage/README.md) to prepare the existing
+external database and Secrets. Credential provisioning is an installation step;
+the deployment workflow no longer runs the legacy Secret-conversion script.
+An older installation that still needs that conversion must run
+`scripts/provision-demo-workload-secrets.sh` explicitly with its current API image
+before enabling this workflow; it assumes the historical standard Secret names.
 
-The same web image serves a small public homepage at `https://opentriage.org`,
-with links to the demo and public GitHub source. nginx selects its standalone
-static files by hostname, without loading the clinical app or registering its
-service worker. Preview the page at `/landing/` on a local web server. The
-homepage assets live in `apps/web/public/landing/` and are included in the
-Next.js static export. Configure the base-domain DNS before deploying the
-enabled public-site route; cert-manager issues its certificate through the
-existing nginx HTTP-01 solver.
+nginx ingress must retain `hsts: "true"`, `hsts-max-age: "31536000"`,
+`hsts-include-subdomains: "true"`, and `hsts-preload: "false"` in its controller
+ConfigMap. The public smoke check verifies the resulting HTTPS policy.
+
+### Transition from committed demo values
+
+Before merging this workflow change, export the deployed Helm values to the
+operator-owned file:
+
+```sh
+umask 077
+mkdir -p deploy/installations
+helm get values open-triage --namespace open-triage --kube-context YOUR_CONTEXT \
+  --output yaml > deploy/installations/demo.values.yaml
+```
+
+Review the export locally. Remove `api.image` and `web.image` because CI owns
+image selection; explicitly add `web.host`, `api.host`, and `publicSite.host`
+(if enabled), which older releases inherited from the chart. Preserve the
+current node selector, resource requests and Secret references for this transition.
+Validate and upload the file as described above **before merging**. Do not paste
+credential values into GitHub variables. No fallback to the former committed
+configuration exists, so an unconfigured deployment fails before publishing images.
+Move to a smaller pool later by editing the installation file, uploading it and
+running a full deployment after checking capacity; retiring unused nodes is a
+separate operator action.
+
+The optional public one-pager uses `publicSite.host`, supplied to the web
+container as `OPEN_TRIAGE_PUBLIC_SITE_HOST` at runtime.
+The homepage files remain in `apps/web/public/landing/`; its separate nginx
+virtual host serves them without loading the clinical app or its service worker.
 
 ## Manual redeployment
 
@@ -213,7 +249,7 @@ appropriate.
 
 The demo now uses the shared same-origin web build (`NEXT_PUBLIC_API_URL=same-origin`).
 Its public landing host and organization hostname suffix live in
-`deploy/helm/open-triage/demo-reference.values.yaml`, using the same
+the operator-owned installation values file, using the same
 `publicSite.host`, `agencyBaseDomain`, and `ingress.agencyHosts` settings as other
 installations. New agency domains also require DNS and TLS coverage; see the
 [chart routing configuration](../deploy/helm/open-triage/README.md).
