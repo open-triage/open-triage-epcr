@@ -19,12 +19,13 @@ import { OwnershipTransferPanel } from "./ownership-transfer";
 type StateFilter = "active" | "disabled" | "all";
 const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
 
-function RoleBadges({ roles, effective = true, owner = false }: {
-  readonly roles: AdminRoleSummary[]; readonly effective?: boolean; readonly owner?: boolean;
+function RoleBadges({ roles, effective = true, owner = false, superadmin = false }: {
+  readonly roles: AdminRoleSummary[]; readonly effective?: boolean; readonly owner?: boolean; readonly superadmin?: boolean;
 }) {
   const t = useAdminText();
-  if (!roles.length && !owner) return <span className="admin-muted"><AdminText messageKey="admin.noRoles" /></span>;
+  if (!roles.length && !owner && !superadmin) return <span className="admin-muted"><AdminText messageKey="admin.noRoles" /></span>;
   return <ul className="admin-role-badges" aria-label={t("admin.assignedRoles")}>
+    {superadmin && !owner && <li className="admin-owner-role"><AdminText messageKey="admin.superadmin" /></li>}
     {owner && <li className="admin-owner-role"><AdminText messageKey="admin.owner" /></li>}
     {roles.map((role) => <li key={role.id}>{role.displayName}{!role.active
       ? t("admin.deactivated2") : !effective ? t("admin.retainedIneffectiveWhile") : ""}</li>)}
@@ -324,7 +325,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       aria-labelledby={`manage-user-${editing.id}`}>
       <div className="section-heading"><h3 id={`manage-user-${editing.id}`}>{t("admin.manageName", { name: editing.displayName })}</h3>
         <button type="button" onClick={() => closeUser() }><AdminText messageKey="admin.close" /></button></div>
-    {canManage && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
+    {canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
       <fieldset disabled={saving}><legend><AdminText messageKey="admin.identityAndAccess" /></legend>
         <label><AdminText messageKey="admin.displayName" /><input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
         <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
@@ -377,7 +378,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
             {session.current ? t("admin.revokeAndSign") : t("admin.revokeSession")}</button>}
         </li>)}</ul>}
       </div>}
-      {canResetCredentials && editing.id !== currentUserId && <form className="admin-credential-reset" onChangeCapture={() => setCredentialDirty(true)} onSubmit={resetCredential}>
+      {canResetCredentials && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-credential-reset" onChangeCapture={() => setCredentialDirty(true)} onSubmit={resetCredential}>
         <fieldset disabled={resetting}><legend><AdminText messageKey="admin.resetCredential" /></legend>
           <p><AdminText messageKey="admin.credentialResetDoesNotReactivate" /></p>
           <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
@@ -412,7 +413,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       <tbody>{items.map((user) => <tr key={user.id} className="admin-directory-row" aria-selected={editing?.id === user.id} onClick={activateListRow}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
         <td>{user.active ? t("admin.active") : t("admin.disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
-          owner={user.owner} /></td>
+          owner={user.owner} superadmin={user.superadmin} /></td>
         {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? t("admin.currentAccount")
           : <button id={`manage-user-${user.id}`} data-list-row-action type="button" onClick={() => beginEdit(user)}><AdminText messageKey="admin.manage" /></button>}</td>}
       </tr>)}</tbody>

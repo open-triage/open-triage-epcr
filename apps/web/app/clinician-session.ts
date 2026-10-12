@@ -3,7 +3,7 @@ import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSess
   type ReauthenticationResult } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
-import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
+import { apiRequestUrl, bindBrowserOrganization, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
@@ -40,10 +40,12 @@ export function sessionRequestToken(session: ClinicianSession): string {
 
 export function storeClinicianSession(storage: Pick<Storage, "setItem">, session: ClinicianSession): void {
   storage.setItem(CLINICIAN_SESSION_STORAGE_KEY, JSON.stringify(session));
+  bindBrowserOrganization(session.organization.id);
 }
 
 export function clearClinicianSession(storage: Pick<Storage, "removeItem">): void {
   storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
+  bindBrowserOrganization(undefined);
 }
 
 export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<ClinicianSession> {

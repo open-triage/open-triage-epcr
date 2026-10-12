@@ -18,29 +18,58 @@ function publicBrowserEnvironment(): Record<string, string | undefined> {
   };
 }
 
+/** Keep local cookies and requests on the agency's host, including across API/web ports. */
+export function localAgencyApiUrl(apiUrl: string, hostname: string): string {
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(hostname)) return apiUrl;
+  try {
+    const url = new URL(apiUrl);
+    if (url.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return apiUrl;
+    url.hostname = hostname;
+    return withoutTrailingSlash(url.toString());
+  } catch { return apiUrl; }
+}
+
 /** Resolves the browser's server-backed or intentional static-demo request mode. */
 export function browserRequestConfiguration(
   environment: Record<string, string | undefined> = publicBrowserEnvironment(),
 ): BrowserRequestConfiguration {
+  const hostname = typeof window === "undefined" ? "" : window.location?.hostname ?? "";
   const staticMode = environment.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true";
   return {
     mode: staticMode ? "static" : "server",
     apiBaseUrl: staticMode
       ? null
-      : withoutTrailingSlash(environment.NEXT_PUBLIC_API_URL) || "http://localhost:3001",
+      : !environment.NEXT_PUBLIC_API_URL || environment.NEXT_PUBLIC_API_URL === "same-origin" ? ""
+        : localAgencyApiUrl(withoutTrailingSlash(environment.NEXT_PUBLIC_API_URL), hostname),
     basePath: withoutTrailingSlash(environment.NEXT_PUBLIC_BASE_PATH),
     routeStaticMutationsToApi: environment.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API === "true",
   };
 }
 
 export function apiRequestUrl(path: string, configuration = browserRequestConfiguration()): string | null {
-  return configuration.apiBaseUrl ? `${configuration.apiBaseUrl}${path}` : null;
+  return configuration.apiBaseUrl !== null ? `${configuration.apiBaseUrl}${path}` : null;
 }
 
 export function browserRouteUrl(path: string, configuration = browserRequestConfiguration()): string {
   return apiRequestUrl(path, configuration) ?? `${configuration.basePath}${path}`;
 }
 
+let requestOrganizationId: string | undefined;
+export function bindBrowserOrganization(organizationId: string | undefined): void {
+  if (typeof window !== "undefined") requestOrganizationId = organizationId;
+}
+
 export function browserRequestInit(init: RequestInit = {}): RequestInit {
-  return { cache: "no-store", credentials: "include", ...init };
+  if (typeof window !== "undefined" && !requestOrganizationId) {
+    try {
+      const session = JSON.parse(window.localStorage.getItem("open-triage.clinician-session.v1") ?? "null") as { organization?: { id?: string } } | null;
+      requestOrganizationId = session?.organization?.id;
+    } catch { /* Startup validates unavailable or malformed session storage. */ }
+  }
+  // Keep the rendered tab's agency even when another tab updates localStorage.
+  // The server rejects a stale tab instead of running its command in a new agency.
+  if (!requestOrganizationId) return { cache: "no-store", credentials: "include", ...init };
+  const headers = new Headers(init.headers);
+  headers.set("x-organization-id", requestOrganizationId);
+  return { cache: "no-store", credentials: "include", ...init, headers };
 }

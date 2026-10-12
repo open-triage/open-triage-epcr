@@ -27,8 +27,9 @@ import {
   storePresentationMode,
   type PresentationMode
 } from "../app/presentation-mode";
-import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
-import { availableUiLanguages, resolveMessage, type AgencyLanguage } from "../app/localization";
+import { applyAgencyAppearance, loadInstallationConfiguration, INSTALLATION_CONFIGURATION_STORAGE_KEY } from "../app/installation-settings";
+import { switchAgency } from "../app/agencies";
+import { availableUiLanguages, resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { AdminShell } from "./admin-shell";
@@ -344,6 +345,22 @@ export function ClinicianSessionGate({ children }: {
     if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
   }
 
+  async function changeAgency(id: string) {
+    if (!session || !online) throw new Error(t("admin.connectToSwitchAgencies"));
+    if (activeReport || openingCall || protectedLogoutSummary().pendingReportCount > 0) {
+      throw new Error(t("admin.closeReportsToSwitchAgencies"));
+    }
+    if (!confirmDiscardChanges(unsavedEditors.current.size > 0)) return;
+    await lockProtectedClinicalStorage();
+    const changed = await switchAgency(sessionRequestToken(session), id);
+    clearProtectedRuntimeReports();
+    clearFeedbackTelemetry();
+    window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
+    storeClinicianSession(window.localStorage, { ...changed, csrfToken: session.csrfToken });
+    // Recreate all workspaces and in-memory caches at the new agency boundary.
+    window.location.reload();
+  }
+
   function logoutDialogKeys(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape" && !lockingSession) setLogoutWarning(null);
   }
@@ -437,7 +454,16 @@ export function ClinicianSessionGate({ children }: {
         {browserRequestConfiguration().mode === "server" &&
           <FeedbackControl language={language} csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : presentationMode === "review" ? "review" : activeReport ? "encounter" : "calls"} />}
+        <div className="session-account">
         <span className="session-identity">{t("navigation.signedInAs", { name: session.user.displayName })}</span>
+        {(session.agencies?.length ?? 0) > 1 && <label className="session-agency-selector">
+          <select aria-label={t("admin.agency")} value={session.organization.id}
+            disabled={!online || activeReport !== null || openingCall !== null}
+            onChange={(event) => { void changeAgency(event.target.value).catch((reason: unknown) => setModeMessage(resolveErrorMessage(language, reason instanceof Error ? reason.message : null, "admin.agencyOpenFailed"))); }}>
+            {session.agencies?.map((agency) => <option key={agency.id} value={agency.id}>{agency.name}</option>)}
+          </select>
+        </label>}
+        </div>
         <div className="presentation-selector-scroll">
           <div className="presentation-selector" role="group" aria-label={t("navigation.presentation")}>
             {hasClinicalMode(session.capabilities) && <>
@@ -531,7 +557,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
-      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online} onOpenAgency={changeAgency}
         reviewSettingsSection={adminReviewSettingsSection} />}
       {presentationMode === "review" && !activeReport && <ReviewShell key={`${session.user.id}:${session.organization.id}:${[...(session.capabilities ?? [])].sort().join(",")}`} session={session} language={language}
         online={online} attention={reviewAttention?.dataset === reviewAttentionDataset ? reviewAttention : null}

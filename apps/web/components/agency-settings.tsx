@@ -4,10 +4,12 @@ import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
-import { DEFAULT_SYNTHETIC_RETENTION_HOURS, DEFAULT_AGENCY_AUTHENTICATION_LIMITS,
+import { DEFAULT_SYNTHETIC_RETENTION_HOURS, DEFAULT_AGENCY_AUTHENTICATION_LIMITS, DEFAULT_AGENCY_APPEARANCE,
+  DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES,
   MAX_AGENCY_AUTHENTICATION_ATTEMPTS } from "@open-triage/contracts";
-import React, { FormEvent, useCallback, useEffect, useState } from "react";
+import React, { type ReactNode, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
+import { TimeZoneSelect } from "./time-zone-select";
 import { applyAgencyColors } from "../app/installation-settings";
 import { formatClinicalDate, formatClinicalNumber, type RegionalFormat } from "../app/regional-format";
 import { availableUiLanguages, languageDisplayName, resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -33,15 +35,37 @@ function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsComma
     } };
 }
 
-export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
+export function newAgencySettings(): AgencyMediaSettings {
+  return { organizationId: "", revision: 1, language: "en", regionalFormat: null,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    syntheticRetentionHours: DEFAULT_SYNTHETIC_RETENTION_HOURS,
+    authenticationLimits: { ...DEFAULT_AGENCY_AUTHENTICATION_LIMITS },
+    reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, imageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES,
+    defaultReportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, defaultImageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES,
+    appearance: { ...DEFAULT_AGENCY_APPEARANCE, helperText: resolveMessage("en", "admin.agencyCredentialHelp") },
+    demographics: { versionId: "", version: 0, catalogReleaseId: "", agencyUniqueStateId: "", agencyNumber: "", stateCode: "",
+      stateDisplay: null, stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null, effectiveFrom: "" },
+    storageGrowthWarning: false, updatedAt: "" };
+}
+
+export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", creation }: {
   readonly csrfToken: string;
   readonly canWrite: boolean;
   readonly language?: AgencyLanguage;
+  readonly creation?: {
+    readonly fields: ReactNode;
+    readonly onSubmit: (command: UpdateAgencyMediaSettingsCommand, form: FormData) => Promise<void>;
+    readonly onCancel: () => void;
+    readonly onChange: () => void;
+  };
 }) {
   const t = useCallback((key: string, parameters?: Record<string, string | number>) =>
     resolveMessage(language, key, parameters), [language]);
-  const [settings, setSettings] = useState<AgencyMediaSettings | null>(null);
-  const [draft, setDraft] = useState<UpdateAgencyMediaSettingsCommand | null>(null);
+  const creating = Boolean(creation);
+  const panel = useRef<HTMLElement>(null);
+  const fieldId = (name: string) => creating ? `new-${name}` : name;
+  const [settings, setSettings] = useState<AgencyMediaSettings | null>(() => creating ? newAgencySettings() : null);
+  const [draft, setDraft] = useState<UpdateAgencyMediaSettingsCommand | null>(() => settings ? editable(settings) : null);
   const [allowanceMib, setAllowanceMib] = useState("50");
   const [imageLimitMib, setImageLimitMib] = useState("10");
   const [retentionHours, setRetentionHours] = useState(String(DEFAULT_SYNTHETIC_RETENTION_HOURS));
@@ -70,8 +94,8 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   }, [language, t, settings]);
 
   useEffect(() => {
-    if (draft) applyAgencyColors(draft.appearance, document);
-  }, [draft]);
+    if (draft) applyAgencyColors(draft.appearance, document, creating ? panel.current ?? undefined : undefined);
+  }, [draft, creating]);
 
   const mib = Number(allowanceMib);
   const validAllowance = Number.isInteger(mib) && mib >= 1 && mib <= 2048;
@@ -97,7 +121,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
     reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes }) === JSON.stringify(editable(settings));
 
   useUnsavedChanges(!!draft && !unchanged);
-  useEffect(() => () => { if (settings) applyAgencyColors(settings.appearance, document); }, [settings]);
+  useEffect(() => () => { if (settings && !creating) applyAgencyColors(settings.appearance, document); }, [settings, creating]);
 
   function changeAppearance<K extends keyof AgencyAppearance>(key: K, value: AgencyAppearance[K]) {
     setDraft((current) => current ? { ...current, appearance: { ...current.appearance, [key]: value } } : current);
@@ -122,13 +146,13 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!settings || !draft || !validAllowance || !validImageLimit || !validRetentionHours || !validAuthenticationLimits || !complete || !canWrite) return;
+    const form = new FormData(event.currentTarget);
     setBusy(true); setError(null); setNotice(null);
     try {
-      const updated = await updateAgencyMediaSettings(csrfToken, { ...draft,
-        syntheticRetentionHours: proposedRetentionHours,
-        authenticationLimits,
-        expectedRevision: settings.revision, reportMediaAllowanceBytes: proposedBytes,
-        imageMediaLimitBytes: proposedImageBytes });
+      const command = { ...draft, syntheticRetentionHours: proposedRetentionHours, authenticationLimits,
+        expectedRevision: settings.revision, reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes };
+      if (creation) { await creation.onSubmit(command, form); return; }
+      const updated = await updateAgencyMediaSettings(csrfToken, command);
       setSettings(updated); setDraft(editable(updated));
       setAccountAttemptLimit(String(updated.authenticationLimits?.accountAttemptsPer15Minutes ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.accountAttemptsPer15Minutes));
       setNetworkAttemptLimit(String(updated.authenticationLimits?.networkAttemptsPer5Minutes ?? DEFAULT_AGENCY_AUTHENTICATION_LIMITS.networkAttemptsPer5Minutes));
@@ -142,17 +166,18 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
     } finally { setBusy(false); }
   }
 
-  return <section className="admin-configuration agency-settings" aria-labelledby="agency-settings-heading">
-    <div className="section-heading"><h2 id="agency-settings-heading">{t("navigation.settings")}</h2></div>
+  return <section ref={panel} className="admin-configuration agency-settings" aria-labelledby={fieldId("agency-settings-heading")}>
+    <div className="section-heading"><h2 id={fieldId("agency-settings-heading")}>{creating ? t("admin.newAgency") : t("navigation.settings")}</h2></div>
     {error && <p className="admin-error" role="alert">{error}</p>}
     {notice && <p className="agency-settings-notice" role="status">{notice}</p>}
     {!draft && !error && <p role="status">{t("settings.loading")}</p>}
-    {draft && <form onSubmit={save}>
+    {draft && <form onSubmit={save} onChange={creation?.onChange}>
+      {creation && <fieldset disabled={busy}>{creation.fields}</fieldset>}
       <fieldset disabled={!canWrite || busy}>
         <legend>{t("settings.language")}</legend>
-        <label htmlFor="agency-language"><strong>{t("settings.agencyLanguage")}</strong>
+        <label htmlFor={fieldId("agency-language")}><strong>{t("settings.agencyLanguage")}</strong>
           <span>{t("settings.languageHelp")}</span></label>
-        <select id="agency-language" value={draft.language} onChange={(event) =>
+        <select id={fieldId("agency-language")} value={draft.language} onChange={(event) =>
           setDraft((current) => current ? { ...current, language: event.target.value as AgencyLanguage } : current)}>
           {availableUiLanguages.map((code) => <option key={code} value={code}>{languageDisplayName(code, language)}</option>)}
         </select>
@@ -160,9 +185,9 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
 
       <fieldset disabled={!canWrite || busy}>
         <legend>{t("settings.regionalFormat")}</legend>
-        <label htmlFor="agency-regional-format"><strong>{t("settings.datesAndNumbers")}</strong>
+        <label htmlFor={fieldId("agency-regional-format")}><strong>{t("settings.datesAndNumbers")}</strong>
           <span>{t("settings.regionalFormatHelp")}</span></label>
-        <select id="agency-regional-format" value={draft.regionalFormat ?? ""} onChange={(event) =>
+        <select id={fieldId("agency-regional-format")} value={draft.regionalFormat ?? ""} onChange={(event) =>
           setDraft((current) => current ? { ...current, regionalFormat: (event.target.value || null) as RegionalFormat } : current)}>
           <option value="">{t("settings.currentFormat")}</option>
           <option value="en-US">English (United States)</option>
@@ -173,52 +198,52 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
 
       <fieldset disabled={!canWrite || busy}>
         <legend>{t("settings.timeZone")}</legend>
-        <label htmlFor="agency-time-zone"><strong>{t("settings.clinicalTimeZone")}</strong>
+        <label htmlFor={fieldId("agency-time-zone")}><strong>{t("settings.clinicalTimeZone")}</strong>
           <span>{t("settings.timeZoneHelp")}</span></label>
-        <input id="agency-time-zone" value={draft.timeZone ?? ""} placeholder={resolveMessage(language, "admin.useDeviceTime")}
-          onChange={(event) => setDraft((current) => current ? { ...current, timeZone: event.target.value || null } : current)} />
+        <TimeZoneSelect id={fieldId("agency-time-zone")} value={draft.timeZone ?? null} language={language}
+          onChange={(timeZone) => setDraft((current) => current ? { ...current, timeZone } : current)} />
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
         <legend>{t("settings.demoRecords")}</legend>
-        <label htmlFor="synthetic-retention-hours"><strong>{t("settings.demoWipeHours")}</strong></label>
-        <input id="synthetic-retention-hours" name="syntheticRetentionHours" type="number" min="1" step="1"
-          value={retentionHours} aria-describedby="synthetic-retention-help" aria-invalid={!validRetentionHours}
+        <label htmlFor={fieldId("synthetic-retention-hours")}><strong>{t("settings.demoWipeHours")}</strong></label>
+        <input id={fieldId("synthetic-retention-hours")} name="syntheticRetentionHours" type="number" min="1" step="1"
+          value={retentionHours} aria-describedby={fieldId("synthetic-retention-help")} aria-invalid={!validRetentionHours}
           onChange={(event) => setRetentionHours(event.target.value)} />
-        <small id="synthetic-retention-help">{t("settings.demoWipeHelp")}</small>
+        <small id={fieldId("synthetic-retention-help")}>{t("settings.demoWipeHelp")}</small>
         {!validRetentionHours && <p className="admin-error" role="alert">{t("settings.demoWipeInvalid")}</p>}
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
         <legend>{t("settings.loginLimits")}</legend>
-        <label htmlFor="authentication-account-attempt-limit"><strong>{t("settings.loginAccountLimit")}</strong></label>
-        <input id="authentication-account-attempt-limit" type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
-          step="1" required value={accountAttemptLimit} aria-describedby="authentication-limits-help"
+        <label htmlFor={fieldId("authentication-account-attempt-limit")}><strong>{t("settings.loginAccountLimit")}</strong></label>
+        <input id={fieldId("authentication-account-attempt-limit")} type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
+          step="1" required value={accountAttemptLimit} aria-describedby={fieldId("authentication-limits-help")}
           aria-invalid={!validAttemptLimit(authenticationLimits.accountAttemptsPer15Minutes)}
           onChange={(event) => setAccountAttemptLimit(event.target.value)} />
-        <label htmlFor="authentication-network-attempt-limit"><strong>{t("settings.loginNetworkLimit")}</strong></label>
-        <input id="authentication-network-attempt-limit" type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
-          step="1" required value={networkAttemptLimit} aria-describedby="authentication-limits-help"
+        <label htmlFor={fieldId("authentication-network-attempt-limit")}><strong>{t("settings.loginNetworkLimit")}</strong></label>
+        <input id={fieldId("authentication-network-attempt-limit")} type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
+          step="1" required value={networkAttemptLimit} aria-describedby={fieldId("authentication-limits-help")}
           aria-invalid={!validAttemptLimit(authenticationLimits.networkAttemptsPer5Minutes)}
           onChange={(event) => setNetworkAttemptLimit(event.target.value)} />
-        <small id="authentication-limits-help">{t("settings.loginLimitsHelp")}</small>
+        <small id={fieldId("authentication-limits-help")}>{t("settings.loginLimitsHelp")}</small>
         {!validAuthenticationLimits && <p className="admin-error" role="alert">{t("settings.loginLimitsInvalid", { max: MAX_AGENCY_AUTHENTICATION_ATTEMPTS })}</p>}
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
         <legend><AdminText messageKey="admin.reportMedia" /></legend>
-        <label htmlFor="image-media-limit"><strong><AdminText messageKey="admin.perImageLimit" /></strong>
+        <label htmlFor={fieldId("image-media-limit")}><strong><AdminText messageKey="admin.perImageLimit" /></strong>
           <span><AdminText messageKey="admin.maximumCanonicalSize" /></span></label>
         <div className="agency-settings-input">
-          <input id="image-media-limit" name="imageMediaLimitMib" type="number"
+          <input id={fieldId("image-media-limit")} name="imageMediaLimitMib" type="number"
             min="1" max={validAllowance ? mib : 2048} step="1" required value={imageLimitMib}
             onChange={(event) => setImageLimitMib(event.target.value)} /><span>MB</span>
         </div>
         <small><AdminText messageKey="admin.allowedRange1MB" /></small>
-        <label htmlFor="report-media-allowance"><strong><AdminText messageKey="admin.totalReportMedia" /></strong>
+        <label htmlFor={fieldId("report-media-allowance")}><strong><AdminText messageKey="admin.totalReportMedia" /></strong>
           <span><AdminText messageKey="admin.aggregatePhotoAnd" /></span></label>
         <div className="agency-settings-input">
-          <input id="report-media-allowance" name="reportMediaAllowanceMib" type="number"
+          <input id={fieldId("report-media-allowance")} name="reportMediaAllowanceMib" type="number"
             min="1" max="2048" step="1" required value={allowanceMib}
             onChange={(event) => setAllowanceMib(event.target.value)} /><span>MB</span>
         </div>
@@ -271,25 +296,26 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
 
       <fieldset disabled={!canWrite || busy}>
         <legend><AdminText messageKey="admin.nemsisAgencyDemographics" /></legend>
-        <p><AdminText messageKey="admin.changesAppendAn" /></p>
-        <label>dAgency.01 — EMS Agency Unique State ID<input maxLength={50} required
+        {!creating && <p><AdminText messageKey="admin.changesAppendAn" /></p>}
+        <label>{t("admin.agencyUniqueStateId")}<input maxLength={50} required
           value={draft.demographics.agencyUniqueStateId}
           onChange={(event) => changeDemographic("agencyUniqueStateId", event.target.value)} /></label>
-        <label>dAgency.02 — EMS Agency Number<input maxLength={15} required
+        <label>{t("admin.agencyNumber")}<input maxLength={15} required
           value={draft.demographics.agencyNumber}
           onChange={(event) => changeDemographic("agencyNumber", event.target.value)} /></label>
-        <label>dAgency.04 — ANSI state code<input inputMode="numeric" pattern="[0-9]{2}" maxLength={2} required
+        <label>{t("admin.agencyStateCode")}<input inputMode="numeric" pattern="[0-9]{2}" maxLength={2} required
           value={draft.demographics.stateCode}
           onChange={(event) => changeDemographic("stateCode", event.target.value)} /></label>
         <label><AdminText messageKey="admin.stateDisplayOptional" /><input maxLength={100} value={draft.demographics.stateDisplay ?? ""}
           onChange={(event) => changeDemographic("stateDisplay", event.target.value || null)} /></label>
-        <small>{resolveMessage(language, "admin.currentDemographicVersion", { version: settings?.demographics.version ?? 0, codeSystem: draft.demographics.stateCodeSystem ?? resolveMessage(language, "admin.notRecorded") })}</small>
+        {!creating && <small>{resolveMessage(language, "admin.currentDemographicVersion", { version: settings?.demographics.version ?? 0, codeSystem: draft.demographics.stateCodeSystem ?? resolveMessage(language, "admin.notRecorded") })}</small>}
       </fieldset>
 
-      <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>
+      {!creating && <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>}
       {!canWrite && <p>{t("settings.readOnly")}</p>}
       {canWrite && <div className="form-actions"><button type="submit"
-        disabled={busy || !validAllowance || !validImageLimit || !validRetentionHours || !validAuthenticationLimits || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
+        disabled={busy || !validAllowance || !validImageLimit || !validRetentionHours || !validAuthenticationLimits || !complete || !creating && unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button>
+        {creation && <button type="button" disabled={busy} onClick={creation.onCancel}>{t("admin.cancel")}</button>}</div>}
     </form>}
   </section>;
 }
