@@ -46,7 +46,7 @@ Before the first deployment, operators must provide:
   cert-manager's existing `letsencrypt-prod` ClusterIssuer. The demo Ingress
   requests the automatically renewed certificate stored in
   `open-triage-public-site-tls`. The demo values enable its public one-pager;
-  other installations leave `publicSite.enabled` disabled;
+  other installations can disable it or configure their own `publicSite.host`;
 - access from the cluster to
   `ghcr.io/open-triage/open-triage-{api,web}`. If the packages are private,
   provision a pull credential outside the workflow and expose it through the
@@ -210,3 +210,10 @@ date. Restrict changes to `.github/workflows/demo-validation.yml` and
 deployment job should remain assigned to the protected `demo` environment;
 optionally add a required reviewer there when unattended deployment is not
 appropriate.
+
+The demo now uses the shared same-origin web build (`NEXT_PUBLIC_API_URL=same-origin`).
+Its public landing host and organization hostname suffix live in
+`deploy/helm/open-triage/demo-reference.values.yaml`, using the same
+`publicSite.host`, `agencyBaseDomain`, and `ingress.agencyHosts` settings as other
+installations. New agency domains also require DNS and TLS coverage; see the
+[chart routing configuration](../deploy/helm/open-triage/README.md).

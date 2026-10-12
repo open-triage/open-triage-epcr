@@ -173,7 +173,7 @@ export OT_API_ORIGIN=https://api.epcr.your-agency.org
 docker login harbor.your-agency.org
 docker build -f deploy/docker/api.Dockerfile -t "$OT_REGISTRY/api:$OT_RELEASE" .
 docker build -f deploy/docker/web.Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL="$OT_API_ORIGIN" \
+  --build-arg NEXT_PUBLIC_API_URL=same-origin \
   --build-arg OPEN_TRIAGE_BUILD_SHA="$OT_RELEASE" \
   -t "$OT_REGISTRY/web:$OT_RELEASE" .
 docker push "$OT_REGISTRY/api:$OT_RELEASE"
