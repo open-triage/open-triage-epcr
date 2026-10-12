@@ -64,6 +64,24 @@ integration('installation accounts bootstrap, authenticate and recover without a
     await assert.rejects(client.query(`insert into app_identity.local_credential(user_id,username,password_verifier)
       select $1,'install.owner',password_verifier from app_identity.local_credential where user_id=$2`,[staff,owner.userId]),/globally reserved/);
     await assert.rejects(client.query("insert into app_identity.app_user(display_name) values('Unscoped staff')"),/Staff accounts/);
+    // Hosted ordinary accounts need a registered agency host. Internal service
+    // calls without request context must not stand in for browser login tests.
+    await client.query('update app_identity.organization set active=true where id=$1',[agency]);
+    await client.query(`insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password)
+      select $1,'hosted.staff',password_verifier,false from app_identity.local_credential where user_id=$2`,[staff,owner.userId]);
+    await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by)
+      select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='clinician'`,[agency,staff,owner.userId]);
+    const hostedLogin = origin => agencyRequest.run({origin},()=>sessions.create({username:'hosted.staff',password}));
+    await assert.rejects(hostedLogin('http://localhost:3000'),/username or password/);
+    await assert.rejects(hostedLogin('https://agency.example.test'),/No active agency/);
+    await client.query("update app_identity.organization set hostname='agency.example.test' where id=$1",[agency]);
+    const hosted = await hostedLogin('https://agency.example.test');
+    assert.equal(hosted.session.organization.id,agency);
+    await agencyRequest.run({origin:'https://agency.example.test'},async()=>{
+      assert.equal((await sessions.get(hosted.sessionToken)).user.id,staff);
+      await sessions.end(hosted.sessionToken,hosted.session.csrfToken);
+    });
+
   } finally {
     if(runtime.isInitialized)await runtime.destroy();if(db.isInitialized)await db.destroy();await client.end();
     await admin.query(`drop database ${name} with (force)`);await admin.end();

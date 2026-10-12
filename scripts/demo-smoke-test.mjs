@@ -139,7 +139,9 @@ export async function verifyPublicDemo(
   }, { attempts: readinessAttempts, delayMilliseconds: readinessDelayMilliseconds });
   log("PASS public API health and security-header verification");
 
-  const installationResponse = await request(fetchImpl, "Installation configuration", new URL("/api/installation", api));
+  // Exercise the browser-facing route: its host selects the agency and owns
+  // the session cookie. The separate API origin is only a health surface.
+  const installationResponse = await request(fetchImpl, "Installation configuration", new URL("/api/installation", frontend));
   const installation = await responseJson(installationResponse, "Installation configuration");
   const { signIn: _configuredSignIn, ...installationPolicy } = installation?.settings ?? {};
   const { signIn: _defaultSignIn, ...productionPolicy } = productionSettings;
@@ -152,7 +154,7 @@ export async function verifyPublicDemo(
   let loginResponse;
   for (const [index, candidate] of credentialCandidates.entries()) {
     try {
-      loginResponse = await request(fetchImpl, "Synthetic login", new URL("/api/sessions", api), {
+      loginResponse = await request(fetchImpl, "Synthetic login", new URL("/api/sessions", frontend), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(candidate),
@@ -171,7 +173,7 @@ export async function verifyPublicDemo(
     throw new Error("Synthetic login did not establish a session cookie");
   log("PASS synthetic login");
 
-  const assignedResponse = await request(fetchImpl, "Authenticated read", new URL("/api/calls/assigned", api), {
+  const assignedResponse = await request(fetchImpl, "Authenticated read", new URL("/api/calls/assigned", frontend), {
     headers: { cookie: sessionCookie },
   });
   const assigned = await responseJson(assignedResponse, "Authenticated read");

@@ -61,9 +61,9 @@ test("verifies HTTPS routing, health, login, and an authenticated read", async (
   assert.deepEqual(requests.map(({ url }) => url), [
     "https://demo.opentriage.org/",
     "https://api.demo.opentriage.org/api/health",
-    "https://api.demo.opentriage.org/api/installation",
-    "https://api.demo.opentriage.org/api/sessions",
-    "https://api.demo.opentriage.org/api/calls/assigned",
+    "https://demo.opentriage.org/api/installation",
+    "https://demo.opentriage.org/api/sessions",
+    "https://demo.opentriage.org/api/calls/assigned",
   ]);
   assert.equal(requests[4].init.headers.cookie, sessionCookie);
   assert.equal(output.length, 5);
@@ -229,3 +229,35 @@ test("fails on an unsuccessful authenticated read without logging its body", asy
   );
   assert.doesNotMatch(output.join("\n"), /sensitive-session-token|PRIVATE-CALL-123/);
 });
+
+for (const [frontendUrl, apiUrl] of [
+  ["https://portal.example.test", "https://api.example.test"],
+  ["https://agency-a.example.test", "https://api.example.test"],
+  ["https://agency-b.example.test", "https://agency-b.example.test"],
+]) {
+  test(`smoke authentication stays on the browser origin ${frontendUrl}`, async () => {
+    const applicationRequests = [];
+    await verifyPublicDemo({ frontendUrl, apiUrl, readinessAttempts: 1 }, {
+      log() {},
+      fetchImpl: async (input, init = {}) => {
+        const url = new URL(input);
+        if (url.pathname === "/") return htmlResponse("OpenTriage synthetic encounter");
+        if (url.pathname === "/api/health") {
+          assert.equal(url.origin, apiUrl);
+          return jsonResponse({ status: "ok", service: "open-triage-api" });
+        }
+        // A real agency-aware API rejects unknown hosts and a browser cannot
+        // share host-only session cookies across these two origins.
+        assert.equal(url.origin, frontendUrl);
+        applicationRequests.push(url.pathname);
+        if (url.pathname === "/api/installation") return jsonResponse({ settings: productionSettings });
+        if (url.pathname === "/api/sessions") return jsonResponse({ csrfToken: "csrf" }, 200, {
+          "set-cookie": `${sessionCookie}; Path=/api; HttpOnly; Secure; SameSite=Strict`,
+        });
+        assert.equal(init.headers.cookie, sessionCookie);
+        return jsonResponse({ assignedCalls: [], canceledAssignmentIds: [] });
+      },
+    });
+    assert.deepEqual(applicationRequests, ["/api/installation", "/api/sessions", "/api/calls/assigned"]);
+  });
+}

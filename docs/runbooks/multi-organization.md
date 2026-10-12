@@ -116,6 +116,19 @@ subdomain, such as `http://test.localhost:3000`. See
 
 ## Upgrade and verification
 
+Register each existing agency's public hostname before expecting ordinary staff
+logins to work after the upgrade. A legacy agency with a null hostname remains
+unbound; the installation portal accepts installation administrators, not ordinary
+agency accounts. For the hosted demonstration agency, retain
+`demo.opentriage.org` as its agency hostname. Preserve any operator-configured
+hostname rather than replacing it on every deployment.
+
+Verify through the browser-facing origin with
+`DEMO_WEB_URL=https://<agency-host> DEMO_API_URL=https://<api-health-host> node scripts/demo-smoke-test.mjs`.
+Installation configuration, login, and authenticated reads use the agency's
+same-origin `/api` route; only the separate health probe uses the API hostname.
+
+
 Apply repository migrations using the normal migration runner. Migration
 `20261012101529_multi_organization_access.sql` preserves existing agencies and
 records as independent roots and requires a single installation owner. If legacy
