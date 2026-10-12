@@ -26,19 +26,24 @@ spec:
   {{- end }}
   rules:
     {{- if .Values.publicSite.enabled }}
-    - host: opentriage.org
+    - host: {{ required "publicSite.host is required when publicSite.enabled=true" .Values.publicSite.host | quote }}
       http:
         paths:
           - path: /
             pathType: Prefix
             backend: { service: { name: {{ include "open-triage.fullname" $ }}-web, port: { name: http } } }
     {{- end }}
-    - host: {{ .Values.web.host }}
+    {{- range concat (list .Values.web.host) .Values.ingress.agencyHosts | uniq }}
+    - host: {{ . | quote }}
       http:
         paths:
+          - path: /api
+            pathType: Prefix
+            backend: { service: { name: {{ include "open-triage.fullname" $ }}-api, port: { name: http } } }
           - path: /
             pathType: Prefix
             backend: { service: { name: {{ include "open-triage.fullname" $ }}-web, port: { name: http } } }
+    {{- end }}
     - host: {{ .Values.api.host }}
       http:
         paths:
@@ -64,10 +69,12 @@ spec:
   tls: {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
-    - host: {{ .Values.api.host }}
+    {{- range concat (list .Values.api.host .Values.web.host) .Values.ingress.agencyHosts | uniq }}
+    - host: {{ . | quote }}
       http:
         paths:
           - path: /api/sessions
             pathType: Prefix
             backend: { service: { name: {{ include "open-triage.fullname" $ }}-api, port: { name: http } } }
+    {{- end }}
 {{- end }}

@@ -1,3 +1,5 @@
+agencyBaseDomain: opentriage.org
+
 # Non-secret values for the fixed public DOKS demo deployment.
 nodeSelector:
   doks.digitalocean.com/node-pool: pool-6inz100pf
@@ -7,6 +9,7 @@ imagePullSecrets:
 
 publicSite:
   enabled: true
+  host: opentriage.org
 
 ingress:
   className: nginx

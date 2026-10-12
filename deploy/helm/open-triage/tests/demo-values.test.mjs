@@ -89,7 +89,7 @@ test("the demo routes the base-domain public site to web with its own TLS certif
   const output = renderDemo();
   assert.match(output, /hosts:\n\s+- opentriage\.org\n\s+secretName: open-triage-public-site-tls/);
   assert.match(output, /cert-manager\.io\/cluster-issuer: letsencrypt-prod/);
-  assert.match(output, /host: opentriage\.org\n\s+http:\n\s+paths:\n\s+- path: \/\n\s+pathType: Prefix\n\s+backend: \{ service: \{ name: open-triage-web, port: \{ name: http \} \} \}/);
+  assert.match(output, /host: "opentriage\.org"\n\s+http:\n\s+paths:\n\s+- path: \/\n\s+pathType: Prefix\n\s+backend: \{ service: \{ name: open-triage-web, port: \{ name: http \} \} \}/);
 
   const defaultIngress = execFileSync("helm", ["template", "open-triage", chart,
     "--show-only", "templates/ingress.yaml"], { encoding: "utf8" });

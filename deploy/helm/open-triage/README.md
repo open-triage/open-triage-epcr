@@ -32,15 +32,18 @@ helm template open-triage ./deploy/helm/open-triage \
 Treat that file as generated output: change the chart or values and render it
 again instead of editing it.
 
-Build the web image with the public API hostname embedded at build time:
+Build the web image with API requests routed through the current web hostname:
 
 ```sh
 docker build -f deploy/docker/web.Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org \
+  --build-arg NEXT_PUBLIC_API_URL=same-origin \
   -t ghcr.io/open-triage/open-triage-web:demo .
 docker build -f deploy/docker/api.Dockerfile \
   -t ghcr.io/open-triage/open-triage-api:demo .
 ```
+
+For additional agency hostnames, configure `ingress.agencyHosts`, DNS and TLS as
+described in the [multi-organization runbook](../../../docs/runbooks/multi-organization.md).
 
 Create the Secrets outside Helm before the first install (or retain existing
 ones when upgrading). Every Secret contains only `DATABASE_URL`, except the API
@@ -130,3 +133,22 @@ Choose `ingress.controller: contour` or `nginx` separately from `className`.
 Contour requires `ingress.authenticationRateLimit.enabled: false`; configure
 any additional edge rate limits through the platform. API authentication throttling
 is independent of the ingress controller.
+
+All installation profiles use same-origin `/api` routing. Build the web image
+with `NEXT_PUBLIC_API_URL=same-origin` (the Dockerfile default); the image can
+then move between public demo and production installations without recompiling
+hostnames. Local development and the local static server use this same routing
+contract; see [local development](../../../docs/runbooks/local-development.md#shared-host-routing).
+
+Set `agencyBaseDomain` to the suffix used for short organization hostnames
+(default: `web.host`). Add agency DNS names or a wildcard to
+`ingress.agencyHosts` and cover each ingress host in `ingress.tls`. Wildcard DNS
+and certificates must be provisioned by the operator; the demo reference values
+only enable its existing explicit hosts. The preflight validates TLS coverage
+for all hosts, including agencies and the optional public landing host.
+
+To serve the landing page, set `publicSite.enabled=true` and `publicSite.host`.
+The chart passes that host to the web container as
+`OPEN_TRIAGE_PUBLIC_SITE_HOST` at runtime. The demo reference values select
+`opentriage.org`; other installations can choose their own host. The landing
+page content remains the bundled OpenTriage public page.

@@ -76,22 +76,28 @@ export function deploymentContract(objects) {
       }
     }
   }
-  const hosts = new Set(), classes = new Set();
+  const hosts = new Set(), classes = new Set(), webHosts = new Set(), apiHosts = new Set();
   for (const object of objects.filter(({ kind }) => kind === "Ingress")) {
     if (!object.spec?.ingressClassName) throw new Error("Set ingress.className to an installed IngressClass.");
     classes.add(object.spec.ingressClassName);
     const annotations = object.metadata.annotations ?? {};
     if (annotations["nginx.ingress.kubernetes.io/force-ssl-redirect"] !== "true" && annotations["ingress.kubernetes.io/force-ssl-redirect"] !== "true") throw new Error("Ingress must redirect HTTP to HTTPS.");
-    for (const { host } of object.spec.rules ?? []) {
+    for (const { host, http } of object.spec.rules ?? []) {
       if (!host || placeholder(host)) throw new Error("Replace example hosts with your real web and API DNS names.");
       hosts.add(host);
+      for (const route of http?.paths ?? []) {
+        if (route.path !== "/") continue;
+        const service = route.backend?.service?.name;
+        if (service?.endsWith("-web")) webHosts.add(host);
+        if (service?.endsWith("-api")) apiHosts.add(host);
+      }
       const tls = object.spec.tls?.find((entry) => entry.hosts?.includes(host));
       if (!tls?.secretName) throw new Error(`Configure ingress.tls with a certificate Secret covering ${host}.`);
       addSecret(tls.secretName, "tls.crt");
       addSecret(tls.secretName, "tls.key");
     }
   }
-  if (hosts.size !== 2) throw new Error("Configure two distinct web and API hosts covered by ingress TLS.");
+  if (hosts.size < 2 || !webHosts.size || ![...apiHosts].some((host) => !webHosts.has(host))) throw new Error("Configure distinct web and API hosts covered by ingress TLS.");
   return { secrets, images, classes, deployments: deployments.map(({ metadata }) => metadata.name) };
 }
 

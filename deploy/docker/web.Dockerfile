@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /workspace
-ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_API_URL=same-origin
 ARG NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION=false
 ARG OPEN_TRIAGE_BUILD_SHA=local
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
@@ -24,6 +24,7 @@ RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
 RUN node deploy/docker/generate-nginx-config.mjs deploy/docker/nginx.conf apps/web/out /tmp/nginx.conf
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine
-COPY --from=build /tmp/nginx.conf /etc/nginx/conf.d/default.conf
+ENV OPEN_TRIAGE_PUBLIC_SITE_HOST=public-site.invalid
+COPY --from=build /tmp/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /workspace/apps/web/out /usr/share/nginx/html
 EXPOSE 8080
