@@ -7,7 +7,7 @@ import { InstallationController } from "../dist/config/installation.controller.j
 test("publishes revisioned appearance with the documented demo sign-in guidance", async () => {
   const result = await new InstallationController({ publicConfiguration: async () => ({
     settings: production, appearance: DEFAULT_AGENCY_APPEARANCE,
-  }) }).get();
+  }) }, { forLogin: async () => null }, {}).get({ headers: {} });
   assert.deepEqual(result, { settings: production, appearance: DEFAULT_AGENCY_APPEARANCE });
   assert.equal("profile" in result, false);
   assert.equal("fixture" in result, false);

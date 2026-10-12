@@ -107,7 +107,7 @@ export class FormPublicationService {
 
         const normalizedDigest = canonicalDefinitionSha256(definition);
         const publisher = await manager.query<Array<{ id: string }>>(`
-          select id from app_identity.app_user
+          select id from app_identity.agency_user
           where id = $1 and organization_id = $2 and active
         `, [command.publishedBy, version.organization_id]);
         if (!publisher[0]) {

@@ -15,6 +15,7 @@ type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
   display_name: string | null;
   revision: number; canonical_definition: FormDraftDefinition; definition_sha256: string;
+  created_by: string;
   updated_at: Date | string;
 };
 
@@ -96,6 +97,8 @@ export class FormAuthoringService {
       const target = await manager.query<Array<{ id: string }>>(`
         select r.id from catalog.release r
         where r.id=$1 and r.sealed and (
+          exists (select 1 from app_identity.agency_demographic_version demographic
+            where demographic.organization_id=$2 and demographic.catalog_release_id=r.id) or
           exists (
             select 1 from catalog.authoring_draft d
             where d.published_release_id=r.id and d.organization_id=$2
@@ -114,9 +117,32 @@ export class FormAuthoringService {
         left join forms.agency_stationary_default active on active.organization_id=f.organization_id
           and active.form_version_id=fv.id
         where f.organization_id=$1 and fv.status='published' and
-          (($2::uuid is null and active.form_version_id is not null) or fv.id=$2::uuid) limit 1
+          ($2::uuid is null or fv.id=$2::uuid)
+        order by (active.form_version_id is not null) desc, fv.created_at desc, fv.id limit 1
       `, [session.organization.id, sourceVersionId ?? null]);
-      if (!source[0]) throw new NotFoundException("The selected Stationary form version is unavailable");
+      if (!source[0]) {
+        if (sourceVersionId) throw new NotFoundException("The selected Stationary form version is unavailable");
+        const current = await manager.query<VersionRow[]>(`select fv.* from forms.form_version fv
+          join forms.form f on f.id=fv.form_id where f.organization_id=$1 and fv.status='draft'
+          order by fv.created_at limit 1 for update of fv`, [session.organization.id]);
+        if (current[0]) {
+          if (current[0].created_by !== session.user.id)
+            throw new ConflictException("Another administrator is setting up the first form");
+          if (current[0].catalog_release_id !== catalogReleaseId)
+            throw new ConflictException("A Stationary form draft is already pinned to another catalog");
+          return this.result(manager, current[0]);
+        }
+        const [form] = mutationRows<{ id: string }>(await manager.query(`insert into forms.form(organization_id,slug,name)
+          values ($1,'stationary',$2) on conflict (organization_id,slug) do update set name=excluded.name returning id`,
+        [session.organization.id, displayName]));
+        const definition: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "care", name: "Care", fields: [] }] };
+        const [draft] = mutationRows<VersionRow>(await manager.query(`insert into forms.form_version
+          (form_id,catalog_release_id,version,canonical_definition,definition_sha256,created_by,display_name)
+          select $1,$2,coalesce(max(version),0)+1,$3::jsonb,$4,$5,$6 from forms.form_version where form_id=$1 returning *`,
+        [form!.id, catalogReleaseId, JSON.stringify(definition), canonicalDefinitionSha256(definition), session.user.id, displayName]));
+        await this.auditDraftMutation(manager, session, "form.draft_create", draft!, { clonedFromId: null });
+        return this.result(manager, draft!);
+      }
       const existing = await manager.query<VersionRow[]>(`
         select * from forms.form_version where form_id=$1 and created_by=$2 and status='draft' for update
       `, [source[0].form_id, session.user.id]);

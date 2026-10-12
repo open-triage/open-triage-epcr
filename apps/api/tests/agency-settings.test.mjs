@@ -419,3 +419,9 @@ test('authentication policy changes are agency-scoped, revisioned, audited, and 
   assert.deepEqual(preserved.authenticationLimits, limits);
   await assert.rejects(service.update('session', { ...command(), authenticationLimits: limits }), ConflictException);
 });
+
+test("timezone validation accepts named IANA zones and saved Etc aliases", () => {
+  for (const timeZone of ["Europe/Stockholm", "Asia/Tokyo", "UTC", "Etc/GMT+5"]) {
+    assert.equal(validateUpdateAgencyMediaSettings({ ...command(), timeZone }).timeZone, timeZone);
+  }
+});

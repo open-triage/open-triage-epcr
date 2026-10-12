@@ -28,8 +28,8 @@ export class CanonicalPackageService {
   }
   async list(token: string, value: string) {
     const kind = this.kind(value);
-    await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:read`);
-    const files = await discoverPackages(kind);
+    const session = await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:read`);
+    const files = await discoverPackages(kind, session.organization.id);
     return Promise.all(files.map(async (entry) => {
       try {
         if (entry.error) throw new UnprocessableEntityException(entry.error);
@@ -48,10 +48,10 @@ export class CanonicalPackageService {
   /** Read and import only the file explicitly selected by the administrator. */
   async importFile(token: string, value: string, input: unknown) {
     const kind = this.kind(value);
-    await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
+    const session = await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
     const file = (input as { file?: unknown } | null)?.file;
     if (typeof file !== "string") throw new UnprocessableEntityException("Select a definition file");
-    const entry = (await discoverPackages(kind)).find((entry) => entry.file === file);
+    const entry = (await discoverPackages(kind, session.organization.id)).find((entry) => entry.file === file);
     if (!entry) throw new UnprocessableEntityException("The selected definition file is unavailable");
     if (entry.error) throw new UnprocessableEntityException(entry.error);
     return this.import(token, kind, entry.package ?? entry.raw, (input as { catalogReleaseId?: unknown }).catalogReleaseId);
@@ -141,7 +141,8 @@ export class CanonicalPackageService {
     return makePackage({ kind, name, version, catalog: { sha256: await this.fingerprint(token, catalogId) }, definition });
   }
   async persist(token: string, kind: DefinitionKind, id: string) {
-    try { await writePackage(await this.export(token, kind, id)); }
+    const session = await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:read`);
+    try { await writePackage(await this.export(token, kind, id), session.organization.id); }
     catch { throw new ServiceUnavailableException({ message: "Publication succeeded, but canonical file export failed. Export this published version after restoring writable local storage.", publishedId: id }); }
   }
   async import(token: string, value: string, input: unknown, targetCatalogId?: unknown) {
@@ -171,7 +172,8 @@ export class CanonicalPackageService {
     return published;
   }
 
-  private async importPublished(token: string, value: string, input: unknown, targetCatalogId?: string) {
+  /** Internal transactional import; callers must provide the authorized agency scope. */
+  async importPublished(token: string, value: string, input: unknown, targetCatalogId?: string) {
     const kind = this.kind(value);
     const session = await this.sessions.requireCapability(token, `${kind === "form" ? "forms" : kind}:publish`);
     const p = parsePackage(input, kind);
