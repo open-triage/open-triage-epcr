@@ -26,7 +26,7 @@ spec:
   {{- end }}
   rules:
     {{- if .Values.publicSite.enabled }}
-    - host: opentriage.org
+    - host: {{ required "publicSite.host is required when publicSite.enabled is true" .Values.publicSite.host }}
       http:
         paths:
           - path: /

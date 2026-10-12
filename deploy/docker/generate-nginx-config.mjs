@@ -49,13 +49,16 @@ export function contentSecurityPolicy(scriptHashes, apiUrl) {
   ].join("; ");
 }
 
-export async function generateNginxConfig({ templateFile, exportDirectory, outputFile, apiUrl }) {
+export async function generateNginxConfig({ templateFile, exportDirectory, outputFile, apiUrl, publicSiteHost = "" }) {
   const template = await readFile(templateFile, "utf8");
   if (!template.includes("__CONTENT_SECURITY_POLICY__")) {
     throw new Error("nginx template is missing its CSP placeholder");
   }
+  if (publicSiteHost && !/^(?=.{1,253}$)[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(publicSiteHost)) {
+    throw new Error("PUBLIC_SITE_HOST must be a DNS hostname");
+  }
   const policy = contentSecurityPolicy(await inlineScriptHashes(exportDirectory), apiUrl);
-  await writeFile(outputFile, template.replace("__CONTENT_SECURITY_POLICY__", policy));
+  await writeFile(outputFile, template.replace("__CONTENT_SECURITY_POLICY__", policy).replace("__PUBLIC_SITE_HOST__", publicSiteHost || "public-site.invalid"));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -68,5 +71,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     exportDirectory,
     outputFile,
     apiUrl: process.env.NEXT_PUBLIC_API_URL,
+    publicSiteHost: process.env.PUBLIC_SITE_HOST,
   });
 }

@@ -45,13 +45,12 @@ test("deployment follows image publication and uses serialized, scoped DOKS acce
 
   assert.match(workflow, /^concurrency:\n  group: .*'demo-deployment'/m);
   assert.match(workflow, /^  cancel-in-progress: false$/m);
-  assert.match(deploy, /^    needs: publish-image-manifest$/m);
+  assert.match(deploy, /^    needs: \[publish-image-manifest, installation-config\]$/m);
   assert.match(deploy, /^    environment: demo$/m);
   assert.match(deploy, /^    permissions:\n      contents: read$/m);
   assert.match(deploy, /token: \$\{\{ secrets\.DIGITALOCEAN_ACCESS_TOKEN \}\}/);
   assert.match(deploy, /kubeconfig save .*--expiry-seconds 1800/);
-  assert.match(deploy, /Provision isolated demo workload credentials/);
-  assert.match(deploy, /scripts\/provision-demo-workload-secrets\.sh/);
+  assert.doesNotMatch(deploy, /scripts\/provision-demo-workload-secrets\.sh/);
   assert.doesNotMatch(deploy, /KUBE_CONFIG|KUBECONFIG_DATA/);
 });
 
@@ -64,7 +63,7 @@ test("deployment verifies the run manifest and uses a bounded atomic Helm rollou
   for (const safeguard of ["--atomic", "--cleanup-on-fail", "--wait", "--timeout 10m"]) {
     assert.ok(deploy.includes(safeguard), `missing Helm safeguard: ${safeguard}`);
   }
-  assert.match(deploy, /--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/);
+  assert.match(deploy, /--values "\$\{\{ runner\.temp \}\}\/installation\/installation\.values\.json"/);
   assert.match(deploy, /api\.image\.tag="\$\{\{ steps\.images\.outputs\.api-tag \}\}"/);
   assert.match(deploy, /web\.image\.tag="\$\{\{ steps\.images\.outputs\.web-tag \}\}"/);
   assert.match(deploy, /kubectl logs "\$pod"[\s\S]*--follow --pod-running-timeout=9m/);
@@ -72,15 +71,17 @@ test("deployment verifies the run manifest and uses a bounded atomic Helm rollou
   assert.match(deploy, /exit "\$helm_status"/);
 });
 
-test("Helm validation uses the same committed values as the demo deployment", async () => {
+test("deployment snapshots operator settings and PR checks need no installation access", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-
-  assert.equal(
-    workflow.match(/--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/g)?.length,
-    3,
-    "lint, template, and deployment must share the demo values",
-  );
-  assert.doesNotMatch(workflow, /--reuse-values/);
+  const config = workflow.slice(workflow.indexOf("  installation-config:"), workflow.indexOf("  publish-images:"));
+  const deploy = workflow.slice(workflow.indexOf("  deploy-demo:"));
+  assert.match(config, /environment: demo/);
+  assert.match(config, /vars\.DEMO_INSTALLATION_VALUES/);
+  assert.match(config, /node scripts\/installation-values\.mjs/);
+  assert.match(config, /helm lint[\s\S]*helm template/);
+  assert.match(deploy, /needs\.installation-config\.outputs\.snapshot-name/);
+  assert.equal((workflow.match(/--values deploy\/helm\/open-triage\/installation\.example\.values\.yaml/g) ?? []).length, 2);
+  assert.doesNotMatch(workflow, /--reuse-values|demo-reference|pool-6inz100pf|demo\.opentriage\.org/);
 });
 
 test("manual redeploy accepts only a full revision reachable from main", async () => {
@@ -111,13 +112,13 @@ test("deployment fails unless the public HTTPS smoke verification passes", async
 
   assert.ok(rollout >= 0 && smoke > rollout, "public smoke verification must follow the rollout");
   assert.match(deploy, /uses: actions\/setup-node@v7[\s\S]*node-version: 22/);
-  assert.match(deploy, /DEMO_WEB_URL: https:\/\/demo\.opentriage\.org/);
-  assert.match(deploy, /DEMO_API_URL: https:\/\/api\.demo\.opentriage\.org/);
+  assert.match(deploy, /DEMO_WEB_URL: \$\{\{ needs\.installation-config\.outputs\.web-url \}\}/);
+  assert.match(deploy, /DEMO_API_URL: \$\{\{ needs\.installation-config\.outputs\.api-url \}\}/);
   assert.doesNotMatch(deploy, /continue-on-error/);
 });
 
 test("the demo web image is built with only its public API location", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  assert.match(workflow, /NEXT_PUBLIC_API_URL=https:\/\/api\.demo\.opentriage\.org/);
+  assert.match(workflow, /NEXT_PUBLIC_API_URL=\$\{\{ needs\.installation-config\.outputs\.api-url \}\}/);
   assert.doesNotMatch(workflow, /INSTALLATION_SETTINGS_BASELINE/);
 });

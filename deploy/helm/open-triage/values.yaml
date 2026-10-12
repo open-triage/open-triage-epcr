@@ -10,7 +10,7 @@ web:
     runAsUser: 101
     allowPrivilegeEscalation: false
     capabilities: { drop: [ALL] }
-  host: demo.opentriage.org
+  host: epcr.example.com
   resources:
     requests: { cpu: 25m, memory: 32Mi }
     limits: { cpu: 250m, memory: 128Mi }
@@ -27,7 +27,7 @@ api:
     runAsUser: 1000
     allowPrivilegeEscalation: false
     capabilities: { drop: [ALL] }
-  host: api.demo.opentriage.org
+  host: api.epcr.example.com
   trustProxyHops: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
@@ -74,10 +74,11 @@ syntheticExpiry:
 imagePullSecrets: []
 # Optional placement shared by the web, API, migration, and scheduled jobs.
 nodeSelector: {}
-# The web image also serves the fixed opentriage.org public one-pager.
+# Optional public one-pager; build the web image with the same PUBLIC_SITE_HOST.
 # Enable only where DNS and an ingress.tls certificate cover that domain.
 publicSite:
   enabled: false
+  host: ""
 
 podSecurityContext:
   runAsNonRoot: true

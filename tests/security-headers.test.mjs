@@ -42,10 +42,13 @@ test("generated nginx config contains the restrictive CSP and browser hardening 
     exportDirectory,
     outputFile,
     apiUrl: "https://api.example.test",
+    publicSiteHost: "www.agency.test",
   });
   const output = await readFile(outputFile, "utf8");
 
   assert.doesNotMatch(output, /__CONTENT_SECURITY_POLICY__|unsafe-inline|unsafe-eval/);
+  assert.match(output, /server_name www\.agency\.test;/);
+  assert.doesNotMatch(output, /__PUBLIC_SITE_HOST__|opentriage\.org/);
   assert.match(output, /add_header Content-Security-Policy/);
   assert.match(output, /frame-ancestors 'none'/);
   assert.match(output, /add_header X-Content-Type-Options "nosniff" always/);
@@ -61,4 +64,11 @@ test("generation fails rather than weakening CSP for inline styles", async () =>
   await writeFile(join(directory, "index.html"), "<main style='color:red'><script>bootstrap()</script></main>");
 
   await assert.rejects(inlineScriptHashes(directory), /contains inline styles/);
+});
+
+test("public-site nginx routing rejects configuration injection", async () => {
+  await assert.rejects(generateNginxConfig({
+    templateFile: new URL("../deploy/docker/nginx.conf", import.meta.url),
+    publicSiteHost: "example.test; include /tmp/untrusted;",
+  }), /PUBLIC_SITE_HOST/);
 });

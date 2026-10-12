@@ -35,7 +35,7 @@ test("deploy does not run the synthetic bootstrap", () => {
 });
 
 test("demo deployment restores its idempotent synthetic installation before rollout", () => {
-  const output = render("--values", fileURLToPath(new URL("../demo-reference.values.yaml", import.meta.url)));
+  const output = render("--values", fileURLToPath(new URL("../installation.example.values.yaml", import.meta.url)));
   const job = output.slice(output.indexOf("# Source: open-triage/templates/migration-job.yaml"));
 
   assert.match(job, /command: \["npm", "run", "install:synthetic:runtime", "-w", "@open-triage\/database"\]/);

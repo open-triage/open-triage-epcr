@@ -36,7 +36,7 @@ Build the web image with the public API hostname embedded at build time:
 
 ```sh
 docker build -f deploy/docker/web.Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org \
+  --build-arg NEXT_PUBLIC_API_URL=https://api.epcr.example.com \
   -t ghcr.io/open-triage/open-triage-web:demo .
 docker build -f deploy/docker/api.Dockerfile \
   -t ghcr.io/open-triage/open-triage-api:demo .
@@ -72,18 +72,30 @@ Install or upgrade the workloads without passing secret values to Helm:
 
 ```sh
 helm upgrade --install open-triage ./deploy/helm/open-triage \
-  --values ./deploy/helm/open-triage/demo-reference.values.yaml \
+  --values ./deploy/installations/installation.values.yaml \
   --namespace open-triage --create-namespace
 ```
 
-The committed demo reference values contain no credentials. They preserve the
-cluster-owned `ghcr-pull` image pull Secret, `open-triage-tls` certificate, and
-workload database Secrets during repeatable upgrades.
+Before using the command above, copy `installation.example.values.yaml` to
+`deploy/installations/installation.values.yaml` and set the installation's hosts,
+node selector, ingress/TLS settings, resource sizing and existing Secret names.
+The directory is ignored by Git and Docker. Keep an operator-owned backup outside
+the source repository. The example is for rendering tests, not a live deployment.
+For production, start from `production-reference.values.yaml` and follow the
+[production runbook](../../../docs/runbooks/kubernetes-production.md).
 
 The optional top-level `nodeSelector` applies to every app workload, including
 the migration hook and all CronJobs. It defaults to no placement restriction.
-The demo reference values select `doks.digitalocean.com/node-pool: pool-6inz100pf`
-so app pods stay on the larger demo pool across upgrades and node replacements.
+No live node-pool name is committed. `publicSite.enabled` additionally requires
+`publicSite.host` and a web image built with matching `PUBLIC_SITE_HOST`.
+Keep `NEXT_PUBLIC_API_URL` consistent with `api.host` when building the web image.
+
+For automated demo builds, upload the non-secret installation values to the
+GitHub `demo` environment's `DEMO_INSTALLATION_VALUES` variable. The workflow
+validates and snapshots that file for image building, deployment and smoke tests.
+See [demo operations](../../../docs/demo-deployment.md) for setup and transition
+from older releases. Database passwords and installation keys remain in cluster
+Secrets; the values file contains only references to those Secrets.
 
 Helm runs a forward-only migration Job before each install or upgrade. The Job
 reads `DATABASE_URL` only from the migration Secret and must succeed before Helm
