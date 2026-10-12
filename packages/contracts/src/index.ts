@@ -145,6 +145,7 @@ export interface CreateClinicianSessionCommand {
 
 export interface ReviewQueueItem {
   id: string;
+  organization?: { id: string; name: string };
   reportId: string;
   reportNumber?: string | null;
   criterionName?: string | null;
@@ -593,6 +594,11 @@ export interface StartReviewRetrospectiveCommand {
 }
 
 export interface ClinicianSession {
+  /** Installation authority is separate from ordinary agency roles. */
+  installationOwner?: boolean;
+  installationSuperadmin?: boolean;
+  homeOrganizationId?: string;
+  agencies?: AgencySummary[];
   /** Present only in the static, serverless demonstration build. */
   accessToken?: string;
   /** Non-secret token echoed on cookie-authenticated state changes. */
@@ -604,6 +610,7 @@ export interface ClinicianSession {
   organization: {
     id: string;
     name: string;
+    groupId?: string;
   };
   startedAt: string;
   expiresAt: string;
@@ -611,6 +618,55 @@ export interface ClinicianSession {
   capabilities?: string[];
   /** False when authentication succeeded but no active role opens a workspace. */
   workspaceAvailable?: boolean;
+}
+
+export interface AgencySummary {
+  id: string;
+  name: string;
+  parentOrganizationId: string | null;
+  groupId: string;
+  hostname: string | null;
+  active: boolean;
+  revision: number;
+  timeZone: string;
+}
+
+export interface AgencyConfigurationOption {
+  id: string;
+  name: string;
+  catalogReleaseId: string;
+  organizationId: string;
+  activatedByAgencies: { id: string; name: string }[];
+}
+
+export interface AgencyDirectory {
+  hostnameSuffix: string | null;
+  agencies: AgencySummary[];
+  catalogs: { id: string; name: string; activatedByAgencies: { id: string; name: string }[] }[];
+  forms: AgencyConfigurationOption[];
+  validations: AgencyConfigurationOption[];
+  activeConfigurations: { organizationId: string; catalogName: string; formName: string; validationName: string }[];
+}
+
+export interface CreateAgencyCommand {
+  name: string;
+  parentOrganizationId: string | null;
+  hostname: string | null;
+  timeZone: string;
+  agencyUniqueStateId: string;
+  agencyNumber: string;
+  stateCode: string;
+  catalogReleaseId: string;
+  startingFormVersionId?: string | null;
+  startingValidationVersionId?: string | null;
+  settings?: Omit<UpdateAgencyMediaSettingsCommand, "expectedRevision">;
+}
+
+export interface UpdateAgencyCommand {
+  name: string;
+  hostname: string | null;
+  active: boolean;
+  expectedRevision: number;
 }
 
 export interface ChangePasswordCommand {
@@ -858,7 +914,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -882,6 +938,7 @@ export interface AdminUserSummary {
   revision: number;
   /** True only for the installation's current accountable owner. */
   owner?: boolean;
+  superadmin?: boolean;
   roles: AdminRoleSummary[];
 }
 
