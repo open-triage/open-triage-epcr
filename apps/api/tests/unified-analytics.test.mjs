@@ -169,22 +169,45 @@ test('CSV preserves every cell, source row, missingness, percentage context and 
   assert.match(records,/"b","2026-03-28".*"missing"/);
 });
 
-test('large daily categorical analytics stay within the interactive aggregation budget', () => {
-  // 20,000 reports, 100 series and 200 days exercise both public size limits.
-  // Rescanning the full population for every cell does 400 million visits.
-  let dateReads = 0;
+// Bound work instead of wall time: parallel CI jobs and slower CPUs must not
+// turn correct performance behavior into a flaky build failure. The same budget
+// exercises every visualization and calendar grouping that shares the engine.
+for (const scenario of [
+  { name: 'daily categorical', timeGrouping: 'day', cells: 20000 },
+  { name: 'weekly categorical', timeGrouping: 'week', cells: 2900 },
+  { name: 'monthly categorical', timeGrouping: 'month', cells: 700 },
+  { name: 'bar categorical', visualization: 'bar', cells: 100 },
+  { name: 'table categorical', visualization: 'table', cells: 100 },
+  { name: 'daily records', timeGrouping: 'day', metric: recordsElement, cells: 200 },
+]) test(`large ${scenario.name} analytics keep population and cell scans bounded`, () => {
+  // 20,000 reports, up to 100 series and 200 days exercise public size limits.
+  // Filtering the full population for every daily cell does 400 million visits.
+  let dateReads = 0, filterVisits = 0;
   const reports = Array.from({ length: 20000 }, (_, index) => {
     const date = new Date(Date.UTC(2026, 0, 1 + index % 200)).toISOString().slice(0, 10);
     return { ...report(String(index), [occurrence(category.id, String(index % 100))]),
       get date() { dateReads++; return date; } };
   });
-  const start = performance.now();
-  const result = aggregateAnalytics(reports, definition({ metric: category.id,
-    from: '2026-01-01', through: '2026-07-19' }), category);
-  const elapsed = performance.now() - start;
-  assert.equal(result.cells.length, 20000);
+  const metric = scenario.metric ?? category;
+  const query = definition({ metric: metric.id, visualization: scenario.visualization ?? 'line',
+    timeGrouping: scenario.timeGrouping ?? 'day', from: '2026-01-01', through: '2026-07-19' });
+  const originalFilter = Array.prototype.filter;
+  let result;
+  // Aggregate is synchronous; restore even on failure before assertions or other
+  // tests run. Count scanned entries without retaining each call's arguments.
+  try {
+    Array.prototype.filter = function (...args) {
+      filterVisits += this.length;
+      return Reflect.apply(originalFilter, this, args);
+    };
+    result = aggregateAnalytics(reports, query, metric);
+  } finally { Array.prototype.filter = originalFilter; }
+  assert.equal(result.cells.length, scenario.cells);
   assert.equal(result.completeness.valid, 20000);
   assert.equal(result.cells.reduce((sum, cell) => sum + cell.count, 0), 20000);
   assert.ok(dateReads <= reports.length * 5, `Repeated report date scans: ${dateReads}`);
-  assert.ok(elapsed < 2000, `Aggregation took ${elapsed.toFixed(0)}ms (budget 2000ms)`);
+  // Category selection may scan each report once per series, but never once per
+  // time bucket per series. Also allow bounded per-report eligibility/reduction.
+  const visitBudget = reports.length * (result.series.length + 20);
+  assert.ok(filterVisits <= visitBudget, `Array scans: ${filterVisits}; work budget: ${visitBudget}`);
 });
