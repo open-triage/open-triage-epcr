@@ -30,7 +30,9 @@ export function developmentEnvironment(fileContents, inherited = process.env) {
   }
   delete web.PORT;
   delete web.DATABASE_URL;
-  web.NEXT_PUBLIC_API_URL ||= `http://localhost:${port}`;
+  web.NEXT_PUBLIC_API_URL ||= "same-origin";
+  web.OPEN_TRIAGE_API_UPSTREAM = `http://127.0.0.1:${port}`;
+  web.OPEN_TRIAGE_PUBLIC_SITE_HOST = api.OPEN_TRIAGE_PUBLIC_SITE_HOST ?? "localhost";
   return { api, web, port };
 }
 
