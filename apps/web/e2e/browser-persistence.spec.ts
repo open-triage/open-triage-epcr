@@ -178,6 +178,63 @@ async function encryptedRecords(page: Page): Promise<Array<Record<string, unknow
   }, { databaseName: "open-triage-protected-clinical-v1", storeName: "encrypted-reports" });
 }
 
+for (const unavailableStatus of [404, 410]) {
+  for (const entry of ["assigned", "reopen"] as const) {
+    test(`${entry} opens online and saves when offline keys return ${unavailableStatus}`, async ({ page }) => {
+      test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+      await installRoutes(page, true, entry === "reopen"
+        ? { recoveryHandle: "expired-handle", reportKeyBase64: Buffer.alloc(32).toString("base64") }
+        : undefined);
+      await page.route(`**/api/reports/${reportId}/recovery-grants`, route => route.fulfill({ status: unavailableStatus }));
+      await page.route(`**/api/reports/${reportId}/protected-key-envelope`, route => route.fulfill({ status: unavailableStatus }));
+      let saves = 0;
+      await page.route(`**/api/reports/${reportId}/draft-changes`, route => {
+        saves++;
+        const command = route.request().postDataJSON() as { expectedRevision: number };
+        return route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+      });
+      await page.goto("/");
+      await page.getByRole("button", { name: "Stationary", exact: true }).click();
+      await page.getByRole("button", { name: entry === "reopen" ? "Reopen report" : "Open call", exact: true }).click();
+      await expect(page.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
+      await expect(page.locator(".safety-notice")).toContainText("Offline storage unavailable");
+      await expect(page.locator(".safety-notice")).toContainText("online editing and server saves remain available");
+      const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+      await firstName.fill("ONLINE EDIT");
+      await firstName.press("Tab");
+      await expect.poll(() => saves).toBeGreaterThan(0);
+      expect(await encryptedRecords(page)).toHaveLength(0);
+      expect(await page.evaluate(() => localStorage.getItem("open-triage:offline-reports-v1"))).toBeNull();
+    });
+  }
+}
+
+for (const deniedStatus of [401, 403]) {
+  test(`reopen keeps a ${deniedStatus} preparation failure visible through polling and permits retry`, async ({ page }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    await installRoutes(page, true, { recoveryHandle: "unavailable-handle", reportKeyBase64: Buffer.alloc(32).toString("base64") });
+    await page.route(`**/api/reports/${reportId}/recovery-grants`, route => route.fulfill({ status: 404 }));
+    let status = deniedStatus;
+    await page.route(`**/api/reports/${reportId}/protected-key-envelope`, route => route.fulfill({ status }));
+    let directoryReads = 0;
+    page.on("response", response => { if (response.url().endsWith("/api/reports/open")) directoryReads++; });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Reopen report", exact: true }).click();
+    const failure = page.getByRole("alert").filter({ hasText: deniedStatus === 401
+      ? "Your shift session has ended." : "Protected offline storage could not be prepared." });
+    await expect(failure).toBeVisible();
+    await expect(page.locator(".active-report-notice")).toHaveCount(0);
+    const previousReads = directoryReads;
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect.poll(() => directoryReads).toBeGreaterThan(previousReads);
+    await expect(failure).toBeVisible();
+    status = 404;
+    await page.getByRole("button", { name: "Reopen report", exact: true }).click();
+    await expect(page.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
+    await expect(failure).toHaveCount(0);
+  });
+}
+
 test("protected checkpoints stay ordered while a newer draft is saved", async ({ page }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page);
