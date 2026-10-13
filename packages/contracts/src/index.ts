@@ -920,7 +920,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies" | "units";
 
 export interface AdminRoleSummary {
   id: string;
@@ -2013,3 +2013,10 @@ export type EncounterDocument = {
 export * from "./analytics.js";
 
 export * from "./metrics.js";
+
+/** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
+export interface OperationalUnitSummary {
+  id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;
+}
+export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCursor: string | null; }
+export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }
