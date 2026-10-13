@@ -161,7 +161,7 @@
   "reports.reviewBeforeSigning": "{count} fel · granska före signering",
   "reports.reopening": "Öppnar igen…",
   "reports.reopen": "Öppna rapport igen",
-  "reports.reauthHelp": "Bekräfta ditt lösenord för att återställa skyddat arbete från den här webbläsaren.",
+  "reports.reauthHelp": "Bekräfta din identitet för att återställa skyddat arbete från den här webbläsaren.",
   "reports.currentPassword": "Nuvarande lösenord",
   "reports.confirming": "Bekräftar…",
   "reports.confirmRecover": "Bekräfta och återställ",

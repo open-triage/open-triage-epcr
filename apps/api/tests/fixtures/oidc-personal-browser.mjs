@@ -1,7 +1,7 @@
 // Controlled TLS plus actual API, application components and deployment proxy.
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,randomUUID} from 'node:crypto';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {readFile} from 'node:fs/promises';
@@ -14,6 +14,7 @@ import {agencyContextMiddleware} from '../../dist/sessions/agency-context.middle
 import {PlatformErrorFilter} from '../../dist/platform-error.filter.js';
 import {localRouting} from '../../../web/scripts/lib/local-routing.mjs';
 import {DataSource} from 'typeorm';
+import {ProtectedReportKeyService} from '../../dist/reports/protected-report-key.service.js';
 import {ClinicianSessionService} from '../../dist/sessions/clinician-session.service.js';
 import {OidcPersonalService} from '../../dist/authentication/oidc-personal.service.js';
 import {AgencyDirectoryService} from '../../dist/sessions/agency-directory.service.js';
@@ -28,7 +29,7 @@ let proxy,browser,db;
 try{
  await app.listen(0,'127.0.0.1');const api=await app.getUrl();
  const css=await readFile(new URL('../../../web/app/styles.css',import.meta.url),'utf8');
- const bundled=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:fileURLToPath(new URL('../../../web',import.meta.url)),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {ClinicianSessionGate} from './components/clinician-session-gate';import {lockProtectedClinicalStorage,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport} from './app/protected-clinical-storage';import {cachedOpenReports,cacheOpenedReport,queueDraftChange} from './app/offline-reports';import {reauthenticateClinicianSession} from './app/clinician-session';window.fixture={reauthenticateClinicianSession,lockProtectedClinicalStorage,cachedOpenReports,queueDraftChange,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,cacheOpenedReport};createRoot(document.getElementById('root')).render(<ClinicianSessionGate><p>Shared clinical application</p></ClinicianSessionGate>);`}});
+ const bundled=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:fileURLToPath(new URL('../../../web',import.meta.url)),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {ClinicianSessionGate} from './components/clinician-session-gate';import {lockProtectedClinicalStorage,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,flushProtectedReport} from './app/protected-clinical-storage';import {cachedOpenReports,cacheOpenedReport,queueDraftChange,restoreRecoveredReport} from './app/offline-reports';import {reauthenticateClinicianSession} from './app/clinician-session';window.fixture={reauthenticateClinicianSession,lockProtectedClinicalStorage,cachedOpenReports,queueDraftChange,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,cacheOpenedReport,flushProtectedReport,restoreRecoveredReport};createRoot(document.getElementById('root')).render(<ClinicianSessionGate><p>Shared clinical application</p></ClinicianSessionGate>);`}});
  const route=localRouting({OPEN_TRIAGE_API_UPSTREAM:api,OPEN_TRIAGE_PUBLIC_SITE_HOST:''});
  proxy=createServer((req,res)=>{if(route(req,res))return;if(req.url==='/fixture.js'){res.setHeader('content-type','text/javascript');res.end(bundled.outputFiles[0].text);return;}res.setHeader('content-type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`);});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const origin=`http://child.localhost:${proxy.address().port}`;process.env.WEB_ORIGIN=`http://localhost:${proxy.address().port}`;process.env.NODE_ENV='development';
@@ -71,16 +72,14 @@ try{
  const proofResult=await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));const r=await fetch('/api/sessions/reauthenticate',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':s.csrfToken},body:'{"currentPassword":""}'});return r.json();});
  assert(proofResult.authorizationUrl);await page.goto(proofResult.authorizationUrl);await finish();await expect(page.locator('.session-identity')).toBeVisible();
  const [provenance]=await db.query('select oidc_revision,personal_revision from app_identity.app_session where token_sha256=encode(sha256($1::bytea),\'hex\')',[Buffer.from(alphaToken)]);assert.equal(Number(provenance.oidc_revision),1);assert.equal(Number(provenance.personal_revision),2);
- const reportId='91200000-0000-4000-8000-000000000001',deadline=new Date(Date.now()+86400000).toISOString();
- await context.route(`**/api/reports/${reportId}/protected-key-envelope`,route=>{const body=route.request().postDataJSON();return route.fulfill({json:{schemaVersion:1,recoveryHandle:body.recoveryHandle,recoveryDeadline:deadline,wrappingKeyVersion:1}});});
- await context.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`,route=>route.fulfill({json:route.request().postDataJSON()}));
- await context.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`,route=>route.fulfill({json:{schemaVersion:1,recoveryDeadline:deadline}}));
+ const reportId='91200000-0000-4000-8000-000000000001';
  await page.evaluate(async({reportId,alpha,child})=>{
   const session=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));
   if(!await fixture.prepareProtectedReport(session.csrfToken,reportId))throw Error('Protected fixture unavailable');
   fixture.cacheOpenedReport(localStorage,session,{assignmentId:'fixture-assignment',report:{id:reportId,documentingUserId:alpha,organizationId:child,formVersionId:'fixture-form',catalogReleaseId:'fixture-catalog',revision:1,document:{}}},'PRIVATE OUTGOING CALL LABEL');
   fixture.queueDraftChange(localStorage,reportId,{commandId:crypto.randomUUID(),expectedRevision:1,groups:[],occurrences:[],note:'PRIVATE OUTGOING UNSYNCHRONIZED WORK'});
  },{reportId,alpha:process.env.OIDC_ALPHA,child:process.env.OIDC_CHILD});
+ let deadline=(await control({recoveryDeadline:reportId})).deadline;
  assert.equal(await page.evaluate(id=>fixture.protectedStorageActive(id),reportId),true);
  assert.match(JSON.stringify(await page.evaluate(alpha=>fixture.cachedOpenReports(localStorage,alpha),process.env.OIDC_ALPHA)),/PRIVATE OUTGOING CALL LABEL/);
  const otherTab=await context.newPage();await otherTab.goto(origin);await expect(otherTab.locator('.session-identity')).toBeVisible();
@@ -92,10 +91,82 @@ try{
  assert.equal(await page.evaluate(id=>fixture.protectedStorageActive(id),reportId),false);
  assert.equal(await page.evaluate(alpha=>fixture.cachedOpenReports(localStorage,alpha).length,process.env.OIDC_ALPHA),0);
  const retained=await page.evaluate(()=>new Promise(resolve=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onsuccess=()=>{const db=request.result,query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{resolve(query.result.map(row=>({deadline:row.recoveryDeadline,revision:row.ciphertextRevision,keys:Object.keys(row)})));db.close();};};}));
+ deadline=(await control({recoveryDeadline:reportId})).deadline;
  assert.equal(retained.length,1);assert.equal(retained[0].deadline,deadline);assert(retained[0].revision>0);assert(!retained[0].keys.some(key=>/reportId|owner|callNumber/.test(key)));
  const oldRequest=await fetch(`${api}/api/reports/${reportId}/recovery-grants`,{method:'POST',headers:{origin,host:new URL(origin).host,authorization:`Bearer ${alphaToken}`,'content-type':'application/json','x-csrf-token':alphaSession.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})});assert.equal(oldRequest.status,401);
- await otherTab.close();
+
+ // A different clinician, even with approved recent proof, gets no handle/key/label.
+ const requestGrant=()=>page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));const response=await fetch(`/api/reports/${id}/recovery-grants`,{method:'POST',headers:{'content-type':'application/json','x-csrf-token':s.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})});return {status:response.status,body:await response.json()};},reportId);
+ const prove=async()=>{await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));try{await fixture.reauthenticateClinicianSession('',s.csrfToken);}catch{}});await finish();await expect(page.locator('.session-identity')).toBeVisible();};
+ await prove();const wrong=await requestGrant();assert.equal(wrong.status,404);assert.doesNotMatch(JSON.stringify(wrong.body),/recoveryHandle|reportKey|PRIVATE OUTGOING/);
+ await otherTab.close();await logout();await authenticate('fictional-alpha');alphaToken=await token();
+ assert.equal((await requestGrant()).status,428,'ordinary login cannot satisfy the purpose-bound recovery gate');
+ await prove();assert.equal((await control({recoveryDeadline:reportId})).deadline,deadline);
+ // Restart in the same Chromium profile retains ciphertext but no runtime keys.
+ await page.reload();await expect(page.locator('.session-identity')).toBeVisible();assert.equal(await page.evaluate(id=>fixture.protectedStorageActive(id),reportId),false);
+ let restorationReceipts=0;const observeRestoration=request=>{if(request.url().endsWith('/protected-ciphertext-receipt'))restorationReceipts++;};page.on('request',observeRestoration);
+ const restored=await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));const recovered=await fixture.recoverProtectedReport(s.csrfToken,id);if(!fixture.restoreRecoveredReport(localStorage,s.user.id,id,recovered))throw Error("Restoration failed");await fixture.flushProtectedReport(id);return recovered;},reportId);
+ page.off('request',observeRestoration);assert.equal(restorationReceipts,0,'restoring an unchanged draft must not write or renew its ciphertext deadline');
+ assert.match(JSON.stringify(restored),/PRIVATE OUTGOING UNSYNCHRONIZED WORK/);assert.equal((await control({recoveryDeadline:reportId})).deadline,deadline);
+ const competing=await context.newPage();await competing.goto(origin);await expect(competing.locator('.session-identity')).toBeVisible();assert.equal(await competing.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));return fixture.recoverProtectedReport(s.csrfToken,id);},reportId),null);await competing.close();
+
+ // A synchronized browser snapshot is intentionally discarded on lock. Reopen
+ // initialization must preserve the server key deadline even without local bytes.
+ const emptyReport='91200000-0000-4000-8000-000000000004';
+ const initializeSnapshot=async id=>page.evaluate(async({id,alpha,child})=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));fixture.cacheOpenedReport(localStorage,s,{assignmentId:'fixture-synchronized',report:{id,documentingUserId:alpha,organizationId:child,formVersionId:'fixture-form',catalogReleaseId:'fixture-catalog',revision:1,document:{}}},'Fictional synchronized report');await fixture.flushProtectedReport(id);},{id,alpha:process.env.OIDC_ALPHA,child:process.env.OIDC_CHILD});
+ await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));await fixture.prepareProtectedReport(s.csrfToken,id);},emptyReport);await initializeSnapshot(emptyReport);
+ const emptyDeadline=(await control({recoveryDeadline:emptyReport})).deadline;await page.evaluate(()=>fixture.lockProtectedClinicalStorage());await page.reload();await expect(page.locator('.session-identity')).toBeVisible();
+ const initializationReceipts=[];const observeInitialization=request=>{if(request.url().endsWith(`/reports/${emptyReport}/protected-ciphertext-receipt`))initializationReceipts.push(request.postDataJSON());};page.on('request',observeInitialization);
+ assert.equal(await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));return fixture.recoverProtectedReport(s.csrfToken,id);},emptyReport),null);assert.equal(await page.evaluate(id=>fixture.protectedStorageActive(id),emptyReport),true);
+ await initializeSnapshot(emptyReport);assert.equal((await control({recoveryDeadline:emptyReport})).deadline,emptyDeadline);assert.equal(initializationReceipts.length,1);assert.equal(initializationReceipts[0].preserveRecoveryDeadline,true);
+ await page.evaluate(async id=>{fixture.queueDraftChange(localStorage,id,{commandId:crypto.randomUUID(),expectedRevision:1,groups:[],occurrences:[],note:'NEW REAL USER EDIT'});await fixture.flushProtectedReport(id);},emptyReport);assert.equal(initializationReceipts.length,2);assert.equal(initializationReceipts[1].preserveRecoveryDeadline,undefined);assert(Date.parse((await control({recoveryDeadline:emptyReport})).deadline)>Date.parse(emptyDeadline));page.off('request',observeInitialization);
+
+ // New pending work as the very first recovered snapshot remains a genuine
+ // write, rather than being mistaken for passive browser initialization.
+ const firstPendingReport='91200000-0000-4000-8000-000000000005';
+ await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));await fixture.prepareProtectedReport(s.csrfToken,id);},firstPendingReport);
+ const firstPendingDeadline=(await control({recoveryDeadline:firstPendingReport})).deadline;await page.evaluate(()=>fixture.lockProtectedClinicalStorage());await page.reload();await expect(page.locator('.session-identity')).toBeVisible();
+ const firstPendingReceipts=[];const observeFirstPending=request=>{if(request.url().endsWith(`/reports/${firstPendingReport}/protected-ciphertext-receipt`))firstPendingReceipts.push(request.postDataJSON());};page.on('request',observeFirstPending);
+ await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));await fixture.recoverProtectedReport(s.csrfToken,id);fixture.updateProtectedReport(id,{queuedChanges:[{command:{note:'NEW FIRST REAL EDIT'},attempted:false}]});await fixture.flushProtectedReport(id);},firstPendingReport);
+ assert.equal(firstPendingReceipts.length,1);assert.equal(firstPendingReceipts[0].preserveRecoveryDeadline,undefined);assert(Date.parse((await control({recoveryDeadline:firstPendingReport})).deadline)>Date.parse(firstPendingDeadline));page.off('request',observeFirstPending);
+ await page.evaluate(()=>fixture.lockProtectedClinicalStorage());
+ const recovery=new ProtectedReportKeyService(db,sessions),scope={origin,organizationId:process.env.OIDC_CHILD};
+ const currentAlpha=await stored();const grant=await agencyRequest.run(scope,()=>recovery.createRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1},currentAlpha.csrfToken));
+ await control({ageRecoveryProof:alphaToken});await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1,grant:grant.grant},currentAlpha.csrfToken)),error=>error.getStatus?.()===428);
+ await prove();
+ const expired=await requestGrant();assert.equal(expired.status,201);await control({expireRecovery:reportId});
+ await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1,grant:expired.body.grant},currentAlpha.csrfToken)),error=>error.getStatus?.()===404);
+ assert.equal((await requestGrant()).status,404);
+ // Local proof uses exactly the same runtime grant and consume functions for a
+ // root-owned clinician's child-agency report; a second session cannot borrow it.
+ const local=await agencyRequest.run(scope,()=>sessions.create({username:'reviewer',password:process.env.OIDC_LOCAL_PASSWORD}));
+ const localReport='91200000-0000-4000-8000-000000000003',localKey=randomBytes(32).toString('base64');
+ const envelope=await agencyRequest.run(scope,()=>recovery.register(local.sessionToken,localReport,{schemaVersion:1,recoveryHandle:randomUUID(),reportKeyBase64:localKey},local.session.csrfToken));
+ await assert.rejects(agencyRequest.run(scope,()=>recovery.createRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1},local.session.csrfToken)),error=>error.getStatus?.()===428);
+
+ for(const expression of ["personally_authenticated_at=null,reauthenticated_at=null,personal_authentication_purpose=null", "personally_authenticated_at=clock_timestamp()+interval '1 minute',reauthenticated_at=null,personal_authentication_purpose='reauthenticate'", "personally_authenticated_at=clock_timestamp(),reauthenticated_at=null,personal_authentication_purpose='login'"]){
+  await db.query(`update app_identity.app_session set ${expression} where token_sha256=encode(sha256($1::bytea),'hex')`,[Buffer.from(local.sessionToken)]);
+  const denied=await db.query("select * from offline_recovery.create_report_recovery_grant($1,$2,$3,encode(sha256($4::bytea),'hex'),$5,1)",[localReport,process.env.OIDC_CHILD,process.env.OIDC_LOCAL_USER,Buffer.from(local.sessionToken),randomBytes(32).toString('hex')]);
+  assert.equal(denied[0].result,'reauthentication_required');assert.equal(denied[0].recovery_handle,null);
+ }
+ await agencyRequest.run(scope,()=>sessions.reauthenticate(local.sessionToken,local.session.csrfToken,process.env.OIDC_LOCAL_PASSWORD));
+ const localGrant=await agencyRequest.run(scope,()=>recovery.createRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1},local.session.csrfToken));
+
+ for(const expression of ["personally_authenticated_at=null,reauthenticated_at=null,personal_authentication_purpose=null", "personally_authenticated_at=clock_timestamp()+interval '1 minute',reauthenticated_at=null,personal_authentication_purpose='reauthenticate'", "personally_authenticated_at=clock_timestamp(),reauthenticated_at=null,personal_authentication_purpose='login'"]){
+  await db.query(`update app_identity.app_session set ${expression} where token_sha256=encode(sha256($1::bytea),'hex')`,[Buffer.from(local.sessionToken)]);
+  const denied=await db.query("select * from offline_recovery.consume_report_recovery_grant($1,$2,$3,encode(sha256($4::bytea),'hex'),encode(sha256($5::bytea),'hex'),1)",[localReport,process.env.OIDC_CHILD,process.env.OIDC_LOCAL_USER,Buffer.from(local.sessionToken),Buffer.from(localGrant.grant)]);
+  assert.equal(denied[0].result,'denied');assert.equal(denied[0].wrapped_data_key,null);assert.equal(denied[0].recovery_handle,null);
+ }
+ await agencyRequest.run(scope,()=>sessions.reauthenticate(local.sessionToken,local.session.csrfToken,process.env.OIDC_LOCAL_PASSWORD));
+ const localReturned=await agencyRequest.run(scope,()=>sessions.create({username:'reviewer',password:process.env.OIDC_LOCAL_PASSWORD}));await agencyRequest.run(scope,()=>sessions.reauthenticate(localReturned.sessionToken,localReturned.session.csrfToken,process.env.OIDC_LOCAL_PASSWORD));
+ await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(localReturned.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1,grant:localGrant.grant},localReturned.session.csrfToken)),error=>error.getStatus?.()===404);
+ const localRecovered=await agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1,grant:localGrant.grant},local.session.csrfToken));assert.equal(localRecovered.reportKeyBase64,localKey);
+ await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1,grant:localGrant.grant},local.session.csrfToken)),error=>error.getStatus?.()===404);
+ await assert.rejects(db.query('select * from offline_recovery.recover_report_key($1,$2,$3,$4)',[localReport,process.env.OIDC_CHILD,process.env.OIDC_LOCAL_USER,envelope.recoveryHandle]),error=>error.code==='42501');
+ const foreign=await db.query('select * from offline_recovery.create_report_recovery_grant($1,$2,$3,encode(sha256($4::bytea),\'hex\'),$5,1)',[localReport,process.env.OIDC_OTHER,process.env.OIDC_LOCAL_USER,Buffer.from(local.sessionToken),'b'.repeat(64)]);assert.equal(foreign[0].result,'denied');assert.equal(foreign[0].recovery_handle,null);
+ assert.equal((await control({recoveryDeadline:localReport})).deadline,envelope.recoveryDeadline);
  await logout();
+
  // All approved-method/freshness negatives travel through real code exchange.
  for(const mode of ['cached','silent','method','future','outage']){await control({token:{sub:'fictional-alpha'},claimsMode:mode});await page.goto(origin);await page.getByRole('button',{name:'Sign in with regional identity'}).click();await finish();await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal((await current()).status,401);assert.equal(await token(),undefined);}
  await control({token:{sub:'fictional-alpha'},claimsMode:'fresh'});await page.goto(origin);await page.getByRole('button',{name:'Sign in with regional identity'}).click();

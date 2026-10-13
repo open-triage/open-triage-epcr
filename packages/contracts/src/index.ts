@@ -714,7 +714,10 @@ export interface CheckpointProtectedReportCommand {
   ciphertextSha256: string;
 }
 
-export type RecordProtectedCiphertextCommand = CheckpointProtectedReportCommand;
+export type RecordProtectedCiphertextCommand = CheckpointProtectedReportCommand & {
+  /** A recovered browser's first server snapshot preserves the existing key deadline. */
+  preserveRecoveryDeadline?: true;
+};
 
 export interface ProtectedReportCheckpoint {
   ciphertextRevision: number;

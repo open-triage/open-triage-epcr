@@ -1,11 +1,12 @@
 "use client";
+import { PersonalAuthenticationField } from "./personal-authentication";
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse, ProductionJobAccess } from "@open-triage/contracts";
 import { PlatformRequestError } from "../app/platform-errors";
 import { InstallationContextChangedError } from "../app/installation-transition-generation";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
-import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { PersonalAuthenticationRedirect, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { RecoveryReauthenticationRequiredError } from "../app/protected-clinical-storage";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useVisiblePolling } from "./use-visible-polling";
@@ -47,6 +48,7 @@ export function AssignedCalls({
   const [error, setError] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
+  const [recoveryPassword, setRecoveryPassword] = useState("");
   const [reauthenticating, setReauthenticating] = useState(false);
   const openingRef = useRef(false);
   const refreshEpoch = useRef(0);
@@ -125,11 +127,13 @@ export function AssignedCalls({
     event.preventDefault();
     setReauthenticating(true);
     setError(null);
-    const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
+    const password = recoveryPassword;
+    setRecoveryPassword("");
     try {
       await reauthenticateClinicianSession(password, csrfToken);
       await open(call);
     } catch (reason) {
+      if (reason instanceof PersonalAuthenticationRedirect) return;
       setError(reason instanceof Error ? reason.message : t("reports.reauthFailed"));
     } finally { setReauthenticating(false); }
   };
@@ -178,8 +182,7 @@ export function AssignedCalls({
               {reauthenticationId === call.id && <form className="report-reauthentication"
                 onSubmit={(event) => void reauthenticateAndOpen(event, call)}>
                 <p id={`assigned-recovery-help-${call.id}`}>{t("reports.reauthHelp")}</p>
-                <label>{t("reports.currentPassword")}<input name="currentPassword" type="password"
-                  autoComplete="current-password" aria-describedby={`assigned-recovery-help-${call.id}`} required /></label>
+                <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />
                 <button type="submit" disabled={reauthenticating}>
                   {reauthenticating ? t("reports.confirming") : t("reports.confirmRecover")}
                 </button>

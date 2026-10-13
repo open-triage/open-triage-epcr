@@ -12,6 +12,7 @@ import {readMigrations,applyMigrations} from '../../../packages/database/scripts
 import {AccountService} from '../dist/identity/account.service.js';
 import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
 import {encryptCredential} from '../dist/authentication/oidc-credentials.js';
+import {seedProtectedRecoveryReports} from './fixtures/protected-recovery-seed.mjs';
 import {discoveryProvider} from './fixtures/oidc-discovery-provider.mjs';
 const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
@@ -40,6 +41,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    if(id===alpha)await owner.query('insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) values($1,$2,$3,$4)',[group,id,clinicianRole,reviewer.userId]);
    if(role)await owner.query('insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) values($1,$2,$3,$4)',[group,id,role,reviewer.userId]);
   }
+  await seedProtectedRecoveryReports(owner,child,alpha,reviewer.userId);
   const issuer=`${fixture.origin}/adfs`,configuration={name:'Fictional provider',issuer,discoveryUrl:'',clientId:'fictional-client',scopes:['openid'],mappings:{displayName:'name',email:'email'},clientAuthentication:'client_secret_post'};
   const metadata={issuer,authorization_endpoint:`${fixture.origin}/authorize`,token_endpoint:`${fixture.origin}/token`,jwks_uri:`${fixture.origin}/jwks`,id_token_signing_alg_values_supported:['RS256'],pkceS256:true};
   await owner.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,discovery,discovery_health,created_by) values($1,1,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6),($1,2,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6)",[group,provider,JSON.stringify(configuration),JSON.stringify(encryptCredential('fresh-provider-secret',group,provider)),JSON.stringify(metadata),reviewer.userId]);
@@ -70,6 +72,10 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    if(command.expireSession){await owner.query("update app_identity.app_session set expires_at=created_at+interval '1 microsecond' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(command.expireSession)]);}
    if(command.expireRecent){await owner.query("update app_identity.app_session set personally_authenticated_at=created_at,reauthenticated_at=null,personal_authentication_purpose='login' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(command.expireRecent)]);}
    const answer={};
+   if(command.recoveryDeadline){answer.deadline=(await owner.query('select recovery_deadline from offline_recovery.report_key_envelope where report_id=$1',[command.recoveryDeadline]))[0]?.recovery_deadline;}
+   if(command.expireRecovery){await owner.query("update offline_recovery.report_key_envelope set recovery_deadline=clock_timestamp()-interval '1 second' where report_id=$1",[command.expireRecovery]);}
+   if(command.ageRecoveryProof){await owner.query("update app_identity.app_session set personally_authenticated_at=clock_timestamp()-interval '6 minutes',reauthenticated_at=null where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(command.ageRecoveryProof)]);}
+
    if(command.waiting){answer.waiting=(await owner.query("select count(*)::int count from pg_stat_activity where application_name='personal-session-race' and wait_event_type='Lock' and query like '%app_identity.app_user%'"))[0].count;}
    if(command.ageSession){
     const hashed=createHash('sha256').update(command.ageSession.newToken).digest('hex');
@@ -90,7 +96,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    }
    res.setHeader('content-type','application/json');res.end(JSON.stringify(answer));
   }catch{res.writeHead(500).end('{}');}});});control.listen(0,'127.0.0.1');await once(control,'listening');
-  const result=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-personal-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,DATABASE_URL:runtimeUrl.toString(),OIDC_CREDENTIAL_KEYS_JSON:keys,OIDC_PERSONAL_PROOF_POLICIES_JSON:JSON.stringify([policy]),OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_CONTROL_URL:`http://127.0.0.1:${control.address().port}`,OIDC_ALPHA:alpha,OIDC_BETA:beta,OIDC_GROUP:group,OIDC_CHILD:child},timeout:180000,maxBuffer:1024*1024}).catch(error=>{throw new Error(error.stderr||error.stdout||error.message);});
+  const result=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-personal-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,DATABASE_URL:runtimeUrl.toString(),OIDC_CREDENTIAL_KEYS_JSON:keys,OIDC_PERSONAL_PROOF_POLICIES_JSON:JSON.stringify([policy]),OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_CONTROL_URL:`http://127.0.0.1:${control.address().port}`,OIDC_ALPHA:alpha,OIDC_BETA:beta,OIDC_LOCAL_USER:reviewer.userId,OIDC_LOCAL_PASSWORD:password,OIDC_OTHER:other,OIDC_GROUP:group,OIDC_CHILD:child},timeout:180000,maxBuffer:1024*1024}).catch(error=>{throw new Error(error.stderr||error.stdout||error.message);});
   assert.match(result.stdout,/"sharedSessions":true/);assert.match(result.stdout,/"sensitiveActionCompleted":true/);assert.match(result.stdout,/"outgoingAuthorityDenied":true/);
   const [credentials]=await owner.query('select count(*)::int count from app_identity.local_credential where user_id=any($1::uuid[])',[[alpha,beta,empty]]);assert.equal(credentials.count,0);
   const audit=await owner.query("select details from app_identity.authentication_event where details->>'kind'='oidc_personal'");assert(audit.length>5);assert.doesNotMatch(JSON.stringify(audit),/fictional-alpha|fictional-beta|fictional-access-token|fresh-provider-secret|code_verifier|ciphertext|nonce/);

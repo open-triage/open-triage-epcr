@@ -162,7 +162,7 @@
   "reports.reviewBeforeSigning": "{count} errors · review before signing",
   "reports.reopening": "Reopening…",
   "reports.reopen": "Reopen report",
-  "reports.reauthHelp": "Confirm your password to recover protected work from this browser.",
+  "reports.reauthHelp": "Confirm your identity to recover protected work from this browser.",
   "reports.currentPassword": "Current password",
   "reports.confirming": "Confirming…",
   "reports.confirmRecover": "Confirm and recover",

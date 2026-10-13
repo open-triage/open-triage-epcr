@@ -99,6 +99,7 @@ type RuntimeContext = {
   locking: boolean;
   receiptRequest: AbortController | null;
   readonly persistentStorage: boolean;
+  recoveryInitialization?: boolean;
 };
 
 /**
@@ -120,7 +121,12 @@ export class LatestProtectedWriteQueue<T> {
   constructor(
     private readonly write: (value: T) => Promise<void>,
     private readonly unchanged?: (previous: T, next: T) => boolean,
-  ) {}
+    persistedSnapshot?: T,
+  ) {
+    // Recovery starts at its persisted snapshot without scheduling another write
+    // or advancing a receipt/deadline. Keep comparison independent of callers.
+    if (persistedSnapshot !== undefined) this.latest = { sequence: 0, value: structuredClone(persistedSnapshot) };
+  }
 
   request(value: T): void {
     // A failed write must remain retryable, even when the payload is unchanged.
@@ -573,23 +579,40 @@ export async function pendingProtectedRecoveryHandles(): Promise<Set<string>> {
  * Ends readable access before changing browser identity. Pending writes settle
  * first, then all keys/decrypted payloads and disposable ciphertext are removed.
  */
+let protectedAuthorityGeneration = 0;
+let protectedAuthoritySettlements = 0;
+const protectedAuthorityRequests = new Set<AbortController>();
+
+async function withProtectedAuthorityRequest<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const request = new AbortController();
+  protectedAuthorityRequests.add(request);
+  try { return await work(request.signal); }
+  finally { protectedAuthorityRequests.delete(request); }
+}
+
 export async function lockProtectedClinicalStorage(now = new Date()): Promise<void> {
-  const active = [...contexts.entries()];
-  for (const [, context] of active) {
-    context.locking = true;
-    context.receiptRequest?.abort();
-  }
-  await Promise.allSettled(active.map(([, context]) => context.writer.flush()));
-  for (const [reportId, context] of active) {
-    contexts.delete(reportId);
-    statuses.delete(reportId);
-    context.payload = { schemaVersion: PROTECTED_ENVELOPE_SCHEMA };
-    context.releaseLock();
-  }
-  if (!("indexedDB" in globalThis)) return;
-  const records = await allRecords();
-  const retainedIds = new Set(retainedProtectedRecords(records, now).map(({ localRecordId }) => localRecordId));
-  await deleteRecords(records.filter(({ localRecordId }) => !retainedIds.has(localRecordId)).map(({ localRecordId }) => localRecordId));
+  protectedAuthoritySettlements += 1;
+  try {
+    protectedAuthorityGeneration += 1;
+    for (const request of protectedAuthorityRequests) request.abort();
+    protectedAuthorityRequests.clear();
+    const active = [...contexts.entries()];
+    for (const [, context] of active) {
+      context.locking = true;
+      context.receiptRequest?.abort();
+    }
+    await Promise.allSettled(active.map(([, context]) => context.writer.flush()));
+    for (const [reportId, context] of active) {
+      contexts.delete(reportId);
+      statuses.delete(reportId);
+      context.payload = { schemaVersion: PROTECTED_ENVELOPE_SCHEMA };
+      context.releaseLock();
+    }
+    if (!("indexedDB" in globalThis)) return;
+    const records = await allRecords();
+    const retainedIds = new Set(retainedProtectedRecords(records, now).map(({ localRecordId }) => localRecordId));
+    await deleteRecords(records.filter(({ localRecordId }) => !retainedIds.has(localRecordId)).map(({ localRecordId }) => localRecordId));
+  } finally { protectedAuthoritySettlements -= 1; }
 }
 
 export function evictionOrder(records: ReadonlyArray<ProtectedClinicalRecord>, now = new Date(), excludedLocalRecordId?: string): ProtectedClinicalRecord[] {
@@ -738,6 +761,7 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
           ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
           ciphertextRevision: revision,
           ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
+          ...(context.recoveryInitialization && !payloadHasPendingWork(payload) ? { preserveRecoveryDeadline: true } : {}),
         }),
         signal: receiptRequest.signal,
       }));
@@ -760,6 +784,7 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
     await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
   }
   context.revision = revision;
+  context.recoveryInitialization = false;
   context.synchronizedRevision = synchronizedRevision;
   context.failure = null;
   publishStatus(reportId, writableStorageStatus(context));
@@ -798,7 +823,7 @@ function queuePersist(reportId: string): void {
   context.writer.request(structuredClone(context.payload));
 }
 
-function createProtectedWriter(reportId: string, context: RuntimeContext): LatestProtectedWriteQueue<ProtectedClinicalPayload> {
+function createProtectedWriter(reportId: string, context: RuntimeContext, persistedSnapshot?: ProtectedClinicalPayload): LatestProtectedWriteQueue<ProtectedClinicalPayload> {
   return new LatestProtectedWriteQueue<ProtectedClinicalPayload>(async (payload) => {
     try {
       await persist(reportId, payload);
@@ -814,7 +839,7 @@ function createProtectedWriter(reportId: string, context: RuntimeContext): Lates
       }
       throw context.failure;
     }
-  }, sameJsonValue);
+  }, sameJsonValue, persistedSnapshot);
 }
 
 export async function persistentStorageGranted(
@@ -869,6 +894,13 @@ export function applyProtectedAuthorityResponse(reportId: string,
 
 export async function prepareProtectedReport(csrfToken: string, reportId: string,
   onRecovered?: (payload: RecoveredProtectedPayload) => void): Promise<boolean> {
+  if (protectedAuthoritySettlements > 0) return false;
+  return withProtectedAuthorityRequest((signal) => prepareProtectedReportWithAuthority(csrfToken, reportId, signal, onRecovered));
+}
+
+async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: string, signal: AbortSignal,
+  onRecovered?: (payload: RecoveredProtectedPayload) => void): Promise<boolean> {
+  const generation = protectedAuthorityGeneration;
   if (browserRequestConfiguration().mode !== "server") return false;
   if (contexts.has(reportId)) return true;
   if (!("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) {
@@ -881,13 +913,17 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     publishStatus(reportId, { mode: "read-only", explanation: "This report is already open for editing in another browser tab." });
     return false;
   }
+  let raw: Uint8Array | undefined;
+  let activated = false;
   try {
+    if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
     const generated = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
-    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", generated));
+    raw = new Uint8Array(await crypto.subtle.exportKey("raw", generated));
     const recoveryHandle = crypto.randomUUID();
     const url = apiRequestUrl(`/api/reports/${reportId}/protected-key-envelope`);
     if (!url) { raw.fill(0); releaseLock(); return false; }
-    const response = await fetch(url, browserRequestInit({ method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify({ schemaVersion: 1, recoveryHandle, reportKeyBase64: bytesToBase64(raw) }) }));
+    const response = await fetch(url, browserRequestInit({ signal, method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify({ schemaVersion: 1, recoveryHandle, reportKeyBase64: bytesToBase64(raw) }) }));
+    if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
     if (!response.ok) {
       raw.fill(0);
       if (response.status === 404 || response.status === 410) {
@@ -903,7 +939,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
         // Another browser can have opened the same assignment first. Adopt the
         // existing key through normal authorization instead of abandoning offline
         // storage or replacing that browser's encrypted work.
-        const recovered = await recoverProtectedReport(csrfToken, reportId);
+        const recovered = await recoverProtectedReport(csrfToken, reportId, { isCurrent: () => generation === protectedAuthorityGeneration && !signal.aborted });
         if (recovered) onRecovered?.(recovered);
         if (contexts.has(reportId)) return true;
         publishStatus(reportId, { mode: "online-only", explanation: "Protected report recovery is unavailable; connected server saves remain available." });
@@ -914,6 +950,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const envelope = await response.json() as ProtectedReportKeyEnvelope;
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
+    if (generation !== protectedAuthorityGeneration) { releaseLock(); return false; }
     const context = { key, localRecordId: crypto.randomUUID(), checkpointScope: "report" as const, envelope, csrfToken,
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
@@ -921,13 +958,14 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
       failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
     context.writer = createProtectedWriter(reportId, context);
     contexts.set(reportId, context);
+    activated = true;
     publishStatus(reportId, writableStorageStatus(context));
     return true;
   } catch (error) {
     releaseLock();
     publishStatus(reportId, { mode: "online-only", explanation: "Protected offline storage could not be prepared; connected server saves remain available." });
     throw error;
-  }
+  } finally { raw?.fill(0); if (!activated) releaseLock(); }
 }
 
 export async function recoverProtectedReport(
@@ -936,17 +974,27 @@ export async function recoverProtectedReport(
   options: { readonly onNoRetainedWork?: () => void; readonly pendingHandles?: Set<string>;
     readonly isCurrent?: () => boolean } = {},
 ): Promise<RecoveredProtectedPayload | null> {
+  if (protectedAuthoritySettlements > 0) return null;
+  return withProtectedAuthorityRequest((signal) => recoverProtectedReportWithAuthority(csrfToken, reportId, options, signal));
+}
+
+async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: string,
+  options: { readonly onNoRetainedWork?: () => void; readonly pendingHandles?: Set<string>;
+    readonly isCurrent?: () => boolean }, signal: AbortSignal): Promise<RecoveredProtectedPayload | null> {
   if (browserRequestConfiguration().mode !== "server" || contexts.has(reportId) ||
       !("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) return null;
+  const generation = protectedAuthorityGeneration;
+  const current = () => generation === protectedAuthorityGeneration && !signal.aborted && options.isCurrent?.() !== false;
   const persistentStorage = await persistentStorageGranted();
+  if (!current()) return null;
   const createUrl = apiRequestUrl(`/api/reports/${reportId}/recovery-grants`);
   if (!createUrl) return null;
   const grantResponse = await fetch(createUrl, browserRequestInit({
-    method: "POST",
+    signal, method: "POST",
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ schemaVersion: 1, envelopeVersion: 1 }),
   }));
-  if (options.isCurrent?.() === false) return null;
+  if (!current()) return null;
   if (grantResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
   if (grantResponse.status === 404 || grantResponse.status === 410) {
     // Records deliberately contain no report identifier or other label. A
@@ -968,7 +1016,7 @@ export async function recoverProtectedReport(
     return null;
   }
   const record = await recordForRecoveryHandle(grant.recoveryHandle);
-  if (options.isCurrent?.() === false) return null;
+  if (!current()) return null;
   if (Date.parse(grant.expiresAt) <= Date.now() || (record && (record.schemaVersion !== 1 ||
       record.algorithm !== "AES-256-GCM" || protectedRecordExpired(record)))) return null;
   if (!record && grant.reportStatus === "signed") {
@@ -988,10 +1036,12 @@ export async function recoverProtectedReport(
     const consumeUrl = apiRequestUrl(`/api/reports/${reportId}/recovery-grants/consume`);
     if (!consumeUrl) return null;
     const consumeResponse = await fetch(consumeUrl, browserRequestInit({
-      method: "POST",
+      signal, method: "POST",
       headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
       body: JSON.stringify({ schemaVersion: 1, envelopeVersion: grant.envelopeVersion, grant: grant.grant }),
     }));
+    if (!current()) return null;
+    if (consumeResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
     if (!consumeResponse.ok) throw new Error(consumeResponse.status === 401
       ? "Your shift session has ended." : "Protected report recovery is unavailable.");
     const recovered = await consumeResponse.json() as { reportKeyBase64: string; wrappingKeyVersion: number };
@@ -1007,7 +1057,7 @@ export async function recoverProtectedReport(
     if (recoveredReportId !== undefined && recoveredReportId !== reportId) {
       throw new Error("Protected report recovery is unavailable.");
     }
-    if (options.isCurrent?.() === false) return null;
+    if (!current()) return null;
     const context = {
       key,
       localRecordId: record?.localRecordId ?? crypto.randomUUID(),
@@ -1025,8 +1075,10 @@ export async function recoverProtectedReport(
       locking: false,
       receiptRequest: null,
       persistentStorage,
+      recoveryInitialization: !record,
     } satisfies RuntimeContext;
-    context.writer = createProtectedWriter(reportId, context);
+    if (!current()) return null;
+    context.writer = createProtectedWriter(reportId, context, context.payload);
     contexts.set(reportId, context);
     activated = true;
     publishPhotos(reportId);

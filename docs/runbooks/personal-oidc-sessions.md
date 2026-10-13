@@ -114,9 +114,11 @@ OIDC freshness onto a local-only session is insufficient. This slice intentional
 does not implement that mode transition. Latest proof columns permit OIDC sessions
 to record a new approved active provider without rewriting their original provenance.
 
-Recovery must replace local-credential-only protected-recovery SQL and password UI
-with the shared source/authority boundary. Until then it fails closed for SSO-only
-recovery; encrypted work remains eligible only within its existing deadline.
+Protected recovery uses the shared source/authority boundary and sensitive-action
+control. A fresh local or approved OIDC reauthentication unlocks only the same
+clinician's eligible report through a one-use grant; ordinary login and activity
+cannot advance recovery proof. Ciphertext deadlines never renew on login or pairing.
+See [protected storage](../protected-offline-clinical-storage.md).
 
 Controlled TLS-provider, real PostgreSQL runtime and proxy-browser regressions are
 mandatory in API integration checks. Deployment browser checks also cover delayed
