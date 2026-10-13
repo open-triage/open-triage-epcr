@@ -100,3 +100,55 @@ for(const language of ['en','sv'])for(const width of [390,1440])test(`tested SSO
  fail=false;await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Personal password 42!');await button.click();await expect(page.getByRole('status').filter({hasText:language==='sv'?'SSO aktiverad.':'SSO activated.'})).toBeVisible();await expect(button).toBeDisabled();
  await expect(page.getByText(language==='sv'?`Aktiv leverantör: ${draft.name}`:`Active provider: ${draft.name}`,{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+for(const language of ['en','sv'])for(const width of [390,1440])test(`rotation history and integration acknowledgment remain usable and scoped to the displayed revisions in ${language} at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:900});
+ await page.route('**/__oidc-rotation',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><style>${css}</style></head><body style="--green:#315ba8;--text-color:#202850"><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
+ await page.route('**/__oidc-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+ const testId='b'.repeat(64),actor='Responsible administrator';
+ let state={...initial,draft:{...draft,revision:2,issuer:'https://replacement.example.org',discoveryHealth:'healthy'},identityImpact:{integrationChanged:true,activeRevision:1,draftRevision:2,linkedIdentities:14},test:{testId,revision:2,result:'succeeded',pkceS256:true,freshPersonalAuthentication:false,completedAt:new Date().toISOString()},
+  history:[{revision:2,createdAt:new Date().toISOString(),actorId:'stable-actor-id',actorName:actor,credentialConfigured:true,discoveryHealth:'healthy',status:'draft',changedFields:['issuer','clientId'],credentialReplaced:true},{revision:1,createdAt:new Date().toISOString(),actorId:'stable-actor-id',actorName:actor,credentialConfigured:true,discoveryHealth:'healthy',status:'active',changedFields:['name'],credentialReplaced:false}],activationHistory:[{revision:1,result:'succeeded',actorId:'stable-actor-id',actorName:actor,occurredAt:new Date().toISOString()}]};
+ await page.route('**/api/admin/authentication/oidc',route=>route.fulfill({json:state}));
+ await page.route('**/api/sessions/reauthenticate',route=>route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}}));
+ let activationCalls=0;
+ await page.route('**/api/admin/authentication/oidc/activate',route=>{activationCalls++;expect(route.request().postDataJSON()).toEqual({expectedRevision:2,testId,identityChangeAcknowledgment:{activeRevision:1,draftRevision:2}});return route.fulfill({status:409,json:{code:'admin.oidcIdentityAcknowledgmentRequired'}});});
+ await page.goto('/__oidc-rotation');
+ const region=page.getByRole('region',{name:language==='sv'?'Versionshistorik':'Version history',exact:true});await expect(region.getByRole('row')).toHaveCount(3);await expect(region.getByText(actor)).toHaveCount(2);await expect(page.getByText('stable-actor-id')).toHaveCount(0);
+ await expect(region.getByText(language==='sv'?'Inloggningsuppgifter ersatta':'Credential replaced',{exact:false})).toBeVisible();await expect(region.getByRole('cell',{name:language==='sv'?'Aktiv':'Active',exact:true})).toBeVisible();
+ await region.focus();await expect(region).toBeFocused();
+ const acknowledgment=page.getByRole('checkbox',{name:language==='sv'?/Jag förstår att ersättningen/:/I understand that the replacement/});const button=page.getByRole('button',{name:language==='sv'?'Aktivera testad SSO':'Activate tested SSO',exact:true});
+ await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Fixture personal password 42!');await expect(button).toBeDisabled();await acknowledgment.check();await expect(button).toBeEnabled();
+ await page.getByLabel(language==='sv'?'Leverantörens namn':'Provider name').fill('Unsaved replacement');await expect(button).toBeDisabled();await page.getByLabel(language==='sv'?'Leverantörens namn':'Provider name').fill(draft.name);
+ await button.click();await expect(page.getByRole('alert')).toContainText(language==='sv'?'tidigare integrationen förblir aktiv':'previous integration remains active');expect(activationCalls).toBe(1);
+ // A reload onto another active revision must clear the previous consent.
+ state={...state,active:{...state.active,revision:3},identityImpact:{...state.identityImpact,activeRevision:3}};
+ await page.getByRole('button',{name:language==='sv'?'Läs om OIDC-utkast':'Reload OIDC draft',exact:true}).click();await expect(acknowledgment).not.toBeChecked();
+ await page.getByRole('button',{name:language==='sv'?'Använd aktiv konfiguration':'Use active configuration',exact:true}).click();await expect(page.getByLabel(language==='sv'?'Utfärdaradress':'Issuer address')).toHaveValue(draft.issuer);await expect(button).toBeDisabled();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`/tmp/auth012-history-${language}-${width}.png`,fullPage:true});
+});
+
+for(const language of ['en','sv'])test(`missing activation evidence offers an unchanged replacement draft through independent recovery in ${language}`,async({page})=>{
+ await page.route('**/__oidc-prepare',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><style>${css}</style></head><body><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
+ await page.route('**/__oidc-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+ let state={...initial,active:draft,activeSnapshotReady:false};
+ await page.route('**/api/sessions/reauthenticate',route=>route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}}));
+ await page.route('**/api/admin/authentication/oidc',route=>{
+  if(route.request().method()==='PUT'){const body=route.request().postDataJSON();expect(body).toMatchObject({expectedRevision:1,name:draft.name,issuer:draft.issuer,clientId:draft.clientId});expect(body).not.toHaveProperty('replacementSecret');state={...state,draft:{...draft,revision:2,discoveryHealth:'unchecked'}};}
+  return route.fulfill({json:state});
+ });
+ await page.goto('/__oidc-prepare');await expect(page.getByRole('alert')).toContainText(language==='sv'?'saknar en godkänd discoverybild':'no approved discovery snapshot');await expect(page.getByRole('button',{name:language==='sv'?'Spara OIDC-utkast':'Save OIDC draft',exact:true})).toBeDisabled();
+ const prepare=page.getByRole('button',{name:language==='sv'?'Förbered ersättningsutkast':'Prepare replacement draft',exact:true});await expect(prepare).toBeDisabled();await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Fixture personal password 42!');await prepare.click();await expect(page.getByRole('status')).toHaveText(language==='sv'?'Utkast sparat':'Draft saved');await expect(prepare).toBeDisabled();await expect(page.getByRole('button',{name:language==='sv'?'Aktivera testad SSO':'Activate tested SSO',exact:true})).toBeDisabled();await expect(page.getByText(language==='sv'?'Aktiv revision: 1':'Active revision: 1')).toBeVisible();
+});
+
+for(const language of ['en','sv'])test(`a legacy draft with identical visible settings can restore its active identity namespace through a fresh draft in ${language}`,async({page})=>{
+ await page.route('**/__oidc-legacy',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><style>${css}</style></head><body><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
+ await page.route('**/__oidc-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+ let state={...initial,active:draft,draft:{...draft,revision:2},activeSnapshotReady:true,identityImpact:{integrationChanged:true,activeRevision:1,draftRevision:2,linkedIdentities:14}};
+ await page.route('**/api/sessions/reauthenticate',route=>route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}}));
+ await page.route('**/api/admin/authentication/oidc',route=>{
+  if(route.request().method()==='PUT'){const body=route.request().postDataJSON();expect(body).toMatchObject({expectedRevision:2,name:draft.name,issuer:draft.issuer,clientId:draft.clientId});expect(body).not.toHaveProperty('replacementSecret');state={...state,draft:{...draft,revision:3,discoveryHealth:'unchecked'},identityImpact:{...state.identityImpact,integrationChanged:false,draftRevision:3}};}
+  return route.fulfill({json:state});
+ });
+ await page.goto('/__oidc-legacy');await expect(page.getByText(language==='sv'?/Befintliga regionala identitetskopplingar tillhör/:/Existing regional identity links stay/)).toBeVisible();await expect(page.getByRole('button',{name:language==='sv'?'Spara OIDC-utkast':'Save OIDC draft',exact:true})).toBeDisabled();
+ await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Fixture personal password 42!');await page.getByRole('button',{name:language==='sv'?'Förbered ersättningsutkast':'Prepare replacement draft',exact:true}).click();await expect(page.getByRole('status')).toHaveText(language==='sv'?'Utkast sparat':'Draft saved');await expect(page.getByRole('checkbox')).toHaveCount(0);await expect(page.getByRole('button',{name:language==='sv'?'Aktivera testad SSO':'Activate tested SSO',exact:true})).toBeDisabled();
+});

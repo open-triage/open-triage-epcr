@@ -75,7 +75,7 @@ integration('OIDC persistence enforces authority, versions, masked secrets, safe
       const inspect=()=>promisify(execFile)(process.env.OIDC_TEST_RUNTIME || process.execPath,['--input-type=module','-e',script],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),OIDC_TEST_DATABASE_URL:url.toString(),OIDC_TEST_SESSION_TOKEN:regional.sessionToken},timeout:30000});
       const healthy=JSON.parse((await inspect()).stdout);
       assert.equal(healthy.draft.discoveryHealth,'healthy');assert.deepEqual(healthy.draft.discovery.signingKeyIds,['key-current','key-next']);assert.equal(healthy.draft.discovery.token_endpoint,`${fixture.origin}/token`);assert.equal(healthy.draft.discovery.pkceS256,true);assert.equal(healthy.active.revision,1);
-      await manager.query("update app_identity.oidc_provider_state set active_revision=4 where group_id=$1",[root]);
+      await manager.query("update app_identity.oidc_provider_state set active_revision=4,active_discovery=(select discovery from app_identity.oidc_provider_version where group_id=$1 and revision=4) where group_id=$1",[root]);
       fixture.metadataOverrides={token_endpoint:'https://169.254.169.254/token'};
       const unsafe=JSON.parse((await inspect()).stdout);assert.equal(unsafe.draft.discoveryHealth,'failed');assert.equal(unsafe.draft.discovery.token_endpoint,`${fixture.origin}/token`);assert.equal(unsafe.active.revision,4);assert.equal(unsafe.active.discovery.token_endpoint,`${fixture.origin}/token`);
       fixture.metadataOverrides={issuer:'https://different.example.org'};

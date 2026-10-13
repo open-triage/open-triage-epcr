@@ -66,7 +66,7 @@ integration('tested SSO activation preserves sessions, requires current draft an
    if(cmd.subject)fixture.tokenOverrides={sub:cmd.subject};
    if(cmd.outage!==undefined)fixture.personalProofMode=cmd.outage?'silent':'fresh';
    if(cmd.mode)await owner.query('update app_identity.group_authentication_policy set mode=$2 where group_id=$1',[group,cmd.mode]);
-   if(cmd.health)await owner.query('update app_identity.oidc_provider_version set discovery_health=$2 where group_id=$1 and revision=1',[group,cmd.health]);
+   if(cmd.health){await owner.query('update app_identity.oidc_provider_version set discovery_health=$2 where group_id=$1 and revision=1',[group,cmd.health]);await owner.query('update app_identity.oidc_provider_state set active_discovery=$2::jsonb where group_id=$1',[group,cmd.health==='healthy'?JSON.stringify(metadata):null]);}
    if(cmd.changeDiscovery)await owner.query("update app_identity.oidc_provider_version set discovery=discovery||'{\"signingKeyIds\":[\"changed-key\"]}'::jsonb where group_id=$1 and revision=1",[group]);
    if(cmd.restoreDiscovery)await owner.query('update app_identity.oidc_provider_version set discovery=$2::jsonb where group_id=$1 and revision=1',[group,JSON.stringify(metadata)]);
    if(cmd.ageProof)await owner.query("update app_identity.app_session set personally_authenticated_at=clock_timestamp()-interval '6 minutes',reauthenticated_at=null where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(cmd.ageProof)]);

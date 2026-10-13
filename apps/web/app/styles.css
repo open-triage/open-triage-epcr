@@ -1218,6 +1218,12 @@ fieldset { min-inline-size: 0; }
 /* Keep the compact provider editor actions from covering credential fields. */
 .agency-settings .oidc-draft .form-actions { position: static; }
 .oidc-draft > div { display: grid; gap: 8px; }
+.oidc-history-scroll { max-height: 320px; overflow: auto; min-width: 0; }
+.oidc-history { width: 100%; min-width: 640px; border-collapse: collapse; }
+.oidc-history th, .oidc-history td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.oidc-history th { position: sticky; top: 0; background: var(--surface, #fff); }
+.agency-settings .oidc-identity-acknowledgment { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.agency-settings .oidc-identity-acknowledgment input { width: 20px; min-height: 20px; flex-shrink: 0; }
 
 .schedule-editor .admin-table-scroll { padding: 0; }
 

@@ -18,7 +18,7 @@ export async function discoveryProvider(){
     const pairs=['key-current','key-next'].map(kid=>({kid,...generateKeyPairSync('rsa',{modulusLength:2048})}));
     const publicKeys=pairs.map(pair=>({...pair.publicKey.export({format:'jwk'}),kid:pair.kid,use:'sig',alg:'RS256'}));
     const codes=new Map();
-    const fixture={origin:'',certificate:path.join(directory,'cert.pem'),metadataOverrides:{},keys:publicKeys,tokenOverrides:{},tokenKid:'key-current',invalidSignature:false,authorizationCount:0,tokenCount:0,jwksCount:0};
+    const fixture={origin:'',certificate:path.join(directory,'cert.pem'),metadataOverrides:{},keys:publicKeys,tokenOverrides:{},tokenKid:'key-current',invalidSignature:false,authorizationCount:0,tokenCount:0,jwksCount:0,clientSecret:'fresh-provider-secret'};
     server=createServer({key:await readFile(path.join(directory,'key.pem')),cert:await readFile(path.join(directory,'cert.pem'))},(req,res)=>{
       res.setHeader('content-type','application/json');
       if(req.url==='/adfs/.well-known/openid-configuration')res.end(JSON.stringify({issuer:`${fixture.origin}/adfs`,authorization_endpoint:`${fixture.origin}/authorize`,token_endpoint:`${fixture.origin}/token`,jwks_uri:`${fixture.origin}/jwks`,userinfo_endpoint:`${fixture.origin}/userinfo`,end_session_endpoint:`${fixture.origin}/logout`,response_types_supported:['code'],subject_types_supported:['public'],id_token_signing_alg_values_supported:['RS256'],token_endpoint_auth_methods_supported:['client_secret_post'],code_challenge_methods_supported:['S256'],...fixture.metadataOverrides}));
@@ -33,7 +33,7 @@ export async function discoveryProvider(){
         fixture.tokenCount++;let body='';req.on('data',part=>body+=part);req.on('end',async()=>{
           await fixture.beforeToken?.();
           const params=new URLSearchParams(body),authorization=codes.get(params.get('code'));codes.delete(params.get('code'));
-          if(!authorization||params.get('client_secret')!=='fresh-provider-secret'||params.get('client_id')!==authorization.get('client_id')||params.get('redirect_uri')!==authorization.get('redirect_uri')||authorization.get('code_challenge')!==createHash('sha256').update(params.get('code_verifier')||'').digest('base64url')){res.writeHead(400).end('{}');return;}
+          if(!authorization||params.get('client_secret')!==fixture.clientSecret||params.get('client_id')!==authorization.get('client_id')||params.get('redirect_uri')!==authorization.get('redirect_uri')||authorization.get('code_challenge')!==createHash('sha256').update(params.get('code_verifier')||'').digest('base64url')){res.writeHead(400).end('{}');return;}
           const pair=pairs.find(pair=>pair.kid===fixture.tokenKid);const now=Math.floor(Date.now()/1000);
           const personal=fixture.personalProofMode ? {acr:'fixture:interactive-personal',amr:['fixture-personal'],auth_time:now} : {};
           if(fixture.personalProofMode==='cached')personal.auth_time=now-600;
