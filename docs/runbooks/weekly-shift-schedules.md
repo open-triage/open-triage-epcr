@@ -52,3 +52,42 @@ new zone are eligible. The projection persists this zone context and its start
 instant so later refreshes cannot invent a retrospective checkpoint. New-job
 access must reevaluate rather than trust a stored preview. Session expiry,
 revocation, device enrollment and permissions remain independent.
+
+## Preview and concurrent saves
+
+Both schedule authoring and unit reassignment first POST their draft to the
+corresponding `/api/admin/schedules[/<id>]/preview` or
+`/api/admin/units/<id>/schedule/preview` endpoint. The response shows an exact
+server effective instant. Saving submits the returned `previewToken` alongside
+the unchanged draft and expected revision. HTTP saves without a preview are
+rejected. The token is signed for a dedicated schedule-preview purpose using
+a purpose-derived key from the existing installation authentication secret,
+bound to the current opaque session token, and expires after five minutes. It works
+across API replicas and grants no capability: every request checks the normal
+agency/group permissions and session validity again.
+
+Under the existing schedule/unit locks, saving recomputes the scheduling
+context and rejects a different draft, revision, agency zone, target schedule,
+expired preview, or crossed effective boundary. The UI preserves the draft and
+requires another preview. The persisted effective instant is exactly the one
+shown beforehand. For changes from blank/missing setup and initial authoring,
+the preview instant is immediate; it remains valid only if no proposed
+checkpoint occurred between preview and save. An intervening checkpoint forces
+a new preview, so even an immediate change cannot invent a past handover.
+
+Added breakpoints before the effective boundary are excluded; added breakpoints
+at or after it can become future checkpoints. Removed breakpoints no longer
+occur from that boundary, while the preceding active checkpoint remains the
+current requirement until a new checkpoint occurs. A nonblank-to-blank change
+stops scheduled checks at the boundary; blank-to-nonblank starts prospectively
+and never fills in a historical shift. Reassignment uses the outgoing unit's
+next checkpoint (including its current zone and pending schedule revision),
+then the incoming schedule supplies only prospective occurrences. A time-zone
+change invalidates an uncommitted preview and preserves the previous active
+checkpoint when the new zone is evaluated. None of these operations extends a
+session, grace threshold, device enrollment or authorization deadline.
+
+Unit evaluations expose `activeVersion` and `nextVersion` in addition to the
+actual active checkpoint (which can still belong to an older version). This
+lets clients show the incoming revision without conflating it with the current
+authentication requirement. The persisted projection carries the same fields.

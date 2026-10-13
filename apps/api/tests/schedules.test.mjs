@@ -54,3 +54,31 @@ test('non-hour daylight-saving and date-line gaps follow the same wall clock rul
  assert.equal(new Date(resolveWallTime(Date.UTC(2026,3,5,1,45),'Australia/Lord_Howe')).toISOString(),'2026-04-04T14:45:00.000Z');
  assert.equal(new Date(resolveWallTime(Date.UTC(2011,11,30,7),'Pacific/Apia')).toISOString(),'2011-12-30T17:00:00.000Z');
 });
+
+test('added/removed breakpoints and blank transitions never create retrospective authentication checkpoints',()=>{
+ const boundary='2026-10-19T07:00:00Z';
+ for(const points of [[point(1,'06:00')],[point(1,'09:00')],[]]) {
+  const versions=[version([point(1,'07:00')]),version(points,boundary,2)];
+  const before=evaluateSchedule(versions,'UTC',Date.parse(boundary)-1);
+  assert.equal(before.activeCheckpoint.at,'2026-10-12T07:00:00.000Z');
+  const after=evaluateSchedule(versions,'UTC',Date.parse(boundary));
+  assert.equal(after.activeCheckpoint.at,before.activeCheckpoint.at);
+  if(points.length)assert.ok(Date.parse(after.nextCheckpoint.at)>=Date.parse(boundary));
+  else assert.equal(after.blank,true);
+ }
+ const started=Date.parse('2026-10-19T08:00:00Z');
+ const nonblank=evaluateSchedule([version([]),version([point(1,'07:00')],new Date(started).toISOString(),2)],'UTC',started);
+ assert.equal(nonblank.blank,false);assert.equal(nonblank.activeCheckpoint,null);assert.equal(nonblank.nextCheckpoint.at,'2026-10-26T07:00:00.000Z');
+});
+
+test('all schedule HTTP mutation routes require an authoritative preview token',async()=>{
+ const {SchedulesController}=await import('../dist/schedules/schedules.controller.js');
+ const calls=[];
+ const controller=new SchedulesController({save:(...args)=>calls.push(args),select:(...args)=>calls.push(args)});
+ const request={headers:{cookie:'open_triage_session=opaque-session'}};
+ for(const invoke of [body=>controller.create(request,body),body=>controller.update('schedule',request,body),body=>controller.select('unit',request,body)]) {
+  assert.throws(()=>invoke({}),/Preview the effective time/);
+  invoke({previewToken:'server-preview'});
+ }
+ assert.equal(calls.length,3);
+});

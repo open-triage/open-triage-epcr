@@ -4,7 +4,8 @@ export function validateSchedule(input: unknown, editing: boolean): SaveWeeklySc
   const invalid=()=>new UnprocessableEntityException("Invalid weekly schedule: unique weekday/time, grace 0–1440 minutes, at most 168 breakpoints");
   if (!input || typeof input!=="object" || Array.isArray(input)) throw invalid();
   const value=input as Record<string,unknown>;
-  if (Object.keys(value).some(key=>!["name","breakpoints",...(editing?["expectedRevision"]:[])].includes(key)) ||
+  if (Object.keys(value).some(key=>!["name","breakpoints","previewToken",...(editing?["expectedRevision"]:[])].includes(key)) ||
+    (value.previewToken!==undefined && (typeof value.previewToken!=="string" || value.previewToken.length>16000)) ||
     typeof value.name!=="string" || !value.name.trim() || value.name.length>100 || /[\u0000-\u001f\u007f]/u.test(value.name) ||
     !Array.isArray(value.breakpoints) || value.breakpoints.length>168 ||
     (editing && (!Number.isSafeInteger(value.expectedRevision) || Number(value.expectedRevision)<1))) throw invalid();

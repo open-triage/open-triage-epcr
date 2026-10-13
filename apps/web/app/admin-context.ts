@@ -229,5 +229,10 @@ export const loadWeeklySchedules = () => catalogRequest<{items:import("@open-tri
 export const saveWeeklySchedule = (csrfToken:string,id:string|null,body:import("@open-triage/contracts").SaveWeeklySchedule) =>
   catalogRequest<import("@open-triage/contracts").WeeklySchedule>(id?`schedules/${id}`:"schedules",csrfToken,{method:id?"PUT":"POST",body:JSON.stringify(body)});
 export const loadUnitSchedule = (id:string) => catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`);
-export const selectUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number) =>
-  catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`,csrfToken,{method:"PUT",body:JSON.stringify({scheduleId,expectedRevision})});
+export const selectUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number,previewToken:string) =>
+  catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`,csrfToken,{method:"PUT",body:JSON.stringify({scheduleId,expectedRevision,previewToken})});
+
+export const previewWeeklySchedule = (csrfToken:string,id:string|null,body:import("@open-triage/contracts").SaveWeeklySchedule) =>
+  catalogRequest<import("@open-triage/contracts").ScheduleChangePreview>(id?`schedules/${id}/preview`:"schedules/preview",csrfToken,{method:"POST",body:JSON.stringify(body)});
+export const previewUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number) =>
+  catalogRequest<import("@open-triage/contracts").ScheduleChangePreview>(`units/${id}/schedule/preview`,csrfToken,{method:"POST",body:JSON.stringify({scheduleId,expectedRevision})});
