@@ -1200,3 +1200,8 @@ fieldset { min-inline-size: 0; }
 .review-agency-name { display: block; margin-top: 0.25rem; }
 
 .authentication-policy-history { max-height: 12rem; overflow-y: auto; }
+.unit-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--green); border-radius: 8px; color: var(--text-color); background: var(--surface, white); }
+.unit-dialog::backdrop { background: rgb(12 18 14 / 48%); }
+.unit-dialog label { display: grid; gap: 7px; margin: 12px 0; }
+.unit-dialog label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
+.unit-dialog input:not([type="checkbox"]) { width: 100%; padding: 10px 12px; min-height: 44px; border: 1px solid var(--green); border-radius: 6px; color: var(--text-color); font-size: var(--text-control); }

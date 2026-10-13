@@ -31,7 +31,7 @@ type DashboardRow = {
 const panelCapabilities: ReadonlyArray<readonly [AdminPanelKey, string]> = [
   ["dashboard", "admin-dashboard:read"], ["users", "users:read"], ["roles", "roles:read"],
   ["catalog", "catalog:read"], ["forms", "forms:read"], ["validation", "validation:read"],
-  ["authentication", "settings:read"], ["settings", "settings:read"], ["review-settings", "review:admin"]
+  ["authentication", "settings:read"], ["units", "settings:read"], ["settings", "settings:read"], ["review-settings", "review:admin"]
 ];
 
 function authorizedPanels(session: ClinicianSession): AdminPanelKey[] {

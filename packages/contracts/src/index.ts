@@ -920,7 +920,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
+export type AdminPanelKey = "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -2024,3 +2024,9 @@ export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
   history: Array<{ actorId: string; displayName: string | null; occurredAt: string;
     details: { prior?: GroupAuthenticationPolicy; policy?: GroupAuthenticationPolicy } }>;
 };
+/** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
+export interface OperationalUnitSummary {
+  id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;
+}
+export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCursor: string | null; }
+export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }
