@@ -1,3 +1,4 @@
+import { ProductionWorkflowService } from "./production-workflow.service.js";
 import { UserRoleAssignmentService } from "../admin/user-role-assignment.service.js";
 import { Module } from "@nestjs/common";
 import { SessionsModule } from "../sessions/sessions.module.js";
@@ -11,5 +12,5 @@ import { RegionalIdentityService } from "./regional-identity.service.js";
 import { RegionalIdentityController } from "./regional-identity.controller.js";
 import { OidcPersonalService } from "./oidc-personal.service.js";
 import { OidcPersonalController } from "./oidc-personal.controller.js";
-@Module({ imports: [SessionsModule], controllers: [AuthenticationPolicyController, OidcDraftController, OidcTestController, RegionalIdentityController,OidcPersonalController], providers: [UserRoleAssignmentService, AuthenticationPolicyService, OidcDraftService, OidcTestService, RegionalIdentityService,OidcPersonalService] })
+@Module({ imports: [SessionsModule], controllers: [AuthenticationPolicyController, OidcDraftController, OidcTestController, RegionalIdentityController,OidcPersonalController], providers: [ProductionWorkflowService, UserRoleAssignmentService, AuthenticationPolicyService, OidcDraftService, OidcTestService, RegionalIdentityService,OidcPersonalService] })
 export class AuthenticationModule {}

@@ -1240,3 +1240,5 @@ fieldset { min-inline-size: 0; }
 .regional-identities td:last-child { white-space: nowrap; }
 .regional-identities td:last-child button { overflow-wrap: normal; min-width: 80px; }
 .authentication-policy > nav.form-actions { position: static; }
+
+.production-workflow .admin-table-scroll { max-height: min(45dvh, 30rem); overflow: auto; padding: 0; }

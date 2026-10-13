@@ -1,3 +1,4 @@
+import { productionWorkflow } from "../authentication/production-workflow.js";
 import { lockInstallationForSession } from "./installation-session.js";
 import { localPolicy } from "../authentication/local-policy.js";
 import { createHash, randomBytes } from "node:crypto";
@@ -389,7 +390,7 @@ export class ClinicianSessionService {
   }
 
   /** Common session issuer. The OIDC service supplies only validated linked identity and personal proof. */
-  async lockPersonalAuthenticationContext(manager:EntityManager,identityRequestId:string|null,previousToken?:string):Promise<void>{
+  async lockPersonalAuthenticationContext(manager:EntityManager,identityRequestId:string|null,previousToken?:string,rolloutGroupId?:string):Promise<void>{
     // Immutable user references can be read before locking. Lifecycle and role
     // writers precede session containment; clinical open uses this same order.
     const users=await manager.query<Array<{user_id:string}>>(`select linked_user_id user_id from app_identity.regional_identity_request where id=$1 and linked_user_id is not null
@@ -406,14 +407,17 @@ export class ClinicianSessionService {
     const registrations=await manager.query<Array<{id:string;organization_id:string;unit_id:string}>>(`
       select i.id,i.organization_id,i.unit_id from app_identity.installation_registration i
       where i.credential_sha256=$1 or i.id=(select installation_registration_id from app_identity.app_session where token_sha256=$2)
-      order by i.id for share of i`,[request?.installationCredential?digest(request.installationCredential):null,previousToken?digest(previousToken):null]);
+        or ($3::uuid is not null and app_identity.organization_group(i.organization_id)=$3)
+      order by i.id for share of i`,[request?.installationCredential?digest(request.installationCredential):null,previousToken?digest(previousToken):null,rolloutGroupId??null]);
     const agencies=registrations.map(registration=>registration.organization_id);
     await manager.query(`select id from app_identity.organization
       where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
         or id=any($2::uuid[]) or id in(select parent_organization_id from app_identity.organization where id=any($2::uuid[]))
-      order by id for share`,[request?.organizationId,agencies]);
-    await manager.query('select id from app_identity.operational_unit where id=any($1::uuid[]) order by id for share',
-      [registrations.map(registration=>registration.unit_id)]);
+        or id=$3 or parent_organization_id=$3
+      order by id for share`,[request?.organizationId,agencies,rolloutGroupId??null]);
+    await manager.query(`select id from app_identity.operational_unit where id=any($1::uuid[])
+      or ($2::uuid is not null and app_identity.organization_group(organization_id)=$2) order by id for share`,
+      [registrations.map(registration=>registration.unit_id),rolloutGroupId??null]);
     await lockInstallationForSession(manager);
     if(previousToken)await manager.query('select id from app_identity.app_session where token_sha256=$1 for update',[digest(previousToken)]);
   }
@@ -503,6 +507,7 @@ export class ClinicianSessionService {
     const nextAuthenticationSource=await this.requiredAuthentication(manager,account.user_id,account.organization_id);
     return {
       nextAuthenticationSource,
+      ...(account.organization_id ? { productionWorkflow: await productionWorkflow(manager, account.organization_id) } : {}),
       installationOwner: identities[0]?.owner ?? false,
       installationSuperadmin: identities[0]?.superadmin ?? false,
       ...(identities[0]?.organization_id ? { homeOrganizationId: identities[0].organization_id } : {}),

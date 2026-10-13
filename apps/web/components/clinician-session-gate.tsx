@@ -337,6 +337,7 @@ export function ClinicianSessionGate({ children }: {
     window.addEventListener("online", visible);
     window.addEventListener("focus", visible);
     window.addEventListener("open-triage.authentication-policy-changed", visible);
+    window.addEventListener("open-triage.production-workflow-changed", visible);
     document.addEventListener("visibilitychange", visible);
     return () => {
       current = false;
@@ -344,6 +345,7 @@ export function ClinicianSessionGate({ children }: {
       window.removeEventListener("online", visible);
       window.removeEventListener("focus", visible);
       window.removeEventListener("open-triage.authentication-policy-changed", visible);
+      window.removeEventListener("open-triage.production-workflow-changed", visible);
       document.removeEventListener("visibilitychange", visible);
     };
   }, [authenticatedSession, lockAndEndLocalSession, t]);
@@ -565,6 +567,7 @@ export function ClinicianSessionGate({ children }: {
   const switchUser = () => { if (nextAuthenticationSource === "oidc") void personalLogin("switch"); else requestLogout(); };
   return (
     <NewJobConfirmationProvider language={language} onSwitch={switchUser}>
+      {session?.productionWorkflow?.state === "preparation" && <p role="status">{t("calls.production.preparation")}</p>}
     <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>

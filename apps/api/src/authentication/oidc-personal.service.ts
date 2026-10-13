@@ -1,3 +1,4 @@
+import { activePersonalProofPolicy } from "./active-personal-provider.js";
 import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException,HttpException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { createHash, randomBytes } from "node:crypto";
@@ -11,7 +12,7 @@ import { encryptCredential, decryptCredential } from "./oidc-credentials.js";
 import { RegionalIdentityService } from "./regional-identity.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 import { testAuthorization, personalCodeExchange, type TestBinding } from "./oidc-test-protocol.js";
-import { approvedPersonalProofPolicy, personalProofPolicyDigest, type PersonalAuthenticationPurpose, type PersonalProofPolicy } from "./personal-proof.js";
+import { personalProofPolicyDigest, type PersonalAuthenticationPurpose, type PersonalProofPolicy } from "./personal-proof.js";
 
 const digest=(value:string)=>createHash("sha256").update(value).digest("hex");
 const random=()=>randomBytes(32).toString("base64url");
@@ -35,11 +36,7 @@ export class OidcPersonalService {
    join app_identity.group_authentication_policy p on p.group_id=s.group_id and p.mode='oidc'
    where s.group_id=$1 ${lock?'for share of v':''}`,[groupId]))[0];
  }
- private policy(version:Version){
-  if(version.discovery_health!=="healthy"||!version.discovery||!version.encrypted_credential||version.discovery.pkceS256!==true||version.discovery.issuer!==version.configuration.issuer)
-   throw new ServiceUnavailableException({code:"login.personalProofUnavailable"});
-  return approvedPersonalProofPolicy({groupId:version.group_id,providerId:version.provider_id,issuer:version.configuration.issuer,clientId:version.configuration.clientId});
- }
+ private policy(version:Version){return activePersonalProofPolicy(version);}
  async options(){
   const agency=await this.agencies.forLogin();
   if(!agency)return {regional:false};

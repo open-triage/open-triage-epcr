@@ -18,7 +18,7 @@ import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncoun
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
-import { assertProductionJobAccess, productionJobAccess, currentShiftAccess, prepareNewJobConfirmation } from "./production-job-access.js";
+import { assertProductionJobAccess, productionJobAccess, prepareNewJobConfirmation } from "./production-job-access.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 
 type AssignedCallRow = {
@@ -221,7 +221,9 @@ export class AssignedCallsService {
         join app_identity.organization organization on organization.id=ca.organization_id
         left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
         where ca.organization_id = $2 and ou.active
-          and ((not ca.synthetic and not incident.synthetic and ou.id=$4::uuid)
+          and ((not ca.synthetic and not incident.synthetic and (ou.id=$4::uuid or ($6::boolean and exists(
+              select 1 from app_identity.unit_clinician uc where uc.user_id=$1
+              and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id))))
             or (ca.synthetic and incident.synthetic and $5::boolean and exists(
               select 1 from app_identity.unit_clinician uc where uc.user_id=$1
               and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id)))
@@ -230,7 +232,7 @@ export class AssignedCallsService {
         order by ca.dispatched_at desc, ca.id
       `, [current.user.id, current.organization.id, now,
         ["ready", "identity-confirmation-required"].includes(productionAccess.state) ? productionAccess.unit!.id : null,
-        current.capabilities?.includes("clinical:demo") ?? false]);
+        current.capabilities?.includes("clinical:demo") ?? false, productionAccess.state === "preparation"]);
       const activeSettings = await manager.query<MediaSettingsRow[]>(`
         select revision, report_media_allowance_bytes, image_media_limit_bytes from app_identity.agency_settings
         where organization_id = $1
@@ -412,7 +414,13 @@ export class AssignedCallsService {
           if (!current.capabilities?.includes("clinical:demo") || !fixture) throw new NotFoundException("Synthetic assignment is unavailable");
         } else {
           assertProductionJobAccess(productionAccess);
-          if (assignment.unit_id !== productionAccess.unit!.id) throw new NotFoundException("Assignment is unavailable in this enrolled unit");
+          if (productionAccess.state === "preparation") {
+            const [legacy] = await manager.query(`select uc.unit_id from app_identity.unit_clinician uc
+              join app_identity.operational_unit u on u.id=uc.unit_id and u.organization_id=uc.organization_id
+              where uc.user_id=$1 and uc.organization_id=$2 and uc.unit_id=$3 and u.active for share of u`,
+              [current.user.id,current.organization.id,assignment.unit_id]);
+            if (!legacy) throw new NotFoundException("Assignment is unavailable in this clinician's assigned unit");
+          } else if (assignment.unit_id !== productionAccess.unit!.id) throw new NotFoundException("Assignment is unavailable in this enrolled unit");
           const [incident] = await manager.query(`select id from clinical.incident where id=$1 and organization_id=$2 and not synthetic`,
             [assignment.incident_id, current.organization.id]);
           if (!incident) throw new NotFoundException("Production assignment is unavailable");
@@ -448,7 +456,8 @@ export class AssignedCallsService {
           values ($1, $2, 'unknown', $3, $4)
         `, [patientId, current.organization.id, patientKey, patientKeyConfig.keyVersion]);
         if (!assignment.synthetic) {
-          assertProductionJobAccess({ ...productionAccess, state: await currentShiftAccess(manager, accessToken, productionAccess.unit!, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken, consume: true }) });
+          assertProductionJobAccess(await productionJobAccess(manager, accessToken, current, this.schedules,
+            { target: `assignment:${assignmentId}`, token: confirmationToken, consume: true }));
         }
         await manager.query(`
           insert into clinical.report
