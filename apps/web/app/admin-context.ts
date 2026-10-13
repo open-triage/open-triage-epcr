@@ -224,3 +224,10 @@ export const saveOperationalUnit = (csrfToken: string, id: string | null, comman
 
 export const issueUnitEnrollment=(csrfToken:string,id:string)=>catalogRequest<{token:string;origin:string;expiresAt:string}>(`units/${id}/enrollment`,csrfToken,{method:"POST"});
 export const loadUnitInstallations=(id:string,cursor?:string)=>catalogRequest<{items:import("./installation-enrollment").InstallationSummary[];nextCursor:string|null}>(`units/${id}/installations${cursor?`?cursor=${encodeURIComponent(cursor)}`:""}`);
+
+export const loadWeeklySchedules = () => catalogRequest<{items:import("@open-triage/contracts").WeeklySchedule[]}>("schedules");
+export const saveWeeklySchedule = (csrfToken:string,id:string|null,body:import("@open-triage/contracts").SaveWeeklySchedule) =>
+  catalogRequest<import("@open-triage/contracts").WeeklySchedule>(id?`schedules/${id}`:"schedules",csrfToken,{method:id?"PUT":"POST",body:JSON.stringify(body)});
+export const loadUnitSchedule = (id:string) => catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`);
+export const selectUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number) =>
+  catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`,csrfToken,{method:"PUT",body:JSON.stringify({scheduleId,expectedRevision})});

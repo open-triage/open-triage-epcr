@@ -1,4 +1,5 @@
 "use client";
+import { SchedulesPanel } from "./schedules-panel";
 import { UnitsPanel } from "./units-panel";
 import { AuthenticationPolicyPanel } from "./authentication-policy";
 
@@ -17,11 +18,11 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
 import { OrganizationManagement } from "./organization-management";
 
-type AdminPanel = "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
+type AdminPanel = "Shift schedules" | "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
   ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
-  ["authentication", "Authentication"], ["units", "Units"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
+  ["authentication", "Authentication"], ["units", "Units"], ["schedules", "Shift schedules"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -55,7 +56,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
 }) {
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
   const adminT = useAdminText();
-  const panelKeys: Record<AdminPanel, string> = { Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
+  const panelKeys: Record<AdminPanel, string> = { "Shift schedules": "navigation.shiftSchedules", Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
     "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
     "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings", "Super-admin": "navigation.superAdmin" };
   const [context, setContext] = useState<AdminContext | null>(null);
@@ -126,6 +127,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
     {!context && !error && <LoadingStatus className="admin-loading">{t("navigation.loadingConfiguration")}</LoadingStatus>}
     {context && mounted("Super-admin") && (session.installationOwner || session.installationSuperadmin) && onOpenAgency &&
       <div hidden={activePanel !== "Super-admin"}><OrganizationManagement active={activePanel === "Super-admin"} session={session} language={language} onOpenAgency={onOpenAgency} /></div>}
+    {context && mounted("Shift schedules") && <div hidden={activePanel !== "Shift schedules"}><SchedulesPanel csrfToken={session.csrfToken ?? ""} canManage={context.capabilities.includes("settings:write")} language={language} /></div>}
     {context && mounted("Units") && <div hidden={activePanel !== "Units"}><UnitsPanel csrfToken={session.csrfToken ?? ""} canManage={context.capabilities.includes("settings:write")} language={language} /></div>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
