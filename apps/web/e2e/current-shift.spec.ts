@@ -53,7 +53,7 @@ for(const source of ['local','oidc'] as const)for(const language of ['en','sv'] 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`/tmp/auth017-shift-${source}-${language}.png`,fullPage:true});
  state='identity-confirmation-required';await page.reload();
- await expect(page.locator('.assigned-calls [role=status]')).toContainText(language==='en'?'Identity confirmation':'Identitetsbekräftelse');
+ await expect(page.locator('.assigned-calls [role=status]')).toContainText(language==='en'?'Confirm the clinician':'Bekräfta kliniker');
  await expect(authenticate()).toHaveCount(0);await expect(page.getByText('SHIFT-017',{exact:true})).toHaveCount(0);
 });
 

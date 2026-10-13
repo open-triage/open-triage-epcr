@@ -18,6 +18,7 @@ import {
   sessionRequestToken
 } from "../app/clinician-session";
 import { beginPersonalClinicianSession,completePersonalClinicianSession,regionalLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
+import { NewJobConfirmationProvider } from "./new-job-confirmation";
 import { PersonalAuthenticationContext } from "./personal-authentication";
 import { LanguageSelector } from "./language-selector";
 import { AssignedCalls } from "./assigned-calls";
@@ -561,7 +562,9 @@ export function ClinicianSessionGate({ children }: {
   </UnsavedChangesContext.Provider>;
 
   const nextAuthenticationSource = (session as ClinicianSession & { nextAuthenticationSource?: "local" | "oidc" }).nextAuthenticationSource ?? session.authenticationSource ?? "local";
+  const switchUser = () => { if (nextAuthenticationSource === "oidc") void personalLogin("switch"); else requestLogout(); };
   return (
+    <NewJobConfirmationProvider language={language} onSwitch={switchUser}>
     <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
@@ -691,5 +694,6 @@ export function ClinicianSessionGate({ children }: {
     </AgencyTimeZoneContext.Provider>
     </UnsavedChangesContext.Provider>
     </PersonalAuthenticationContext.Provider>
+    </NewJobConfirmationProvider>
   );
 }

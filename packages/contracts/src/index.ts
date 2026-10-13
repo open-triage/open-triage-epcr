@@ -1630,6 +1630,13 @@ export interface ProductionJobAccess {
   unit?: { id: string; callSign: string; name: string; organizationId: string };
 }
 
+/** Opaque one-use reminder; this is never authentication evidence. */
+export interface NewJobConfirmation {
+  token: string;
+  clinicianName: string;
+  unit: { id: string; callSign: string; name: string; organizationId: string };
+}
+
 export interface ClinicalDemoUnit {
   id: string;
   callSign: string;

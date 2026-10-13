@@ -32,8 +32,8 @@ export class DraftReportController {
 
   @Post()
   @Header("Cache-Control", "no-store, private")
-  create(@Body() body: unknown, @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<DraftReportResult> {
-    return this.reports.create(bearerToken(authorization, cookie), body);
+  create(@Body() body: unknown, @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string, @Headers("x-job-confirmation") confirmationToken?: string): Promise<DraftReportResult> {
+    return this.reports.create(bearerToken(authorization, cookie), body, confirmationToken);
   }
 
   @Post(":id/protected-key-envelope")
@@ -194,6 +194,7 @@ export class DraftReportController {
   }
 
   @Get(":id/photos/:noteId/image")
+  @Header("Cache-Control", "no-store, private")
   async photoImage(
     @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string,
     @Headers("authorization") authorization: string | undefined, @Headers("cookie") cookie: string | undefined,
@@ -242,6 +243,7 @@ export class DraftReportController {
   }
 
   @Get(":id/audio/:noteId/content")
+  @Header("Cache-Control", "no-store, private")
   async audioContent(
     @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string,
     @Headers("authorization") authorization: string | undefined, @Headers("cookie") cookie: string | undefined,

@@ -21,15 +21,33 @@ using PostgreSQL's clock in live requests. OIDC uses the validated, signed
 `auth_time` lower bound; neither token issuance nor activity proves freshness.
 A new login or reauthentication on another session never refreshes this one.
 
-Every new-job attempt inside any incoming grace window returns the explicit
-`identity-confirmation-required` state until slice 018 supplies its per-attempt
-reminder. It is deliberately unavailable even if the incoming threshold has been
-satisfied. Outside grace, stale proof returns `reauthentication-required` and the
-shared clinical flow offers local or regional personal authentication. Explicit
-shift retries request a new proof even when a proof within five minutes remains
-recent for an ordinary sensitive/recovery action; a proof from before a crossed
-checkpoint cannot satisfy the shift by being reused. A zero-grace
-schedule has no reminder window and supports the complete new-job journey now.
+Every new-job attempt inside any incoming grace window shows the server's current
+clinician name and enrolled unit. Continue confirms only that attempt; Switch user
+uses the shared personal-authentication/storage transition in the effective next
+login mode. Local Switch ends the outgoing session before enabling the next login;
+regional Switch starts the protected provider transaction. Cancel retires the
+attempt. English/Swedish controls use the shared modal, native keyboard handling,
+and mobile-safe layout.
+
+`POST /api/calls/new-job-confirmations` creates a five-minute opaque token for an
+assignment or standalone command, with session CSRF protection. The private token
+digest is bound to that exact session, target, live unit, effective selection and
+schedule/checkpoint context. A newer attempt for the same target retires an old tab's
+token. `DELETE` retires a canceled attempt. Creation accepts the token through
+`x-job-confirmation`, checks live authority and session expiry, reassesses schedule
+context after domain waits, and consumes it atomically in the report transaction.
+Successful assignment/command retries reopen existing work; they never create a
+second report. Another session, target, effective schedule, expired attempt or
+consumed token cannot authorize new work.
+
+Continue never writes personal proof, recent reauthentication, session expiry or
+protected ciphertext deadlines. A 06:44 login confirmed at 06:50 still needs fresh
+authentication after the 07:00 checkpoint in the 15-minute example. Overlapping
+incoming windows use the shared evaluator's complete checkpoint context. A zero-
+grace schedule has no reminder window. Outside grace, stale proof returns
+`reauthentication-required` and the shared clinical flow offers local or regional
+personal authentication. Explicit shift retries request a new proof even when a
+proof within five minutes remains recent for an ordinary sensitive/recovery action.
 Initial selection is prospective and does not invent a previous checkpoint.
 A pending switch to blank does not bypass the outgoing schedule before its boundary.
 
@@ -76,14 +94,17 @@ English/Swedish mobile/desktop browser journeys. Focused coverage lives in
 `apps/web/e2e/production-jobs.spec.ts`. Slice 017 also adds deterministic
 threshold/DST regressions in `apps/api/tests/current-shift.test.mjs`, real
 local completion/expiry tests in `clinician-session.test.mjs`, and local/OIDC
-English/Swedish browser transitions in `apps/web/e2e/current-shift.spec.ts`.
+English/Swedish browser transitions in `apps/web/e2e/current-shift.spec.ts` and
+`apps/web/e2e/new-job-confirmation.spec.ts`.
 `current-shift-oidc-postgres.integration.test.mjs` runs a separate real TLS
 provider, application API, deployment proxy and browser against a disposable
 PostgreSQL database. Both local password and regional browser journeys create
 real production reports and reopen existing work while shift proof is stale. It
 verifies signed proof across a handover during login,
 another-device freshness, outage, fixed expiry, actual standalone production
-creation and authorized existing-report reopening. Its explicit test-only server
+creation and authorized existing-report reopening. It also exercises local and
+controlled-OIDC overlapping-grace Continue/Switch, repeated new reports, canceled
+reminders, unchanged personal proof/fixed expiry and outgoing session revocation. Its explicit test-only server
 clock advances the evaluator while the provider interaction is open; live
 production continues to use PostgreSQL time. The fixture waits for actual provider
 personal authentication to reach the checkpoint before expecting success.

@@ -178,7 +178,7 @@ export class DraftReportService {
     private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions)
   ) {}
 
-  async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
+  async create(accessToken: string, input: unknown, confirmationToken?: string): Promise<DraftReportResult> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     let command: CreateDraftReportCommand;
     try {
@@ -196,6 +196,10 @@ export class DraftReportService {
     const digest = commandSha256(command);
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        // Acquire person/device/unit/session authority before command and incident rows.
+        // Nonready access is asserted only for new production work, keeping existing work available.
+        const jobAccess = await productionJobAccess(manager, accessToken, session, this.schedules,
+          { target: `command:${command.commandId}`, token: confirmationToken });
         await this.lockCommand(manager, command.commandId);
         const replay = await this.replay<DraftReportResult>(manager, command.commandId, "create-draft", digest, command.reportId);
         if (replay) {
@@ -218,7 +222,7 @@ export class DraftReportService {
         // are authoritative. Demo permission cannot make production data disposable.
         const synthetic = incident?.synthetic ?? session.capabilities?.includes("clinical:demo") === true;
         if (!synthetic && !parent) {
-          assertProductionJobAccess(await productionJobAccess(manager, accessToken, session, this.schedules));
+          assertProductionJobAccess(jobAccess);
         }
         // User administrators lock this row before ending roles or sessions.
         // Take the same order before the session assessment updates activity.
@@ -292,7 +296,7 @@ export class DraftReportService {
         }
 
         if (!synthetic && !parent) {
-          assertProductionJobAccess(await productionJobAccess(manager, accessToken, currentSession, this.schedules));
+          assertProductionJobAccess(await productionJobAccess(manager, accessToken, currentSession, this.schedules, { target: `command:${command.commandId}`, token: confirmationToken, consume: true }));
         }
         const insertedReports = mutationRows<{ id: string }>(await manager.query(`
           insert into clinical.report

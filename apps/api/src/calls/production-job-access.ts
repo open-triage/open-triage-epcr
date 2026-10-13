@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
-import type { ClinicianSession, ProductionJobAccess, UnitSchedulePreview } from "@open-triage/contracts";
+import type { ClinicianSession, ProductionJobAccess, UnitSchedulePreview, NewJobConfirmation } from "@open-triage/contracts";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { agencyRequest } from "../sessions/agency-context.js";
 import type { SchedulesService } from "../schedules/schedules.service.js";
 
@@ -22,7 +23,7 @@ export function assertProductionJobAccess(access: ProductionJobAccess): void {
  * registration before agency/unit/session rows.
  * Hold these locks until call creation commits. Device context never grants roles. */
 export async function productionJobAccess(manager: EntityManager, token: string, session: ClinicianSession,
-  schedules: SchedulesService): Promise<ProductionJobAccess> {
+  schedules: SchedulesService, confirmation?: JobConfirmation): Promise<ProductionJobAccess> {
   const [subject] = await manager.query<Array<{ synthetic: boolean }>>(
     "select synthetic from app_identity.app_user where id=$1 for share", [session.user.id]);
   await manager.query(`select id from app_identity.user_role_assignment
@@ -56,11 +57,11 @@ export async function productionJobAccess(manager: EntityManager, token: string,
     and organization_id=$4 and revoked_at is null and expires_at>clock_timestamp() for update`,
     [digest(token), registration.id, request.origin, session.organization.id]);
   if (!associated) return { state: "enrollment-required", unit };
-  return { state: await currentShiftAccess(manager, token, unit, schedules), unit };
+  return { state: await currentShiftAccess(manager, token, unit, schedules, confirmation), unit };
 }
 
 /** A preview is schedule evidence only. Only this session's personal proof qualifies.
- * Grace attempts stay explicit until the per-attempt reminder is implemented. */
+ * Grace requires a separate attempt-specific reminder; it never advances proof. */
 export function shiftAuthenticationState(evaluated: UnitSchedulePreview, personallyAuthenticatedAt: string | Date | null): ProductionJobAccess["state"] {
   if (evaluated.state === "missing") return "schedule-required";
   if (evaluated.state === "blank") return "ready";
@@ -74,10 +75,54 @@ export function shiftAuthenticationState(evaluated: UnitSchedulePreview, persona
 /** Repeat at the creation boundary after assignment/command waits. The caller
  * already owns the authority/device/unit/session locks, with no provider interaction. */
 export async function currentShiftAccess(manager: EntityManager, token: string,
-  unit: {organizationId: string; id: string}, schedules: SchedulesService): Promise<ProductionJobAccess["state"]> {
-  const [evidence] = await manager.query<Array<{ personally_authenticated_at: Date | null }>>(`
-    select personally_authenticated_at from app_identity.app_session
+  unit: {organizationId: string; id: string}, schedules: SchedulesService, confirmation?: JobConfirmation): Promise<ProductionJobAccess["state"]> {
+  const [evidence] = await manager.query<Array<ConfirmationSessionContext & { personally_authenticated_at: Date | null }>>(`
+    select personally_authenticated_at,user_id,organization_id,installation_registration_id,browser_origin from app_identity.app_session
     where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()`, [digest(token)]);
   if (!evidence) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
-  return shiftAuthenticationState(await schedules.evaluateUnit(manager, unit.organizationId, unit.id), evidence.personally_authenticated_at);
+  const evaluated = await schedules.evaluateUnit(manager, unit.organizationId, unit.id);
+  const state = shiftAuthenticationState(evaluated, evidence.personally_authenticated_at);
+  if (state !== "identity-confirmation-required" || !confirmation?.token) return state;
+  const values = [digest(confirmation.token), digest(token), confirmation.target, confirmationContext(evaluated, evidence)];
+  const rows = await manager.query(confirmation.consume
+    ? `update app_identity.new_job_confirmation set consumed_at=clock_timestamp()
+       where token_sha256=$1 and session_sha256=$2 and target=$3 and context_sha256=$4
+       and consumed_at is null and expires_at>clock_timestamp() returning token_sha256`
+    : `select token_sha256 from app_identity.new_job_confirmation
+       where token_sha256=$1 and session_sha256=$2 and target=$3 and context_sha256=$4
+       and consumed_at is null and expires_at>clock_timestamp()`, values);
+  return (confirmation.consume ? mutationRows(rows) : rows).length ? "ready" : "identity-confirmation-required";
+}
+
+export interface JobConfirmation { target: string; token?: string; consume?: boolean; }
+
+// Evaluation time advances normally. Every authority-bearing schedule field stays bound.
+interface ConfirmationSessionContext {
+  user_id: string; organization_id: string; installation_registration_id: string; browser_origin: string;
+}
+function confirmationContext({ evaluatedAt: _time, scheduleName: _name, ...context }: UnitSchedulePreview,
+  session: ConfirmationSessionContext): string {
+  return digest(JSON.stringify({ schedule: context, actor: session.user_id, agency: session.organization_id,
+    registration: session.installation_registration_id, origin: session.browser_origin }));
+}
+
+export async function prepareNewJobConfirmation(manager: EntityManager, token: string,
+  session: ClinicianSession, schedules: SchedulesService, target: string): Promise<NewJobConfirmation | null> {
+  const access = await productionJobAccess(manager, token, session, schedules);
+  if (access.state === "ready" || access.state === "synthetic-only") return null;
+  if (access.state !== "identity-confirmation-required") assertProductionJobAccess(access);
+  const evaluated = await schedules.evaluateUnit(manager, access.unit!.organizationId, access.unit!.id);
+  if (!evaluated.graceCheckpoints.length) {
+    assertProductionJobAccess({ ...access, state: await currentShiftAccess(manager, token, access.unit!, schedules) });
+    return null;
+  }
+  const [binding] = await manager.query<ConfirmationSessionContext[]>(`select user_id,organization_id,installation_registration_id,browser_origin
+    from app_identity.app_session where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()`, [digest(token)]);
+  if (!binding) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
+  const reminder = randomBytes(32).toString("base64url");
+  await manager.query(`delete from app_identity.new_job_confirmation where session_sha256=$1
+    and (target=$2 or expires_at<=clock_timestamp() or consumed_at is not null)`, [digest(token), target]);
+  await manager.query(`insert into app_identity.new_job_confirmation(token_sha256,session_sha256,target,context_sha256)
+    values($1,$2,$3,$4)`, [digest(reminder),digest(token),target,confirmationContext(evaluated,binding)]);
+  return { token: reminder, clinicianName: session.user.displayName, unit: access.unit! };
 }
