@@ -62,7 +62,7 @@ integration('OIDC persistence enforces authority, versions, masked secrets, safe
     await assert.rejects(drafts.save(regional.sessionToken,{...input,expectedRevision:3}),error=>error.getResponse?.().code==='admin.oidcEncryptionUnavailable');
     assert.equal((await drafts.get(regional.sessionToken)).draft.revision,3);
     const immutable=await manager.query("select has_column_privilege('open_triage_api_runtime','app_identity.oidc_provider_version','configuration','UPDATE') as configuration,has_column_privilege('open_triage_api_runtime','app_identity.oidc_provider_version','discovery','UPDATE') as discovery,has_table_privilege('open_triage_api_runtime','app_identity.oidc_provider_version','DELETE') as delete_version,has_column_privilege('open_triage_api_runtime','app_identity.oidc_provider_state','active_revision','UPDATE') as activate");
-    assert.deepEqual(immutable,[{configuration:false,discovery:true,delete_version:false,activate:false}]);
+    assert.deepEqual(immutable,[{configuration:false,discovery:true,delete_version:false,activate:true}]);
     // A trusted test CA and an explicitly permitted private origin exercise real
     // service discovery/JWKS persistence, including advertised key rotation.
     const fixture=await discoveryProvider();

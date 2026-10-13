@@ -12,6 +12,7 @@ import {
   createClinicianSession,
   endClinicianSession,
   authenticateRestartedClinicianSession,
+  reauthenticateClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
   sessionRequestToken
@@ -380,6 +381,14 @@ export function ClinicianSessionGate({ children }: {
     finally{setSubmitting(false);}
   }
 
+  async function authenticateTemporaryRegional() {
+    if(!authenticatedSession||submitting||lockingSession)return;
+    setSubmitting(true);setMessage(null);
+    try {await reauthenticateClinicianSession("",sessionRequestToken(authenticatedSession),true);}
+    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.regionalFailed"));}
+    finally{setSubmitting(false);}
+  }
+
   async function replacePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!authenticatedSession) return;
@@ -502,6 +511,16 @@ export function ClinicianSessionGate({ children }: {
         </form>
       </main>
     );
+  }
+  if (authenticatedSession.passwordChangeRequired && authenticatedSession.nextAuthenticationSource==='oidc') {
+    return <main className="login-shell"><section className="login-card" aria-labelledby="temporary-regional-heading">
+      <p className="eyebrow">{t("login.accountSecurity")}</p>
+      <h1 id="temporary-regional-heading">{t("login.temporaryRegionalAuthentication")}</h1>
+      <p>{t("login.temporaryRegionalAuthenticationHelp")}</p>
+      {message && <p className="login-message" role="status">{message}</p>}
+      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void authenticateTemporaryRegional()}>{t("login.regionalSignIn")}</button>
+      <button type="button" disabled={submitting||lockingSession} onClick={requestLogout}>{t("navigation.logOut")}</button>
+    </section></main>;
   }
   if (authenticatedSession.passwordChangeRequired) {
     return <main className="login-shell">

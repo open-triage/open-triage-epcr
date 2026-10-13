@@ -35,6 +35,11 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canRe
   const confirmReload = useUnsavedChanges(dirty);
   function loaded(value: Policy) { setPolicy(value); setDraft(Object.fromEntries(fields.map(field => [field, String(value[field])]))); }
   useEffect(() => { let current = true; request(csrfToken).then(value => { if (current) loaded(value); }).catch(reason => { if (current) setError(reason.message); }); return () => { current = false; }; }, [csrfToken]);
+  useEffect(()=>{
+    const refresh=()=>{request(csrfToken).then(loaded).catch(reason=>setError(reason.message));};
+    window.addEventListener("open-triage.authentication-policy-changed",refresh);
+    return ()=>window.removeEventListener("open-triage.authentication-policy-changed",refresh);
+  },[csrfToken]);
   const valid = fields.every((field, index) => Number.isInteger(Number(draft[field])) && Number(draft[field]) >= 1 && Number(draft[field]) <= (index < 2 ? 168 : 1000));
   return <section className="admin-configuration agency-settings authentication-policy" aria-labelledby="authentication-heading">
     <h2 id="authentication-heading">{sv ? "Autentisering" : "Authentication"}</h2>
@@ -43,7 +48,7 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canRe
     {error && <><p role="alert" className="admin-error">{error}</p><button type="button" disabled={busy} onClick={() => { if (!confirmReload()) return; setBusy(true); request(csrfToken).then(value => { loaded(value); setError(""); }).catch(reason => setError(reason.message)).finally(() => setBusy(false)); }}>{sv ? "Läs om effektiv policy" : "Reload effective policy"}</button></>}
     {!policy && <button type="button" disabled={busy} onClick={() => { setBusy(true); request(csrfToken).then(loaded).catch(reason => setError(reason.message)).finally(() => setBusy(false)); }}>{sv ? "Läs in policy" : "Load policy"}</button>}
     {policy && <>
-      <p>{sv ? "Lokal inloggning. Gruppens policy gäller för alla underliggande organisationer." : "Local login. The group policy applies to every child agency."}</p>
+      <p>{resolveMessage(language,policy.mode==="oidc"?"admin.authenticationModeOidc":"admin.authenticationModeLocal")}</p>
       <p>{sv ? "Ägande grupp" : "Owning group"}: {policy.groupName} {policy.inherited && (sv ? "(ärvd)" : "(inherited)")}</p>
       <p>{sv ? "Minst 12 tecken. Befintliga lösenordsregler gäller." : "Minimum 12 characters. Existing password rules apply."}</p>
       <form onSubmit={async event => {

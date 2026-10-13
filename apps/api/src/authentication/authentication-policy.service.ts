@@ -31,11 +31,12 @@ export class AuthenticationPolicyService {
       order by event.occurred_at desc, event.id desc limit 20`, [policy.groupId]);
     const [group] = await this.database.query<Array<{ name: string }>>("select name from app_identity.organization where id=$1", [policy.groupId]);
     return { ...policy, groupName: group?.name ?? actor.organization.name, organizationId: actor.organization.id, inherited: actor.organization.id !== policy.groupId,
-      minimumPasswordLength: 12, mode: "local", history: history.map(event => ({ actorId: event.actor_id, displayName: event.display_name, occurredAt: new Date(event.occurred_at).toISOString(), details: event.details })) };
+      minimumPasswordLength: 12, mode: (await this.database.query<Array<{mode:"local"|"oidc"}>>("select mode from app_identity.group_authentication_policy where group_id=$1",[policy.groupId]))[0]?.mode ?? "local", history: history.map(event => ({ actorId: event.actor_id, displayName: event.display_name, occurredAt: new Date(event.occurred_at).toISOString(), details: event.details })) };
   }
   async update(token: string, body: unknown) {
     const command = validateLocalPolicy(body);
     await this.database.transaction(async manager => {
+      if(manager.queryRunner?.isTransactionActive)await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
       const actor = await this.sessions.requireCapability(token, "settings:write", manager);
       await this.sessions.requireRecentReauthentication(token, manager);
       await manager.query("select group_id from app_identity.group_authentication_policy where group_id=app_identity.organization_group($1) for update", [actor.organization.id]);

@@ -46,6 +46,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
   const metadata={issuer,authorization_endpoint:`${fixture.origin}/authorize`,token_endpoint:`${fixture.origin}/token`,jwks_uri:`${fixture.origin}/jwks`,id_token_signing_alg_values_supported:['RS256'],pkceS256:true};
   await owner.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,discovery,discovery_health,created_by) values($1,1,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6),($1,2,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6)",[group,provider,JSON.stringify(configuration),JSON.stringify(encryptCredential('fresh-provider-secret',group,provider)),JSON.stringify(metadata),reviewer.userId]);
   await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision,active_revision) values($1,2,1)',[group]);
+  await owner.query("update app_identity.group_authentication_policy set mode='oidc' where group_id=$1",[group]);
   for(const [id,subject] of [[alpha,'fictional-alpha'],[beta,'fictional-beta'],[empty,'fictional-empty']])await owner.query('insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,1,$3,$4,$5,$6,$7,now())',[group,provider,child,issuer,subject,id,reviewer.userId]);
   const policy={id:'controlled-interactive-contract-v1',groupId:group,providerId:provider,issuer,clientId:configuration.clientId,acr:'fixture:interactive-personal',requiredAmr:['fixture-personal']};
   let beforeRevision=false,disable=false,withdrawOrigin=false,expired=false,reassign=false;
@@ -61,6 +62,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    if(command.token!==undefined)fixture.tokenOverrides=command.token;
    if(command.fresh){fixture.tokenOverrides={...fixture.tokenOverrides,auth_time:Math.floor(Date.now()/1000)};}
    if(command.claimsMode!==undefined)fixture.personalProofMode=command.claimsMode;
+   if(command.groupMode)await owner.query("update app_identity.group_authentication_policy set mode=$2 where group_id=$1",[group,command.groupMode]);
    if(command.revision!==undefined){await owner.query('update app_identity.oidc_provider_state set active_revision=$2 where group_id=$1',[group,command.revision]);}
    if(command.disabled!==undefined){await owner.query('update app_identity.app_user set active=$2 where id=$1',[alpha,!command.disabled]);if(command.disabled)await owner.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='account_disabled' where user_id=$1 and revoked_at is null",[alpha]);}
    if(command.beforeRevision!==undefined)beforeRevision=command.beforeRevision;
