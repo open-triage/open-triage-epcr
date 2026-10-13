@@ -24,6 +24,11 @@ function secret(): Buffer {
   return decoded;
 }
 
+/** Derive a separate key for non-encryption authentication purposes. Never expose the installation secret. */
+export function schedulePreviewSigningKey(): Buffer {
+  return createHmac("sha256",secret()).update("open-triage-schedule-preview-key-v1").digest();
+}
+
 export function validateAuthenticationThrottleConfiguration(): void {
   secret();
 }
