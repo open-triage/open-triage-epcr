@@ -216,3 +216,8 @@ export const importCanonicalDefinitionFile = (csrfToken: string, kind: string, f
   catalogRequest<{ id: string }>(`canonical/${kind}/import-file`, csrfToken, {
     method: "POST", body: JSON.stringify({ file, catalogReleaseId })
   });
+
+export const loadOperationalUnits = (cursor?: string) => catalogRequest<import("@open-triage/contracts").OperationalUnitPage>(`units${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+export const saveOperationalUnit = (csrfToken: string, id: string | null, command: import("@open-triage/contracts").SaveOperationalUnitCommand) =>
+  catalogRequest<import("@open-triage/contracts").OperationalUnitSummary>(id ? `units/${id}` : "units", csrfToken,
+    { method: id ? "PUT" : "POST", body: JSON.stringify(command) });
