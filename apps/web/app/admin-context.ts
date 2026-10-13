@@ -236,3 +236,5 @@ export const previewWeeklySchedule = (csrfToken:string,id:string|null,body:impor
   catalogRequest<import("@open-triage/contracts").ScheduleChangePreview>(id?`schedules/${id}/preview`:"schedules/preview",csrfToken,{method:"POST",body:JSON.stringify(body)});
 export const previewUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number) =>
   catalogRequest<import("@open-triage/contracts").ScheduleChangePreview>(`units/${id}/schedule/preview`,csrfToken,{method:"POST",body:JSON.stringify({scheduleId,expectedRevision})});
+
+export const revokeUnitInstallation=(csrfToken:string,unitId:string,id:string)=>catalogRequest<{revoked:true;sessionsRevoked:number}>(`units/${unitId}/installations/${id}/revoke`,csrfToken,{method:"POST"});

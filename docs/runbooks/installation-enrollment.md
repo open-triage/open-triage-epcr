@@ -26,7 +26,7 @@ The stable installation identity is separate from immutable agency-scoped
 registration and enrollment history. Future reassignment must revoke the old
 registration, rotate its credential and create a new scoped registration for the
 same stable identity. Never change historical agency/unit references in place.
-Device revocation and production job gating are delivered by subsequent slices.
+Device revocation is documented in [Installation revocation](installation-revocation.md). Production job gating is delivered by a subsequent slice.
 
 Admin issuance/inventory require current `settings:write` authority in the
 selected agency. Issuance and consumption require active agency/group/unit state.
