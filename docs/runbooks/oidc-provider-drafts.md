@@ -5,7 +5,8 @@ inherit their group's configuration. Saving an incomplete draft or a failed
 discovery check preserves the active configuration. Failed checks retain the last
 successful read-only metadata and mark its health failed; a new draft starts
 without discovery metadata. Real test login validates identity and records
-pending review requests, while production SSO activation remains a later slice.
+pending review requests. Activation requires the exact current draft's successful
+test and an installation-approved personal authentication contract.
 Discovery success is connectivity evidence, not regional acceptance.
 
 The maintained protocol library is [openid-client v6](https://github.com/panva/openid-client),
@@ -37,6 +38,61 @@ allowlisted return destination, with one-time atomic consumption. Only that narr
 GET callback may omit the usual request-origin gate, and must validate all the
 bindings before minting an application session. A silent callback or `prompt=login`
 alone is not fresh-personal-authentication evidence.
+
+## Maintain and rotate an active integration
+
+For an ordinary credential rotation, enter the replacement client secret, save
+the draft, check discovery, perform a real provider test login and activate that
+exact tested revision. The installed encryption keyring, network trust, routing
+and personal-proof contract remain unchanged. Neither a saved secret nor an
+encrypted credential envelope is returned to Admin. Signing keys refresh
+automatically during protocol exchanges; the discovery panel is an inspection
+snapshot rather than a pinned verification certificate.
+
+Each save creates an immutable revision and starts without discovery or test
+evidence. Failed discovery, login and activation leave the active revision intact.
+Activation stores the exact tested discovery snapshot separately from draft
+diagnostics. Re-inspecting an active revision may report a failed draft check or
+changed endpoints, but runtime login continues to use the activated snapshot.
+Endpoint changes require a saved replacement draft, fresh test and activation.
+The snapshot contains endpoint addresses, not cached verification keys; runtime
+JWKS fetching and automatic signing-key rollover continue normally.
+When upgrading an existing integration, the snapshot migration adopts only
+activation-era successful test metadata that exactly matches retained metadata.
+Missing or ambiguous evidence stays unapproved; use independent installation
+recovery and **Prepare replacement draft** to save, inspect, test and activate a
+new revision even when the editable settings are unchanged. Admin clearly marks
+the missing active snapshot. The migration never
+labels later or untested endpoint changes as previously approved.
+The latest 20 version-history rows show the actor's name, creation time, current
+effective status, changed configuration field names and whether a credential was
+replaced. Activation history shows the actor and result. Neither history includes
+credential values, provider tokens or enrollment credentials. Historical revisions
+remain stored even when they are outside the bounded visible history.
+
+Changing issuer or client registration creates a different integration namespace.
+The editor explains how many linked identities remain with the current active
+integration. Replacement activation requires acknowledgment bound to both exact
+draft and active revisions, a successful diagnostic and separately installed trust
+approval. Acknowledgment does not approve that contract or transfer identity links.
+Profile or email equality cannot link identities automatically. Explicitly review
+and link identities from the replacement integration through Regional identities.
+
+**Use active configuration** copies active editable settings into the editor;
+saving still creates a new draft requiring inspection and a fresh diagnostic test.
+Restoring an active issuer/client after an abandoned different integration reuses
+the active provider identity and its protected credential baseline. This also
+repairs previously saved restoration drafts that used the wrong provider ID,
+without rewriting any historical version. When the current draft already belongs
+to the active integration, its staged credential is retained; supply a known
+replacement secret to repair an incorrect staged credential.
+
+Issued sessions retain immutable identity/provenance, fixed expiry and existing
+qualifying shift evidence. Credential rotation within the same integration also
+preserves recent personal proof. After activation of a different integration,
+previous-namespace proof cannot satisfy sensitive administration or either
+protected-recovery grant/consume boundary; the next proof uses the newly active
+integration and requires its own explicitly linked identity.
 
 ## Installation credential protection
 

@@ -40,7 +40,7 @@ integration('current-shift gates use conservative signed OIDC proof through real
   const issuer=`${fixture.origin}/adfs`,configuration={name:'Controlled shift provider',issuer,discoveryUrl:'',clientId:'fictional-client',scopes:['openid'],mappings:{displayName:'name',email:'email'},clientAuthentication:'client_secret_post'};
   const metadata={issuer,authorization_endpoint:`${fixture.origin}/authorize`,token_endpoint:`${fixture.origin}/token`,jwks_uri:`${fixture.origin}/jwks`,id_token_signing_alg_values_supported:['RS256'],pkceS256:true};
   await owner.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,discovery,discovery_health,created_by) values($1,1,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6)",[group,provider,JSON.stringify(configuration),JSON.stringify(encryptCredential('fresh-provider-secret',group,provider)),JSON.stringify(metadata),reviewer.userId]);
-  await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision,active_revision) values($1,1,1)',[group]);
+  await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision,active_revision,active_discovery) values($1,1,1,$2::jsonb)',[group,JSON.stringify(metadata)]);
   await owner.query("update app_identity.group_authentication_policy set mode='oidc' where group_id=$1",[group]);
   await owner.query("insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,1,$3,$4,'shift-clinician',$5,$6,now())",[group,provider,child,issuer,user,reviewer.userId]);
   const incomingRegional=randomUUID();

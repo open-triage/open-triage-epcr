@@ -8,6 +8,7 @@ import { listAccessRemoved } from "../app/list-refresh";
 import { useAvailableHeight } from "./use-available-height";
 import { activateListRow } from "./list-row-action";
 import { confirmDiscardChanges, useUnsavedChanges } from "./unsaved-changes";
+import { useReturnFocus } from "./use-return-focus";
 
 export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: string; canManage: boolean; language: string }) {
   const sv = language === "sv";
@@ -23,6 +24,7 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
   const request = useRef(0);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  useReturnFocus(!!editor,busy,()=>trigger.current);
   useEffect(() => { if (editor && !dialog.current?.open) dialog.current?.showModal(); }, [editor]);
   const table = useAvailableHeight<HTMLDivElement>(100);
   useUnsavedChanges(dirty);
@@ -43,7 +45,6 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
   function close(saved = false) {
     if (!saved && !confirmDiscardChanges(dirty)) return;
     setEditor(null);setDirty(false);
-    requestAnimationFrame(() => trigger.current?.focus());
   }
   if (scheduleUnit) return <UnitScheduleEditor unitId={scheduleUnit.id} unitName={scheduleUnit.name} csrfToken={csrfToken} canManage={canManage} language={language} onClose={() => { setScheduleUnit(null);requestAnimationFrame(() => document.getElementById(trigger.current?.id??"")?.focus()); }} />;
   return <section className="admin-directory" aria-labelledby="units-heading">
