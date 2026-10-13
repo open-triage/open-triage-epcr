@@ -1,4 +1,7 @@
 {
+  "admin.temporaryAccessPolicy": "Tillfälliga lösenord upphör enligt gruppens autentiseringspolicy.",
+  "platform.error.admin.authenticationPolicyStale": "Autentiseringspolicyn har ändrats. Läs om den effektiva policyn och granska dina ändringar innan du sparar.",
+  "platform.error.admin.authenticationPolicyInvalid": "Ange heltal: 1–168 timmar och 1–1000 inloggningsförsök.",
   "platform.error.admin.hostnameReserved": "Värdnamnet används redan av en organisation.",
   "platform.error.admin.agencyStale": "Organisationen har ändrats. Läs in igen innan du sparar.",
   "platform.error.admin.invalidHostname": "Ange ett värdnamn som test.opentriage.org, utan protokoll, port eller sökväg.",
@@ -62,6 +65,7 @@
   "navigation.catalog": "Elementkatalog",
   "navigation.form": "Formulärredigerare",
   "navigation.validation": "Valideringsregler",
+  "navigation.authentication": "Autentisering",
   "navigation.settings": "Organisationsinställningar",
   "settings.regionalFormat": "Regionalt format",
   "settings.datesAndNumbers": "Datum och nummer",

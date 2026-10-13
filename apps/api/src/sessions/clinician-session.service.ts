@@ -1,3 +1,4 @@
+import { localPolicy } from "../authentication/local-policy.js";
 import { createHash, randomBytes } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -15,7 +16,7 @@ export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 
 type CredentialRow = {
   user_id: string; display_name: string; organization_id: string | null; organization_name: string;
-  username: string;
+  username: string; installation_account?: boolean;
   shift_session_duration_hours: number; password_verifier: string; must_change_password: boolean;
   temporary_password_expires_at: Date | string | null; credential_version: string; active: boolean;
 };
@@ -52,7 +53,7 @@ export class ClinicianSessionService {
     const throttle = await beginAuthenticationAttempt(this.dataSource.manager, username, networkSource, now, { organizationId: selectedAgency?.id, portalOnly: !!agencyRequest.getStore()?.origin && !selectedAgency });
     if (!throttle) throw new UnauthorizedException("The username or password is incorrect");
     const rows = await this.dataSource.query<CredentialRow[]>(`
-      select u.id as user_id, u.display_name, (u.active and (u.account_scope = 'installation' or o.active)) as active, o.id as organization_id,
+      select u.id as user_id, (u.account_scope = 'installation') installation_account, u.display_name, (u.active and (u.account_scope = 'installation' or o.active)) as active, o.id as organization_id,
              o.name as organization_name, coalesce(o.shift_session_duration_hours, 12) as shift_session_duration_hours,
              c.username, c.password_verifier, c.must_change_password, c.temporary_password_expires_at, c.credential_version
       from app_identity.local_credential c
@@ -82,7 +83,9 @@ export class ClinicianSessionService {
     }
     const sessionToken = randomBytes(32).toString("base64url");
     const csrfToken = randomBytes(32).toString("base64url");
-    const normalExpiry = new Date(now.getTime() + account.shift_session_duration_hours * 60 * 60 * 1_000);
+    const policy = await localPolicy(this.dataSource.manager, account.installation_account ? null : account.organization_id);
+    if (account.installation_account) account.shift_session_duration_hours = 12;
+    const normalExpiry = new Date(now.getTime() + (policy?.maximumSessionHours ?? account.shift_session_duration_hours) * 60 * 60 * 1_000);
     const expiresAt = account.must_change_password
       ? new Date(Math.min(normalExpiry.getTime(), timestamp(account.temporary_password_expires_at!)))
       : normalExpiry;
@@ -103,7 +106,7 @@ export class ClinicianSessionService {
              s.browser_origin, case when s.organization_id is null then app_identity.is_installation_superadmin(s.user_id)
                else app_identity.user_can_access_organization(s.user_id, s.organization_id) end as agency_access,
              s.credential_version as session_credential_version, s.revoked_at,
-             u.id as user_id, u.display_name, u.active, o.id as organization_id,
+             (u.account_scope = 'installation') installation_account, u.id as user_id, u.display_name, u.active, o.id as organization_id,
              o.name as organization_name, coalesce(o.shift_session_duration_hours, 12) as shift_session_duration_hours,
              c.must_change_password, c.temporary_password_expires_at, c.credential_version
       from app_identity.app_session s
@@ -157,7 +160,7 @@ export class ClinicianSessionService {
       const rows = await manager.query<CredentialRow[]>(`
         select c.password_verifier, c.username, c.credential_version, c.must_change_password,
                c.temporary_password_expires_at,
-               u.id as user_id, u.display_name, u.active, o.id as organization_id,
+               (u.account_scope = 'installation') installation_account, u.id as user_id, u.display_name, u.active, o.id as organization_id,
                o.name as organization_name, coalesce(o.shift_session_duration_hours, 12) as shift_session_duration_hours
         from app_identity.local_credential c join app_identity.app_user u on u.id = c.user_id
         left join app_identity.organization o on o.id = $2 where u.id = $1
@@ -189,7 +192,8 @@ export class ClinicianSessionService {
 
       const replacementSessionToken = randomBytes(32).toString("base64url");
       const csrfToken = randomBytes(32).toString("base64url");
-      const expiresAt = new Date(now.getTime() + account.shift_session_duration_hours * 60 * 60 * 1_000);
+      const policy = await localPolicy(manager, account.installation_account ? null : account.organization_id);
+      const expiresAt = new Date(now.getTime() + (policy?.maximumSessionHours ?? (account.installation_account ? 12 : account.shift_session_duration_hours)) * 60 * 60 * 1_000);
       const inserted = mutationRows<{ id: string }>(await manager.query(`
         insert into app_identity.app_session
           (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
@@ -248,8 +252,9 @@ export class ClinicianSessionService {
       }
       if (current.organization?.id === organizationId) return current as ClinicianSession;
       const changed = mutationRows<{ id: string }>(await manager.query(`update app_identity.app_session set organization_id=$2,
-        expires_at=least(expires_at,now() + make_interval(hours => (
-          select shift_session_duration_hours from app_identity.organization where id=$2)))
+        expires_at=case when app_identity.is_installation_superadmin(user_id) then expires_at
+        else least(expires_at,now() + make_interval(hours => (
+          select maximum_session_hours from app_identity.group_authentication_policy where group_id=app_identity.organization_group($2)))) end
         where token_sha256=$1 and revoked_at is null and organization_id is not distinct from $3::uuid returning id`,
       [digest(token), organizationId, current.organization?.id ?? null]));
       if (!changed.length) throw new ConflictException("Agency changed; reload before saving");

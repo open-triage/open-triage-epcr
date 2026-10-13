@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import {
   DEFAULT_AGENCY_APPEARANCE,
@@ -116,6 +116,10 @@ export class AgencySettingsService {
       : command.syntheticRetentionHours;
     const demographicChanged = !this.sameDemographic(currentDemographic, command.demographics);
     const authenticationLimits = command.authenticationLimits ?? this.authenticationLimits(currentSettings);
+    if (authenticationLimits.accountAttemptsPer15Minutes !== currentSettings.authentication_account_attempt_limit ||
+        authenticationLimits.networkAttemptsPer5Minutes !== currentSettings.authentication_network_attempt_limit) {
+      throw new UnprocessableEntityException("Manage inherited login limits in Authentication; Agency Settings no longer changes them");
+    }
     if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
         Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
         currentSettings.language === command.language &&

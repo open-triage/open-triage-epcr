@@ -18,6 +18,7 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
   const manager = { query: async (sql, parameters = []) => {
     const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(event);
+    if (event.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: "organization-id", revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
     if (event.sql.startsWith("select session.id, session.revoked_at")) return [{ id: sessionId,
       revoked_at: null, current: false, owner: false, ...session }];
     if (event.sql.startsWith("select app_user.id, app_user.active")) return [{ id: targetId,
@@ -37,6 +38,7 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
     query: async (sql, parameters = []) => {
       const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
       events.push(event);
+    if (event.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: "organization-id", revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
       if (event.sql.startsWith("select id from app_identity.app_user")) return [{ id: targetId }];
       if (event.sql.startsWith("select session.id, session.created_at")) return [{ id: sessionId,
         created_at: "2026-09-11T08:00:00.000Z", last_activity_at: "2026-09-11T11:59:00.000Z",

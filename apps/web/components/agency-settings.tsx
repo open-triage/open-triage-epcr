@@ -214,21 +214,6 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
         {!validRetentionHours && <p className="admin-error" role="alert">{t("settings.demoWipeInvalid")}</p>}
       </fieldset>
 
-      <fieldset disabled={!canWrite || busy}>
-        <legend>{t("settings.loginLimits")}</legend>
-        <label htmlFor={fieldId("authentication-account-attempt-limit")}><strong>{t("settings.loginAccountLimit")}</strong></label>
-        <input id={fieldId("authentication-account-attempt-limit")} type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
-          step="1" required value={accountAttemptLimit} aria-describedby={fieldId("authentication-limits-help")}
-          aria-invalid={!validAttemptLimit(authenticationLimits.accountAttemptsPer15Minutes)}
-          onChange={(event) => setAccountAttemptLimit(event.target.value)} />
-        <label htmlFor={fieldId("authentication-network-attempt-limit")}><strong>{t("settings.loginNetworkLimit")}</strong></label>
-        <input id={fieldId("authentication-network-attempt-limit")} type="number" min="1" max={MAX_AGENCY_AUTHENTICATION_ATTEMPTS}
-          step="1" required value={networkAttemptLimit} aria-describedby={fieldId("authentication-limits-help")}
-          aria-invalid={!validAttemptLimit(authenticationLimits.networkAttemptsPer5Minutes)}
-          onChange={(event) => setNetworkAttemptLimit(event.target.value)} />
-        <small id={fieldId("authentication-limits-help")}>{t("settings.loginLimitsHelp")}</small>
-        {!validAuthenticationLimits && <p className="admin-error" role="alert">{t("settings.loginLimitsInvalid", { max: MAX_AGENCY_AUTHENTICATION_ATTEMPTS })}</p>}
-      </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
         <legend><AdminText messageKey="admin.reportMedia" /></legend>

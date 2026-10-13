@@ -33,3 +33,11 @@ test("cookie requests do not accept array-valued CSRF headers", async () => {
   } }));
   assert.equal(received, undefined);
 });
+
+test("authentication policy cookie mutations require a valid CSRF proof", async () => {
+  const guard = new CsrfGuard({ assertCsrf: async (_token, proof) => { if (proof !== "valid") throw new Error("CSRF denied"); } });
+  for (const proof of [undefined, "forged", ["valid"]]) {
+    await assert.rejects(guard.canActivate(context({ method: "PUT", url: "/api/admin/authentication", headers: { cookie: `${SESSION_COOKIE}=session`, "x-csrf-token": proof } })), /CSRF denied/);
+  }
+  assert.equal(await guard.canActivate(context({ method: "PUT", url: "/api/admin/authentication", headers: { cookie: `${SESSION_COOKIE}=session`, "x-csrf-token": "valid" } })), true);
+});

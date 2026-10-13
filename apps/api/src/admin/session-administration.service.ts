@@ -1,3 +1,4 @@
+import { localPolicy } from "../authentication/local-policy.js";
 import { createHash } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -90,10 +91,10 @@ export class SessionAdministrationService {
   async resetCredential(token: string, targetUserId: string, command: ResetAdminCredentialCommand,
     now = new Date()): Promise<ResetAdminCredentialResult> {
     const verifier = await createPasswordVerifier(command.temporaryPassword);
-    const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
-    const expiresAt = new Date(now.getTime() + temporaryPasswordHours * 60 * 60 * 1_000);
     return this.dataSource.transaction(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "credentials:reset", manager, now);
+      const policy = await localPolicy(manager, actor.organization.id);
+      const expiresAt = new Date(now.getTime() + (policy?.temporaryPasswordHours ?? selectedInstallationSettings().authentication.temporaryPasswordHours) * 60 * 60 * 1_000);
       if (!actor.capabilities?.includes("users:read")) {
         throw new UnauthorizedException("users:read and credentials:reset are required");
       }
