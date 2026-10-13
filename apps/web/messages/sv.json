@@ -1840,5 +1840,7 @@
   "calls.authenticateShift": "Autentisera för det här skiftet",
   "platform.error.calls.shiftReauthenticationRequired": "Autentisera dig för det aktuella skiftet innan du öppnar uppdraget.",
   "platform.error.calls.identityConfirmationRequired": "Identitetsbekräftelse krävs under skiftbytets förperiod.",
-  "platform.error.calls.sessionExpired": "Din session har gått ut. Logga in igen."
+  "platform.error.calls.sessionExpired": "Din session har gått ut. Logga in igen.",
+  "login.installationRecovery": "Återställning av installation",
+  "login.installationRecoveryHelp": "Installationsägare och superadministratörer kan använda sitt oberoende lokala återställningskonto."
 }

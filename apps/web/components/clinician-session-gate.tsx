@@ -86,6 +86,7 @@ export function ClinicianSessionGate({ children }: {
   const [startupFailure, setStartupFailure] = useState<string | null>(null);
   const [authenticatedSession, setSession] = useState<AuthenticatedSession | null>(null);
   const session = authenticatedSession?.organization ? authenticatedSession as ClinicianSession : null;
+  const [installationRecovery, setInstallationRecovery] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [regionalLogin,setRegionalLogin]=useState(false);
@@ -323,6 +324,9 @@ export function ClinicianSessionGate({ children }: {
       try {
         const live = await authenticateRestartedClinicianSession(authenticatedSession);
         if (current && !live) await lockAndEndLocalSession(t("login.sessionExpired"));
+        else if (current && live && JSON.stringify(live) !== JSON.stringify(authenticatedSession)) {
+          storeClinicianSession(window.localStorage, live); setSession(live);
+        }
       } catch { /* Connection failure does not extend the existing local deadline. */ }
       finally { inFlight = false; }
     };
@@ -330,12 +334,14 @@ export function ClinicianSessionGate({ children }: {
     const interval = window.setInterval(() => void reassess(), 30_000);
     window.addEventListener("online", visible);
     window.addEventListener("focus", visible);
+    window.addEventListener("open-triage.authentication-policy-changed", visible);
     document.addEventListener("visibilitychange", visible);
     return () => {
       current = false;
       window.clearInterval(interval);
       window.removeEventListener("online", visible);
       window.removeEventListener("focus", visible);
+      window.removeEventListener("open-triage.authentication-policy-changed", visible);
       document.removeEventListener("visibilitychange", visible);
     };
   }, [authenticatedSession, lockAndEndLocalSession, t]);
@@ -480,7 +486,8 @@ export function ClinicianSessionGate({ children }: {
           </header>
           <div className="login-fields">
             {message && <p className="login-message" role="status">{message}</p>}
-            {regionalLogin?<button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin('login')}>{t("login.regionalSignIn")}</button>:<>
+            {regionalLogin && !installationRecovery?<><button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin('login')}>{t("login.regionalSignIn")}</button><button type="button" onClick={() => setInstallationRecovery(true)}>{t("login.installationRecovery")}</button></>:<>
+            {installationRecovery && <><p>{t("login.installationRecoveryHelp")}</p><button type="button" onClick={() => setInstallationRecovery(false)}>{t("login.regionalSignIn")}</button></>}
             <label>
               {t("login.username")}
               <input name="username" autoComplete="username" required />
@@ -534,8 +541,9 @@ export function ClinicianSessionGate({ children }: {
     </div>
   </UnsavedChangesContext.Provider>;
 
+  const nextAuthenticationSource = (session as ClinicianSession & { nextAuthenticationSource?: "local" | "oidc" }).nextAuthenticationSource ?? session.authenticationSource ?? "local";
   return (
-    <PersonalAuthenticationContext.Provider value={session.authenticationSource??"local"}>
+    <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
@@ -575,7 +583,7 @@ export function ClinicianSessionGate({ children }: {
               onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           </div>
         </div>
-        {session.authenticationSource==='oidc'&&<button type="button" disabled={submitting||lockingSession} onClick={()=>void personalLogin('switch')}>{t("login.switchUser")}</button>}
+        {nextAuthenticationSource==='oidc'&&<button type="button" disabled={submitting||lockingSession} onClick={()=>void personalLogin('switch')}>{t("login.switchUser")}</button>}
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">

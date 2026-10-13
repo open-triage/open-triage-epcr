@@ -1842,5 +1842,7 @@
   "calls.authenticateShift": "Authenticate for this shift",
   "platform.error.calls.shiftReauthenticationRequired": "Authenticate yourself for the current shift before opening this job.",
   "platform.error.calls.identityConfirmationRequired": "Identity confirmation is required during the handover grace window.",
-  "platform.error.calls.sessionExpired": "Your session has expired. Sign in again."
+  "platform.error.calls.sessionExpired": "Your session has expired. Sign in again.",
+  "login.installationRecovery": "Installation recovery",
+  "login.installationRecoveryHelp": "Installation owners and superadmins can use their independent local recovery account."
 }
