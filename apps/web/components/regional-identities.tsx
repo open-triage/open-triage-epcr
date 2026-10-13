@@ -10,6 +10,7 @@ import { listAccessRemoved } from "../app/list-refresh";
 import { activateListRow } from "./list-row-action";
 import { useAvailableHeight } from "./use-available-height";
 import { confirmDiscardChanges,useUnsavedChanges } from "./unsaved-changes";
+import { useReturnFocus } from "./use-return-focus";
 type Identity={id:string;providerId:string;revision:number;issuer:string;subject:string;displayName:string|null;email:string|null;createdAt:string;status:string;linkedUserId:string|null;reviewProviders?:{source:"draft"|"active";revision:number}[]};
 type User={id:string;displayName:string;username:string|null;owner:boolean;superadmin:boolean};
 type Directory={items:Identity[];nextCursor:string|null};
@@ -26,6 +27,7 @@ export function RegionalIdentitiesPanel({language,csrfToken,canLink,canApprove=f
  const [search,setSearch]=useState(""),[userId,setUserId]=useState(""),[password,setPassword]=useState(""),[error,setError]=useState(""),[status,setStatus]=useState(""),[busy,setBusy]=useState(false);
  const [mode,setMode]=useState<"link"|"approve">("link"),[displayName,setDisplayName]=useState(""),[roleIds,setRoleIds]=useState<string[]>([]),[roleOptions,setRoleOptions]=useState<AdminAssignableRoleSummary[]>([]),[providerSource,setProviderSource]=useState("draft"),[rolesLoaded,setRolesLoaded]=useState(false);
  const requestId=useRef(0),dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement|null>(null),table=useAvailableHeight<HTMLDivElement>(100);
+ useReturnFocus(!!selected,busy,()=>trigger.current);
  const dirty=!!userId||!!password||!!displayName||!!roleIds.length;useUnsavedChanges(dirty);
  const load=useCallback(async(page?:string)=>{
   const version=++requestId.current;setBusy(true);
@@ -36,7 +38,7 @@ export function RegionalIdentitiesPanel({language,csrfToken,canLink,canApprove=f
  },[csrfToken,text]);
  useEffect(()=>{let active=true;void Promise.resolve().then(()=>{if(active)void load();});return()=>{active=false;};},[load]);
  useEffect(()=>{if(selected&&!dialog.current?.open)dialog.current?.showModal();},[selected]);
- function close(saved=false){if(!saved&&!confirmDiscardChanges(dirty))return;setSelected(null);setUserId("");setPassword("");setUsers([]);setSearch("");setDisplayName("");setRoleIds([]);requestAnimationFrame(()=>trigger.current?.focus());}
+ function close(saved=false){if(!saved&&!confirmDiscardChanges(dirty))return;setSelected(null);setUserId("");setPassword("");setUsers([]);setSearch("");setDisplayName("");setRoleIds([]);}
  async function loadUsers(page?:string){setBusy(true);try{
   const result=await request<{items:User[];nextCursor:string|null}>(`users?state=active&limit=25&search=${encodeURIComponent(search)}${page?`&cursor=${encodeURIComponent(page)}`:""}`,csrfToken);
   setUsers(result.items.filter(user=>!user.owner&&!user.superadmin));setUserCursor(result.nextCursor);setError("");

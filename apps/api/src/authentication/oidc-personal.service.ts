@@ -29,7 +29,8 @@ export class OidcPersonalService {
    await manager.query('select group_id from app_identity.group_authentication_policy where group_id=$1 for share',[groupId]);
    await manager.query('select group_id from app_identity.oidc_provider_state where group_id=$1 for share',[groupId]);
   }
-  return (await manager.query<Version[]>(`select v.* from app_identity.oidc_provider_state s
+  return (await manager.query<Version[]>(`select v.*,s.active_discovery discovery,
+   case when s.active_discovery is not null then 'healthy' else 'unchecked' end discovery_health from app_identity.oidc_provider_state s
    join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.active_revision
    join app_identity.group_authentication_policy p on p.group_id=s.group_id and p.mode='oidc'
    where s.group_id=$1 ${lock?'for share of v':''}`,[groupId]))[0];
