@@ -25,9 +25,14 @@ export class OidcPersonalService {
  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,
   private readonly agencies:AgencyDirectoryService,private readonly identities:RegionalIdentityService){}
  private async active(groupId:string,manager:EntityManager=this.database.manager,lock=false):Promise<Version|undefined>{
+  if(lock) {
+   await manager.query('select group_id from app_identity.group_authentication_policy where group_id=$1 for share',[groupId]);
+   await manager.query('select group_id from app_identity.oidc_provider_state where group_id=$1 for share',[groupId]);
+  }
   return (await manager.query<Version[]>(`select v.* from app_identity.oidc_provider_state s
    join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.active_revision
-   where s.group_id=$1 ${lock?'for share of s':''}`,[groupId]))[0];
+   join app_identity.group_authentication_policy p on p.group_id=s.group_id and p.mode='oidc'
+   where s.group_id=$1 ${lock?'for share of v':''}`,[groupId]))[0];
  }
  private policy(version:Version){
   if(version.discovery_health!=="healthy"||!version.discovery||!version.encrypted_credential||version.discovery.pkceS256!==true||version.discovery.issuer!==version.configuration.issuer)
@@ -38,9 +43,9 @@ export class OidcPersonalService {
   const agency=await this.agencies.forLogin();
   if(!agency)return {regional:false};
   const [group]=await this.database.query<Array<{id:string}>>('select app_identity.organization_group($1) id',[agency.id]);
-  const active=await this.active(group!.id);
   // A configured provider remains visible during an outage; no local fallback.
-  return {regional:!!active};
+  const [policy]=await this.database.query<Array<{mode:string}>>('select mode from app_identity.group_authentication_policy where group_id=$1',[group!.id]);
+  return {regional:policy?.mode==='oidc'};
  }
  async begin(input:unknown,previousToken?:string,csrfToken?:string,userAgent?:string){
   const body=input as Record<string,unknown>;
@@ -52,8 +57,8 @@ export class OidcPersonalService {
   if(purpose!=="login"){
    if(!previousToken)throw new UnauthorizedException({code:"login.identityUnavailable"});
    await this.sessions.assertCsrf(previousToken,csrfToken);
-   const previous=await this.sessions.getAuthenticated(previousToken);
-   if(previous.organization?.id!==agency.id||purpose==='reauthenticate'&&previous.authenticationSource!=='oidc')throw new UnauthorizedException({code:"login.identityUnavailable"});
+   const previous=await this.sessions.getAuthenticated(previousToken,new Date(),purpose==='reauthenticate');
+   if(previous.organization?.id!==agency.id||purpose==='reauthenticate'&&(previous.nextAuthenticationSource ?? previous.authenticationSource)!=='oidc')throw new UnauthorizedException({code:"login.identityUnavailable"});
   }else if(previousToken){
    try {await this.sessions.getAuthenticated(previousToken);}catch{previousToken=undefined;}
   }
@@ -73,11 +78,12 @@ export class OidcPersonalService {
   const authorizationUrl=await testAuthorization(version.discovery,version.configuration.clientId,decryptCredential(version.encrypted_credential,version.group_id,version.provider_id),version.configuration.scopes,binding,{policy,purpose});
   let proofNotBefore=0;
   await this.database.transaction(async manager=>{
+   if(previousToken)await this.sessions.lockPersonalAuthenticationContext(manager,null,previousToken);
    const current=await this.active(group!.id,manager,true);
    if(!current||current.revision!==version.revision||personalProofPolicyDigest(this.policy(current))!==personalProofPolicyDigest(policy)||JSON.stringify(current.discovery)!==JSON.stringify(version.discovery))throw new ConflictException({code:"login.identityUnavailable"});
    if(!await this.agencies.allowsOrigin(origin,manager))throw new UnauthorizedException({code:"login.identityUnavailable"});
    if(previousToken){
-    await this.sessions.getAuthenticated(previousToken,new Date(),false,manager);
+    await this.sessions.getAuthenticated(previousToken,new Date(),purpose==='reauthenticate',manager);
     if(purpose!=='reauthenticate'){
      // Starting an explicit handover ends outgoing server authority, even if the
      // provider later cancels/fails or the new identity remains pending.
@@ -130,7 +136,7 @@ export class OidcPersonalService {
      const live=mutationRows(await manager.query(`update app_identity.oidc_personal_transaction set completed_at=clock_timestamp(),result='succeeded'
       where state_sha256=$1 and expires_at>clock_timestamp() and completed_at is null returning state_sha256`,[attempt.state_sha256]));
      if(!live.length)throw new Error();
-     if(saved.previousToken)await this.sessions.getAuthenticated(saved.previousToken,new Date(),false,manager);
+     if(saved.previousToken)await this.sessions.getAuthenticated(saved.previousToken,new Date(),true,manager);
      if(identity.status==='pending'){
       // A validated identity that cannot resolve to the outgoing user is a safe
       // switch. Pending onboarding must never leave that user's cookie usable.

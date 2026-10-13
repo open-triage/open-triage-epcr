@@ -8,10 +8,12 @@ live agency, role, capability, origin, installation and revocation checks.
 Local sessions still require their current local credential version. Installation
 owner/superadmin recovery remains independent and local.
 
-The active provider version is used for personal login; draft tests continue to
-establish identity evidence only. This slice introduces no activation endpoint.
-Production activation and group login-mode transitions are the separate activation
-slice. An unavailable provider cannot enable password reauthentication or password
+An administrator activates the exact saved draft after its latest real diagnostic
+login succeeds. Activation binds that test to unchanged inspected discovery and
+requires recent personal authentication plus an installation-approved proof contract.
+The active version and the group's inherited `oidc` mode change atomically with audit;
+failed/stale activation keeps the prior policy. Draft tests remain identity evidence
+only and never grant clinical access or fresh personal proof. An unavailable provider cannot enable password reauthentication or password
 replacement for an OIDC-issued session, renew freshness, or extend its deadline.
 
 ## Approve a trustworthy personal proof contract
@@ -104,15 +106,45 @@ locks, matching clinical access and account containment. In-transaction origin r
 use that same database connection, avoiding nested pool exhaustion. Provider/DNS
 requests remain outside database transactions.
 
-## Handoff to activation and recovery
+## SSO activation and required authentication
 
-Activation must use these declared purposes and proof contracts, retain independent
-local installation recovery, and govern the next required authentication after a
-mode change. An old local session that now needs regional authentication requires
-a safe replacement with OIDC provenance and its prior deadline preserved; stamping
-OIDC freshness onto a local-only session is insufficient. This slice intentionally
-does not implement that mode transition. Latest proof columns permit OIDC sessions
-to record a new approved active provider without rewriting their original provenance.
+SSO activation stops new ordinary local-password sessions throughout the group.
+It neither revokes existing local sessions/credentials nor changes their fixed expiry
+or already-satisfied shift evidence. Blank-schedule and eligible existing-report
+access retain their ordinary authority boundaries. An established temporary-password session remains limited to authentication: it
+cannot enter clinical or Admin work before completing its required personal SSO
+proof. Its recovery/current-session view displays the regional completion path,
+while ordinary authority reads still deny it. The resulting same-user OIDC
+replacement retains the temporary session's original fixed deadline.
+
+The next required personal proof
+(sensitive administration, recovery, or a stale shift checkpoint) follows live group
+policy, independently of the historical `authenticationSource`. The session's
+`nextAuthenticationSource` describes that effective path. A recent local proof cannot
+satisfy a required SSO proof, including direct database recovery-grant/consume calls.
+An IdP outage blocks that proof without password fallback.
+
+Same-user local-to-SSO reauthentication creates a replacement session with immutable
+OIDC provenance and the exact prior `expires_at`; it revokes the superseded local
+token. It never stamps OIDC metadata into a local row or renews its lifetime. A wrong
+subject follows safe switching with its own identity/session and cannot recover the
+outgoing clinician's reports. Already-OIDC same-user proof updates latest proof
+metadata while preserving immutable issuance provenance and fixed expiry.
+
+Installation owner and superadmin local recovery remain independent. The only demo
+exception is the immutable demonstration fixture ID in its exact demonstration
+tenant, with its `demo` username and only the active protected Demo assignment.
+Adding an ordinary/custom assignment removes its exception. A synthetic flag on
+another account grants none. Existing production gates deny the known fixture real
+jobs; neither enrollment nor this authentication exception confers staff authority.
+The login screen offers deliberately selected installation recovery, and ordinary
+staff cannot use it to bypass SSO.
+
+Administrative provider/local-policy writes hold live actor/assignment/role/device
+and agency/session authority before configuration locks. Policy, provider state and
+version locks follow a consistent order. Network exchanges complete outside these
+short transactions. Starting a diagnostic or personal flow clears the other flow's
+callback correlation cookie so an abandoned attempt cannot steal recovery testing.
 
 Protected recovery uses the shared source/authority boundary and sensitive-action
 control. A fresh local or approved OIDC reauthentication unlocks only the same
@@ -121,7 +153,7 @@ cannot advance recovery proof. Ciphertext deadlines never renew on login or pair
 See [protected storage](../protected-offline-clinical-storage.md).
 
 Controlled TLS-provider, real PostgreSQL runtime and proxy-browser regressions are
-mandatory in API integration checks. Deployment browser checks also cover delayed
+mandatory in API integration checks, including activation races and local-session transitions. Deployment browser checks also cover delayed
 logout, both next-login modes and stalled-server cleanup. These checks do not prove
 regional AD FS v6/PAS or physical Android/Windows acceptance. No regional issuer,
 registration, claim contract or device facts have been supplied; regional acceptance

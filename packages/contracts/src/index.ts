@@ -595,6 +595,8 @@ export interface StartReviewRetrospectiveCommand {
 
 export interface ClinicianSession {
   authenticationSource?: "local" | "oidc";
+  /** Live group policy for the next required proof, distinct from issuance provenance. */
+  nextAuthenticationSource?: "local" | "oidc";
   personallyAuthenticatedAt?: string;
   personalAuthenticationPurpose?: "login" | "switch" | "reauthenticate";
   /** Installation authority is separate from ordinary agency roles. */
@@ -2036,7 +2038,7 @@ export type GroupAuthenticationPolicy = {
   accountAttemptsPer15Minutes: number; networkAttemptsPer5Minutes: number;
 };
 export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
-  groupName: string; organizationId: string; inherited: boolean; minimumPasswordLength: 12; mode: "local";
+  groupName: string; organizationId: string; inherited: boolean; minimumPasswordLength: 12; mode: "local" | "oidc";
   history: Array<{ actorId: string; displayName: string | null; occurredAt: string;
     details: { prior?: GroupAuthenticationPolicy; policy?: GroupAuthenticationPolicy } }>;
 };

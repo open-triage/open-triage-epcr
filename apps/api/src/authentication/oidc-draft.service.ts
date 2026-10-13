@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { ServerMetadata } from "openid-client";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { approvedPersonalProofPolicy } from "./personal-proof.js";
 import { encryptCredential } from "./oidc-credentials.js";
 import { checkedAddress, providerJson, providerUrl } from "./oidc-network.js";
 import { publicSigningKeyIds } from "./oidc-signing-keys.js";
@@ -49,6 +50,8 @@ function view(row?: Version) {
 export class OidcDraftService {
   constructor(@InjectDataSource() private readonly database: DataSource, private readonly sessions: ClinicianSessionService) {}
   private async group(token: string, capability: "settings:read" | "settings:write", manager: EntityManager = this.database.manager) {
+    if(capability==="settings:write" && manager.queryRunner?.isTransactionActive)
+      await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
     const actor = await this.sessions.requireCapability(token,capability,manager);
     const [group] = await manager.query<Array<{group_id:string}>>("select app_identity.organization_group($1) as group_id",[actor.organization.id]);
     if (!group) throw new Error("Select an agency group");
@@ -61,8 +64,10 @@ export class OidcDraftService {
     const draft = rows.find(row => Number(row.revision)===Number(state?.draft_revision));
     const [active] = state?.active_revision ? await this.database.query<Version[]>(`select ${columns} from app_identity.oidc_provider_version where group_id=$1 and revision=$2`,[groupId,state.active_revision]) : [];
     const agencies = await this.database.query<Array<{hostname:string}>>("select hostname from app_identity.organization where app_identity.organization_group(id)=$1 and active and hostname is not null order by hostname",[groupId]);
-    const [test] = state ? await this.database.query<Array<{revision:string;result:string;failure_code:string|null;completed_at:Date;pkce_s256:boolean;fresh_personal_authentication:boolean;identity_outcome:string|null}>>("select t.revision,t.result,t.failure_code,t.completed_at,t.pkce_s256,t.fresh_personal_authentication,case when r.id is null then null when r.linked_user_id is null then 'pending' else 'linked' end identity_outcome from app_identity.oidc_test_transaction t left join app_identity.regional_identity_request r on r.id=t.identity_request_id where t.group_id=$1 and t.revision=$2 and t.completed_at is not null order by t.completed_at desc limit 1",[groupId,state.draft_revision]) : [];
-    return { groupId, test:test ? {revision:Number(test.revision),result:test.result,failureCode:test.failure_code,completedAt:test.completed_at.toISOString(),pkceS256:test.pkce_s256,freshPersonalAuthentication:test.fresh_personal_authentication,identityOutcome:test.identity_outcome,ordinaryAccess:false}:null, draft:view(draft),active:view(active), registration: {flow:"authorization_code",clientAuthentication:"client_secret_post",
+    const [test] = state ? await this.database.query<Array<{state_sha256:string;revision:string;result:string;failure_code:string|null;completed_at:Date;pkce_s256:boolean;fresh_personal_authentication:boolean;identity_outcome:string|null}>>("select t.state_sha256,t.revision,t.result,t.failure_code,t.completed_at,t.pkce_s256,t.fresh_personal_authentication,case when r.id is null then null when r.linked_user_id is null then 'pending' else 'linked' end identity_outcome from app_identity.oidc_test_transaction t left join app_identity.regional_identity_request r on r.id=t.identity_request_id where t.group_id=$1 and t.revision=$2 and t.completed_at is not null order by t.completed_at desc,t.state_sha256 desc limit 1",[groupId,state.draft_revision]) : [];
+    const activationHistory=await this.database.query<Array<{actor_id:string;occurred_at:Date;result:string;details:{revision:number;previousRevision:number|null;failureCode:string|null}}>>(
+      "select actor_id,occurred_at,result,details from app_identity.authentication_event where organization_id=$1 and details->>'kind'='oidc' and details->>'operation'='activate' order by occurred_at desc,id desc limit 20",[groupId]);
+    return { groupId, activationHistory:activationHistory.map(event=>({actorId:event.actor_id,occurredAt:event.occurred_at.toISOString(),result:event.result,...event.details})), test:test ? {testId:test.state_sha256,revision:Number(test.revision),result:test.result,failureCode:test.failure_code,completedAt:test.completed_at.toISOString(),pkceS256:test.pkce_s256,freshPersonalAuthentication:test.fresh_personal_authentication,identityOutcome:test.identity_outcome,ordinaryAccess:false}:null, draft:view(draft),active:view(active), registration: {flow:"authorization_code",clientAuthentication:"client_secret_post",
       requiredClaims:["iss","sub","aud","exp","iat","nonce"], pkce:"S256; confirm AD FS v6 registration support",
       hosts:agencies.map(({hostname}) => ({origin:`https://${hostname}`,callbackUrl:`https://${hostname}/api/sessions/oidc/callback`,
         logoutCallbackUrl:`https://${hostname}/api/sessions/oidc/logout-callback`})), globalLogout:false },
@@ -123,6 +128,7 @@ export class OidcDraftService {
       const {actor,groupId:currentGroup} = await this.group(token,"settings:write",manager);
       await this.sessions.requireRecentReauthentication(token,manager);
       if (currentGroup!==groupId) throw new ConflictException({code:"admin.oidcStale"});
+      await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[groupId]);
       const [state] = await manager.query<Array<{draft_revision:string}>>("select draft_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
       if (Number(state?.draft_revision)!==expectedRevision) throw new ConflictException({code:"admin.oidcStale"});
       await manager.query("update app_identity.oidc_provider_version set discovery=case when $4='healthy' then $3::jsonb else discovery end,discovery_health=$4,discovered_at=now() where group_id=$1 and revision=$2",[groupId,expectedRevision,discovery?JSON.stringify(discovery):null,healthy?"healthy":"failed"]);
@@ -130,6 +136,47 @@ export class OidcDraftService {
     });
     return this.get(token);
   }
+  async activate(token: string, input: unknown) {
+    const body=input as Record<string,unknown>;
+    if(!body || typeof body!=="object" || Array.isArray(body) || Object.keys(body).some(key=>!["expectedRevision","testId"].includes(key))
+      || !Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision)<1
+      || typeof body.testId!=="string" || !/^[a-f0-9]{64}$/.test(body.testId)) return invalid("activation");
+    const revision=Number(body.expectedRevision);
+    const failure=await this.database.transaction(async manager=>{
+      const {actor,groupId}=await this.group(token,"settings:write",manager);
+      await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[groupId]);
+      const [state]=await manager.query<Array<{draft_revision:string;active_revision:string|null}>>(
+        "select draft_revision,active_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
+      // Recheck freshness after waiting for concurrent writers, using database time.
+      const [clock]=await manager.query<Array<{now:Date}>>("select clock_timestamp() now");
+      await this.sessions.requireRecentReauthentication(token,manager,clock!.now);
+      const live=await this.sessions.requireCapability(token,"settings:write",manager);
+      if(live.user.id!==actor.user.id || live.organization.id!==actor.organization.id) throw new ConflictException({code:"admin.oidcStale"});
+      let failureCode:string|undefined;
+      const [version]=await manager.query<Array<Version>>( `select ${columns} from app_identity.oidc_provider_version where group_id=$1 and revision=$2 for share`,[groupId,revision]);
+      const [tested]=await manager.query<Array<{state_sha256:string;result:string;tested_discovery:unknown;pkce_s256:boolean}>>(
+        "select state_sha256,result,tested_discovery,pkce_s256 from app_identity.oidc_test_transaction where group_id=$1 and revision=$2 and completed_at is not null order by completed_at desc,state_sha256 desc limit 1",[groupId,revision]);
+      if(Number(state?.draft_revision)!==revision || Number(state?.active_revision)===revision) failureCode="admin.oidcStale";
+      else if(!version || missingOidcFields(version.configuration,version.credential_configured).length || version.discovery_health!=="healthy"
+        || !tested || tested.state_sha256!==body.testId || tested.result!=="succeeded" || !tested.pkce_s256
+        || JSON.stringify(tested.tested_discovery)!==JSON.stringify(version.discovery)) failureCode="admin.oidcActivationTestRequired";
+      else {
+        try { approvedPersonalProofPolicy({groupId,providerId:version.provider_id,issuer:version.configuration.issuer,clientId:version.configuration.clientId}); }
+        catch { failureCode="admin.oidcActivationProofRequired"; }
+      }
+      if(!failureCode) {
+        await manager.query("update app_identity.oidc_provider_state set active_revision=$2 where group_id=$1",[groupId,revision]);
+        await manager.query("update app_identity.group_authentication_policy set mode='oidc',revision=revision+1 where group_id=$1",[groupId]);
+      }
+      await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,details)
+        values($1,$2,'authentication.policy_update',$3,$4::jsonb)`,[groupId,actor.user.id,failureCode?'failed':'succeeded',
+          JSON.stringify({kind:'oidc',operation:'activate',revision,previousRevision:state?.active_revision?Number(state.active_revision):null,failureCode:failureCode??null})]);
+      return failureCode;
+    });
+    if(failure) throw new ConflictException({code:failure});
+    return this.get(token);
+  }
+
   private audit(manager: EntityManager,groupId: string,actorId: string,revision: number,operation: string) {
     return manager.query("insert into app_identity.authentication_event(organization_id,actor_id,action,result,details) values ($1,$2,'authentication.policy_update','succeeded',$3::jsonb)",[groupId,actorId,JSON.stringify({kind:"oidc",revision,operation})]);
   }

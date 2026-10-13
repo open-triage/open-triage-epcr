@@ -52,6 +52,16 @@ export class ClinicianSessionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource,
     private readonly agencies: AgencyDirectoryService = new AgencyDirectoryService(dataSource)) {}
 
+  private async requiredAuthentication(manager: EntityManager, userId: string, organizationId: string | null,
+    lock = false): Promise<"local" | "oidc"> {
+    const [exception] = await manager.query<Array<{recovery:boolean}>>(
+      "select app_identity.local_authentication_exception($1,$2) recovery", [userId,organizationId]);
+    if (exception?.recovery || !organizationId) return 'local';
+    const [policy] = await manager.query<Array<{mode:"local"|"oidc"}>>(
+      `select mode from app_identity.group_authentication_policy where group_id=app_identity.organization_group($1) ${lock?'for share':''}`, [organizationId]);
+    return policy?.mode ?? 'local';
+  }
+
   async create(command: CreateClinicianSessionCommand, suppliedNow?: Date, userAgent?: string,
     networkSource?: string): Promise<CreatedSession> {
     let now = suppliedNow ?? new Date();
@@ -98,10 +108,17 @@ export class ClinicianSessionService {
     const expiresAt = account.must_change_password
       ? new Date(Math.min(normalExpiry.getTime(), timestamp(account.temporary_password_expires_at!)))
       : normalExpiry;
-    return this.dataSource.transaction(async manager => {
+    const created=await this.dataSource.transaction(async manager => {
+      await manager.query('select id from app_identity.app_user where id=$1 for share',[account.user_id]);
+      await manager.query('select id from app_identity.user_role_assignment where user_id=$1 and ended_at is null order by id for share',[account.user_id]);
+      await manager.query('select id from app_identity.role where id in(select role_id from app_identity.user_role_assignment where user_id=$1 and ended_at is null) order by id for share',[account.user_id]);
       const registrationId = await lockInstallationForSession(manager);
       if (registrationId && !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin,manager)) {
         throw new UnauthorizedException("Registered application origin required");
+      }
+      if (await this.requiredAuthentication(manager, account.user_id, account.organization_id, true) !== 'local') {
+        await this.audit(manager, account, "authentication.sign_in", "failed");
+        return undefined;
       }
       const inserted = mutationRows<{ id: string }>(await manager.query(`
         insert into app_identity.app_session
@@ -113,6 +130,8 @@ export class ClinicianSessionService {
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
       return { sessionToken, session: await this.publicSession(account, now, expiresAt, csrfToken, manager) };
     });
+    if(!created)throw new ForbiddenException({code:'login.personalProofRequired'});
+    return created;
   }
 
   async getAuthenticated(sessionToken: string, now = new Date(), allowPasswordChange = false, manager = this.dataSource.manager): Promise<AuthenticatedSession> {
@@ -148,8 +167,7 @@ export class ClinicianSessionService {
         (row.authentication_source === 'oidc' && row.authentication_valid !== true) ||
         (row.authentication_source !== 'oidc' && (!row.credential_version || row.session_credential_version !== row.credential_version)) ||
         (row.authentication_source !== 'oidc' && row.must_change_password && (!row.temporary_password_expires_at ||
-          timestamp(row.temporary_password_expires_at) <= now.getTime())) ||
-        (row.authentication_source !== 'oidc' && row.must_change_password && !allowPasswordChange)) {
+          timestamp(row.temporary_password_expires_at) <= now.getTime()))) {
       throw new UnauthorizedException(row?.must_change_password ? "A password change is required" : "The clinician session has ended");
     }
     if (row.installation_registration_id && (!agencyRequest.getStore()?.origin ||
@@ -166,6 +184,7 @@ export class ClinicianSessionService {
       session.personallyAuthenticatedAt=new Date(row.personally_authenticated_at??row.created_at).toISOString();
       session.personalAuthenticationPurpose=row.personal_authentication_purpose;
     }
+    if (session.passwordChangeRequired && !allowPasswordChange) throw new UnauthorizedException("A password change is required");
     if (!session.workspaceAvailable && !allowPasswordChange) {
       throw new UnauthorizedException("No workspace role is assigned to this account");
     }
@@ -198,11 +217,10 @@ export class ClinicianSessionService {
     let now = suppliedNow ?? new Date();
     const passwordVerifier = await createPasswordVerifier(command.newPassword);
     const result = await this.dataSource.transaction(async (manager) => {
-      await manager.query(`select i.id from app_identity.installation_registration i
-        join app_identity.app_session s on s.installation_registration_id=i.id where s.token_sha256=$1 for share of i`,[digest(sessionToken)]);
+      await this.lockPersonalAuthenticationContext(manager,null,sessionToken);
       await this.assertCsrf(sessionToken, command.csrfToken, manager);
       const current = await this.getAuthenticated(sessionToken, now, true, manager);
-      if (current.authenticationSource === 'oidc') throw new ForbiddenException({code:'login.personalProofRequired'});
+      if (current.authenticationSource === 'oidc' || await this.requiredAuthentication(manager,current.user.id,current.organization?.id ?? null,true) === 'oidc') throw new ForbiddenException({code:'login.personalProofRequired'});
       const rows = await manager.query<CredentialRow[]>(`
         select c.password_verifier, c.username, c.credential_version, c.must_change_password,
                c.temporary_password_expires_at,
@@ -319,9 +337,10 @@ export class ClinicianSessionService {
     suppliedNow?: Date, networkSource?: string): Promise<ReauthenticationResult> {
     let now = suppliedNow ?? new Date();
     const verified = await this.dataSource.transaction(async (manager) => {
+      await this.lockPersonalAuthenticationContext(manager,null,sessionToken);
       await this.assertCsrf(sessionToken, csrfToken, manager);
       const session = await this.getAuthenticated(sessionToken, now, false, manager);
-      if (session.authenticationSource === 'oidc') throw new ForbiddenException({code:'login.personalProofRequired'});
+      if (session.authenticationSource === 'oidc' || await this.requiredAuthentication(manager,session.user.id,session.organization?.id ?? null,true) === 'oidc') throw new ForbiddenException({code:'login.personalProofRequired'});
       const rows = await manager.query<CredentialRow[]>(`
         select c.password_verifier, c.username, c.credential_version, c.must_change_password,
           c.temporary_password_expires_at, u.id as user_id, u.display_name, u.active,
@@ -360,6 +379,7 @@ export class ClinicianSessionService {
       select 1 from app_identity.app_session
       where token_sha256 = $1 and revoked_at is null
         and expires_at > $3 and app_identity.session_authentication_valid(app_session)
+        and app_identity.session_proof_matches_policy(app_session)
         and coalesce(personally_authenticated_at,reauthenticated_at) between $2 and $3
         and (personal_authentication_purpose='reauthenticate' or personal_authentication_purpose is null and reauthenticated_at is not null)
     ) recent`, [digest(sessionToken), earliest, now]);
@@ -369,7 +389,7 @@ export class ClinicianSessionService {
   }
 
   /** Common session issuer. The OIDC service supplies only validated linked identity and personal proof. */
-  async lockPersonalAuthenticationContext(manager:EntityManager,identityRequestId:string,previousToken?:string):Promise<void>{
+  async lockPersonalAuthenticationContext(manager:EntityManager,identityRequestId:string|null,previousToken?:string):Promise<void>{
     // Immutable user references can be read before locking. Lifecycle and role
     // writers precede session containment; clinical open uses this same order.
     const users=await manager.query<Array<{user_id:string}>>(`select linked_user_id user_id from app_identity.regional_identity_request where id=$1 and linked_user_id is not null
@@ -379,9 +399,22 @@ export class ClinicianSessionService {
     await manager.query('select id from app_identity.user_role_assignment where user_id=any($1::uuid[]) and ended_at is null order by id for share',[ids]);
     await manager.query(`select id from app_identity.role where id in(select role_id from app_identity.user_role_assignment
       where user_id=any($1::uuid[]) and ended_at is null) order by id for share`,[ids]);
+    // A missing installation cookie does not erase the immutable association of
+    // an established session. Lock both registrations in ID order before any
+    // agency/unit/session lock, including the incoming binding validator below.
+    const request=agencyRequest.getStore();
+    const registrations=await manager.query<Array<{id:string;organization_id:string;unit_id:string}>>(`
+      select i.id,i.organization_id,i.unit_id from app_identity.installation_registration i
+      where i.credential_sha256=$1 or i.id=(select installation_registration_id from app_identity.app_session where token_sha256=$2)
+      order by i.id for share of i`,[request?.installationCredential?digest(request.installationCredential):null,previousToken?digest(previousToken):null]);
+    const agencies=registrations.map(registration=>registration.organization_id);
+    await manager.query(`select id from app_identity.organization
+      where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
+        or id=any($2::uuid[]) or id in(select parent_organization_id from app_identity.organization where id=any($2::uuid[]))
+      order by id for share`,[request?.organizationId,agencies]);
+    await manager.query('select id from app_identity.operational_unit where id=any($1::uuid[]) order by id for share',
+      [registrations.map(registration=>registration.unit_id)]);
     await lockInstallationForSession(manager);
-    await manager.query(`select id from app_identity.organization where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
-      order by id for share`,[agencyRequest.getStore()?.organizationId]);
     if(previousToken)await manager.query('select id from app_identity.app_session where token_sha256=$1 for update',[digest(previousToken)]);
   }
 
@@ -393,7 +426,7 @@ export class ClinicianSessionService {
     const registrationId=await lockInstallationForSession(manager);
     let previous: AuthenticatedSession | undefined;
     if(previousToken){
-      previous=await this.getAuthenticated(previousToken,now,false,manager);
+      previous=await this.getAuthenticated(previousToken,now,proof.purpose==='reauthenticate',manager);
     }
     const [account]=await manager.query<Array<CredentialRow & {identity_request_id:string;provider_id:string;issuer:string;group_id:string}>>(`
       select r.id identity_request_id,r.provider_id,r.issuer,r.group_id,u.id user_id,u.display_name,u.active,
@@ -411,7 +444,7 @@ export class ClinicianSessionService {
     // All requests hold the current installation/user locks through issuance. Network I/O is complete.
     if(!agencyRequest.getStore()?.origin || !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin,manager)) throw new UnauthorizedException({code:'login.identityUnavailable'});
     if(proof.purpose==='reauthenticate' && !previous) throw new UnauthorizedException({code:'login.identityUnavailable'});
-    if(proof.purpose==='reauthenticate' && previous!.user.id===account.user_id){
+    if(proof.purpose==='reauthenticate' && previous!.user.id===account.user_id && previous!.authenticationSource==='oidc'){
       // Same-user proof belongs to the initiating session alone; never renew its maximum.
       const updated=mutationRows<{id:string}>(await manager.query(`update app_identity.app_session
         set reauthenticated_at=$2,personally_authenticated_at=$3,personal_authentication_purpose='reauthenticate',
@@ -426,7 +459,9 @@ export class ClinicianSessionService {
     }
     const sessionToken=randomBytes(32).toString('base64url'),csrfToken=randomBytes(32).toString('base64url');
     const maximum=await localPolicy(manager,account.organization_id);
-    const expiresAt=new Date(now.getTime()+(maximum?.maximumSessionHours??account.shift_session_duration_hours)*3600000);
+    const sameUserTransition=proof.purpose==='reauthenticate' && previous?.user.id===account.user_id;
+    const expiresAt=sameUserTransition ? new Date(previous!.expiresAt)
+      : new Date(now.getTime()+(maximum?.maximumSessionHours??account.shift_session_duration_hours)*3600000);
     if(previousToken)await manager.query(`update app_identity.app_session set revoked_at=$2,revocation_reason='user_switch'
       where token_sha256=$1 and revoked_at is null`,[digest(previousToken),now]);
     const inserted=mutationRows<{id:string}>(await manager.query(`insert into app_identity.app_session
@@ -435,7 +470,7 @@ export class ClinicianSessionService {
        personal_identity_request_id,personal_group_id,personal_revision,latest_personal_proof_policy_sha256)
       values($1,$2,$3,null,$4,$4,$5,$6,$7,$8,$9,'oidc',$10,$11,$10,$12,$13,$14,$15,$16::jsonb,$12,$13,$14,$15) returning id`,
       [account.user_id,digest(sessionToken),digest(csrfToken),now,expiresAt,coarseDeviceLabel(userAgent),account.organization_id,agencyRequest.getStore()!.origin,registrationId,
-       proof.purpose==='reauthenticate'?'switch':proof.purpose,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy),JSON.stringify(encryptCredential(csrfToken,account.group_id,`csrf:${digest(sessionToken)}`))]));
+       proof.purpose==='reauthenticate' && !sameUserTransition?'switch':proof.purpose,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy),JSON.stringify(encryptCredential(csrfToken,account.group_id,`csrf:${digest(sessionToken)}`))]));
     await this.audit(manager,account,'authentication.sign_in','succeeded',inserted[0]?.id);
     return {sessionToken,session:await this.getAuthenticated(sessionToken,now,true,manager)};
   }
@@ -465,7 +500,9 @@ export class ClinicianSessionService {
     const agencies = await this.agencies.accessible(account.user_id, manager);
     const identities = await manager.query<Array<{ owner: boolean; superadmin: boolean; organization_id: string }>>(
       "select app_identity.is_installation_owner(id) owner, app_identity.is_installation_superadmin(id) superadmin, organization_id from app_identity.app_user where id=$1", [account.user_id]);
+    const nextAuthenticationSource=await this.requiredAuthentication(manager,account.user_id,account.organization_id);
     return {
+      nextAuthenticationSource,
       installationOwner: identities[0]?.owner ?? false,
       installationSuperadmin: identities[0]?.superadmin ?? false,
       ...(identities[0]?.organization_id ? { homeOrganizationId: identities[0].organization_id } : {}),
