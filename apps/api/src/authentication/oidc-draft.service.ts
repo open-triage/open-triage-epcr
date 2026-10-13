@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, ServiceUnavailableException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { createPublicKey, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { ServerMetadata } from "openid-client";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encryptCredential } from "./oidc-credentials.js";
 import { checkedAddress, providerJson, providerUrl } from "./oidc-network.js";
+import { publicSigningKeyIds } from "./oidc-signing-keys.js";
 import { oidcConfiguration } from "./oidc-library.js";
 
 export type OidcDraft = { name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
@@ -60,7 +61,8 @@ export class OidcDraftService {
     const draft = rows.find(row => Number(row.revision)===Number(state?.draft_revision));
     const [active] = state?.active_revision ? await this.database.query<Version[]>(`select ${columns} from app_identity.oidc_provider_version where group_id=$1 and revision=$2`,[groupId,state.active_revision]) : [];
     const agencies = await this.database.query<Array<{hostname:string}>>("select hostname from app_identity.organization where app_identity.organization_group(id)=$1 and active and hostname is not null order by hostname",[groupId]);
-    return { groupId, draft:view(draft),active:view(active), registration: {flow:"authorization_code",clientAuthentication:"client_secret_post",
+    const [test] = state ? await this.database.query<Array<{revision:string;result:string;failure_code:string|null;completed_at:Date;pkce_s256:boolean;fresh_personal_authentication:boolean}>>("select revision,result,failure_code,completed_at,pkce_s256,fresh_personal_authentication from app_identity.oidc_test_transaction where group_id=$1 and revision=$2 and completed_at is not null order by completed_at desc limit 1",[groupId,state.draft_revision]) : [];
+    return { groupId, test:test ? {revision:Number(test.revision),result:test.result,failureCode:test.failure_code,completedAt:test.completed_at.toISOString(),pkceS256:test.pkce_s256,freshPersonalAuthentication:test.fresh_personal_authentication}:null, draft:view(draft),active:view(active), registration: {flow:"authorization_code",clientAuthentication:"client_secret_post",
       requiredClaims:["iss","sub","aud","exp","iat","nonce"], pkce:"S256; confirm AD FS v6 registration support",
       hosts:agencies.map(({hostname}) => ({origin:`https://${hostname}`,callbackUrl:`https://${hostname}/api/sessions/oidc/callback`,
         logoutCallbackUrl:`https://${hostname}/api/sessions/oidc/logout-callback`})), globalLogout:false },
@@ -113,15 +115,8 @@ export class OidcDraftService {
         await checkedAddress(providerUrl(value)); endpoints[key]=value;
       }
       const jwks = await providerJson(endpoints.jwks_uri!);
-      if (!Array.isArray(jwks.keys) || !jwks.keys.length || jwks.keys.length>100) throw new Error("Invalid keys");
-      const signingKeyIds = jwks.keys.filter(value => value && typeof value === "object" && value.use!=="enc" && ["RSA","EC","OKP"].includes(value.kty))
-        .map(value => {
-          if (Object.hasOwn(value,"d") || (value.key_ops!==undefined && (!Array.isArray(value.key_ops) || !value.key_ops.includes("verify")))) throw new Error("Invalid public signing key");
-          createPublicKey({key:value,format:"jwk"});
-          return typeof value.kid === "string" && value.kid.length>0 && value.kid.length<=200 && !/[\u0000-\u001f]/.test(value.kid) ? value.kid : "(no kid)";
-        });
-      if (!signingKeyIds.length) throw new Error("Missing signing keys");
-      discovery = {issuer:config.issuer,...endpoints,signingKeyIds,pkceS256:Array.isArray(metadata.code_challenge_methods_supported) && metadata.code_challenge_methods_supported.includes("S256")}; healthy=true;
+      const signingKeyIds=publicSigningKeyIds(jwks);
+      discovery = {issuer:config.issuer,id_token_signing_alg_values_supported:metadata.id_token_signing_alg_values_supported,...endpoints,signingKeyIds,pkceS256:Array.isArray(metadata.code_challenge_methods_supported) && metadata.code_challenge_methods_supported.includes("S256")}; healthy=true;
     } catch { /* Provider bodies and error details never enter diagnostics or audit. */ }
     // Network requests complete before opening the short write transaction.
     await this.database.transaction(async manager => {

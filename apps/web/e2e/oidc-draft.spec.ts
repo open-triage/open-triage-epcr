@@ -58,3 +58,28 @@ test("a new OIDC draft leaves regional registration values for IT and can save a
   await page.goto("/__oidc-new");await expect(page.getByLabel("Scopes (space separated)")).toHaveValue("openid");await expect(page.getByLabel("Display name claim")).toHaveValue("");await expect(page.getByLabel("Email claim (optional)")).toHaveValue("");await expect(page.getByLabel("Client ID")).toHaveValue("");
   await page.getByLabel("Provider name").fill("IT registration pending");await page.getByLabel("Your password for OIDC changes").fill("Personal password 42!");await page.getByRole("button",{name:"Save OIDC draft"}).click();await expect(page.getByRole("status")).toHaveText("Draft saved");await expect(page.getByRole("button",{name:"Check discovery"})).toBeDisabled();await expect(page.getByText("Saved client secret: Not configured")).toBeVisible();
 });
+
+for(const width of [390,1440])test(`saved OIDC login test binds the displayed revision and launches only a healthy unchanged draft at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  await page.route('**/__oidc-test',route=>route.fulfill({contentType:'text/html',body:`<html lang="en"><head><style>${css}</style></head><body><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
+  await page.route('**/__oidc-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+  await page.route('**/api/admin/authentication/oidc',route=>route.fulfill({json:{...initial,draft:{...draft,discoveryHealth:'healthy'},test:{revision:1,result:'succeeded',pkceS256:true,freshPersonalAuthentication:false,completedAt:new Date().toISOString()}}}));
+  let reauthenticated=false;
+  await page.route('**/api/sessions/reauthenticate',route=>{expect(route.request().headers()['x-csrf-token']).toBe('csrf');reauthenticated=true;return route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}});});
+  await page.route('**/api/admin/authentication/oidc/test',route=>{expect(reauthenticated).toBe(true);expect(route.request().headers()['x-csrf-token']).toBe('csrf');expect(route.request().postDataJSON()).toEqual({expectedRevision:1});return route.fulfill({json:{authorizationUrl:'https://idp.example.org/authorize'}});});
+  await page.route('https://idp.example.org/authorize',route=>route.fulfill({contentType:'text/html',body:'Controlled provider authorization'}));
+  await page.goto('/__oidc-test');await expect(page.getByText('Revision 1: Identity validated. S256 PKCE: Yes.')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Test provider login'})).toBeDisabled();
+  await page.getByLabel('Your password for OIDC changes').fill('Personal password 42!');
+  await page.getByLabel('Provider name').fill('Unsaved changed provider');await expect(page.getByRole('button',{name:'Test provider login'})).toBeDisabled();
+  await page.getByLabel('Provider name').fill(draft.name);await page.getByRole('button',{name:'Test provider login'}).click();await expect(page).toHaveURL('https://idp.example.org/authorize');
+});
+
+for(const language of ['en','sv'])test(`OIDC failures provide sanitized actionable guidance in ${language}`,async({page})=>{
+  await page.route('**/__oidc-errors*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><style>${css}</style></head><body><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
+  await page.route('**/__oidc-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+  await page.route('**/api/admin/authentication/oidc',route=>route.fulfill({json:{...initial,test:{revision:1,result:'failed',failureCode:'expired',pkceS256:true,freshPersonalAuthentication:false,completedAt:new Date().toISOString()}}}));
+  await page.goto('/__oidc-errors?readonly=1');
+  await expect(page.getByRole('alert')).toHaveText(language==='sv'?'Testet har gått ut. Bekräfta lösenordet och starta ett nytt test.':'The test expired. Confirm your password and start a new test.');
+  await expect(page.getByText(language==='sv'?'Aktiv leverantör: Active regional provider':'Active provider: Active regional provider')).toBeVisible();
+});
