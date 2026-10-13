@@ -221,3 +221,6 @@ export const loadOperationalUnits = (cursor?: string) => catalogRequest<import("
 export const saveOperationalUnit = (csrfToken: string, id: string | null, command: import("@open-triage/contracts").SaveOperationalUnitCommand) =>
   catalogRequest<import("@open-triage/contracts").OperationalUnitSummary>(id ? `units/${id}` : "units", csrfToken,
     { method: id ? "PUT" : "POST", body: JSON.stringify(command) });
+
+export const issueUnitEnrollment=(csrfToken:string,id:string)=>catalogRequest<{token:string;origin:string;expiresAt:string}>(`units/${id}/enrollment`,csrfToken,{method:"POST"});
+export const loadUnitInstallations=(id:string,cursor?:string)=>catalogRequest<{items:import("./installation-enrollment").InstallationSummary[];nextCursor:string|null}>(`units/${id}/installations${cursor?`?cursor=${encodeURIComponent(cursor)}`:""}`);
