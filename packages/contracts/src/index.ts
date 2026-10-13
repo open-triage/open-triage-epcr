@@ -594,6 +594,9 @@ export interface StartReviewRetrospectiveCommand {
 }
 
 export interface ClinicianSession {
+  authenticationSource?: "local" | "oidc";
+  personallyAuthenticatedAt?: string;
+  personalAuthenticationPurpose?: "login" | "switch" | "reauthenticate";
   /** Installation authority is separate from ordinary agency roles. */
   installationOwner?: boolean;
   installationSuperadmin?: boolean;

@@ -134,8 +134,8 @@ export class InstallationEnrollmentService {
  where token_sha256=$1 and installation_registration_id is null and revoked_at is null
  and expires_at>clock_timestamp() and browser_origin=$3 and organization_id=$4
  and app_identity.user_can_access_organization(user_id,$4)
- and exists(select 1 from app_identity.app_user u join app_identity.local_credential c on c.user_id=u.id
- where u.id=app_session.user_id and u.active and c.credential_version=app_session.credential_version)`,
+ and exists(select 1 from app_identity.app_user u where u.id=app_session.user_id and u.active)
+ and app_identity.session_authentication_valid(app_session)`,
  [digest(existingSession),id,agencyRequest.getStore()?.origin??"",row.organization_id]);
  // Recheck time after acquiring locks: a waiter cannot consume an expired code.
  const consumed=mutationRows(await manager.query(`update app_identity.unit_enrollment set consumed_at=clock_timestamp(),installation_id=$2

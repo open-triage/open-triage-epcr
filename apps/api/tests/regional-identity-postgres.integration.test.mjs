@@ -48,17 +48,17 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   const requests=await Promise.all(Array.from({length:12},()=>record()));assert.equal(new Set(requests.map(row=>row.requestId)).size,1);assert(requests.every(row=>row.status==='pending'&&row.ordinaryAccess===false));
   const requestId=requests[0].requestId;
   assert.deepEqual(await ownerDb.query('select id,user_id from app_identity.app_session order by id'),beforeSessions);
-  await assert.rejects(service.list(clinical.sessionToken,{}));await assert.rejects(service.link(signed.sessionToken,requestId,{userId:medic.userId}),/reauthentication/);
+  await assert.rejects(service.list(clinical.sessionToken,{}));await assert.rejects(service.link(signed.sessionToken,requestId,{userId:medic.userId,providerSource:"draft",expectedProviderRevision:1}),/reauthentication/);
   assert.equal((await service.list(foreignSession.sessionToken,{})).items.length,0);
   await sessions.reauthenticate(signed.sessionToken,signed.session.csrfToken,password);
-  await assert.rejects(service.link(signed.sessionToken,requestId,{userId:other.userId}),error=>error.getStatus?.()===403);
-  await assert.rejects(service.link(signed.sessionToken,requestId,{userId:installation.userId}),error=>error.getStatus?.()===403);
+  await assert.rejects(service.link(signed.sessionToken,requestId,{userId:other.userId,providerSource:"draft",expectedProviderRevision:1}),error=>error.getStatus?.()===403);
+  await assert.rejects(service.link(signed.sessionToken,requestId,{userId:installation.userId,providerSource:"draft",expectedProviderRevision:1}),error=>error.getStatus?.()===403);
   // Matching profile names/emails do not identify an application user.
   assert.equal((await service.list(signed.sessionToken,{})).items[0].linkedUserId,null);
-  const competing=await Promise.allSettled([service.link(signed.sessionToken,requestId,{userId:medic.userId}),service.link(signed.sessionToken,requestId,{userId:sibling.userId})]);
+  const competing=await Promise.allSettled([service.link(signed.sessionToken,requestId,{userId:medic.userId,providerSource:"draft",expectedProviderRevision:1}),service.link(signed.sessionToken,requestId,{userId:sibling.userId,providerSource:"draft",expectedProviderRevision:1})]);
   assert.equal(competing.filter(row=>row.status==='fulfilled').length,1);assert.equal(competing.filter(row=>row.status==='rejected'&&row.reason.getStatus?.()===409).length,1);
   const linked=competing.find(row=>row.status==='fulfilled').value;
-  assert.equal((await record()).status,'linked');assert.deepEqual(await service.link(signed.sessionToken,requestId,{userId:linked.linkedUserId}),linked);
+  assert.equal((await record()).status,'linked');assert.deepEqual(await service.link(signed.sessionToken,requestId,{userId:linked.linkedUserId,providerSource:"draft",expectedProviderRevision:1}),linked);
   assert.deepEqual(await ownerDb.query('select id,display_name,active,revision from app_identity.app_user order by id'),beforeUsers);assert.deepEqual(await ownerDb.query('select * from app_identity.user_role_assignment order by id'),beforeRoles);
   assert.deepEqual(await ownerDb.query('select id,actor_id,target_user_id,action from app_identity.authentication_event where id=any($1::bigint[]) order by id',[beforeAudit.map(row=>row.id)]),beforeAudit);
   assert.deepEqual(await ownerDb.query('select * from clinical.report order by id'),beforeReports);assert.deepEqual(await ownerDb.query('select * from clinical.report_change order by id'),beforeChanges);
@@ -66,7 +66,13 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   const otherGroup=await record({...scope,groupId:foreign,organizationId:foreign},identity);assert.notEqual(otherGroup.requestId,requestId);
   const newProvider=randomUUID();await version(root,newProvider,2,'https://provider.example/issuer');
   const changed=await record({...scope,providerId:newProvider,revision:2},{...identity,issuer:'https://provider.example/issuer'});assert.notEqual(changed.requestId,requestId);
-  await assert.rejects(service.link(signed.sessionToken,collision.requestId,{userId:medic.userId}),error=>error.getStatus?.()===409);
+  await ownerDb.query('update app_identity.oidc_provider_state set active_revision=1 where group_id=$1',[root]);
+  const activePending=await record(scope,{...identity,subject:'active-while-unrelated-draft-is-edited'});
+  const activeView=(await service.list(signed.sessionToken,{})).items.find(item=>item.id===activePending.requestId);assert.deepEqual(activeView.reviewProviders,[{source:'active',revision:1}]);
+  await assert.rejects(service.link(signed.sessionToken,activePending.requestId,{userId:medic.userId,providerSource:'active',expectedProviderRevision:2}),error=>error.getStatus?.()===409);
+  await assert.rejects(service.link(signed.sessionToken,activePending.requestId,{userId:medic.userId,providerSource:'draft',expectedProviderRevision:2}),error=>error.getStatus?.()===409);
+  assert.equal((await service.link(signed.sessionToken,activePending.requestId,{userId:medic.userId,providerSource:'active',expectedProviderRevision:1})).linkedUserId,medic.userId);
+  await assert.rejects(service.link(signed.sessionToken,collision.requestId,{userId:medic.userId,providerSource:"draft",expectedProviderRevision:2}),error=>error.getStatus?.()===409);
   assert.equal((await ownerDb.query('select issuer,subject,linked_user_id from app_identity.regional_identity_request where id=$1',[requestId]))[0].linked_user_id,linked.linkedUserId);
   await assert.rejects(db.query('update app_identity.regional_identity_request set subject=$2 where id=$1',[requestId,'reinterpreted']),/permission denied/);
   await assert.rejects(db.query('delete from app_identity.regional_identity_request where id=$1',[requestId]),/permission denied/);
@@ -77,7 +83,7 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   // use the new eligibility after locking, not the earlier directory result.
   const blocker=await ownerDb.createQueryRunner();await blocker.connect();await blocker.startTransaction();
   await blocker.query('select id from app_identity.app_user where id=$1 for update',[sibling.userId]);
-  const pending=service.link(signed.sessionToken,changed.requestId,{userId:sibling.userId});
+  const pending=service.link(signed.sessionToken,changed.requestId,{userId:sibling.userId,providerSource:"draft",expectedProviderRevision:2});
   await blocker.query('update app_identity.app_user set active=false where id=$1',[sibling.userId]);await blocker.commitTransaction();await blocker.release();
   await assert.rejects(pending,error=>error.getStatus?.()===403);
   await ownerDb.query('update app_identity.app_user set active=true where id=$1',[sibling.userId]);
@@ -100,7 +106,7 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   const limitedSigned=await sessions.create({username:'limited',password});await sessions.reauthenticate(limitedSigned.sessionToken,limitedSigned.session.csrfToken,password);
   const roleBlocker=ownerDb.createQueryRunner();await roleBlocker.connect();await roleBlocker.startTransaction();
   await roleBlocker.query('select id from app_identity.role where id=$1 for update',[custom]);
-  const roleRace=service.link(limitedSigned.sessionToken,changed.requestId,{userId:sibling.userId}).then(value=>({value}),error=>({error}));
+  const roleRace=service.link(limitedSigned.sessionToken,changed.requestId,{userId:sibling.userId,providerSource:"draft",expectedProviderRevision:2}).then(value=>({value}),error=>({error}));
   let waiting=false;for(let attempt=0;attempt<100;attempt++){
    const [row]=await ownerDb.query("select exists(select 1 from pg_stat_activity where application_name='regional-approval-regression' and wait_event_type='Lock' and query like '%for share of r%') waiting");
    if(row.waiting){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
@@ -124,12 +130,12 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   const currentReviewer=await sessions.create({username:'limited',password});await sessions.reauthenticate(currentReviewer.sessionToken,currentReviewer.session.csrfToken,password);
   const actorRequest=await record({...scope,providerId:newProvider,revision:2},{...identity,issuer:'https://provider.example/issuer',subject:'actor-authority-race'});
   const actorBlocker=ownerDb.createQueryRunner();await actorBlocker.connect();await actorBlocker.startTransaction();await actorBlocker.query('select id from app_identity.role where id=$1 for update',[limitedRole]);
-  const actorRace=service.link(currentReviewer.sessionToken,actorRequest.requestId,{userId:sibling.userId}).then(value=>({value}),error=>({error}));
+  const actorRace=service.link(currentReviewer.sessionToken,actorRequest.requestId,{userId:sibling.userId,providerSource:"draft",expectedProviderRevision:2}).then(value=>({value}),error=>({error}));
   let actorWaiting=false;for(let attempt=0;attempt<100;attempt++){const [row]=await ownerDb.query("select exists(select 1 from pg_stat_activity where application_name='regional-approval-regression' and wait_event_type='Lock' and query like '%for share of r%') waiting");if(row.waiting){actorWaiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
   await rewriteRole(actorBlocker,limitedRole,randomUUID(),3,'Limited identity review',baseReview);await actorBlocker.commitTransaction();await actorBlocker.release();
   assert(actorWaiting,'approval must lock reviewer roles against concurrent authoring');assert.equal((await actorRace).error?.getStatus?.(),403);
   assert.equal((await ownerDb.query('select linked_user_id from app_identity.regional_identity_request where id=$1',[actorRequest.requestId]))[0].linked_user_id,null);
-  const audits=await ownerDb.query("select details,target_user_id from app_identity.authentication_event where details->>'kind'='regional_identity'");assert.equal(audits.length,1);assert.equal(audits[0].target_user_id,linked.linkedUserId);assert.doesNotMatch(JSON.stringify(audits),/CaseSensitive|same@example|provider.example/);
+  const audits=await ownerDb.query("select details,target_user_id from app_identity.authentication_event where details->>'kind'='regional_identity'");assert.equal(audits.length,2);assert(audits.some(event=>event.target_user_id===linked.linkedUserId));assert.doesNotMatch(JSON.stringify(audits),/CaseSensitive|same@example|provider.example/);
   await assert.rejects(db.query('insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,2,$1,$3,$4,$5,$6,now())',[root,newProvider,'https://provider.example/issuer','prelinked',medic.userId,actor.userId]),/permission denied/);
   const privileges=(await ownerDb.query("select has_table_privilege('open_triage_api_runtime','app_identity.regional_identity_request','DELETE') deleted,has_column_privilege('open_triage_api_runtime','app_identity.regional_identity_request','subject','UPDATE') mutated,has_column_privilege('open_triage_api_runtime','app_identity.regional_identity_request','linked_user_id','UPDATE') linked"))[0];assert.deepEqual(privileges,{deleted:false,mutated:false,linked:true});
  }finally{if(db.isInitialized)await db.destroy();if(ownerDb.isInitialized)await ownerDb.destroy();await migrate.end().catch(()=>{});await admin.query(`drop database ${name}`);await admin.end();}

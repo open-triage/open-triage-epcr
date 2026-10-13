@@ -2,14 +2,15 @@
 
 import { activateListRow } from "./list-row-action";
 import { listAccessRemoved } from "../app/list-refresh";
-import { AdminText, useAdminCapabilityText, useAdminError, useAdminText } from "../app/admin-localization";
+import { AdminLanguageContext, AdminText, useAdminCapabilityText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminSessionSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
-import React, { useEffect, useRef, useState, type FormEvent } from "react";
+import React, { useContext, useEffect, useRef, useState, type FormEvent } from "react";
 import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAdminRoleHistory, loadAdminRoles,
   loadAdminUserRoleOptions, loadAdminUserSessions, loadAdminUsers, provisionAdminUser, reactivateAdminRole,
   replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, updateAdminRole, updateAdminUser,
   type AdminUserQuery } from "../app/admin-context";
+import { PersonalAuthenticationField,usePasswordAuthentication } from "./personal-authentication";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { useAvailableHeight } from "./use-available-height";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
@@ -43,6 +44,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   readonly csrfToken?: string;
 }) {
   const t = useAdminText();
+  const needsPassword=usePasswordAuthentication();
+  const language=useContext(AdminLanguageContext);
   const adminError = useAdminError();
   const tablePanel = useAvailableHeight<HTMLDivElement>(128);
   const [items, setItems] = useState<AdminUserSummary[]>([]);
@@ -340,12 +343,9 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           {!editing.active && <p><AdminText messageKey="admin.retainedRolesIneffectiveWhenDisabled" /></p>}
           <label><AdminText messageKey="admin.roleChangeNote" /><textarea value={roleNote} maxLength={1000}
             onChange={(event) => setRoleNote(event.target.value)} /></label>
-          {protectedRoleSetChanged && <label><AdminText messageKey="admin.currentPasswordFor" />
-            <input type="password" value={reauthenticationPassword} maxLength={1024}
-              autoComplete="current-password" onChange={(event) => setReauthenticationPassword(event.target.value)} />
-          </label>}
+          {protectedRoleSetChanged && <PersonalAuthenticationField language={language} value={reauthenticationPassword} onChange={setReauthenticationPassword} label={t("admin.currentPasswordFor")}/>}
           <button type="button" onClick={() => void saveRoles()}
-            disabled={protectedRoleSetChanged && !reauthenticationPassword}>{saving ? t("admin.saving") : t("admin.replaceRoleSet")}</button>
+            disabled={protectedRoleSetChanged && needsPassword && !reauthenticationPassword}>{saving ? t("admin.saving") : t("admin.replaceRoleSet")}</button>
         </fieldset>
         <label><AdminText messageKey="admin.status" /><select name="active" value={desiredActive ? "true" : "false"}
           onChange={(event) => setDesiredActive(event.target.value === "true")}>

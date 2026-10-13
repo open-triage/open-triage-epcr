@@ -5,7 +5,7 @@ const localUrl = "http://127.0.0.1:3109";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["deployment.spec.ts", "authentication-policy.spec.ts", "oidc-draft.spec.ts", "regional-identities.spec.ts", "regional-user-approval.spec.ts", "units-directory.spec.ts", "installation-enrollment.spec.ts", "installation-revocation.spec.ts", "installation-reassignment.spec.ts", "schedules.spec.ts", "production-jobs.spec.ts"],
+  testMatch: ["deployment.spec.ts", "personal-oidc-sessions.spec.ts", "authentication-policy.spec.ts", "oidc-draft.spec.ts", "regional-identities.spec.ts", "regional-user-approval.spec.ts", "units-directory.spec.ts", "installation-enrollment.spec.ts", "installation-revocation.spec.ts", "installation-reassignment.spec.ts", "schedules.spec.ts", "production-jobs.spec.ts"],
   reporter: "line",
   use: {
     baseURL: deployedUrl ?? localUrl,

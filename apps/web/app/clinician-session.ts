@@ -1,4 +1,4 @@
-import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "./installation-transition-generation";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY } from "./installation-transition-generation";
 import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
@@ -105,6 +105,7 @@ export async function endClinicianSession(csrfToken: string): Promise<void> {
   if (!url) return;
   await fetch(url, browserRequestInit({
     method: "DELETE",
+    signal:AbortSignal.timeout(5000),
     headers: { "x-csrf-token": csrfToken }
   }));
 }
@@ -126,6 +127,54 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
 }
 
 export const CLINICIAN_REAUTHENTICATED_EVENT = "open-triage:session-reauthenticated";
+export class PersonalAuthenticationRedirect extends Error {}
+
+async function navigateToPersonalAuthentication(authorizationUrl: string,settle=true): Promise<never> {
+  const url=new URL(authorizationUrl);
+  if(url.protocol!=="https:" || url.username || url.password)throw new Error("Invalid personal authentication destination");
+  // This barrier settles all participating writers and removes plaintext/keys
+  // before another identity can become visible. Encrypted deadlines are retained.
+  const {transitionInstallation}=await import("./installation-transition");
+  if(settle)await transitionInstallation(async()=>{});
+  window.location.assign(url.href);
+  throw new PersonalAuthenticationRedirect("Personal authentication started");
+}
+export async function regionalLoginAvailable(): Promise<boolean> {
+  const url=apiRequestUrl("/api/sessions/authentication-options");
+  if(!url)return false;
+  const response=await fetch(url,browserRequestInit({cache:"no-store"}));
+  if(!response.ok)throw await platformRequestError(response);
+  return (await response.json() as {regional:boolean}).regional===true;
+}
+export async function beginPersonalClinicianSession(purpose:"login"|"switch",csrfToken?:string):Promise<never>{
+  const initialGeneration=authenticationInstallationGeneration(),url=apiRequestUrl("/api/sessions/oidc/login");
+  if(!url)throw new Error("Personal authentication requires a live API");
+  const {transitionInstallation}=await import("./installation-transition");
+  assertAuthenticationInstallationGeneration(initialGeneration);
+  let generation:string|null=null;
+  // Keep the shared barrier through the begin response: pending writers settle
+  // while outgoing authority is live, and another tab cannot log in while that
+  // response still owns the outgoing cookie.
+  const result=await transitionInstallation(async()=>{
+    generation=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+    const response=await fetch(url,browserRequestInit({method:"POST",headers:{"content-type":"application/json","x-personal-authentication":"1",...(csrfToken?{"x-csrf-token":csrfToken}:{})},body:JSON.stringify({purpose})}));
+    if(!response.ok)throw await platformRequestError(response);
+    return await response.json() as {authorizationUrl:string};
+  });
+  assertAuthenticationInstallationGeneration(generation);
+  return navigateToPersonalAuthentication(result.authorizationUrl,false);
+}
+export async function completePersonalClinicianSession():Promise<AuthenticatedSession|null>{
+  const generation=authenticationInstallationGeneration(),url=apiRequestUrl("/api/sessions/current");
+  if(!url)return null;
+  const response=await fetch(url,browserRequestInit({cache:"no-store"}));
+  assertAuthenticationInstallationGeneration(generation);
+  if(!response.ok)throw await platformRequestError(response);
+  const session=await response.json() as AuthenticatedSession;
+  assertAuthenticationInstallationGeneration(generation);
+  if(session.authenticationSource!=="oidc"||!session.csrfToken||!sessionIsActive(session))return null;
+  return session;
+}
 
 export async function reauthenticateClinicianSession(currentPassword: string,
   csrfToken: string): Promise<ReauthenticationResult> {
@@ -139,8 +188,9 @@ export async function reauthenticateClinicianSession(currentPassword: string,
   }));
   assertAuthenticationInstallationGeneration(installationGeneration);
   if (!response.ok) throw await platformRequestError(response);
-  const result = await response.json() as ReauthenticationResult;
+  const result = await response.json() as ReauthenticationResult | {authorizationUrl:string};
   assertAuthenticationInstallationGeneration(installationGeneration);
+  if("authorizationUrl" in result)return navigateToPersonalAuthentication(result.authorizationUrl);
   if (typeof window !== "undefined") window.dispatchEvent(new Event(CLINICIAN_REAUTHENTICATED_EVENT));
   return result;
 }

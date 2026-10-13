@@ -291,3 +291,29 @@ test("sign-out revocation and audit commit together and roll back together", asy
   assert.equal(rolledBack.events.at(-1).sql, "rollback");
   assert.equal(rolledBack.events.some(({ sql }) => sql === "commit"), false);
 });
+
+test('transactional authority checks do not acquire incidental activity locks; ordinary reads still record activity without renewing proof or expiry',async()=>{
+ const now=new Date('2026-10-13T12:00:00Z'),events=[];
+ const row={session_id:'session',user_id:'user',display_name:'Person',organization_id:'agency',organization_name:'Agency',active:true,
+  created_at:new Date('2026-10-13T08:00:00Z'),expires_at:new Date('2026-10-13T20:00:00Z'),revoked_at:null,
+  session_credential_version:'1',credential_version:'1',must_change_password:false,authentication_source:'local',authentication_valid:true,
+  personally_authenticated_at:new Date('2026-10-13T08:00:00Z'),personal_authentication_purpose:'login'};
+ const manager={queryRunner:{isTransactionActive:true},query:async(sql,parameters)=>{events.push(sql);if(sql.includes('select s.id as session_id'))return[row];if(sql.includes('select capability.key'))return[{capability_key:'clinical:document'}];return[];}};
+ const service=new ClinicianSessionService({manager});const first=await service.getAuthenticated('token',now,false,manager);
+ assert.equal(events.some(sql=>sql.includes('set last_activity_at')),false);
+ manager.queryRunner.isTransactionActive=false;const second=await service.getAuthenticated('token',now,false,manager);
+ assert.equal(events.filter(sql=>sql.includes('set last_activity_at')).length,1);assert.equal(second.expiresAt,first.expiresAt);assert.equal(second.personallyAuthenticatedAt,first.personallyAuthenticatedAt);
+});
+
+test('password-free OIDC authentication rejects missing, null or false validated provenance rather than accepting absent local credentials',async()=>{
+ const now=new Date('2026-10-13T12:00:00Z');
+ const base={session_id:'session',user_id:'user',display_name:'Person',organization_id:'agency',organization_name:'Agency',active:true,
+  created_at:new Date('2026-10-13T08:00:00Z'),expires_at:new Date('2026-10-13T20:00:00Z'),revoked_at:null,
+  session_credential_version:null,credential_version:null,must_change_password:false,authentication_source:'oidc'};
+ for(const authentication_valid of [undefined,null,false]){
+  const manager={query:async(sql)=>sql.includes('select s.id as session_id')?[{...base,authentication_valid}]:[]};
+  await assert.rejects(new ClinicianSessionService({manager}).getAuthenticated('token',now,false,manager),UnauthorizedException);
+ }
+ const manager={query:async(sql)=>sql.includes('select s.id as session_id')?[{...base,authentication_source:'local',authentication_valid:undefined}]:[]};
+ await assert.rejects(new ClinicianSessionService({manager}).getAuthenticated('token',now,false,manager),UnauthorizedException);
+});

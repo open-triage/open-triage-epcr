@@ -75,7 +75,7 @@ test("session listing requires combined read authority and exposes only bounded 
   assert.doesNotMatch(JSON.stringify(result), /ip|geo|token/i);
   const query = events.find(({ sql }) => sql.startsWith("select session.id, session.created_at"));
   assert.match(query.sql, /revoked_at is null/);
-  assert.match(query.sql, /session\.credential_version = credential\.credential_version/);
+  assert.match(query.sql, /session_authentication_valid\(session\)/);
   await assert.rejects(setup({ capabilities: ["sessions:read"] }).service.list("token", targetId), UnauthorizedException);
 });
 

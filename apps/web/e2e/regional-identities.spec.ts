@@ -8,7 +8,7 @@ test.beforeAll(async()=>{
  const result=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {RegionalIdentitiesPanel} from './components/regional-identities';createRoot(document.getElementById('root')).render(<RegionalIdentitiesPanel language={document.documentElement.lang} csrfToken="csrf" canLink={!location.search.includes('readonly')}/>);`}});script=result.outputFiles[0]!.text;
 });
 const id='91000000-0000-4000-8000-000000000001',userId='91000000-0000-4000-8000-000000000002';
-const item={id,providerId:'91000000-0000-4000-8000-000000000003',revision:1,issuer:'https://provider.example/Issuer',subject:'ExactCaseSubject',displayName:'<img src=x onerror=alert(1)>',email:'same@example.org',createdAt:new Date().toISOString(),status:'pending',linkedUserId:null};
+const item={id,providerId:'91000000-0000-4000-8000-000000000003',revision:1,issuer:'https://provider.example/Issuer',subject:'ExactCaseSubject',displayName:'<img src=x onerror=alert(1)>',email:'same@example.org',createdAt:new Date().toISOString(),status:'pending',reviewProviders:[{source:'draft',revision:1}],linkedUserId:null};
 for(const width of [390,1440])test(`explicit identity review escapes profile hints, handles conflicts and preserves immutable user selection at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});
  await page.route('**/__identities*',route=>route.fulfill({contentType:'text/html',body:`<html lang="en"><head><style>${css}</style></head><body style="--green:#315ba8;--text-color:#202850"><div class="agency-settings" id="root"></div><script src="/__identity-script"></script></body></html>`}));
@@ -19,7 +19,7 @@ for(const width of [390,1440])test(`explicit identity review escapes profile hin
  await page.route('**/api/admin/users?*',route=>{expect(route.request().url()).toContain('state=active');return route.fulfill({json:{items:[{id:userId,displayName:'Existing clinician',username:'medic',owner:false,superadmin:false},{id:'91000000-0000-4000-8000-000000000004',displayName:'Protected owner',username:'owner',owner:true,superadmin:true}],nextCursor:null}});});
  await page.route('**/api/sessions/reauthenticate',route=>{expect(route.request().headers()['x-csrf-token']).toBe('csrf');reauthenticated=true;return route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}});});
  await page.route(`**/api/admin/authentication/identities/${id}/link`,route=>{
-  expect(reauthenticated).toBe(true);expect(route.request().headers()['x-csrf-token']).toBe('csrf');expect(route.request().postDataJSON()).toEqual({userId});
+  expect(reauthenticated).toBe(true);expect(route.request().headers()['x-csrf-token']).toBe('csrf');expect(route.request().postDataJSON()).toEqual({userId,providerSource:'draft',expectedProviderRevision:1});
   return conflict?route.fulfill({status:409,json:{code:'admin.regionalIdentityConflict'}}):route.fulfill({json:{...item,status:'linked',linkedUserId:userId}});
  });
  await page.goto('/__identities');await expect(page.getByRole('cell',{name:item.email,exact:false}).first()).toBeVisible();

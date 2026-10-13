@@ -42,10 +42,9 @@ export class SessionAdministrationService {
                where owner_record.user_id = app_user.id) as owner
       from app_identity.app_session session
       join app_identity.app_user app_user on app_user.id = session.user_id
-      left join app_identity.local_credential credential on credential.user_id = app_user.id
       where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2
         and session.revoked_at is null and session.expires_at > $4
-        and (credential.user_id is null or session.credential_version = credential.credential_version)
+        and app_identity.session_authentication_valid(session)
       order by session.last_activity_at desc, session.id
     `, [actor.organization.id, targetUserId, digest(token), now]);
     return { userId: targetUserId, items: rows.map((row) => ({
