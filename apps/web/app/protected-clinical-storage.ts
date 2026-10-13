@@ -890,6 +890,14 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const response = await fetch(url, browserRequestInit({ method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify({ schemaVersion: 1, recoveryHandle, reportKeyBase64: bytesToBase64(raw) }) }));
     if (!response.ok) {
       raw.fill(0);
+      if (response.status === 404 || response.status === 410) {
+        // Recovery keys have an immutable deadline independent of the server
+        // report. Keep the authorized server report usable without replacing
+        // expired keys or enabling unprotected offline persistence.
+        releaseLock();
+        publishStatus(reportId, { mode: "online-only", explanation: "Protected offline storage is unavailable for this report; online editing and server saves remain available." });
+        return false;
+      }
       if (response.status === 409) {
         releaseLock();
         // Another browser can have opened the same assignment first. Adopt the
