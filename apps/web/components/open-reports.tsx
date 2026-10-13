@@ -1,4 +1,5 @@
 "use client";
+import { PersonalAuthenticationField } from "./personal-authentication";
 
 import type {
   ClinicianSession,
@@ -7,7 +8,7 @@ import type {
 } from "@open-triage/contracts";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
-import { CLINICIAN_REAUTHENTICATED_EVENT, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { CLINICIAN_REAUTHENTICATED_EVENT, PersonalAuthenticationRedirect, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
@@ -75,6 +76,7 @@ export function OpenReports({
   const [creating, setCreating] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
+  const [recoveryPassword, setRecoveryPassword] = useState("");
   const [reauthenticating, setReauthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
@@ -265,18 +267,20 @@ export function OpenReports({
     event.preventDefault();
     setReauthenticating(true);
     setError(null);
-    const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
+    const password = recoveryPassword;
+    setRecoveryPassword("");
     try {
       await reauthenticateClinicianSession(password, csrfToken);
       recoveryReauthentication.current.reauthenticated();
       setReauthenticationId(null);
       await reopen(report);
     } catch (reauthenticationError) {
+      if (reauthenticationError instanceof PersonalAuthenticationRedirect) return;
       setError(reauthenticationError instanceof Error ? reauthenticationError.message : t("reports.reauthFailed"));
     } finally {
       setReauthenticating(false);
     }
-  }, [csrfToken, reopen, t]);
+  }, [csrfToken, recoveryPassword, reopen, t]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -342,8 +346,7 @@ export function OpenReports({
               {reauthenticationId === report.reportId && <form className="report-reauthentication"
                 onSubmit={(event) => void reauthenticateAndReopen(event, report)}>
                 <p>{t("reports.reauthHelp")}</p>
-                <label>{t("reports.currentPassword")}<input name="currentPassword" type="password"
-                  autoComplete="current-password" required /></label>
+                <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />
                 <button type="submit" disabled={reauthenticating}>
                   {reauthenticating ? t("reports.confirming") : t("reports.confirmRecover")}
                 </button>
