@@ -291,6 +291,9 @@ export class DraftReportService {
           throw new ConflictException("A stable incident or patient identity already belongs to different data");
         }
 
+        if (!synthetic && !parent) {
+          assertProductionJobAccess(await productionJobAccess(manager, accessToken, currentSession, this.schedules));
+        }
         const insertedReports = mutationRows<{ id: string }>(await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,

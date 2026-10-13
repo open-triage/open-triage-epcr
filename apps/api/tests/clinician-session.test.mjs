@@ -317,3 +317,65 @@ test('password-free OIDC authentication rejects missing, null or false validated
  const manager={query:async(sql)=>sql.includes('select s.id as session_id')?[{...base,authentication_source:'local',authentication_valid:undefined}]:[]};
  await assert.rejects(new ClinicianSessionService({manager}).getAuthenticated('token',now,false,manager),UnauthorizedException);
 });
+
+test('live local login stamps verified completion using the database clock, including a crossed grace/checkpoint', async () => {
+  const password='Verified completion password 42!',completion=new Date(Date.now()+120000),verifier=await createPasswordVerifier(password),events=[];
+  const account={user_id:'user-id',display_name:'Clinician',active:true,organization_id:'organization-id',organization_name:'Agency',shift_session_duration_hours:12,password_verifier:verifier,must_change_password:false,credential_version:'1'};
+  const query=async(sql,parameters=[])=>{
+    const normalized=sql.replace(/\s+/g,' ').trim();events.push({sql:normalized,parameters});
+    if(normalized==='select clock_timestamp() as completed_at')return [{completed_at:completion}];
+    if(normalized.startsWith('select u.id as user_id'))return [account];
+    if(normalized.includes('select * from app_identity.group_authentication_policy'))return [{maximum_session_hours:12,temporary_password_hours:72,account_attempt_limit:20,network_attempt_limit:60}];
+    if(normalized.startsWith('insert into app_identity.app_session'))return [{id:'session'}];
+    if(normalized.startsWith('select capability.key'))return [{capability_key:'clinical:document'}];return [];
+  };
+  const service=new ClinicianSessionService({query,manager:{query},transaction:work=>work({query})});
+  const result=await service.create({username:'clinician',password});
+  assert.equal(result.session.startedAt,completion.toISOString());
+  const issuance=events.find(e=>e.sql.startsWith('insert into app_identity.app_session'));
+  assert.equal(issuance.parameters[4].getTime(),completion.getTime());
+  assert.match(issuance.sql,/personally_authenticated_at/);
+  assert.equal(result.session.expiresAt,new Date(completion.getTime()+12*3600000).toISOString());
+});
+
+test('live local reauthentication uses verified completion and rejects expiry during password verification',async()=>{
+  const password='Current completion password 42!',csrf='csrf-proof',verifier=await createPasswordVerifier(password),start=new Date(),completion=new Date(start.getTime()+120000);
+  const row={session_id:'session',created_at:start,expires_at:new Date(start.getTime()+60000),csrf_sha256:digest(csrf),session_credential_version:'1',credential_version:'1',user_id:'user-id',display_name:'Clinician',active:true,organization_id:'organization-id',organization_name:'Agency',must_change_password:false};
+  const {dataSource,events}=instrumentedDataSource(({sql})=>{
+    if(sql==='select clock_timestamp() as completed_at')return [{completed_at:completion}];
+    if(sql.startsWith('select csrf_sha256'))return [{csrf_sha256:digest(csrf)}];
+    if(sql.startsWith('select s.id as session_id'))return [row];
+    if(sql.startsWith('select c.password_verifier'))return [{...row,password_verifier:verifier}];
+    if(sql.startsWith('select capability.key'))return [{capability_key:'clinical:document'}];return [];
+  });
+  await assert.rejects(new ClinicianSessionService(dataSource).reauthenticate('token',csrf,password),/session has ended/);
+  assert.equal(events.some(e=>e.sql.startsWith('update app_identity.app_session set reauthenticated_at')),false);
+  row.expires_at=new Date(start.getTime()+3600000);
+  const result=await new ClinicianSessionService(dataSource).reauthenticate('token',csrf,password);
+  assert.equal(result.reauthenticatedUntil,new Date(completion.getTime()+300000).toISOString());
+  const proof=events.find(e=>e.sql.startsWith('update app_identity.app_session set reauthenticated_at'));
+  assert.equal(proof.parameters[1].getTime(),completion.getTime());assert.doesNotMatch(proof.sql,/expires_at\s*=/);
+});
+
+test('shift retries can require a new proof without weakening local or regional command validation',()=>{
+ assert.deepEqual(validateReauthenticate({currentPassword:'personal',forcePersonalAuthentication:true}),{currentPassword:'personal',forcePersonalAuthentication:true});
+ assert.deepEqual(validateReauthenticate({currentPassword:'',forcePersonalAuthentication:true},true),{currentPassword:'',forcePersonalAuthentication:true});
+ for(const flag of [false,'true',1,null])assert.throws(()=>validateReauthenticate({currentPassword:'personal',forcePersonalAuthentication:flag}),/current password/);
+ assert.throws(()=>validateReauthenticate({currentPassword:'',forcePersonalAuthentication:true}),/current password/);
+ assert.throws(()=>validateReauthenticate({currentPassword:'',forcePersonalAuthentication:true,authenticatedAt:'2099-01-01'},true),/current password/);
+});
+
+test('password replacement cannot revive temporary authority that expired during verification',async()=>{
+ const password='Temporary crossing password 42!',csrf='csrf-crossing',verifier=await createPasswordVerifier(password),start=new Date(),completion=new Date(start.getTime()+120000);
+ const row={session_id:'temporary-session',created_at:start,expires_at:new Date(start.getTime()+3600000),csrf_sha256:digest(csrf),session_credential_version:'1',credential_version:'1',user_id:'user-id',display_name:'Clinician',active:true,organization_id:'organization-id',organization_name:'Agency',must_change_password:true,temporary_password_expires_at:new Date(start.getTime()+60000)};
+ const {dataSource,events}=instrumentedDataSource(({sql})=>{
+  if(sql==='select clock_timestamp() as completed_at')return [{completed_at:completion}];
+  if(sql.startsWith('select csrf_sha256'))return [{csrf_sha256:digest(csrf)}];
+  if(sql.startsWith('select s.id as session_id'))return [row];
+  if(sql.startsWith('select c.password_verifier'))return [{...row,password_verifier:verifier}];
+  if(sql.startsWith('select capability.key'))return [{capability_key:'clinical:document'}];return [];
+ });
+ await assert.rejects(new ClinicianSessionService(dataSource).changePassword('token',{currentPassword:password,newPassword:'Replacement personal password 43!',csrfToken:csrf}),UnauthorizedException);
+ assert.equal(events.some(e=>e.sql.startsWith('update app_identity.local_credential')),false);
+ assert.equal(events.some(e=>e.sql.startsWith('insert into app_identity.app_session')),false);
+});

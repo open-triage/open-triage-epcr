@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { ForbiddenException } from "@nestjs/common";
-import type { ClinicianSession, ProductionJobAccess } from "@open-triage/contracts";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import type { ClinicianSession, ProductionJobAccess, UnitSchedulePreview } from "@open-triage/contracts";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 import { agencyRequest } from "../sessions/agency-context.js";
@@ -12,7 +12,8 @@ export function assertProductionJobAccess(access: ProductionJobAccess): void {
   if (access.state === "ready") return;
   const code = { "enrollment-required": "calls.enrollmentRequired", "agency-mismatch": "calls.enrolledAgencyMismatch",
     "schedule-required": "calls.scheduleRequired", "handover-required": "calls.handoverRequired",
-    "synthetic-only": "calls.syntheticOnly" }[access.state];
+    "reauthentication-required": "calls.shiftReauthenticationRequired",
+    "identity-confirmation-required": "calls.identityConfirmationRequired", "synthetic-only": "calls.syntheticOnly" }[access.state];
   throw new ForbiddenException({ code, params: {} });
 }
 
@@ -55,7 +56,28 @@ export async function productionJobAccess(manager: EntityManager, token: string,
     and organization_id=$4 and revoked_at is null and expires_at>clock_timestamp() for update`,
     [digest(token), registration.id, request.origin, session.organization.id]);
   if (!associated) return { state: "enrollment-required", unit };
-  const evaluated = await schedules.evaluateUnit(manager, unit.organizationId, unit.id);
-  return { state: evaluated.state === "missing" ? "schedule-required" :
-    evaluated.state === "blank" ? "ready" : "handover-required", unit };
+  return { state: await currentShiftAccess(manager, token, unit, schedules), unit };
+}
+
+/** A preview is schedule evidence only. Only this session's personal proof qualifies.
+ * Grace attempts stay explicit until the per-attempt reminder is implemented. */
+export function shiftAuthenticationState(evaluated: UnitSchedulePreview, personallyAuthenticatedAt: string | Date | null): ProductionJobAccess["state"] {
+  if (evaluated.state === "missing") return "schedule-required";
+  if (evaluated.state === "blank") return "ready";
+  if (evaluated.graceCheckpoints.length) return "identity-confirmation-required";
+  if (!evaluated.activeCheckpoint) return "ready"; // Initial selection is prospective.
+  const proof = personallyAuthenticatedAt == null ? NaN : new Date(personallyAuthenticatedAt).getTime();
+  return Number.isFinite(proof) && proof >= Date.parse(evaluated.activeCheckpoint.graceStartsAt)
+    && proof <= Date.parse(evaluated.evaluatedAt) ? "ready" : "reauthentication-required";
+}
+
+/** Repeat at the creation boundary after assignment/command waits. The caller
+ * already owns the authority/device/unit/session locks, with no provider interaction. */
+export async function currentShiftAccess(manager: EntityManager, token: string,
+  unit: {organizationId: string; id: string}, schedules: SchedulesService): Promise<ProductionJobAccess["state"]> {
+  const [evidence] = await manager.query<Array<{ personally_authenticated_at: Date | null }>>(`
+    select personally_authenticated_at from app_identity.app_session
+    where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()`, [digest(token)]);
+  if (!evidence) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
+  return shiftAuthenticationState(await schedules.evaluateUnit(manager, unit.organizationId, unit.id), evidence.personally_authenticated_at);
 }

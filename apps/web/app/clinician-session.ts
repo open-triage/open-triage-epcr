@@ -177,14 +177,14 @@ export async function completePersonalClinicianSession():Promise<AuthenticatedSe
 }
 
 export async function reauthenticateClinicianSession(currentPassword: string,
-  csrfToken: string): Promise<ReauthenticationResult> {
+  csrfToken: string, forcePersonalAuthentication = false): Promise<ReauthenticationResult> {
   const installationGeneration = authenticationInstallationGeneration();
   const url = apiRequestUrl("/api/sessions/reauthenticate");
   if (!url) throw new Error("Reauthentication is unavailable in the static demonstration.");
   const response = await fetch(url, browserRequestInit({
     method: "POST",
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
-    body: JSON.stringify({ currentPassword })
+    body: JSON.stringify({ currentPassword, ...(forcePersonalAuthentication ? { forcePersonalAuthentication: true } : {}) })
   }));
   assertAuthenticationInstallationGeneration(installationGeneration);
   if (!response.ok) throw await platformRequestError(response);

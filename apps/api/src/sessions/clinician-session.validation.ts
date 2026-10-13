@@ -14,16 +14,17 @@ export function validateCreateClinicianSession(input: unknown): CreateClinicianS
   return { username: username.trim(), password };
 }
 
-export function validateReauthenticate(input: unknown): ReauthenticateCommand {
+export function validateReauthenticate(input: unknown, regional = false): ReauthenticateCommand {
   if (!input || typeof input !== "object" || Array.isArray(input) ||
-      Object.keys(input).some((key) => key !== "currentPassword")) {
+      Object.keys(input).some((key) => !["currentPassword", "forcePersonalAuthentication"].includes(key))) {
     throw new BadRequestException("The current password is required");
   }
-  const { currentPassword } = input as Record<string, unknown>;
-  if (typeof currentPassword !== "string" || !currentPassword || currentPassword.length > 1024) {
+  const { currentPassword, forcePersonalAuthentication } = input as Record<string, unknown>;
+  if (typeof currentPassword !== "string" || !regional && !currentPassword || currentPassword.length > 1024 ||
+    forcePersonalAuthentication !== undefined && forcePersonalAuthentication !== true) {
     throw new BadRequestException("The current password is required");
   }
-  return { currentPassword };
+  return { currentPassword, ...(forcePersonalAuthentication === true ? { forcePersonalAuthentication: true as const } : {}) };
 }
 
 export function validateChangePassword(input: unknown): ChangePasswordCommand {

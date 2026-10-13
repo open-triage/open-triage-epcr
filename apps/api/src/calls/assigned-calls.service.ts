@@ -18,7 +18,7 @@ import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncoun
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
-import { assertProductionJobAccess, productionJobAccess } from "./production-job-access.js";
+import { assertProductionJobAccess, productionJobAccess, currentShiftAccess } from "./production-job-access.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 
 type AssignedCallRow = {
@@ -419,6 +419,9 @@ export class AssignedCallsService {
             (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
           values ($1, $2, 'unknown', $3, $4)
         `, [patientId, current.organization.id, patientKey, patientKeyConfig.keyVersion]);
+        if (!assignment.synthetic) {
+          assertProductionJobAccess({ ...productionAccess, state: await currentShiftAccess(manager, accessToken, productionAccess.unit!, this.schedules) });
+        }
         await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
