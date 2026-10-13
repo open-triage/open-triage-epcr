@@ -1,5 +1,6 @@
 "use client";
 import { UnitInstallations } from "./unit-installations";
+import { UnitScheduleEditor } from "./unit-schedule";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { OperationalUnitSummary } from "@open-triage/contracts";
 import { loadOperationalUnits, saveOperationalUnit } from "../app/admin-context";
@@ -11,6 +12,7 @@ import { confirmDiscardChanges, useUnsavedChanges } from "./unsaved-changes";
 export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: string; canManage: boolean; language: string }) {
   const sv = language === "sv";
   const text = useCallback((en: string, sw: string) => sv ? sw : en, [sv]);
+  const [scheduleUnit,setScheduleUnit] = useState<OperationalUnitSummary | null>(null);
   const [items,setItems] = useState<OperationalUnitSummary[]>([]);
   const [cursor,setCursor] = useState<string | null>(null);
   const [currentCursor,setCurrentCursor] = useState<string | undefined>();
@@ -43,6 +45,7 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
     setEditor(null);setDirty(false);
     requestAnimationFrame(() => trigger.current?.focus());
   }
+  if (scheduleUnit) return <UnitScheduleEditor unitId={scheduleUnit.id} unitName={scheduleUnit.name} csrfToken={csrfToken} canManage={canManage} language={language} onClose={() => { setScheduleUnit(null);requestAnimationFrame(() => document.getElementById(trigger.current?.id??"")?.focus()); }} />;
   return <section className="admin-directory" aria-labelledby="units-heading">
     <div className="section-heading"><h2 id="units-heading">{text("Units","Enheter")}</h2>
       {canManage && <button className="button-primary" type="button" onClick={event => {
@@ -58,7 +61,7 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
       const edit = () => { if (!confirmDiscardChanges(dirty)) return; setDirty(false);setEditor({ ...unit }); };
       return <tr key={unit.id} onClick={event => canManage && activateListRow(event)} className="admin-directory-row">
         <td>{unit.name}</td><td>{unit.callSign}</td><td>{unit.active ? text("Active","Aktiv") : text("Inactive","Inaktiv")}</td>
-        <td>{canManage && <button data-list-row-action type="button" onClick={event => { trigger.current=event.currentTarget;edit(); }}>{text("Edit","Redigera")} {unit.name}</button>}{canManage&&unit.active&&<UnitInstallations unitId={unit.id} unitName={unit.name} csrfToken={csrfToken} language={language}/>}</td>
+        <td>{canManage && <button data-list-row-action type="button" onClick={event => { trigger.current=event.currentTarget;edit(); }}>{text("Edit","Redigera")} {unit.name}</button>} <button id={`unit-schedule-${unit.id}`} type="button" onClick={event => { trigger.current=event.currentTarget;setScheduleUnit(unit); }}>{text("Schedule","Schema")} {unit.name}</button>{canManage&&unit.active&&<UnitInstallations unitId={unit.id} unitName={unit.name} csrfToken={csrfToken} language={language}/>}</td>
       </tr>;
     })}</tbody></table></div>
     <div className="admin-role-editor-actions"><button type="button" disabled={busy || !currentCursor} onClick={() => void load()}>{text("First page","Första sidan")}</button>

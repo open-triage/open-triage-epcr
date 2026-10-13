@@ -49,6 +49,8 @@ jobs:
         run: npm run check:database
       - name: Run database integration tests
         run: npm run test:integration -w @open-triage/database
+      - name: Install controlled OIDC browser
+        run: npx playwright install --with-deps chromium
       - name: Run API integration tests
         run: npm run test:integration -w @open-triage/api
       - name: Run CI scale checks

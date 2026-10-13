@@ -12,7 +12,7 @@ const secret=()=>randomBytes(32).toString('base64url');
 integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and independent installations',async()=>{
  const db=new DataSource({type:'postgres',url:process.env.DATABASE_URL});await db.initialize();
  const client=new pg.Client({connectionString:process.env.DATABASE_URL});await client.connect();
- const organizationId=SYNTHETIC_DEMO_FIXTURE.organizationId,userId=SYNTHETIC_DEMO_FIXTURE.userId,unitId=randomUUID();
+ const organizationId=SYNTHETIC_DEMO_FIXTURE.organizationId,userId=randomUUID(),unitId=randomUUID();
  let scope=organizationId,denied=false,originActive=true;
  const sessions={requireCapability:async(_token,capability,manager)=>{
  assert.equal(capability,'settings:write');if(denied)throw new Error('Not authorized');
@@ -35,6 +35,7 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  const publicRoles=await client.query(`select rolname from pg_roles where rolname in ('anon','authenticated')`);
  for(const role of publicRoles.rows)assert.equal((await client.query(`select has_table_privilege($1,$2,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') exposed`,[role.rolname,name])).rows[0].exposed,false,name);
  }
+ await client.query(`insert into app_identity.app_user(id,organization_id,display_name,synthetic) values($1,$2,'Fictional enrollment administrator',true)`,[userId,organizationId]);
  await client.query(`insert into app_identity.operational_unit(id,organization_id,name,call_sign,active) values($1,$2,'Enrollment test',$3,true)`,[unitId,organizationId,`ENR-${unitId}`]);
  denied=true;await assert.rejects(run(()=>service.issue('session',unitId)),/Not authorized/);denied=false;
  scope=randomUUID();await assert.rejects(run(()=>service.issue('session',unitId)),/Active unit/);await assert.rejects(run(()=>service.inventory('session',unitId)),/not found/);scope=organizationId;
@@ -44,7 +45,7 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  await assert.rejects(run(()=>service.consume(input(code.token),secret())),/origin required/);
  await assert.rejects(run(()=>service.current(secret())),/origin required/);
  originActive=true;
- const countsBefore=await client.query(`select (select count(*) from app_identity.app_session) sessions,(select count(*) from app_identity.user_role_assignment) roles`);
+ const countsBefore=await client.query(`select (select count(*) from app_identity.app_session where user_id=$1) sessions,(select count(*) from app_identity.user_role_assignment where user_id=$1) roles`,[userId]);
  const expiry=await client.query(`select extract(epoch from(expires_at-issued_at)) seconds from app_identity.unit_enrollment where token_sha256=$1`,[createHash('sha256').update(code.token).digest('hex')]);
  assert.ok(Math.abs(Number(expiry.rows[0].seconds)-300)<1);
  await assert.rejects(at('https://other-group.example',()=>service.consume(input(code.token),secret())),/origin required/);
@@ -83,7 +84,7 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  await assert.rejects(run(()=>service.consume(input(expired.token),secret())),/expired/);
  await client.query(`update app_identity.operational_unit set active=false where id=$1`,[unitId]);
  await assert.rejects(run(()=>service.issue('session',unitId)),/Active unit/);
- await assert.rejects(run(()=>service.inventory('session',unitId)),/Active unit/);
+ assert.ok((await run(()=>service.inventory('session',unitId))).items.length);
  await assert.rejects(run(()=>service.current(enrolled.credential)),/Enrollment required/);
  await client.query(`update app_identity.operational_unit set active=true where id=$1`,[unitId]);
  await assert.rejects(run(()=>service.current()),/Enrollment required/);
@@ -92,7 +93,7 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  const events=await client.query(`select * from app_identity.installation_event where unit_id=$1`,[unitId]);
  assert.equal(events.rows.filter(x=>x.event_type==='installation-enrolled').length,4);
  for(const c of [code,...codes,expired])assert.equal(JSON.stringify(events.rows).includes(c.token),false);
- const countsAfter=await client.query(`select (select count(*) from app_identity.app_session) sessions,(select count(*) from app_identity.user_role_assignment) roles`);
+ const countsAfter=await client.query(`select (select count(*) from app_identity.app_session where user_id=$1) sessions,(select count(*) from app_identity.user_role_assignment where user_id=$1) roles`,[userId]);
  assert.deepEqual(countsAfter.rows,countsBefore.rows);
  // Runtime role exercises grants and private schema access against the actual tables.
  await client.query('begin');await client.query('set local role open_triage_api_runtime');

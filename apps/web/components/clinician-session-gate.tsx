@@ -1,5 +1,7 @@
 "use client";
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
+import { participateInInstallationTransition, INSTALLATION_TRANSITION_KEY } from "../app/installation-transition";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import type { AssignedCall, ClinicianSession, AuthenticatedSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
@@ -206,6 +208,18 @@ export function ClinicianSessionGate({ children }: {
     }
   }, []);
 
+  const transitionContext = useRef({ lockAndEndLocalSession, t });
+  useEffect(() => { transitionContext.current = { lockAndEndLocalSession, t }; }, [lockAndEndLocalSession, t]);
+  const hasAuthenticatedSession = Boolean(authenticatedSession);
+  useEffect(() => {
+    if (!hasAuthenticatedSession || !navigator.locks) return;
+    return participateInInstallationTransition(async () => {
+      setLockingSession(true);
+      const context = transitionContext.current;
+      await context.lockAndEndLocalSession(context.t("login.loggedOut"));
+    });
+  }, [hasAuthenticatedSession]);
+
   useEffect(() => {
     let current = true;
     let resolved = false;
@@ -219,11 +233,14 @@ export function ClinicianSessionGate({ children }: {
       try {
         // Both requests are independent. Keep protected content gated until
         // authentication and configuration have both completed successfully.
-        const [loaded, authenticated] = await Promise.all([
+        const startupGeneration = authenticationInstallationGeneration();
+        const [loaded, assessed] = await Promise.all([
           loadInstallationConfiguration(),
           serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
         ]);
         if (!current) return;
+        let authenticated = assessed;
+        try { assertAuthenticationInstallationGeneration(startupGeneration); } catch { authenticated = null; }
         if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
         try {
           const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
@@ -278,8 +295,36 @@ export function ClinicianSessionGate({ children }: {
     return () => window.clearTimeout(timeout);
   }, [lockAndEndLocalSession, authenticatedSession, t]);
 
+  useEffect(() => {
+    if (!authenticatedSession || browserRequestConfiguration().mode !== "server") return;
+    let current = true;
+    let inFlight = false;
+    const reassess = async () => {
+      if (!current || inFlight || !navigator.onLine) return;
+      inFlight = true;
+      try {
+        const live = await authenticateRestartedClinicianSession(authenticatedSession);
+        if (current && !live) await lockAndEndLocalSession(t("login.sessionExpired"));
+      } catch { /* Connection failure does not extend the existing local deadline. */ }
+      finally { inFlight = false; }
+    };
+    const visible = () => { if (document.visibilityState === "visible") void reassess(); };
+    const interval = window.setInterval(() => void reassess(), 30_000);
+    window.addEventListener("online", visible);
+    window.addEventListener("focus", visible);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      current = false;
+      window.clearInterval(interval);
+      window.removeEventListener("online", visible);
+      window.removeEventListener("focus", visible);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [authenticatedSession, lockAndEndLocalSession, t]);
+
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)) return;
     setSubmitting(true);
     setMessage(null);
     const form = new FormData(event.currentTarget);

@@ -1212,3 +1212,24 @@ fieldset { min-inline-size: 0; }
 .unit-installation-inventory { max-height: min(35dvh, 320px); }
 
 .installation-enrollment h1 { font-size: var(--text-heading); }
+
+.oidc-metadata-value { overflow-wrap: anywhere; margin-inline-start: 0; }
+
+/* Keep the compact provider editor actions from covering credential fields. */
+.agency-settings .oidc-draft .form-actions { position: static; }
+.oidc-draft > div { display: grid; gap: 8px; }
+
+.schedule-editor .admin-table-scroll { padding: 0; }
+
+.regional-identities td { overflow-wrap: anywhere; }
+.regional-identity-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.regional-identity-dialog :is(dd, p) { overflow-wrap: anywhere; }
+.regional-identity-dialog form { display: grid; gap: 12px; }
+.regional-identity-dialog select { width: 100%; }
+.regional-identities .admin-table-scroll { max-height: min(65dvh, var(--available-height, 65dvh)); overflow: auto; }
+@media (max-width: 640px) {
+  .regional-identities table { min-width: 680px; }
+}
+.regional-identities td:last-child { white-space: nowrap; }
+.regional-identities td:last-child button { overflow-wrap: normal; min-width: 80px; }
+.authentication-policy > nav.form-actions { position: static; }

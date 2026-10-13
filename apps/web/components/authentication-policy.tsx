@@ -5,6 +5,9 @@ import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { platformRequestError } from "../app/platform-errors";
 import { useUnsavedChanges } from "./unsaved-changes";
 
+import { RegionalIdentitiesPanel } from "./regional-identities";
+import { OidcDraftPanel } from "./oidc-draft";
+
 type Policy = import("@open-triage/contracts").GroupAuthenticationPolicyView;
 const fields = ["maximumSessionHours", "temporaryPasswordHours", "accountAttemptsPer15Minutes", "networkAttemptsPer5Minutes"] as const;
 const labels = { en: ["Maximum session duration (hours)", "Temporary password expiry (hours)", "Account attempts per 15 minutes", "Network attempts per 5 minutes"],
@@ -16,8 +19,9 @@ async function request(csrfToken: string, body?: unknown): Promise<Policy> {
   if (!response.ok) throw await platformRequestError(response);
   return response.json();
 }
-export function AuthenticationPolicyPanel({ language, csrfToken, canWrite }: { language: string; csrfToken: string; canWrite: boolean }) {
+export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canReviewIdentities=false, canLinkIdentities=false }: { language: string; csrfToken: string; canWrite: boolean; canReviewIdentities?:boolean;canLinkIdentities?:boolean }) {
   const sv = language === "sv";
+  const [tab,setTab]=useState<"provider"|"identities">("provider");
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [password, setPassword] = useState("");
@@ -31,6 +35,8 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite }: { l
   const valid = fields.every((field, index) => Number.isInteger(Number(draft[field])) && Number(draft[field]) >= 1 && Number(draft[field]) <= (index < 2 ? 168 : 1000));
   return <section className="admin-configuration agency-settings authentication-policy" aria-labelledby="authentication-heading">
     <h2 id="authentication-heading">{sv ? "Autentisering" : "Authentication"}</h2>
+    {canReviewIdentities&&<nav className="form-actions" aria-label={sv?"Autentiseringsuppgifter":"Authentication tasks"}><button type="button" aria-pressed={tab==="provider"} onClick={()=>setTab("provider")}>{sv?"Policy och leverantör":"Policy and provider"}</button><button type="button" aria-pressed={tab==="identities"} onClick={()=>setTab("identities")}>{sv?"Regionala identiteter":"Regional identities"}</button></nav>}
+    <div hidden={tab!=="provider"}>
     {error && <><p role="alert" className="admin-error">{error}</p><button type="button" disabled={busy} onClick={() => { if (!confirmReload()) return; setBusy(true); request(csrfToken).then(value => { loaded(value); setError(""); }).catch(reason => setError(reason.message)).finally(() => setBusy(false)); }}>{sv ? "Läs om effektiv policy" : "Reload effective policy"}</button></>}
     {!policy && <button type="button" disabled={busy} onClick={() => { setBusy(true); request(csrfToken).then(loaded).catch(reason => setError(reason.message)).finally(() => setBusy(false)); }}>{sv ? "Läs in policy" : "Load policy"}</button>}
     {policy && <>
@@ -62,6 +68,9 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite }: { l
       <p role="status">{status}</p>
       <h3>{sv ? "Ändringshistorik" : "Change history"}</h3>
       <ul className="authentication-policy-history">{policy.history.map((event,index) => <li key={index}><details><summary>{event.displayName ?? event.actorId} — <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString(sv ? "sv-SE" : "en-US")}</time></summary><dl>{fields.map((field, index) => <div key={field}><dt>{labels[sv ? "sv" : "en"][index]}</dt><dd>{event.details.prior?.[field]} → {event.details.policy?.[field]}</dd></div>)}</dl></details></li>)}</ul>
+    <OidcDraftPanel language={language} csrfToken={csrfToken} canWrite={canWrite}/>
     </>}
+    </div>
+    {canReviewIdentities&&<div hidden={tab!=="identities"}><RegionalIdentitiesPanel language={language} csrfToken={csrfToken} canLink={canLinkIdentities}/></div>}
   </section>;
 }

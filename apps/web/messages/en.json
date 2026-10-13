@@ -1,4 +1,8 @@
 {
+  "platform.error.admin.oidcInvalid": "Invalid OIDC field: {field}.",
+  "platform.error.admin.oidcStale": "The OIDC draft changed. Reload and review before saving.",
+  "platform.error.admin.oidcIncomplete": "Complete the required OIDC fields: {field}.",
+  "platform.error.admin.oidcEncryptionUnavailable": "OIDC credential encryption is unavailable. Ask the installation operator to configure protected keys.",
   "admin.temporaryAccessPolicy": "Temporary passwords expire according to the group Authentication policy.",
   "platform.error.admin.authenticationPolicyStale": "Authentication policy changed. Reload the effective policy and review your changes before saving.",
   "platform.error.admin.authenticationPolicyInvalid": "Enter whole numbers: 1–168 hours and 1–1000 login attempts.",
@@ -59,6 +63,7 @@
   "navigation.adminPanels": "Administration panels",
   "navigation.administration": "Administration",
   "navigation.superAdmin": "Super-admin",
+  "navigation.shiftSchedules": "Shift schedules",
   "navigation.units": "Units",
   "navigation.dashboard": "Dashboard",
   "navigation.users": "Users",
@@ -1748,5 +1753,9 @@
   "admin.agencyUniqueStateId": "dAgency.01 — EMS Agency Unique State ID",
   "admin.agencyNumber": "dAgency.02 — EMS Agency Number",
   "admin.agencyStateCode": "dAgency.04 — ANSI state code",
-  "admin.agencyCredentialHelp": "Use your agency-issued credentials."
+  "admin.agencyCredentialHelp": "Use your agency-issued credentials.",
+  "platform.error.admin.regionalIdentityConflict": "The identity is already linked or its provider changed. Refresh requests and review the current integration.",
+  "platform.error.admin.regionalIdentityForbidden": "Authentication and user management permissions are required.",
+  "platform.error.admin.regionalIdentityMissing": "The identity request is no longer available in this group. Refresh requests.",
+  "platform.error.admin.regionalIdentityTarget": "Choose an active ordinary user in this group that you are authorized to manage."
 }

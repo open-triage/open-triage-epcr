@@ -1,0 +1,142 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { randomUUID,randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {discoveryProvider} from './fixtures/oidc-discovery-provider.mjs';
+import { readMigrations,applyMigrations } from '../../../packages/database/scripts/migrate.mjs';
+import { AccountService } from '../dist/identity/account.service.js';
+import { ClinicianSessionService } from '../dist/sessions/clinician-session.service.js';
+import { AgencyDirectoryService } from '../dist/sessions/agency-directory.service.js';
+import { agencyRequest } from '../dist/sessions/agency-context.js';
+import { OidcTestService } from '../dist/authentication/oidc-test.service.js';
+
+import { OidcDraftService } from '../dist/authentication/oidc-draft.service.js';
+import { decryptCredential } from '../dist/authentication/oidc-credentials.js';
+const integration=process.env.DATABASE_URL?test:test.skip;
+if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
+integration('OIDC persistence enforces authority, versions, masked secrets, safe discovery and active isolation',async()=>{
+  const name=`oidc_${randomUUID().replaceAll('-','')}`;
+  const admin=new pg.Client({connectionString:process.env.DATABASE_URL});await admin.connect();await admin.query(`create database ${name}`);
+  const url=new URL(process.env.DATABASE_URL);url.pathname=`/${name}`;const pool=new pg.Pool({connectionString:url.toString()});
+  const manager={query:async(sql,args)=>(await pool.query(sql,args)).rows};
+  const database={manager,query:manager.query,transaction:async work=>{const client=await pool.connect();try{await client.query('begin');const result=await work({query:async(sql,args)=>(await client.query(sql,args)).rows});await client.query('commit');return result;}catch(error){await client.query('rollback');throw error;}finally{client.release();}}};
+  const old=process.env.OIDC_CREDENTIAL_KEYS_JSON;
+  try{
+    const installationKeys=JSON.stringify({'1':randomBytes(32).toString('base64')});
+    process.env.OIDC_CREDENTIAL_KEYS_JSON=installationKeys;
+    const client=await pool.connect();try{await applyMigrations(client,await readMigrations(fileURLToPath(new URL('../../../supabase/migrations',import.meta.url))),{info(){}});}finally{client.release();}
+    const root=randomUUID(),child=randomUUID(),foreign=randomUUID();
+    await manager.query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values ($1,'Regional','regional.example.org','UTC'),($2,'Other','other.example.org','UTC')",[root,foreign]);
+    await manager.query("insert into app_identity.organization(id,name,parent_organization_id,hostname,deployment_timezone) values ($1,'Child',$2,'child.example.org','UTC')",[child,root]);
+    const accounts=new AccountService(database);await accounts.bootstrapOwner({username:'owner',displayName:'Owner',temporaryPassword:'Personal password 42!',operator:{operatorId:'test',osAccount:'test',host:'test'}});
+    const medic=await accounts.provision({organizationId:root,username:'regionaladmin',displayName:'Regional admin',role:'administrator',temporaryPassword:'Personal password 42!'});
+    const other=await accounts.provision({organizationId:foreign,username:'otheradmin',displayName:'Other admin',role:'administrator',temporaryPassword:'Personal password 42!'});
+    const read=await accounts.provision({organizationId:root,username:'medic',displayName:'Medic',role:'clinician',temporaryPassword:'Personal password 42!'});
+    await manager.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=any($1::uuid[])',[[medic.userId,other.userId,read.userId]]);
+    const sessions=new ClinicianSessionService(database);const regional=await sessions.create({username:'regionaladmin',password:'Personal password 42!'});const otherSession=await sessions.create({username:'otheradmin',password:'Personal password 42!'});const readonly=await sessions.create({username:'medic',password:'Personal password 42!'});
+    const drafts=new OidcDraftService(database,sessions);
+    const input={expectedRevision:0,name:'AD FS v6',issuer:'https://127.0.0.1/adfs',discoveryUrl:'',clientId:'actual-registration',scopes:['openid','profile'],mappings:{displayName:'name',email:'email'},clientAuthentication:'client_secret_post',replacementSecret:'Never-return-this-regional-secret'};
+    await assert.rejects(drafts.save(regional.sessionToken,input),/reauthentication/);await assert.rejects(drafts.get(readonly.sessionToken));
+    await sessions.reauthenticate(regional.sessionToken,regional.session.csrfToken,'Personal password 42!');
+    const saved=await drafts.save(regional.sessionToken,input);assert.equal(saved.draft.revision,1);assert.equal(saved.draft.credentialConfigured,true);assert.doesNotMatch(JSON.stringify(saved),/Never-return|encrypted_credential|ciphertext/);
+    assert.deepEqual(saved.registration.hosts.map(host=>host.callbackUrl),['https://child.example.org/api/sessions/oidc/callback','https://regional.example.org/api/sessions/oidc/callback']);
+    assert.equal((await drafts.get(otherSession.sessionToken)).draft,null);
+    await sessions.switchAgency(regional.sessionToken,child);assert.equal((await drafts.get(regional.sessionToken)).draft.revision,1);
+    const [stored]=await manager.query('select provider_id,encrypted_credential from app_identity.oidc_provider_version where group_id=$1 and revision=1',[root]);
+    assert.equal(decryptCredential(stored.encrypted_credential,root,stored.provider_id),input.replacementSecret);
+    await assert.rejects(drafts.save(regional.sessionToken,input),/Conflict/);
+    // Stand in for a previously activated version; this slice never writes active_revision.
+    await manager.query('update app_identity.oidc_provider_state set active_revision=1 where group_id=$1',[root]);
+    const next=await drafts.save(regional.sessionToken,{...input,expectedRevision:1,replacementSecret:undefined,name:'Draft change'});assert.equal(next.active.name,'AD FS v6');assert.equal(next.draft.revision,2);
+    await assert.rejects(drafts.inspect(regional.sessionToken,{expectedRevision:1}),/Conflict/);
+    const failed=await drafts.inspect(regional.sessionToken,{expectedRevision:2});assert.equal(failed.draft.discoveryHealth,'failed');assert.equal(failed.active.name,'AD FS v6');assert.equal(failed.active.discoveryHealth,'unchecked');
+    const changed=await drafts.save(regional.sessionToken,{...input,expectedRevision:2,clientId:'new-registration',replacementSecret:undefined});assert.equal(changed.draft.credentialConfigured,false);assert.equal(changed.draft.discoveryHealth,'unchecked');
+    await assert.rejects(drafts.inspect(regional.sessionToken,{expectedRevision:3}));
+    await sessions.reauthenticate(otherSession.sessionToken,otherSession.session.csrfToken,'Personal password 42!');await drafts.save(otherSession.sessionToken,{...input,replacementSecret:'Unrelated group secret'});
+    assert.equal((await drafts.get(regional.sessionToken)).draft.revision,3);
+    const audits=await manager.query("select details from app_identity.authentication_event where details->>'kind'='oidc'");assert.equal(audits.length,5);assert.doesNotMatch(JSON.stringify(audits),/secret|clientId|issuer|ciphertext|credential/i);
+    process.env.OIDC_CREDENTIAL_KEYS_JSON='{malformed-secret-material';
+    await assert.rejects(drafts.save(regional.sessionToken,{...input,expectedRevision:3}),error=>error.getResponse?.().code==='admin.oidcEncryptionUnavailable');
+    assert.equal((await drafts.get(regional.sessionToken)).draft.revision,3);
+    const immutable=await manager.query("select has_column_privilege('open_triage_api_runtime','app_identity.oidc_provider_version','configuration','UPDATE') as configuration,has_column_privilege('open_triage_api_runtime','app_identity.oidc_provider_version','discovery','UPDATE') as discovery,has_table_privilege('open_triage_api_runtime','app_identity.oidc_provider_version','DELETE') as delete_version,has_column_privilege('open_triage_api_runtime','app_identity.oidc_provider_state','active_revision','UPDATE') as activate");
+    assert.deepEqual(immutable,[{configuration:false,discovery:true,delete_version:false,activate:false}]);
+    // A trusted test CA and an explicitly permitted private origin exercise real
+    // service discovery/JWKS persistence, including advertised key rotation.
+    const fixture=await discoveryProvider();
+    try{
+      process.env.OIDC_CREDENTIAL_KEYS_JSON=installationKeys;
+      await drafts.save(regional.sessionToken,{...input,expectedRevision:3,issuer:`${fixture.origin}/adfs`,replacementSecret:'fresh-provider-secret'});
+      const serviceUrl=new URL('../dist/authentication/oidc-draft.service.js',import.meta.url).href;
+      const sessionsUrl=new URL('../dist/sessions/clinician-session.service.js',import.meta.url).href;
+      const script=`import {DataSource} from 'typeorm';import {OidcDraftService} from ${JSON.stringify(serviceUrl)};import {ClinicianSessionService} from ${JSON.stringify(sessionsUrl)};const db=new DataSource({type:'postgres',url:process.env.OIDC_TEST_DATABASE_URL});await db.initialize();try{const service=new OidcDraftService(db,new ClinicianSessionService(db));const result=await service.inspect(process.env.OIDC_TEST_SESSION_TOKEN,{expectedRevision:4});console.log(JSON.stringify(result));}finally{await db.destroy();}`;
+      const inspect=()=>promisify(execFile)(process.env.OIDC_TEST_RUNTIME || process.execPath,['--input-type=module','-e',script],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),OIDC_TEST_DATABASE_URL:url.toString(),OIDC_TEST_SESSION_TOKEN:regional.sessionToken},timeout:30000});
+      const healthy=JSON.parse((await inspect()).stdout);
+      assert.equal(healthy.draft.discoveryHealth,'healthy');assert.deepEqual(healthy.draft.discovery.signingKeyIds,['key-current','key-next']);assert.equal(healthy.draft.discovery.token_endpoint,`${fixture.origin}/token`);assert.equal(healthy.draft.discovery.pkceS256,true);assert.equal(healthy.active.revision,1);
+      await manager.query("update app_identity.oidc_provider_state set active_revision=4 where group_id=$1",[root]);
+      fixture.metadataOverrides={token_endpoint:'https://169.254.169.254/token'};
+      const unsafe=JSON.parse((await inspect()).stdout);assert.equal(unsafe.draft.discoveryHealth,'failed');assert.equal(unsafe.draft.discovery.token_endpoint,`${fixture.origin}/token`);assert.equal(unsafe.active.revision,4);assert.equal(unsafe.active.discovery.token_endpoint,`${fixture.origin}/token`);
+      fixture.metadataOverrides={issuer:'https://different.example.org'};
+      assert.equal(JSON.parse((await inspect()).stdout).draft.discoveryHealth,'failed');
+      const goodKeys=fixture.keys;
+      fixture.metadataOverrides={};fixture.keys=[{kty:'RSA',kid:'broken-key'}];
+      assert.equal(JSON.parse((await inspect()).stdout).draft.discoveryHealth,'failed');
+      fixture.keys=goodKeys;await inspect();
+      await manager.query("update app_identity.organization set hostname='child.localhost' where id=$1",[child]);
+      const tests=new OidcTestService(database,sessions,new AgencyDirectoryService(database));
+      const previousWebOrigin=process.env.WEB_ORIGIN;process.env.WEB_ORIGIN='http://localhost:3198';
+      try{await agencyRequest.run({origin:'http://child.localhost:3198'},async()=>{
+        const start=await tests.begin(regional.sessionToken,{expectedRevision:4});const state=new URL(start.authorizationUrl).searchParams.get('state');
+        const callback=new URL(`http://child.localhost:3198/api/sessions/oidc/callback?state=${state}&code=fictional`);
+        await assert.rejects(tests.callback(callback,'wrong-correlation'));
+        await agencyRequest.run({origin:'http://other.localhost:3198'},()=>assert.rejects(tests.callback(callback,start.correlation)));
+        const duplicate=new URL(callback);duplicate.searchParams.append('state',state);await assert.rejects(tests.callback(duplicate,start.correlation));
+        const [unconsumed]=await manager.query("select consumed_at from app_identity.oidc_test_transaction where correlation_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(start.correlation)]);assert.equal(unconsumed.consumed_at,null);
+        await manager.query("update app_identity.oidc_test_transaction set expires_at=now()-interval '1 second' where consumed_at is null");
+        await assert.rejects(tests.callback(callback,start.correlation));
+      });}finally{if(previousWebOrigin===undefined)delete process.env.WEB_ORIGIN;else process.env.WEB_ORIGIN=previousWebOrigin;}
+      const testUrl=new URL('../dist/authentication/oidc-test.service.js',import.meta.url).href;
+      const contextUrl=new URL('../dist/sessions/agency-context.js',import.meta.url).href;
+      const directoryUrl=new URL('../dist/sessions/agency-directory.service.js',import.meta.url).href;
+      const testScript=`import {DataSource} from 'typeorm';import {OidcTestService} from ${JSON.stringify(testUrl)};import {ClinicianSessionService} from ${JSON.stringify(sessionsUrl)};import {AgencyDirectoryService} from ${JSON.stringify(directoryUrl)};import {agencyRequest} from ${JSON.stringify(contextUrl)};const db=new DataSource({type:'postgres',url:process.env.OIDC_TEST_DATABASE_URL,extra:{options:'-c role=open_triage_api_runtime'}});await db.initialize();try{await agencyRequest.run({origin:'http://child.localhost:3198'},async()=>{const service=new OidcTestService(db,new ClinicianSessionService(db),new AgencyDirectoryService(db));const start=await service.begin(process.env.OIDC_TEST_SESSION_TOKEN,{expectedRevision:4});const response=await fetch(start.authorizationUrl,{redirect:'manual'});const callback=new URL(response.headers.get('location'));if(process.env.OIDC_TEST_CANCEL==='1'){callback.searchParams.delete('code');callback.searchParams.set('error','access_denied');}const outcomes=await Promise.allSettled([service.callback(callback,start.correlation),service.callback(callback,start.correlation)]);console.log(JSON.stringify(outcomes.map(result=>result.status)));});}finally{await db.destroy();}`;
+      const runTest=(cancel=false)=>promisify(execFile)(process.execPath,['--input-type=module','-e',testScript],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,OIDC_TEST_CANCEL:cancel?'1':'0',WEB_ORIGIN:'http://localhost:3198',NODE_ENV:'development',NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),OIDC_TEST_DATABASE_URL:url.toString(),OIDC_TEST_SESSION_TOKEN:regional.sessionToken},timeout:30000});
+      assert.deepEqual(JSON.parse((await runTest()).stdout).sort(),['fulfilled','rejected']);
+      const [tested]=await manager.query("select result,pkce_s256,fresh_personal_authentication from app_identity.oidc_test_transaction order by completed_at desc nulls last limit 1");
+      assert.deepEqual(tested,{result:'succeeded',pkce_s256:true,fresh_personal_authentication:false});
+      assert.equal((await drafts.get(regional.sessionToken)).test.result,'succeeded');
+      const [pendingIdentity]=await manager.query('select * from app_identity.regional_identity_request where group_id=$1',[root]);assert.equal(pendingIdentity.subject,'fictional-provider-user');assert.equal(pendingIdentity.organization_id,child);assert.equal(pendingIdentity.linked_user_id,null);assert.equal((await drafts.get(regional.sessionToken)).test.identityOutcome,'pending');
+      fixture.browserLogin=true;
+      const browser=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-test-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),OIDC_TEST_DATABASE_URL:url.toString(),OIDC_TEST_SESSION_TOKEN:regional.sessionToken,OIDC_TEST_CSRF:regional.session.csrfToken},timeout:30000}).catch(error=>{throw new Error(error.stderr||error.message);});
+      assert.deepEqual(JSON.parse(browser.stdout),{browserRedirect:true,callbackCookie:true,strictSessionCookie:true});
+      const [requestCount]=await manager.query('select count(*)::int count from app_identity.regional_identity_request where group_id=$1',[root]);assert.equal(requestCount.count,1,'Repeated real callbacks reuse one pending identity');
+      fixture.browserLogin=false;
+      await runTest(true);assert.equal((await drafts.get(regional.sessionToken)).test.result,'canceled');assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'canceled');
+      fixture.tokenOverrides={nonce:'forged'};await runTest();assert.equal((await drafts.get(regional.sessionToken)).test.result,'failed');assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'provider_validation');
+      assert.equal((await drafts.get(regional.sessionToken)).active.revision,4);
+      fixture.tokenOverrides={};
+      fixture.beforeToken=async()=>manager.query("update app_identity.oidc_test_transaction set expires_at=now()-interval '1 second' where consumed_at is not null and completed_at is null");
+      await runTest();assert.equal((await drafts.get(regional.sessionToken)).test.result,'failed');
+      assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'expired');
+      const [unfinished]=await manager.query("select count(*)::int count from app_identity.oidc_test_transaction where consumed_at is not null and completed_at is null");assert.equal(unfinished.count,0,'Expired TypeORM UPDATE RETURNING [[],0] must fail and complete as failed');
+      fixture.beforeToken=async()=>manager.query("update app_identity.oidc_provider_version set discovery_health='failed' where group_id=$1 and revision=4",[root]);
+      await runTest();assert.equal((await drafts.get(regional.sessionToken)).test.result,'failed');
+      assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'draft_changed');
+      fixture.beforeToken=undefined;await inspect();
+      fixture.beforeToken=async()=>manager.query("update app_identity.organization set hostname='withdrawn.localhost' where id=$1",[child]);
+      await runTest();assert.equal((await drafts.get(regional.sessionToken)).test.result,'failed');
+      assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'origin_changed');
+      await manager.query("update app_identity.organization set hostname='child.localhost' where id=$1",[child]);fixture.beforeToken=undefined;
+      const audit=await manager.query("select details from app_identity.authentication_event where details->>'kind'='oidc_test'");assert(audit.length>=5);assert.doesNotMatch(JSON.stringify(audit),/fictional-provider-user|fictional-access-token|fresh-provider-secret|code_verifier|nonce|ciphertext/);
+      fixture.beforeToken=()=>drafts.save(regional.sessionToken,{...input,expectedRevision:4,issuer:`${fixture.origin}/adfs`,replacementSecret:'fresh-provider-secret'});
+      await runTest();fixture.beforeToken=undefined;
+      const [stale]=await manager.query("select result,failure_code from app_identity.oidc_test_transaction where revision=4 order by completed_at desc nulls last limit 1");assert.deepEqual(stale,{result:'failed',failure_code:'draft_changed'});
+      assert.equal((await drafts.get(regional.sessionToken)).draft.revision,5);assert.equal((await drafts.get(regional.sessionToken)).test,null);
+      assert.equal((await drafts.get(regional.sessionToken)).active.revision,4);
+    }finally{await fixture.close();}
+    // Data API roles cannot inspect persisted envelopes or drafts.
+    const permissions=await manager.query("select relacl::text as acl from pg_class where oid='app_identity.oidc_provider_version'::regclass");
+    assert.match(permissions[0].acl,/open_triage_api_runtime/);assert.doesNotMatch(permissions[0].acl,/(?:anon|authenticated)=|[,{]=/);
+  }finally{if(old===undefined)delete process.env.OIDC_CREDENTIAL_KEYS_JSON;else process.env.OIDC_CREDENTIAL_KEYS_JSON=old;await pool.end();await admin.query(`drop database ${name}`);await admin.end();}
+});

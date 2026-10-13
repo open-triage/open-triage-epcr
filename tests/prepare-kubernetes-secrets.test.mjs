@@ -26,8 +26,8 @@ test("production credentials preserve routing and assign five distinct restricte
     assert.equal(url.searchParams.get("options"), `-c role=${credential.portableRole}`);
   }
   const api = environment(files["open-triage-api.env"]);
-  const keys = [api.PATIENT_KEY_SECRET_BASE64, api.AUTH_RATE_LIMIT_SECRET_BASE64, api.OFFLINE_RECOVERY_SECRET_BASE64];
-  assert.equal(new Set(keys).size, 3);
+  const keys = [api.PATIENT_KEY_SECRET_BASE64, api.AUTH_RATE_LIMIT_SECRET_BASE64, api.OFFLINE_RECOVERY_SECRET_BASE64, JSON.parse(api.OIDC_CREDENTIAL_KEYS_JSON)[api.OIDC_CREDENTIAL_KEY_VERSION]];
+  assert.equal(new Set(keys).size, 4);
   for (const key of keys) assert.equal(Buffer.from(key, "base64").length, 32);
   assert.match(api.PATIENT_KEY_INSTALLATION_ID, /^[a-f0-9-]{36}$/);
 });

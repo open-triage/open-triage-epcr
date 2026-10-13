@@ -1,3 +1,4 @@
+import "@open-triage/contracts/runtime-node/check";
 import "dotenv/config";
 import { DataSource } from "typeorm";
 import { runIdentityAccountCli } from "./identity-account.cli.js";

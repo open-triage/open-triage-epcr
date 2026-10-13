@@ -96,7 +96,7 @@ test("temporary credentials sign in only before expiry and cannot outlive their 
       if (normalized.startsWith("select capability.key as capability_key")) return [{ capability_key: "clinical:document" }];
       return [];
     };
-    return { events, sessions: new ClinicianSessionService({ query, manager: { query } }) };
+    return { events, sessions: new ClinicianSessionService({ query, manager: { query }, transaction: work => work({ query }) }) };
   }
   const before = serviceAtBoundary();
   const rawUserAgent = "Mozilla/5.0 (Windows NT 10.0; identifying-build/8877) Chrome/142.0.1.9";

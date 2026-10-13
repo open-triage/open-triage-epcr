@@ -1,4 +1,8 @@
 {
+  "platform.error.admin.oidcInvalid": "Ogiltigt OIDC-fält: {field}.",
+  "platform.error.admin.oidcStale": "OIDC-utkastet har ändrats. Läs om och granska innan du sparar.",
+  "platform.error.admin.oidcIncomplete": "Fyll i obligatoriska OIDC-fält: {field}.",
+  "platform.error.admin.oidcEncryptionUnavailable": "Kryptering av OIDC-hemligheter är inte tillgänglig. Be installationsansvarig konfigurera skyddade nycklar.",
   "admin.temporaryAccessPolicy": "Tillfälliga lösenord upphör enligt gruppens autentiseringspolicy.",
   "platform.error.admin.authenticationPolicyStale": "Autentiseringspolicyn har ändrats. Läs om den effektiva policyn och granska dina ändringar innan du sparar.",
   "platform.error.admin.authenticationPolicyInvalid": "Ange heltal: 1–168 timmar och 1–1000 inloggningsförsök.",
@@ -59,6 +63,7 @@
   "navigation.adminPanels": "Administrationspaneler",
   "navigation.administration": "Administration",
   "navigation.superAdmin": "Superadmin",
+  "navigation.shiftSchedules": "Passcheman",
   "navigation.units": "Enheter",
   "navigation.dashboard": "Översikt",
   "navigation.users": "Användare",
@@ -1746,5 +1751,9 @@
   "admin.agencyUniqueStateId": "dAgency.01 — Organisationens unika delstats-ID",
   "admin.agencyNumber": "dAgency.02 — Organisationsnummer",
   "admin.agencyStateCode": "dAgency.04 — ANSI-delstatskod",
-  "admin.agencyCredentialHelp": "Använd inloggningsuppgifterna från din organisation."
+  "admin.agencyCredentialHelp": "Använd inloggningsuppgifterna från din organisation.",
+  "platform.error.admin.regionalIdentityConflict": "Identiteten är redan länkad eller leverantören har ändrats. Uppdatera förfrågningarna och granska aktuell integration.",
+  "platform.error.admin.regionalIdentityForbidden": "Behörighet för autentisering och användarhantering krävs.",
+  "platform.error.admin.regionalIdentityMissing": "Identitetsförfrågan är inte längre tillgänglig i gruppen. Uppdatera förfrågningarna.",
+  "platform.error.admin.regionalIdentityTarget": "Välj en aktiv vanlig användare i gruppen som du har behörighet att hantera."
 }

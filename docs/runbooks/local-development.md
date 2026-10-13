@@ -2,7 +2,7 @@
 
 ## First-time setup
 
-Install Node.js 22 or newer, a Docker engine or Docker Desktop, and the
+Install Node.js 22.12.0 or newer, a Docker engine or Docker Desktop, and the
 [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
 The repository already contains `supabase/config.toml`; run all local Supabase
 commands from the repository root. On WSL, enable Docker Desktop integration for
@@ -240,3 +240,20 @@ browser unit suite tests unset, same-origin, and explicit API URL configurations
 The disposable database is removed on completion, including test failure.
 Use this complete check rather than interpreting skipped database tests in
 `npm test` as database validation.
+
+OIDC draft transport regression tests use `openssl` to generate an ephemeral
+local TLS CA and bind a non-loopback network interface. Install OpenSSL before
+running `npm run check:ci`; the test CA is trusted only in its test child process.
+
+The shared startup guard checks the Node runtime before local readiness, CI
+preflight, or API entry points load dependencies. Nest 12 uses ESM, so the compiled
+CommonJS API needs the default `require(esm)` support [enabled by default from Node 22.12.0](https://nodejs.org/en/blog/release/v22.12.0).
+Do not disable it with `--no-experimental-require-module` in CLI or `NODE_OPTIONS`;
+the guard rejects that configuration with a clear runtime requirement message.
+
+The root development helper also removes inherited server credential namespaces
+from the web process, including OIDC, authentication throttling, patient keys,
+offline recovery and PostgreSQL connection settings. This filtering applies even
+when an older `.env.local` does not list a newly exported server key. The API keeps
+those values; explicitly public `NEXT_PUBLIC_` settings and the derived local web
+upstream remain available to the web process.

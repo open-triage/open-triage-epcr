@@ -1,3 +1,4 @@
+import "@open-triage/contracts/runtime-node/check";
 import "dotenv/config";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
@@ -7,6 +8,7 @@ import { validateAuthenticationThrottleConfiguration } from "./sessions/authenti
 import { securityHeaders } from "./security-headers.js";
 import { PlatformErrorFilter } from "./platform-error.filter.js";
 import { agencyRequest, browserOrigin } from "./sessions/agency-context.js";
+import { installationCredential } from "./sessions/installation-session.js";
 import { AgencyDirectoryService } from "./sessions/agency-directory.service.js";
 
 async function bootstrap() {
@@ -18,7 +20,7 @@ async function bootstrap() {
   }
   app.set("trust proxy", trustProxyHops);
   app.use((request: Parameters<typeof browserOrigin>[0], response: { status(code: number): { json(body: unknown): void } }, next: () => void) => {
-    try { agencyRequest.run({ origin: browserOrigin(request), organizationId: request.headers["x-organization-id"] }, next); }
+    try { agencyRequest.run({ origin: browserOrigin(request), organizationId: request.headers["x-organization-id"], installationCredential: installationCredential(request.headers.cookie) }, next); }
     catch { response.status(400).json({ message: "A valid application origin is required" }); }
   });
   app.use(securityHeaders);
