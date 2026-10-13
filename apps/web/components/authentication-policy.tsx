@@ -1,4 +1,5 @@
 "use client";
+import { ProductionWorkflowPanel } from "./production-workflow";
 import { resolveMessage } from "../app/localization";
 import React, { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
@@ -75,6 +76,7 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canRe
       <p role="status">{status}</p>
       <h3>{sv ? "Ändringshistorik" : "Change history"}</h3>
       <ul className="authentication-policy-history">{policy.history.map((event,index) => <li key={index}><details><summary>{event.displayName ?? event.actorId} — <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString(sv ? "sv-SE" : "en-US")}</time></summary><dl>{fields.map((field, index) => <div key={field}><dt>{labels[sv ? "sv" : "en"][index]}</dt><dd>{event.details.prior?.[field]} → {event.details.policy?.[field]}</dd></div>)}</dl></details></li>)}</ul>
+    <ProductionWorkflowPanel language={language} csrfToken={csrfToken} canWrite={canWrite}/>
     <OidcDraftPanel language={language} csrfToken={csrfToken} canWrite={canWrite}/>
     </>}
     </div>

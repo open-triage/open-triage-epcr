@@ -8,7 +8,11 @@ five-minute personal password reauthentication and append an attributable event.
 
 The migration adopts existing root duration and attempt limits only when every
 existing child agrees. It stops and names a conflicting group instead of choosing
-values silently. Before upgrade, an installation operator must inventory:
+values silently. Before upgrade, an installation operator must run the read-only conflict preflight
+(`npm run preflight:authentication -w @open-triage/database`) described in
+[the staged rollout runbook](production-workflow-rollout.md). It exits 2 and lists
+conflicting immutable agency IDs before the migration can modify policy. The
+following SQL is also available for manual inventory:
 
 ```sql
 select app_identity.organization_group(agency.id) as group_id, agency.id, agency.name,

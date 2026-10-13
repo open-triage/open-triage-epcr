@@ -593,7 +593,25 @@ export interface StartReviewRetrospectiveCommand {
   expectedRevision: string;
 }
 
+export interface ProductionWorkflowRollout {
+  groupId: string;
+  state: "preparation" | "enabled";
+  revision: number;
+  enabledAt: string | null;
+}
+export interface ProductionWorkflowReadiness extends ProductionWorkflowRollout {
+  canEnable: boolean;
+  providerReady: boolean;
+  totalUnits: number;
+  offset: number;
+  missingSchedules: number;
+  unenrolledUnits: number;
+  units: Array<{ id: string; organizationId: string; agencyName: string; callSign: string;
+    scheduleSelected: boolean; enrolled: boolean }>;
+}
 export interface ClinicianSession {
+  /** Live rollout state; it never advances personal proof or fixed deadlines. */
+  productionWorkflow?: ProductionWorkflowRollout;
   authenticationSource?: "local" | "oidc";
   /** Live group policy for the next required proof, distinct from issuance provenance. */
   nextAuthenticationSource?: "local" | "oidc";
@@ -1626,7 +1644,7 @@ export interface AssignedCallsResponse {
 }
 
 export interface ProductionJobAccess {
-  state: "ready" | "enrollment-required" | "agency-mismatch" | "schedule-required" | "handover-required" | "reauthentication-required" | "identity-confirmation-required" | "synthetic-only";
+  state: "preparation" | "ready" | "enrollment-required" | "agency-mismatch" | "schedule-required" | "handover-required" | "reauthentication-required" | "identity-confirmation-required" | "synthetic-only";
   unit?: { id: string; callSign: string; name: string; organizationId: string };
 }
 
