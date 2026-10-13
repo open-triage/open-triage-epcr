@@ -94,4 +94,4 @@ Immediately after dispatching, print one table covering every discovered ticket:
 | 003 | ... | 🚀 Dispatched now |
 | 004 | ... | 🔒 Blocked by 001 |
 
-Then wait for every dispatched agent to reach a terminal outcome. Use the host's multi-agent wait mechanism and avoid busy polling. When all agents finish, report each ticket's outcome, PR link when opened, verification results, and any blocker or failure. An agent failure does not make the ticket merged or complete.
+Then wait for every dispatched agent to reach a terminal outcome. Use the host's multi-agent wait mechanism and avoid busy polling. When all agents finish, report each ticket's outcome, PR link when opened, verification results, and any blocker or failure. An agent failure does not make the ticket merged or complete. If the user has specified that the workflow should continue automatically, repeat the discovery and dispatch cycle until no tickets remain ready.
