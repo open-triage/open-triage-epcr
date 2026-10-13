@@ -1202,9 +1202,16 @@ fieldset { min-inline-size: 0; }
 .authentication-policy-history { max-height: 12rem; overflow-y: auto; }
 .unit-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--green); border-radius: 8px; color: var(--text-color); background: var(--surface, white); }
 .unit-dialog::backdrop { background: rgb(12 18 14 / 48%); }
-.unit-dialog label { display: grid; gap: 7px; margin: 12px 0; }
-.unit-dialog label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
-.unit-dialog input:not([type="checkbox"]) { width: 100%; padding: 10px 12px; min-height: 44px; border: 1px solid var(--green); border-radius: 6px; color: var(--text-color); font-size: var(--text-control); }
+:where(.unit-dialog, .installation-enrollment) label { display: grid; gap: 7px; margin: 12px 0; }
+:where(.unit-dialog, .installation-enrollment) label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
+:where(.unit-dialog, .installation-enrollment) input:not([type="checkbox"]) { width: 100%; padding: 10px 12px; min-height: 44px; border: 1px solid var(--green); border-radius: 6px; color: var(--text-color); font-size: var(--text-control); }
+
+.installation-enrollment { max-width: 720px; margin: 0 auto; padding: 16px; overflow-wrap: anywhere; }
+.installation-enrollment form { display: grid; gap: 8px; }
+
+.unit-installation-inventory { max-height: min(35dvh, 320px); }
+
+.installation-enrollment h1 { font-size: var(--text-heading); }
 
 .oidc-metadata-value { overflow-wrap: anywhere; margin-inline-start: 0; }
 
