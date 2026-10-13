@@ -1,3 +1,4 @@
+import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -59,6 +60,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const waitForExpiry=session=>waitFor("select expires_at<=clock_timestamp() ready from app_identity.app_session where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(session.sessionToken)]);
 
  try{
+ await enableProductionWorkflowForTesting(admin,agency,SYNTHETIC_DEMO_FIXTURE.userId);
  await admin.query(`insert into app_identity.app_user(id,organization_id,display_name,synthetic) values($1,$2,'Fictional production clinician',false)`,[user,agency]);
  await admin.query(`insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password) values($1,$2,$3,false)`,[user,username,await createPasswordVerifier(password)]);
  await admin.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id) select $1,$2,id from app_identity.role where organization_id=$1 and system_key='clinician'`,[agency,user]);

@@ -15,6 +15,7 @@ function instrumentedDataSource(respond) {
     const statement = { connection: "transaction-connection", sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(statement);
     if (statement.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: parameters[0], revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
+    if (statement.sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: statement.parameters[0], revision:1, enabled_at:null}];
     return respond(statement);
   } };
   return {
@@ -90,6 +91,7 @@ test("temporary credentials sign in only before expiry and cannot outlive their 
     const query = async (sql, parameters = []) => {
       const normalized = sql.replace(/\s+/g, " ").trim();
       events.push({ sql: normalized, parameters });
+      if (normalized.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:null}];
       if (normalized.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: parameters[0], revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
       if (normalized.startsWith("select u.id as user_id")) return [account];
       if (normalized.startsWith("insert into app_identity.app_session")) return [{ id: "session-id" }];
@@ -194,7 +196,7 @@ test("active zero-role users receive a clear session result but cannot enter a w
     organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
     must_change_password: false, credential_version: "1"
   };
-  const query = async (sql) =>
+  const query = async (sql) => sql.includes("from app_identity.production_workflow_rollout") ? [{group_id:"group",revision:1,enabled_at:null}] :
     sql.replace(/\s+/g, " ").trim().startsWith("select s.id as session_id") ? [row] : [];
   const dataSource = { manager: { query }, query };
   const sessions = new ClinicianSessionService(dataSource);
@@ -217,6 +219,7 @@ test("capabilities are resolved from the current active role version on every re
   let capability = "catalog:read";
   const statements = [];
   const dataSource = { manager: { query: async () => [] }, query: async (sql) => {
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id:"group",revision:1,enabled_at:null}];
     const normalized = sql.replace(/\s+/g, " ").trim();
     statements.push(normalized);
     if (normalized.startsWith("select s.id as session_id")) return [row];
@@ -298,7 +301,7 @@ test('transactional authority checks do not acquire incidental activity locks; o
   created_at:new Date('2026-10-13T08:00:00Z'),expires_at:new Date('2026-10-13T20:00:00Z'),revoked_at:null,
   session_credential_version:'1',credential_version:'1',must_change_password:false,authentication_source:'local',authentication_valid:true,
   personally_authenticated_at:new Date('2026-10-13T08:00:00Z'),personal_authentication_purpose:'login'};
- const manager={queryRunner:{isTransactionActive:true},query:async(sql,parameters)=>{events.push(sql);if(sql.includes('select s.id as session_id'))return[row];if(sql.includes('select capability.key'))return[{capability_key:'clinical:document'}];return[];}};
+ const manager={queryRunner:{isTransactionActive:true},query:async(sql,parameters)=>{events.push(sql);if(sql.includes('from app_identity.production_workflow_rollout'))return[{group_id:'group',revision:1,enabled_at:null}];if(sql.includes('select s.id as session_id'))return[row];if(sql.includes('select capability.key'))return[{capability_key:'clinical:document'}];return[];}};
  const service=new ClinicianSessionService({manager});const first=await service.getAuthenticated('token',now,false,manager);
  assert.equal(events.some(sql=>sql.includes('set last_activity_at')),false);
  manager.queryRunner.isTransactionActive=false;const second=await service.getAuthenticated('token',now,false,manager);
@@ -325,6 +328,7 @@ test('live local login stamps verified completion using the database clock, incl
     const normalized=sql.replace(/\s+/g,' ').trim();events.push({sql:normalized,parameters});
     if(normalized==='select clock_timestamp() as completed_at')return [{completed_at:completion}];
     if(normalized.startsWith('select u.id as user_id'))return [account];
+    if(normalized.includes('from app_identity.production_workflow_rollout'))return[{group_id:'group',revision:1,enabled_at:null}];
     if(normalized.includes('select * from app_identity.group_authentication_policy'))return [{maximum_session_hours:12,temporary_password_hours:72,account_attempt_limit:20,network_attempt_limit:60}];
     if(normalized.startsWith('insert into app_identity.app_session'))return [{id:'session'}];
     if(normalized.startsWith('select capability.key'))return [{capability_key:'clinical:document'}];return [];

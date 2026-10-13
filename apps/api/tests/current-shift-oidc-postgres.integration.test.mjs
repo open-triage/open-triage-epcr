@@ -1,3 +1,4 @@
+import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -63,6 +64,8 @@ integration('current-shift gates use conservative signed OIDC proof through real
   await owner.query("insert into app_identity.weekly_schedule(id,group_id,name) values($1,$2,'Local zero grace')",[localSchedule,localAgency]);
   await owner.query('insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id) values($1,1,$2,$3::jsonb,$4)',[localSchedule,new Date(checkpoint.getTime()-7*86400000),JSON.stringify(points.filter(p=>p.time===checkpoint.toISOString().slice(11,16))),localAdmin.userId]);
   await owner.query('insert into app_identity.unit_schedule_selection(organization_id,unit_id,revision,schedule_id,effective_at,actor_id) values($1,$2,1,$3,$4,$5)',[localAgency,localUnit,localSchedule,new Date(checkpoint.getTime()-7*86400000),localAdmin.userId]);
+  await enableProductionWorkflowForTesting(owner,group,reviewer.userId);
+  await enableProductionWorkflowForTesting(owner,localAgency,localAdmin.userId);
   control=createServer((req,res)=>{let body='';req.on('data',p=>body+=p);req.on('end',async()=>{try{
    const command=JSON.parse(body||'{}');let answer={};
    if(command.mode)fixture.personalProofMode=command.mode;

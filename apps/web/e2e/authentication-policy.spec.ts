@@ -27,6 +27,7 @@ for (const width of [390,1440]) test(`inherited policy requires personal authent
     return route.fulfill({ json: policy });
   });
   await page.route("**/api/admin/authentication/oidc", route => route.fulfill({ json: { groupId: "root", draft: null, active: null, registration: { hosts: [], requiredClaims: ["sub"] }, history: [] } }));
+  await page.route("**/api/admin/authentication/workflow?*",r=>r.fulfill({json:{groupId:"root",state:"enabled",revision:2,canEnable:false,providerReady:true,totalUnits:0,offset:0,missingSchedules:0,unenrolledUnits:0,units:[]}}));
   await page.goto("/__authentication");
   await expect(page.getByText("Owning group: Root EMS (inherited)")).toBeVisible();
   await page.getByLabel("Maximum session duration (hours)").fill("8");
@@ -50,6 +51,7 @@ test("Swedish inherited policy remains read-only without sensitive credentials",
   await page.route("**/__auth-script", route => route.fulfill({ contentType: "text/javascript", body: script }));
   await page.route("**/api/admin/authentication", route => route.fulfill({ json: { groupName: "Region EMS", groupId: "root", organizationId: "child", inherited: true, revision: 1, maximumSessionHours: 8, temporaryPasswordHours: 24, accountAttemptsPer15Minutes: 20, networkAttemptsPer5Minutes: 60, history: [] } }));
   await page.route("**/api/admin/authentication/oidc", route => route.fulfill({ json: { groupId: "root", draft: null, active: null, registration: { hosts: [], requiredClaims: ["sub"] }, history: [] } }));
+  await page.route("**/api/admin/authentication/workflow?*",r=>r.fulfill({json:{groupId:"root",state:"enabled",revision:2,canEnable:false,providerReady:true,totalUnits:0,offset:0,missingSchedules:0,unenrolledUnits:0,units:[]}}));
   await page.goto("/__authentication?language=sv&readonly=1");
   await expect(page.getByRole("heading", { name: "Autentisering", exact: true })).toBeVisible();
   await expect(page.getByText("Ägande grupp: Region EMS (ärvd)")).toBeVisible();

@@ -3,6 +3,7 @@ import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import type { ClinicianSession, ProductionJobAccess, UnitSchedulePreview, NewJobConfirmation } from "@open-triage/contracts";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
+import { productionWorkflow } from "../authentication/production-workflow.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { agencyRequest } from "../sessions/agency-context.js";
 import type { SchedulesService } from "../schedules/schedules.service.js";
@@ -10,7 +11,7 @@ import type { SchedulesService } from "../schedules/schedules.service.js";
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
 export function assertProductionJobAccess(access: ProductionJobAccess): void {
-  if (access.state === "ready") return;
+  if (access.state === "ready" || access.state === "preparation") return;
   const code = { "enrollment-required": "calls.enrollmentRequired", "agency-mismatch": "calls.enrolledAgencyMismatch",
     "schedule-required": "calls.scheduleRequired", "handover-required": "calls.handoverRequired",
     "reauthentication-required": "calls.shiftReauthenticationRequired",
@@ -32,6 +33,32 @@ export async function productionJobAccess(manager: EntityManager, token: string,
     where role.id in (select role_id from app_identity.user_role_assignment where user_id=$1 and ended_at is null)
     order by role.id for share`, [session.user.id]);
   if (subject?.synthetic || session.user.id === SYNTHETIC_DEMO_FIXTURE.userId) return { state: "synthetic-only" };
+  const rollout = await productionWorkflow(manager, session.organization.id, "share");
+  if (rollout.state === "preparation") {
+    // Preparation exempts only enrollment/schedules, never live session authority.
+    // Lock immutable device associations too, even if its cookie has gone away.
+    const request = agencyRequest.getStore();
+    const registrations = await manager.query<Array<{id: string; organization_id: string; unit_id: string}>>(`
+      select id,organization_id,unit_id from app_identity.installation_registration
+      where credential_sha256=$1 or id=(select installation_registration_id from app_identity.app_session where token_sha256=$2)
+      order by id for share`, [request?.installationCredential ? digest(request.installationCredential) : null,digest(token)]);
+    const agencies = [session.organization.id,...registrations.map(row => row.organization_id)];
+    await manager.query(`select id from app_identity.organization where id=any($1::uuid[])
+      or id in(select parent_organization_id from app_identity.organization where id=any($1::uuid[])) order by id for share`, [agencies]);
+    await manager.query(`select id from app_identity.operational_unit where id=any($1::uuid[])
+      or id in(select unit_id from app_identity.unit_clinician where user_id=$2 and organization_id=$3)
+      order by id for share`, [registrations.map(row => row.unit_id),session.user.id,session.organization.id]);
+    await manager.query(`select unit_id from app_identity.unit_clinician where user_id=$1 and organization_id=$2
+      order by unit_id for share`, [session.user.id,session.organization.id]);
+    const [live] = await manager.query(`select s.id from app_identity.app_session s
+      where token_sha256=$1 and s.organization_id=$2 and s.revoked_at is null and s.expires_at>clock_timestamp()
+      and app_identity.session_authentication_valid(s) and app_identity.user_has_capability(s.user_id,s.organization_id,'clinical:document')
+      and (s.installation_registration_id is null or exists(select 1 from app_identity.installation_registration r
+        join app_identity.operational_unit u on u.id=r.unit_id and u.organization_id=r.organization_id
+        where r.id=s.installation_registration_id and r.revoked_at is null and u.active)) for update of s`, [digest(token),session.organization.id]);
+    if (!live) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
+    return { state: "preparation" };
+  }
   const request = agencyRequest.getStore();
   if (!request?.installationCredential) return { state: "enrollment-required" };
   const [registration] = await manager.query<Array<{ id: string; organization_id: string; unit_id: string; revoked_at: Date | null }>>(
@@ -52,11 +79,13 @@ export async function productionJobAccess(manager: EntityManager, token: string,
   if (!unit) return { state: "enrollment-required" };
   if (unit.organizationId !== session.organization.id) return { state: "agency-mismatch", unit };
   // Matching both cookies prevents borrowing a paired session on an unpaired browser.
-  const [associated] = await manager.query(`select id from app_identity.app_session
-    where token_sha256=$1 and installation_registration_id=$2 and browser_origin=$3
-    and organization_id=$4 and revoked_at is null and expires_at>clock_timestamp() for update`,
+  const [associated] = await manager.query<Array<{ id: string; matches: boolean; live: boolean }>>(`select id,
+    (installation_registration_id=$2 and browser_origin=$3 and organization_id=$4) matches,
+    (revoked_at is null and expires_at>clock_timestamp() and app_identity.session_authentication_valid(app_session)) live
+    from app_identity.app_session where token_sha256=$1 for update`,
     [digest(token), registration.id, request.origin, session.organization.id]);
-  if (!associated) return { state: "enrollment-required", unit };
+  if (!associated?.live) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
+  if (!associated.matches) return { state: "enrollment-required", unit };
   return { state: await currentShiftAccess(manager, token, unit, schedules, confirmation), unit };
 }
 
@@ -76,6 +105,7 @@ export function shiftAuthenticationState(evaluated: UnitSchedulePreview, persona
  * already owns the authority/device/unit/session locks, with no provider interaction. */
 export async function currentShiftAccess(manager: EntityManager, token: string,
   unit: {organizationId: string; id: string}, schedules: SchedulesService, confirmation?: JobConfirmation): Promise<ProductionJobAccess["state"]> {
+  if ((await productionWorkflow(manager, unit.organizationId, "share")).state === "preparation") return "ready";
   const [evidence] = await manager.query<Array<ConfirmationSessionContext & { personally_authenticated_at: Date | null }>>(`
     select personally_authenticated_at,user_id,organization_id,installation_registration_id,browser_origin from app_identity.app_session
     where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()`, [digest(token)]);
@@ -109,7 +139,7 @@ function confirmationContext({ evaluatedAt: _time, scheduleName: _name, ...conte
 export async function prepareNewJobConfirmation(manager: EntityManager, token: string,
   session: ClinicianSession, schedules: SchedulesService, target: string): Promise<NewJobConfirmation | null> {
   const access = await productionJobAccess(manager, token, session, schedules);
-  if (access.state === "ready" || access.state === "synthetic-only") return null;
+  if (access.state === "preparation" || access.state === "ready" || access.state === "synthetic-only") return null;
   if (access.state !== "identity-confirmation-required") assertProductionJobAccess(access);
   const evaluated = await schedules.evaluateUnit(manager, access.unit!.organizationId, access.unit!.id);
   if (!evaluated.graceCheckpoints.length) {

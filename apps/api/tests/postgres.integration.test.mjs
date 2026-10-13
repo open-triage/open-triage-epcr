@@ -1,3 +1,4 @@
+import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -1702,6 +1703,13 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     commandId: randomUUID(), reportId, incidentId: randomUUID(), patientId: randomUUID(),
     organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
   };
+  // This earlier HTTP check catches staged-rollout contract drift before the
+  // larger agency/provider/enrollment suites run.
+  const legacyCommand={...createCommand,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()};
+  const legacy=await request("/reports","POST",legacyCommand,false);
+  assert.equal(legacy.response.status,201,JSON.stringify(legacy.payload));
+  assert.equal((await client.query('select synthetic from clinical.report where id=$1',[legacyCommand.reportId])).rows[0].synthetic,false);
+  await enableProductionWorkflowForTesting(client,organizationId,userId);
   const unpaired = await request("/reports", "POST", createCommand, false);
   assert.equal(unpaired.response.status,403);
   assert.equal(unpaired.payload.code,"calls.enrollmentRequired");

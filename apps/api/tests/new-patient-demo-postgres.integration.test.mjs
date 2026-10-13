@@ -1,3 +1,4 @@
+import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -161,6 +162,7 @@ integration("new demo patients support the generated-report lifecycle without a 
     assert.equal((await manager.query("select tombstoned_at is not null cleared from clinical.element_occurrence where id=$1",
       [occurrence.id]))[0].cleared, true);
 
+    await enableProductionWorkflowForTesting(client,organizationId,userId);
     actorId = ordinaryUserId;
     const ordinary = command();
     // Ordinary standalone production jobs use the shared device gate. An owned
