@@ -1761,5 +1761,9 @@
   "calls.production.handover-required": "Enheten använder schemalagda skiftbyten. Nya produktionsuppdrag är inte tillgängliga förrän skiftautentiseringen har aktiverats. Befintliga rapporter är tillgängliga.",
   "platform.error.calls.handoverRequired": "Enheten använder schemalagda skiftbyten. Nya produktionsuppdrag är inte tillgängliga förrän skiftautentiseringen har aktiverats. Befintliga rapporter är tillgängliga.",
   "calls.production.synthetic-only": "Syntetiska konton kan endast öppna syntetiska uppdrag.",
-  "platform.error.calls.syntheticOnly": "Syntetiska konton kan endast öppna syntetiska uppdrag."
+  "platform.error.calls.syntheticOnly": "Syntetiska konton kan endast öppna syntetiska uppdrag.",
+  "platform.error.admin.regionalIdentityConflict": "Identiteten är redan länkad eller leverantören har ändrats. Uppdatera förfrågningarna och granska aktuell integration.",
+  "platform.error.admin.regionalIdentityForbidden": "Behörighet för autentisering och användarhantering krävs.",
+  "platform.error.admin.regionalIdentityMissing": "Identitetsförfrågan är inte längre tillgänglig i gruppen. Uppdatera förfrågningarna.",
+  "platform.error.admin.regionalIdentityTarget": "Välj en aktiv vanlig användare i gruppen som du har behörighet att hantera."
 }

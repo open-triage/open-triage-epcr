@@ -1763,5 +1763,9 @@
   "calls.production.handover-required": "This unit uses scheduled handovers. New production jobs are unavailable until the shift authentication gate is enabled. Existing reports remain available.",
   "platform.error.calls.handoverRequired": "This unit uses scheduled handovers. New production jobs are unavailable until the shift authentication gate is enabled. Existing reports remain available.",
   "calls.production.synthetic-only": "Synthetic accounts can open only synthetic jobs.",
-  "platform.error.calls.syntheticOnly": "Synthetic accounts can open only synthetic jobs."
+  "platform.error.calls.syntheticOnly": "Synthetic accounts can open only synthetic jobs.",
+  "platform.error.admin.regionalIdentityConflict": "The identity is already linked or its provider changed. Refresh requests and review the current integration.",
+  "platform.error.admin.regionalIdentityForbidden": "Authentication and user management permissions are required.",
+  "platform.error.admin.regionalIdentityMissing": "The identity request is no longer available in this group. Refresh requests.",
+  "platform.error.admin.regionalIdentityTarget": "Choose an active ordinary user in this group that you are authorized to manage."
 }

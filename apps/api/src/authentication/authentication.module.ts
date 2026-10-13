@@ -6,5 +6,7 @@ import { OidcDraftService } from "./oidc-draft.service.js";
 import { OidcDraftController } from "./oidc-draft.controller.js";
 import { OidcTestController } from "./oidc-test.controller.js";
 import { OidcTestService } from "./oidc-test.service.js";
-@Module({ imports: [SessionsModule], controllers: [AuthenticationPolicyController, OidcDraftController, OidcTestController], providers: [AuthenticationPolicyService, OidcDraftService, OidcTestService] })
+import { RegionalIdentityService } from "./regional-identity.service.js";
+import { RegionalIdentityController } from "./regional-identity.controller.js";
+@Module({ imports: [SessionsModule], controllers: [AuthenticationPolicyController, OidcDraftController, OidcTestController, RegionalIdentityController], providers: [AuthenticationPolicyService, OidcDraftService, OidcTestService, RegionalIdentityService] })
 export class AuthenticationModule {}
