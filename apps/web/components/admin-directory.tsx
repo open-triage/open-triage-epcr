@@ -185,9 +185,9 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   async function revokeSession(session: AdminSessionSummary) {
     if (!editing) return;
     const warning = session.owner
-      ? "This is an installation owner session. Confirm that you want to revoke it."
-      : session.current ? "This is your current session. Revoking it will sign you out. Continue?"
-        : "Revoke this session?";
+      ? t("admin.revokeOwnerSessionConfirm")
+      : session.current ? t("admin.revokeCurrentSessionConfirm")
+        : t("admin.revokeSessionConfirm");
     if (!window.confirm(warning)) return;
     setSecurityLoading(true);
     setError(null);
@@ -240,7 +240,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     const active = data.get("active") === "true";
     const command: UpdateAdminUserCommand = {
       expectedRevision: editing.revision,
-      username: String(data.get("username") ?? ""),
+      username: editing.username === null ? null : String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
       active,
       note: String(data.get("note") ?? "") || undefined
@@ -251,10 +251,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     try {
       const updated = await updateAdminUser(csrfToken, editing.id, command);
       setNotice(updated.restoredRoles.length
-        ? `${updated.displayName} was reactivated. Roles restored: ${updated.restoredRoles.map((role) => role.displayName).join(", ") || "none"}. A fresh login is required; the credential was not reset.`
+        ? t("admin.userReactivatedNotice", { name: updated.displayName, roles: updated.restoredRoles.map(role => role.displayName).join(", ") })
         : !updated.active
-          ? `${updated.displayName} was disabled and ${updated.sessionsRevoked} active session${updated.sessionsRevoked === 1 ? " was" : "s were"} revoked. Roles are retained but ineffective.`
-          : `${updated.displayName} was updated.`);
+          ? t("admin.userDisabledNotice", { name: updated.displayName, count: updated.sessionsRevoked })
+          : t("admin.userUpdatedNotice", { name: updated.displayName }));
       await load(query);
       closeUser(true);
     } catch (reason) {
@@ -283,7 +283,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setSelectedRoleIds(updated.roles.map((role) => role.id));
       setRoleNote("");
       setReauthenticationPassword("");
-      setNotice(`Roles updated for ${updated.displayName}. Added: ${updated.addedRoles.map((role) => role.displayName).join(", ") || "none"}; removed: ${updated.removedRoles.map((role) => role.displayName).join(", ") || "none"}.${updated.active ? "" : " Roles remain ineffective until reactivation."}`);
+      setNotice(t("admin.userRolesUpdatedNotice", { name: updated.displayName,
+        added: updated.addedRoles.map(role => role.displayName).join(", ") || t("admin.noRoles"),
+        removed: updated.removedRoles.map(role => role.displayName).join(", ") || t("admin.noRoles") }) +
+        (updated.active ? "" : ` ${t("admin.retainedRolesIneffectiveWhenDisabled")}`));
       await load(query);
     } catch (reason) {
       setError(adminError(reason, "admin.roleSetUpdateFailed"));
@@ -324,8 +327,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     {canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
       <fieldset disabled={saving}><legend><AdminText messageKey="admin.identityAndAccess" /></legend>
         <label><AdminText messageKey="admin.displayName" /><input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
-        <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
-          pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label>
+        {editing.username !== null ? <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
+          pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label> : <p><AdminText messageKey="admin.ssoOnlyAccount" /></p>}
         <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend><AdminText messageKey="admin.completeRetainedRole" /></legend>
           {roleOptions.map((role) => <label key={role.id}>
             <input type="checkbox" value={role.id}
@@ -374,7 +377,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
             {session.current ? t("admin.revokeAndSign") : t("admin.revokeSession")}</button>}
         </li>)}</ul>}
       </div>}
-      {canResetCredentials && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-credential-reset" onChangeCapture={() => setCredentialDirty(true)} onSubmit={resetCredential}>
+      {canResetCredentials && editing.username !== null && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-credential-reset" onChangeCapture={() => setCredentialDirty(true)} onSubmit={resetCredential}>
         <fieldset disabled={resetting}><legend><AdminText messageKey="admin.resetCredential" /></legend>
           <p><AdminText messageKey="admin.credentialResetDoesNotReactivate" /></p>
           <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
@@ -407,7 +410,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       <thead><tr><th scope="col"><AdminText messageKey="admin.displayName" /></th><th scope="col"><AdminText messageKey="admin.username" /></th><th scope="col"><AdminText messageKey="admin.status" /></th><th scope="col"><AdminText messageKey="admin.roles" /></th>
         {hasActions && <th scope="col"><AdminText messageKey="admin.actions" /></th>}</tr></thead>
       <tbody>{items.map((user) => <tr key={user.id} className="admin-directory-row" aria-selected={editing?.id === user.id} onClick={activateListRow}>
-        <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
+        <th scope="row">{user.displayName}</th><td><code>{user.username ?? t("admin.ssoOnly")}</code></td>
         <td>{user.active ? t("admin.active") : t("admin.disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
           owner={user.owner} superadmin={user.superadmin} /></td>
         {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? t("admin.currentAccount")

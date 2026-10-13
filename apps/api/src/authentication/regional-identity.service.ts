@@ -1,6 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import { randomUUID } from "node:crypto";
+import { UserRoleAssignmentService } from "../admin/user-role-assignment.service.js";
+import { validateReplaceAdminUserRoles } from "../admin/user-role-assignment.validation.js";
+import { validateUpdateAdminUser } from "../admin/user-lifecycle.validation.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
@@ -20,7 +24,7 @@ export function regionalIdentity(claims:Record<string,unknown>,mappings:OidcDraf
 }
 @Injectable()
 export class RegionalIdentityService {
-  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService){}
+  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService, private readonly roles:UserRoleAssignmentService=new UserRoleAssignmentService(database,sessions)){}
   /** Called only after code/signature validation and final transaction binding checks. */
   async record(manager:EntityManager,scope:{groupId:string;providerId:string;revision:number;organizationId:string},identity:ValidatedRegionalIdentity){
     const params=[scope.groupId,scope.providerId,scope.revision,scope.organizationId,identity.issuer,identity.subject,identity.displayName,identity.email];
@@ -48,7 +52,49 @@ export class RegionalIdentityService {
       where r.group_id=$1 and ($2::uuid is null or (r.created_at,r.id)<(select created_at,id from app_identity.regional_identity_request where id=$2 and group_id=$1))
       order by r.created_at desc,r.id desc limit $3`,[groupId,input.cursor??null,limit+1]);
     const visible=rows.slice(0,limit);
-    return {groupId,items:visible.map(view),nextCursor:rows.length>limit?visible.at(-1)!.id:null};
+    const providers=await this.database.query<Array<{source:"draft"|"active";revision:string;provider_id:string;issuer:string}>>(`
+      select 'draft' as source,v.revision,v.provider_id,v.configuration->>'issuer' issuer
+      from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.draft_revision where s.group_id=$1
+      union all select 'active',v.revision,v.provider_id,v.configuration->>'issuer'
+      from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.active_revision where s.group_id=$1`,[groupId]);
+    return {groupId,items:visible.map(row=>({...view(row),reviewProviders:providers.filter(provider=>provider.provider_id===row.provider_id&&provider.issuer===row.issuer).map(provider=>({source:provider.source,revision:Number(provider.revision)}))})),nextCursor:rows.length>limit?visible.at(-1)!.id:null};
+  }
+  async approve(token:string,requestId:string,input:unknown){
+    if(!uuid.test(requestId)||!input||typeof input!=="object"||Array.isArray(input))throw new BadRequestException("New regional user details are required");
+    const command=input as Record<string,unknown>;
+    if(Object.keys(command).some(key=>!["displayName","roleIds","note","providerSource","expectedProviderRevision"].includes(key))||
+      typeof command.providerSource!=="string"||!["draft","active"].includes(command.providerSource)||command.note!==undefined&&typeof command.note!=="string"||!Number.isSafeInteger(command.expectedProviderRevision)||Number(command.expectedProviderRevision)<1)
+      throw new BadRequestException("An explicit current provider version is required");
+    const profile=validateUpdateAdminUser({expectedRevision:1,username:null,displayName:command.displayName,active:true,note:command.note});
+    const assignments=validateReplaceAdminUserRoles({expectedRevision:1,roleIds:command.roleIds,note:command.note});
+    try{return await this.database.transaction(async manager=>{
+      await this.authority(token,true,manager);
+      await this.sessions.requireCapability(token,"roles:assign",manager);
+      await manager.query("select user_id from app_identity.installation_owner for update");
+      const {actor,groupId}=await this.authority(token,true,manager);
+      const [request]=await manager.query<RequestRow[]>("select * from app_identity.regional_identity_request where id=$1 and group_id=$2 for update",[requestId,groupId]);
+      if(!request)throw new NotFoundException({code:"admin.regionalIdentityMissing"});
+      if(request.linked_user_id)throw conflict();
+      // A draft test is evidence for its immutable provider keys, never active login evidence.
+      // Bind the administrator's explicit choice to the current draft or active revision.
+      const [provider]=await manager.query<Array<{revision:string;provider_id:string;issuer:string}>>(`
+        select v.revision,v.provider_id,v.configuration->>'issuer' issuer
+        from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v
+          on v.group_id=s.group_id and v.revision=case when $2='active' then s.active_revision else s.draft_revision end
+        where s.group_id=$1 for update of s`,[groupId,command.providerSource]);
+      if(!provider||Number(provider.revision)!==command.expectedProviderRevision||provider.provider_id!==request.provider_id||provider.issuer!==request.issuer)throw conflict();
+      const userId=randomUUID();
+      await manager.query("insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,$3)",[userId,groupId,profile.displayName]);
+      await this.roles.replaceInTransaction(manager,token,userId,assignments);
+      const final=await this.authority(token,true,manager);
+      if(final.groupId!==groupId||final.actor.user.id!==actor.user.id||final.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.regionalIdentityForbidden"});
+      const [linked]=mutationRows<RequestRow>(await manager.query(`update app_identity.regional_identity_request set linked_user_id=$2,linked_by=$3,linked_at=now() where id=$1 and linked_user_id is null returning *`,[requestId,userId,actor.user.id]));
+      if(!linked)throw conflict();
+      await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,target_user_id,note,details)
+        values($1,$2,'account.provision','succeeded',$3,$4,$5::jsonb)`,[actor.organization.id,actor.user.id,userId,profile.note??null,
+        JSON.stringify({kind:"regional_identity",operation:"approved",requestId,revision:Number(request.first_revision),providerSource:command.providerSource,providerRevision:provider.revision,roleIds:assignments.roleIds})]);
+      return {...view(linked),ordinaryAccess:false};
+    });}catch(error){if(error&&typeof error==='object'&&'code' in error&&['23505','23514'].includes(String(error.code)))throw conflict();throw error;}
   }
   async link(token:string,requestId:string,input:unknown){
     const command=input as Record<string,unknown>;

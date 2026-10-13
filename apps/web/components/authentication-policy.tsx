@@ -19,7 +19,7 @@ async function request(csrfToken: string, body?: unknown): Promise<Policy> {
   if (!response.ok) throw await platformRequestError(response);
   return response.json();
 }
-export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canReviewIdentities=false, canLinkIdentities=false }: { language: string; csrfToken: string; canWrite: boolean; canReviewIdentities?:boolean;canLinkIdentities?:boolean }) {
+export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canReviewIdentities=false, canLinkIdentities=false, canApproveIdentities=false }: { language: string; csrfToken: string; canWrite: boolean; canReviewIdentities?:boolean;canLinkIdentities?:boolean;canApproveIdentities?:boolean }) {
   const sv = language === "sv";
   const [tab,setTab]=useState<"provider"|"identities">("provider");
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -71,6 +71,6 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canRe
     <OidcDraftPanel language={language} csrfToken={csrfToken} canWrite={canWrite}/>
     </>}
     </div>
-    {canReviewIdentities&&<div hidden={tab!=="identities"}><RegionalIdentitiesPanel language={language} csrfToken={csrfToken} canLink={canLinkIdentities}/></div>}
+    {canReviewIdentities&&<div hidden={tab!=="identities"}><RegionalIdentitiesPanel language={language} csrfToken={csrfToken} canLink={canLinkIdentities} canApprove={canApproveIdentities}/></div>}
   </section>;
 }

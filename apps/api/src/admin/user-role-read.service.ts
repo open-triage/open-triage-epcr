@@ -20,7 +20,7 @@ type UserCursor = {
   roleId: string | null;
 };
 type UserRow = {
-  id: string; display_name: string; username: string; active: boolean; revision: string | number;
+  id: string; display_name: string; username: string | null; active: boolean; revision: string | number;
   owner: boolean; superadmin: boolean;
   roles: AdminRoleSummary[] | string | null;
 };
@@ -104,17 +104,17 @@ export class UserRoleReadService {
           from app_identity.user_role_assignment assignment
           join app_identity.role role
             on role.organization_id = assignment.organization_id and role.id = assignment.role_id
-          where assignment.organization_id = u.organization_id and assignment.user_id = u.id
+          where assignment.organization_id = $1 and assignment.user_id = u.id
             and assignment.ended_at is null and not role.hidden
         ), '[]'::jsonb) as roles
       from app_identity.app_user u
-      join app_identity.local_credential credential on credential.user_id = u.id
+      left join app_identity.local_credential credential on credential.user_id = u.id
       where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1)
         and ($2 = 'all' or u.active = ($2 = 'active'))
         and ($3 = '' or lower(u.display_name) like $4 escape '\\' or credential.username like $4 escape '\\')
         and ($5::uuid is null or exists (
           select 1 from app_identity.user_role_assignment role_filter
-          where role_filter.organization_id = u.organization_id and role_filter.user_id = u.id
+          where role_filter.organization_id = $1 and role_filter.user_id = u.id
             and role_filter.role_id = $5 and role_filter.ended_at is null
         ))
         and ($6::boolean is null or (not u.active, lower(u.display_name), u.id) >

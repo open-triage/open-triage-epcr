@@ -1,3 +1,4 @@
+import { assertRoleAssignmentScope, lockAssignedRoles, readLockedRoleDefinitions } from "./role-assignment-locks.js";
 import { localPolicy } from "../authentication/local-policy.js";
 import { randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, UnprocessableEntityException } from "@nestjs/common";
@@ -7,8 +8,6 @@ import { DataSource } from "typeorm";
 import { createPasswordVerifier } from "../identity/password.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { selectedInstallationSettings } from "../config/installation-settings.js";
-
-type RoleRow = { id: string; system_key: string | null; capability_key: string | null };
 
 @Injectable()
 export class UserProvisioningService {
@@ -22,21 +21,24 @@ export class UserProvisioningService {
     const userId = randomUUID();
     try {
       return await this.dataSource.transaction(async (manager) => {
-        const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        let actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        const originalActor = { user: { id: actor.user.id }, organization: { id: actor.organization.id } };
         const policy = await localPolicy(manager, actor.organization.id);
         const expiresAt = new Date(now.getTime() + (policy?.temporaryPasswordHours ?? selectedInstallationSettings().authentication.temporaryPasswordHours) * 60 * 60 * 1_000);
         if (command.roleIds.length && !actor.capabilities?.includes("roles:assign")) {
           throw new ForbiddenException("roles:assign is required to provision initial roles");
         }
-        const roleRows = command.roleIds.length ? await manager.query<RoleRow[]>(`
-          select role.id, role.system_key, definition.capability_key from app_identity.role role
-          left join app_identity.role_version_capability definition
-            on definition.organization_id = role.organization_id and definition.role_id = role.id
-            and definition.role_version_id = role.current_version_id
-          where role.organization_id = $1 and role.id = any($2::uuid[])
-            and role.active and role.assignable and not role.hidden
-          for share of role
-        `, [actor.organization.id, command.roleIds]) : [];
+        // Serialize with ownership/assignment changes and keep actor role
+        // definitions stable while authoring the desired roles may be in flight.
+        await manager.query("select user_id from app_identity.installation_owner for update");
+        await lockAssignedRoles(manager, [actor.user.id]);
+        const roleRows = (await readLockedRoleDefinitions(manager, actor.organization.id, command.roleIds))
+          .filter(role => role.active && role.assignable);
+        actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        assertRoleAssignmentScope(originalActor, actor);
+        if (command.roleIds.length && !actor.capabilities?.includes("roles:assign")) {
+          throw new ForbiddenException("roles:assign is required to provision initial roles");
+        }
         const roles = new Map<string, { systemKey: string | null; capabilities: string[] }>();
         for (const row of roleRows) {
           const role = roles.get(row.id) ?? { systemKey: row.system_key, capabilities: [] };
