@@ -251,7 +251,7 @@ The product requirements documents are indexed in
 
 ### Start a local development instance
 
-1. Install Node.js 22 or newer, Docker Desktop (or a Docker engine), and the
+1. Install Node.js 22.12.0 or newer, Docker Desktop (or a Docker engine), and the
    [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
 2. Run `npm ci`, copy `.env.example` to `.env.local`, and configure the private
    database and installation keys.

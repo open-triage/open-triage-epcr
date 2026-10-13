@@ -1,3 +1,4 @@
+import "../packages/contracts/runtime-node-check.cjs";
 import { execFile, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";

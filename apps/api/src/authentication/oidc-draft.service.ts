@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, ServiceUnavailableException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { createPublicKey, randomUUID } from "node:crypto";
-import { Configuration, ClientSecretPost, type ServerMetadata } from "openid-client";
+import type { ServerMetadata } from "openid-client";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encryptCredential } from "./oidc-credentials.js";
 import { checkedAddress, providerJson, providerUrl } from "./oidc-network.js";
+import { oidcConfiguration } from "./oidc-library.js";
 
 export type OidcDraft = { name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
   mappings: { displayName: string; email: string }; clientAuthentication: "client_secret_post" };
@@ -103,7 +104,7 @@ export class OidcDraftService {
       const metadata = await providerJson(config.discoveryUrl || `${config.issuer.replace(/\/$/,"")}/.well-known/openid-configuration`);
       if (metadata.issuer!==config.issuer || !Array.isArray(metadata.response_types_supported) || !metadata.response_types_supported.includes("code") ||
           !Array.isArray(metadata.token_endpoint_auth_methods_supported) || !metadata.token_endpoint_auth_methods_supported.includes("client_secret_post")) throw new Error("Unsupported provider");
-      new Configuration(metadata as unknown as ServerMetadata,config.clientId,{},ClientSecretPost("discovery-only"));
+      await oidcConfiguration(metadata as unknown as ServerMetadata,config.clientId,"discovery-only");
       const endpoints: Record<string,string> = {};
       for (const key of ["authorization_endpoint","token_endpoint","jwks_uri","userinfo_endpoint","end_session_endpoint"]) {
         const value = metadata[key];

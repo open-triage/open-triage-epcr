@@ -1,3 +1,4 @@
+import "../packages/contracts/runtime-node-check.cjs";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 

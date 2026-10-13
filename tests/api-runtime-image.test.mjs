@@ -68,6 +68,8 @@ test("the pruned runtime explicitly retains approved database operations and the
     "seed-install-definitions.mjs",
     "COPY packages/database/scripts/lib packages/database/scripts/lib",
     "packages/contracts/examples/dispatch",
+    "packages/contracts/runtime-node.cjs",
+    "packages/contracts/runtime-node-check.cjs",
   ]) {
     assert.ok(dockerfile.includes(asset), `runtime is missing ${asset}`);
   }

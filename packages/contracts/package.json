@@ -7,6 +7,8 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
+    "./runtime-node": { "types": "./runtime-node.d.cts", "default": "./runtime-node.cjs" },
+    "./runtime-node/check": "./runtime-node-check.cjs",
     ".": { "types": "./src/index.ts", "default": "./dist/index.js" },
     "./patient-key": { "types": "./patient-key.d.ts", "default": "./patient-key.mjs" },
     "./synthetic-record-generator": { "types": "./synthetic-record-generator.d.ts", "default": "./synthetic-record-generator.mjs" },
