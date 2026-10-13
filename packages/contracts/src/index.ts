@@ -1610,6 +1610,13 @@ export interface AssignedCallsResponse {
   refreshedAt: string;
   /** Present on live API responses; optional only for pre-feature cached/static fixtures. */
   mediaPolicy?: ReportMediaPolicy;
+  /** Authoritative production-job readiness; synthetic fixtures remain independent. */
+  productionAccess?: ProductionJobAccess;
+}
+
+export interface ProductionJobAccess {
+  state: "ready" | "enrollment-required" | "agency-mismatch" | "schedule-required" | "handover-required" | "synthetic-only";
+  unit?: { id: string; callSign: string; name: string; organizationId: string };
 }
 
 export interface ClinicalDemoUnit {

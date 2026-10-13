@@ -1,4 +1,5 @@
 import { platformRequestError } from "./platform-errors";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "./installation-transition-generation";
 import type {
   AssignedCall,
   AssignedCallsResponse,
@@ -84,9 +85,13 @@ export function assignedCallsUrl(): string {
 }
 
 export async function fetchAssignedCalls(): Promise<AssignedCallsResponse> {
+  const generation = authenticationInstallationGeneration();
   const response = await fetch(assignedCallsUrl(), browserRequestInit());
+  assertAuthenticationInstallationGeneration(generation);
   if (!response.ok) throw await platformRequestError(response);
-  return response.json() as Promise<AssignedCallsResponse>;
+  const result = await response.json() as AssignedCallsResponse;
+  assertAuthenticationInstallationGeneration(generation);
+  return result;
 }
 
 export function openAssignmentUrl(assignmentId: string): string {
@@ -98,6 +103,7 @@ export function staticOpenAssignmentUrl(): string {
 }
 
 export async function openAssignedCall(csrfToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
+  const generation = authenticationInstallationGeneration();
   let response: Response;
   try {
     const staticExport = browserRequestConfiguration().mode === "static";
@@ -108,8 +114,10 @@ export async function openAssignedCall(csrfToken: string, assignmentId: string):
   } catch {
     throw new Error("The call could not be opened. Check your connection and try again.");
   }
+  assertAuthenticationInstallationGeneration(generation);
   if (!response.ok) throw await platformRequestError(response);
   const opened = await response.json() as OpenAssignmentResponse;
+  assertAuthenticationInstallationGeneration(generation);
   if (opened.assignmentId !== assignmentId) throw new Error("The static demo fixture does not match the selected assignment.");
   return opened;
 }

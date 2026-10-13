@@ -11,6 +11,9 @@ test.beforeAll(async()=>{
 });
 for(const language of ['en','sv'])test(`${language} schedules author blank/weekly drafts and unit server previews on desktop/mobile`,async({page},testInfo)=>{
  const t=(en:string,sv:string)=>language==='sv'?sv:en;
+ // Preview copy also occurs in explanatory prose. Require the live status so
+ // asynchronous responses cannot pass early or become ambiguous in Swedish.
+ const effectivePreview=page.getByRole('status').filter({hasText:t('Will become effective at','Börjar gälla')});
  const scheduleId='40000000-0000-4000-8000-000000000001',unitId='30000000-0000-4000-8000-000000000001';
  let schedules:Array<{id:string;name:string;groupId:string;revision:number;versions:Array<{revision:number;effectiveAt:string;breakpoints:Array<{weekday:number;time:string;graceMinutes:number}>}>}>=[];
  let fail=false;
@@ -43,14 +46,14 @@ for(const language of ['en','sv'])test(`${language} schedules author blank/weekl
  const create=page.getByRole('button',{name:t('Create schedule','Skapa schema'),exact:true});await create.focus();await create.press('Enter');
  await page.getByLabel(t('Schedule name','Schemanamn'),{exact:true}).fill('No handovers');
  await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande'),exact:true}).click();
- await expect(page.getByRole('status').first()).toContainText(t('Will become effective at','Börjar gälla'));
+ await expect(effectivePreview).toBeVisible();
  await expect(page.locator('section:visible time')).toHaveAttribute('datetime','2026-10-14T05:00:00Z');
  await page.getByRole('button',{name:t('Save','Spara'),exact:true}).click();await expect(create).toBeFocused();
  await expect(page.getByRole('cell',{name:t('Blank schedule','Tomt schema'),exact:true})).toBeVisible();
  const units=page.getByRole('button',{name:t('Units','Enheter'),exact:true});await units.click();
  const scheduleButton=page.getByRole('button',{name:t('Schedule Medic 7','Schema Medic 7'),exact:true});await scheduleButton.click();
  await expect(page.getByRole('status').first()).toContainText(t('No schedule selected','Inget schema valt'));
- await page.getByLabel(t('Selected schedule','Valt schema'),{exact:true}).selectOption(scheduleId);await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande')}).click();await expect(page.getByText(t('Will become effective at','Börjar gälla'),{exact:false})).toBeVisible();await page.getByRole('button',{name:t('Save selection','Spara val')}).click();
+ await page.getByLabel(t('Selected schedule','Valt schema'),{exact:true}).selectOption(scheduleId);await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande')}).click();await expect(effectivePreview).toBeVisible();await page.getByRole('button',{name:t('Save selection','Spara val')}).click();
  await expect(page.getByRole('status').first()).toContainText(t('Blank schedule','Tomt schema'));
  await page.getByRole('button',{name:t('Back to units','Tillbaka till enheter')}).click();await expect(scheduleButton).toBeFocused();
  await page.getByRole('button',{name:t('Shift schedules','Passcheman'),exact:true}).click();
@@ -65,11 +68,11 @@ for(const language of ['en','sv'])test(`${language} schedules author blank/weekl
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }
  await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande'),exact:true}).click();
- await expect(page.getByRole('status').first()).toContainText(t('Will become effective at','Börjar gälla'));
+ await expect(effectivePreview).toBeVisible();
  await expect(page.locator('section:visible time')).toHaveAttribute('datetime','2026-10-14T05:00:00Z');
  await page.getByRole('button',{name:t('Save','Spara'),exact:true}).click();await expect(page.getByRole('cell',{name:'Morning',exact:true})).toBeVisible();
  await units.click();await scheduleButton.click();await page.getByLabel(t('Selected schedule','Valt schema'),{exact:true}).selectOption('');await page.getByLabel(t('Selected schedule','Valt schema'),{exact:true}).selectOption(scheduleId);
- await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande')}).click();await expect(page.getByText(t('Will become effective at','Börjar gälla'),{exact:false})).toBeVisible();await page.getByRole('button',{name:t('Save selection','Spara val')}).click();
+ await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande')}).click();await expect(effectivePreview).toBeVisible();await page.getByRole('button',{name:t('Save selection','Spara val')}).click();
  await expect(page.getByText(t('Next handover','Nästa överlämning'),{exact:true})).toBeVisible();await expect(page.locator('section:visible time[datetime="2026-10-14T05:00:00Z"]')).toContainText('07:00');
  await page.getByRole('button',{name:t('Back to units','Tillbaka till enheter')}).click();await page.getByRole('button',{name:t('Shift schedules','Passcheman'),exact:true}).click();
  fail=true;await page.getByRole('button',{name:t('Refresh','Uppdatera'),exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByRole('cell',{name:'Morning',exact:true})).toBeVisible();

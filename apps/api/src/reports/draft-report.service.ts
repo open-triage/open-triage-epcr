@@ -8,10 +8,12 @@ import {
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
-import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES } from "@open-triage/contracts";
+import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { SchedulesService } from "../schedules/schedules.service.js";
+import { assertProductionJobAccess, productionJobAccess } from "../calls/production-job-access.js";
 import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import type {
   CreateDraftReportCommand,
@@ -172,7 +174,8 @@ function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftV
 export class DraftReportService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly sessions: ClinicianSessionService
+    private readonly sessions: ClinicianSessionService,
+    private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions)
   ) {}
 
   async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
@@ -193,11 +196,44 @@ export class DraftReportService {
     const digest = commandSha256(command);
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-        const currentSession = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
-        const synthetic = currentSession.capabilities?.includes("clinical:demo") === true;
         await this.lockCommand(manager, command.commandId);
         const replay = await this.replay<DraftReportResult>(manager, command.commandId, "create-draft", digest, command.reportId);
-        if (replay) return replay;
+        if (replay) {
+          await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+          return replay;
+        }
+        const [incident] = await manager.query<Array<{ synthetic: boolean }>>(`select synthetic from clinical.incident
+          where id=$1 and organization_id=$2 for share`, [command.incidentId, command.organizationId]);
+        const [parent] = incident ? await manager.query<Array<{
+          form_version_id: string; catalog_release_id: string; agency_demographic_version_id: string;
+          validation_version_id: string; form_definition_sha256: string; catalog_artifact_sha256: string;
+          validation_compiled_sha256: string;
+        }>>(`select form_version_id,catalog_release_id,agency_demographic_version_id,validation_version_id,
+          form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256 from clinical.report
+          where incident_id=$1 and organization_id=$2 and documenting_user_id=$3
+          and (expires_at is null or expires_at>clock_timestamp()) order by created_at,id limit 1 for share`,
+          [command.incidentId, command.organizationId, session.user.id]) : [];
+        if (incident && !parent) throw new NotFoundException("The draft is not available to this clinician");
+        // An existing incident's persisted classification and original configuration
+        // are authoritative. Demo permission cannot make production data disposable.
+        const synthetic = incident?.synthetic ?? session.capabilities?.includes("clinical:demo") === true;
+        if (!synthetic && !parent) {
+          assertProductionJobAccess(await productionJobAccess(manager, accessToken, session, this.schedules));
+        }
+        // User administrators lock this row before ending roles or sessions.
+        // Take the same order before the session assessment updates activity.
+        const [subject] = await manager.query<Array<{ synthetic: boolean }>>(
+          "select synthetic from app_identity.app_user where id=$1 for share", [session.user.id]);
+        const currentSession = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+        if (currentSession.user.id !== command.documentingUserId || currentSession.organization.id !== command.organizationId) {
+          throw new NotFoundException("The draft is not available to this clinician");
+        }
+        if (synthetic && !currentSession.capabilities?.includes("clinical:demo")) {
+          throw new NotFoundException("Synthetic incident is unavailable");
+        }
+        if (!synthetic) {
+          if (subject?.synthetic || currentSession.user.id === SYNTHETIC_DEMO_FIXTURE.userId) throw new NotFoundException("Production incident is unavailable");
+        }
 
         const users = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.agency_user
@@ -205,7 +241,7 @@ export class DraftReportService {
         `, [command.documentingUserId, command.organizationId]);
         if (!users[0]) throw new UnprocessableEntityException("documentingUserId must be an active user in the organization");
 
-        const active = await manager.query<Array<{
+        const active = parent ? [parent] : await manager.query<Array<{
           form_version_id: string;
           catalog_release_id: string;
           agency_demographic_version_id: string;
