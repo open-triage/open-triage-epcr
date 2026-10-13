@@ -9,7 +9,7 @@ export function validateLocalPolicy(body: unknown): Omit<LocalPolicy, "groupId" 
   const value = body as Record<string, unknown>;
   const bounds = { expectedRevision: [1, Number.MAX_SAFE_INTEGER], maximumSessionHours: [1, 168],
     temporaryPasswordHours: [1, 168], accountAttemptsPer15Minutes: [1, 1000], networkAttemptsPer5Minutes: [1, 1000] };
-  if (Object.keys(value).some(key => !(key in bounds))) throw new UnprocessableEntityException({ code: "admin.authenticationPolicyInvalid" });
+  if (Object.keys(value).some(key => !Object.hasOwn(bounds, key))) throw new UnprocessableEntityException({ code: "admin.authenticationPolicyInvalid" });
   for (const [key, [minimum, maximum]] of Object.entries(bounds)) {
     if (!Number.isSafeInteger(value[key]) || Number(value[key]) < minimum! || Number(value[key]) > maximum!) {
       throw new UnprocessableEntityException({ code: "admin.authenticationPolicyInvalid", params: { field: key, minimum, maximum } });

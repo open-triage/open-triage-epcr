@@ -12,7 +12,7 @@ function setup({ denied = false, recent = true } = {}) {
 }
 test('policy validation rejects forged scope, fractions, omissions and bounds', () => {
   assert.deepEqual(validateLocalPolicy(command), command);
-  for (const mutation of [{ groupId: 'foreign' }, { maximumSessionHours: 0 }, { temporaryPasswordHours: 169 }, { accountAttemptsPer15Minutes: 2.1 }, { networkAttemptsPer5Minutes: '20' }, { expectedRevision: undefined }]) assert.throws(() => validateLocalPolicy({ ...command, ...mutation }));
+  for (const mutation of [{ toString: "forged" }, { groupId: 'foreign' }, { maximumSessionHours: 0 }, { temporaryPasswordHours: 169 }, { accountAttemptsPer15Minutes: 2.1 }, { networkAttemptsPer5Minutes: '20' }, { expectedRevision: undefined }]) assert.throws(() => validateLocalPolicy({ ...command, ...mutation }));
 });
 test('child reads the root policy and changes target the root with attributable values', async () => {
   const { service, events } = setup();
