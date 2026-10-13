@@ -1,5 +1,6 @@
 // Run in a child with a scoped trusted CA; no production TLS or origin exception.
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {chromium} from 'playwright';
@@ -15,7 +16,7 @@ const db=new DataSource({type:'postgres',url:process.env.OIDC_TEST_DATABASE_URL,
 const sessions=new ClinicianSessionService(db),service=new OidcTestService(db,sessions,new AgencyDirectoryService(db)),controller=new OidcTestController(service),csrf=new CsrfGuard(sessions);
 let browser,proxy;
 const observations=[];
-const api=createServer((request,response)=>agencyRequest.run({origin:browserOrigin({protocol:'http',headers:request.headers})},async()=>{
+const api=createServer((request,response)=>agencyRequest.run({origin:browserOrigin({protocol:'http',headers:request.headers}),organizationId:request.headers['x-organization-id']},async()=>{
  const url=new URL(request.url,'http://localhost');
  const adapter={cookie(name,value,options){response.setHeader('set-cookie',`${name}=${value}; Path=${options.path}; HttpOnly; Secure; SameSite=${options.sameSite}; Max-Age=300`);},clearCookie(name,options){response.setHeader('set-cookie',`${name}=; Path=${options.path}; HttpOnly; Secure; SameSite=${options.sameSite}; Max-Age=0`);},redirect(code,destination){response.writeHead(code,{location:destination});response.end();}};
  try{
@@ -36,6 +37,7 @@ try{
  const origin=`http://child.localhost:${proxy.address().port}`;process.env.WEB_ORIGIN=`http://localhost:${proxy.address().port}`;process.env.NODE_ENV='development';
  browser=await chromium.launch();const context=await browser.newContext({ignoreHTTPSErrors:true});const page=await context.newPage();page.setDefaultTimeout(5000);
  await context.addCookies([{name:'open_triage_session',value:process.env.OIDC_TEST_SESSION_TOKEN,url:origin+'/api',httpOnly:true,secure:true,sameSite:'Strict'}]);
+ await page.route('**/api/sessions/oidc/callback?*',route=>route.continue({headers:{...route.request().headers(),'x-organization-id':randomUUID()}}));
  await page.goto(origin);assert.equal(await page.evaluate(async()=> (await fetch('/api/admin/authentication/oidc/test',{method:'POST',headers:{'x-csrf-token':'wrong'}})).status),401);await page.click('#start');await page.getByRole('link',{name:'Continue fictional provider login'}).click();await page.waitForURL(url=>url.origin===origin&&url.pathname==='/'&&observations.some(item=>item.kind==='callback'));
  const cookies=await context.cookies();assert(!cookies.some(item=>item.name==='open_triage_oidc_test'));
  const callback=observations.find(item=>item.kind==='callback');assert.match(callback.cookie,/open_triage_oidc_test=/);

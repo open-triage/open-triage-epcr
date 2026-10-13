@@ -195,7 +195,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section></div>}
 
-    {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
+    {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} canReviewIdentities={context.capabilities.includes("users:read")} canLinkIdentities={context.capabilities.includes("settings:write")&&context.capabilities.includes("users:write")} /></div>}
 
     {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""}
