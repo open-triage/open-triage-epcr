@@ -52,6 +52,12 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const blank=async unitId=>{const selected=await scheduleAdmin.save('admin',null,{name:`Blank ${unitId}`,breakpoints:[]});await scheduleAdmin.select('admin',unitId,{scheduleId:selected.id,expectedRevision:0});return selected;};
  const open=(binding,session,assignment)=>run(binding?.credential,()=>calls.open(session.sessionToken,assignment));
  const state=(binding,session)=>run(binding?.credential,()=>calls.list(session.sessionToken));
+ const waitFor=async(sql,values=[])=>{const deadline=Date.now()+5000;for(;;){await admin.query('select pg_stat_clear_snapshot()');const [row]=(await admin.query(sql,values)).rows;if(row.ready)return;assert.ok(Date.now()<deadline,'PostgreSQL authority wait did not reach the expected boundary');await new Promise(resolve=>setTimeout(resolve,20));}};
+ const waitForAssignmentLock=()=>waitFor(`select exists(select 1 from pg_stat_activity
+  where wait_event_type='Lock' and pg_backend_pid()=any(pg_blocking_pids(pid))
+  and query like '%clinical.call_assignment%') ready`);
+ const waitForExpiry=session=>waitFor("select expires_at<=clock_timestamp() ready from app_identity.app_session where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(session.sessionToken)]);
+
  try{
  await admin.query(`insert into app_identity.app_user(id,organization_id,display_name,synthetic) values($1,$2,'Fictional production clinician',false)`,[user,agency]);
  await admin.query(`insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password) values($1,$2,$3,false)`,[user,username,await createPasswordVerifier(password)]);
@@ -162,6 +168,77 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const crossingSchedules=new SchedulesService(db,sessions);crossingSchedules.now=async()=>crossingAt;
  const crossingCalls=new AssignedCallsService(db,sessions,crossingSchedules);
  const stale=await run(shiftBinding.credential,()=>crossingCalls.list(shiftLogin.sessionToken));assert.equal(stale.productionAccess.state,'identity-confirmation-required');
+ // Every grace attempt has separate server authority, and Continue never stamps personal proof.
+ const confirmation=(target,who=shiftLogin,binding=shiftBinding)=>run(binding.credential,()=>crossingCalls.prepareConfirmation(who.sessionToken,who.session.csrfToken,target));
+ const graceOpen=(job,token,who=shiftLogin,binding=shiftBinding)=>run(binding.credential,()=>crossingCalls.open(who.sessionToken,job,token));
+ const beforeContinue=(await admin.query("select personally_authenticated_at,reauthenticated_at,expires_at from app_identity.app_session where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(shiftLogin.sessionToken)])).rows[0];
+ assert.ok(stale.assignedCalls.some(x=>x.id===crossing),'grace calls remain listed for per-attempt confirmation');
+ await assert.rejects(graceOpen(crossing),denied('calls.identityConfirmationRequired'));
+ await admin.query('begin');await admin.query('select id from app_identity.app_user where id=$1 for update',[user]);
+ const waitingName=confirmation(`assignment:${crossing}`);
+ await waitFor(`select exists(select 1 from pg_stat_activity where wait_event_type='Lock'
+  and pg_backend_pid()=any(pg_blocking_pids(pid)) and query like '%from app_identity.app_user%') ready`);
+ await admin.query("update app_identity.app_user set display_name='Updated live clinician' where id=$1",[user]);await admin.query('commit');
+ assert.equal((await waitingName).clinicianName,'Updated live clinician','the reminder name is read after personal authority waits');
+ await admin.query("update app_identity.app_user set display_name='Fictional production clinician' where id=$1",[user]);
+ const reminder=await confirmation(`assignment:${crossing}`);assert.equal(reminder.clinicianName,'Fictional production clinician');assert.equal(reminder.unit.id,shiftUnit);
+ const repeated=await dispatch(shiftUnit);
+ await assert.rejects(graceOpen(repeated,reminder.token),denied('calls.identityConfirmationRequired'),'token cannot authorize another call');
+ await assert.rejects(graceOpen(crossing,reminder.token,secondDevice),denied('calls.identityConfirmationRequired'),'another session cannot borrow the reminder');
+ const confirmed=await Promise.all([graceOpen(crossing,reminder.token),graceOpen(crossing,reminder.token)]);assert.equal(confirmed[0].report.id,confirmed[1].report.id);
+ assert.equal((await admin.query("select consumed_at is not null consumed from app_identity.new_job_confirmation where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(reminder.token)])).rows[0].consumed,true);
+ assert.deepEqual((await admin.query("select personally_authenticated_at,reauthenticated_at,expires_at from app_identity.app_session where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(shiftLogin.sessionToken)])).rows[0],beforeContinue);
+ await assert.rejects(graceOpen(repeated),denied('calls.identityConfirmationRequired'),'one call acknowledgment never covers subsequent calls');
+ const nextReminder=await confirmation(`assignment:${repeated}`);assert.notEqual(nextReminder.token,reminder.token);
+ // Schedule/unit context changes and expired reminders require another explicit attempt.
+ await admin.query("update app_identity.new_job_confirmation set expires_at=clock_timestamp()-interval '1 millisecond',issued_at=clock_timestamp()-interval '6 minutes' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(nextReminder.token)]);
+ await assert.rejects(graceOpen(repeated,nextReminder.token),denied('calls.identityConfirmationRequired'));
+ const canceledAttempt=await confirmation(`assignment:${repeated}`);
+ await run(shiftBinding.credential,()=>crossingCalls.cancelConfirmation(shiftLogin.sessionToken,shiftLogin.session.csrfToken,canceledAttempt.token));
+ await assert.rejects(graceOpen(repeated,canceledAttempt.token),denied('calls.identityConfirmationRequired'),'cancellation retires the server attempt');
+ const oldTabReminder=await confirmation(`assignment:${repeated}`),newTabReminder=await confirmation(`assignment:${repeated}`);
+ await assert.rejects(graceOpen(repeated,oldTabReminder.token),denied('calls.identityConfirmationRequired'),'a newer attempt retires the old tab reminder');
+ assert.notEqual(oldTabReminder.token,newTabReminder.token);
+ await admin.query('insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id) values($1,2,$2,$3::jsonb,$4)',[shiftSchedule,new Date(checkpoint.getTime()-3600000),JSON.stringify([{weekday,time,graceMinutes:15}]),actor]);
+ await assert.rejects(graceOpen(repeated,newTabReminder.token),denied('calls.identityConfirmationRequired'),'effective schedule revision is bound even with unchanged wall times');
+ const checkpointReminder=await confirmation(`assignment:${repeated}`);crossingAt=checkpoint.getTime();
+ await assert.rejects(graceOpen(repeated,checkpointReminder.token),denied('calls.shiftReauthenticationRequired'),'06:44 proof confirmed at 06:50 still needs proof after 07:00');
+ crossingAt=checkpoint.getTime()-1;
+ const standaloneGrace={...standalone,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()};
+ const crossingReports=new DraftReportService(db,sessions,crossingSchedules),standaloneReminder=await confirmation(`command:${standaloneGrace.commandId}`);
+ await run(shiftBinding.credential,()=>crossingReports.create(shiftLogin.sessionToken,standaloneGrace,standaloneReminder.token));
+ await assert.rejects(run(shiftBinding.credential,()=>crossingReports.create(shiftLogin.sessionToken,{...standaloneGrace,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()},standaloneReminder.token)),denied('calls.identityConfirmationRequired'));
+ // Reassignment retires the displayed reminder and outgoing session before the incoming binding can act.
+ const graceMovingBinding=await pair(shiftUnit),graceMovingSession=await login(graceMovingBinding.credential),graceMovingJob=await dispatch(shiftUnit);
+ const graceMovingReminder=await confirmation(`assignment:${graceMovingJob}`,graceMovingSession,graceMovingBinding);
+ const graceMoveTarget=await unit(agency);
+ await admin.query('insert into app_identity.unit_schedule_selection(organization_id,unit_id,revision,schedule_id,effective_at,actor_id) values($1,$2,1,$3,$4,$5)',[agency,graceMoveTarget,shiftSchedule,new Date(checkpoint.getTime()-86400000),actor]);
+ const graceMoveCode=await run(undefined,()=>enrollment.issue('admin',graceMoveTarget));
+ const graceMoved=await run(graceMovingBinding.credential,()=>enrollment.consume({token:graceMoveCode.token,name:'Moved grace browser',confirmInstallation:true,reassign:true},graceMovingBinding.credential,graceMovingSession.sessionToken));
+ await assert.rejects(graceOpen(graceMovingJob,graceMovingReminder.token,graceMovingSession,graceMovingBinding),/session has ended/);
+ const graceIncomingSession=await login(graceMoved.credential);
+ await assert.rejects(graceOpen(graceMovingJob,graceMovingReminder.token,graceIncomingSession,graceMoved),denied('calls.identityConfirmationRequired'));
+ assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[graceMovingJob])).rows[0].report_id,null);
+ // TypeORM UPDATE returning [[],0] must deny when a ready decision crosses into grace under domain waits.
+ crossingAt=graceStart.getTime()-1;
+ const enteringGrace=await dispatch(shiftUnit);await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[enteringGrace]);
+ const enteringWait=graceOpen(enteringGrace,'invalid-no-match-token');const enteringDenied=assert.rejects(enteringWait,denied('calls.identityConfirmationRequired'));
+ await waitForAssignmentLock();crossingAt=graceStart.getTime();await admin.query('commit');await enteringDenied;
+ assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[enteringGrace])).rows[0].report_id,null);
+ // The final grace gate also rejects session expiry while assignment authority waits.
+ const graceExpiry=await dispatch(shiftUnit),graceExpiryLogin=await login(shiftBinding.credential),graceExpiryReminder=await confirmation(`assignment:${graceExpiry}`,graceExpiryLogin);
+ await admin.query("update app_identity.app_session set expires_at=clock_timestamp()+interval '500 milliseconds' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(graceExpiryLogin.sessionToken)]);
+ await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[graceExpiry]);
+ const graceExpiryWait=graceOpen(graceExpiry,graceExpiryReminder.token,graceExpiryLogin);const graceExpiryDenied=assert.rejects(graceExpiryWait,denied('calls.sessionExpired'));
+ await waitForAssignmentLock();await waitForExpiry(graceExpiryLogin);await admin.query('commit');await graceExpiryDenied;
+ assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[graceExpiry])).rows[0].report_id,null);
+ // A valid displayed reminder does not survive a canceled assignment while Continue waits.
+ const cancelGrace=await dispatch(shiftUnit),cancelReminder=await confirmation(`assignment:${cancelGrace}`);
+ await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[cancelGrace]);
+ const graceCancelWait=graceOpen(cancelGrace,cancelReminder.token);const graceCancelDenied=assert.rejects(graceCancelWait,/canceled/);
+ await waitForAssignmentLock();await admin.query("update clinical.call_assignment set status='canceled' where id=$1",[cancelGrace]);await admin.query('commit');await graceCancelDenied;
+ assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[cancelGrace])).rows[0].report_id,null);
+ crossingAt=checkpoint.getTime()-1;
  // Zero grace yields a ready pre-boundary decision, then demands proof on arrival.
  const zeroSchedule=randomUUID();await admin.query("insert into app_identity.weekly_schedule(id,group_id,name) values($1,$2,'Zero grace fixture')",[zeroSchedule,agency]);
  await admin.query(`insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id) values($1,1,$2,$3::jsonb,$4)`,[zeroSchedule,new Date(checkpoint.getTime()-86400000),JSON.stringify([{weekday,time,graceMinutes:0}]),actor]);
@@ -171,7 +248,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const zeroJob=await dispatch(zeroUnit);assert.equal((await run(zeroBinding.credential,()=>crossingCalls.list(zeroLogin.sessionToken))).productionAccess.state,'ready');
  await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[zeroJob]);
  const crossWait=run(zeroBinding.credential,()=>crossingCalls.open(zeroLogin.sessionToken,zeroJob));const crossDenied=assert.rejects(crossWait,denied('calls.shiftReauthenticationRequired'));
- await new Promise(r=>setTimeout(r,150));crossingAt=checkpoint.getTime();await admin.query('commit');await crossDenied;
+ await waitForAssignmentLock();crossingAt=checkpoint.getTime();await admin.query('commit');await crossDenied;
  assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[zeroJob])).rows[0].report_id,null);
  await stamp(zeroLogin,checkpoint);
  const zeroOpened=await Promise.all([run(zeroBinding.credential,()=>crossingCalls.open(zeroLogin.sessionToken,zeroJob)),run(zeroBinding.credential,()=>crossingCalls.open(zeroLogin.sessionToken,zeroJob))]);
@@ -181,7 +258,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  await admin.query("update app_identity.app_session set expires_at=clock_timestamp()+interval '500 milliseconds' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(expiryLogin.sessionToken)]);
  await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[expiryJob]);
  const expiryWait=run(zeroBinding.credential,()=>crossingCalls.open(expiryLogin.sessionToken,expiryJob));const expiryDenied=assert.rejects(expiryWait,denied('calls.sessionExpired'));
- await new Promise(r=>setTimeout(r,650));await admin.query('commit');await expiryDenied;
+ await waitForAssignmentLock();await waitForExpiry(expiryLogin);await admin.query('commit');await expiryDenied;
  assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[expiryJob])).rows[0].report_id,null);
  // Synthetic accounts are confined even when enrolled, rostered and assigned a real call.
  const demo=await run(binding.credential,()=>sessions.create({username:SYNTHETIC_DEMO_FIXTURE.username,password:SYNTHETIC_DEMO_FIXTURE.password}));
@@ -207,7 +284,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const raceUnit=await unit(agency);await blank(raceUnit);const raceBinding=await pair(raceUnit),raceSession=await login(raceBinding.credential);
  const canceled=await dispatch(raceUnit);await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[canceled]);
  const cancelWait=open(raceBinding,raceSession,canceled);const cancelDenied=assert.rejects(cancelWait,/canceled/);
- await new Promise(r=>setTimeout(r,150));await admin.query("update clinical.call_assignment set status='canceled' where id=$1",[canceled]);await admin.query('commit');await cancelDenied;
+ await waitForAssignmentLock();await admin.query("update clinical.call_assignment set status='canceled' where id=$1",[canceled]);await admin.query('commit');await cancelDenied;
  assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[canceled])).rows[0].report_id,null);
  // Device revocation wins before the opening obtains its registration lock.
  const revoked=await dispatch(raceUnit);await admin.query('begin');await admin.query('select id from app_identity.installation_registration where id=$1 for update',[raceBinding.installation.id]);

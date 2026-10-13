@@ -1,4 +1,5 @@
 "use client";
+import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
 import { PersonalAuthenticationField } from "./personal-authentication";
 
 import type {
@@ -69,6 +70,7 @@ export function OpenReports({
   readonly onSessionEnded?: () => void;
   readonly refreshRequest?: number;
 }) {
+  const confirmNewJob = useNewJobConfirmation();
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
@@ -307,12 +309,13 @@ export function OpenReports({
           onClick={() => { void (async () => {
             setCreating(true); setError(null);
             try {
-              const opened = await createNewPatientReport(session);
+              const opened = await createNewPatientReport(session, confirmNewJob);
               await prepareProtectedReport(csrfToken, opened.report.id, (payload) =>
                 restoreRecoveredReport(window.localStorage, session.user.id, opened.report.id, payload));
               await onReopened?.(opened);
               await refresh();
             } catch (reason) {
+              if (reason instanceof NewJobCanceledError) return;
               setError(reason instanceof Error ? reason.message : t("reports.refreshFailed"));
             } finally { setCreating(false); }
           })(); }}>

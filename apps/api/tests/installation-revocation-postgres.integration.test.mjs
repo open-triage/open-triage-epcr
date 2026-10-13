@@ -16,7 +16,7 @@ const digest=value=>createHash('sha256').update(value).digest('hex');
 
 integration('device-scoped revocation races, live authority, re-enrollment and immutable history under the runtime role',async()=>{
  const admin=new pg.Client({connectionString:process.env.DATABASE_URL});await admin.connect();
- const db=new DataSource({type:'postgres',url:process.env.DATABASE_URL,extra:{options:'-c role=open_triage_api_runtime'}});await db.initialize();
+ const db=new DataSource({type:'postgres',url:process.env.DATABASE_URL,extra:{options:'-c role=open_triage_api_runtime',application_name:'missing-cookie-password-race'}});await db.initialize();
  const organizationId=SYNTHETIC_DEMO_FIXTURE.organizationId,unitId=randomUUID(),userId=randomUUID(),username=`device-${userId}`;
  const origin='https://device-revocation.example',password='Device regression password 42!';
  let originActive=true,scope=organizationId;
@@ -74,6 +74,27 @@ integration('device-scoped revocation races, live authority, re-enrollment and i
  assert.notEqual(reenrolled.credential,first.credential);assert.notEqual(reenrolled.installation.id,first.installation.id);
  assert.deepEqual((await admin.query(`select id,organization_id,unit_id,installation_identity_id,credential_sha256,revoked_at from app_identity.installation_registration where id=$1`,[first.installation.id])).rows,historyBefore);
  await assert.rejects(login(first.credential),/registration is unavailable/);
+ // Removing only the installation cookie must not invert session→registration
+ // locks during password replacement. A revoker already owns registration and
+ // must be able to revoke its session before the waiting proof can proceed.
+ const absentCookie=await login(ignoredBinding.credential);
+ const originalCredential=(await admin.query('select credential_version,password_verifier from app_identity.local_credential where user_id=$1',[userId])).rows[0];
+ await admin.query('begin');
+ await admin.query('select id from app_identity.installation_registration where id=$1 for update',[ignoredBinding.installation.id]);
+ const missingCookiePassword=run(undefined,()=>sessions.changePassword(absentCookie.sessionToken,{currentPassword:password,newPassword:'Denied replacement password 99!',csrfToken:absentCookie.session.csrfToken}));
+ const rejectedPassword=assert.rejects(missingCookiePassword,/session has ended|valid CSRF token/);
+ rejectedPassword.catch(()=>{});
+ let waiting=false;
+ for(let attempt=0;attempt<100;attempt++){
+  await admin.query('select pg_stat_clear_snapshot()');
+  const blocked=(await admin.query("select count(*)::int count from pg_stat_activity where application_name='missing-cookie-password-race' and wait_event_type='Lock' and query like '%installation_registration%' and pg_backend_pid()=any(pg_blocking_pids(pid))" )).rows[0].count;
+  if(blocked){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ assert.equal(waiting,true,'Password replacement must first wait for session-associated registration without its cookie');
+ await admin.query('update app_identity.installation_registration set revoked_at=clock_timestamp() where id=$1',[ignoredBinding.installation.id]);
+ await admin.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='installation_revoked' where installation_registration_id=$1 and revoked_at is null",[ignoredBinding.installation.id]);
+ await admin.query('commit');await rejectedPassword;
+ assert.deepEqual((await admin.query('select credential_version,password_verifier from app_identity.local_credential where user_id=$1',[userId])).rows[0],originalCredential);
  await admin.query(`update app_identity.local_credential set must_change_password=true,temporary_password_expires_at=now()+interval '2 hours' where user_id=$1`,[userId]);
  const fresh=await login(reenrolled.credential);assert.equal(fresh.session.passwordChangeRequired,true);
  // Password completion must copy the server-owned association and preserve device scope.

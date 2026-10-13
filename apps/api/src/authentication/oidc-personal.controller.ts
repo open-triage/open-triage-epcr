@@ -19,6 +19,7 @@ export class OidcPersonalController {
   try{
    const result=await this.personal.begin(body,token,csrf,request.headers['user-agent']);
    if((body as {purpose?:unknown}).purpose!=='reauthenticate')clearSessionCookie(response);
+   response.clearCookie("open_triage_oidc_test",personalCookieOptions);
    response.cookie(PERSONAL_COOKIE,result.correlation,personalCookieOptions);return {authorizationUrl:result.authorizationUrl};
   }catch(error){
    const result=error instanceof HttpException?error.getResponse():null;
@@ -31,14 +32,15 @@ export class OidcPersonalController {
   @Headers("authorization") authorization:string|undefined,@Res({passthrough:true}) response:SessionCookieResponse){
   const token=sessionToken(request,authorization);
   await this.sessions.assertCsrf(token,csrf);
-  const session=await this.sessions.getAuthenticated(token);
-  const command=validateReauthenticate(body,session.authenticationSource==='oidc');
-  if(session.authenticationSource==='oidc'){
+  const session=await this.sessions.getAuthenticated(token,new Date(),true);
+  const command=validateReauthenticate(body,(session.nextAuthenticationSource ?? session.authenticationSource)==='oidc');
+  if((session.nextAuthenticationSource ?? session.authenticationSource)==='oidc'){
    if(!command.forcePersonalAuthentication)try{
     await this.sessions.requireRecentReauthentication(token);
     return {reauthenticatedUntil:new Date(Date.parse(session.personallyAuthenticatedAt!)+300000).toISOString()};
    }catch{ /* An explicit purpose-bound proof is needed for this session. */ }
    const result=await this.personal.begin({purpose:'reauthenticate'},token,csrf,request.headers['user-agent']);
+   response.clearCookie("open_triage_oidc_test",personalCookieOptions);
    response.cookie(PERSONAL_COOKIE,result.correlation,personalCookieOptions);
    return {authorizationUrl:result.authorizationUrl};
   }

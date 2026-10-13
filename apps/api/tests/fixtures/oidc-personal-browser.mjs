@@ -139,6 +139,7 @@ try{
  assert.equal((await requestGrant()).status,404);
  // Local proof uses exactly the same runtime grant and consume functions for a
  // root-owned clinician's child-agency report; a second session cannot borrow it.
+ await control({groupMode:'local'});
  const local=await agencyRequest.run(scope,()=>sessions.create({username:'reviewer',password:process.env.OIDC_LOCAL_PASSWORD}));
  const localReport='91200000-0000-4000-8000-000000000003',localKey=randomBytes(32).toString('base64');
  const envelope=await agencyRequest.run(scope,()=>recovery.register(local.sessionToken,localReport,{schemaVersion:1,recoveryHandle:randomUUID(),reportKeyBase64:localKey},local.session.csrfToken));
@@ -165,6 +166,7 @@ try{
  await assert.rejects(db.query('select * from offline_recovery.recover_report_key($1,$2,$3,$4)',[localReport,process.env.OIDC_CHILD,process.env.OIDC_LOCAL_USER,envelope.recoveryHandle]),error=>error.code==='42501');
  const foreign=await db.query('select * from offline_recovery.create_report_recovery_grant($1,$2,$3,encode(sha256($4::bytea),\'hex\'),$5,1)',[localReport,process.env.OIDC_OTHER,process.env.OIDC_LOCAL_USER,Buffer.from(local.sessionToken),'b'.repeat(64)]);assert.equal(foreign[0].result,'denied');assert.equal(foreign[0].recovery_handle,null);
  assert.equal((await control({recoveryDeadline:localReport})).deadline,envelope.recoveryDeadline);
+ await control({groupMode:'oidc'});
  await logout();
 
  // All approved-method/freshness negatives travel through real code exchange.

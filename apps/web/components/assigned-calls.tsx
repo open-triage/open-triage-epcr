@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse, ProductionJobAccess } from "@open-triage/contracts";
+import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
 import { PlatformRequestError } from "../app/platform-errors";
 import { InstallationContextChangedError } from "../app/installation-transition-generation";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
@@ -40,6 +41,7 @@ export function AssignedCalls({
   readonly suppressedCallNumbers?: ReadonlyArray<string>;
   readonly focusAssignmentId?: string | null;
 }) {
+  const confirmNewJob = useNewJobConfirmation();
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
   const [calls, setCalls] = useState<AssignedCall[]>([]);
@@ -89,7 +91,7 @@ export function AssignedCalls({
     setReauthenticationId(null);
     setError(null);
     try {
-      const opened = await openAssignedCall(csrfToken, call.id);
+      const opened = await openAssignedCall(csrfToken, call.id, confirmNewJob);
       // Keep the selected card and its progress state until the protected
       // workspace is ready; preparation may require additional round trips.
       await onOpened?.(opened, call);
@@ -102,6 +104,11 @@ export function AssignedCalls({
       setCalls(nextCalls);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
+      if (openError instanceof NewJobCanceledError) {
+        window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(
+          `[data-assignment-id="${CSS.escape(call.id)}"] button`)?.focus());
+        return;
+      }
       if (openError instanceof RecoveryReauthenticationRequiredError || openError instanceof PlatformRequestError && openError.code === "calls.shiftReauthenticationRequired") {
         setShiftReauthentication(openError instanceof PlatformRequestError);
         setReauthenticationId(call.id);
@@ -125,7 +132,7 @@ export function AssignedCalls({
       onOpeningChange?.(null);
       setOpeningId(null);
     }
-  }, [csrfToken, onOpened, onOpeningChange, t]);
+  }, [csrfToken, onOpened, onOpeningChange, t, confirmNewJob]);
 
   const reauthenticateAndOpen = async (event: FormEvent<HTMLFormElement>, call?: AssignedCall) => {
     event.preventDefault();

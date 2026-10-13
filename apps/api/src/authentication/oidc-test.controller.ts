@@ -12,6 +12,7 @@ export class OidcTestController {
  @Post("admin/authentication/oidc/test") @Header("Cache-Control","no-store, private")
  async begin(@Body() body:unknown,@Req() request:{headers:{cookie?:string}},@Headers("authorization") authorization:string|undefined,@Res({passthrough:true}) response:SessionCookieResponse){
   const result=await this.tests.begin(sessionToken(request,authorization),body);
+  response.clearCookie(PERSONAL_COOKIE,personalCookieOptions);
   response.cookie(cookie,result.correlation,options);return {authorizationUrl:result.authorizationUrl};
  }
  @Get("sessions/oidc/callback") @Header("Cache-Control","no-store, private") @Header("Referrer-Policy","no-referrer")
