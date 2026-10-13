@@ -8,7 +8,7 @@ import { useUnsavedChanges } from "./unsaved-changes";
 type Draft = { revision: number; name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
   mappings: { displayName: string; email: string }; credentialConfigured: boolean; requiredFields: string[];
   discoveryHealth: string; discovery: Record<string, unknown> | null; discoveredAt: string | null };
-type View = { groupId: string; draft: Draft | null; active: Draft | null; registration: { hosts: {origin:string;callbackUrl:string;logoutCallbackUrl:string}[]; requiredClaims:string[] };
+type View = { test?:{revision:number;result:string;failureCode?:string|null;completedAt:string;pkceS256:boolean;freshPersonalAuthentication:boolean}|null; groupId: string; draft: Draft | null; active: Draft | null; registration: { hosts: {origin:string;callbackUrl:string;logoutCallbackUrl:string}[]; requiredClaims:string[] };
   history:{revision:number;createdAt:string;actorId:string;credentialConfigured:boolean;discoveryHealth:string}[] };
 const empty = { name:"", issuer:"", discoveryUrl:"", clientId:"", scopes:"openid",displayName:"",email:"" };
 const fields = Object.keys(empty) as (keyof typeof empty)[];
@@ -29,6 +29,15 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
   function load(next:View) {setValue(next);setDraft(next.draft ? {...next.draft,scopes:next.draft.scopes.join(" "),...next.draft.mappings}:empty);setSecret("");setPassword("");}
   useEffect(()=>{let current=true; request(csrfToken).then(next=>{if(current)load(next);}).catch(reason=>{if(current)setError(reason.message);});return ()=>{current=false;};},[csrfToken]);
   async function refresh(){if(!confirmReload())return;setBusy(true);try{load(await request(csrfToken));setError("");}catch(reason){setError(reason instanceof Error?reason.message:String(reason));}finally{setBusy(false);}}
+  const failures:Record<string,string>=sv ? {
+    canceled:"Avbruten hos leverantören. Starta ett nytt test.",expired:"Testet har gått ut. Bekräfta lösenordet och starta ett nytt test.",
+    draft_changed:"Utkastet eller discovery ändrades. Kontrollera discovery och testa den sparade versionen igen.",origin_changed:"Myndighetsadressen ändrades. Öppna den registrerade adressen och testa igen.",
+    authority_changed:"Behörighet eller lösenordsbekräftelse ändrades. Logga in och bekräfta behörigheten igen.",provider_validation:"Kodutbyte eller tokenvalidering misslyckades. Be IT kontrollera klientregistrering, callback-adress, claims och signeringsnycklar.",transaction_invalid:"Testkopplingen kunde inte valideras. Starta ett nytt test."
+  } : {
+    canceled:"Canceled at the provider. Start a new test.",expired:"The test expired. Confirm your password and start a new test.",
+    draft_changed:"The draft or discovery changed. Inspect discovery and retest the saved version.",origin_changed:"The agency address changed. Open the registered address and retest.",
+    authority_changed:"Authority or password confirmation changed. Sign in and confirm your authority again.",provider_validation:"Code exchange or token validation failed. Ask IT to check client registration, callback address, claims and signing keys.",transaction_invalid:"The test binding could not be validated. Start a new test."
+  };
   const healthLabels: Record<string,string> = sv ? {unchecked:"Inte kontrollerad",healthy:"Fungerar",failed:"Misslyckades"} : {unchecked:"Unchecked",healthy:"Healthy",failed:"Failed"};
   const complete=!!draft.name && !!draft.issuer && !!draft.clientId && !!draft.displayName && draft.scopes.split(/\s+/).includes("openid") && (!!secret || !!value?.draft?.credentialConfigured);
   async function mutate(discovery=false){
@@ -39,6 +48,15 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
         mappings:{displayName:draft.displayName,email:draft.email},clientAuthentication:"client_secret_post",...(secret?{replacementSecret:secret}:{})},discovery?"POST":"PUT");
       load(next);setStatus(discovery?(next.draft?.discoveryHealth==="healthy"?(sv?"Discovery fungerar":"Discovery healthy"):(sv?"Discovery misslyckades. Aktiv konfiguration behålls.":"Discovery failed. Active configuration retained.")):(sv?"Utkast sparat":"Draft saved"));
     }catch(reason){setSecret("");setPassword("");setError(reason instanceof Error?reason.message:String(reason));}finally{setBusy(false);}
+  }
+  async function testLogin(){
+    setBusy(true);setError("");
+    try{await reauthenticateClinicianSession(password,csrfToken);setPassword("");
+      const url=apiRequestUrl("/api/admin/authentication/oidc/test");if(!url)throw new Error("OIDC test requires a live API");
+      const response=await fetch(url,browserRequestInit({method:"POST",headers:{"content-type":"application/json","x-csrf-token":csrfToken},body:JSON.stringify({expectedRevision:value?.draft?.revision})}));
+      if(!response.ok)throw await platformRequestError(response);
+      const result=await response.json();window.location.assign(result.authorizationUrl);
+    }catch(reason){setError(reason instanceof Error?reason.message:String(reason));setBusy(false);}
   }
   return <section className="oidc-draft" aria-labelledby="oidc-heading">
     <h3 id="oidc-heading">{sv?"OIDC-leverantörens utkast":"OIDC provider draft"}</h3>
@@ -61,12 +79,17 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
             <label htmlFor="oidc-password">{sv?"Ditt lösenord för OIDC-ändringar":"Your password for OIDC changes"}<input id="oidc-password" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label>
             <div className="form-actions"><button type="submit" disabled={!dirty||!password||busy}>{sv?"Spara OIDC-utkast":"Save OIDC draft"}</button>
               <button type="button" disabled={!value.draft||dirty||!complete||!password||busy} onClick={()=>void mutate(true)}>{sv?"Kontrollera discovery":"Check discovery"}</button>
+              <button type="button" disabled={!value.draft||dirty||value.draft.discoveryHealth!=="healthy"||!password||busy} onClick={()=>void testLogin()}>{sv?"Testa leverantörsinloggning":"Test provider login"}</button>
               <button type="button" disabled={busy} onClick={()=>{load(value);setError("");}}>{sv?"Avbryt OIDC-ändringar":"Cancel OIDC changes"}</button></div>
           </>}
         </fieldset>
       </form>
       {status && <p role="status">{status}</p>}
       {!complete && <p>{sv?"Discovery kräver namn, HTTPS-utfärdare, klient-ID, openid-scope, visningsnamn och klienthemlighet.":"Discovery requires a name, HTTPS issuer, client ID, openid scope, display name claim and client secret."}</p>}
+      <h4>{sv?"Testinloggning":"Test login"}</h4>
+      <p>{value.test ? `${sv?"Version":"Revision"} ${value.test.revision}: ${value.test.result==="succeeded"?(sv?"Identiteten validerad":"Identity validated"):value.test.result==="canceled"?(sv?"Avbruten":"Canceled"):(sv?"Misslyckades: kontrollera registrering, claims och signeringsnycklar":"Failed: check registration, claims and signing keys")}. S256 PKCE: ${value.test.pkceS256?(sv?"Ja":"Yes"):(sv?"Nej":"No")}.` : (sv?"Ingen genomförd testinloggning för detta utkast.":"No completed test login for this draft.")}</p>
+      {value.test?.failureCode && <p role="alert">{failures[value.test.failureCode] ?? failures.transaction_invalid}</p>}
+      <p>{sv?"Testet ändrar inte aktiv inloggning eller klinisk åtkomst. Validerad identitet bevisar inte färsk personlig autentisering.":"The test preserves active login and clinical access. Validated identity does not establish fresh personal authentication."}</p>
       <h4>{sv?"Registreringsuppgifter för IT":"Registration details for IT"}</h4>
       <p>{sv?"Authorization code, client_secret_post; S256 PKCE måste bekräftas med regional AD FS v6. Logout-adresser aktiverar inte global regional utloggning.":"Authorization code, client_secret_post; confirm S256 PKCE with regional AD FS v6. Logout addresses do not enable global regional logout."}</p>
       <p>{sv?"Obligatoriska claims":"Required claims"}: {value.registration.requiredClaims.join(", ")}</p>
