@@ -278,6 +278,33 @@ export function ClinicianSessionGate({ children }: {
     return () => window.clearTimeout(timeout);
   }, [lockAndEndLocalSession, authenticatedSession, t]);
 
+  useEffect(() => {
+    if (!authenticatedSession || browserRequestConfiguration().mode !== "server") return;
+    let current = true;
+    let inFlight = false;
+    const reassess = async () => {
+      if (!current || inFlight || !navigator.onLine) return;
+      inFlight = true;
+      try {
+        const live = await authenticateRestartedClinicianSession(authenticatedSession);
+        if (current && !live) await lockAndEndLocalSession(t("login.sessionExpired"));
+      } catch { /* Connection failure does not extend the existing local deadline. */ }
+      finally { inFlight = false; }
+    };
+    const visible = () => { if (document.visibilityState === "visible") void reassess(); };
+    const interval = window.setInterval(() => void reassess(), 30_000);
+    window.addEventListener("online", visible);
+    window.addEventListener("focus", visible);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      current = false;
+      window.clearInterval(interval);
+      window.removeEventListener("online", visible);
+      window.removeEventListener("focus", visible);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [authenticatedSession, lockAndEndLocalSession, t]);
+
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);

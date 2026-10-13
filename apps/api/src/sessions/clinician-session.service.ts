@@ -1,3 +1,4 @@
+import { lockInstallationForSession } from "./installation-session.js";
 import { localPolicy } from "../authentication/local-policy.js";
 import { createHash, randomBytes } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
@@ -23,7 +24,7 @@ type CredentialRow = {
 type SessionRow = Omit<CredentialRow, "password_verifier" | "username"> & {
   session_id: string; created_at: Date | string; expires_at: Date | string; csrf_sha256: string;
   session_credential_version: string; revoked_at: Date | string | null;
-  browser_origin?: string | null; agency_access?: boolean;
+  browser_origin?: string | null; agency_access?: boolean; installation_available?: boolean; installation_registration_id?: string | null;
 };
 export type CreatedSession = { session: AuthenticatedSession; sessionToken: string };
 const dummyVerifier = createPasswordVerifier("invalid-password-only");
@@ -89,21 +90,34 @@ export class ClinicianSessionService {
     const expiresAt = account.must_change_password
       ? new Date(Math.min(normalExpiry.getTime(), timestamp(account.temporary_password_expires_at!)))
       : normalExpiry;
-    const inserted = mutationRows<{ id: string }>(await this.dataSource.query(`
-      insert into app_identity.app_session
-        (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
-         organization_id, browser_origin)
-      values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9) returning id
-    `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt,
-      coarseDeviceLabel(userAgent), account.organization_id, agencyRequest.getStore()?.origin ?? null]));
-    await this.audit(this.dataSource.manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
-    return { sessionToken, session: await this.publicSession(account, now, expiresAt, csrfToken) };
+    return this.dataSource.transaction(async manager => {
+      const registrationId = await lockInstallationForSession(manager);
+      if (registrationId && !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin)) {
+        throw new UnauthorizedException("Registered application origin required");
+      }
+      const inserted = mutationRows<{ id: string }>(await manager.query(`
+        insert into app_identity.app_session
+          (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
+           organization_id, browser_origin, installation_registration_id)
+        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10) returning id
+      `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt,
+        coarseDeviceLabel(userAgent), account.organization_id, agencyRequest.getStore()?.origin ?? null, registrationId]));
+      await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
+      return { sessionToken, session: await this.publicSession(account, now, expiresAt, csrfToken, manager) };
+    });
   }
 
   async getAuthenticated(sessionToken: string, now = new Date(), allowPasswordChange = false, manager = this.dataSource.manager): Promise<AuthenticatedSession> {
     const rows = await manager.query<SessionRow[]>(`
-      select s.id as session_id, s.created_at, s.expires_at, s.csrf_sha256,
-             s.browser_origin, case when s.organization_id is null then app_identity.is_installation_superadmin(s.user_id)
+      select s.id as session_id, s.installation_registration_id, s.created_at, s.expires_at, s.csrf_sha256,
+             s.browser_origin, (s.installation_registration_id is null or exists(
+               select 1 from app_identity.installation_registration i
+               join app_identity.operational_unit unit on unit.id=i.unit_id and unit.organization_id=i.organization_id
+               join app_identity.organization agency on agency.id=i.organization_id
+               join app_identity.organization agency_group on agency_group.id=coalesce(agency.parent_organization_id,agency.id)
+               where i.id=s.installation_registration_id and i.revoked_at is null
+               and unit.active and agency.active and agency_group.active)) as installation_available,
+             case when s.organization_id is null then app_identity.is_installation_superadmin(s.user_id)
                else app_identity.user_can_access_organization(s.user_id, s.organization_id) end as agency_access,
              s.credential_version as session_credential_version, s.revoked_at,
              (u.account_scope = 'installation') installation_account, u.id as user_id, u.display_name, u.active, o.id as organization_id,
@@ -116,7 +130,7 @@ export class ClinicianSessionService {
       where s.token_sha256 = $1
     `, [digest(sessionToken)]);
     const row = rows[0];
-    if (!row || row.revoked_at || !row.active || row.agency_access === false ||
+    if (!row || row.revoked_at || !row.active || row.agency_access === false || row.installation_available === false ||
         agencyRequest.getStore()?.organizationId && row.organization_id !== agencyRequest.getStore()!.organizationId ||
         row.browser_origin && agencyRequest.getStore()?.origin && row.browser_origin !== agencyRequest.getStore()!.origin ||
         timestamp(row.expires_at) <= now.getTime() ||
@@ -125,6 +139,10 @@ export class ClinicianSessionService {
           timestamp(row.temporary_password_expires_at) <= now.getTime())) ||
         (row.must_change_password && !allowPasswordChange)) {
       throw new UnauthorizedException(row?.must_change_password ? "A password change is required" : "The clinician session has ended");
+    }
+    if (row.installation_registration_id && (!agencyRequest.getStore()?.origin ||
+        !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin))) {
+      throw new UnauthorizedException("Registered application origin required");
     }
     const session = await this.publicSession(row, new Date(row.created_at), new Date(row.expires_at), undefined, manager);
     if (!session.workspaceAvailable && !allowPasswordChange) {
@@ -155,6 +173,8 @@ export class ClinicianSessionService {
     networkSource?: string): Promise<CreatedSession> {
     const passwordVerifier = await createPasswordVerifier(command.newPassword);
     const result = await this.dataSource.transaction(async (manager) => {
+      await manager.query(`select i.id from app_identity.installation_registration i
+        join app_identity.app_session s on s.installation_registration_id=i.id where s.token_sha256=$1 for share of i`,[digest(sessionToken)]);
       await this.assertCsrf(sessionToken, command.csrfToken, manager);
       const current = await this.getAuthenticated(sessionToken, now, true, manager);
       const rows = await manager.query<CredentialRow[]>(`
@@ -197,10 +217,10 @@ export class ClinicianSessionService {
       const inserted = mutationRows<{ id: string }>(await manager.query(`
         insert into app_identity.app_session
           (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
-           organization_id, browser_origin)
-        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9) returning id
+           organization_id, browser_origin, installation_registration_id)
+        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, (select installation_registration_id from app_identity.app_session where token_sha256=$10)) returning id
       `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0].credential_version,
-        now, expiresAt, coarseDeviceLabel(userAgent), current.organization?.id ?? null, agencyRequest.getStore()?.origin ?? null]));
+        now, expiresAt, coarseDeviceLabel(userAgent), current.organization?.id ?? null, agencyRequest.getStore()?.origin ?? null, digest(sessionToken)]));
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
       return {
         sessionToken: replacementSessionToken,
