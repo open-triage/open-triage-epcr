@@ -1,4 +1,5 @@
 "use client";
+import { UnitInstallations } from "./unit-installations";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { OperationalUnitSummary } from "@open-triage/contracts";
 import { loadOperationalUnits, saveOperationalUnit } from "../app/admin-context";
@@ -57,7 +58,7 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
       const edit = () => { if (!confirmDiscardChanges(dirty)) return; setDirty(false);setEditor({ ...unit }); };
       return <tr key={unit.id} onClick={event => canManage && activateListRow(event)} className="admin-directory-row">
         <td>{unit.name}</td><td>{unit.callSign}</td><td>{unit.active ? text("Active","Aktiv") : text("Inactive","Inaktiv")}</td>
-        <td>{canManage && <button data-list-row-action type="button" onClick={event => { trigger.current=event.currentTarget;edit(); }}>{text("Edit","Redigera")} {unit.name}</button>}</td>
+        <td>{canManage && <button data-list-row-action type="button" onClick={event => { trigger.current=event.currentTarget;edit(); }}>{text("Edit","Redigera")} {unit.name}</button>}{canManage&&unit.active&&<UnitInstallations unitId={unit.id} unitName={unit.name} csrfToken={csrfToken} language={language}/>}</td>
       </tr>;
     })}</tbody></table></div>
     <div className="admin-role-editor-actions"><button type="button" disabled={busy || !currentCursor} onClick={() => void load()}>{text("First page","Första sidan")}</button>
