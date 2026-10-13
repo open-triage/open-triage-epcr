@@ -37,7 +37,7 @@ production incident as disposable synthetic work.
 
 The forward migration repairs only unsigned reports whose persisted assignment and
 incident both prove production provenance and whose report has no generated-synthetic
-provenance or recovery/expiry deadline. It changes only classification and preserves
+provenance or synthetic expiry deadline. It changes only classification and preserves
 all ownership and configuration pins. Signed records retain immutable history, and
 ambiguous standalone historical records are not guessed or relabeled; those need a
 separate evidence-based operational review. This slice does not enable the complete
