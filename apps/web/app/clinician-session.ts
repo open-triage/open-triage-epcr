@@ -1,3 +1,4 @@
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "./installation-transition-generation";
 import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
@@ -49,6 +50,7 @@ export function clearClinicianSession(storage: Pick<Storage, "removeItem">): voi
 }
 
 export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<AuthenticatedSession> {
+  const installationGeneration = authenticationInstallationGeneration();
   const configuration = browserRequestConfiguration();
   const url = apiRequestUrl("/api/sessions", configuration);
   if (url) {
@@ -57,8 +59,11 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
       headers: { "content-type": "application/json" },
       body: JSON.stringify(command)
     }));
+    assertAuthenticationInstallationGeneration(installationGeneration);
     if (!response.ok) throw await platformRequestError(response);
-    return response.json() as Promise<AuthenticatedSession>;
+    const authenticated = await response.json() as AuthenticatedSession;
+    assertAuthenticationInstallationGeneration(installationGeneration);
+    return authenticated;
   }
 
   // The clinician-only static prototype has no database-backed accounts. Its local
@@ -78,12 +83,15 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
 
 /** Re-establishes server authority after a browser restart without trusting the persisted identity payload. */
 export async function authenticateRestartedClinicianSession(stored: AuthenticatedSession): Promise<AuthenticatedSession | null> {
+  let installationGeneration: string | null;
+  try { installationGeneration = authenticationInstallationGeneration(); } catch { return null; }
   const url = apiRequestUrl("/api/sessions/current");
   if (!url) return stored;
   const response = await fetch(url, browserRequestInit({ method: "GET", cache: "no-store" }));
   if (response.status === 401) return null;
   if (!response.ok) throw await platformRequestError(response);
   const authenticated = await response.json() as AuthenticatedSession;
+  try { assertAuthenticationInstallationGeneration(installationGeneration); } catch { return null; }
   if (authenticated.user.id !== stored.user.id || authenticated.organization?.id !== stored.organization?.id) return null;
   return {
     ...authenticated,
@@ -102,6 +110,7 @@ export async function endClinicianSession(csrfToken: string): Promise<void> {
 }
 
 export async function changeClinicianPassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<AuthenticatedSession> {
+  const installationGeneration = authenticationInstallationGeneration();
   const url = apiRequestUrl("/api/sessions/password");
   if (!url) throw new Error("Password replacement is unavailable in the static demonstration.");
   const response = await fetch(url, browserRequestInit({
@@ -109,14 +118,18 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ currentPassword, newPassword, csrfToken })
   }));
+  assertAuthenticationInstallationGeneration(installationGeneration);
   if (!response.ok) throw await platformRequestError(response);
-  return response.json() as Promise<AuthenticatedSession>;
+  const authenticated = await response.json() as AuthenticatedSession;
+  assertAuthenticationInstallationGeneration(installationGeneration);
+  return authenticated;
 }
 
 export const CLINICIAN_REAUTHENTICATED_EVENT = "open-triage:session-reauthenticated";
 
 export async function reauthenticateClinicianSession(currentPassword: string,
   csrfToken: string): Promise<ReauthenticationResult> {
+  const installationGeneration = authenticationInstallationGeneration();
   const url = apiRequestUrl("/api/sessions/reauthenticate");
   if (!url) throw new Error("Reauthentication is unavailable in the static demonstration.");
   const response = await fetch(url, browserRequestInit({
@@ -124,8 +137,10 @@ export async function reauthenticateClinicianSession(currentPassword: string,
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ currentPassword })
   }));
+  assertAuthenticationInstallationGeneration(installationGeneration);
   if (!response.ok) throw await platformRequestError(response);
   const result = await response.json() as ReauthenticationResult;
+  assertAuthenticationInstallationGeneration(installationGeneration);
   if (typeof window !== "undefined") window.dispatchEvent(new Event(CLINICIAN_REAUTHENTICATED_EVENT));
   return result;
 }

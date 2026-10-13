@@ -32,3 +32,16 @@ test('independent HttpOnly installation cookie never returns its credential and 
  assert.equal(installationCredential('open_triage_installation=forged'),undefined);
  assert.deepEqual(await controller.current({headers:{cookie:`open_triage_installation=${token}`}},response),{enrolled:true,installation});
 });
+
+test('reassignment accepts only explicit confirmation and clears clinician cookie while rotating independent installation authority',async()=>{
+ assert.deepEqual(enrollmentInput({token,name:'Browser',confirmInstallation:true,reassign:true},true),{token,name:'Browser',reassign:true});
+ for(const reassign of [false,'true',null,1])assert.throws(()=>enrollmentInput({token,name:'Browser',confirmInstallation:true,reassign},true));
+ const installation={id:'replacement',name:'Browser'},writes=[],cleared=[];
+ const controller=new InstallationEnrollmentController({consume:async(_body,credential,clinician)=>{
+ assert.equal(credential,token);assert.equal(clinician,'old-session');return {installation,credential:'B'.repeat(43),reassigned:true};
+ }});
+ const response={cookie:(...args)=>writes.push(args),clearCookie:(...args)=>cleared.push(args)};
+ assert.deepEqual(await controller.enroll({reassign:true},{headers:{cookie:`open_triage_installation=${token}; open_triage_session=old-session`}},response),installation);
+ assert.equal(writes[0][0],'open_triage_installation');assert.equal(writes[0][1],'B'.repeat(43));
+ assert.deepEqual(cleared,[['open_triage_session',{httpOnly:true,secure:true,sameSite:'strict',path:'/api'}]]);
+});
