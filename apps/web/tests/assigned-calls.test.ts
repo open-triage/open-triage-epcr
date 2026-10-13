@@ -1,10 +1,11 @@
 import { expectedApiUrl } from "./helpers/api-url";
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AssignedCall } from "@open-triage/contracts";
+import type { AssignedCall, ClinicianSession, NewJobConfirmation } from "@open-triage/contracts";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
   canceledAssignedCalls,
+  createNewPatientReport,
   fetchAssignedCalls,
   fetchOpenCalls,
   fetchSyntheticCallGenerationContext,
@@ -15,6 +16,9 @@ import {
 } from "../app/assigned-calls";
 import { purgeCompletedReportCaches, reportStorageKey, reportSyncStorageKey } from "../app/local-persistence";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
+import { PlatformRequestError } from "../app/platform-errors";
+import { InstallationContextChangedError } from "../app/installation-transition-generation";
+import { NewJobCanceledError } from "../components/new-job-confirmation";
 
 const call = (id: string, callNumber: string): AssignedCall => ({
   id,
@@ -100,6 +104,56 @@ test("first-open has no offline fallback and requires the server to create autho
     await assert.rejects(openAssignedCall("token", "assignment"), /connection/i);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("assigned and standalone new jobs normalize network failures at creation, preparation and Continue retry", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const session: ClinicianSession = { csrfToken: "csrf", user: { id: "user", displayName: "Clinician" },
+    organization: { id: "agency", name: "Agency" }, startedAt: "2026-10-13T06:44:00Z", expiresAt: "2026-10-13T18:44:00Z" };
+  const reminder: NewJobConfirmation = { token: "attempt", clinicianName: "Clinician",
+    unit: { id: "unit", callSign: "Unit", name: "Unit", organizationId: "agency" } };
+  const challenge = () => Response.json({ code: "calls.identityConfirmationRequired" }, { status: 403 });
+  try {
+    for (const create of [() => openAssignedCall("csrf", "assignment", async value => value.token),
+      () => createNewPatientReport(session, async value => value.token)]) {
+      for (const failureAt of [1, 2, 3]) {
+        let requests = 0;
+        globalThis.fetch = async () => {
+          requests++;
+          if (requests === failureAt) throw new TypeError("private network detail");
+          return requests === 1 ? challenge() : Response.json(reminder);
+        };
+        await assert.rejects(create(), error => error instanceof PlatformRequestError
+          && error.code === "calls.newJobConnectionRequired" && /connection/i.test(error.message)
+          && !error.message.includes("private network detail"));
+        assert.equal(requests, failureAt);
+      }
+      for (const error of [new InstallationContextChangedError("changed"), new PlatformRequestError("auth.http401", 401, "expired")]) {
+        globalThis.fetch = async () => { throw error; };
+        await assert.rejects(create(), actual => actual === error);
+      }
+    }
+    for (const create of [
+      (confirm: (value: NewJobConfirmation) => Promise<string>) => openAssignedCall("csrf", "assignment", confirm),
+      (confirm: (value: NewJobConfirmation) => Promise<string>) => createNewPatientReport(session, confirm),
+    ]) {
+      let requests = 0;
+      const canceled = new NewJobCanceledError();
+      globalThis.fetch = async (_url, init) => {
+        requests++;
+        if (init?.method === "DELETE") throw new TypeError("cancellation offline");
+        return requests === 1 ? challenge() : Response.json(reminder);
+      };
+      await assert.rejects(create(async () => { throw canceled; }), error => error === canceled);
+      assert.equal(requests, 3, "best-effort cancellation cannot replace the clinician's cancellation");
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
   }
 });
 

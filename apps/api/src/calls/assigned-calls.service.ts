@@ -18,7 +18,7 @@ import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncoun
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
-import { assertProductionJobAccess, productionJobAccess, currentShiftAccess } from "./production-job-access.js";
+import { assertProductionJobAccess, productionJobAccess, currentShiftAccess, prepareNewJobConfirmation } from "./production-job-access.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 
 type AssignedCallRow = {
@@ -229,7 +229,7 @@ export class AssignedCallsService {
           and (ca.expires_at is null or ca.expires_at > $3)
         order by ca.dispatched_at desc, ca.id
       `, [current.user.id, current.organization.id, now,
-        productionAccess.state === "ready" ? productionAccess.unit!.id : null,
+        ["ready", "identity-confirmation-required"].includes(productionAccess.state) ? productionAccess.unit!.id : null,
         current.capabilities?.includes("clinical:demo") ?? false]);
       const activeSettings = await manager.query<MediaSettingsRow[]>(`
         select revision, report_media_allowance_bytes, image_media_limit_bytes from app_identity.agency_settings
@@ -343,11 +343,39 @@ export class AssignedCallsService {
     }
   }
 
-  async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
+  async cancelConfirmation(accessToken: string, csrfToken: string | undefined, token: string) {
+    return this.dataSource.transaction(async manager => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      await manager.query(`delete from app_identity.new_job_confirmation
+        where token_sha256=encode(sha256($1::bytea),'hex') and session_sha256=encode(sha256($2::bytea),'hex')`,
+        [Buffer.from(token), Buffer.from(accessToken)]);
+      return { canceled: true };
+    });
+  }
+
+  async prepareConfirmation(accessToken: string, csrfToken: string | undefined, target: string) {
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
+    return this.dataSource.transaction(async manager => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      const access = await productionJobAccess(manager, accessToken, session, this.schedules);
+      const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+      if (target.startsWith("assignment:")) {
+        const [assignment] = await manager.query(`select status,report_id,synthetic,unit_id from clinical.call_assignment
+          where id=$1 and organization_id=$2 and (expires_at is null or expires_at>clock_timestamp()) for share`,
+          [target.slice(11),current.organization.id]);
+        if (!assignment || assignment.status === "canceled") throw new NotFoundException("Assignment unavailable");
+        if (assignment.report_id || assignment.synthetic) return null;
+        if (access.unit && assignment.unit_id !== access.unit.id) throw new NotFoundException("Assignment unavailable");
+      }
+      return prepareNewJobConfirmation(manager, accessToken, current, this.schedules, target);
+    });
+  }
+
+  async open(accessToken: string, assignmentId: string, confirmationToken?: string): Promise<OpenAssignmentResponse> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     try {
       const opened = await this.dataSource.transaction(async (manager) => {
-        const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules);
+        const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken });
         const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         // Synthetic fixtures also serialize unit deactivation before assignment locking.
         await manager.query(`select u.id from app_identity.operational_unit u
@@ -420,7 +448,7 @@ export class AssignedCallsService {
           values ($1, $2, 'unknown', $3, $4)
         `, [patientId, current.organization.id, patientKey, patientKeyConfig.keyVersion]);
         if (!assignment.synthetic) {
-          assertProductionJobAccess({ ...productionAccess, state: await currentShiftAccess(manager, accessToken, productionAccess.unit!, this.schedules) });
+          assertProductionJobAccess({ ...productionAccess, state: await currentShiftAccess(manager, accessToken, productionAccess.unit!, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken, consume: true }) });
         }
         await manager.query(`
           insert into clinical.report
