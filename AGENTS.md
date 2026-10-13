@@ -23,6 +23,7 @@ Before developing UI, read [the UI style guide](docs/design/ui-style-guide.md).
 Apply it to new or changed UI and the shared components needed for that work.
 Use the guide to inform future UI development. Keep unrelated redesigns outside
 the current task.
+All user-visible text must reference localization files.
 
 # Local database-backed development
 
