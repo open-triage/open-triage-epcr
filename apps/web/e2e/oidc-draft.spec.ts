@@ -83,3 +83,20 @@ for(const language of ['en','sv'])test(`OIDC failures provide sanitized actionab
   await expect(page.getByRole('alert')).toHaveText(language==='sv'?'Testet har gått ut. Bekräfta lösenordet och starta ett nytt test.':'The test expired. Confirm your password and start a new test.');
   await expect(page.getByText(language==='sv'?'Aktiv leverantör: Active regional provider':'Active provider: Active regional provider')).toBeVisible();
 });
+
+for(const language of ['en','sv'])for(const width of [390,1440])test(`tested SSO activation shows group/session transition and retains previous policy on stale activation in ${language} at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:900});
+ await page.route('**/__oidc-activation',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><style>${css}</style></head><body><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
+ await page.route('**/__oidc-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+ const testId='a'.repeat(64);let state={...initial,active:null as typeof initial.active|null,draft:{...draft,discoveryHealth:'healthy'},test:{testId,revision:1,result:'succeeded',pkceS256:true,freshPersonalAuthentication:false,completedAt:new Date().toISOString()}};
+ let fail=true,proof=false;
+ await page.route('**/api/admin/authentication/oidc',route=>route.fulfill({json:state}));
+ await page.route('**/api/sessions/reauthenticate',route=>{proof=true;return route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}});});
+ await page.route('**/api/admin/authentication/oidc/activate',route=>{expect(proof).toBe(true);expect(route.request().headers()['x-csrf-token']).toBe('csrf');expect(route.request().postDataJSON()).toEqual({expectedRevision:1,testId});if(fail)return route.fulfill({status:409,json:{code:'admin.oidcActivationTestRequired'}});state={...state,active:state.draft};return route.fulfill({json:state});});
+ await page.goto('/__oidc-activation');const button=page.getByRole('button',{name:language==='sv'?'Aktivera testad SSO':'Activate tested SSO',exact:true});await expect(button).toBeDisabled();
+ await expect(page.getByText(language==='sv'?/Aktivering stoppar nya vanliga lösenordsinloggningar/:/Activation stops new ordinary password logins/)).toBeVisible();
+ await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Personal password 42!');await button.click();await expect(page.getByRole('alert')).toContainText(language==='sv'?'Föregående policy gäller fortfarande':'The previous policy remains active');
+ await expect(page.getByText(language==='sv'?'Aktiv leverantör: Lokal inloggning':'Active provider: Local login',{exact:true})).toBeVisible();
+ fail=false;await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Personal password 42!');await button.click();await expect(page.getByRole('status').filter({hasText:language==='sv'?'SSO aktiverad.':'SSO activated.'})).toBeVisible();await expect(button).toBeDisabled();
+ await expect(page.getByText(language==='sv'?`Aktiv leverantör: ${draft.name}`:`Active provider: ${draft.name}`,{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

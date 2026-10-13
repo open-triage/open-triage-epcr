@@ -20,6 +20,7 @@ type Attempt={state_sha256:string;group_id:string;revision:string;organization_i
 export class OidcTestService {
  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly agencies:AgencyDirectoryService,private readonly identities:RegionalIdentityService = new RegionalIdentityService(database,sessions)){}
  private async authority(token:string,manager:EntityManager=this.database.manager){
+  if(manager.queryRunner?.isTransactionActive)await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
   const actor=await this.sessions.requireCapability(token,"settings:write",manager);
   await this.sessions.requireRecentReauthentication(token,manager);
   const [group]=await manager.query<Array<{id:string}>>("select app_identity.organization_group($1) id",[actor.organization.id]);
@@ -41,6 +42,7 @@ export class OidcTestService {
   const authorizationUrl=await testAuthorization(version.discovery,version.configuration.clientId,decryptCredential(version.encrypted_credential,groupId,version.provider_id),version.configuration.scopes,binding);
   await this.database.transaction(async manager=>{
    const current=await this.authority(token,manager);
+   await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[groupId]);
    const [state]=await manager.query<Array<{draft_revision:string}>>("select draft_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
    if(current.groupId!==groupId||current.actor.organization.id!==agency.id||Number(state?.draft_revision)!==revision)throw new ConflictException("The provider draft changed");
    await manager.query("insert into app_identity.oidc_test_transaction(state_sha256,correlation_sha256,group_id,revision,organization_id,actor_id,origin,action,return_path,encrypted_binding,expires_at,pkce_s256) values($1,$2,$3,$4,$5,$6,$7,'draft_test','/',$8::jsonb,now()+interval '5 minutes',$9)",[digest(binding.state),digest(correlation),groupId,revision,agency.id,actor.user.id,origin,JSON.stringify(encryptCredential(JSON.stringify({binding,token,metadata:version.discovery}),groupId,`test:${binding.state}`)),binding.pkce]);
@@ -82,10 +84,11 @@ export class OidcTestService {
      failureCode="origin_changed";
      if(!await this.agencies.allowsOrigin(origin,manager))throw new Error("Agency origin withdrawn");
      failureCode="draft_changed";
+     await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[attempt.group_id]);
      const [current]=await manager.query<Array<{draft_revision:string;discovery:unknown;discovery_health:string}>>("select s.draft_revision,v.discovery,v.discovery_health from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.draft_revision where s.group_id=$1 for update of s",[attempt.group_id]);
      if(Number(current?.draft_revision)!==Number(attempt.revision)||current?.discovery_health!=="healthy"||JSON.stringify(current.discovery)!==JSON.stringify(metadata))throw new ConflictException("Draft changed");
      failureCode="expired";
-     const completed=mutationRows<{state_sha256:string}>(await manager.query("update app_identity.oidc_test_transaction set result='succeeded',completed_at=now() where state_sha256=$1 and expires_at>now() and result is null returning state_sha256",[attempt.state_sha256]));
+     const completed=mutationRows<{state_sha256:string}>(await manager.query("update app_identity.oidc_test_transaction set result='succeeded',completed_at=now(),tested_discovery=$2::jsonb where state_sha256=$1 and expires_at>now() and result is null returning state_sha256",[attempt.state_sha256,JSON.stringify(metadata)]));
      if(!completed.length)throw new Error("Provider test expired");
      const identity=await this.identities.record(manager,{groupId:attempt.group_id,providerId:attempt.provider_id,revision:Number(attempt.revision),organizationId:attempt.organization_id},validated.identity);
      await manager.query("update app_identity.oidc_test_transaction set identity_request_id=$2 where state_sha256=$1",[attempt.state_sha256,identity.requestId]);
