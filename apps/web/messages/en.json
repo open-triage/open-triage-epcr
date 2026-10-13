@@ -1,4 +1,7 @@
 {
+  "admin.temporaryAccessPolicy": "Temporary passwords expire according to the group Authentication policy.",
+  "platform.error.admin.authenticationPolicyStale": "Authentication policy changed. Reload the effective policy and review your changes before saving.",
+  "platform.error.admin.authenticationPolicyInvalid": "Enter whole numbers: 1–168 hours and 1–1000 login attempts.",
   "platform.error.admin.hostnameReserved": "That hostname is already assigned to an agency.",
   "platform.error.admin.agencyStale": "This agency changed. Reload before saving.",
   "platform.error.admin.invalidHostname": "Enter a hostname such as test.opentriage.org, without a scheme, port or path.",
@@ -63,6 +66,7 @@
   "navigation.catalog": "Element catalog",
   "navigation.form": "Form editor",
   "navigation.validation": "Validation rules",
+  "navigation.authentication": "Authentication",
   "navigation.settings": "Agency Settings",
   "settings.regionalFormat": "Regional format",
   "settings.datesAndNumbers": "Dates and numbers",

@@ -920,7 +920,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies" | "units";
+export type AdminPanelKey = "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -2014,6 +2014,16 @@ export * from "./analytics.js";
 
 export * from "./metrics.js";
 
+/** One local authentication policy is owned by a root agency and inherited by children. */
+export type GroupAuthenticationPolicy = {
+  groupId: string; revision: number; maximumSessionHours: number; temporaryPasswordHours: number;
+  accountAttemptsPer15Minutes: number; networkAttemptsPer5Minutes: number;
+};
+export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
+  groupName: string; organizationId: string; inherited: boolean; minimumPasswordLength: 12; mode: "local";
+  history: Array<{ actorId: string; displayName: string | null; occurredAt: string;
+    details: { prior?: GroupAuthenticationPolicy; policy?: GroupAuthenticationPolicy } }>;
+};
 /** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
 export interface OperationalUnitSummary {
   id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;

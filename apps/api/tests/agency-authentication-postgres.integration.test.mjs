@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { readMigrations, applyMigrations } from '../../../packages/database/scripts/migrate.mjs';
 import { beginAuthenticationAttempt, finishAuthenticationAttempt } from '../dist/sessions/authentication-throttle.js';
-import { AgencySettingsService } from '../dist/admin/agency-settings.service.js';
+import { AuthenticationPolicyService } from '../dist/authentication/authentication-policy.service.js';
 
 const integration = process.env.DATABASE_URL ? test : test.skip;
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -69,28 +69,24 @@ integration('Postgres enforces agency defaults, live policy changes, and atomic 
       } catch (error) { await client.query('rollback'); throw error; }
       finally { client.release(); }
     } };
-    const settings = new AgencySettingsService(database, { requireCapability: async (_token, capability) => {
-      assert.ok(['settings:read', 'settings:write'].includes(capability));
-      return { organization: { id: organizationIds[0] }, user: { id: userIds[0] } };
-    } });
+    const settings = new AuthenticationPolicyService(database, { requireCapability: async () => ({ organization: { id: organizationIds[0] }, user: { id: userIds[0] } }), requireRecentReauthentication: async () => {} });
+    database.manager = manager;
     const before = await settings.get('test-session');
     const saved = await settings.update('test-session', {
-      expectedRevision: before.revision, language: before.language, appearance: before.appearance,
-      reportMediaAllowanceBytes: before.reportMediaAllowanceBytes, imageMediaLimitBytes: before.imageMediaLimitBytes,
-      demographics: before.demographics,
-      authenticationLimits: { accountAttemptsPer15Minutes: 50, networkAttemptsPer5Minutes: 75 },
+      expectedRevision: before.revision, maximumSessionHours: 8, temporaryPasswordHours: 24,
+      accountAttemptsPer15Minutes: 50, networkAttemptsPer5Minutes: 75,
     });
-    assert.deepEqual(saved.authenticationLimits, { accountAttemptsPer15Minutes: 50, networkAttemptsPer5Minutes: 75 });
-    const audit = (await pool.query(`select old_authentication_account_attempt_limit as old_account,
-      new_authentication_account_attempt_limit as new_account, old_authentication_network_attempt_limit as old_network,
-      new_authentication_network_attempt_limit as new_network
-      from app_identity.agency_settings_change_event where organization_id=$1`, [organizationIds[0]])).rows;
-    assert.deepEqual(audit, [{ old_account: 20, new_account: 50, old_network: 60, new_network: 75 }]);
+    assert.equal(saved.accountAttemptsPer15Minutes, 50);
+    const audit = (await pool.query(`select actor_id,details from app_identity.authentication_event
+      where organization_id=$1 and action='authentication.policy_update'`, [organizationIds[0]])).rows;
+    assert.equal(audit[0].actor_id,userIds[0]);
+    assert.equal(audit[0].details.prior.accountAttemptsPer15Minutes,20);
+    assert.equal(audit[0].details.policy.accountAttemptsPer15Minutes,50);
     const admitted = await Promise.all(Array.from({ length: 50 }, () => attempt(usernames[0])));
     assert.equal(admitted.filter(Boolean).length, 50);
     await Promise.all(admitted.map(result => finishAuthenticationAttempt(manager, result, true, now)));
     assert.equal(await attempt(usernames[0]), undefined, 'the 51st attempt is blocked');
-    await pool.query(`update app_identity.agency_settings set authentication_account_attempt_limit=100 where organization_id=$1`, [organizationIds[0]]);
+    await pool.query(`update app_identity.group_authentication_policy set account_attempt_limit=100 where group_id=$1`, [organizationIds[0]]);
     const raised = await attempt(usernames[0]);
     assert.ok(raised, 'an increase applies in the same window');
     const accountKey = raised.buckets.find(bucket => bucket.scope === 'account').keyDigest;
@@ -98,7 +94,7 @@ integration('Postgres enforces agency defaults, live policy changes, and atomic 
       ['account', accountKey])).rows[0].attempt_count, 52, 'the update does not reset successful or blocked attempts');
     const otherAgency = await Promise.all(Array.from({ length: 21 }, () => attempt(usernames[1])));
     assert.equal(otherAgency.filter(Boolean).length, 20, 'another agency retains its default account policy');
-    await pool.query(`update app_identity.agency_settings set authentication_network_attempt_limit=52 where organization_id=$1`, [organizationIds[0]]);
+    await pool.query(`update app_identity.group_authentication_policy set network_attempt_limit=52 where group_id=$1`, [organizationIds[0]]);
     assert.equal(await attempt(usernames[0]), undefined, 'lowering the network policy applies without resetting its counter');
     assert.ok(await attempt(usernames[0], '203.0.113.42'), 'a different network has its own allowance');
   } finally {

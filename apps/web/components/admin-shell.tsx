@@ -1,5 +1,6 @@
 "use client";
 import { UnitsPanel } from "./units-panel";
+import { AuthenticationPolicyPanel } from "./authentication-policy";
 
 import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useState } from "react";
@@ -16,11 +17,11 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
 import { OrganizationManagement } from "./organization-management";
 
-type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin" | "Units";
+type AdminPanel = "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
   ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
-  ["units", "Units"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
+  ["authentication", "Authentication"], ["units", "Units"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -54,7 +55,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
 }) {
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
   const adminT = useAdminText();
-  const panelKeys: Record<AdminPanel, string> = { Units: "navigation.units", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
+  const panelKeys: Record<AdminPanel, string> = { Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
     "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
     "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings", "Super-admin": "navigation.superAdmin" };
   const [context, setContext] = useState<AdminContext | null>(null);
@@ -191,6 +192,8 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section></div>}
+
+    {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
 
     {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""}

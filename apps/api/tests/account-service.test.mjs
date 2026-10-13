@@ -12,6 +12,7 @@ function instrumentedDataSource(respond = ({ sql }) =>
   const manager = { query: async (sql, parameters = []) => {
     const statement = { connection: "transaction-connection", sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(statement);
+    if (statement.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: parameters[0], revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
     if (statement.sql.startsWith("select app_identity.organization_group")) return [{ id: parameters[0] }];
     return respond(statement);
   } };

@@ -18,6 +18,7 @@ function setup({ availableRoles = [roleId], capabilities = actor.capabilities, o
   const manager = { query: async (sql, parameters = []) => {
     const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(event);
+    if (event.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: "organization-id", revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
     if (event.sql.startsWith("select role.id, role.system_key")) {
       return availableRoles.map((id) => ({ id, system_key: systemKey, capability_key: roleCapability }));
     }

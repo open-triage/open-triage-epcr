@@ -1,3 +1,4 @@
+import { localPolicy } from "../authentication/local-policy.js";
 import { randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -19,11 +20,11 @@ export class UserProvisioningService {
   async provision(token: string, command: ProvisionAdminUserCommand, now = new Date()): Promise<ProvisionedAdminUser> {
     const passwordVerifier = await createPasswordVerifier(command.temporaryPassword);
     const userId = randomUUID();
-    const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
-    const expiresAt = new Date(now.getTime() + temporaryPasswordHours * 60 * 60 * 1_000);
     try {
       return await this.dataSource.transaction(async (manager) => {
         const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        const policy = await localPolicy(manager, actor.organization.id);
+        const expiresAt = new Date(now.getTime() + (policy?.temporaryPasswordHours ?? selectedInstallationSettings().authentication.temporaryPasswordHours) * 60 * 60 * 1_000);
         if (command.roleIds.length && !actor.capabilities?.includes("roles:assign")) {
           throw new ForbiddenException("roles:assign is required to provision initial roles");
         }

@@ -11,13 +11,11 @@ import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAd
   replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, updateAdminRole, updateAdminUser,
   type AdminUserQuery } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
-import { selectedInstallationSettings } from "../app/installation-settings";
 import { useAvailableHeight } from "./use-available-height";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { OwnershipTransferPanel } from "./ownership-transfer";
 
 type StateFilter = "active" | "disabled" | "all";
-const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
 
 function RoleBadges({ roles, effective = true, owner = false, superadmin = false }: {
   readonly roles: AdminRoleSummary[]; readonly effective?: boolean; readonly owner?: boolean; readonly superadmin?: boolean;
@@ -137,7 +135,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       username: String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
       temporaryPassword: String(data.get("temporaryPassword") ?? ""),
-      temporaryPasswordHours,
       roleIds: data.getAll("roleIds").map(String),
       note: String(data.get("note") ?? "") || undefined
     };
@@ -216,7 +213,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     const data = new FormData(form);
     const command: ResetAdminCredentialCommand = { expectedRevision: editing.revision,
       temporaryPassword: String(data.get("temporaryPassword") ?? ""),
-      temporaryPasswordHours,
       note: String(data.get("note") ?? "") || undefined };
     if (!window.confirm(`Reset ${editing.displayName}'s credential and revoke every session?`)) return;
     setResetting(true);
@@ -307,7 +303,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           required autoComplete="off" /></label>
         <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
           required autoComplete="new-password" /></label>
-        <p className="admin-muted">{t("admin.temporaryAccessExpires", { hours: temporaryPasswordHours })}</p>
+        <p className="admin-muted">{t("admin.temporaryAccessPolicy")}</p>
         <fieldset className="admin-role-selection"><legend><AdminText messageKey="admin.initialRoles" /></legend>
           {roleOptions.filter((role) => role.active).map((role) => <label key={role.id}>
             <input name="roleIds" type="checkbox" value={role.id}
@@ -383,7 +379,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <p><AdminText messageKey="admin.credentialResetDoesNotReactivate" /></p>
           <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
             required autoComplete="new-password" /></label>
-          <p className="admin-muted">{t("admin.temporaryAccessExpires", { hours: temporaryPasswordHours })}</p>
+          <p className="admin-muted">{t("admin.temporaryAccessPolicy")}</p>
           <label><AdminText messageKey="admin.noteOptional" /><textarea name="note" maxLength={1000} /></label>
           <button type="submit" className="button-danger">{resetting ? t("admin.resetting") : t("admin.resetCredentialAnd")}</button>
         </fieldset>

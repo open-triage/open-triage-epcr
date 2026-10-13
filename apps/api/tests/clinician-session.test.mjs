@@ -14,6 +14,7 @@ function instrumentedDataSource(respond) {
   const manager = { query: async (sql, parameters = []) => {
     const statement = { connection: "transaction-connection", sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(statement);
+    if (statement.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: parameters[0], revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
     return respond(statement);
   } };
   return {
@@ -89,6 +90,7 @@ test("temporary credentials sign in only before expiry and cannot outlive their 
     const query = async (sql, parameters = []) => {
       const normalized = sql.replace(/\s+/g, " ").trim();
       events.push({ sql: normalized, parameters });
+      if (normalized.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: parameters[0], revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
       if (normalized.startsWith("select u.id as user_id")) return [account];
       if (normalized.startsWith("insert into app_identity.app_session")) return [{ id: "session-id" }];
       if (normalized.startsWith("select capability.key as capability_key")) return [{ capability_key: "clinical:document" }];
