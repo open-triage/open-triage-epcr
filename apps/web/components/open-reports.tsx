@@ -77,6 +77,7 @@ export function OpenReports({
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
   const [reauthenticating, setReauthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const reportsRef = useRef<OpenReportSummary[]>([]);
   const syncingCachedReports = useRef(false);
@@ -168,7 +169,7 @@ export function OpenReports({
       showReports(visible);
       directoryLoaded = true;
       setLoaded(true);
-      setError(null);
+      setDirectoryError(null);
       if (activeReportId && completedIds.has(activeReportId)
           && !nextDraftChange(window.localStorage, activeReportId)) onCompleted?.(activeReportId);
       await syncCachedReports();
@@ -221,7 +222,7 @@ export function OpenReports({
         showReports(cached.length ? cached : reportsRef.current);
       }
       setLoaded(true);
-      setError(refreshError instanceof Error ? refreshError.message : t("reports.refreshFailed"));
+      setDirectoryError(refreshError instanceof Error ? refreshError.message : t("reports.refreshFailed"));
     } finally {
       refreshing.current = false;
     }
@@ -315,8 +316,8 @@ export function OpenReports({
         </button>
       </div>
       <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
-      {error && <p className="assignment-error" role="alert">{error}</p>}
-      {!loaded && !error && <LoadingStatus className="assignment-empty">{t("reports.loading")}</LoadingStatus>}
+      {(error || directoryError) && <p className="assignment-error" role="alert">{error || directoryError}</p>}
+      {!loaded && !error && !directoryError && <LoadingStatus className="assignment-empty">{t("reports.loading")}</LoadingStatus>}
       {loaded && reports.length === 0 && <p className="assignment-empty">{t("reports.none")}</p>}
       {reports.length > 0 && (
         <ul className="assigned-call-list">
