@@ -1,4 +1,8 @@
 {
+  "platform.error.admin.oidcInvalid": "Ogiltigt OIDC-fält: {field}.",
+  "platform.error.admin.oidcStale": "OIDC-utkastet har ändrats. Läs om och granska innan du sparar.",
+  "platform.error.admin.oidcIncomplete": "Fyll i obligatoriska OIDC-fält: {field}.",
+  "platform.error.admin.oidcEncryptionUnavailable": "Kryptering av OIDC-hemligheter är inte tillgänglig. Be installationsansvarig konfigurera skyddade nycklar.",
   "admin.temporaryAccessPolicy": "Tillfälliga lösenord upphör enligt gruppens autentiseringspolicy.",
   "platform.error.admin.authenticationPolicyStale": "Autentiseringspolicyn har ändrats. Läs om den effektiva policyn och granska dina ändringar innan du sparar.",
   "platform.error.admin.authenticationPolicyInvalid": "Ange heltal: 1–168 timmar och 1–1000 inloggningsförsök.",

@@ -1212,3 +1212,9 @@ fieldset { min-inline-size: 0; }
 .unit-installation-inventory { max-height: min(35dvh, 320px); }
 
 .installation-enrollment h1 { font-size: var(--text-heading); }
+
+.oidc-metadata-value { overflow-wrap: anywhere; margin-inline-start: 0; }
+
+/* Keep the compact provider editor actions from covering credential fields. */
+.agency-settings .oidc-draft .form-actions { position: static; }
+.oidc-draft > div { display: grid; gap: 8px; }

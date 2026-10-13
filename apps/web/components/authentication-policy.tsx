@@ -5,6 +5,8 @@ import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { platformRequestError } from "../app/platform-errors";
 import { useUnsavedChanges } from "./unsaved-changes";
 
+import { OidcDraftPanel } from "./oidc-draft";
+
 type Policy = import("@open-triage/contracts").GroupAuthenticationPolicyView;
 const fields = ["maximumSessionHours", "temporaryPasswordHours", "accountAttemptsPer15Minutes", "networkAttemptsPer5Minutes"] as const;
 const labels = { en: ["Maximum session duration (hours)", "Temporary password expiry (hours)", "Account attempts per 15 minutes", "Network attempts per 5 minutes"],
@@ -62,6 +64,7 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite }: { l
       <p role="status">{status}</p>
       <h3>{sv ? "Ändringshistorik" : "Change history"}</h3>
       <ul className="authentication-policy-history">{policy.history.map((event,index) => <li key={index}><details><summary>{event.displayName ?? event.actorId} — <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString(sv ? "sv-SE" : "en-US")}</time></summary><dl>{fields.map((field, index) => <div key={field}><dt>{labels[sv ? "sv" : "en"][index]}</dt><dd>{event.details.prior?.[field]} → {event.details.policy?.[field]}</dd></div>)}</dl></details></li>)}</ul>
+    <OidcDraftPanel language={language} csrfToken={csrfToken} canWrite={canWrite}/>
     </>}
   </section>;
 }

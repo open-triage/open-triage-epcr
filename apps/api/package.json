@@ -13,7 +13,7 @@
     "identity:account:runtime": "node dist/identity/identity-account.cli.entry.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/new-patient-demo-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/installation-accounts-postgres.integration.test.mjs tests/multi-organization-postgres.integration.test.mjs tests/agency-authentication-postgres.integration.test.mjs tests/group-authentication-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/review-postgres.integration.test.mjs tests/review-saved-postgres.integration.test.mjs tests/review-completion-postgres.integration.test.mjs tests/review-amendment-postgres.integration.test.mjs tests/review-bulk-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/units-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/installation-enrollment-postgres.integration.test.mjs",
+    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/new-patient-demo-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/installation-accounts-postgres.integration.test.mjs tests/multi-organization-postgres.integration.test.mjs tests/agency-authentication-postgres.integration.test.mjs tests/group-authentication-postgres.integration.test.mjs tests/oidc-draft-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/review-postgres.integration.test.mjs tests/review-saved-postgres.integration.test.mjs tests/review-completion-postgres.integration.test.mjs tests/review-amendment-postgres.integration.test.mjs tests/review-bulk-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/units-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/installation-enrollment-postgres.integration.test.mjs",
     "review:work": "npm run build && node dist/review/review-worker.entry.js",
     "review:watch": "node --env-file-if-exists=../../.env.local scripts/watch-review.mjs"
   },
@@ -24,6 +24,8 @@
     "@nestjs/typeorm": "^12.0.1",
     "@open-triage/contracts": "0.1.3",
     "dotenv": "^17.4.2",
+    "ipaddr.js": "2.5.0",
+    "openid-client": "6.8.8",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
