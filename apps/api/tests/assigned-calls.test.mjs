@@ -109,6 +109,8 @@ test("the authenticated call-list integration returns only the clinician's assig
     query: async (sql, parameters) => {
       queries.push({ sql, parameters });
       if (sql.includes("purge_expired_synthetic_records")) return [];
+      if (sql.includes("select synthetic from app_identity.app_user")) return [{synthetic:true}];
+      if (sql.includes("order by id for share") || sql.includes("order by role.id for share")) return [];
       return [{
         id: "32000000-0000-4000-8000-000000000011",
         call_number: "SYN-20260903-001",
@@ -134,6 +136,7 @@ test("the authenticated call-list integration returns only the clinician's assig
       }];
     }
   };
+  dataSource.transaction = async work => work(dataSource);
   const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
     assert.equal(capability, "clinical:document");
@@ -160,9 +163,9 @@ test("the authenticated call-list integration returns only the clinician's assig
     imageMediaLimitBytes: 10 * 1024 * 1024,
     settingsRevision: 1,
   });
-  assert.deepEqual(queries[1].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
-  assert.match(queries[1].sql, /ca\.status in \('assigned', 'canceled'\)/);
-  assert.match(queries[1].sql, /uc\.user_id = \$1/);
+  assert.deepEqual(queries[4].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
+  assert.match(queries[4].sql, /ca\.status in \('assigned', 'canceled'\)/);
+  assert.match(queries[4].sql, /uc\.user_id=\$1/);
 });
 
 test("the assigned-call endpoint requires a current clinician session", async () => {
@@ -175,6 +178,7 @@ test("removing clinical document authority blocks assigned-call access on the ne
   let queries = 0;
   const remainingCapabilities = ["admin-dashboard:read"];
   const dataSource = { query: async () => { queries += 1; return []; } };
+  dataSource.transaction = async work => work(dataSource);
   const sessions = { requireCapability: async (_token, capability) => {
     assert.equal(capability, "clinical:document");
     assert.deepEqual(remainingCapabilities, ["admin-dashboard:read"]);
@@ -184,14 +188,14 @@ test("removing clinical document authority blocks assigned-call access on the ne
   const service = new AssignedCallsService(dataSource, sessions);
 
   await service.list(session.accessToken);
-  assert.equal(queries, 3);
+  assert.equal(queries, 6);
   canDocument = false;
   await assert.rejects(service.list(session.accessToken), UnauthorizedException);
   await assert.rejects(
     service.open(session.accessToken, "32000000-0000-4000-8000-000000000011"),
     UnauthorizedException,
   );
-  assert.equal(queries, 3, "an old unit assignment must not be queried after authority is removed");
+  assert.equal(queries, 6, "an old unit assignment must not be queried after authority is removed");
 });
 
 test("generation context returns every eligible active unit and only counts unopened synthetic calls", async () => {
@@ -253,6 +257,10 @@ test("opening and retrying one assignment creates one draft without an automatic
   let patientInsertParameters = null;
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("select synthetic from app_identity.app_user")) return [{synthetic:true}];
+    if (normalized.includes("order by id for share") || normalized.includes("order by role.id for share")) return [];
+    if (normalized.includes("for share of u")) return [];
+    if (normalized.includes("select 1 from app_identity.unit_clinician uc")) return [{exists:1}];
     if (normalized.includes("for update of ca")) return [assignment];
     if (normalized.includes("active_configuration_bundle")) {
       return [{ id: "latest-published-version", catalog_release_id: "catalog-release",

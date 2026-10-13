@@ -146,6 +146,16 @@ export class SchedulesService {
   async getPreview(token:string,unitId:string) {
     const actor=await this.sessions.requireCapability(token,"settings:read");return this.preview(this.database.manager,actor.organization.id,unitId,await this.now(this.database.manager));
   }
+  /** Internal boundary: caller has already authorized and locked this live unit.
+   * Reuse the same server clock, DST and prospective selection/version semantics.
+   * This does not grant access to the Admin schedule directory. */
+  async evaluateUnit(manager:EntityManager,organizationId:string,unitId:string) {
+    await manager.query(`select schedule.id from app_identity.weekly_schedule schedule
+      where schedule.id in (select selection.schedule_id from app_identity.unit_schedule_selection selection
+        where selection.organization_id=$1 and selection.unit_id=$2 order by selection.revision desc limit 2)
+      order by schedule.id for share`,[organizationId,unitId]);
+    return this.preview(manager,organizationId,unitId,await this.now(manager));
+  }
   async previewSelection(token:string,unitId:string,input:unknown):Promise<ScheduleChangePreview> {return this.select(token,unitId,input,true) as Promise<ScheduleChangePreview>;}
   async select(token:string,unitId:string,input:unknown,previewOnly=false) {
     if(!input||typeof input!=="object"||Array.isArray(input))throw new UnprocessableEntityException("Invalid schedule selection");

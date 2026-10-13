@@ -1,6 +1,8 @@
 "use client";
 
-import type { AssignedCall, ClinicianSession, OpenAssignmentResponse } from "@open-triage/contracts";
+import type { AssignedCall, ClinicianSession, OpenAssignmentResponse, ProductionJobAccess } from "@open-triage/contracts";
+import { PlatformRequestError } from "../app/platform-errors";
+import { InstallationContextChangedError } from "../app/installation-transition-generation";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
 import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
@@ -40,6 +42,7 @@ export function AssignedCalls({
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
   const [calls, setCalls] = useState<AssignedCall[]>([]);
+  const [productionAccess, setProductionAccess] = useState<ProductionJobAccess | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -61,9 +64,15 @@ export function AssignedCalls({
       callsRef.current = visible;
       setCalls(visible);
       setLoaded(true);
+      setProductionAccess(response.productionAccess ?? null);
       setError(null);
     } catch (refreshError) {
       if (openingRef.current || refreshEpoch.current !== epoch) return;
+      if (refreshError instanceof InstallationContextChangedError || refreshError instanceof PlatformRequestError && [401, 403].includes(refreshError.status)) {
+        callsRef.current = [];
+        setCalls([]);
+        setProductionAccess(null);
+      }
       setError(refreshError instanceof Error ? refreshError.message : t("calls.refreshFailed"));
     }
   }, [paused, suppressedCallNumbers, t]);
@@ -95,6 +104,11 @@ export function AssignedCalls({
         window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>(
           `[data-assignment-id="${CSS.escape(call.id)}"] input[name="currentPassword"]`)?.focus());
         return;
+      }
+      if (openError instanceof InstallationContextChangedError || openError instanceof PlatformRequestError && [401, 403].includes(openError.status)) {
+        callsRef.current = [];
+        setCalls([]);
+        setProductionAccess(null);
       }
       setError(openError instanceof Error ? openError.message : t("calls.openFailed"));
       window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(
@@ -134,13 +148,16 @@ export function AssignedCalls({
     <section className="assigned-calls" aria-labelledby="assigned-calls-title">
       <div className="assigned-calls-heading">
         <div>
-          <p className="eyebrow">{t("calls.demoUnit")}</p>
+          <p className="eyebrow">{productionAccess?.unit?.callSign ?? t(productionAccess?.state === "synthetic-only" ? "calls.demoUnit" : "calls.unit")}</p>
           <h1 id="assigned-calls-title">{t("calls.assigned")}</h1>
         </div>
       </div>
       {error && <p className="assignment-error" role="alert">{error}</p>}
+      {productionAccess && !["ready", "synthetic-only"].includes(productionAccess.state) &&
+        <p className="assignment-empty" role="status">{t(`calls.production.${productionAccess.state}`)}</p>}
       {!loaded && !error && <LoadingStatus className="assignment-empty">{t("calls.loading")}</LoadingStatus>}
-      {loaded && calls.length === 0 && <p className="assignment-empty">{t("calls.none")}</p>}
+      {loaded && calls.length === 0 && (!productionAccess || ["ready", "synthetic-only"].includes(productionAccess.state)) &&
+        <p className="assignment-empty">{t("calls.none")}</p>}
       {calls.length > 0 && (
         <ul className="assigned-call-list">
           {calls.map((call) => (
