@@ -29,12 +29,18 @@ export async function discoveryProvider(){
         const code=randomBytes(24).toString('base64url');codes.set(code,params);
         const callback=new URL(params.get('redirect_uri'));callback.searchParams.set('code',code);callback.searchParams.set('state',params.get('state'));res.writeHead(302,{location:callback.href}).end();
       }else if(req.url==='/token'&&req.method==='POST'){
+        if(fixture.personalProofMode==='outage'){res.writeHead(503).end('{}');return;}
         fixture.tokenCount++;let body='';req.on('data',part=>body+=part);req.on('end',async()=>{
           await fixture.beforeToken?.();
           const params=new URLSearchParams(body),authorization=codes.get(params.get('code'));codes.delete(params.get('code'));
           if(!authorization||params.get('client_secret')!=='fresh-provider-secret'||params.get('client_id')!==authorization.get('client_id')||params.get('redirect_uri')!==authorization.get('redirect_uri')||authorization.get('code_challenge')!==createHash('sha256').update(params.get('code_verifier')||'').digest('base64url')){res.writeHead(400).end('{}');return;}
           const pair=pairs.find(pair=>pair.kid===fixture.tokenKid);const now=Math.floor(Date.now()/1000);
-          const claims={iss:`${fixture.origin}/adfs`,sub:'fictional-provider-user',aud:params.get('client_id'),iat:now,exp:now+300,nonce:authorization.get('nonce'),...fixture.tokenOverrides};
+          const personal=fixture.personalProofMode ? {acr:'fixture:interactive-personal',amr:['fixture-personal'],auth_time:now} : {};
+          if(fixture.personalProofMode==='cached')personal.auth_time=now-600;
+          if(fixture.personalProofMode==='silent')personal.amr=['sso'];
+          if(fixture.personalProofMode==='method')personal.acr='fixture:unapproved-method';
+          if(fixture.personalProofMode==='future')personal.auth_time=now+1;
+          const claims={iss:`${fixture.origin}/adfs`,sub:'fictional-provider-user',aud:params.get('client_id'),iat:now,exp:now+300,nonce:authorization.get('nonce'),...personal,...fixture.tokenOverrides};
           const payload=[{alg:'RS256',kid:pair.kid,...fixture.headerOverrides},claims].map(value=>Buffer.from(JSON.stringify(value)).toString('base64url')).join('.');
           const signature=fixture.invalidSignature?randomBytes(256):sign('RSA-SHA256',Buffer.from(payload),pair.privateKey);
           res.end(JSON.stringify({access_token:'fictional-access-token',token_type:'Bearer',expires_in:300,id_token:`${payload}.${signature.toString('base64url')}`}));

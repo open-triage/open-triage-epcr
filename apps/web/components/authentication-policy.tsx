@@ -1,6 +1,8 @@
 "use client";
+import { resolveMessage } from "../app/localization";
 import React, { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
+import { PersonalAuthenticationField,usePasswordAuthentication } from "./personal-authentication";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { platformRequestError } from "../app/platform-errors";
 import { useUnsavedChanges } from "./unsaved-changes";
@@ -21,6 +23,7 @@ async function request(csrfToken: string, body?: unknown): Promise<Policy> {
 }
 export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canReviewIdentities=false, canLinkIdentities=false, canApproveIdentities=false }: { language: string; csrfToken: string; canWrite: boolean; canReviewIdentities?:boolean;canLinkIdentities?:boolean;canApproveIdentities?:boolean }) {
   const sv = language === "sv";
+  const needsPassword=usePasswordAuthentication();
   const [tab,setTab]=useState<"provider"|"identities">("provider");
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -58,10 +61,9 @@ export function AuthenticationPolicyPanel({ language, csrfToken, canWrite, canRe
           {fields.map((field,index) => <label key={field} htmlFor={`auth-${field}`}>{labels[sv ? "sv" : "en"][index]}
             <input id={`auth-${field}`} type="number" min="1" max={index < 2 ? 168 : 1000} required step="1" value={draft[field] ?? ""}
               onChange={event => setDraft(current => ({ ...current, [field]: event.target.value }))} /></label>)}
-          {canWrite && <label htmlFor="auth-current-password">{sv ? "Ditt nuvarande lösenord krävs för att spara" : "Your current password is required to save"}
-            <input id="auth-current-password" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>}
+          {canWrite && <PersonalAuthenticationField language={language} value={password} onChange={setPassword} label={resolveMessage(language,"admin.personalPasswordToSave")}/>}
           {!valid && <p role="alert">{sv ? "Ange heltal: 1–168 timmar och 1–1000 försök." : "Enter whole numbers: 1–168 hours and 1–1000 attempts."}</p>}
-          {canWrite && <div className="form-actions"><button type="submit" disabled={!dirty || !valid || !password || busy}>{sv ? "Spara gruppolicy" : "Save group policy"}</button>
+          {canWrite && <div className="form-actions"><button type="submit" disabled={!dirty || !valid || (needsPassword && !password) || busy}>{sv ? "Spara gruppolicy" : "Save group policy"}</button>
             <button type="button" disabled={busy} onClick={() => { loaded(policy); setPassword(""); setError(""); }}>{sv ? "Avbryt" : "Cancel"}</button></div>}
         </fieldset>
       </form>

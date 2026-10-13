@@ -11,6 +11,8 @@ import { createPasswordVerifier, verifyPassword } from "../identity/password.js"
 import { beginAuthenticationAttempt, finishAuthenticationAttempt } from "./authentication-throttle.js";
 import { AgencyDirectoryService } from "./agency-directory.service.js";
 import { agencyRequest } from "./agency-context.js";
+import { decryptCredential, encryptCredential } from "../authentication/oidc-credentials.js";
+import { assertValidatedPersonalProof, personalProofPolicyDigest, type ValidatedPersonalProof } from "../authentication/personal-proof.js";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
@@ -22,6 +24,9 @@ type CredentialRow = {
   temporary_password_expires_at: Date | string | null; credential_version: string; active: boolean;
 };
 type SessionRow = Omit<CredentialRow, "password_verifier" | "username"> & {
+  authentication_source?: "local" | "oidc"; authentication_valid?: boolean;
+  personally_authenticated_at?: Date | string | null; personal_authentication_purpose?: "login" | "switch" | "reauthenticate";
+  encrypted_csrf?: ReturnType<typeof encryptCredential>; oidc_group_id?: string;
   session_id: string; created_at: Date | string; expires_at: Date | string; csrf_sha256: string;
   session_credential_version: string; revoked_at: Date | string | null;
   browser_origin?: string | null; agency_access?: boolean; installation_available?: boolean; installation_registration_id?: string | null;
@@ -92,14 +97,14 @@ export class ClinicianSessionService {
       : normalExpiry;
     return this.dataSource.transaction(async manager => {
       const registrationId = await lockInstallationForSession(manager);
-      if (registrationId && !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin)) {
+      if (registrationId && !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin,manager)) {
         throw new UnauthorizedException("Registered application origin required");
       }
       const inserted = mutationRows<{ id: string }>(await manager.query(`
         insert into app_identity.app_session
           (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
-           organization_id, browser_origin, installation_registration_id)
-        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10) returning id
+           organization_id, browser_origin, installation_registration_id, personally_authenticated_at, personal_authentication_purpose)
+        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $5, 'login') returning id
       `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt,
         coarseDeviceLabel(userAgent), account.organization_id, agencyRequest.getStore()?.origin ?? null, registrationId]));
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
@@ -110,6 +115,8 @@ export class ClinicianSessionService {
   async getAuthenticated(sessionToken: string, now = new Date(), allowPasswordChange = false, manager = this.dataSource.manager): Promise<AuthenticatedSession> {
     const rows = await manager.query<SessionRow[]>(`
       select s.id as session_id, s.installation_registration_id, s.created_at, s.expires_at, s.csrf_sha256,
+             s.authentication_source, app_identity.session_authentication_valid(s) as authentication_valid,
+             s.personally_authenticated_at, s.personal_authentication_purpose, s.encrypted_csrf, s.oidc_group_id,
              s.browser_origin, (s.installation_registration_id is null or exists(
                select 1 from app_identity.installation_registration i
                join app_identity.operational_unit unit on unit.id=i.unit_id and unit.organization_id=i.organization_id
@@ -126,7 +133,7 @@ export class ClinicianSessionService {
       from app_identity.app_session s
       join app_identity.app_user u on u.id = s.user_id
       left join app_identity.organization o on o.id = s.organization_id
-      join app_identity.local_credential c on c.user_id = u.id
+      left join app_identity.local_credential c on c.user_id = u.id
       where s.token_sha256 = $1
     `, [digest(sessionToken)]);
     const row = rows[0];
@@ -134,21 +141,35 @@ export class ClinicianSessionService {
         agencyRequest.getStore()?.organizationId && row.organization_id !== agencyRequest.getStore()!.organizationId ||
         row.browser_origin && agencyRequest.getStore()?.origin && row.browser_origin !== agencyRequest.getStore()!.origin ||
         timestamp(row.expires_at) <= now.getTime() ||
-        row.session_credential_version !== row.credential_version ||
-        (row.must_change_password && (!row.temporary_password_expires_at ||
+        row.authentication_valid === false ||
+        (row.authentication_source === 'oidc' && row.authentication_valid !== true) ||
+        (row.authentication_source !== 'oidc' && (!row.credential_version || row.session_credential_version !== row.credential_version)) ||
+        (row.authentication_source !== 'oidc' && row.must_change_password && (!row.temporary_password_expires_at ||
           timestamp(row.temporary_password_expires_at) <= now.getTime())) ||
-        (row.must_change_password && !allowPasswordChange)) {
+        (row.authentication_source !== 'oidc' && row.must_change_password && !allowPasswordChange)) {
       throw new UnauthorizedException(row?.must_change_password ? "A password change is required" : "The clinician session has ended");
     }
     if (row.installation_registration_id && (!agencyRequest.getStore()?.origin ||
-        !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin))) {
+        !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin,manager))) {
       throw new UnauthorizedException("Registered application origin required");
     }
-    const session = await this.publicSession(row, new Date(row.created_at), new Date(row.expires_at), undefined, manager);
+    // CSRF is recoverable only for signed-in OIDC browsers. It is encrypted at rest
+    // and bound to this exact token/group; regional tokens never enter the browser.
+    const csrf = row.authentication_source === 'oidc' && row.encrypted_csrf && row.oidc_group_id
+      ? decryptCredential(row.encrypted_csrf,row.oidc_group_id,`csrf:${digest(sessionToken)}`) : undefined;
+    const session = await this.publicSession({...row,must_change_password:row.authentication_source==='oidc'?false:row.must_change_password}, new Date(row.created_at), new Date(row.expires_at), csrf, manager);
+    if (row.authentication_source) {
+      session.authenticationSource=row.authentication_source;
+      session.personallyAuthenticatedAt=new Date(row.personally_authenticated_at??row.created_at).toISOString();
+      session.personalAuthenticationPurpose=row.personal_authentication_purpose;
+    }
     if (!session.workspaceAvailable && !allowPasswordChange) {
       throw new UnauthorizedException("No workspace role is assigned to this account");
     }
-    await manager.query(`update app_identity.app_session set last_activity_at = $2
+    // Transactional authority reads must not take an incidental session write
+    // lock ahead of domain user/role/device locks. Ordinary reads still record
+    // activity, which never changes proof or the session's fixed maximum.
+    if(!manager.queryRunner?.isTransactionActive)await manager.query(`update app_identity.app_session set last_activity_at = $2
       where id = $1 and last_activity_at < $2::timestamptz - interval '1 minute'`, [row.session_id, now]);
     return session;
   }
@@ -177,6 +198,7 @@ export class ClinicianSessionService {
         join app_identity.app_session s on s.installation_registration_id=i.id where s.token_sha256=$1 for share of i`,[digest(sessionToken)]);
       await this.assertCsrf(sessionToken, command.csrfToken, manager);
       const current = await this.getAuthenticated(sessionToken, now, true, manager);
+      if (current.authenticationSource === 'oidc') throw new ForbiddenException({code:'login.personalProofRequired'});
       const rows = await manager.query<CredentialRow[]>(`
         select c.password_verifier, c.username, c.credential_version, c.must_change_password,
                c.temporary_password_expires_at,
@@ -217,8 +239,8 @@ export class ClinicianSessionService {
       const inserted = mutationRows<{ id: string }>(await manager.query(`
         insert into app_identity.app_session
           (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
-           organization_id, browser_origin, installation_registration_id)
-        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, (select installation_registration_id from app_identity.app_session where token_sha256=$10)) returning id
+           organization_id, browser_origin, installation_registration_id, personally_authenticated_at, personal_authentication_purpose)
+        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, (select installation_registration_id from app_identity.app_session where token_sha256=$10), $5, 'login') returning id
       `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0].credential_version,
         now, expiresAt, coarseDeviceLabel(userAgent), current.organization?.id ?? null, agencyRequest.getStore()?.origin ?? null, digest(sessionToken)]));
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
@@ -232,15 +254,15 @@ export class ClinicianSessionService {
     return result;
   }
 
-  async end(sessionToken: string, csrfToken?: string): Promise<void> {
+  async end(sessionToken: string, csrfToken?: string,reason:"logout"|"user_switch"="logout"): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, csrfToken, manager);
       await this.getAuthenticated(sessionToken, new Date(), true, manager);
       const rows = mutationRows<{ id: string; user_id: string; organization_id: string }>(await manager.query(`
-        update app_identity.app_session s set revoked_at = now(), revocation_reason = 'logout'
+        update app_identity.app_session s set revoked_at = now(), revocation_reason = $2
         from app_identity.app_user u where s.user_id = u.id and s.token_sha256 = $1 and s.revoked_at is null
         returning s.id, s.user_id, s.organization_id
-      `, [digest(sessionToken)]));
+      `, [digest(sessionToken),reason]));
       const ended = rows[0];
       if (!ended) throw new UnauthorizedException("The clinician session has ended");
       await manager.query(`insert into app_identity.authentication_event
@@ -292,6 +314,7 @@ export class ClinicianSessionService {
     const verified = await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, csrfToken, manager);
       const session = await this.getAuthenticated(sessionToken, now, false, manager);
+      if (session.authenticationSource === 'oidc') throw new ForbiddenException({code:'login.personalProofRequired'});
       const rows = await manager.query<CredentialRow[]>(`
         select c.password_verifier, c.username, c.credential_version, c.must_change_password,
           c.temporary_password_expires_at, u.id as user_id, u.display_name, u.active,
@@ -310,7 +333,8 @@ export class ClinicianSessionService {
         return false;
       }
       await finishAuthenticationAttempt(manager, throttle, true, now);
-      await manager.query(`update app_identity.app_session set reauthenticated_at = $2
+      await manager.query(`update app_identity.app_session set reauthenticated_at = $2,
+        personally_authenticated_at=$2, personal_authentication_purpose='reauthenticate'
         where token_sha256 = $1 and revoked_at is null`, [digest(sessionToken), now]);
       await this.audit(manager, account, "authentication.reauthenticate", "succeeded");
       return true;
@@ -321,15 +345,90 @@ export class ClinicianSessionService {
 
   async requireRecentReauthentication(sessionToken: string, manager: EntityManager = this.dataSource.manager,
     now = new Date()): Promise<void> {
+    await this.getAuthenticated(sessionToken,now,false,manager);
     const earliest = new Date(now.getTime() - REAUTHENTICATION_MILLISECONDS);
     const rows = await manager.query<Array<{ recent: boolean }>>(`select exists (
       select 1 from app_identity.app_session
       where token_sha256 = $1 and revoked_at is null
-        and reauthenticated_at between $2 and $3
+        and expires_at > $3 and app_identity.session_authentication_valid(app_session)
+        and coalesce(personally_authenticated_at,reauthenticated_at) between $2 and $3
+        and (personal_authentication_purpose='reauthenticate' or personal_authentication_purpose is null and reauthenticated_at is not null)
     ) recent`, [digest(sessionToken), earliest, now]);
     if (!rows[0]?.recent) {
-      throw new ForbiddenException("Recent password reauthentication is required for this protected role change");
+      throw new ForbiddenException({code:'login.reauthenticationRequired',message:'Recent personal reauthentication is required'});
     }
+  }
+
+  /** Common session issuer. The OIDC service supplies only validated linked identity and personal proof. */
+  async lockPersonalAuthenticationContext(manager:EntityManager,identityRequestId:string,previousToken?:string):Promise<void>{
+    // Immutable user references can be read before locking. Lifecycle and role
+    // writers precede session containment; clinical open uses this same order.
+    const users=await manager.query<Array<{user_id:string}>>(`select linked_user_id user_id from app_identity.regional_identity_request where id=$1 and linked_user_id is not null
+      union select user_id from app_identity.app_session where token_sha256=$2`,[identityRequestId,previousToken?digest(previousToken):null]);
+    const ids=users.map(user=>user.user_id);
+    await manager.query('select id from app_identity.app_user where id=any($1::uuid[]) order by id for share',[ids]);
+    await manager.query('select id from app_identity.user_role_assignment where user_id=any($1::uuid[]) and ended_at is null order by id for share',[ids]);
+    await manager.query(`select id from app_identity.role where id in(select role_id from app_identity.user_role_assignment
+      where user_id=any($1::uuid[]) and ended_at is null) order by id for share`,[ids]);
+    await lockInstallationForSession(manager);
+    await manager.query(`select id from app_identity.organization where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
+      order by id for share`,[agencyRequest.getStore()?.organizationId]);
+    if(previousToken)await manager.query('select id from app_identity.app_session where token_sha256=$1 for update',[digest(previousToken)]);
+  }
+
+  async completePersonalAuthentication(manager: EntityManager, identityRequestId: string, revision: number, proof: ValidatedPersonalProof,
+    previousToken?: string, now = new Date(), userAgent?: string): Promise<CreatedSession> {
+    assertValidatedPersonalProof(proof);
+    const policy=proof.policy;
+    await this.lockPersonalAuthenticationContext(manager,identityRequestId,previousToken);
+    const registrationId=await lockInstallationForSession(manager);
+    let previous: AuthenticatedSession | undefined;
+    if(previousToken){
+      previous=await this.getAuthenticated(previousToken,now,false,manager);
+    }
+    const [account]=await manager.query<Array<CredentialRow & {identity_request_id:string;provider_id:string;issuer:string;group_id:string}>>(`
+      select r.id identity_request_id,r.provider_id,r.issuer,r.group_id,u.id user_id,u.display_name,u.active,
+        o.id organization_id,o.name organization_name,o.shift_session_duration_hours,false must_change_password
+      from app_identity.regional_identity_request r join app_identity.app_user u on u.id=r.linked_user_id
+      join app_identity.organization o on o.id=$2
+      where r.id=$1 and r.group_id=$3 and u.active and u.account_scope='agency'
+        and app_identity.organization_group(u.organization_id)=r.group_id
+        and app_identity.organization_group(o.id)=r.group_id
+        and app_identity.user_can_access_organization(u.id,o.id)
+        and not exists(select 1 from app_identity.installation_owner where user_id=u.id)
+        and not exists(select 1 from app_identity.installation_superadmin where user_id=u.id)
+      for share of u`,[identityRequestId,agencyRequest.getStore()?.organizationId,policy.groupId]);
+    if(!account||account.provider_id!==policy.providerId||account.issuer!==proof.issuer) throw new UnauthorizedException({code:'login.identityUnavailable'});
+    // All requests hold the current installation/user locks through issuance. Network I/O is complete.
+    if(!agencyRequest.getStore()?.origin || !await this.agencies.allowsOrigin(agencyRequest.getStore()!.origin,manager)) throw new UnauthorizedException({code:'login.identityUnavailable'});
+    if(proof.purpose==='reauthenticate' && !previous) throw new UnauthorizedException({code:'login.identityUnavailable'});
+    if(proof.purpose==='reauthenticate' && previous!.user.id===account.user_id){
+      // Same-user proof belongs to the initiating session alone; never renew its maximum.
+      const updated=mutationRows<{id:string}>(await manager.query(`update app_identity.app_session
+        set reauthenticated_at=$2,personally_authenticated_at=$3,personal_authentication_purpose='reauthenticate',
+          personal_identity_request_id=$4,personal_group_id=$5,personal_revision=$6,latest_personal_proof_policy_sha256=$7
+        where token_sha256=$1 and revoked_at is null and expires_at>$2 returning id`,
+        [digest(previousToken!),now,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy)]));
+      if(!updated.length)throw new UnauthorizedException({code:'login.identityUnavailable'});
+      await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,target_user_id,session_id,details)
+        values($1,$2,'authentication.reauthenticate','succeeded',$2,$3,$4::jsonb)`,[account.organization_id,account.user_id,updated[0]!.id,
+        JSON.stringify({kind:'oidc_personal',purpose:'reauthenticate',providerId:policy.providerId,identityRequestId,revision,proofPolicySha256:personalProofPolicyDigest(policy)})]);
+      return {sessionToken:previousToken!,session:await this.getAuthenticated(previousToken!,now,false,manager)};
+    }
+    const sessionToken=randomBytes(32).toString('base64url'),csrfToken=randomBytes(32).toString('base64url');
+    const maximum=await localPolicy(manager,account.organization_id);
+    const expiresAt=new Date(now.getTime()+(maximum?.maximumSessionHours??account.shift_session_duration_hours)*3600000);
+    if(previousToken)await manager.query(`update app_identity.app_session set revoked_at=$2,revocation_reason='user_switch'
+      where token_sha256=$1 and revoked_at is null`,[digest(previousToken),now]);
+    const inserted=mutationRows<{id:string}>(await manager.query(`insert into app_identity.app_session
+      (user_id,token_sha256,csrf_sha256,credential_version,created_at,last_activity_at,expires_at,device_label,organization_id,browser_origin,installation_registration_id,
+       authentication_source,authentication_purpose,personally_authenticated_at,personal_authentication_purpose,oidc_identity_request_id,oidc_group_id,oidc_revision,personal_proof_policy_sha256,encrypted_csrf,
+       personal_identity_request_id,personal_group_id,personal_revision,latest_personal_proof_policy_sha256)
+      values($1,$2,$3,null,$4,$4,$5,$6,$7,$8,$9,'oidc',$10,$11,$10,$12,$13,$14,$15,$16::jsonb,$12,$13,$14,$15) returning id`,
+      [account.user_id,digest(sessionToken),digest(csrfToken),now,expiresAt,coarseDeviceLabel(userAgent),account.organization_id,agencyRequest.getStore()!.origin,registrationId,
+       proof.purpose==='reauthenticate'?'switch':proof.purpose,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy),JSON.stringify(encryptCredential(csrfToken,account.group_id,`csrf:${digest(sessionToken)}`))]));
+    await this.audit(manager,account,'authentication.sign_in','succeeded',inserted[0]?.id);
+    return {sessionToken,session:await this.getAuthenticated(sessionToken,now,true,manager)};
   }
 
   private async audit(manager: EntityManager, account: Partial<CredentialRow> | undefined, action: string, result: string, sessionId?: string): Promise<void> {

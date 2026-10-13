@@ -161,8 +161,9 @@ user-read authority. The directory is group-scoped, paginated and bounded;
 email or display name never selects an application user automatically.
 
 With settings-write and user-write authority, explicitly select an existing
-ordinary active group user and confirm your current password to **Link existing
-user**. The target must be within the administrator’s capability boundary.
+ordinary active group user and the current draft or active provider revision.
+Confirm personal authentication through the session's local or regional method
+to **Link existing user**. The target must be within the administrator’s capability boundary.
 Installation owners, superadmins and other installation recovery accounts cannot
 be linked here. A link preserves the immutable application user ID, roles, report
 authorship and existing audit records. The audit appends request/actor/target IDs
@@ -184,3 +185,7 @@ not a browser selected-workspace header. Code exchange completes outside the
 short persistence transaction; authority, registered origin, draft/discovery and
 expiry are checked again before an identity is recorded. Failed, stale or expired
 exchanges do not create a pending request.
+
+Personal clinical login uses the separately approved contract and shared session
+boundary described in [Personal OIDC application sessions](personal-oidc-sessions.md).
+A draft diagnostic still cannot create a clinical application session.

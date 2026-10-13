@@ -40,18 +40,21 @@ revoked sessions. Editing display names does not change regional identity keys.
 
 ## Session implementation boundary
 
-This onboarding slice does not issue OIDC application sessions. Until the shared
-OIDC session slice is installed, normal session validation still requires its
-existing local credential/version checks. Administrative session listing can
-inspect live persisted sessions for accounts without local credentials; listing
-is not authentication evidence and does not authorize those sessions.
+Personal OIDC login now uses the common application-session authority boundary.
+Both authenticated reads and administrative session listing validate explicit
+issuance provenance; merely having no local credential does not authorize a
+persisted row. Local sessions retain their credential-version check. OIDC sessions
+bind the immutable identity, issuance version and approved personal-proof contract;
+latest reauthentication evidence is tracked separately. Installation enrollment
+attaches existing sessions through this same validation boundary.
 
-The OIDC session slice must replace local-only authentication validation with
-explicit validated authentication provenance and version checks, including
-installation enrollment's attachment of existing sessions. Protected-recovery
-SQL and password-dependent recovery screens must follow the common authentication
-boundary in the recovery slice. Independent installation-owner/superadmin CLI
-recovery and ordinary local sign-in/password reset remain intentionally local.
+See [Personal OIDC application sessions](personal-oidc-sessions.md) for installation
+proof-contract approval, shared-device switching, session deadlines and callback
+checks. The activation slice still owns production mode changes. Protected-recovery
+SQL and password-dependent recovery screens remain the following recovery slice;
+they must fail closed while retaining encrypted work within its original deadline.
+Independent installation-owner/superadmin CLI recovery and ordinary local account
+maintenance remain local.
 
 Real regional AD FS/PAS and Android/Windows device acceptance remains a separate
 external acceptance step. Controlled provider, PostgreSQL, and browser tests do

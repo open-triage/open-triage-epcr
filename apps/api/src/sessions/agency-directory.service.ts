@@ -46,7 +46,7 @@ export class AgencyDirectoryService {
     return rows.map(agencySummary);
   }
 
-  async allowsOrigin(origin: string): Promise<boolean> {
+  async allowsOrigin(origin: string,manager:Pick<EntityManager,"query">=this.database.manager): Promise<boolean> {
     let url: URL;
     try { url = new URL(origin); } catch { return false; }
     if (origin === (process.env.WEB_ORIGIN ?? "http://localhost:3000")) return true;
@@ -54,7 +54,7 @@ export class AgencyDirectoryService {
     const localDevelopment = process.env.NODE_ENV !== "production" && url.protocol === "http:" &&
       /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(url.hostname) && url.port === portal.port;
     if (url.origin !== origin || (!localDevelopment && (url.protocol !== "https:" || url.port))) return false;
-    const agency = await this.registeredAgency(url.hostname);
+    const agency = await this.registeredAgency(url.hostname,manager);
     return agency?.active === true && agency.root_active === true;
   }
 }

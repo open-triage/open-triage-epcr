@@ -4,7 +4,9 @@ import { clearProtectedRuntimeReports } from "./offline-reports";
 
 import { INSTALLATION_TRANSITION_KEY, INSTALLATION_GENERATION_KEY } from "./installation-transition-generation";
 export { INSTALLATION_TRANSITION_KEY } from "./installation-transition-generation";
-const eventName = "open-triage:installation-transition";
+export const INSTALLATION_TRANSITION_EVENT = "open-triage:installation-transition";
+export const INSTALLATION_TRANSITION_COMPLETE_EVENT = "open-triage:installation-transition-complete";
+const eventName = INSTALLATION_TRANSITION_EVENT;
 const lockName = "open-triage.installation-clinical-context";
 
 /** A signed-in tab holds a shared barrier until its existing storage lifecycle has settled. */
@@ -49,5 +51,8 @@ export async function transitionInstallation<T>(replaceBinding: () => Promise<T>
    clearClinicianSession(window.localStorage);
    return replaceBinding();
   });
- } finally { window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY); }
+ } finally {
+  window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY);
+  window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
+ }
 }

@@ -3,6 +3,7 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import type { AdminAssignableRoleSummary } from "@open-triage/contracts";
 import React,{useCallback,useEffect,useRef,useState} from "react";
 import { apiRequestUrl,browserRequestInit } from "../app/browser-api";
+import { PersonalAuthenticationField,usePasswordAuthentication } from "./personal-authentication";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { platformRequestError } from "../app/platform-errors";
 import { listAccessRemoved } from "../app/list-refresh";
@@ -18,6 +19,7 @@ async function request<T>(path:string,csrfToken:string,body?:unknown):Promise<T>
  if(!response.ok)throw await platformRequestError(response);return response.json();
 }
 export function RegionalIdentitiesPanel({language,csrfToken,canLink,canApprove=false}:{language:string;csrfToken:string;canLink:boolean;canApprove?:boolean}){
+ const needsPassword=usePasswordAuthentication();
  const text=useCallback((key:string)=>resolveMessage(language as AgencyLanguage,key),[language]);
  const [items,setItems]=useState<Identity[]>([]),[cursor,setCursor]=useState<string|null>(null),[currentCursor,setCurrentCursor]=useState<string>();
  const [selected,setSelected]=useState<Identity|null>(null),[users,setUsers]=useState<User[]>([]),[userCursor,setUserCursor]=useState<string|null>(null);
@@ -59,9 +61,9 @@ export function RegionalIdentitiesPanel({language,csrfToken,canLink,canApprove=f
    <h3 id="identity-review-heading">{text("admin.regionalIdentityReviewRegionalIdentity")}</h3>
    <dl><dt>{text("admin.regionalIdentityIssuer")}</dt><dd>{selected.issuer}</dd><dt>{text("admin.regionalIdentitySubject")}</dt><dd>{selected.subject}</dd><dt>{text("admin.regionalIdentityIntegration")}</dt><dd>{selected.providerId} / {text("admin.regionalIdentityRevision")} {selected.revision}</dd><dt>{text("admin.regionalIdentityProfileHints")}</dt><dd>{selected.displayName??"—"} / {selected.email??"—"}</dd></dl>
    {selected.status==="linked"?<p>{text("admin.regionalIdentityLinkedToExistingUser")}: {selected.linkedUserId}</p>:canLink||canApprove?<><nav className="form-actions" aria-label={text("admin.regionalIdentityReviewAction")}>{canLink&&<button type="button" aria-pressed={mode==="link"} disabled={busy} onClick={()=>setMode("link")}>{text("admin.regionalIdentityChooseLink")}</button>}{canApprove&&<button type="button" aria-pressed={mode==="approve"} disabled={busy} onClick={()=>setMode("approve")}>{text("admin.regionalIdentityChooseApproval")}</button>}</nav><form onSubmit={async event=>{
-    event.preventDefault();if(!password||busy||mode==="link"&&!userId||mode==="approve"&&!displayName.trim())return;setBusy(true);setError("");
+    event.preventDefault();if(needsPassword&&!password||busy||mode==="link"&&!userId||mode==="approve"&&!displayName.trim())return;setBusy(true);setError("");
     try{await reauthenticateClinicianSession(password,csrfToken);setPassword("");const provider=selected.reviewProviders?.find(value=>value.source===providerSource);
-    const linked=await request<Identity>(`authentication/identities/${selected.id}/${mode}`,csrfToken,mode==="link"?{userId}:{displayName,roleIds,providerSource,expectedProviderRevision:provider?.revision});setItems(current=>current.map(item=>item.id===linked.id?linked:item));setStatus(mode==="approve"?text("admin.regionalIdentityApproved"):text("admin.regionalIdentityIdentityLinkedUserRolesAnd"));close(true);}
+    const linked=await request<Identity>(`authentication/identities/${selected.id}/${mode}`,csrfToken,mode==="link"?{userId,providerSource,expectedProviderRevision:provider?.revision}:{displayName,roleIds,providerSource,expectedProviderRevision:provider?.revision});setItems(current=>current.map(item=>item.id===linked.id?linked:item));setStatus(mode==="approve"?text("admin.regionalIdentityApproved"):text("admin.regionalIdentityIdentityLinkedUserRolesAnd"));close(true);}
     catch(reason){setPassword("");if(listAccessRemoved(reason)){setSelected(null);setUsers([]);setItems([]);}setError(reason instanceof Error?reason.message:String(reason));}finally{setBusy(false);}
    }}>
     {mode==="link"?<><label>{text("admin.regionalIdentityFindExistingUser")}<input type="search" maxLength={100} value={search} onChange={event=>setSearch(event.target.value)}/></label>
@@ -71,14 +73,14 @@ export function RegionalIdentitiesPanel({language,csrfToken,canLink,canApprove=f
     </>:<>
      <p>{text("admin.regionalIdentityApprovalHelp")}</p>
      <label>{text("admin.displayName")}<input required maxLength={200} value={displayName} onChange={event=>setDisplayName(event.target.value)} autoComplete="off"/></label>
-     <label>{text("admin.regionalIdentityReviewProvider")}<select required value={providerSource} onChange={event=>setProviderSource(event.target.value)}>{selected.reviewProviders?.map(provider=><option key={provider.source} value={provider.source}>{text(provider.source==="active"?"admin.regionalIdentityActiveProvider":"admin.regionalIdentityDraftProvider")} — {text("admin.regionalIdentityRevision")} {provider.revision}</option>)}</select></label>
-     {providerSource==="draft"&&<p className="admin-muted">{text("admin.regionalIdentityDraftProvider")}</p>}
      <fieldset className="admin-role-selection"><legend>{text("admin.completeRetainedRole")}</legend>{roleOptions.map(role=><label key={role.id}><input type="checkbox" checked={roleIds.includes(role.id)} disabled={busy||!role.active||!role.assignmentMutable} onChange={event=>setRoleIds(current=>event.target.checked?[...current,role.id]:current.filter(id=>id!==role.id))}/>{role.displayName}</label>)}</fieldset>
      <p>{text("admin.regionalIdentityEmptyRoles")}</p>
     </>}
-    <label>{mode==="approve"?text("admin.regionalIdentityApprovePassword"):text("admin.regionalIdentityYourPasswordToLinkIdentity")}<input type="password" autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label>
+     <label>{text("admin.regionalIdentityReviewProvider")}<select required value={providerSource} onChange={event=>setProviderSource(event.target.value)}>{selected.reviewProviders?.map(provider=><option key={provider.source} value={provider.source}>{text(provider.source==="active"?"admin.regionalIdentityActiveProvider":"admin.regionalIdentityDraftProvider")} — {text("admin.regionalIdentityRevision")} {provider.revision}</option>)}</select></label>
+     {providerSource==="draft"&&<p className="admin-muted">{text("admin.regionalIdentityDraftProvider")}</p>}
+    <PersonalAuthenticationField language={language} value={password} onChange={setPassword} label={mode==="approve"?text("admin.regionalIdentityApprovePassword"):text("admin.regionalIdentityYourPasswordToLinkIdentity")}/>
     {error&&<p className="admin-error" role="alert">{error}</p>}
-    <div className="form-actions"><button className="button-primary" type="submit" disabled={busy||!password||(mode==="link"?!userId:!rolesLoaded||!displayName.trim()||!selected.reviewProviders?.some(provider=>provider.source===providerSource))}>{mode==="approve"?text("admin.regionalIdentityApproveNew"):text("admin.regionalIdentityLinkExistingUser")}</button></div>
+    <div className="form-actions"><button className="button-primary" type="submit" disabled={busy||(needsPassword&&!password)||!selected.reviewProviders?.some(provider=>provider.source===providerSource)||(mode==="link"?!userId:!rolesLoaded||!displayName.trim()||!selected.reviewProviders?.some(provider=>provider.source===providerSource))}>{mode==="approve"?text("admin.regionalIdentityApproveNew"):text("admin.regionalIdentityLinkExistingUser")}</button></div>
    </form></>:<p>{text("admin.regionalIdentityUserManagementAndAuthenticationWrite")}</p>}
    <button type="button" disabled={busy} onClick={()=>close()}>{text("admin.regionalIdentityCloseReview")}</button>
   </dialog>}
