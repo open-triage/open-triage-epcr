@@ -12,9 +12,36 @@ A unit with no selected schedule is incomplete setup. Select a schedule in Admin
 an explicitly blank schedule allows ordinary clinician-session job opening without
 any shift reminder or checkpoint. The server evaluates active and pending immutable
 schedule versions using the existing prospective/DST evaluator and its own clock.
-A nonblank schedule fails closed with a handover-required diagnostic while the
-scheduled-shift gate in slice 017 remains pending. A pending switch to blank does
-not bypass the outgoing schedule before its effective boundary.
+For a nonblank schedule, this device's `personally_authenticated_at` must reach
+or exceed the active checkpoint's `graceStartsAt`. A 07:00 checkpoint with
+15-minute grace accepts 06:45 authentication and rejects 06:44 authentication.
+The ordinary fixed session maximum and all access/device checks still apply.
+Local password login, replacement and reauthentication record verified completion
+using PostgreSQL's clock in live requests. OIDC uses the validated, signed
+`auth_time` lower bound; neither token issuance nor activity proves freshness.
+A new login or reauthentication on another session never refreshes this one.
+
+Every new-job attempt inside any incoming grace window returns the explicit
+`identity-confirmation-required` state until slice 018 supplies its per-attempt
+reminder. It is deliberately unavailable even if the incoming threshold has been
+satisfied. Outside grace, stale proof returns `reauthentication-required` and the
+shared clinical flow offers local or regional personal authentication. Explicit
+shift retries request a new proof even when a proof within five minutes remains
+recent for an ordinary sensitive/recovery action; a proof from before a crossed
+checkpoint cannot satisfy the shift by being reused. A zero-grace
+schedule has no reminder window and supports the complete new-job journey now.
+Initial selection is prospective and does not invent a previous checkpoint.
+A pending switch to blank does not bypass the outgoing schedule before its boundary.
+
+The server reassesses after authentication and again after call/command authority
+waits immediately before creating a report. Session expiry during those waits
+also denies creation. Authentication never owns a call-opening transaction, and
+same-user reauthentication preserves its original cookie and expiry. On a regional
+redirect the browser retains only an expiring assignment/user/agency intent in
+session storage. On return it checks current identity and a fresh server listing;
+the actual opening operation independently checks current authority again.
+A withdrawn, canceled, reassigned or unavailable intent grants no access. No
+clinical labels, report keys or drafts enter redirect storage.
 
 Listing returns `productionAccess` with the enrolled unit and an actionable state.
 Opening rechecks that context under registration, agency, unit, session and assignment
@@ -46,4 +73,21 @@ regional/shift rollout planned in slice 019 or claim its acceptance checks compl
 `npm run check:ci` includes the runtime TypeORM PostgreSQL production-job races and
 English/Swedish mobile/desktop browser journeys. Focused coverage lives in
 `apps/api/tests/production-job-postgres.integration.test.mjs` and
-`apps/web/e2e/production-jobs.spec.ts`.
+`apps/web/e2e/production-jobs.spec.ts`. Slice 017 also adds deterministic
+threshold/DST regressions in `apps/api/tests/current-shift.test.mjs`, real
+local completion/expiry tests in `clinician-session.test.mjs`, and local/OIDC
+English/Swedish browser transitions in `apps/web/e2e/current-shift.spec.ts`.
+`current-shift-oidc-postgres.integration.test.mjs` runs a separate real TLS
+provider, application API, deployment proxy and browser against a disposable
+PostgreSQL database. Both local password and regional browser journeys create
+real production reports and reopen existing work while shift proof is stale. It
+verifies signed proof across a handover during login,
+another-device freshness, outage, fixed expiry, actual standalone production
+creation and authorized existing-report reopening. Its explicit test-only server
+clock advances the evaluator while the provider interaction is open; live
+production continues to use PostgreSQL time. The fixture waits for actual provider
+personal authentication to reach the checkpoint before expecting success.
+
+These controlled tests establish the configured contract's behavior. Regional
+AD FS/PAS, physical Android/PWA scanning and Windows personal-session acceptance
+remain the separate deployment dependencies described in the agreed PRD.

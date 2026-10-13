@@ -52,8 +52,9 @@ export class ClinicianSessionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource,
     private readonly agencies: AgencyDirectoryService = new AgencyDirectoryService(dataSource)) {}
 
-  async create(command: CreateClinicianSessionCommand, now = new Date(), userAgent?: string,
+  async create(command: CreateClinicianSessionCommand, suppliedNow?: Date, userAgent?: string,
     networkSource?: string): Promise<CreatedSession> {
+    let now = suppliedNow ?? new Date();
     const username = command.username.trim().toLowerCase();
     const selectedAgency = await this.agencies.forLogin();
     const throttle = await beginAuthenticationAttempt(this.dataSource.manager, username, networkSource, now, { organizationId: selectedAgency?.id, portalOnly: !!agencyRequest.getStore()?.origin && !selectedAgency });
@@ -72,6 +73,8 @@ export class ClinicianSessionService {
     `, [username, selectedAgency?.id ?? null, !!agencyRequest.getStore()?.origin && !selectedAgency]);
     const account = rows.length === 1 ? rows[0] : undefined;
     const passwordMatches = await verifyPassword(command.password, account?.password_verifier ?? await dummyVerifier);
+    // Sample completion after the expensive verifier, never token issuance/activity.
+    if (!suppliedNow) now = await this.authenticationCompletedAt(this.dataSource.manager);
     const temporaryExpired = account?.must_change_password && (!account.temporary_password_expires_at ||
       timestamp(account.temporary_password_expires_at) <= now.getTime());
     const accessible = account && passwordMatches && selectedAgency ? await this.dataSource.query<Array<{ allowed: boolean }>>(
@@ -190,8 +193,9 @@ export class ClinicianSessionService {
     if (!rows[0] || rows[0].csrf_sha256 !== digest(csrfToken)) throw new UnauthorizedException("A valid CSRF token is required");
   }
 
-  async changePassword(sessionToken: string, command: ChangePasswordCommand, now = new Date(), userAgent?: string,
+  async changePassword(sessionToken: string, command: ChangePasswordCommand, suppliedNow?: Date, userAgent?: string,
     networkSource?: string): Promise<CreatedSession> {
+    let now = suppliedNow ?? new Date();
     const passwordVerifier = await createPasswordVerifier(command.newPassword);
     const result = await this.dataSource.transaction(async (manager) => {
       await manager.query(`select i.id from app_identity.installation_registration i
@@ -217,6 +221,8 @@ export class ClinicianSessionService {
         return undefined;
       }
       await finishAuthenticationAttempt(manager, throttle, true, now);
+      if (!suppliedNow) now = await this.authenticationCompletedAt(manager);
+      await this.getAuthenticated(sessionToken, now, true, manager);
       const credentials = mutationRows<{ credential_version: string }>(await manager.query(`update app_identity.local_credential set password_verifier = $2,
         must_change_password = false, temporary_password_expires_at = null,
         credential_version = credential_version + 1,
@@ -310,7 +316,8 @@ export class ClinicianSessionService {
   }
 
   async reauthenticate(sessionToken: string, csrfToken: string | undefined, currentPassword: string,
-    now = new Date(), networkSource?: string): Promise<ReauthenticationResult> {
+    suppliedNow?: Date, networkSource?: string): Promise<ReauthenticationResult> {
+    let now = suppliedNow ?? new Date();
     const verified = await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, csrfToken, manager);
       const session = await this.getAuthenticated(sessionToken, now, false, manager);
@@ -332,6 +339,8 @@ export class ClinicianSessionService {
         await this.audit(manager, account, "authentication.reauthenticate", "failed");
         return false;
       }
+      if (!suppliedNow) now = await this.authenticationCompletedAt(manager);
+      await this.getAuthenticated(sessionToken, now, false, manager);
       await finishAuthenticationAttempt(manager, throttle, true, now);
       await manager.query(`update app_identity.app_session set reauthenticated_at = $2,
         personally_authenticated_at=$2, personal_authentication_purpose='reauthenticate'
@@ -429,6 +438,11 @@ export class ClinicianSessionService {
        proof.purpose==='reauthenticate'?'switch':proof.purpose,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy),JSON.stringify(encryptCredential(csrfToken,account.group_id,`csrf:${digest(sessionToken)}`))]));
     await this.audit(manager,account,'authentication.sign_in','succeeded',inserted[0]?.id);
     return {sessionToken,session:await this.getAuthenticated(sessionToken,now,true,manager)};
+  }
+
+  private async authenticationCompletedAt(manager: EntityManager): Promise<Date> {
+    const [row] = await manager.query<Array<{completed_at: Date}>>("select clock_timestamp() as completed_at");
+    return new Date(row!.completed_at);
   }
 
   private async audit(manager: EntityManager, account: Partial<CredentialRow> | undefined, action: string, result: string, sessionId?: string): Promise<void> {
