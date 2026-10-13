@@ -1218,3 +1218,5 @@ fieldset { min-inline-size: 0; }
 /* Keep the compact provider editor actions from covering credential fields. */
 .agency-settings .oidc-draft .form-actions { position: static; }
 .oidc-draft > div { display: grid; gap: 8px; }
+
+.schedule-editor .admin-table-scroll { padding: 0; }

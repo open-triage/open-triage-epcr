@@ -250,3 +250,10 @@ preflight, or API entry points load dependencies. Nest 12 uses ESM, so the compi
 CommonJS API needs the default `require(esm)` support [enabled by default from Node 22.12.0](https://nodejs.org/en/blog/release/v22.12.0).
 Do not disable it with `--no-experimental-require-module` in CLI or `NODE_OPTIONS`;
 the guard rejects that configuration with a clear runtime requirement message.
+
+The root development helper also removes inherited server credential namespaces
+from the web process, including OIDC, authentication throttling, patient keys,
+offline recovery and PostgreSQL connection settings. This filtering applies even
+when an older `.env.local` does not list a newly exported server key. The API keeps
+those values; explicitly public `NEXT_PUBLIC_` settings and the derived local web
+upstream remain available to the web process.
