@@ -1833,5 +1833,12 @@
   "platform.error.login.identityUnavailable": "Autentiseringsförsöket är inte tillgängligt eller har gått ut. Börja om.",
   "platform.error.login.reauthenticationRequired": "Nylig personlig återautentisering krävs.",
   "admin.personalPasswordToSave": "Ditt nuvarande lösenord krävs för att spara",
-  "admin.personalPasswordOidc": "Ditt lösenord för OIDC-ändringar"
+  "admin.personalPasswordOidc": "Ditt lösenord för OIDC-ändringar",
+  "calls.production.reauthentication-required": "Du behöver autentisera dig för det här skiftet innan du öppnar ett nytt uppdrag. Befintliga rapporter är tillgängliga.",
+  "calls.production.identity-confirmation-required": "Identitetsbekräftelse krävs under skiftbytets förperiod. Nya uppdrag är inte tillgängliga förrän bekräftelseflödet har aktiverats eller skiftbytet inträffar. Befintliga rapporter är tillgängliga.",
+  "calls.shiftReauthHelp": "Autentisera dig för det aktuella skiftet. Servern kontrollerar enheten, schemat och uppdraget igen efter autentiseringen.",
+  "calls.authenticateShift": "Autentisera för det här skiftet",
+  "platform.error.calls.shiftReauthenticationRequired": "Autentisera dig för det aktuella skiftet innan du öppnar uppdraget.",
+  "platform.error.calls.identityConfirmationRequired": "Identitetsbekräftelse krävs under skiftbytets förperiod.",
+  "platform.error.calls.sessionExpired": "Din session har gått ut. Logga in igen."
 }

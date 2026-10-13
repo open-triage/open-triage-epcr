@@ -32,8 +32,9 @@ export class OidcPersonalController {
   const token=sessionToken(request,authorization);
   await this.sessions.assertCsrf(token,csrf);
   const session=await this.sessions.getAuthenticated(token);
+  const command=validateReauthenticate(body,session.authenticationSource==='oidc');
   if(session.authenticationSource==='oidc'){
-   try{
+   if(!command.forcePersonalAuthentication)try{
     await this.sessions.requireRecentReauthentication(token);
     return {reauthenticatedUntil:new Date(Date.parse(session.personallyAuthenticatedAt!)+300000).toISOString()};
    }catch{ /* An explicit purpose-bound proof is needed for this session. */ }
@@ -41,7 +42,6 @@ export class OidcPersonalController {
    response.cookie(PERSONAL_COOKIE,result.correlation,personalCookieOptions);
    return {authorizationUrl:result.authorizationUrl};
   }
-  const command=validateReauthenticate(body);
-  return this.sessions.reauthenticate(token,csrf,command.currentPassword,new Date(),request.ip??request.socket?.remoteAddress);
+  return this.sessions.reauthenticate(token,csrf,command.currentPassword,undefined,request.ip??request.socket?.remoteAddress);
  }
 }

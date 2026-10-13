@@ -1835,5 +1835,12 @@
   "platform.error.login.identityUnavailable": "The personal authentication attempt is unavailable or expired. Start again.",
   "platform.error.login.reauthenticationRequired": "Recent personal reauthentication is required.",
   "admin.personalPasswordToSave": "Your current password is required to save",
-  "admin.personalPasswordOidc": "Your password for OIDC changes"
+  "admin.personalPasswordOidc": "Your password for OIDC changes",
+  "calls.production.reauthentication-required": "Personal authentication is required for this shift before opening a new job. Existing reports remain available.",
+  "calls.production.identity-confirmation-required": "Identity confirmation is required during this handover grace window. New jobs are unavailable until the confirmation workflow is enabled or the handover occurs. Existing reports remain available.",
+  "calls.shiftReauthHelp": "Authenticate yourself for the current shift. The server checks the unit, schedule and job again after authentication.",
+  "calls.authenticateShift": "Authenticate for this shift",
+  "platform.error.calls.shiftReauthenticationRequired": "Authenticate yourself for the current shift before opening this job.",
+  "platform.error.calls.identityConfirmationRequired": "Identity confirmation is required during the handover grace window.",
+  "platform.error.calls.sessionExpired": "Your session has expired. Sign in again."
 }

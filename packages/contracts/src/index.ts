@@ -1185,6 +1185,8 @@ export interface UpdatedAdminUserRoles extends AdminUserSummary {
 
 export interface ReauthenticateCommand {
   currentPassword: string;
+  /** Forces a new purpose-bound proof; never grants job authority. */
+  forcePersonalAuthentication?: true;
 }
 
 export interface ReauthenticationResult {
@@ -1622,7 +1624,7 @@ export interface AssignedCallsResponse {
 }
 
 export interface ProductionJobAccess {
-  state: "ready" | "enrollment-required" | "agency-mismatch" | "schedule-required" | "handover-required" | "synthetic-only";
+  state: "ready" | "enrollment-required" | "agency-mismatch" | "schedule-required" | "handover-required" | "reauthentication-required" | "identity-confirmation-required" | "synthetic-only";
   unit?: { id: string; callSign: string; name: string; organizationId: string };
 }
 
