@@ -5,10 +5,11 @@ import { PlatformRequestError } from "../app/platform-errors";
 import { InstallationContextChangedError } from "../app/installation-transition-generation";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
-import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { PersonalAuthenticationRedirect, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { RecoveryReauthenticationRequiredError } from "../app/protected-clinical-storage";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useVisiblePolling } from "./use-visible-polling";
+import { PersonalAuthenticationField } from "./personal-authentication";
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import {
@@ -47,6 +48,8 @@ export function AssignedCalls({
   const [error, setError] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [shiftReauthentication, setShiftReauthentication] = useState(false);
   const [reauthenticating, setReauthenticating] = useState(false);
   const openingRef = useRef(false);
   const refreshEpoch = useRef(0);
@@ -99,10 +102,13 @@ export function AssignedCalls({
       setCalls(nextCalls);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
-      if (openError instanceof RecoveryReauthenticationRequiredError) {
+      if (openError instanceof RecoveryReauthenticationRequiredError || openError instanceof PlatformRequestError && openError.code === "calls.shiftReauthenticationRequired") {
+        setShiftReauthentication(openError instanceof PlatformRequestError);
         setReauthenticationId(call.id);
-        window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>(
-          `[data-assignment-id="${CSS.escape(call.id)}"] input[name="currentPassword"]`)?.focus());
+        window.requestAnimationFrame(() => {
+          const form = document.querySelector<HTMLFormElement>(`[data-assignment-id="${CSS.escape(call.id)}"] .report-reauthentication`);
+          (form?.querySelector<HTMLInputElement>('input[type="password"]') ?? form?.querySelector<HTMLButtonElement>('button[type="submit"]'))?.focus();
+        });
         return;
       }
       if (openError instanceof InstallationContextChangedError || openError instanceof PlatformRequestError && [401, 403].includes(openError.status)) {
@@ -121,21 +127,41 @@ export function AssignedCalls({
     }
   }, [csrfToken, onOpened, onOpeningChange, t]);
 
-  const reauthenticateAndOpen = async (event: FormEvent<HTMLFormElement>, call: AssignedCall) => {
+  const reauthenticateAndOpen = async (event: FormEvent<HTMLFormElement>, call?: AssignedCall) => {
     event.preventDefault();
     setReauthenticating(true);
     setError(null);
-    const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
+    const password = recoveryPassword;
+    setRecoveryPassword("");
     try {
-      await reauthenticateClinicianSession(password, csrfToken);
-      await open(call);
+      if (call) window.sessionStorage.setItem("open-triage.new-job-intent.v1", JSON.stringify({ assignmentId: call.id, userId: session.user.id, organizationId: session.organization.id, createdAt: Date.now() }));
+      await reauthenticateClinicianSession(password, csrfToken, shiftReauthentication || productionAccess?.state === "reauthentication-required");
+      window.sessionStorage.removeItem("open-triage.new-job-intent.v1");
+      if (call) await open(call);
+      else await refresh();
     } catch (reason) {
+      if (reason instanceof PersonalAuthenticationRedirect) return;
+      window.sessionStorage.removeItem("open-triage.new-job-intent.v1");
       setError(reason instanceof Error ? reason.message : t("reports.reauthFailed"));
     } finally { setReauthenticating(false); }
   };
 
   useVisiblePolling(refresh, ASSIGNED_CALL_POLL_INTERVAL_MS, !paused && reauthenticationId === null,
     `${session.organization.id}:${session.user.id}:${refreshRequest}`);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const encoded = window.sessionStorage.getItem("open-triage.new-job-intent.v1");
+    if (!encoded) return;
+    window.sessionStorage.removeItem("open-triage.new-job-intent.v1");
+    try {
+      const intent = JSON.parse(encoded);
+      if (intent.userId !== session.user.id || intent.organizationId !== session.organization.id ||
+        !Number.isFinite(intent.createdAt) || Date.now() - intent.createdAt > 600_000 || intent.createdAt > Date.now()) return;
+      const call = calls.find(candidate => candidate.id === intent.assignmentId);
+      if (call) window.requestAnimationFrame(() => void open(call));
+    } catch { /* Malformed intent confers no authority. */ }
+  }, [calls, loaded, open, session.organization.id, session.user.id]);
 
   useEffect(() => {
     if (!focusAssignmentId || !calls.some(({ id }) => id === focusAssignmentId)) return;
@@ -155,6 +181,12 @@ export function AssignedCalls({
       {error && <p className="assignment-error" role="alert">{error}</p>}
       {productionAccess && !["ready", "synthetic-only"].includes(productionAccess.state) &&
         <p className="assignment-empty" role="status">{t(`calls.production.${productionAccess.state}`)}</p>}
+      {productionAccess?.state === "reauthentication-required" && <form className="report-reauthentication"
+        onSubmit={event => void reauthenticateAndOpen(event)} aria-describedby="assigned-shift-help">
+        <p id="assigned-shift-help">{t("calls.shiftReauthHelp")}</p>
+        <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />
+        <button type="submit" disabled={reauthenticating}>{t(reauthenticating ? "reports.confirming" : "calls.authenticateShift")}</button>
+      </form>}
       {!loaded && !error && <LoadingStatus className="assignment-empty">{t("calls.loading")}</LoadingStatus>}
       {loaded && calls.length === 0 && (!productionAccess || ["ready", "synthetic-only"].includes(productionAccess.state)) &&
         <p className="assignment-empty">{t("calls.none")}</p>}
@@ -176,14 +208,13 @@ export function AssignedCalls({
                 {openingId === call.id ? t("calls.opening") : t("calls.open")}
               </button>
               {reauthenticationId === call.id && <form className="report-reauthentication"
-                onSubmit={(event) => void reauthenticateAndOpen(event, call)}>
-                <p id={`assigned-recovery-help-${call.id}`}>{t("reports.reauthHelp")}</p>
-                <label>{t("reports.currentPassword")}<input name="currentPassword" type="password"
-                  autoComplete="current-password" aria-describedby={`assigned-recovery-help-${call.id}`} required /></label>
+                onSubmit={(event) => void reauthenticateAndOpen(event, call)} aria-describedby={`assigned-recovery-help-${call.id}`}>
+                <p id={`assigned-recovery-help-${call.id}`}>{t(shiftReauthentication ? "calls.shiftReauthHelp" : "reports.reauthHelp")}</p>
+                <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />
                 <button type="submit" disabled={reauthenticating}>
-                  {reauthenticating ? t("reports.confirming") : t("reports.confirmRecover")}
+                  {reauthenticating ? t("reports.confirming") : t(shiftReauthentication ? "calls.authenticateShift" : "reports.confirmRecover")}
                 </button>
-                <button type="button" disabled={reauthenticating} onClick={() => setReauthenticationId(null)}>
+                <button type="button" disabled={reauthenticating} onClick={() => { setReauthenticationId(null); setRecoveryPassword(""); }}>
                   {t("mobile.dialog.cancel")}
                 </button>
               </form>}

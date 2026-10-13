@@ -127,11 +127,62 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  synthetic,synthetic_generated_by,expires_at from clinical.report where id=$1`,[reportId])).rows[0],original);
  const scheduled=await scheduleAdmin.save('admin',null,{name:'Daily gate',breakpoints:Array.from({length:7},(_,i)=>({weekday:i+1,time:'07:00',graceMinutes:15}))});
  await scheduleAdmin.select('admin',firstUnit,{scheduleId:scheduled.id,expectedRevision:1});
- assert.equal((await state(binding,paired)).productionAccess.state,'handover-required');
- const blocked=await dispatch(firstUnit);await assert.rejects(open(binding,paired,blocked),denied('calls.handoverRequired'));
+ assert.ok(['ready','identity-confirmation-required','reauthentication-required'].includes((await state(binding,paired)).productionAccess.state));
+ const blocked=await dispatch(firstUnit); // Initial selection remains prospective, with no invented old checkpoint.
  // A pending blank change cannot bypass the active nonblank gate.
  const pending=await scheduleAdmin.select('admin',firstUnit,{scheduleId:selected.id,expectedRevision:2});assert.ok(pending.pending);
- assert.equal((await state(binding,paired)).productionAccess.state,'handover-required');
+ assert.ok(['ready','identity-confirmation-required','reauthentication-required'].includes((await state(binding,paired)).productionAccess.state));
+ // A persisted nonblank schedule uses authoritative server time and this session's proof.
+ const shiftUnit=await unit(agency),shiftBinding=await pair(shiftUnit),shiftLogin=await login(shiftBinding.credential),secondDevice=await login(shiftBinding.credential);
+ const [{now:serverNow}]=(await admin.query('select clock_timestamp() as now')).rows;
+ const checkpoint=new Date(Math.floor(new Date(serverNow).getTime()/60000)*60000),graceStart=new Date(checkpoint.getTime()-15*60000),shiftSchedule=randomUUID();
+ const weekday=checkpoint.getUTCDay()||7,time=checkpoint.toISOString().slice(11,16);
+ // Fixture history predates selection; production APIs cannot backdate these immutable rows.
+ await admin.query("insert into app_identity.weekly_schedule(id,group_id,name) values($1,$2,'Shift proof fixture')",[shiftSchedule,agency]);
+ await admin.query(`insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id)
+ values($1,1,$2,$3::jsonb,$4)`,[shiftSchedule,new Date(checkpoint.getTime()-86400000),JSON.stringify([{weekday,time,graceMinutes:15}]),actor]);
+ await admin.query(`insert into app_identity.unit_schedule_selection(organization_id,unit_id,revision,schedule_id,effective_at,actor_id)
+ values($1,$2,1,$3,$4,$5)`,[agency,shiftUnit,shiftSchedule,new Date(checkpoint.getTime()-86400000),actor]);
+ const stamp=async(session,at)=>admin.query("update app_identity.app_session set personally_authenticated_at=$2 where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(session.sessionToken),at]);
+ await stamp(shiftLogin,new Date(graceStart.getTime()-1));
+ assert.equal((await state(shiftBinding,shiftLogin)).productionAccess.state,'reauthentication-required');
+ const shiftJob=await dispatch(shiftUnit);
+ await assert.rejects(open(shiftBinding,shiftLogin,shiftJob),denied('calls.shiftReauthenticationRequired'));
+ await run(shiftBinding.credential,()=>sessions.reauthenticate(secondDevice.sessionToken,secondDevice.session.csrfToken,password));
+ assert.equal((await state(shiftBinding,shiftLogin)).productionAccess.state,'reauthentication-required','another session does not refresh this device');
+ await stamp(shiftLogin,graceStart);
+ assert.equal((await state(shiftBinding,shiftLogin)).productionAccess.state,'ready','inclusive grace threshold qualifies');
+ const shiftOpened=await open(shiftBinding,shiftLogin,shiftJob);
+ await stamp(shiftLogin,new Date(graceStart.getTime()-1));
+ assert.equal((await open(shiftBinding,shiftLogin,shiftJob)).report.id,shiftOpened.report.id,'idempotent reopen is existing work');
+ assert.equal((await run(shiftBinding.credential,()=>reports.reopen(shiftLogin.sessionToken,shiftOpened.report.id))).report.id,shiftOpened.report.id);
+ // Cross a checkpoint while waiting for assignment authority: the final gate reads the new server evaluation.
+ const crossing=await dispatch(shiftUnit);
+ let crossingAt=checkpoint.getTime()-1;
+ const crossingSchedules=new SchedulesService(db,sessions);crossingSchedules.now=async()=>crossingAt;
+ const crossingCalls=new AssignedCallsService(db,sessions,crossingSchedules);
+ const stale=await run(shiftBinding.credential,()=>crossingCalls.list(shiftLogin.sessionToken));assert.equal(stale.productionAccess.state,'identity-confirmation-required');
+ // Zero grace yields a ready pre-boundary decision, then demands proof on arrival.
+ const zeroSchedule=randomUUID();await admin.query("insert into app_identity.weekly_schedule(id,group_id,name) values($1,$2,'Zero grace fixture')",[zeroSchedule,agency]);
+ await admin.query(`insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id) values($1,1,$2,$3::jsonb,$4)`,[zeroSchedule,new Date(checkpoint.getTime()-86400000),JSON.stringify([{weekday,time,graceMinutes:0}]),actor]);
+ const zeroUnit=await unit(agency),zeroBinding=await pair(zeroUnit),zeroLogin=await login(zeroBinding.credential);
+ await admin.query(`insert into app_identity.unit_schedule_selection(organization_id,unit_id,revision,schedule_id,effective_at,actor_id) values($1,$2,1,$3,$4,$5)`,[agency,zeroUnit,zeroSchedule,new Date(checkpoint.getTime()-86400000),actor]);
+ await stamp(zeroLogin,new Date(checkpoint.getTime()-1));
+ const zeroJob=await dispatch(zeroUnit);assert.equal((await run(zeroBinding.credential,()=>crossingCalls.list(zeroLogin.sessionToken))).productionAccess.state,'ready');
+ await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[zeroJob]);
+ const crossWait=run(zeroBinding.credential,()=>crossingCalls.open(zeroLogin.sessionToken,zeroJob));const crossDenied=assert.rejects(crossWait,denied('calls.shiftReauthenticationRequired'));
+ await new Promise(r=>setTimeout(r,150));crossingAt=checkpoint.getTime();await admin.query('commit');await crossDenied;
+ assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[zeroJob])).rows[0].report_id,null);
+ await stamp(zeroLogin,checkpoint);
+ const zeroOpened=await Promise.all([run(zeroBinding.credential,()=>crossingCalls.open(zeroLogin.sessionToken,zeroJob)),run(zeroBinding.credential,()=>crossingCalls.open(zeroLogin.sessionToken,zeroJob))]);
+ assert.equal(zeroOpened[0].report.id,zeroOpened[1].report.id,'fresh zero-grace journey is race safe');
+ // Session row locks do not stop expiry while an opening waits.
+ const expiryJob=await dispatch(zeroUnit),expiryLogin=await login(zeroBinding.credential);await stamp(expiryLogin,checkpoint);
+ await admin.query("update app_identity.app_session set expires_at=clock_timestamp()+interval '500 milliseconds' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(expiryLogin.sessionToken)]);
+ await admin.query('begin');await admin.query('select id from clinical.call_assignment where id=$1 for update',[expiryJob]);
+ const expiryWait=run(zeroBinding.credential,()=>crossingCalls.open(expiryLogin.sessionToken,expiryJob));const expiryDenied=assert.rejects(expiryWait,denied('calls.sessionExpired'));
+ await new Promise(r=>setTimeout(r,650));await admin.query('commit');await expiryDenied;
+ assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[expiryJob])).rows[0].report_id,null);
  // Synthetic accounts are confined even when enrolled, rostered and assigned a real call.
  const demo=await run(binding.credential,()=>sessions.create({username:SYNTHETIC_DEMO_FIXTURE.username,password:SYNTHETIC_DEMO_FIXTURE.password}));
  await admin.query('insert into app_identity.unit_clinician(organization_id,unit_id,user_id) values($1,$2,$3)',[agency,firstUnit,SYNTHETIC_DEMO_FIXTURE.userId]);

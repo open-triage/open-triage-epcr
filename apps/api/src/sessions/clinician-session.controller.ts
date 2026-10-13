@@ -43,7 +43,7 @@ export class ClinicianSessionController {
   @Post()
   async create(@Req() request: RequestLike, @Body() body: unknown, @Res({ passthrough: true }) response: SessionCookieResponse,
     @Headers("user-agent") userAgent?: string): Promise<AuthenticatedSession> {
-    const created = await this.sessions.create(validateCreateClinicianSession(body), new Date(), userAgent,
+    const created = await this.sessions.create(validateCreateClinicianSession(body), undefined, userAgent,
       requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
@@ -70,7 +70,7 @@ export class ClinicianSessionController {
     @Headers("authorization") authorization?: string
   ): Promise<AuthenticatedSession> {
     const created = await this.sessions.changePassword(sessionToken(request, authorization), validateChangePassword(body),
-      new Date(), request.headers["user-agent"], requestNetworkSource(request));
+      undefined, request.headers["user-agent"], requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
   }
@@ -84,7 +84,7 @@ export class ClinicianSessionController {
   ): Promise<ReauthenticationResult> {
     const command = validateReauthenticate(body);
     return this.sessions.reauthenticate(sessionToken(request, authorization), csrfToken, command.currentPassword,
-      new Date(), requestNetworkSource(request));
+      undefined, requestNetworkSource(request));
   }
 
   @Delete("current")
