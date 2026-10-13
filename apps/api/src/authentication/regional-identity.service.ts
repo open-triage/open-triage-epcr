@@ -98,7 +98,7 @@ export class RegionalIdentityService {
   }
   async link(token:string,requestId:string,input:unknown){
     const command=input as Record<string,unknown>;
-    if(!uuid.test(requestId)||!command||typeof command!=="object"||Array.isArray(command)||Object.keys(command).some(key=>key!=="userId")||typeof command.userId!=="string"||!uuid.test(command.userId))throw new BadRequestException("An existing user is required");
+    if(!uuid.test(requestId)||!command||typeof command!=="object"||Array.isArray(command)||Object.keys(command).some(key=>!["userId","providerSource","expectedProviderRevision"].includes(key))||typeof command.userId!=="string"||!uuid.test(command.userId)||typeof command.providerSource!=="string"||!["draft","active"].includes(command.providerSource)||!Number.isSafeInteger(command.expectedProviderRevision)||Number(command.expectedProviderRevision)<1)throw new BadRequestException("An existing user and explicit current provider version are required");
     try{return await this.database.transaction(async manager=>{
       await this.authority(token,true,manager);
       // Keep the protected-owner lock order shared with account lifecycle changes.
@@ -107,8 +107,8 @@ export class RegionalIdentityService {
       const [request]=await manager.query<RequestRow[]>("select * from app_identity.regional_identity_request where id=$1 and group_id=$2 for update",[requestId,groupId]);
       if(!request)throw new NotFoundException({code:"admin.regionalIdentityMissing"});
       if(request.linked_user_id){if(request.linked_user_id===command.userId)return view(request);throw conflict();}
-      const [current]=await manager.query<Array<{provider_id:string;issuer:string}>>(`select v.provider_id,v.configuration->>'issuer' issuer from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.draft_revision where s.group_id=$1 for update of s`,[groupId]);
-      if(current?.provider_id!==request.provider_id||current.issuer!==request.issuer)throw conflict();
+      const [current]=await manager.query<Array<{revision:string;provider_id:string;issuer:string}>>(`select v.revision,v.provider_id,v.configuration->>'issuer' issuer from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=case when $2='active' then s.active_revision else s.draft_revision end where s.group_id=$1 for update of s`,[groupId,command.providerSource]);
+      if(Number(current?.revision)!==command.expectedProviderRevision||current?.provider_id!==request.provider_id||current.issuer!==request.issuer)throw conflict();
       const [target]=await manager.query<Array<{id:string}>>(`select u.id from app_identity.app_user u
         where u.id=$1 and u.active and u.account_scope='agency' and app_identity.organization_group(u.organization_id)=$2
         and not exists(select 1 from app_identity.installation_owner where user_id=u.id)

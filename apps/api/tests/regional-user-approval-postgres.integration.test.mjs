@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,createHash,randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import pg from 'pg';
 import {DataSource} from 'typeorm';
@@ -13,10 +13,12 @@ import {UserRoleAssignmentService} from '../dist/admin/user-role-assignment.serv
 import {UserLifecycleService} from '../dist/admin/user-lifecycle.service.js';
 import {UserProvisioningService} from '../dist/admin/user-provisioning.service.js';
 import {SessionAdministrationService} from '../dist/admin/session-administration.service.js';
+import {encryptCredential} from '../dist/authentication/oidc-credentials.js';
 const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 integration('runtime regional approval is atomic, source-bound, password-free and shares local user administration across agencies',async()=>{
+ const previousKeys=process.env.OIDC_CREDENTIAL_KEYS_JSON;process.env.OIDC_CREDENTIAL_KEYS_JSON=JSON.stringify({'1':randomBytes(32).toString('base64')});
  const name=`approval_${randomUUID().replaceAll('-','')}`,admin=new pg.Client({connectionString:process.env.DATABASE_URL});await admin.connect();await admin.query(`create database ${name}`);
  const url=new URL(process.env.DATABASE_URL);url.pathname=`/${name}`;
  const ownerDb=new DataSource({type:'postgres',url:url.toString()}),db=new DataSource({type:'postgres',url:url.toString(),extra:{options:'-c role=open_triage_api_runtime',application_name:'new-regional-user-regression'}});
@@ -69,10 +71,16 @@ integration('runtime regional approval is atomic, source-bound, password-free an
    assert.equal((await reads.users(foreignSession.sessionToken,{search})).items.length,0);
    const replaced=await roles.replace(token,id,{expectedRevision:page.items[0].revision,roleIds:[]});assert.equal(replaced.username,username);
    const restored=await roles.replace(token,id,{expectedRevision:replaced.revision,roleIds:[clinician]});assert.equal(restored.roles[0].id,clinician);
-   // Administrative listing tests an SSO-only persisted session without claiming an OIDC sign-in (slice 009).
+   // Trusted issuance provenance makes password-free sessions visible through the shared boundary.
    const live=randomUUID(),expired=randomUUID(),revoked=randomUUID(),stale=randomUUID();
-   for(const [sessionId,expiry,revoke,version] of [[live,'1 hour',null,1],[expired,'-1 hour',null,1],[revoked,'1 hour',new Date(),1],[stale,'1 hour',null,2]])await ownerDb.query(`insert into app_identity.app_session(id,user_id,organization_id,token_sha256,csrf_sha256,credential_version,created_at,last_activity_at,expires_at,device_label,revoked_at,revocation_reason) values($1,$2,$3,$4,$4,$5,now()-interval '2 hours',now()-interval '1 hour',now()+$6::interval,'Fictional browser',$7,case when $7::timestamptz is null then null else 'fixture_revoked' end)`,[sessionId,id,child,hash(sessionId),version,expiry,revoke]);
-   const listed=await security.list(token,id);assert(listed.items.some(session=>session.id===live));assert(!listed.items.some(session=>session.id===expired||session.id===revoked));if(username!==null)assert(!listed.items.some(session=>session.id===stale));
+   for(const [sessionId,expiry,revoke,version] of [[live,'1 hour',null,1],[expired,'-1 hour',null,1],[revoked,'1 hour',new Date(),1],[stale,'1 hour',null,2]]){
+    if(username===null&&sessionId!==stale)await ownerDb.query(`insert into app_identity.app_session(id,user_id,organization_id,token_sha256,csrf_sha256,credential_version,created_at,last_activity_at,expires_at,device_label,revoked_at,revocation_reason,
+      authentication_source,authentication_purpose,personally_authenticated_at,personal_authentication_purpose,oidc_identity_request_id,oidc_group_id,oidc_revision,personal_proof_policy_sha256,encrypted_csrf,personal_identity_request_id,personal_group_id,personal_revision,latest_personal_proof_policy_sha256)
+      values($1,$2,$3,$4,$4,null,now()-interval '2 hours',now()-interval '1 hour',now()+$5::interval,'Fictional browser',$6,case when $6::timestamptz is null then null else 'fixture_revoked' end,
+      'oidc','login',now()-interval '2 hours','login',$7,$8,1,$9,$10::jsonb,$7,$8,1,$9)`,[sessionId,id,child,hash(sessionId),expiry,revoke,request.requestId,root,hash('fixture-approved-proof'),JSON.stringify(encryptCredential('fixture-csrf',root,`csrf:${hash(sessionId)}`))]);
+    else await ownerDb.query(`insert into app_identity.app_session(id,user_id,organization_id,token_sha256,csrf_sha256,credential_version,created_at,last_activity_at,expires_at,device_label,revoked_at,revocation_reason) values($1,$2,$3,$4,$4,$5,now()-interval '2 hours',now()-interval '1 hour',now()+$6::interval,'Fictional browser',$7,case when $7::timestamptz is null then null else 'fixture_revoked' end)`,[sessionId,id,child,hash(sessionId),version,expiry,revoke]);
+   }
+   const listed=await security.list(token,id);assert(listed.items.some(session=>session.id===live));assert(!listed.items.some(session=>session.id===expired||session.id===revoked));assert(!listed.items.some(session=>session.id===stale));
    await assert.rejects(security.list(foreignSession.sessionToken,id),error=>error.getStatus?.()===404);
    await security.revoke(token,id,live,{});assert(!(await security.list(token,id)).items.some(session=>session.id===live));
    if(username===null){await assert.rejects(security.resetCredential(token,id,{expectedRevision:restored.revision,temporaryPassword:password}),error=>error.getStatus?.()===404);await assert.rejects(sessions.getAuthenticated(stale),error=>error.getStatus?.()===401);}
@@ -84,7 +92,7 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   assert.equal((await ownerDb.query('select issuer,subject from app_identity.regional_identity_request where id=$1',[request.requestId]))[0].subject,'NewExactSubject');
   const raceRequest=(await record('CompetingLinkApproval')).requestId;
   const countBeforeRace=(await ownerDb.query('select count(*)::int count from app_identity.app_user'))[0].count;
-  const race=await Promise.allSettled([identities.link(token,raceRequest,{userId:local.userId}),identities.approve(token,raceRequest,command)]);assert.equal(race.filter(result=>result.status==='fulfilled').length,1);
+  const race=await Promise.allSettled([identities.link(token,raceRequest,{userId:local.userId,providerSource:"draft",expectedProviderRevision:2}),identities.approve(token,raceRequest,command)]);assert.equal(race.filter(result=>result.status==='fulfilled').length,1);
   const winner=race.find(result=>result.status==='fulfilled').value;assert.equal((await ownerDb.query('select count(*)::int count from app_identity.app_user'))[0].count,countBeforeRace+(winner.linkedUserId===local.userId?0:1));
   // Reviewer role authoring commits while approval waits for the shared role lock.
   const limited=await accounts.provision({organizationId:root,username:'limited',displayName:'Limited reviewer',role:'clinician',temporaryPassword:password});await ownerDb.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[limited.userId]);
@@ -130,5 +138,5 @@ integration('runtime regional approval is atomic, source-bound, password-free an
    assert.deepEqual(await ownerDb.query('select id,revision from app_identity.app_user order by id'),before,operation+' must leave no orphan/partial user');assert.deepEqual(await ownerDb.query('select user_id,username from app_identity.local_credential order by user_id'),beforeCredentials);assert.deepEqual(await ownerDb.query('select * from app_identity.user_role_assignment order by id'),beforeAssignments);assert.equal((await ownerDb.query('select linked_user_id from app_identity.regional_identity_request where id=$1',[approvalRequest]))[0].linked_user_id,null);
   }
   const audit=await ownerDb.query("select details from app_identity.authentication_event where target_user_id=$1 and action='account.provision'",[userId]);assert.equal(audit.length,1);assert.doesNotMatch(JSON.stringify(audit),/NewExactSubject|same@example|provider.example|password/i);
- }finally{if(db.isInitialized)await db.destroy();if(ownerDb.isInitialized)await ownerDb.destroy();await migrate.end().catch(()=>{});await admin.query(`drop database ${name}`);await admin.end();}
+ }finally{if(previousKeys===undefined)delete process.env.OIDC_CREDENTIAL_KEYS_JSON;else process.env.OIDC_CREDENTIAL_KEYS_JSON=previousKeys;if(db.isInitialized)await db.destroy();if(ownerDb.isInitialized)await ownerDb.destroy();await migrate.end().catch(()=>{});await admin.query(`drop database ${name}`);await admin.end();}
 });

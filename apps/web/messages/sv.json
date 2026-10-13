@@ -1818,5 +1818,20 @@
   "admin.userRolesUpdatedNotice": "Roller uppdaterade för {name}. Tillagda: {added}; borttagna: {removed}.",
   "admin.revokeOwnerSessionConfirm": "Detta är en session för installationens ägare. Bekräfta att du vill avsluta den.",
   "admin.revokeCurrentSessionConfirm": "Detta är din aktuella session. Du loggas ut om den avslutas. Fortsätta?",
-  "admin.revokeSessionConfirm": "Avsluta denna session?"
+  "admin.revokeSessionConfirm": "Avsluta denna session?",
+  "login.regionalSignIn": "Logga in med regional identitet",
+  "login.regionalReauthentication": "Bekräfta din personliga identitet hos den regionala leverantören. Du kommer tillbaka hit för att upprepa åtgärden.",
+  "login.regionalFailed": "Personlig autentisering misslyckades. Starta en ny inloggning eller kontakta administratören.",
+  "login.regionalPending": "Din regionala identitet väntar på åtkomstgranskning. Ingen applikationsåtkomst har beviljats.",
+  "login.personalProofUnavailable": "Regional personlig autentisering är inte tillgänglig. Kontakta administratören.",
+  "login.personalProofRequired": "Bekräfta din identitet hos den regionala leverantören.",
+  "login.identityUnavailable": "Autentiseringsförsöket är inte tillgängligt eller har gått ut. Börja om.",
+  "login.reauthenticationRequired": "Nylig personlig återautentisering krävs.",
+  "login.switchUser": "Byt användare",
+  "platform.error.login.personalProofUnavailable": "Regional personlig autentisering är inte tillgänglig. Kontakta administratören.",
+  "platform.error.login.personalProofRequired": "Bekräfta din identitet hos den regionala leverantören.",
+  "platform.error.login.identityUnavailable": "Autentiseringsförsöket är inte tillgängligt eller har gått ut. Börja om.",
+  "platform.error.login.reauthenticationRequired": "Nylig personlig återautentisering krävs.",
+  "admin.personalPasswordToSave": "Ditt nuvarande lösenord krävs för att spara",
+  "admin.personalPasswordOidc": "Ditt lösenord för OIDC-ändringar"
 }

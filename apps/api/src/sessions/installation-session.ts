@@ -16,13 +16,19 @@ export async function lockInstallationForSession(manager: Pick<EntityManager, "q
   const request = agencyRequest.getStore();
   if (!request?.installationCredential) return null;
   const hash = createHash("sha256").update(request.installationCredential).digest("hex");
+  const [registration]=await manager.query(`select id,organization_id from app_identity.installation_registration
+    where credential_sha256=$1 for share`,[hash]);
+  if(!registration)return null;
+  await manager.query(`select id from app_identity.organization
+    where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
+    order by id for share`,[registration.organization_id]);
   const [binding] = await manager.query(`select i.id,i.revoked_at,u.active and a.active and g.active as active,
     exists(select 1 from app_identity.unit_enrollment e where e.installation_id=i.id and e.origin=$2) as origin_allowed
     from app_identity.installation_registration i
     join app_identity.operational_unit u on u.id=i.unit_id and u.organization_id=i.organization_id
     join app_identity.organization a on a.id=i.organization_id
     join app_identity.organization g on g.id=coalesce(a.parent_organization_id,a.id)
-    where i.credential_sha256=$1 for share of i,u,a,g`, [hash, request.origin]);
+    where i.credential_sha256=$1 for share of u`, [hash, request.origin]);
   // A bootstrap cookie alone is not enrollment and must preserve unpaired Admin/Review access.
   if (!binding) return null;
   if (binding.revoked_at || !binding.active || !binding.origin_allowed) {

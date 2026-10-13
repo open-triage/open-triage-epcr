@@ -1,7 +1,7 @@
 "use client";
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
-import { participateInInstallationTransition, INSTALLATION_TRANSITION_KEY } from "../app/installation-transition";
+import { participateInInstallationTransition,transitionInstallation, INSTALLATION_TRANSITION_KEY,INSTALLATION_TRANSITION_EVENT,INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import type { AssignedCall, ClinicianSession, AuthenticatedSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
@@ -16,6 +16,8 @@ import {
   storeClinicianSession,
   sessionRequestToken
 } from "../app/clinician-session";
+import { beginPersonalClinicianSession,completePersonalClinicianSession,regionalLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
+import { PersonalAuthenticationContext } from "./personal-authentication";
 import { LanguageSelector } from "./language-selector";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
@@ -86,6 +88,14 @@ export function ClinicianSessionGate({ children }: {
   const session = authenticatedSession?.organization ? authenticatedSession as ClinicianSession : null;
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [regionalLogin,setRegionalLogin]=useState(false);
+  const [transitionPending,setTransitionPending]=useState(false);
+  useEffect(()=>{
+    const update=()=>setTransitionPending(Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)));
+    const storage=(event:StorageEvent)=>{if(event.key===INSTALLATION_TRANSITION_KEY)update();};
+    update();window.addEventListener('storage',storage);window.addEventListener(INSTALLATION_TRANSITION_EVENT,update);window.addEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT,update);
+    return()=>{window.removeEventListener('storage',storage);window.removeEventListener(INSTALLATION_TRANSITION_EVENT,update);window.removeEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT,update);};
+  },[]);
   const openingHeading = useRef<HTMLHeadingElement>(null);
   const [openingCall, setOpeningCall] = useState<AssignedCall | null>(null);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
@@ -234,9 +244,11 @@ export function ClinicianSessionGate({ children }: {
         // Both requests are independent. Keep protected content gated until
         // authentication and configuration have both completed successfully.
         const startupGeneration = authenticationInstallationGeneration();
-        const [loaded, assessed] = await Promise.all([
+        const personalResult=new URLSearchParams(window.location.search).get("authentication");
+        const [loaded, assessed,regional] = await Promise.all([
           loadInstallationConfiguration(),
-          serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
+          personalResult==='completed'?completePersonalClinicianSession():serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
+          regionalLoginAvailable().catch(()=>false),
         ]);
         if (!current) return;
         let authenticated = assessed;
@@ -247,6 +259,12 @@ export function ClinicianSessionGate({ children }: {
           if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
         } catch { /* Language selection remains available without persistent storage. */ }
         setInstallation(loaded);
+        setRegionalLogin(regional);
+        if(personalResult){
+          window.history.replaceState(null,"",window.location.pathname);
+          if(personalResult==='completed'&&authenticated)storeClinicianSession(window.localStorage,authenticated);
+          else setMessage(resolveMessage(loaded.settings.language,personalResult==='pending'?"login.regionalPending":"login.regionalFailed"));
+        }
         setSession(authenticated);
         setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));
         setStartupFailure(null);
@@ -348,6 +366,14 @@ export function ClinicianSessionGate({ children }: {
     }
   }
 
+  async function personalLogin(purpose:"login"|"switch"){
+    if(purpose==='switch'&&!confirmDiscardChanges(unsavedEditors.current.size>0))return;
+    setSubmitting(true);setMessage(null);
+    try{await beginPersonalClinicianSession(purpose,authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
+    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.regionalFailed"));}
+    finally{setSubmitting(false);}
+  }
+
   async function replacePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!authenticatedSession) return;
@@ -388,8 +414,13 @@ export function ClinicianSessionGate({ children }: {
   async function logOut() {
     const csrfToken = authenticatedSession ? sessionRequestToken(authenticatedSession) : "";
     setLockingSession(true);
+    // Settle local writers/keys first, then finish the server's cookie response
+    // before exposing the next login. A delayed logout must not clear that new
+    // person's cookie after their authentication has completed.
+    await transitionInstallation(async()=>{
+      if (csrfToken) await endClinicianSession(csrfToken).catch(() => undefined);
+    });
     await lockAndEndLocalSession(t("login.loggedOut"));
-    if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
   }
 
   async function changeAgency(id: string) {
@@ -449,6 +480,7 @@ export function ClinicianSessionGate({ children }: {
           </header>
           <div className="login-fields">
             {message && <p className="login-message" role="status">{message}</p>}
+            {regionalLogin?<button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin('login')}>{t("login.regionalSignIn")}</button>:<>
             <label>
               {t("login.username")}
               <input name="username" autoComplete="username" required />
@@ -457,7 +489,8 @@ export function ClinicianSessionGate({ children }: {
               {t("login.password")}
               <input name="password" type="password" autoComplete="current-password" required />
             </label>
-            <button type="submit" disabled={submitting}>{submitting ? t("login.signingIn") : t("login.signIn")}</button>
+            <button type="submit" disabled={submitting||lockingSession||transitionPending}>{submitting ? t("login.signingIn") : t("login.signIn")}</button>
+            </>}
           </div>
         </form>
       </main>
@@ -502,6 +535,7 @@ export function ClinicianSessionGate({ children }: {
   </UnsavedChangesContext.Provider>;
 
   return (
+    <PersonalAuthenticationContext.Provider value={session.authenticationSource??"local"}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
@@ -541,6 +575,7 @@ export function ClinicianSessionGate({ children }: {
               onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           </div>
         </div>
+        {session.authenticationSource==='oidc'&&<button type="button" disabled={submitting||lockingSession} onClick={()=>void personalLogin('switch')}>{t("login.switchUser")}</button>}
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">
@@ -628,5 +663,6 @@ export function ClinicianSessionGate({ children }: {
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>
     </UnsavedChangesContext.Provider>
+    </PersonalAuthenticationContext.Provider>
   );
 }

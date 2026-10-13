@@ -1820,5 +1820,20 @@
   "admin.userRolesUpdatedNotice": "Roles updated for {name}. Added: {added}; removed: {removed}.",
   "admin.revokeOwnerSessionConfirm": "This is an installation owner session. Confirm that you want to revoke it.",
   "admin.revokeCurrentSessionConfirm": "This is your current session. Revoking it will sign you out. Continue?",
-  "admin.revokeSessionConfirm": "Revoke this session?"
+  "admin.revokeSessionConfirm": "Revoke this session?",
+  "login.regionalSignIn": "Sign in with regional identity",
+  "login.regionalReauthentication": "Confirm your personal identity with the regional provider. You will return here to repeat this action.",
+  "login.regionalFailed": "Personal authentication failed. Start a new login or contact your administrator.",
+  "login.regionalPending": "Your regional identity is awaiting access review. No application access has been granted.",
+  "login.personalProofUnavailable": "Regional personal authentication is unavailable. Contact your administrator.",
+  "login.personalProofRequired": "Confirm your identity with the regional provider.",
+  "login.identityUnavailable": "The personal authentication attempt is unavailable or expired. Start again.",
+  "login.reauthenticationRequired": "Recent personal reauthentication is required.",
+  "login.switchUser": "Switch user",
+  "platform.error.login.personalProofUnavailable": "Regional personal authentication is unavailable. Contact your administrator.",
+  "platform.error.login.personalProofRequired": "Confirm your identity with the regional provider.",
+  "platform.error.login.identityUnavailable": "The personal authentication attempt is unavailable or expired. Start again.",
+  "platform.error.login.reauthenticationRequired": "Recent personal reauthentication is required.",
+  "admin.personalPasswordToSave": "Your current password is required to save",
+  "admin.personalPasswordOidc": "Your password for OIDC changes"
 }

@@ -13,6 +13,9 @@ export class CsrfGuard implements CanActivate {
     if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) return true;
     const path = request.originalUrl ?? request.url ?? "";
     if (request.method.toUpperCase() === "POST" && /\/sessions\/?(?:\?.*)?$/.test(path)) return true;
+    // Fresh login also works with an expired cookie. The non-simple header and
+    // registered-origin middleware protect it; switch/reauth verify CSRF in service.
+    if(request.method.toUpperCase()==="POST" && path==="/api/sessions/oidc/login" && request.headers['x-personal-authentication']==='1')return true;
     // Independent bearer enrollment requires a non-simple header, forcing origin/CORS validation.
     // Exact bootstrap routes never depend on a clinician cookie (including expired cookies).
     if (request.method.toUpperCase() === "POST" && /^\/api\/installations\/(preview|enroll)\/?$/.test(path) &&

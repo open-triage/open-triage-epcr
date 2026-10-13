@@ -54,6 +54,8 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OIDC_CREDENTIAL_KEYS_JSON, optional: true } }
             - name: OIDC_PRIVATE_ORIGINS_JSON
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OIDC_PRIVATE_ORIGINS_JSON, optional: true } }
+            - name: OIDC_PERSONAL_PROOF_POLICIES_JSON
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OIDC_PERSONAL_PROOF_POLICIES_JSON, optional: true } }
             - name: OFFLINE_RECOVERY_KEY_VERSION
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OFFLINE_RECOVERY_KEY_VERSION } }
             - name: OFFLINE_RECOVERY_SECRET_BASE64

@@ -80,7 +80,7 @@ export class OidcTestService {
      const fresh=await this.authority(token,manager);
      if(fresh.groupId!==attempt.group_id||fresh.actor.organization.id!==attempt.organization_id||fresh.actor.user.id!==attempt.actor_id)throw new Error("Authority changed");
      failureCode="origin_changed";
-     if(!await this.agencies.allowsOrigin(origin))throw new Error("Agency origin withdrawn");
+     if(!await this.agencies.allowsOrigin(origin,manager))throw new Error("Agency origin withdrawn");
      failureCode="draft_changed";
      const [current]=await manager.query<Array<{draft_revision:string;discovery:unknown;discovery_health:string}>>("select s.draft_revision,v.discovery,v.discovery_health from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=s.draft_revision where s.group_id=$1 for update of s",[attempt.group_id]);
      if(Number(current?.draft_revision)!==Number(attempt.revision)||current?.discovery_health!=="healthy"||JSON.stringify(current.discovery)!==JSON.stringify(metadata))throw new ConflictException("Draft changed");

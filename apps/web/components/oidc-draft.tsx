@@ -1,6 +1,8 @@
 "use client";
+import { resolveMessage } from "../app/localization";
 import React, { useEffect, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
+import { PersonalAuthenticationField,usePasswordAuthentication } from "./personal-authentication";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { platformRequestError } from "../app/platform-errors";
 import { useUnsavedChanges } from "./unsaved-changes";
@@ -21,6 +23,7 @@ async function request(csrfToken:string,path="",body?:unknown,method="PUT"):Prom
 }
 export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;csrfToken:string;canWrite:boolean}) {
   const sv=language==="sv";
+  const needsPassword=usePasswordAuthentication();
   const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(""),[password,setPassword]=useState("");
   const [error,setError]=useState(""),[status,setStatus]=useState(""),[busy,setBusy]=useState(false);
   const persisted=value?.draft ? {...value.draft,scopes:value.draft.scopes.join(" "),...value.draft.mappings}:empty;
@@ -66,7 +69,7 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
     <button type="button" disabled={busy} onClick={refresh}>{sv?"Läs om OIDC-utkast":"Reload OIDC draft"}</button>
     {value && <>
       <p>{sv?"Aktiv leverantör":"Active provider"}: {value.active?.name ?? (sv?"Lokal inloggning":"Local login")}</p>
-      <form onSubmit={event=>{event.preventDefault();if(canWrite&&!busy&&password)void mutate();}}>
+      <form onSubmit={event=>{event.preventDefault();if(canWrite&&!busy&&(!needsPassword||password))void mutate();}}>
         <fieldset disabled={!canWrite||busy}><legend>{sv?"Leverantörskonfiguration":"Provider configuration"}</legend>
           {fields.map((field,index)=><label key={field} htmlFor={`oidc-${field}`}>{labels[sv?"sv":"en"][index]}{!["discoveryUrl","email"].includes(field)?" *":""}
             <input id={`oidc-${field}`} autoCapitalize={field==="name"?"sentences":"none"} autoCorrect={field==="name"?"on":"off"} spellCheck={field==="name"} type={field==="issuer"||field==="discoveryUrl"?"url":"text"} maxLength={field==="issuer"||field==="discoveryUrl"?2048:field==="clientId"?500:field==="scopes"?2020:field==="displayName"||field==="email"?256:120} value={draft[field]} onChange={event=>setDraft(current=>({...current,[field]:event.target.value}))}/>
@@ -76,10 +79,10 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
           <p>{sv?"Byte av utfärdare eller klient-ID kräver en ny hemlighet.":"Changing the issuer or client ID requires a replacement secret."}</p>
           {canWrite && <>
             <label htmlFor="oidc-secret">{sv?"Ersätt klienthemlighet":"Replacement client secret"}<input id="oidc-secret" type="password" autoComplete="off" maxLength={4096} value={secret} onChange={event=>setSecret(event.target.value)}/></label>
-            <label htmlFor="oidc-password">{sv?"Ditt lösenord för OIDC-ändringar":"Your password for OIDC changes"}<input id="oidc-password" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label>
-            <div className="form-actions"><button type="submit" disabled={!dirty||!password||busy}>{sv?"Spara OIDC-utkast":"Save OIDC draft"}</button>
-              <button type="button" disabled={!value.draft||dirty||!complete||!password||busy} onClick={()=>void mutate(true)}>{sv?"Kontrollera discovery":"Check discovery"}</button>
-              <button type="button" disabled={!value.draft||dirty||value.draft.discoveryHealth!=="healthy"||!password||busy} onClick={()=>void testLogin()}>{sv?"Testa leverantörsinloggning":"Test provider login"}</button>
+            <PersonalAuthenticationField language={language} value={password} onChange={setPassword} label={resolveMessage(language,"admin.personalPasswordOidc")}/>
+            <div className="form-actions"><button type="submit" disabled={!dirty||(needsPassword&&!password)||busy}>{sv?"Spara OIDC-utkast":"Save OIDC draft"}</button>
+              <button type="button" disabled={!value.draft||dirty||!complete||(needsPassword&&!password)||busy} onClick={()=>void mutate(true)}>{sv?"Kontrollera discovery":"Check discovery"}</button>
+              <button type="button" disabled={!value.draft||dirty||value.draft.discoveryHealth!=="healthy"||(needsPassword&&!password)||busy} onClick={()=>void testLogin()}>{sv?"Testa leverantörsinloggning":"Test provider login"}</button>
               <button type="button" disabled={busy} onClick={()=>{load(value);setError("");}}>{sv?"Avbryt OIDC-ändringar":"Cancel OIDC changes"}</button></div>
           </>}
         </fieldset>
