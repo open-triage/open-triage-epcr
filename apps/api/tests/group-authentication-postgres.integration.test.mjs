@@ -24,7 +24,9 @@ integration('real local sessions inherit policy, expire, retain recovery, deny u
     const client = await pool.connect(); try {
       const migrations = await readMigrations(fileURLToPath(new URL('../../../supabase/migrations',import.meta.url)));
       const newMigration = migrations.find(m => m.version === '20261013115819');
-      await applyMigrations(client, migrations.filter(m => m !== newMigration), { info() {} });
+      assert.ok(newMigration, "Group policy migration must exist");
+      // Build the historical schema prefix, so later migrations can depend on this one.
+      await applyMigrations(client, migrations.filter(m => m.version < newMigration.version), { info() {} });
       const legacyRoot = randomUUID(), legacyChild = randomUUID();
       await client.query(`insert into app_identity.organization(id,name,deployment_timezone) values ($1,'Legacy root','UTC')`, [legacyRoot]);
       await client.query(`insert into app_identity.organization(id,name,deployment_timezone,parent_organization_id,shift_session_duration_hours) values ($1,'Legacy child','UTC',$2,24)`, [legacyChild,legacyRoot]);

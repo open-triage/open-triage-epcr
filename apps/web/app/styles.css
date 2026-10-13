@@ -1205,3 +1205,9 @@ fieldset { min-inline-size: 0; }
 .unit-dialog label { display: grid; gap: 7px; margin: 12px 0; }
 .unit-dialog label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
 .unit-dialog input:not([type="checkbox"]) { width: 100%; padding: 10px 12px; min-height: 44px; border: 1px solid var(--green); border-radius: 6px; color: var(--text-color); font-size: var(--text-control); }
+
+.oidc-metadata-value { overflow-wrap: anywhere; margin-inline-start: 0; }
+
+/* Keep the compact provider editor actions from covering credential fields. */
+.agency-settings .oidc-draft .form-actions { position: static; }
+.oidc-draft > div { display: grid; gap: 8px; }

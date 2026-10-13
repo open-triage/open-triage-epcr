@@ -240,3 +240,7 @@ browser unit suite tests unset, same-origin, and explicit API URL configurations
 The disposable database is removed on completion, including test failure.
 Use this complete check rather than interpreting skipped database tests in
 `npm test` as database validation.
+
+OIDC draft transport regression tests use `openssl` to generate an ephemeral
+local TLS CA and bind a non-loopback network interface. Install OpenSSL before
+running `npm run check:ci`; the test CA is trusted only in its test child process.

@@ -1,4 +1,8 @@
 {
+  "platform.error.admin.oidcInvalid": "Invalid OIDC field: {field}.",
+  "platform.error.admin.oidcStale": "The OIDC draft changed. Reload and review before saving.",
+  "platform.error.admin.oidcIncomplete": "Complete the required OIDC fields: {field}.",
+  "platform.error.admin.oidcEncryptionUnavailable": "OIDC credential encryption is unavailable. Ask the installation operator to configure protected keys.",
   "admin.temporaryAccessPolicy": "Temporary passwords expire according to the group Authentication policy.",
   "platform.error.admin.authenticationPolicyStale": "Authentication policy changed. Reload the effective policy and review your changes before saving.",
   "platform.error.admin.authenticationPolicyInvalid": "Enter whole numbers: 1–168 hours and 1–1000 login attempts.",

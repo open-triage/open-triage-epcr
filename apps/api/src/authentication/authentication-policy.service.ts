@@ -27,7 +27,7 @@ export class AuthenticationPolicyService {
     if (!policy) throw new Error("Select an agency group");
     const history = await this.database.query<Array<{actor_id: string; display_name: string | null; occurred_at: Date | string; details: unknown}>>(`select event.actor_id, account.display_name, event.occurred_at, event.details
       from app_identity.authentication_event event left join app_identity.app_user account on account.id=event.actor_id
-      where event.organization_id=$1 and event.action='authentication.policy_update'
+      where event.organization_id=$1 and event.action='authentication.policy_update' and event.details->>'kind' is distinct from 'oidc'
       order by event.occurred_at desc, event.id desc limit 20`, [policy.groupId]);
     const [group] = await this.database.query<Array<{ name: string }>>("select name from app_identity.organization where id=$1", [policy.groupId]);
     return { ...policy, groupName: group?.name ?? actor.organization.name, organizationId: actor.organization.id, inherited: actor.organization.id !== policy.groupId,
