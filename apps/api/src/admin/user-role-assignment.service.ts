@@ -1,15 +1,12 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AdminRoleSummary, ReplaceAdminUserRolesCommand, UpdatedAdminUserRoles } from "@open-triage/contracts";
-import { DataSource } from "typeorm";
+import { DataSource, type EntityManager } from "typeorm";
+import { assertRoleAssignmentScope, lockAssignedRoles, readLockedRoleDefinitions, type RoleCapabilityRow } from "./role-assignment-locks.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type TargetRow = {
-  id: string; display_name: string; username: string; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
-};
-type RoleCapabilityRow = {
-  id: string; display_name: string; active: boolean; protected: boolean; assignable: boolean;
-  system_key: string | null; capability_key: string | null;
+  id: string; display_name: string; username: string | null; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
 };
 type RoleDefinition = AdminRoleSummary & {
   assignable: boolean; systemKey: string | null; capabilities: string[];
@@ -26,8 +23,14 @@ export class UserRoleAssignmentService {
 
   async replace(token: string, targetUserId: string, command: ReplaceAdminUserRolesCommand,
     now = new Date()): Promise<UpdatedAdminUserRoles> {
-    return this.dataSource.transaction(async (manager) => {
-      const actor = await this.sessions.requireCapability(token, "roles:assign", manager, now);
+    return this.dataSource.transaction((manager) => this.replaceInTransaction(manager, token, targetUserId, command, now));
+  }
+
+  /** Approval and existing-user editing share one authorization and assignment boundary. */
+  async replaceInTransaction(manager: EntityManager, token: string, targetUserId: string,
+    command: ReplaceAdminUserRolesCommand, now = new Date()): Promise<UpdatedAdminUserRoles> {
+      let actor = await this.sessions.requireCapability(token, "roles:assign", manager, now);
+      const originalActor = { user: { id: actor.user.id }, organization: { id: actor.organization.id } };
       // Serialize Administrator eligibility changes with ownership acceptance.
       await manager.query(`select user_id from app_identity.installation_owner for update`);
       const targets = await manager.query<TargetRow[]>(`
@@ -36,7 +39,7 @@ export class UserRoleAssignmentService {
           exists (select 1 from app_identity.installation_owner owner_record
             where owner_record.user_id = u.id) owner
         from app_identity.app_user u
-        join app_identity.local_credential credential on credential.user_id = u.id
+        left join app_identity.local_credential credential on credential.user_id = u.id
         where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1) and u.id = $2
         for update of u
       `, [actor.organization.id, targetUserId]);
@@ -48,6 +51,9 @@ export class UserRoleAssignmentService {
         throw new ConflictException("This user changed after it was loaded");
       }
 
+      await lockAssignedRoles(manager, [target.id, actor.user.id]);
+      actor = await this.sessions.requireCapability(token, "roles:assign", manager, now);
+      assertRoleAssignmentScope(originalActor, actor);
       const currentRows = await manager.query<Array<{ role_id: string }>>(`
         select assignment.role_id
         from app_identity.user_role_assignment assignment
@@ -58,17 +64,9 @@ export class UserRoleAssignmentService {
       `, [actor.organization.id, target.id]);
       const currentRoleIds = currentRows.map(({ role_id }) => role_id);
       const involvedIds = [...new Set([...currentRoleIds, ...command.roleIds])];
-      const rows = involvedIds.length ? await manager.query<RoleCapabilityRow[]>(`
-        select role.id, role.display_name, role.active, role.protected, role.assignable, role.system_key,
-          definition.capability_key
-        from app_identity.role role
-        left join app_identity.role_version_capability definition
-          on definition.organization_id = role.organization_id and definition.role_id = role.id
-          and definition.role_version_id = role.current_version_id
-        where role.organization_id = $1 and role.id = any($2::uuid[]) and not role.hidden
-        order by role.id, definition.capability_key
-        for share of role
-      `, [actor.organization.id, involvedIds]) : [];
+      const rows = await readLockedRoleDefinitions(manager, actor.organization.id, involvedIds);
+      actor = await this.sessions.requireCapability(token, "roles:assign", manager, now);
+      assertRoleAssignmentScope(originalActor, actor);
       const roles = this.roles(rows);
       if (command.roleIds.some((id) => !roles.has(id))) {
         throw new UnprocessableEntityException("Every desired role must belong to this organization and be visible");
@@ -124,7 +122,6 @@ export class UserRoleAssignmentService {
         active: target.active, revision: command.expectedRevision + 1, roles: desired.map(summary),
         addedRoles: additions.map((id) => summary(roles.get(id)!)),
         removedRoles: removals.map((id) => summary(roles.get(id)!)) };
-    });
   }
 
   private roles(rows: RoleCapabilityRow[]): Map<string, RoleDefinition> {
