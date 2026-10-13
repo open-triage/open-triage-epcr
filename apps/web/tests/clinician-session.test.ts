@@ -23,7 +23,7 @@ test("successful reauthentication resumes all recovery gates, while a rejected p
   const events = new EventTarget();
   let notifications = 0;
   events.addEventListener(CLINICIAN_REAUTHENTICATED_EVENT, () => { notifications++; });
-  Object.defineProperty(globalThis, "window", { configurable: true, value: events });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: Object.assign(events, { localStorage: memoryStorage() }) });
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   try {
     globalThis.fetch = async () => new Response(null, { status: 401 });

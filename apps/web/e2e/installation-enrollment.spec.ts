@@ -108,3 +108,39 @@ test('concurrent tabs bootstrap one HttpOnly installation authority; a separate 
  expect(await page.evaluate(()=>document.cookie)).not.toContain('open_triage_installation');
  }finally{await other.close();}
 });
+
+for(const language of ['en','sv'])test(`${language} confirmed reassignment settles all tabs before replacing the binding and clears old clinician context`,async({context,page})=>{
+ const t=(en:string,sv:string)=>language==='sv'?sv:en;
+ const participant=await build({bundle:true,write:false,format:'iife',platform:'browser',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'ts',contents:`import{participateInInstallationTransition}from './app/installation-transition';import{lockProtectedClinicalStorage}from './app/protected-clinical-storage';(window as any).settled=false;(window as any).release=()=>{};(window as any).dispose=participateInInstallationTransition(async()=>{(window as any).ending=true;await new Promise<void>(resolve=>{(window as any).release=resolve});await lockProtectedClinicalStorage();(window as any).settled=true;});`}});
+ let replaced=0;
+ await context.route('**/__enroll-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+ await context.route('**/__stale-script',route=>route.fulfill({contentType:'text/javascript',body:participant.outputFiles[0]!.text}));
+ await context.route('**/__stale',route=>route.fulfill({contentType:'text/html',body:'<html><body><script src="/__stale-script"></script></body></html>'}));
+ await context.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
+ await context.route('**/api/installations/**',async route=>{
+ if(route.request().url().endsWith('/current'))return route.fulfill({json:{enrolled:true,installation:{id:'old',name:'Cab browser'}}});
+ if(route.request().url().endsWith('/preview'))return route.fulfill({json:{unitName:'Medic 8',callSign:'M8'}});
+ expect(route.request().postDataJSON()).toEqual({token:'A'.repeat(43),name:'Cab browser',confirmInstallation:true,reassign:true});
+ replaced++;
+ return route.fulfill({json:{id:'new',name:'Cab browser'}});
+ });
+ const stale=await context.newPage();await stale.goto('/__stale');
+ await expect.poll(()=>stale.evaluate(async()=> (await navigator.locks.query()).held?.some(lock=>lock.name==='open-triage.installation-clinical-context'))).toBe(true);
+ await page.goto(`/__enroll?language=${language}#code=${'A'.repeat(43)}`);
+ await expect(page.getByText('Medic 8 — M8')).toBeVisible();
+ await expect(page.getByRole('alert')).toContainText(t('Reassignment signs out every clinician tab.','Omplacering loggar ut alla klinikerflikar.'));
+ const submit=page.getByRole('button',{name:t('Reassign and sign out','Omplacera och logga ut')});await expect(submit).toBeDisabled();
+ await page.evaluate(()=>localStorage.setItem('open-triage.clinician-session.v1','old clinician'));
+ await page.getByRole('checkbox').check();await submit.click();
+ await expect.poll(()=>page.evaluate(()=>!!localStorage.getItem('open-triage.installation-transition.v1'))).toBe(true);
+ expect(replaced).toBe(0);
+ // React teardown/refresh must retain the barrier until pending writes settle.
+ await stale.evaluate(()=> (window as unknown as {dispose:()=>void}).dispose());
+ expect(replaced).toBe(0);
+ await expect.poll(()=>stale.evaluate(()=> (window as unknown as {ending:boolean}).ending)).toBe(true);
+ await stale.evaluate(()=> (window as unknown as {release:()=>void}).release());
+ await expect(page.getByRole('status')).toContainText('Cab browser');expect(replaced).toBe(1);
+ expect(await stale.evaluate(()=> (window as unknown as {settled:boolean}).settled)).toBe(true);
+ expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();
+ expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toBeNull();
+});

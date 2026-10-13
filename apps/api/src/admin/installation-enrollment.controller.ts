@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Query, Req, Res } from "@nestjs/common";
-import { sessionToken, type SessionCookieResponse } from "../sessions/clinician-session.controller.js";
+import { sessionToken, clearSessionCookie, type SessionCookieResponse } from "../sessions/clinician-session.controller.js";
 import { InstallationEnrollmentService } from "./installation-enrollment.service.js";
 import { INSTALLATION_COOKIE, installationCredential } from "../sessions/installation-session.js";
 export { INSTALLATION_COOKIE, installationCredential } from "../sessions/installation-session.js";
@@ -33,6 +33,7 @@ export class InstallationEnrollmentController {
  const clinicianCookie=req.headers.cookie?.split(";").map(p=>p.trim()).find(p=>p.startsWith("open_triage_session="))?.slice("open_triage_session=".length);
  const result=await this.enrollment.consume(body,installationCredential(req.headers.cookie),clinicianCookie);
  response.cookie(INSTALLATION_COOKIE,result.credential,{httpOnly:true,secure:true,sameSite:"strict",path:"/api",maxAge:365*24*60*60*1000});
+ if(result.reassigned) clearSessionCookie(response);
  return result.installation;
  }
  @Get("installations/current")
