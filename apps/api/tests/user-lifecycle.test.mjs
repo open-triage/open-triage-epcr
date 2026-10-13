@@ -74,7 +74,7 @@ test("disablement atomically renames durable identity, retains roles, revokes se
     restoredRoles: [], sessionsRevoked: 2, freshLoginRequired: true });
   assert.equal(events[0].sql, "begin");
   assert.equal(events.at(-1).sql, "commit");
-  assert.match(events.find(({ sql }) => sql.startsWith("select u.id"))?.sql ?? "", /for update of u, credential/);
+  assert.match(events.find(({ sql }) => sql.startsWith("select u.id"))?.sql ?? "", /for update of u/);
   assert.equal(events.some(({ sql }) => sql.startsWith("update app_identity.user_role_assignment")), false);
   assert.match(events.find(({ sql }) => sql.startsWith("update app_identity.app_session"))?.sql ?? "", /account_disabled/);
   const credential = events.find(({ sql }) => sql.startsWith("update app_identity.local_credential"));
@@ -114,4 +114,14 @@ test("a permanently reserved username conflict is exposed without committing a p
   const { service, events } = setup({ failCredential: databaseError });
   await assert.rejects(service.update("opaque-session", targetId, command()), ConflictException);
   assert.equal(events.at(-1).sql, "rollback");
+});
+
+test("SSO-only lifecycle preserves null username and rejects creating a credential identity", async () => {
+ const {service,events}=setup({target:{username:null}});
+ const result=await service.update("token",targetId,command({username:null}));
+ assert.equal(result.username,null);
+ assert.equal(events.some(event=>event.sql.startsWith("update app_identity.local_credential")),false);
+ await assert.rejects(setup({target:{username:null}}).service.update("token",targetId,command()),BadRequestException);
+ await assert.rejects(setup().service.update("token",targetId,command({username:null})),BadRequestException);
+ assert.equal(validateUpdateAdminUser(command({username:null})).username,null);
 });

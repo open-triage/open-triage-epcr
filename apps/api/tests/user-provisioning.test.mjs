@@ -13,14 +13,14 @@ const actor = {
 };
 
 function setup({ availableRoles = [roleId], capabilities = actor.capabilities, owner = false,
-  systemKey = null, roleCapability = null, onReauthenticate = () => undefined } = {}) {
+  systemKey = null, roleCapability = null, onReauthenticate = () => undefined, onAuthorize } = {}) {
   const events = [];
   const manager = { query: async (sql, parameters = []) => {
     const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(event);
     if (event.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: "organization-id", revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
-    if (event.sql.startsWith("select role.id, role.system_key")) {
-      return availableRoles.map((id) => ({ id, system_key: systemKey, capability_key: roleCapability }));
+    if (event.sql.startsWith("select role.id, role.display_name")) {
+      return availableRoles.map((id) => ({ id, display_name: "Fixture role", active: true, assignable: true, protected: false, system_key: systemKey, capability_key: roleCapability }));
     }
     if (event.sql.includes("is_installation_superadmin")) return [{ owner }];
     return [];
@@ -38,7 +38,7 @@ function setup({ availableRoles = [roleId], capabilities = actor.capabilities, o
   } };
   const sessions = { requireCapability: async (token, capability, selectedManager, now) => {
     events.push({ sql: "authorize", parameters: [token, capability, selectedManager, now] });
-    return { ...actor, capabilities };
+    return onAuthorize ? onAuthorize() : { ...actor, capabilities };
   }, requireRecentReauthentication: onReauthenticate };
   return { events, service: new UserProvisioningService(dataSource, sessions), manager };
 }
@@ -127,4 +127,11 @@ test("authorization and organization role validation fail before any user write 
   await assert.rejects(wrongOrganization.service.provision("token", command), UnprocessableEntityException);
   assert.equal(wrongOrganization.events.some(({ sql }) => sql.startsWith("insert into app_identity.app_user")), false);
   assert.equal(wrongOrganization.events.at(-1).sql, "rollback");
+});
+
+test("changing administration group while waiting aborts provisioning without identity or role writes", async () => {
+ let reads=0;
+ const {service,events}=setup({onAuthorize:()=>({...actor,organization:{...actor.organization,id:++reads===1?actor.organization.id:"different-group"}})});
+ await assert.rejects(service.provision("token",validateProvisionAdminUser({username:"context.race",displayName:"Context race",temporaryPassword:"Temporary password 42!",roleIds:[roleId]})),ForbiddenException);
+ assert.equal(events.some(event=>event.sql.startsWith("insert into app_identity.app_user")||event.sql.startsWith("insert into app_identity.user_role_assignment")),false);
 });

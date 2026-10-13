@@ -939,7 +939,8 @@ export interface AdminAssignableRoleSummary extends AdminRoleSummary {
 export interface AdminUserSummary {
   id: string;
   displayName: string;
-  username: string;
+  /** Null when this account has no local password credential. */
+  username: string | null;
   active: boolean;
   revision: number;
   /** True only for the installation's current accountable owner. */
@@ -975,7 +976,7 @@ export interface ProvisionedAdminUser {
 
 export interface UpdateAdminUserCommand {
   expectedRevision: number;
-  username: string;
+  username: string | null;
   displayName: string;
   active: boolean;
   note?: string;

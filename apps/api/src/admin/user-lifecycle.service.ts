@@ -1,12 +1,13 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AdminRoleSummary, UpdatedAdminUser, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
+import { assertRoleAssignmentScope, lockAssignedRoles } from "./role-assignment-locks.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type TargetRow = {
-  id: string; display_name: string; username: string; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
+  id: string; display_name: string; username: string | null; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
 };
 type RoleRow = { id: string; display_name: string; active: boolean; protected: boolean };
 
@@ -21,7 +22,8 @@ export class UserLifecycleService {
     now = new Date()): Promise<UpdatedAdminUser> {
     try {
       return await this.dataSource.transaction(async (manager) => {
-        const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        let actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        const originalActor = { user: { id: actor.user.id }, organization: { id: actor.organization.id } };
         // Serialize eligibility changes with ownership acceptance, which locks this row first.
         await manager.query(`select user_id from app_identity.installation_owner for update`);
         const targets = await manager.query<TargetRow[]>(`
@@ -30,9 +32,9 @@ export class UserLifecycleService {
             exists (select 1 from app_identity.installation_owner owner_record
               where owner_record.user_id = u.id) as owner
           from app_identity.app_user u
-          join app_identity.local_credential credential on credential.user_id = u.id
+          left join app_identity.local_credential credential on credential.user_id = u.id
           where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1) and u.id = $2
-          for update of u, credential
+          for update of u
         `, [actor.organization.id, targetUserId]);
         const target = targets[0];
         if (!target) throw new NotFoundException("User was not found");
@@ -42,6 +44,14 @@ export class UserLifecycleService {
           throw new ConflictException("This user changed after it was loaded");
         }
 
+        // Lock applicable credentials separately; PostgreSQL cannot lock the nullable side of a left join.
+        await manager.query("select user_id from app_identity.local_credential where user_id=$1 for update", [target.id]);
+        if ((target.username === null) !== (command.username === null)) {
+          throw new BadRequestException("A local username is required only for an existing local credential");
+        }
+        await lockAssignedRoles(manager, [target.id, actor.user.id]);
+        actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        assertRoleAssignmentScope(originalActor, actor);
         const targetOnly = await manager.query<Array<{ capability_key: string }>>(`
           select distinct capability.capability_key
           from app_identity.user_role_assignment assignment
@@ -63,7 +73,7 @@ export class UserLifecycleService {
           from app_identity.user_role_assignment assignment
           join app_identity.role role on role.organization_id = assignment.organization_id
             and role.id = assignment.role_id and not role.hidden
-          where app_identity.organization_group(assignment.organization_id) = app_identity.organization_group($1) and assignment.user_id = $2 and assignment.ended_at is null
+          where assignment.organization_id = $1 and assignment.user_id = $2 and assignment.ended_at is null
           order by role.id for update of assignment
         `, [actor.organization.id, target.id]);
         const currentRoleIds = currentRoleRows.map(({ id }) => id);
@@ -81,7 +91,7 @@ export class UserLifecycleService {
             where user_id = $1 and revoked_at is null returning id`, [target.id, now]));
           sessionsRevoked = revoked.length;
         }
-        await manager.query(`update app_identity.local_credential set username = $2
+        if (target.username !== null) await manager.query(`update app_identity.local_credential set username = $2
           where user_id = $1 and username <> $2`, [target.id, command.username]);
         await manager.query(`update app_identity.app_user set display_name = $2, active = $3,
           deactivated_at = case when $3 then null else coalesce(deactivated_at, $4) end,

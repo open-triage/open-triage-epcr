@@ -31,7 +31,7 @@ export class SessionAdministrationService {
     const actor = await this.sessions.requireCapability(token, "sessions:read", this.dataSource.manager, now);
     this.requireCombinedSessionAuthority(actor.capabilities, false);
     const users = await this.dataSource.query<Array<{ id: string }>>(
-      "select id from app_identity.app_user where organization_id = $1 and id = $2",
+      "select id from app_identity.app_user where app_identity.organization_group(organization_id) = app_identity.organization_group($1) and id = $2",
       [actor.organization.id, targetUserId]
     );
     if (!users[0]) throw new NotFoundException("User was not found");
@@ -42,10 +42,10 @@ export class SessionAdministrationService {
                where owner_record.user_id = app_user.id) as owner
       from app_identity.app_session session
       join app_identity.app_user app_user on app_user.id = session.user_id
-      join app_identity.local_credential credential on credential.user_id = app_user.id
+      left join app_identity.local_credential credential on credential.user_id = app_user.id
       where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2
         and session.revoked_at is null and session.expires_at > $4
-        and session.credential_version = credential.credential_version
+        and (credential.user_id is null or session.credential_version = credential.credential_version)
       order by session.last_activity_at desc, session.id
     `, [actor.organization.id, targetUserId, digest(token), now]);
     return { userId: targetUserId, items: rows.map((row) => ({
@@ -169,7 +169,7 @@ export class SessionAdministrationService {
       }
       await this.sessions.requireRecentReauthentication(token, manager, now);
       const targets = await manager.query<Array<{ id: string }>>(
-        "select id from app_identity.app_user where organization_id = $1 and id = $2 for update",
+        "select id from app_identity.app_user where app_identity.organization_group(organization_id) = app_identity.organization_group($1) and id = $2 for update",
         [actor.organization.id, targetUserId]
       );
       if (!targets[0]) throw new NotFoundException("User was not found");
