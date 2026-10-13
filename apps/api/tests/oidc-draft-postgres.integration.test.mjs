@@ -106,9 +106,11 @@ integration('OIDC persistence enforces authority, versions, masked secrets, safe
       const [tested]=await manager.query("select result,pkce_s256,fresh_personal_authentication from app_identity.oidc_test_transaction order by completed_at desc nulls last limit 1");
       assert.deepEqual(tested,{result:'succeeded',pkce_s256:true,fresh_personal_authentication:false});
       assert.equal((await drafts.get(regional.sessionToken)).test.result,'succeeded');
+      const [pendingIdentity]=await manager.query('select * from app_identity.regional_identity_request where group_id=$1',[root]);assert.equal(pendingIdentity.subject,'fictional-provider-user');assert.equal(pendingIdentity.organization_id,child);assert.equal(pendingIdentity.linked_user_id,null);assert.equal((await drafts.get(regional.sessionToken)).test.identityOutcome,'pending');
       fixture.browserLogin=true;
       const browser=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-test-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),OIDC_TEST_DATABASE_URL:url.toString(),OIDC_TEST_SESSION_TOKEN:regional.sessionToken,OIDC_TEST_CSRF:regional.session.csrfToken},timeout:30000}).catch(error=>{throw new Error(error.stderr||error.message);});
       assert.deepEqual(JSON.parse(browser.stdout),{browserRedirect:true,callbackCookie:true,strictSessionCookie:true});
+      const [requestCount]=await manager.query('select count(*)::int count from app_identity.regional_identity_request where group_id=$1',[root]);assert.equal(requestCount.count,1,'Repeated real callbacks reuse one pending identity');
       fixture.browserLogin=false;
       await runTest(true);assert.equal((await drafts.get(regional.sessionToken)).test.result,'canceled');assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'canceled');
       fixture.tokenOverrides={nonce:'forged'};await runTest();assert.equal((await drafts.get(regional.sessionToken)).test.result,'failed');assert.equal((await drafts.get(regional.sessionToken)).test.failureCode,'provider_validation');

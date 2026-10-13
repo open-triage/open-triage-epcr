@@ -4,14 +4,14 @@ Authentication now stores versioned OIDC drafts at agency-group scope. Children
 inherit their group's configuration. Saving an incomplete draft or a failed
 discovery check preserves the active configuration. Failed checks retain the last
 successful read-only metadata and mark its health failed; a new draft starts
-without discovery metadata. This slice does not activate
-SSO or perform authentication; the following tickets add real test login and
-activation. Discovery success is connectivity evidence, not regional acceptance.
+without discovery metadata. Real test login validates identity and records
+pending review requests, while production SSO activation remains a later slice.
+Discovery success is connectivity evidence, not regional acceptance.
 
 The maintained protocol library is [openid-client v6](https://github.com/panva/openid-client),
 pinned in the API package/lockfile. Use its server-side authorization-code flow,
 `ClientSecretPost` (`client_secret_post`), nonce and state validation, ID-token
-validation and S256 PKCE for the future code exchange. Discovery rejects a provider
+validation and S256 PKCE for code exchange. Discovery rejects a provider
 that does not advertise this client authentication mechanism. Regional IT must
 confirm that the AD FS v6 registration supports it and S256. Do not guess the
 issuer, client identifier, credentials, claims or host registrations. If another
@@ -20,14 +20,15 @@ mechanism is required, implement and test it before activation. Microsoft docume
 
 Registration details show exact HTTPS URLs for active registered group agency
 hosts: `/api/sessions/oidc/callback` and `/api/sessions/oidc/logout-callback`.
-These are the reserved routing contract for the later protocol handlers; draft
-configuration does not make either handler or provider logout active. Logout
+The callback handles real draft test login; the logout callback remains reserved
+for later protocol handling. Draft configuration does not enable provider logout.
+Logout
 registration is informational and does not enable regional global logout.
 Required ID-token claims are `iss`, `sub`, `aud`, `exp`, `iat`, `nonce`; supported
 profile mappings are display name and optional email. Profile claims never grant
 roles and email must not link application identities automatically.
 
-For the forthcoming callback, keep the existing application cookie/CSRF/origin
+For the callback, keep the existing application cookie/CSRF/origin
 checks. Use a separate short-lived random HttpOnly Secure SameSite=Lax callback
 correlation cookie scoped to `/api/sessions/oidc/callback`, never relax the
 application session cookie. Store the transaction server-side, binding its hash,
@@ -89,8 +90,9 @@ that same agency. Reloading the OIDC draft shows its latest completed test,
 configuration revision, S256 capability and identity validation result. Saving
 another draft revision removes the previous result from the current draft.
 Failure/cancellation preserves the active policy and existing clinical access.
-This workflow does not activate a provider, create/link an application identity,
-create a clinical session, or assert fresh personal authentication.
+This workflow records or reuses a pending regional identity request. It does not
+activate a provider, grant an application session or assert fresh personal
+authentication. Linking requires a separate authorized review.
 
 Five-minute transactions bind agency, group, actor, purpose, registered origin,
 fixed `/` return path, immutable revision, state, nonce and PKCE verifier. The
@@ -99,8 +101,11 @@ reauthentication at completion. A separate HttpOnly Secure Lax cookie is restric
 to the callback path; the application cookie remains Strict. Transactions consume
 atomically before network exchange; failures, expiry and concurrent replay cannot
 be reused. The final short commit rechecks authority, version, inspected metadata,
-health and transaction expiry. Tokens and mapped identity claims remain transient
-in server memory and never enter the result, audit, browser response or logs.
+health and transaction expiry. Tokens and raw claim objects remain transient in
+server memory and never enter
+the result, audit, browser response or logs. Pending requests retain only exact
+validated issuer/subject keys and bounded optional mapped display-name/email
+hints. These hints are escaped in Admin and never affect authorization.
 Transaction binding data is encrypted with context distinct from provider secrets.
 
 The library explicitly verifies ID-token signatures in addition to code-flow TLS
@@ -147,3 +152,35 @@ keys), or `transaction_invalid` (restart with a new transaction). The UI offers
 this guidance in English/Swedish. Provider/library messages and identity/token
 contents never become diagnostics. Invalid state/correlation/replay callbacks
 receive an invalid-or-expired error without disclosing any stored transaction.
+
+## Review regional identity requests
+
+Open **Authentication → Regional identities** with both settings-read and
+user-read authority. The directory is group-scoped, paginated and bounded;
+**Review** opens the identity and its optional untrusted profile hints. A matching
+email or display name never selects an application user automatically.
+
+With settings-write and user-write authority, explicitly select an existing
+ordinary active group user and confirm your current password to **Link existing
+user**. The target must be within the administrator’s capability boundary.
+Installation owners, superadmins and other installation recovery accounts cannot
+be linked here. A link preserves the immutable application user ID, roles, report
+authorship and existing audit records. The audit appends request/actor/target IDs
+and revision without provider claims or tokens. A test still grants no ordinary
+application access after linking. New-user approval, shared personal OIDC sessions
+and production activation are separate later slices.
+
+Identity keys contain owning group, immutable provider integration ID, exact
+case-sensitive issuer and exact subject. Concurrent callbacks reuse one request;
+competing approvals cannot replace a completed link. Changing issuer or client ID
+creates another integration, leaving all prior keys and links unchanged. Pending
+requests from a replaced integration require current-provider review and cannot
+be approved as though they belonged to the new draft. A conflict retains the
+selection and gives English/Swedish guidance to reload and inspect the current
+integration. Repeated approval of the same existing link is idempotent.
+
+The callback derives agency scope from its encrypted server-side transaction,
+not a browser selected-workspace header. Code exchange completes outside the
+short persistence transaction; authority, registered origin, draft/discovery and
+expiry are checked again before an identity is recorded. Failed, stale or expired
+exchanges do not create a pending request.

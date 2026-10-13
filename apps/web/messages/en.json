@@ -1753,5 +1753,9 @@
   "admin.agencyUniqueStateId": "dAgency.01 — EMS Agency Unique State ID",
   "admin.agencyNumber": "dAgency.02 — EMS Agency Number",
   "admin.agencyStateCode": "dAgency.04 — ANSI state code",
-  "admin.agencyCredentialHelp": "Use your agency-issued credentials."
+  "admin.agencyCredentialHelp": "Use your agency-issued credentials.",
+  "platform.error.admin.regionalIdentityConflict": "The identity is already linked or its provider changed. Refresh requests and review the current integration.",
+  "platform.error.admin.regionalIdentityForbidden": "Authentication and user management permissions are required.",
+  "platform.error.admin.regionalIdentityMissing": "The identity request is no longer available in this group. Refresh requests.",
+  "platform.error.admin.regionalIdentityTarget": "Choose an active ordinary user in this group that you are authorized to manage."
 }

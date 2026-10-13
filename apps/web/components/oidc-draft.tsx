@@ -8,7 +8,7 @@ import { useUnsavedChanges } from "./unsaved-changes";
 type Draft = { revision: number; name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
   mappings: { displayName: string; email: string }; credentialConfigured: boolean; requiredFields: string[];
   discoveryHealth: string; discovery: Record<string, unknown> | null; discoveredAt: string | null };
-type View = { test?:{revision:number;result:string;failureCode?:string|null;completedAt:string;pkceS256:boolean;freshPersonalAuthentication:boolean}|null; groupId: string; draft: Draft | null; active: Draft | null; registration: { hosts: {origin:string;callbackUrl:string;logoutCallbackUrl:string}[]; requiredClaims:string[] };
+type View = { test?:{revision:number;result:string;identityOutcome?:string|null;ordinaryAccess?:boolean;failureCode?:string|null;completedAt:string;pkceS256:boolean;freshPersonalAuthentication:boolean}|null; groupId: string; draft: Draft | null; active: Draft | null; registration: { hosts: {origin:string;callbackUrl:string;logoutCallbackUrl:string}[]; requiredClaims:string[] };
   history:{revision:number;createdAt:string;actorId:string;credentialConfigured:boolean;discoveryHealth:string}[] };
 const empty = { name:"", issuer:"", discoveryUrl:"", clientId:"", scopes:"openid",displayName:"",email:"" };
 const fields = Object.keys(empty) as (keyof typeof empty)[];
@@ -88,6 +88,7 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
       {!complete && <p>{sv?"Discovery kräver namn, HTTPS-utfärdare, klient-ID, openid-scope, visningsnamn och klienthemlighet.":"Discovery requires a name, HTTPS issuer, client ID, openid scope, display name claim and client secret."}</p>}
       <h4>{sv?"Testinloggning":"Test login"}</h4>
       <p>{value.test ? `${sv?"Version":"Revision"} ${value.test.revision}: ${value.test.result==="succeeded"?(sv?"Identiteten validerad":"Identity validated"):value.test.result==="canceled"?(sv?"Avbruten":"Canceled"):(sv?"Misslyckades: kontrollera registrering, claims och signeringsnycklar":"Failed: check registration, claims and signing keys")}. S256 PKCE: ${value.test.pkceS256?(sv?"Ja":"Yes"):(sv?"Nej":"No")}.` : (sv?"Ingen genomförd testinloggning för detta utkast.":"No completed test login for this draft.")}</p>
+      {value.test?.identityOutcome && <p role="status">{value.test.identityOutcome==="linked"?(sv?"Regional identitet länkad. Testet ger ingen applikationsåtkomst.":"Regional identity linked. The test grants no application access."):(sv?"Väntar på åtkomstgranskning. Ingen applikationsåtkomst har beviljats.":"Pending access review. No application access has been granted.")}</p>}
       {value.test?.failureCode && <p role="alert">{failures[value.test.failureCode] ?? failures.transaction_invalid}</p>}
       <p>{sv?"Testet ändrar inte aktiv inloggning eller klinisk åtkomst. Validerad identitet bevisar inte färsk personlig autentisering.":"The test preserves active login and clinical access. Validated identity does not establish fresh personal authentication."}</p>
       <h4>{sv?"Registreringsuppgifter för IT":"Registration details for IT"}</h4>

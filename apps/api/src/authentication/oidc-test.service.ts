@@ -8,6 +8,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { agencyRequest } from "../sessions/agency-context.js";
 import { AgencyDirectoryService } from "../sessions/agency-directory.service.js";
 import { decryptCredential,encryptCredential } from "./oidc-credentials.js";
+import { RegionalIdentityService } from "./regional-identity.service.js";
 import { type OidcDraft } from "./oidc-draft.service.js";
 import { testAuthorization,testCodeExchange,type TestBinding } from "./oidc-test-protocol.js";
 const digest=(value:string)=>createHash("sha256").update(value).digest("hex");
@@ -17,7 +18,7 @@ type Version={provider_id:string;configuration:OidcDraft;encrypted_credential:En
 type Attempt={state_sha256:string;group_id:string;revision:string;organization_id:string;actor_id:string;origin:string;return_path:string;encrypted_binding:Envelope;pkce_s256:boolean;action:string;provider_id:string;configuration:OidcDraft;encrypted_credential:Envelope;discovery:Version["discovery"]};
 @Injectable()
 export class OidcTestService {
- constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly agencies:AgencyDirectoryService){}
+ constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly agencies:AgencyDirectoryService,private readonly identities:RegionalIdentityService = new RegionalIdentityService(database,sessions)){}
  private async authority(token:string,manager:EntityManager=this.database.manager){
   const actor=await this.sessions.requireCapability(token,"settings:write",manager);
   await this.sessions.requireRecentReauthentication(token,manager);
@@ -57,6 +58,9 @@ export class OidcTestService {
    where state_sha256=$1 and correlation_sha256=$2 and origin=$3 and action='draft_test' and return_path='/' and consumed_at is null and expires_at>now() returning *)
    select t.*,v.provider_id,v.configuration,v.encrypted_credential,v.discovery from consumed t join app_identity.oidc_provider_version v on v.group_id=t.group_id and v.revision=t.revision`,[digest(state),digest(correlation),origin]);
   const attempt=rows[0];if(!attempt)throw new UnauthorizedException("Invalid or expired provider test");
+  // Callback navigation has no ordinary session cookie. Restore only the agency
+  // bound at begin; workspace headers from the browser cannot select its scope.
+  return agencyRequest.run({origin:attempt.origin,organizationId:attempt.organization_id},async()=>{
   let result="failed";
   let failureCode:string|null="transaction_invalid";
   try{
@@ -70,7 +74,7 @@ export class OidcTestService {
    if(url.searchParams.has("error")){result="canceled";failureCode="canceled";}
    else {
     failureCode="provider_validation";
-    await testCodeExchange(metadata,attempt.configuration.clientId,decryptCredential(attempt.encrypted_credential,attempt.group_id,attempt.provider_id),binding,url);
+    const validated=await testCodeExchange(metadata,attempt.configuration.clientId,decryptCredential(attempt.encrypted_credential,attempt.group_id,attempt.provider_id),binding,url,attempt.configuration.mappings);
     await this.database.transaction(async manager=>{
      failureCode="authority_changed";
      const fresh=await this.authority(token,manager);
@@ -83,12 +87,15 @@ export class OidcTestService {
      failureCode="expired";
      const completed=mutationRows<{state_sha256:string}>(await manager.query("update app_identity.oidc_test_transaction set result='succeeded',completed_at=now() where state_sha256=$1 and expires_at>now() and result is null returning state_sha256",[attempt.state_sha256]));
      if(!completed.length)throw new Error("Provider test expired");
+     const identity=await this.identities.record(manager,{groupId:attempt.group_id,providerId:attempt.provider_id,revision:Number(attempt.revision),organizationId:attempt.organization_id},validated.identity);
+     await manager.query("update app_identity.oidc_test_transaction set identity_request_id=$2 where state_sha256=$1",[attempt.state_sha256,identity.requestId]);
      await this.audit(manager,attempt,"succeeded",null);
     });result="succeeded";failureCode=null;
    }
   }catch { /* Never persist token, claims, code, provider bodies or library diagnostics. */ }
   if(result!=="succeeded")await this.database.transaction(async manager=>{await manager.query("update app_identity.oidc_test_transaction set result=$2,failure_code=$3,completed_at=now() where state_sha256=$1",[attempt.state_sha256,result,failureCode]);await this.audit(manager,attempt,"failed",failureCode);});
   return `${attempt.origin}${attempt.return_path}`;
+  });
  }
  private audit(manager:EntityManager,attempt:Attempt,result:"succeeded"|"failed",failureCode:string|null){
   return manager.query("insert into app_identity.authentication_event(organization_id,actor_id,action,result,details) values($1,$2,'authentication.policy_update',$3,$4::jsonb)",[attempt.organization_id,attempt.actor_id,result,JSON.stringify({kind:"oidc_test",revision:Number(attempt.revision),operation:"draft_test",failureCode,pkceS256:attempt.pkce_s256,freshPersonalAuthentication:false})]);

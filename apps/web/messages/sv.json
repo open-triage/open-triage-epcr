@@ -1751,5 +1751,9 @@
   "admin.agencyUniqueStateId": "dAgency.01 — Organisationens unika delstats-ID",
   "admin.agencyNumber": "dAgency.02 — Organisationsnummer",
   "admin.agencyStateCode": "dAgency.04 — ANSI-delstatskod",
-  "admin.agencyCredentialHelp": "Använd inloggningsuppgifterna från din organisation."
+  "admin.agencyCredentialHelp": "Använd inloggningsuppgifterna från din organisation.",
+  "platform.error.admin.regionalIdentityConflict": "Identiteten är redan länkad eller leverantören har ändrats. Uppdatera förfrågningarna och granska aktuell integration.",
+  "platform.error.admin.regionalIdentityForbidden": "Behörighet för autentisering och användarhantering krävs.",
+  "platform.error.admin.regionalIdentityMissing": "Identitetsförfrågan är inte längre tillgänglig i gruppen. Uppdatera förfrågningarna.",
+  "platform.error.admin.regionalIdentityTarget": "Välj en aktiv vanlig användare i gruppen som du har behörighet att hantera."
 }
