@@ -14,8 +14,9 @@ in PR checks or local testing. Add shared checks or representative coverage for
 related paths and configurations alongside focused regression tests, and run
 the applicable earlier checks before pushing.
 
-Use `npm run check:ci` for the local application, browser deployment, database,
-and scale preflight; see `docs/runbooks/local-development.md` for prerequisites.
+Use `npm run check:ci` prior to sending a PR for the local application, browser 
+deployment, database, and scale preflight; see `docs/runbooks/local-development.md` 
+for prerequisites.
 
 # UI development
 
