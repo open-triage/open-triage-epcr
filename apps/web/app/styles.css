@@ -221,8 +221,8 @@ fieldset { min-inline-size: 0; }
 .admin-user-create label { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
 .admin-user-create input, .admin-user-create textarea { min-height: 44px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; color: var(--text-color); background: #fff; font: inherit; font-size: var(--text-control); }
 .admin-role-selection { display: flex; flex-wrap: wrap; gap: 10px 16px; grid-column: 1 / -1; padding: 12px; border: 1px solid var(--line); }
-.admin-role-selection label { display: flex; align-items: center; gap: 7px; }
-.admin-role-selection input { min-height: 0; }
+.agency-settings .admin-role-selection label, .admin-role-selection label { display: flex; align-items: center; gap: 7px; min-height: 44px; }
+.agency-settings .admin-role-selection input[type="checkbox"], .admin-role-selection input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; flex: 0 0 20px; }
 .admin-user-note { grid-column: 1 / -1; }
 .admin-user-note textarea { min-height: 72px; resize: vertical; }
 .admin-user-create button { justify-self: start; }
@@ -1242,3 +1242,10 @@ fieldset { min-inline-size: 0; }
 .authentication-policy > nav.form-actions { position: static; }
 
 .production-workflow .admin-table-scroll { max-height: min(45dvh, 30rem); overflow: auto; padding: 0; }
+
+.admin-regional-identity-details { margin: 16px 18px; }
+.admin-regional-identity-details dd { overflow-wrap: anywhere; min-width: 0; }
+.admin-user-management > .form-actions, .admin-user-management > p { margin: 16px 18px; }
+
+.agency-settings .admin-user-management .form-actions { position: static; padding: 0; background: transparent; }
+.admin-management-actions { grid-column: 1 / -1; }

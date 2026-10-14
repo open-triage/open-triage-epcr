@@ -8,6 +8,12 @@ const contractOutput = path.join(root, "packages/contracts/src/ui-languages.gene
 const webOutput = path.join(root, "apps/web/app/message-dictionaries.generated.ts");
 const languageCode = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 
+function validMessageKey(key) {
+  if (key.startsWith("admin.") && !key.startsWith("admin.capability.")) return /^admin\.[a-z][A-Za-z0-9]*$/.test(key);
+  if (key.startsWith("noteUi.capture.")) return /^noteUi\.capture\.[a-z][A-Za-z0-9]*$/.test(key);
+  return !!key;
+}
+
 function validMessage(value) {
   return typeof value === "string" ||
     (value !== null && typeof value === "object" && !Array.isArray(value) &&
@@ -24,7 +30,7 @@ export async function discoverUiLanguages(directory = messageDirectory) {
   for (const [index, code] of languages.entries()) {
     const dictionary = JSON.parse(await readFile(path.join(directory, files[index]), "utf8"));
     if (!dictionary || typeof dictionary !== "object" || Array.isArray(dictionary) ||
-        Object.entries(dictionary).some(([key, value]) => !key || !validMessage(value))) {
+        Object.entries(dictionary).some(([key, value]) => !validMessageKey(key) || !validMessage(value))) {
       throw new Error(`Invalid message dictionary: ${files[index]}`);
     }
   }

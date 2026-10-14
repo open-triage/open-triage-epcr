@@ -103,3 +103,32 @@ for (const bodyKind of ['reminder', 'created report', 'reopened report']) test(`
  await expect(page.getByRole('dialog', { name: 'Confirm clinician and unit' })).toHaveCount(0);
  await expect(page.getByText('Outgoing delayed clinician', { exact: false })).toHaveCount(0);
 });
+
+for(const target of ['assigned','standalone'] as const)for(const width of [390,1440])test(`${target} cancellation returns focus to its initiating button after delayed cleanup at ${width}px`,async({page,context})=>{
+ await page.setViewportSize({width,height:844});
+ const session={authenticationSource:'local',csrfToken:'csrf',user:{id:'clinician',displayName:'Outgoing clinician'},organization:{id:'agency',name:'Fictional agency'},startedAt:'2026-10-13T06:44:00Z',personallyAuthenticatedAt:'2026-10-13T06:44:00Z',expiresAt:'2099-01-01T00:00:00Z',capabilities:['clinical:document'],workspaceAvailable:true};
+ await context.addInitScript(session=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(session)),session);
+ await context.route('**/__grace-script',r=>r.fulfill({contentType:'text/javascript',body:script}));
+ await context.route('**/__grace',r=>r.fulfill({contentType:'text/html',body:`<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__grace-script"></script></body></html>`}));
+ await context.route('**/api/installation',r=>r.fulfill({json:{settings:{...settings,language:'en'},appearance:DEFAULT_AGENCY_APPEARANCE}}));
+ await context.route('**/api/sessions/authentication-options',r=>r.fulfill({json:{regional:false}}));
+ await context.route('**/api/sessions/current',r=>r.fulfill({json:session}));
+ await context.route('**/api/reports/open',r=>r.fulfill({json:{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}}));
+ await context.route('**/api/calls/assigned',r=>r.fulfill({json:{assignedCalls:jobs,canceledAssignmentIds:[],refreshedAt:new Date().toISOString()}}));
+ await context.route(`**/api/calls/${jobs[0]!.id}/open`,r=>r.fulfill({status:403,json:{code:'calls.identityConfirmationRequired'}}));
+ await context.route('**/api/reports',r=>r.fulfill({status:403,json:{code:'calls.identityConfirmationRequired'}}));
+ let releaseReminder!:()=>void,releaseCleanup!:()=>void,reminderRequested=false,cleanupRequested=false;
+ const reminderReleased=new Promise<void>(resolve=>{releaseReminder=resolve;}),cleanupReleased=new Promise<void>(resolve=>{releaseCleanup=resolve;});
+ await context.route('**/api/calls/new-job-confirmations',async r=>{
+  if(r.request().method()==='DELETE'){cleanupRequested=true;await cleanupReleased;return r.fulfill({json:{canceled:true}});}
+  reminderRequested=true;await reminderReleased;return r.fulfill({json:{token:'delayed-attempt',clinicianName:session.user.displayName,unit:{id:'unit',callSign:'Fictional unit',name:'Unit',organizationId:'agency'}}});
+ });
+ await page.goto('/__grace');const trigger=target==='assigned'?page.locator(`[data-assignment-id="${jobs[0]!.id}"] > button`).first():page.locator('.open-reports > .assigned-calls-heading > button');
+ await expect(trigger).toHaveText(target==='assigned'?'Open call':'New patient');
+ await trigger.focus();await page.keyboard.press('Enter');await expect.poll(()=>reminderRequested).toBe(true);await expect(trigger).toBeDisabled();
+ // Focus can leave a disabled trigger while the reminder request is in flight.
+ await page.evaluate(()=>{document.body.tabIndex=-1;document.body.focus();});releaseReminder();
+ const dialog=page.getByRole('dialog',{name:'Confirm clinician and unit'});await expect(dialog).toBeVisible();await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();await expect.poll(()=>cleanupRequested).toBe(true);
+ await expect(trigger).toBeDisabled();await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve())));releaseCleanup();
+ await expect(trigger).toBeEnabled();await expect(trigger).toBeFocused();
+});

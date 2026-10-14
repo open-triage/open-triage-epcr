@@ -1,5 +1,6 @@
 "use client";
 import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
+import { useReturnFocus } from "./use-return-focus";
 import { PersonalAuthenticationField } from "./personal-authentication";
 
 import type {
@@ -75,7 +76,10 @@ export function OpenReports({
   const zone = useAgencyTimeZone();
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [returningFocus,setReturningFocus]=useState(false);
+  const creationTrigger=useRef<HTMLButtonElement|null>(null);
   const [creating, setCreating] = useState(false);
+  useReturnFocus(creating,false,()=>returningFocus?creationTrigger.current:null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
   const [recoveryPassword, setRecoveryPassword] = useState("");
@@ -306,7 +310,7 @@ export function OpenReports({
           <h1 id="open-reports-title">{t("reports.openReports")}</h1>
         </div>
         <button type="button" disabled={creating || reopeningId !== null || paused || Boolean(activeReportId)}
-          onClick={() => { void (async () => {
+          onClick={event => { creationTrigger.current=event.currentTarget;setReturningFocus(false);void (async () => {
             setCreating(true); setError(null);
             try {
               const opened = await createNewPatientReport(session, confirmNewJob);
@@ -315,8 +319,9 @@ export function OpenReports({
               await onReopened?.(opened);
               await refresh();
             } catch (reason) {
-              if (reason instanceof NewJobCanceledError) return;
+              if (reason instanceof NewJobCanceledError) {setReturningFocus(reason.restoreFocus);return;}
               setError(reason instanceof Error ? reason.message : t("reports.refreshFailed"));
+              setReturningFocus(true);
             } finally { setCreating(false); }
           })(); }}>
           {creating ? t("reports.creatingPatient") : t("reports.newPatient")}

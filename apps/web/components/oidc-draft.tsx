@@ -106,7 +106,7 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
       <p>{t("admin.oidcRotationHelp")}</p>
       <h4>{t("admin.oidcTestTitle")}</h4>
       <p>{value.test ? `${t("admin.oidcRevision")} ${value.test.revision}: ${value.test.result==="succeeded"?(t("admin.oidcIdentityValidated")):value.test.result==="canceled"?(t("admin.oidcCanceled")):(t("admin.oidcTestFailed"))}. S256 PKCE: ${value.test.pkceS256?(t("admin.oidcYes")):(t("admin.oidcNo"))}.` : (t("admin.oidcNoTest"))}</p>
-      {value.test?.identityOutcome && <p role="status">{value.test.identityOutcome==="linked"?(t("admin.oidcIdentityLinked")):(t("admin.oidcIdentityPending"))}</p>}
+      {value.test?.identityOutcome && <p role="status">{value.test.identityOutcome==="linked"?(t("admin.oidcIdentityLinked")):(t(value.test.identityOutcome==="denied"?"admin.oidcIdentityDenied":"admin.oidcIdentityPending"))}</p>}
       {value.test?.failureCode && <p role="alert">{failures[value.test.failureCode] ?? failures.transaction_invalid}</p>}
       <p>{t("admin.oidcDiagnosticHelp")}</p>
       <h4>{t("admin.oidcRegistrationTitle")}</h4>

@@ -962,6 +962,22 @@ export interface AdminAssignableRoleSummary extends AdminRoleSummary {
   assignmentMutable: boolean;
 }
 
+export interface AdminRegionalIdentitySummary {
+  id: string;
+  providerId: string;
+  revision: number;
+  reviewRevision: number;
+  issuer: string;
+  subject: string;
+  displayName: string | null;
+  email: string | null;
+  createdAt: string;
+  status: "pending" | "denied" | "linked";
+  linkedUserId: string | null;
+  deniedAt: string | null;
+  reviewProviders?: Array<{ source: "draft" | "active"; revision: number }>;
+}
+
 export interface AdminUserSummary {
   id: string;
   displayName: string;
@@ -973,6 +989,8 @@ export interface AdminUserSummary {
   owner?: boolean;
   superadmin?: boolean;
   roles: AdminRoleSummary[];
+  /** An unapproved directory entry; its id is a request id, never an application user id. */
+  regionalIdentity?: AdminRegionalIdentitySummary;
 }
 
 export interface AdminUserPage {

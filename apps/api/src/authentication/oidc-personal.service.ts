@@ -135,18 +135,18 @@ export class OidcPersonalService {
       where state_sha256=$1 and expires_at>clock_timestamp() and completed_at is null returning state_sha256`,[attempt.state_sha256]));
      if(!live.length)throw new Error();
      if(saved.previousToken)await this.sessions.getAuthenticated(saved.previousToken,new Date(),true,manager);
-     if(identity.status==='pending'){
+     if(identity.status!=='linked'){
       // A validated identity that cannot resolve to the outgoing user is a safe
       // switch. Pending onboarding must never leave that user's cookie usable.
       if(saved.previousToken)await manager.query(`update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='user_switch'
        where token_sha256=$1 and revoked_at is null`,[digest(saved.previousToken)]);
-      await manager.query("update app_identity.oidc_personal_transaction set result='pending' where state_sha256=$1",[attempt.state_sha256]);
-      return {destination:`${attempt.origin}/?authentication=pending`,clearSession:true};
+      await manager.query("update app_identity.oidc_personal_transaction set result=$2 where state_sha256=$1",[attempt.state_sha256,identity.status==='denied'?'failed':'pending']);
+      return {destination:`${attempt.origin}/?authentication=${identity.status}`,clearSession:true,outcome:identity.status};
      }
      const created=await this.sessions.completePersonalAuthentication(manager,identity.requestId,Number(current.revision),validated.proof,saved.previousToken,new Date(),saved.userAgent);
-     return {destination:`${attempt.origin}/?authentication=completed`,created};
+     return {destination:`${attempt.origin}/?authentication=completed`,created,outcome:'succeeded'};
     });
-    result=completed.created?'succeeded':'pending';
+    result=completed.outcome;
     return completed;
    });
   }catch{
