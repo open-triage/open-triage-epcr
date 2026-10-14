@@ -48,6 +48,12 @@ try{
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:['login']})),error=>error.getStatus?.()===400);
  const proofEnvironment=process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'})),error=>error.getStatus?.()===503);process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=proofEnvironment;
+ for(let attempt=0;attempt<2;attempt++){
+  await start('fictional-denied');await finish();await expect(page.getByText(/Your regional identity request was denied/)).toBeVisible();
+  assert.equal((await current()).status,401);assert.equal(await token(),undefined);assert.equal(await stored(),null);
+ }
+ const [deniedRequest]=await db.query("select linked_user_id,denied_at,review_revision from app_identity.regional_identity_request where subject='fictional-denied'");
+ assert.equal(deniedRequest.linked_user_id,null);assert(deniedRequest.denied_at);assert.equal(Number(deniedRequest.review_revision),2);
  await control({token:{sub:'fictional-alpha'},claimsMode:'fresh'});
  const guarded=await agencyRequest.run({origin},()=>personal.begin({purpose:'login'}));const confirmGuarded=new URL(guarded.authorizationUrl);confirmGuarded.searchParams.set('confirm','1');const returned=await fetch(confirmGuarded,{redirect:'manual'});const guardedCallback=new URL(returned.headers.get('location'));
  const ambiguous=new URL(guardedCallback);ambiguous.searchParams.append('state','another');await assert.rejects(agencyRequest.run({origin},()=>personal.callback(ambiguous,guarded.correlation)),error=>error.getStatus?.()===401);

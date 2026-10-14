@@ -1,6 +1,6 @@
 # Regional identity review and new-user approval
 
-In Admin → Authentication → Regional identities, review the exact issuer,
+In Admin → Users, find a Pending or Denied request and use **Manage** to review the exact issuer,
 subject, and integration evidence. Names and email addresses are untrusted
 profile hints. A matching email never links accounts or grants roles.
 
@@ -14,7 +14,14 @@ name, explicitly choose the current provider evidence, and select roles. Draft
 provider tests can establish identity evidence for onboarding; approving their
 evidence does not activate the provider or enable regional login. Active and
 draft revisions are separate choices and are checked again on submission.
-A changed version requires refreshing and reviewing the request again.
+A changed provider version or review decision requires refreshing Users and reviewing the request again.
+
+Use **Deny request** to refuse onboarding without creating an account or session.
+Denial requires settings-write, user-write and recent personal authentication.
+The decision persists when the identity signs in or completes a provider test again.
+Denied requests remain searchable through the Denied filter. An administrator can
+explicitly reconsider a denial by creating or linking a user using the current
+review revision. Competing decisions cannot overwrite one another.
 
 Approval requires current authentication/settings write, user management, role
 assignment, and recent personal authentication. The same role assignment rules
@@ -29,6 +36,12 @@ password verifier, or application session. Concurrent approval/link attempts
 produce one outcome, and failed approvals leave no orphan user or role grants.
 An empty role selection deliberately creates a user without workspace
 capabilities. Later role editing supplies access explicitly.
+
+The Users list defaults to All and combines accounts with unapproved requests
+in the same bounded search, status filters and pagination. Requests are visible
+only with both users-read and settings-read authority; they are not application
+accounts and cannot receive sessions or roles before approval. Approved or linked
+requests leave the list, so the application user appears once.
 
 SSO-only users appear in Users and its search/filter, role editing, disable and
 reactivate actions, and session administration. The username column identifies

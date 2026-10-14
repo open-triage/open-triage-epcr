@@ -134,7 +134,7 @@ export const updateAgencyMediaSettings = (csrfToken: string, command: UpdateAgen
 
 export type AdminUserQuery = {
   search?: string;
-  state?: "active" | "disabled" | "all";
+  state?: "active" | "disabled" | "all" | "pending" | "denied";
   roleId?: string;
   cursor?: string;
   limit?: number;

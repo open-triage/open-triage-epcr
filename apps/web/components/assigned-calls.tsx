@@ -2,6 +2,7 @@
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse, ProductionJobAccess } from "@open-triage/contracts";
 import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
+import { useReturnFocus } from "./use-return-focus";
 import { PlatformRequestError } from "../app/platform-errors";
 import { InstallationContextChangedError } from "../app/installation-transition-generation";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
@@ -48,11 +49,14 @@ export function AssignedCalls({
   const [productionAccess, setProductionAccess] = useState<ProductionJobAccess | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [returningFocus,setReturningFocus]=useState(false);
+  const openingTrigger=useRef<HTMLButtonElement|null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [shiftReauthentication, setShiftReauthentication] = useState(false);
   const [reauthenticating, setReauthenticating] = useState(false);
+  useReturnFocus(openingId!==null,reauthenticating,()=>returningFocus?openingTrigger.current:null);
   const openingRef = useRef(false);
   const refreshEpoch = useRef(0);
   const callsRef = useRef<AssignedCall[]>([]);
@@ -85,6 +89,7 @@ export function AssignedCalls({
   const open = useCallback(async (call: AssignedCall) => {
     if (openingRef.current) return;
     openingRef.current = true;
+    setReturningFocus(false);
     refreshEpoch.current += 1;
     onOpeningChange?.(call);
     setOpeningId(call.id);
@@ -105,8 +110,7 @@ export function AssignedCalls({
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
       if (openError instanceof NewJobCanceledError) {
-        window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(
-          `[data-assignment-id="${CSS.escape(call.id)}"] button`)?.focus());
+        setReturningFocus(openError.restoreFocus);
         return;
       }
       if (openError instanceof RecoveryReauthenticationRequiredError || openError instanceof PlatformRequestError && openError.code === "calls.shiftReauthenticationRequired") {
@@ -124,8 +128,7 @@ export function AssignedCalls({
         setProductionAccess(null);
       }
       setError(openError instanceof Error ? openError.message : t("calls.openFailed"));
-      window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(
-        `[data-assignment-id="${CSS.escape(call.id)}"] button`)?.focus());
+      setReturningFocus(true);
     } finally {
       openingRef.current = false;
       refreshEpoch.current += 1;
@@ -211,7 +214,7 @@ export function AssignedCalls({
                 <div><dt>{t("calls.priority")}</dt><dd>{call.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
                 <div><dt>{t("calls.unitNotified")}</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region, zone)}</time></dd></div>
               </dl>
-              <button type="button" onClick={() => void open(call)} disabled={openingId !== null || reauthenticating}>
+              <button type="button" onClick={event => { openingTrigger.current=event.currentTarget;void open(call); }} disabled={openingId !== null || reauthenticating}>
                 {openingId === call.id ? t("calls.opening") : t("calls.open")}
               </button>
               {reauthenticationId === call.id && <form className="report-reauthentication"
