@@ -3,7 +3,9 @@ import type { NewJobConfirmation } from "@open-triage/contracts";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { resolveMessage } from "../app/localization";
 
-export class NewJobCanceledError extends Error {}
+export class NewJobCanceledError extends Error {
+  constructor(readonly restoreFocus = true) { super(); }
+}
 export type ConfirmNewJob = (reminder: NewJobConfirmation) => Promise<string>;
 const NewJobConfirmationContext = createContext<ConfirmNewJob>(async () => { throw new NewJobCanceledError(); });
 export const useNewJobConfirmation = () => useContext(NewJobConfirmationContext);
@@ -15,19 +17,18 @@ export function NewJobConfirmationProvider({ language, onSwitch, children }: {
   const [reminder, setReminder] = useState<NewJobConfirmation | null>(null);
   const pending = useRef<{ resolve: (token: string) => void; reject: (error: Error) => void } | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const trigger = useRef<HTMLElement | null>(null);
   const t = (key: string, params?: Record<string, string>) => resolveMessage(language, key, params);
-  const cancel = () => {
-    pending.current?.reject(new NewJobCanceledError()); pending.current = null; setReminder(null);
+  const cancel = (restoreFocus = true) => {
+    dialog.current?.close();
+    pending.current?.reject(new NewJobCanceledError(restoreFocus)); pending.current = null; setReminder(null);
   };
-  useEffect(() => () => { pending.current?.reject(new NewJobCanceledError()); pending.current = null; }, []);
+  useEffect(() => () => { pending.current?.reject(new NewJobCanceledError(false)); pending.current = null; }, []);
   useEffect(() => {
     if (reminder) dialog.current?.showModal();
-    else { dialog.current?.close(); trigger.current?.focus(); }
+    else dialog.current?.close();
   }, [reminder]);
   return <NewJobConfirmationContext.Provider value={value => new Promise((resolve, reject) => {
     pending.current?.reject(new NewJobCanceledError());
-    trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     pending.current = { resolve, reject }; setReminder(value);
   })}>
     {children}
@@ -38,10 +39,11 @@ export function NewJobConfirmationProvider({ language, onSwitch, children }: {
         <p>{t("calls.confirmIdentityHelp", { name: reminder.clinicianName, unit: reminder.unit.callSign })}</p>
         <div className="note-dialog-actions">
           <button type="button" className="button-primary" onClick={() => {
+            dialog.current?.close();
             pending.current?.resolve(reminder.token); pending.current = null; setReminder(null);
           }}>{t("calls.continueAs", { name: reminder.clinicianName })}</button>
-          <button type="button" onClick={() => { cancel(); onSwitch(); }}>{t("login.switchUser")}</button>
-          <button type="button" onClick={cancel}>{t("mobile.dialog.cancel")}</button>
+          <button type="button" onClick={() => { cancel(false); onSwitch(); }}>{t("login.switchUser")}</button>
+          <button type="button" onClick={() => cancel()}>{t("mobile.dialog.cancel")}</button>
         </div>
       </>}
     </dialog>

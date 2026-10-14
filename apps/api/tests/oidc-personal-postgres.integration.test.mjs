@@ -48,6 +48,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
   await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision,active_revision,active_discovery) values($1,2,1,$2::jsonb)',[group,JSON.stringify(metadata)]);
   await owner.query("update app_identity.group_authentication_policy set mode='oidc' where group_id=$1",[group]);
   for(const [id,subject] of [[alpha,'fictional-alpha'],[beta,'fictional-beta'],[empty,'fictional-empty']])await owner.query('insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,1,$3,$4,$5,$6,$7,now())',[group,provider,child,issuer,subject,id,reviewer.userId]);
+  await owner.query("insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,denied_at,denied_by,review_revision) values($1,$2,1,$3,$4,'fictional-denied',clock_timestamp(),$5,2)",[group,provider,child,issuer,reviewer.userId]);
   const policy={id:'controlled-interactive-contract-v1',groupId:group,providerId:provider,issuer,clientId:configuration.clientId,acr:'fixture:interactive-personal',requiredAmr:['fixture-personal']};
   let beforeRevision=false,disable=false,withdrawOrigin=false,expired=false,reassign=false;
   fixture.beforeToken=async()=>{

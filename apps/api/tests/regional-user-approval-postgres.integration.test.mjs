@@ -7,6 +7,7 @@ import {DataSource} from 'typeorm';
 import {readMigrations,applyMigrations} from '../../../packages/database/scripts/migrate.mjs';
 import {AccountService} from '../dist/identity/account.service.js';
 import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
+import {AuthenticationPolicyService} from '../dist/authentication/authentication-policy.service.js';
 import {RegionalIdentityService} from '../dist/authentication/regional-identity.service.js';
 import {UserRoleReadService} from '../dist/admin/user-role-read.service.js';
 import {UserRoleAssignmentService} from '../dist/admin/user-role-assignment.service.js';
@@ -44,6 +45,58 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   const protectedRole=(await ownerDb.query("select id from app_identity.role where organization_id=$1 and system_key='administrator'",[root]))[0].id;
   const record=(subject)=>db.transaction(manager=>identities.record(manager,{groupId:root,providerId:provider,revision:1,organizationId:child},{issuer,subject,displayName:'Untrusted matching name',email:'same@example.org'}));
   const command={displayName:'New regional clinician',roleIds:[clinician],providerSource:'draft',expectedProviderRevision:2};
+  // Requests share bounded search/pagination with accounts but remain non-accounts.
+  const reviewRequest=await record('Literal%_ExactSubject');
+  const pendingRows=await reads.users(token,{state:'pending',search:'literal%_',limit:'1'});
+  assert.equal(pendingRows.items.length,1);assert.equal(pendingRows.items[0].id,reviewRequest.requestId);
+  assert.equal(pendingRows.items[0].regionalIdentity.reviewRevision,1);assert.equal(pendingRows.items[0].active,false);
+  assert.equal((await reads.users(foreignSession.sessionToken,{state:'all',search:'Literal%_'})).items.length,0);
+  assert.equal((await reads.users(token,{state:'all',roleId:clinician})).items.some(row=>row.regionalIdentity),false);
+  assert.equal((await reads.users(token,{state:'active',search:'Literal%_'})).items.length,0);
+  for(const bad of [{},{expectedReviewRevision:0},{expectedReviewRevision:1,note:'x'.repeat(1001)},{expectedReviewRevision:1,userId:actor.userId}])
+   await assert.rejects(identities.deny(token,reviewRequest.requestId,bad),error=>error.getStatus?.()===400);
+  await assert.rejects(identities.deny(foreignSession.sessionToken,reviewRequest.requestId,{expectedReviewRevision:1}),error=>[403,404].includes(error.getStatus?.()));
+  const unprovenReviewer=await sessions.create({username:'admin',password});
+  await assert.rejects(identities.deny(unprovenReviewer.sessionToken,reviewRequest.requestId,{expectedReviewRevision:1}),error=>error.getStatus?.()===403);
+  const beforeDenial=(await ownerDb.query('select count(*)::int count from app_identity.app_user'))[0].count;
+  const denied=await identities.deny(token,reviewRequest.requestId,{expectedReviewRevision:1,note:'Fictional review decision'});
+  assert.equal(denied.status,'denied');assert.equal(denied.reviewRevision,2);assert(denied.deniedAt);
+  assert.equal((await record('Literal%_ExactSubject')).status,'denied','repeat validated sign-in cannot undo a denial');
+  assert.equal((await ownerDb.query('select count(*)::int count from app_identity.app_user'))[0].count,beforeDenial);
+  assert.equal((await reads.users(token,{state:'pending',search:'Literal%_'})).items.length,0);
+  assert.equal((await reads.users(token,{state:'denied',search:'Literal%_'})).items[0].regionalIdentity.status,'denied');
+  for(const input of [command,{...command,expectedReviewRevision:1}])await assert.rejects(identities.approve(token,reviewRequest.requestId,input),error=>error.getStatus?.()===409);
+  await assert.rejects(identities.deny(token,reviewRequest.requestId,{expectedReviewRevision:1}),error=>error.getStatus?.()===409);
+  const reconsidered=await identities.approve(token,reviewRequest.requestId,{...command,expectedReviewRevision:2,displayName:'Reconsidered clinician'});
+  assert.equal(reconsidered.status,'linked');assert.equal(reconsidered.reviewRevision,3);assert.equal(reconsidered.deniedAt,null);
+  await assert.rejects(identities.deny(token,reviewRequest.requestId,{expectedReviewRevision:3}),error=>error.getStatus?.()===409);
+  const reconsideredRows=(await reads.users(token,{state:'all',search:'reconsidered'})).items;
+  assert.equal(reconsideredRows.length,1);assert.equal(reconsideredRows[0].id,reconsidered.linkedUserId);assert.equal(reconsideredRows[0].regionalIdentity,undefined);
+  const [denialAudit]=await ownerDb.query("select actor_id,note from app_identity.authentication_event where details->>'operation'='denied' and details->>'requestId'=$1",[reviewRequest.requestId]);
+  assert.equal(denialAudit.actor_id,actor.userId);assert.equal(denialAudit.note,'Fictional review decision');
+  // Shared audit action names do not make identity decisions policy revisions.
+  const policyService=new AuthenticationPolicyService(db,sessions),baselinePolicy=await policyService.get(token);
+  assert.equal(baselinePolicy.history.length,0,'denial is audited but is not a blank policy change');
+  const policyCommand=Object.fromEntries(['maximumSessionHours','temporaryPasswordHours','accountAttemptsPer15Minutes','networkAttemptsPer5Minutes'].map(key=>[key,baselinePolicy[key]]));
+  const policyUpdated=await policyService.update(token,{...policyCommand,expectedRevision:baselinePolicy.revision});
+  assert.equal(policyUpdated.history.length,1);assert.equal(policyUpdated.history[0].details.policy.revision,baselinePolicy.revision+1);
+  for(const kind of ['regional_identity','oidc','production-workflow-enabled','future-audit-operation'])for(let index=0;index<6;index++)
+   await ownerDb.query("insert into app_identity.authentication_event(organization_id,actor_id,action,result,details) values($1,$2,'authentication.policy_update','succeeded',$3::jsonb)",[root,actor.userId,JSON.stringify({kind,prior:null,policy:'not a policy revision'})]);
+  assert.equal((await policyService.get(token)).history.length,1,'unrelated events cannot displace valid policy history within its limit');
+  const conflictRequest=await record('DenialApprovalRace');
+  const competing=await Promise.allSettled([identities.deny(token,conflictRequest.requestId,{expectedReviewRevision:1}),identities.approve(token,conflictRequest.requestId,{...command,expectedReviewRevision:1,displayName:'Race clinician'})]);
+  assert.equal(competing.filter(result=>result.status==='fulfilled').length,1);assert.equal(competing.filter(result=>result.status==='rejected'&&result.reason.getStatus?.()===409).length,1);
+  // Kind is a tie breaker: identifiers may coincide across the two source tables.
+  const collision=randomUUID();
+  await ownerDb.query("insert into app_identity.app_user(id,organization_id,display_name,active) values($1,$2,'Pagination collision',false)",[collision,root]);
+  await ownerDb.query("insert into app_identity.regional_identity_request(id,group_id,provider_id,first_revision,organization_id,issuer,subject,display_name) values($1,$2,$3,1,$4,$5,'Pagination collision','Pagination collision')",[collision,root,provider,child,issuer]);
+  const firstMixed=await reads.users(token,{state:'all',search:'Pagination collision',limit:'1'});assert.equal(firstMixed.items.length,1);assert(firstMixed.nextCursor);
+  const secondMixed=await reads.users(token,{state:'all',search:'Pagination collision',limit:'1',cursor:firstMixed.nextCursor});assert.equal(secondMixed.items.length,1);assert.equal(secondMixed.nextCursor,null);
+  assert.equal(!!firstMixed.items[0].regionalIdentity,!secondMixed.items[0].regionalIdentity);
+  // Users-read alone cannot expose regional issuer, subject or profile hints.
+  const usersOnly=new UserRoleReadService(db,{requireCapability:async()=>({organization:{id:child},user:{id:actor.userId},capabilities:['users:read']})});
+  assert.equal((await usersOnly.users('fixture',{state:'all',search:'Pagination collision'})).items.length,1);
+  assert.equal((await usersOnly.users('fixture',{state:'pending'})).items.length,0);
   const request=await record('NewExactSubject');
   assert.equal(request.ordinaryAccess,false);
   const directory=await identities.list(token,{});assert.deepEqual(directory.items[0].reviewProviders,[{source:'draft',revision:2},{source:'active',revision:1}]);

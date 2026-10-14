@@ -159,6 +159,8 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
     {context && mounted("Users") && <div hidden={activePanel !== "Users"}><UsersPanel
       canCreate={context.capabilities?.includes("users:write") ?? false}
       canManage={context.capabilities?.includes("users:write") ?? false}
+      canReviewRegional={context.capabilities.includes("settings:read")}
+      canManageRegional={context.capabilities.includes("settings:read")&&context.capabilities.includes("settings:write")&&context.capabilities.includes("users:write")}
       canAssignRoles={context.capabilities?.includes("roles:assign") ?? false}
       canViewSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read")) ?? false}
       canRevokeSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read") &&
@@ -195,7 +197,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section></div>}
 
-    {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} canReviewIdentities={context.capabilities.includes("users:read")} canLinkIdentities={context.capabilities.includes("settings:write")&&context.capabilities.includes("users:write")} canApproveIdentities={context.capabilities.includes("settings:write")&&context.capabilities.includes("users:write")&&context.capabilities.includes("roles:assign")} /></div>}
+    {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
 
     {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""}

@@ -76,7 +76,7 @@ integration. Replacement activation requires acknowledgment bound to both exact
 draft and active revisions, a successful diagnostic and separately installed trust
 approval. Acknowledgment does not approve that contract or transfer identity links.
 Profile or email equality cannot link identities automatically. Explicitly review
-and link identities from the replacement integration through Regional identities.
+and link identities from the replacement integration through Users → Manage.
 
 **Use active configuration** copies active editable settings into the editor;
 saving still creates a new draft requiring inspection and a fresh diagnostic test.
@@ -211,9 +211,9 @@ receive an invalid-or-expired error without disclosing any stored transaction.
 
 ## Review regional identity requests
 
-Open **Authentication → Regional identities** with both settings-read and
-user-read authority. The directory is group-scoped, paginated and bounded;
-**Review** opens the identity and its optional untrusted profile hints. A matching
+Open **Users** with both settings-read and user-read authority. Pending and denied
+requests appear alongside accounts in the group-scoped, paginated directory.
+**Manage** opens the identity and its optional untrusted profile hints. A matching
 email or display name never selects an application user automatically.
 
 With settings-write and user-write authority, explicitly select an existing
@@ -224,8 +224,11 @@ Installation owners, superadmins and other installation recovery accounts cannot
 be linked here. A link preserves the immutable application user ID, roles, report
 authorship and existing audit records. The audit appends request/actor/target IDs
 and revision without provider claims or tokens. A test still grants no ordinary
-application access after linking. New-user approval, shared personal OIDC sessions
-and production activation are separate later slices.
+application access after linking. Use **Create a regional user** to approve a new person with explicit roles, or
+**Deny request** to record a durable refusal. Denied requests do not receive
+application sessions on subsequent sign-ins. Review revisions prevent stale or
+competing decisions from overwriting the latest review. See
+[regional identity review and approval](regional-identity-approval.md) for details.
 
 Identity keys contain owning group, immutable provider integration ID, exact
 case-sensitive issuer and exact subject. Concurrent callbacks reuse one request;

@@ -266,7 +266,7 @@ export function ClinicianSessionGate({ children }: {
         if(personalResult){
           window.history.replaceState(null,"",window.location.pathname);
           if(personalResult==='completed'&&authenticated)storeClinicianSession(window.localStorage,authenticated);
-          else setMessage(resolveMessage(loaded.settings.language,personalResult==='pending'?"login.regionalPending":"login.regionalFailed"));
+          else setMessage(resolveMessage(loaded.settings.language,personalResult==='pending'?"login.regionalPending":personalResult==='denied'?"login.regionalDenied":"login.regionalFailed"));
         }
         setSession(authenticated);
         setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));

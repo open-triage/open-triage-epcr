@@ -5,10 +5,10 @@ import path from 'node:path';
 let script:string,css:string;
 const requestId='92000000-0000-4000-8000-000000000001',ssoId='92000000-0000-4000-8000-000000000002',localId='92000000-0000-4000-8000-000000000003',roleId='92000000-0000-4000-8000-000000000004';
 const role={id:roleId,displayName:'Fictional clinician',active:true,protected:true,assignmentMutable:true};
-const identity={id:requestId,providerId:localId,revision:1,issuer:'https://provider.example/ExactIssuer',subject:'ExactSubject',displayName:'Regional hint',email:'same@example.org',createdAt:new Date().toISOString(),status:'pending',linkedUserId:null,reviewProviders:[{source:'draft',revision:2},{source:'active',revision:1}]};
+const identity={id:requestId,providerId:localId,revision:1,reviewRevision:1,deniedAt:null,issuer:'https://provider.example/ExactIssuer',subject:'ExactSubject',displayName:'Regional hint',email:'same@example.org',createdAt:new Date().toISOString(),status:'pending',linkedUserId:null,reviewProviders:[{source:'draft',revision:2},{source:'active',revision:1}]};
 test.beforeAll(async()=>{
  css=await readFile(path.resolve(__dirname,'../app/styles.css'),'utf8');
- const result=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {RegionalIdentitiesPanel} from './components/regional-identities';import {UsersPanel} from './components/admin-directory';import {AdminLanguageContext} from './app/admin-localization';const language=document.documentElement.lang;createRoot(document.getElementById('root')).render(<AdminLanguageContext.Provider value={language}>{location.pathname.includes('directory')?<UsersPanel canManage canAssignRoles canViewSessions canRevokeSessions canResetCredentials csrfToken="csrf"/>:<RegionalIdentitiesPanel language={language} csrfToken="csrf" canLink canApprove/>}</AdminLanguageContext.Provider>);`}});script=result.outputFiles[0]!.text;
+ const result=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {UsersPanel} from './components/admin-directory';import {AdminLanguageContext} from './app/admin-localization';const language=document.documentElement.lang;createRoot(document.getElementById('root')).render(<AdminLanguageContext.Provider value={language}><UsersPanel canManage canReviewRegional canManageRegional canAssignRoles canViewSessions canRevokeSessions canResetCredentials csrfToken="csrf"/></AdminLanguageContext.Provider>);`}});script=result.outputFiles[0]!.text;
 });
 async function mount(page:Page,language:string,width:number){
  await page.setViewportSize({width,height:844});
@@ -21,29 +21,29 @@ for(const [language,width] of [['en',1440],['sv',390]] as const){
  const sv=language==='sv',name=sv?'Ny regional kliniker':'New regional clinician';
  test(`explicit regional approval preserves role/profile choices on conflict and creates no password (${language}, ${width}px)`,async({page})=>{
   await mount(page,language,width);let conflict=true,authenticated=false,body:Record<string,unknown>|undefined;
-  await page.route('**/api/admin/authentication/identities',route=>route.fulfill({json:{items:[identity],nextCursor:null}}));
-  await page.route('**/api/admin/users?*',route=>route.fulfill({json:{items:[{id:ssoId,displayName:'Existing SSO clinician',username:null,owner:false,superadmin:false}],nextCursor:null}}));
+  let approved=false;
+  await page.route('**/api/admin/users?*',route=>route.fulfill({json:{items:approved?[{id:ssoId,displayName:name,username:null,active:true,revision:1,roles:[role]}]:[{id:requestId,displayName:identity.displayName,username:null,active:false,revision:1,roles:[],regionalIdentity:identity}],nextCursor:null}}));
   await page.route('**/api/sessions/reauthenticate',route=>{authenticated=true;expect(route.request().headers()['x-csrf-token']).toBe('csrf');return route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}});});
   await page.route(`**/api/admin/authentication/identities/${requestId}/approve`,route=>{
-   expect(authenticated).toBe(true);body=route.request().postDataJSON();expect(body).toEqual({displayName:name,roleIds:[roleId],providerSource:'draft',expectedProviderRevision:2});expect(route.request().headers()['x-csrf-token']).toBe('csrf');
+   expect(authenticated).toBe(true);body=route.request().postDataJSON();expect(body).toEqual({displayName:name,roleIds:[roleId],providerSource:'draft',expectedProviderRevision:2,expectedReviewRevision:1,note:''});expect(route.request().headers()['x-csrf-token']).toBe('csrf');
+   if(!conflict)approved=true;
    return conflict?route.fulfill({status:409,json:{code:'admin.regionalIdentityConflict'}}):route.fulfill({json:{...identity,status:'linked',linkedUserId:ssoId}});
   });
-  await page.goto('/__approval-review');const review=page.getByRole('button',{name:sv?'Granska Regional hint':'Review Regional hint'});await review.focus();await page.keyboard.press('Enter');const dialog=page.getByRole('dialog');
-  await expect(dialog.getByRole('option',{name:/Existing SSO clinician/})).toContainText(sv?'Endast regional SSO':'Regional SSO only');
+  await page.goto('/__approval-review');const review=page.getByRole('button',{name:sv?'Hantera':'Manage',exact:true});await review.focus();await page.keyboard.press('Enter');const dialog=page.locator('.admin-user-management');
   await dialog.getByRole('button',{name:sv?'Skapa regional användare':'Create a regional user'}).click();
-  await expect(dialog.getByLabel(sv?'Visningsnamn':'Display name',{exact:true})).toHaveValue('');
+  await expect(dialog.getByLabel(sv?'Visningsnamn':'Display name',{exact:true})).toHaveValue(identity.displayName);
   await expect(dialog.getByRole('button',{name:sv?'Godkänn ny användare':'Approve new user',exact:true})).toBeDisabled();
   await dialog.getByLabel(sv?'Visningsnamn':'Display name',{exact:true}).fill(name);
   await dialog.getByLabel(sv?'Leverantörsunderlag att godkänna':'Provider evidence to approve').selectOption('draft');
   await expect(dialog.getByRole('option',{name:/Draft test|Utkasttest/})).toContainText(sv?'aktiverar inte regional inloggning':'does not enable regional login');
   await dialog.getByLabel('Fictional clinician',{exact:true}).check();await expect(dialog.getByLabel('Unavailable stronger role')).toBeDisabled();
-  const password=dialog.getByLabel(sv?'Ditt lösenord för att godkänna användare':'Your password to approve user');await password.fill('Personal password 42!');
+  const password=dialog.getByLabel(sv?'Ditt lösenord för att granska identiteten':'Your password to review identity');await password.fill('Personal password 42!');
   await page.screenshot({path:`/tmp/auth008-approval-dialog-${language}.png`,fullPage:true});
   const submit=dialog.getByRole('button',{name:sv?'Godkänn ny användare':'Approve new user',exact:true});await submit.scrollIntoViewIfNeeded();
   const passwordBounds=await password.boundingBox(),submitBounds=await submit.boundingBox();expect(passwordBounds!.y+passwordBounds!.height).toBeLessThanOrEqual(submitBounds!.y);
   await page.screenshot({path:`/tmp/auth008-approval-dialog-${language}.png`,fullPage:true});await submit.click();
   await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog.getByLabel(sv?'Visningsnamn':'Display name',{exact:true})).toHaveValue(name);await expect(dialog.getByLabel('Fictional clinician',{exact:true})).toBeChecked();await expect(password).toHaveValue('');
-  conflict=false;await password.fill('Personal password 42!');await submit.click();await expect(dialog).toHaveCount(0);await expect(page.getByRole('status')).toContainText(sv?'utan lokalt lösenord':'no local password');await expect(review).toBeFocused();expect(body).toBeDefined();
+  conflict=false;await password.fill('Personal password 42!');await submit.click();await expect(dialog).toHaveCount(0);await expect(page.getByRole('status')).toContainText(sv?'utan lokalt lösenord':'no local password');await expect(page.getByRole('heading',{name:sv?'Användare':'Users',exact:true})).toBeFocused();expect(body).toBeDefined();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:`/tmp/auth008-approval-${language}.png`,fullPage:true});
  });
  test(`local and SSO-only accounts share directory, roles, lifecycle and sessions (${language}, ${width}px)`,async({page})=>{

@@ -16,7 +16,7 @@ test("10,000-user discovery has indexed search and stable bounded keyset paginat
   assert.match(migration, /using gin \(username gin_trgm_ops\)/);
   assert.match(migration, /organization_id, \(not active\), lower\(display_name\), id/);
   assert.match(service, /MAX_PAGE_SIZE = 100/);
-  assert.match(service, /\(not u\.active, lower\(u\.display_name\), u\.id\) >/);
+  assert.match(service, /\(not u\.active, lower\(u\.display_name\), u\.id,\s*u\.kind\) >/);
   assert.match(service, /order by not u\.active, lower\(u\.display_name\), u\.id/);
   assert.doesNotMatch(service, /\boffset\b/i);
 });
