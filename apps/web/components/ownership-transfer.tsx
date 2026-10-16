@@ -5,7 +5,6 @@ import { AdminText, useAdminError, useAdminText } from "../app/admin-localizatio
 import type { OwnershipTransferState } from "@open-triage/contracts";
 import React, { useEffect, useState, type FormEvent } from "react";
 import { acceptOwnershipTransfer, cancelOwnershipTransfer, initiateOwnershipTransfer, loadOwnershipTransfer } from "../app/admin-context";
-import { reauthenticateClinicianSession } from "../app/clinician-session";
 
 const statusText: Record<NonNullable<OwnershipTransferState["transfer"]>["status"], string> = {
   pending: "Awaiting nominee acceptance", accepted: "Accepted", cancelled: "Cancelled",
@@ -28,7 +27,6 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
     const data = new FormData(form);
     setBusy(true); setError(null); setNotice(null);
     try {
-      await reauthenticateClinicianSession(String(data.get("currentPassword") ?? ""), csrfToken);
       setState(await initiateOwnershipTransfer(csrfToken, { nomineeUserId: String(data.get("nomineeUserId") ?? ""),
         note: String(data.get("note") ?? "") || undefined }));
       form.reset(); setNotice(t("admin.ownershipNominationSent"));
@@ -38,10 +36,8 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
 
   async function accept(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
     setBusy(true); setError(null); setNotice(null);
     try {
-      await reauthenticateClinicianSession(String(data.get("currentPassword") ?? ""), csrfToken);
       setState(await acceptOwnershipTransfer(csrfToken));
       setNotice(t("admin.ownershipTransferredThe"));
     } catch (reason) { setError(adminError(reason, "admin.ownershipTransferCouldNotBeAccepted")); }
@@ -72,7 +68,6 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
           <p><AdminText messageKey="admin.ownershipNomineeRequirements" /></p>
           <label><AdminText messageKey="admin.administrator" /><select name="nomineeUserId" required defaultValue=""><option value="" disabled><AdminText messageKey="admin.selectAnAdministrator" /></option>
             {state.eligibleNominees.map((user) => <option value={user.id} key={user.id}>{user.displayName}</option>)}</select></label>
-          <label><AdminText messageKey="admin.currentPassword" /><input name="currentPassword" type="password" required autoComplete="current-password" /></label>
           <label><AdminText messageKey="admin.noteOptional" /><textarea name="note" maxLength={1000} /></label>
           <button type="submit">{busy ? "Nominating…" : "Nominate successor"}</button>
           {!state.eligibleNominees.length && <p role="status"><AdminText messageKey="admin.noOtherActive" /></p>}
@@ -80,7 +75,6 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
       {state.currentUserIsNominee && state.transfer?.status === "pending" && <form onSubmit={accept}>
         <fieldset disabled={busy}><legend><AdminText messageKey="admin.acceptOwnership" /></legend>
           <p><AdminText messageKey="admin.acceptanceAtomicallyMoves" /></p>
-          <label><AdminText messageKey="admin.currentPassword" /><input name="currentPassword" type="password" required autoComplete="current-password" /></label>
           <button type="submit">{busy ? "Accepting…" : t("admin.acceptOwnership")}</button>
         </fieldset></form>}
       {state.transfer?.status === "pending" && (state.currentUserIsOwner || state.currentUserIsNominee) &&

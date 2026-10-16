@@ -92,7 +92,6 @@ export class UserRoleAssignmentService {
         if (!actorIsOwner) {
           throw new ForbiddenException("Only the installation owner or a superadmin may assign or remove Administrator or Demo");
         }
-        await this.sessions.requireRecentReauthentication(token, manager, now);
       }
 
       await manager.query(`update app_identity.user_role_assignment

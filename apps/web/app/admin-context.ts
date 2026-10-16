@@ -186,6 +186,10 @@ export const replaceAdminUserRoles = (csrfToken: string, userId: string, command
 export const loadAdminUserSessions = (userId: string) =>
   catalogRequest<AdminSessionList>(`users/${userId}/sessions`);
 
+export const unlinkAdminUserSso = (csrfToken:string,userId:string,expectedRevision:number) =>
+  catalogRequest<{userId:string;unlinked:true;identitiesUnlinked:number;sessionsRevoked:number}>(`users/${userId}/sso/unlink`,csrfToken,
+    {method:"POST",body:JSON.stringify({expectedRevision})});
+
 export const revokeAdminUserSession = (csrfToken: string, userId: string, sessionId: string,
   confirmOwner = false) => catalogRequest<RevokedAdminSession>(`users/${userId}/sessions/${sessionId}`, csrfToken,
   { method: "DELETE", body: JSON.stringify(confirmOwner ? { confirmOwner: true } : {}) });

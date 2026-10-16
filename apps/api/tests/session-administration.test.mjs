@@ -146,13 +146,13 @@ test("credential reset rolls back credential, revision, and revocations when saf
   assert.equal(events.at(-1).sql, "rollback");
 });
 
-test("administrative recovery purge is recent-authenticated, user-wide, audited, and content blind", async () => {
+test("administrative recovery purge uses login authority, is user-wide, audited, and content blind", async () => {
   const { service, events } = setup();
   const result = await service.purgeOfflineRecovery("actor-token", targetId,
     { reason: "Confirmed lost browser" }, now);
   assert.deepEqual(result, { userId: targetId, purgedEnvelopeCount: 2,
     revokedGrantCount: 3, appliesToAllBrowsers: true });
-  assert.ok(events.some(({ sql }) => sql === "recent-reauthentication"));
+  assert.ok(!events.some(({ sql }) => sql === "recent-reauthentication"));
   const purge = events.find(({ sql }) => sql.includes("purge_user_recovery_as_administrator"));
   assert.deepEqual(purge.parameters, [organizationId, targetId, actorId, "Confirmed lost browser"]);
   const audit = events.find(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"));

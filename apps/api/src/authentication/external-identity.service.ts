@@ -51,7 +51,6 @@ export class ExternalIdentityService {
   private async authority(token:string,write:boolean,manager:EntityManager=this.database.manager){
     const actor=await this.sessions.requireCapability(token,"settings:read",manager);
     if(!actor.capabilities?.includes("users:read")||write&&(!actor.capabilities.includes("settings:write")||!actor.capabilities.includes("users:write")))throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
-    if(write)await this.sessions.requireRecentReauthentication(token,manager);
     const [group]=await manager.query<Array<{id:string}>>("select app_identity.organization_group($1) id",[actor.organization.id]);
     return {actor,groupId:group!.id};
   }
@@ -147,6 +146,52 @@ export class ExternalIdentityService {
         values($1,$2,'authentication.policy_update','succeeded',$3,$4::jsonb)`,[actor.organization.id,actor.user.id,target.id,JSON.stringify({kind:"regional_identity",operation:"linked",requestId,revision:Number(request.first_revision)})]);
       return view(linked);
     });}catch(error){if(error&&typeof error==='object'&&'code' in error&&['23505','23514'].includes(String(error.code)))throw conflict();throw error;}
+  }
+
+  async unlinkUser(token:string,userId:string,input:unknown){
+    const command=input as Record<string,unknown>;
+    if(!uuid.test(userId)||!command||typeof command!=="object"||Array.isArray(command)||
+      Object.keys(command).some(key=>key!=="expectedRevision")||!Number.isSafeInteger(command.expectedRevision)||Number(command.expectedRevision)<1)
+      throw new BadRequestException({code:"admin.externalIdentityInvalidReview"});
+    return this.database.transaction(async manager=>{
+      await this.authority(token,true,manager);
+      await manager.query("select user_id from app_identity.installation_owner for update");
+      const {actor,groupId}=await this.authority(token,true,manager);
+      if(!actor.capabilities?.includes("sessions:read")||!actor.capabilities.includes("sessions:revoke")||userId===actor.user.id)
+        throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
+      // Login locks its user before recording/checking identity evidence. Take
+      // that user lock first so callback issuance and unlink cannot deadlock.
+      const [target]=await manager.query<Array<{id:string;revision:string}>>(`select u.id,u.revision from app_identity.app_user u
+        where u.id=$1 and u.account_scope='agency' and app_identity.organization_group(u.organization_id)=$2
+        and not exists(select 1 from app_identity.installation_owner where user_id=u.id)
+        and not exists(select 1 from app_identity.installation_superadmin where user_id=u.id) for update of u`,[userId,groupId]);
+      if(!target)throw new ForbiddenException({code:"admin.externalIdentityTarget"});
+      if(Number(target.revision)!==command.expectedRevision)throw conflict();
+      const links=await manager.query<RequestRow[]>(`select * from app_identity.regional_identity_request
+        where group_id=$1 and linked_user_id=$2 order by id for update`,[groupId,userId]);
+      if(!links.length)throw conflict();
+      await lockAssignedRoles(manager,[actor.user.id,target.id]);
+      const current=await this.authority(token,true,manager);
+      if(current.groupId!==groupId||current.actor.user.id!==actor.user.id||current.actor.organization.id!==actor.organization.id||
+        !current.actor.capabilities?.includes("sessions:read")||!current.actor.capabilities.includes("sessions:revoke"))
+        throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
+      const stronger=await manager.query(`select 1 from app_identity.user_role_assignment a
+        join app_identity.role r on r.id=a.role_id and r.organization_id=a.organization_id and r.active and r.assignable
+        join app_identity.role_version_capability c on c.role_version_id=r.current_version_id
+        join app_identity.capability d on d.key=c.capability_key and d.administrative
+        where a.user_id=$1 and a.ended_at is null and not(c.capability_key=any($2::text[])) limit 1`,[target.id,current.actor.capabilities??[]]);
+      if(stronger.length)throw new ForbiddenException({code:"admin.externalIdentityTarget"});
+      const revoked=mutationRows<{id:string}>(await manager.query(`update app_identity.app_session
+        set revoked_at=clock_timestamp(),revocation_reason='sso_unlinked' where user_id=$1 and revoked_at is null returning id`,[userId]));
+      await manager.query(`update app_identity.regional_identity_request
+        set linked_user_id=null,linked_by=null,linked_at=null,denied_at=clock_timestamp(),denied_by=$3,
+          denial_note=null,review_revision=review_revision+1 where group_id=$1 and linked_user_id=$2`,[groupId,userId,actor.user.id]);
+      await manager.query('update app_identity.app_user set revision=revision+1 where id=$1',[userId]);
+      await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,target_user_id,details)
+        values($1,$2,'authentication.policy_update','succeeded',$3,$4::jsonb)`,[actor.organization.id,actor.user.id,userId,
+        JSON.stringify({kind:"regional_identity",operation:"unlinked",requestIds:links.map(link=>link.id),sessionsRevoked:revoked.length})]);
+      return {userId,unlinked:true as const,identitiesUnlinked:links.length,sessionsRevoked:revoked.length};
+    });
   }
 
   async deny(token:string,requestId:string,input:unknown){

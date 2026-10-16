@@ -987,6 +987,10 @@ export interface AdminUserSummary {
   displayName: string;
   /** Null when this account has no local password credential. */
   username: string | null;
+  /** Username supplied by an approved linked SSO identity, if available. */
+  ssoUsername?: string | null;
+  /** Whether an approved external identity is currently linked to this user. */
+  ssoLinked?: boolean;
   active: boolean;
   revision: number;
   /** True only for the installation's current accountable owner. */

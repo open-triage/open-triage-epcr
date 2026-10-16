@@ -160,7 +160,8 @@ test("Demo can inspect Agency Settings without write controls", async ({ page })
   await expect(page.getByRole("button", { name: "Agency Settings" })).toBeVisible();
   await page.getByRole("button", { name: "Agency Settings" }).click();
   await expect(page.getByRole("heading", { name: "Agency Settings" })).toBeVisible();
-  await expect(page.locator(".agency-settings fieldset")).toHaveCount(8);
+  await expect(page.getByRole("region", { name: "Effective group policy", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OIDC provider draft" })).toHaveCount(0);
   for (const fieldset of await page.locator(".agency-settings fieldset").all()) await expect(fieldset).toHaveAttribute("disabled", "");
   await expect(page.getByText(/changing them requires settings:write authority/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);

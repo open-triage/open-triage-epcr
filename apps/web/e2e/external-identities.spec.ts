@@ -20,21 +20,28 @@ async function mount(page:import('@playwright/test').Page,language='en'){
 for(const width of [390,1440])test(`Users Manage links an explicitly selected account and retains choices after a conflict at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});await mount(page);let linked=false,conflict=true;
  await page.route('**/api/admin/users?*',route=>{
-  const state=new URL(route.request().url()).searchParams.get('state');
-  return route.fulfill({json:{items:state==='active'?[{id:userId,displayName:'Existing clinician',username:'medic',owner:false,superadmin:false},{id:'91000000-0000-4000-8000-000000000004',displayName:'Protected owner',username:'owner',owner:true,superadmin:true}]:linked?[{id:userId,displayName:'Existing clinician',username:'medic',active:true,revision:1,roles:[]}]:[pending],nextCursor:null}});
+  const params=new URL(route.request().url()).searchParams,state=params.get('state');
+  if(state==='active'){
+   expect(params.has('search')).toBe(false);
+   return route.fulfill({json:params.has('cursor')?{items:[{id:userId,displayName:'Existing clinician',username:'medic',owner:false,superadmin:false}],nextCursor:null}:{items:[{id:'91000000-0000-4000-8000-000000000004',displayName:'Protected owner',username:'owner',owner:true,superadmin:true}],nextCursor:'next-users'}});
+  }
+  return route.fulfill({json:{items:linked?[{id:userId,displayName:'Existing clinician',username:'medic',active:true,revision:1,roles:[]}]:[pending],nextCursor:null}});
  });
  await page.route(`**/api/admin/authentication/identities/${id}/link`,route=>{
   expect(route.request().headers()['x-csrf-token']).toBe('csrf');expect(route.request().postDataJSON()).toEqual({userId,providerSource:'draft',expectedProviderRevision:1,expectedReviewRevision:1});
   if(!conflict)linked=true;return conflict?route.fulfill({status:409,json:{code:'admin.externalIdentityConflict'}}):route.fulfill({json:{...identity,status:'linked',linkedUserId:userId,reviewRevision:2}});
  });
  await page.goto('/__identities');await expect(page.getByRole('cell',{name:identity.email,exact:false})).toBeVisible();await expect(page.locator('img')).toHaveCount(0);
- const manage=page.getByRole('button',{name:'Manage',exact:true});await manage.focus();await page.keyboard.press('Enter');const editor=page.locator('.admin-user-management');
+ const manage=page.getByRole('button',{name:'Manage',exact:true});await manage.focus();await page.keyboard.press('Enter');const editor=page.locator('.admin-user-management');await expect(editor.locator('input[autocomplete="current-password"]')).toHaveCount(0);
  await expect(editor.getByText('Profile names and emails are untrusted hints',{exact:false})).toBeVisible();
  await editor.getByRole('button',{name:'Link to an existing user',exact:true}).click();await expect(editor.getByLabel('Existing application user')).toHaveValue('');await expect(editor.getByRole('option',{name:/Protected owner/})).toHaveCount(0);
+ await expect(editor.getByRole('searchbox')).toHaveCount(0);await expect(editor.getByRole('button',{name:/^(Search users|More users)$/})).toHaveCount(0);
+ await expect(editor.getByRole('option',{name:'Existing clinician (medic)',exact:true})).toHaveCount(1);
+ await page.screenshot({path:`/tmp/user-identity-dropdown-${width}.png`,fullPage:true});
  await expect(editor.getByRole('button',{name:'Link existing user',exact:true})).toBeDisabled();
- await editor.getByLabel('Existing application user').selectOption(userId);const password=editor.getByLabel('Your password to review identity');await password.fill('Personal password 42!');const submit=editor.getByRole('button',{name:'Link existing user',exact:true});const passwordBox=await password.boundingBox(),submitBox=await submit.boundingBox();expect(passwordBox!.y+passwordBox!.height).toBeLessThanOrEqual(submitBox!.y);await submit.click();
- await expect(editor.getByRole('alert')).toContainText('already linked or its provider changed');await expect(editor.getByLabel('Existing application user')).toHaveValue(userId);await expect(password).toHaveValue('');
- conflict=false;await password.fill('Personal password 42!');await editor.getByRole('button',{name:'Link existing user',exact:true}).click();await expect(editor).toHaveCount(0);
+ await editor.getByLabel('Existing application user').selectOption(userId);const submit=editor.getByRole('button',{name:'Link existing user',exact:true});await submit.click();
+ await expect(editor.getByRole('alert')).toContainText('already linked or its provider changed');await expect(editor.getByLabel('Existing application user')).toHaveValue(userId);
+ conflict=false;await editor.getByRole('button',{name:'Link existing user',exact:true}).click();await expect(editor).toHaveCount(0);
  await expect(page.getByRole('status')).toContainText('User roles and history are preserved');await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody tr')).toContainText('Existing clinician');await expect(page.getByRole('heading',{name:'Users',exact:true})).toBeFocused();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:`/tmp/user-identity-manage-${width}.png`,fullPage:true});
 });
@@ -42,8 +49,8 @@ for(const width of [390,1440])test(`Users Manage denies a request with an explic
  await page.setViewportSize({width,height:900});await mount(page);let denied=false;
  await page.route('**/api/admin/users?*',route=>{const state=new URL(route.request().url()).searchParams.get('state');return route.fulfill({json:{items:state==='pending'&&denied?[]:[{...pending,externalIdentity:{...identity,status:denied?'denied':'pending',reviewRevision:denied?2:1,deniedAt:denied?new Date().toISOString():null}}],nextCursor:null}});});
  await page.route(`**/api/admin/authentication/identities/${id}/deny`,route=>{expect(route.request().postDataJSON()).toEqual({expectedReviewRevision:1,note:'Not an approved staff member'});denied=true;return route.fulfill({json:{...identity,status:'denied',reviewRevision:2}});});
- await page.goto('/__identities');await page.getByRole('button',{name:'Manage',exact:true}).click();const editor=page.locator('.admin-user-management');await editor.getByRole('button',{name:'Deny request',exact:true}).first().click();
- await editor.getByLabel('Note (optional)').fill('Not an approved staff member');const password=editor.getByLabel('Your password to review identity');await password.fill('Personal password 42!');const submit=editor.getByRole('button',{name:'Deny request',exact:true}).last();const passwordBox=await password.boundingBox(),submitBox=await submit.boundingBox();expect(passwordBox!.y+passwordBox!.height).toBeLessThanOrEqual(submitBox!.y);await submit.click();await expect(editor).toHaveCount(0);
+ await page.goto('/__identities');await page.getByRole('button',{name:'Manage',exact:true}).click();const editor=page.locator('.admin-user-management');await expect(editor.locator('input[autocomplete="current-password"]')).toHaveCount(0);await editor.getByRole('button',{name:'Deny request',exact:true}).first().click();
+ await editor.getByLabel('Note (optional)').fill('Not an approved staff member');const submit=editor.getByRole('button',{name:'Deny request',exact:true}).last();await submit.click();await expect(editor).toHaveCount(0);
  await expect(page.getByRole('cell',{name:'Denied',exact:true})).toBeVisible();await expect(page.getByRole('status')).toContainText('No user or application session was created');
  await page.locator('select[name="state"]').selectOption('pending');await page.getByRole('button',{name:'Apply filters',exact:true}).click();await expect(page.locator('tbody tr')).toHaveCount(0);
  await page.locator('select[name="state"]').selectOption('denied');await page.getByRole('button',{name:'Apply filters',exact:true}).click();await page.getByRole('button',{name:'Manage',exact:true}).click();await expect(editor).toContainText('A new sign-in does not undo the decision');await expect(editor.getByRole('button',{name:'Deny request',exact:true})).toBeDisabled();
@@ -57,7 +64,7 @@ for(const changed of [false,true])test(`identity review completion ${changed?'is
  await mount(page);await page.route('**/api/admin/users?*',route=>route.fulfill({json:{items:[pending],nextCursor:null}}));
  await page.addInitScript(()=>{const original=window.fetch;window.fetch=async(...args)=>{const response=await original(...args);if(String(args[0]).endsWith('/deny')){const json=response.json.bind(response);response.json=async()=>{(window as unknown as {reviewJsonWaiting?:boolean;releaseReviewJson?:()=>void}).reviewJsonWaiting=true;await new Promise<void>(resolve=>(window as unknown as {reviewJsonWaiting?:boolean;releaseReviewJson?:()=>void}).releaseReviewJson=resolve);return json();};}return response;};});
  await page.route(`**/api/admin/authentication/identities/${id}/deny`,route=>route.fulfill({json:{...identity,status:'denied',reviewRevision:2}}));
- await page.goto('/__identities');await page.getByRole('button',{name:'Manage',exact:true}).click();const editor=page.locator('.admin-user-management');await editor.getByRole('button',{name:'Deny request',exact:true}).first().click();await editor.getByLabel('Your password to review identity').fill('Personal password 42!');await editor.getByRole('button',{name:'Deny request',exact:true}).last().click();
+ await page.goto('/__identities');await page.getByRole('button',{name:'Manage',exact:true}).click();const editor=page.locator('.admin-user-management');await expect(editor.locator('input[autocomplete="current-password"]')).toHaveCount(0);await editor.getByRole('button',{name:'Deny request',exact:true}).first().click();await editor.getByRole('button',{name:'Deny request',exact:true}).last().click();
  await page.waitForFunction(()=>(window as unknown as {reviewJsonWaiting?:boolean;releaseReviewJson?:()=>void}).reviewJsonWaiting);await expect(editor.getByRole('button',{name:'Close',exact:true})).toBeDisabled();
  await page.evaluate(changed=>{if(changed)localStorage.setItem('open-triage.installation-generation.v1','new-installation');(window as unknown as {reviewJsonWaiting?:boolean;releaseReviewJson?:()=>void}).releaseReviewJson!();},changed);
  if(changed){await expect(editor).toBeVisible();await expect(page.getByText('External identity request denied.',{exact:false})).toHaveCount(0);}

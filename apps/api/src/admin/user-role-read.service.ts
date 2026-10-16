@@ -23,6 +23,8 @@ type UserCursor = {
 type UserRow = {
   id: string; display_name: string; username: string | null; active: boolean; revision: string | number;
   owner: boolean; superadmin: boolean;
+  sso_linked: boolean;
+  sso_username: string | null;
   roles: AdminRoleSummary[] | string | null;
   kind?: "user" | "external";
   regional_identity?: AdminExternalIdentitySummary | null;
@@ -96,7 +98,10 @@ export class UserRoleReadService {
     const pageSize = Math.min(requestedLimit, MAX_PAGE_SIZE);
     const cursor = decodeCursor(one(input.cursor), { state: selectedState, search, roleId });
     const rows = await this.dataSource.query<UserRow[]>(`
-      with directory as (select u.id, u.display_name, credential.username, u.active, u.revision,
+      with directory as (select u.id, u.display_name, credential.username,
+        (select linked.username_hint from app_identity.regional_identity_request linked
+          where linked.linked_user_id=u.id and linked.username_hint is not null
+          order by linked.linked_at desc,linked.id limit 1) sso_username, u.active, u.revision,
         exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
         exists (select 1 from app_identity.installation_owner installation_owner
           where installation_owner.user_id = u.id) as owner,
@@ -110,15 +115,16 @@ export class UserRoleReadService {
             on role.organization_id = assignment.organization_id and role.id = assignment.role_id
           where assignment.organization_id = $1 and assignment.user_id = u.id
             and assignment.ended_at is null and not role.hidden
-        ), '[]'::jsonb) as roles, 'user'::text kind, null::jsonb regional_identity
+        ), '[]'::jsonb) as roles, 'user'::text kind, null::jsonb regional_identity,
+        exists(select 1 from app_identity.regional_identity_request linked where linked.linked_user_id=u.id) sso_linked
       from app_identity.app_user u
       left join app_identity.local_credential credential on credential.user_id = u.id
       where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1)
       union all
-      select r.id, normalize(coalesce(r.display_name,r.subject),NFC), null, false, r.review_revision,
+      select r.id, normalize(coalesce(r.display_name,r.username_hint,r.subject),NFC), null, r.username_hint, false, r.review_revision,
         false,false,'[]'::jsonb,'external',jsonb_build_object(
           'id',r.id,'providerId',r.provider_id,'revision',r.first_revision,'reviewRevision',r.review_revision,
-          'issuer',r.issuer,'subject',r.subject,'displayName',r.display_name,'email',r.email,'createdAt',r.created_at,
+          'issuer',r.issuer,'subject',r.subject,'displayName',r.display_name,'email',r.email,'username',r.username_hint,'createdAt',r.created_at,
           'status',case when r.denied_at is null then 'pending' else 'denied' end,
           'linkedUserId',null,'deniedAt',r.denied_at,'reviewProviders',coalesce((
             select jsonb_agg(jsonb_build_object('source',p.source,'revision',v.revision))
@@ -126,13 +132,14 @@ export class UserRoleReadService {
             cross join lateral (values ('draft',s.draft_revision),('active',s.active_revision)) p(source,revision)
             join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=p.revision
             where s.group_id=r.group_id and v.provider_id=r.provider_id and v.configuration->>'issuer'=r.issuer
-          ),'[]'::jsonb))
+          ),'[]'::jsonb)),false
       from app_identity.regional_identity_request r
       where $10::boolean and r.group_id=app_identity.organization_group($1) and r.linked_user_id is null)
       select u.* from directory u
       where ($2 = 'all' or (u.kind='user' and $2 in ('active','disabled') and u.active=($2='active'))
         or (u.kind='external' and u.regional_identity->>'status'=$2))
         and ($3 = '' or lower(u.display_name) like $4 escape '\\' or lower(u.username) like $4 escape '\\'
+          or lower(u.sso_username) like $4 escape '\\'
           or lower(u.regional_identity->>'email') like $4 escape '\\' or lower(u.regional_identity->>'subject') like $4 escape '\\')
         and ($5::uuid is null or (u.kind='user' and exists (
           select 1 from app_identity.user_role_assignment role_filter
@@ -149,7 +156,7 @@ export class UserRoleReadService {
     const visible = rows.slice(0, pageSize);
     const last = visible.at(-1);
     return {
-      items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,
+      items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,ssoUsername:row.sso_username??null,ssoLinked:row.sso_linked,
         active: row.active, revision: Number(row.revision), owner: row.owner, superadmin: row.superadmin,
         roles: parsedJsonArray(row.roles),...(row.regional_identity?{externalIdentity:row.regional_identity}:{}) })),
       pageSize,

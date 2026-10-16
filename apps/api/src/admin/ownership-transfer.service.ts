@@ -12,7 +12,7 @@ type TransferRow = {
   resolved_at: Date | string | null; resolution_reason: string | null; nominated_by: string;
   nominated_by_name: string; nominee_user_id: string; nominee_name: string;
 };
-type Failure = "not_owner" | "not_nominee" | "stale" | "conflict" | "ineligible";
+type Failure = "not_owner" | "not_nominee" | "conflict" | "ineligible";
 type Outcome<T> = { value: T; failure?: never } | { failure: Failure; value?: never };
 
 const iso = (value: Date | string) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -39,13 +39,6 @@ export class OwnershipTransferService {
         await this.audit(manager, actor.organization.id, null, actor.user.id, "owner.transfer.conflict", "failed",
           { reason: "current_owner_required" });
         return { failure: "not_owner" };
-      }
-      try {
-        await this.sessions.requireRecentReauthentication(token, manager, now);
-      } catch {
-        await this.audit(manager, actor.organization.id, null, actor.user.id,
-          "owner.transfer.stale_assurance", "failed", { operation: "initiate" });
-        return { failure: "stale" };
       }
       const pending = await this.pending(manager, actor.organization.id);
       const otherPending = await manager.query("select id from app_identity.ownership_transfer where status='pending'");
@@ -87,13 +80,6 @@ export class OwnershipTransferService {
         await this.audit(manager, actor.organization.id, transfer.id, actor.user.id,
           "owner.transfer.conflict", "failed", { reason: "nominee_required", operation: "accept" });
         return { failure: "not_nominee" };
-      }
-      try {
-        await this.sessions.requireRecentReauthentication(token, manager, now);
-      } catch {
-        await this.audit(manager, actor.organization.id, transfer.id, actor.user.id,
-          "owner.transfer.stale_assurance", "failed", { operation: "accept" });
-        return { failure: "stale" };
       }
       if (!await this.eligible(manager, actor.organization.id, actor.user.id, true)) {
         await manager.query(`update app_identity.ownership_transfer set status = 'ineligible', resolved_at = $2,
@@ -241,7 +227,6 @@ export class OwnershipTransferService {
 
   private unwrap<T>(outcome: Outcome<T>): T {
     if ("value" in outcome) return outcome.value!;
-    if (outcome.failure === "stale") throw new ForbiddenException("Recent password reauthentication is required for ownership transfer");
     if (outcome.failure === "not_owner") throw new ForbiddenException("Only the current installation owner may nominate a successor");
     if (outcome.failure === "not_nominee") throw new ForbiddenException("Only a party to the pending transfer may perform this action");
     if (outcome.failure === "ineligible") throw new UnprocessableEntityException("The nominee must be an active Administrator");

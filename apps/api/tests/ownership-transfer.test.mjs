@@ -63,7 +63,7 @@ test("ownership commands validate UUIDs and bounded notes", () => {
   assert.throws(() => validateCancelOwnershipTransfer({ unexpected: true }), BadRequestException);
 });
 
-test("owner nomination and independently reauthenticated acceptance move the single owner atomically", async () => {
+test("owner nomination and authenticated nominee acceptance move the single owner atomically", async () => {
   const fixture = setup();
   const initiated = await fixture.service.initiate("owner-session", { nomineeUserId: nomineeId }, new Date("2026-09-11T10:00:00Z"));
   assert.equal(initiated.transfer.status, "pending");
@@ -79,13 +79,11 @@ test("owner nomination and independently reauthenticated acceptance move the sin
   assert.equal(retiredRoles.parameters[1], nomineeId, "the new owner no longer relies on role assignments");
 });
 
-test("stale assurance is audited and committed before initiation is refused", async () => {
-  const fixture = setup({ recent: false });
-  await assert.rejects(fixture.service.initiate("owner-session", { nomineeUserId: nomineeId }), /Recent password reauthentication/);
-  const audit = fixture.events.find(({ sql, parameters }) => sql.startsWith("insert into app_identity.ownership_transfer_event") &&
-    parameters[3] === "owner.transfer.stale_assurance");
-  assert.ok(audit);
-  assert.equal(fixture.events.at(-1).sql, "commit");
+test("an authenticated owner can nominate without extra reauthentication",async()=>{
+ const fixture=setup({recent:false});
+ await fixture.service.initiate('owner-session',{nomineeUserId:nomineeId});
+ assert(!fixture.events.some(({parameters})=>parameters?.[3]==='owner.transfer.stale_assurance'));
+ assert.equal(fixture.events.at(-1).sql,'commit');
 });
 
 test("reading state expires a stale transfer and releases the pending slot", async () => {

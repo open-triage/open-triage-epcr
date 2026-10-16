@@ -13,3 +13,12 @@ export class ExternalIdentityController {
  @Post(":id/deny") @Header("Cache-Control","no-store, private")
  deny(@Param("id") id:string,@Body() body:unknown,@Req() request:{headers:{cookie?:string}},@Headers("authorization") authorization?:string){return this.identities.deny(sessionToken(request,authorization),id,body);}
 }
+
+@Controller("admin/users")
+export class UserSsoController {
+ constructor(private readonly identities:ExternalIdentityService){}
+ @Post(":id/sso/unlink") @Header("Cache-Control","no-store, private")
+ unlink(@Param("id") id:string,@Body() body:unknown,@Req() request:{headers:{cookie?:string}},@Headers("authorization") authorization?:string){
+  return this.identities.unlinkUser(sessionToken(request,authorization),id,body);
+ }
+}

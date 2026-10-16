@@ -4,6 +4,25 @@ In Admin → Users, find a Pending or Denied request and use **Manage** to revie
 subject, and integration evidence. Names and email addresses are untrusted
 profile hints. A matching email never links accounts or grants roles.
 
+When configured name or email claims are absent from the signed ID token, the
+server retrieves them from the provider's UserInfo endpoint using the code-flow
+access token and verifies that its subject matches the ID token. Authentication
+method and freshness checks use only the signed ID token. Request `profile` and
+map the display name to `name` for Duende; request `email` as well if needed.
+The optional username mapping defaults to `preferred_username`, also covered by
+`profile`. The provider username is captured from the validated ID token or
+subject-checked UserInfo response and displayed as **SSO username** on the
+account and in the Users username column when no local username exists. The
+Users search includes it. Missing or invalid usernames do not block login;
+providers with another claim name can configure it in Authentication. Clearing
+the mapping disables retrieval. A provider username is a profile hint, not a
+password credential, a unique identity key, or automatic account-link evidence.
+Existing users receive missing usernames on their next validated SSO login.
+
+A subsequent validated login fills missing hints on an existing request without
+replacing previously captured evidence or changing its approval decision. The
+application account's display name remains administrator-managed.
+
 Use **Link to an existing user** only after confirming that this is the same
 person. Linking preserves that application's immutable user ID, reports,
 assignments, and history. Installation owner and superadmin recovery accounts
@@ -72,3 +91,50 @@ maintenance remain local.
 Real regional AD FS/PAS and Android/Windows device acceptance remains a separate
 external acceptance step. Controlled provider, PostgreSQL, and browser tests do
 not prove regional production compatibility.
+
+## Installation superuser agency switching
+
+Agency-less installation superusers use a host-specific session handoff when
+opening an agency whose registered address differs from the current address.
+Ordinary agency users and accounts with a home agency do not use this path.
+
+The source tab records a random intent verifier locally. The destination creates
+an HttpOnly Secure SameSite=Strict challenge cookie, then returns the browser to
+the initiating tab's origin. That origin verifies the saved intent and its
+normal session CSRF before issuing a short-lived, single-use redemption code.
+The browser returns to the destination, where the challenge cookie binds
+redemption to that browser. Tokens and codes do not enter query strings or server
+request URLs; transient fragments are removed before startup proceeds. Only
+hashes of intent, challenge and redemption secrets are stored in the private DB.
+
+Issuance revokes the outgoing session; successful redemption creates a new
+host-specific session with the same identity, original start, fixed expiry and
+personal-authentication timestamps. It carries no new OIDC proof and no device
+enrollment from another host. Current account/credential/superuser authority,
+registered target address and agency access are rechecked at completion. A
+password reset, expiry, revoked authority, wrong origin, different browser or
+replay fails closed. A different person already signed in at the destination
+must sign out before the handoff can proceed. Source and destination plaintext
+and in-memory keys settle through the shared cross-tab transition barrier.
+
+For an existing superuser session already displaying Test Agency at the old
+address, use **Open agency** on Test Agency again to perform the handoff to its
+registered address. Local demonstration aliases use the configured web port;
+production agency addresses use HTTPS. Agency-local OIDC diagnostics can then
+start from the correct callback origin.
+
+## Unlink an existing SSO user
+
+Open **Users → Manage** on the linked application account. The ordinary active
+session list supports **Revoke session** for both password and SSO sessions.
+**Unlink SSO and revoke sessions** removes all approved external identity links
+for that user and revokes every application session in the same transaction.
+It retains the account, roles, credentials and clinical records. The detached
+identities appear as Denied requests; another provider login does not reconnect
+them. Explicitly review and link a denied identity to restore SSO access. Old
+sessions stay revoked after relinking.
+
+Unlinking requires user and authentication administration rights, session-read
+and session-revoke rights. No additional reauthentication is required. Administrators
+cannot unlink themselves, an installation owner/superadmin, a user outside the
+selected agency group, or a user with greater administrative authority.

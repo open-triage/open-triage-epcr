@@ -166,7 +166,6 @@ export class SessionAdministrationService {
       if (!actor.capabilities?.includes("users:read")) {
         throw new UnauthorizedException("users:read and users:write are required");
       }
-      await this.sessions.requireRecentReauthentication(token, manager, now);
       const targets = await manager.query<Array<{ id: string }>>(
         "select id from app_identity.app_user where app_identity.organization_group(organization_id) = app_identity.organization_group($1) and id = $2 for update",
         [actor.organization.id, targetUserId]
