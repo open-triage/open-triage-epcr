@@ -77,7 +77,8 @@ integration('weekly schedules persist immutable versions, group scope, agency se
   assert.equal(switched.pending.effectiveAt,selectionPreview.effectiveAt);assert.equal(switched.state,'scheduled');assert.ok(switched.pending);
   clock=new Date(Date.parse(switched.pending.effectiveAt)+1).toISOString();assert.equal((await service.getPreview('token',ownUnit)).state,'blank');
   await client.query(`with created as (
-    insert into app_identity.weekly_schedule(id,group_id,name) select gen_random_uuid(),$1,'Capacity fixture '||entry from generate_series(1,498) entry returning id
+    insert into app_identity.weekly_schedule(id,group_id,name) select gen_random_uuid(),$1,'Capacity fixture '||entry
+    from generate_series(1,500-(select count(*)::integer from app_identity.weekly_schedule where group_id=$1)) entry returning id
   ) insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id) select id,1,clock_timestamp(),'[]'::jsonb,$2 from created`,[root,user]);
   await assert.rejects(service.save('token',null,{name:'Schedule 501',breakpoints:[]}),/500-schedule limit/);
   assert.equal((await service.list('token')).items.length,500,'a rejected creation preserves a readable bounded directory');
