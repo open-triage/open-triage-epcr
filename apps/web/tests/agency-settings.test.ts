@@ -84,6 +84,7 @@ test("new agencies use the same complete settings editor without claiming an exi
   assert.match(markup, /id="new-agency-time-zone"/);
   assert.match(markup, /<select id="new-agency-time-zone"/);
   assert.match(markup, /name="hostname"/);
+  assert.doesNotMatch(markup, /authentication-account-attempt-limit|authentication-network-attempt-limit/);
   assert.match(markup, /dAgency.01/);
   assert.match(markup, /name="reportMediaAllowanceMib"/);
   assert.doesNotMatch(markup, /id="agency-time-zone"/);

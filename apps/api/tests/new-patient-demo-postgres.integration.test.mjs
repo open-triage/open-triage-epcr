@@ -1,3 +1,4 @@
+import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -132,6 +133,11 @@ integration("new demo patients support the generated-report lifecycle without a 
     assert.equal(opened.report.expiresAt, stored.expires_at.toISOString());
     assert.equal((await service.listOpen("demo")).openCalls.find(row => row.reportId === demo.reportId).demoMutable, true);
 
+    const syntheticFollow={...demo,commandId:randomUUID(),reportId:randomUUID(),patientId:randomUUID()};
+    await service.create("demo",syntheticFollow);
+    const syntheticFollowStored=(await manager.query("select synthetic,form_version_id,catalog_release_id from clinical.report where id=$1",[syntheticFollow.reportId]))[0];
+    const originalPins=(await manager.query("select form_version_id,catalog_release_id from clinical.report where id=$1",[demo.reportId]))[0];
+    assert.deepEqual(syntheticFollowStored,{synthetic:true,...originalPins});
     const parent = (await manager.query(`select id from clinical.group_instance
       where report_id=$1 and group_id='PatientCareReportGroup'`, [demo.reportId]))[0].id;
     const group = { id: randomUUID(), groupId: "eNarrativeSection", parentGroupInstanceId: parent, ordinal: 0,
@@ -156,9 +162,22 @@ integration("new demo patients support the generated-report lifecycle without a 
     assert.equal((await manager.query("select tombstoned_at is not null cleared from clinical.element_occurrence where id=$1",
       [occurrence.id]))[0].cleared, true);
 
+    await enableProductionWorkflowForTesting(client,organizationId,userId);
     actorId = ordinaryUserId;
     const ordinary = command();
-    // Client-supplied synthetic fields cannot grant access to the demo tools.
+    // Ordinary standalone production jobs use the shared device gate. An owned
+    // existing incident may add a patient unpaired and retains its original form.
+    await assert.rejects(service.create("ordinary", ordinary), error => error.getResponse().code === "calls.enrollmentRequired");
+    await manager.query("insert into clinical.incident(id,organization_id,synthetic) values($1,$2,false)", [ordinary.incidentId, organizationId]);
+    const realParentPatient=randomUUID();
+    await manager.query(`insert into clinical.patient(id,organization_id,identity_state,pseudonymous_key,pseudonymous_key_version)
+      values($1,$2,'unknown',$3,1)`,[realParentPatient,organizationId,realParentPatient.replaceAll('-','').repeat(2)]);
+    await manager.query(`insert into clinical.report(id,organization_id,incident_id,patient_id,agency_demographic_version_id,
+      form_version_id,catalog_release_id,validation_version_id,documenting_user_id,form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,synthetic)
+      select $1,organization_id,$2,$5,agency_demographic_version_id,form_version_id,catalog_release_id,validation_version_id,$3,
+        form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,false from clinical.report where id=$4`,
+      [randomUUID(),ordinary.incidentId,ordinaryUserId,demo.reportId,realParentPatient]);
+    // Client-supplied synthetic fields cannot relabel a production incident.
     await service.create("ordinary", { ...ordinary, synthetic: true, synthetic_generated_by: ordinaryUserId });
     const ordinaryStored = (await manager.query(`select synthetic,synthetic_generated_by,expires_at
       from clinical.report where id=$1`, [ordinary.reportId]))[0];

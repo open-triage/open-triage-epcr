@@ -10,7 +10,7 @@ function throttleDatabase(policies = new Map()) {
   const manager = { query: async (sql, parameters = []) => {
     const normalized = sql.replace(/\s+/g, " ").trim();
     statements.push({ sql: normalized, parameters });
-    if (normalized.startsWith("select settings.organization_id")) {
+    if (normalized.startsWith("select policy.group_id organization_id")) {
       return policies.has(parameters[0]) ? [policies.get(parameters[0])] : [];
     }
     if (normalized.startsWith("insert into app_identity.authentication_throttle")) {

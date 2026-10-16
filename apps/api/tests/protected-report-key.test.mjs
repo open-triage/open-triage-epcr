@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createCipheriv, randomUUID } from "node:crypto";
 import test from "node:test";
-import { ConflictException, HttpException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, HttpException, NotFoundException } from "@nestjs/common";
 import { offlineRecoveryWrappingKey, ProtectedReportKeyService } from "../dist/reports/protected-report-key.service.js";
 
 test("offline recovery wrapping uses a dedicated exact-length versioned secret", () => {
@@ -141,7 +141,7 @@ test("recovery grants are opaque, expire after sixty seconds, and bind every aut
     { transaction: async (work) => work(manager) },
     {
       assertCsrf: async () => undefined,
-      get: async () => ({ organization: { id: organizationId }, user: { id: userId } }),
+      requireRecentReauthentication: async () => undefined, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }),
     },
   );
   const result = await service.createRecoveryGrant("session-secret", reportId,
@@ -184,7 +184,7 @@ test("recovery consumption unwraps one report key only after the atomic database
         result: "consumed", recovery_handle: recoveryHandle, wrapping_key_version: 7,
         wrapping_nonce: nonce, wrapped_data_key: wrapped,
       }] }) },
-      { assertCsrf: async () => undefined, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) },
+      { assertCsrf: async () => undefined, requireRecentReauthentication: async () => undefined, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) },
     );
     const recovered = await service.consumeRecoveryGrant("session-secret", reportId, {
       schemaVersion: 1, envelopeVersion: 1, grant: Buffer.alloc(32, 0x61).toString("base64url"),
@@ -202,7 +202,7 @@ test("grant assurance failures are distinct while every recovery denial is gener
   const session = { organization: { id: randomUUID() }, user: { id: randomUUID() } };
   const serviceFor = (result) => new ProtectedReportKeyService(
     { transaction: async (work) => work({ query: async () => [result] }) },
-    { assertCsrf: async () => undefined, get: async () => session },
+    { assertCsrf: async () => undefined, requireRecentReauthentication: async () => undefined, get: async () => session },
   );
   await assert.rejects(serviceFor({ result: "reauthentication_required" }).createRecoveryGrant(
     "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1 }, "csrf"),
@@ -212,4 +212,35 @@ test("grant assurance failures are distinct while every recovery denial is gener
   await assert.rejects(serviceFor({ result: "denied" }).consumeRecoveryGrant(
     "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1, grant: Buffer.alloc(32).toString("base64url") }, "csrf"),
   (error) => error instanceof NotFoundException && error.message === "Protected report recovery is unavailable");
+});
+
+test("shared proof failures block grant creation and consumption before any key SQL", async () => {
+  let keyQueries = 0;
+  const service = new ProtectedReportKeyService(
+    { transaction: async (work) => work({ query: async () => { keyQueries++; return []; } }) },
+    { assertCsrf: async () => undefined, get: async () => ({ organization: { id: randomUUID() }, user: { id: randomUUID() } }),
+      requireRecentReauthentication: async () => { throw new ForbiddenException({ code: 'login.reauthenticationRequired' }); } },
+  );
+  for (const operation of ['createRecoveryGrant', 'consumeRecoveryGrant']) {
+    await assert.rejects(service[operation]('session', randomUUID(), { schemaVersion: 1, envelopeVersion: 1,
+      ...(operation === 'consumeRecoveryGrant' ? { grant: Buffer.alloc(32).toString('base64url') } : {}) }, 'csrf'),
+    error => error.getStatus?.() === 428 && /personal reauthentication/.test(error.message));
+  }
+  assert.equal(keyQueries, 0);
+});
+
+test("deadline-preserving initialization receipts are strictly browser scoped", async () => {
+  const calls = [];
+  const service = new ProtectedReportKeyService(
+    { transaction: async work => work({ query: async (sql, parameters) => { calls.push({ sql, parameters }); return [{ recovery_deadline: '2026-09-18T12:00:00.000Z' }]; } }) },
+    { assertCsrf: async () => undefined, requireCapability: async () => ({ organization: { id: randomUUID() }, user: { id: randomUUID() } }) },
+  );
+  const command = { schemaVersion: 1, recoveryHandle: randomUUID(), localRecordId: randomUUID(), ciphertextRevision: 1, ciphertextSha256: 'a'.repeat(64), preserveRecoveryDeadline: true };
+  await service.recordWrite('session', randomUUID(), command, 'csrf');
+  assert.match(calls[0].sql, /record_browser_ciphertext_write\([^]*\$8\)/);
+  assert.equal(calls[0].parameters[7], true);
+  for (const invalid of [{ ...command, preserveRecoveryDeadline: false }, { ...command, preserveRecoveryDeadline: 'true' }, { ...command, localRecordId: undefined }]) {
+    await assert.rejects(service.recordWrite('session', randomUUID(), invalid, 'csrf'), error => error.getStatus?.() === 422);
+  }
+  assert.equal(calls.length, 1, 'invalid markers must fail before authorization or SQL');
 });

@@ -17,6 +17,8 @@ import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.
 import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
+import { SchedulesService } from "../schedules/schedules.service.js";
+import { assertProductionJobAccess, productionJobAccess, prepareNewJobConfirmation } from "./production-job-access.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 
 type AssignedCallRow = {
@@ -193,50 +195,62 @@ function assignedCall(row: AssignedCallRow): AssignedCall {
 export class AssignedCallsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly sessions: ClinicianSessionService
+    private readonly sessions: ClinicianSessionService,
+    private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions)
   ) {}
 
   async list(accessToken: string, now = new Date()): Promise<AssignedCallsResponse> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document", undefined, now);
     await this.dataSource.query("select retention.purge_expired_synthetic_records($1)", [now]);
-    const rows = await this.dataSource.query<AssignedCallRow[]>(`
-      select ca.id, ca.call_number, ou.id as unit_id, ou.call_sign,
-             organization.deployment_timezone as agency_time_zone, ca.expires_at,
-             ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
-             jsonb_path_query_first(dr.source_payload,
-               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
-               as dispatch_priority_code,
-             jsonb_path_query_first(dr.source_payload,
-               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
-               as dispatch_priority_display
-      from app_identity.unit_clinician uc
-      join app_identity.operational_unit ou
-        on ou.organization_id = uc.organization_id and ou.id = uc.unit_id
-      join app_identity.organization organization on organization.id = ou.organization_id
-      join clinical.call_assignment ca
-        on ca.organization_id = ou.organization_id and ca.unit_id = ou.id
-      left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
-      where uc.user_id = $1 and uc.organization_id = $2 and ou.active
-        and ca.status in ('assigned', 'canceled')
-        and (ca.expires_at is null or ca.expires_at > $3)
-      order by ca.dispatched_at desc, ca.id
-    `, [session.user.id, session.organization.id, now]);
-    const activeSettings = await this.dataSource.query<MediaSettingsRow[]>(`
-      select revision, report_media_allowance_bytes, image_media_limit_bytes from app_identity.agency_settings
-      where organization_id = $1
-    `, [session.organization.id]);
-    const policy = activeSettings[0];
+    return this.dataSource.transaction(async (manager) => {
+      const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules);
+      const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+      const rows = await manager.query<AssignedCallRow[]>(`
+        select ca.id, ca.call_number, ou.id as unit_id, ou.call_sign,
+               organization.deployment_timezone as agency_time_zone, ca.expires_at,
+               ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
+               jsonb_path_query_first(dr.source_payload,
+                 '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
+                 as dispatch_priority_code,
+               jsonb_path_query_first(dr.source_payload,
+                 '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
+                 as dispatch_priority_display
+        from clinical.call_assignment ca
+        join app_identity.operational_unit ou on ou.organization_id=ca.organization_id and ou.id=ca.unit_id
+        join clinical.incident incident on incident.organization_id=ca.organization_id and incident.id=ca.incident_id
+        join app_identity.organization organization on organization.id=ca.organization_id
+        left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
+        where ca.organization_id = $2 and ou.active
+          and ((not ca.synthetic and not incident.synthetic and (ou.id=$4::uuid or ($6::boolean and exists(
+              select 1 from app_identity.unit_clinician uc where uc.user_id=$1
+              and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id))))
+            or (ca.synthetic and incident.synthetic and $5::boolean and exists(
+              select 1 from app_identity.unit_clinician uc where uc.user_id=$1
+              and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id)))
+          and ca.status in ('assigned', 'canceled')
+          and (ca.expires_at is null or ca.expires_at > $3)
+        order by ca.dispatched_at desc, ca.id
+      `, [current.user.id, current.organization.id, now,
+        ["ready", "identity-confirmation-required"].includes(productionAccess.state) ? productionAccess.unit!.id : null,
+        current.capabilities?.includes("clinical:demo") ?? false, productionAccess.state === "preparation"]);
+      const activeSettings = await manager.query<MediaSettingsRow[]>(`
+        select revision, report_media_allowance_bytes, image_media_limit_bytes from app_identity.agency_settings
+        where organization_id = $1
+      `, [current.organization.id]);
+      const policy = activeSettings[0];
 
-    return {
-      assignedCalls: rows.filter((row) => row.status === "assigned").map(assignedCall),
-      canceledAssignmentIds: rows.filter((row) => row.status === "canceled").map((row) => row.id),
-      refreshedAt: now.toISOString(),
-      mediaPolicy: {
-        reportMediaAllowanceBytes: Number(policy?.report_media_allowance_bytes ?? DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES),
-        imageMediaLimitBytes: Number(policy?.image_media_limit_bytes ?? DEFAULT_IMAGE_MEDIA_LIMIT_BYTES),
-        settingsRevision: Number(policy?.revision ?? 1),
-      },
-    };
+      return {
+        assignedCalls: rows.filter((row) => row.status === "assigned").map(assignedCall),
+        canceledAssignmentIds: rows.filter((row) => row.status === "canceled").map((row) => row.id),
+        refreshedAt: now.toISOString(),
+        productionAccess,
+        mediaPolicy: {
+          reportMediaAllowanceBytes: Number(policy?.report_media_allowance_bytes ?? DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES),
+          imageMediaLimitBytes: Number(policy?.image_media_limit_bytes ?? DEFAULT_IMAGE_MEDIA_LIMIT_BYTES),
+          settingsRevision: Number(policy?.revision ?? 1),
+        },
+      };
+    });
   }
 
   async syntheticGenerationContext(accessToken: string): Promise<SyntheticCallGenerationContext> {
@@ -331,10 +345,44 @@ export class AssignedCallsService {
     }
   }
 
-  async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
+  async cancelConfirmation(accessToken: string, csrfToken: string | undefined, token: string) {
+    return this.dataSource.transaction(async manager => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      await manager.query(`delete from app_identity.new_job_confirmation
+        where token_sha256=encode(sha256($1::bytea),'hex') and session_sha256=encode(sha256($2::bytea),'hex')`,
+        [Buffer.from(token), Buffer.from(accessToken)]);
+      return { canceled: true };
+    });
+  }
+
+  async prepareConfirmation(accessToken: string, csrfToken: string | undefined, target: string) {
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
+    return this.dataSource.transaction(async manager => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      const access = await productionJobAccess(manager, accessToken, session, this.schedules);
+      const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+      if (target.startsWith("assignment:")) {
+        const [assignment] = await manager.query(`select status,report_id,synthetic,unit_id from clinical.call_assignment
+          where id=$1 and organization_id=$2 and (expires_at is null or expires_at>clock_timestamp()) for share`,
+          [target.slice(11),current.organization.id]);
+        if (!assignment || assignment.status === "canceled") throw new NotFoundException("Assignment unavailable");
+        if (assignment.report_id || assignment.synthetic) return null;
+        if (access.unit && assignment.unit_id !== access.unit.id) throw new NotFoundException("Assignment unavailable");
+      }
+      return prepareNewJobConfirmation(manager, accessToken, current, this.schedules, target);
+    });
+  }
+
+  async open(accessToken: string, assignmentId: string, confirmationToken?: string): Promise<OpenAssignmentResponse> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     try {
       const opened = await this.dataSource.transaction(async (manager) => {
+        const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken });
+        const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+        // Synthetic fixtures also serialize unit deactivation before assignment locking.
+        await manager.query(`select u.id from app_identity.operational_unit u
+          join clinical.call_assignment ca on ca.unit_id=u.id and ca.organization_id=u.organization_id
+          where ca.id=$1 and ca.organization_id=$2 and ca.synthetic for share of u`, [assignmentId, current.organization.id]);
         const assignments = await manager.query<OpenableAssignmentRow[]>(`
           select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                  organization.deployment_timezone as agency_time_zone,
@@ -345,20 +393,37 @@ export class AssignedCallsService {
           join app_identity.operational_unit ou
             on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
           join app_identity.organization organization on organization.id = ca.organization_id
-          where ca.id = $1 and ca.organization_id = $2 and ou.active
-            and exists (
-              select 1 from app_identity.unit_clinician uc
-              where uc.organization_id = ca.organization_id and uc.unit_id = ca.unit_id
-                and uc.user_id = $3
-            ) and (ca.expires_at is null or ca.expires_at > clock_timestamp())
+          where ca.id = $1 and ca.organization_id = $2
+            and (ca.expires_at is null or ca.expires_at > clock_timestamp())
           for update of ca
-        `, [assignmentId, session.organization.id, session.user.id]);
+        `, [assignmentId, current.organization.id]);
         const assignment = assignments[0];
         if (!assignment) throw new NotFoundException(`Assignment ${assignmentId} was not found`);
         if (assignment.status === "canceled") throw new ConflictException("The assignment was canceled before it could be opened");
         if (assignment.status === "opened") {
           if (!assignment.report_id) throw new ConflictException("The opened assignment has no report");
           return { assignment, reportId: assignment.report_id, replacement: null };
+        }
+
+        if (assignment.synthetic) {
+          const [fixture] = await manager.query(`select 1 from app_identity.unit_clinician uc
+            join app_identity.operational_unit u on u.id=uc.unit_id and u.organization_id=uc.organization_id
+            join clinical.incident i on i.id=$4 and i.organization_id=uc.organization_id
+            where uc.user_id=$1 and uc.organization_id=$2 and uc.unit_id=$3 and u.active and i.synthetic`,
+            [current.user.id, current.organization.id, assignment.unit_id, assignment.incident_id]);
+          if (!current.capabilities?.includes("clinical:demo") || !fixture) throw new NotFoundException("Synthetic assignment is unavailable");
+        } else {
+          assertProductionJobAccess(productionAccess);
+          if (productionAccess.state === "preparation") {
+            const [legacy] = await manager.query(`select uc.unit_id from app_identity.unit_clinician uc
+              join app_identity.operational_unit u on u.id=uc.unit_id and u.organization_id=uc.organization_id
+              where uc.user_id=$1 and uc.organization_id=$2 and uc.unit_id=$3 and u.active for share of u`,
+              [current.user.id,current.organization.id,assignment.unit_id]);
+            if (!legacy) throw new NotFoundException("Assignment is unavailable in this clinician's assigned unit");
+          } else if (assignment.unit_id !== productionAccess.unit!.id) throw new NotFoundException("Assignment is unavailable in this enrolled unit");
+          const [incident] = await manager.query(`select id from clinical.incident where id=$1 and organization_id=$2 and not synthetic`,
+            [assignment.incident_id, current.organization.id]);
+          if (!incident) throw new NotFoundException("Production assignment is unavailable");
         }
 
         const versions = await manager.query<Array<{ id: string; catalog_release_id: string; validation_version_id: string;
@@ -369,7 +434,7 @@ export class AssignedCallsService {
           join forms.form_version fv on fv.id=active.form_version_id and fv.status='published'
           where active.organization_id = $1
           limit 1
-        `, [session.organization.id]);
+        `, [current.organization.id]);
         const version = versions[0];
         if (!version) throw new ConflictException("The agency Stationary default is unavailable");
 
@@ -377,37 +442,41 @@ export class AssignedCallsService {
           select id from app_identity.agency_demographic_version
           where organization_id = $1 and catalog_release_id = $2 and effective_from <= now()
           order by version desc limit 1
-        `, [session.organization.id, version.catalog_release_id]);
+        `, [current.organization.id, version.catalog_release_id]);
         const agencyVersion = agencyVersions[0];
         if (!agencyVersion) throw new ConflictException("No compatible agency demographics are available");
 
         const patientId = randomUUID();
         const reportId = randomUUID();
         const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
-        const patientKey = derivePatientKey(patientKeyConfig, session.organization.id, patientId);
+        const patientKey = derivePatientKey(patientKeyConfig, current.organization.id, patientId);
         await manager.query(`
           insert into clinical.patient
             (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
           values ($1, $2, 'unknown', $3, $4)
-        `, [patientId, session.organization.id, patientKey, patientKeyConfig.keyVersion]);
+        `, [patientId, current.organization.id, patientKey, patientKeyConfig.keyVersion]);
+        if (!assignment.synthetic) {
+          assertProductionJobAccess(await productionJobAccess(manager, accessToken, current, this.schedules,
+            { target: `assignment:${assignmentId}`, token: confirmationToken, consume: true }));
+        }
         await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
              form_version_id, catalog_release_id, documenting_user_id, validation_version_id, synthetic,
              synthetic_generated_by, synthetic_source_assignment_id,form_definition_sha256,
              catalog_artifact_sha256,validation_compiled_sha256)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12, $13, $14)
-        `, [reportId, session.organization.id, assignment.incident_id, patientId, agencyVersion.id,
-          version.id, version.catalog_release_id, session.user.id, version.validation_version_id,
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $15, $10, $11, $12, $13, $14)
+        `, [reportId, current.organization.id, assignment.incident_id, patientId, agencyVersion.id,
+          version.id, version.catalog_release_id, current.user.id, version.validation_version_id,
           assignment.synthetic_generated_by, assignment.synthetic_generated_by ? assignment.id : null,
-          version.form_definition_sha256,version.catalog_artifact_sha256,version.validation_compiled_sha256]);
+          version.form_definition_sha256,version.catalog_artifact_sha256,version.validation_compiled_sha256,assignment.synthetic]);
         const receipts = assignment.dispatch_receipt_id
           ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
               select source_payload from clinical.dispatch_receipt
               where id = $1 and organization_id = $2
-            `, [assignment.dispatch_receipt_id, session.organization.id])
+            `, [assignment.dispatch_receipt_id, current.organization.id])
           : [];
-        await seedDispatchEncounter(manager, reportId, version.catalog_release_id, session.user.id,
+        await seedDispatchEncounter(manager, reportId, version.catalog_release_id, current.user.id,
           receipts[0]?.source_payload ?? null, await nextPcrNumber(manager));
         await manager.query(`
           update clinical.call_assignment

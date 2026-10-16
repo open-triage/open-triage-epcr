@@ -102,7 +102,7 @@ test("an administrator may add Clinician when Administrator includes clinical pe
   assert.deepEqual(result.addedRoles.map(({ id }) => id), [roleA]);
 });
 
-test("Administrator and Demo changes require the owner and recent reauthentication", async () => {
+test("Administrator and Demo changes require the owner without extra reauthentication", async () => {
   const administrator = { id: roleB, display_name: "Administrator", active: true, protected: true,
     assignable: true, system_key: "administrator", capability_key: "roles:assign" };
   const delegate = setup({ currentRoleIds: [], roleRows: [administrator], actorCapabilities: ["roles:assign"] });
@@ -110,12 +110,11 @@ test("Administrator and Demo changes require the owner and recent reauthenticati
     { expectedRevision: 7, roleIds: [roleB] }), /Only the installation owner/);
 
   const staleOwner = setup({ currentRoleIds: [], roleRows: [administrator], actorOwner: true, recent: false });
-  await assert.rejects(staleOwner.service.replace("opaque-session", targetId,
-    { expectedRevision: 7, roleIds: [roleB] }), /Recent password reauthentication/);
+  await staleOwner.service.replace("opaque-session", targetId,{expectedRevision:7,roleIds:[roleB]});
 
   const owner = setup({ currentRoleIds: [], roleRows: [administrator], actorOwner: true });
   await owner.service.replace("opaque-session", targetId, { expectedRevision: 7, roleIds: [roleB] });
-  assert.equal(owner.events.filter(({ sql }) => sql === "require recent reauthentication").length, 1);
+  assert.equal(owner.events.filter(({ sql }) => sql === "require recent reauthentication").length, 0);
 });
 
 test("self-service, owner targets, stale revisions, and inactive desired roles fail before writes", async () => {

@@ -593,7 +593,30 @@ export interface StartReviewRetrospectiveCommand {
   expectedRevision: string;
 }
 
+export interface ProductionWorkflowRollout {
+  groupId: string;
+  state: "preparation" | "enabled";
+  revision: number;
+  enabledAt: string | null;
+}
+export interface ProductionWorkflowReadiness extends ProductionWorkflowRollout {
+  canEnable: boolean;
+  providerReady: boolean;
+  totalUnits: number;
+  offset: number;
+  missingSchedules: number;
+  unenrolledUnits: number;
+  units: Array<{ id: string; organizationId: string; agencyName: string; callSign: string;
+    scheduleSelected: boolean; enrolled: boolean }>;
+}
 export interface ClinicianSession {
+  /** Live rollout state; it never advances personal proof or fixed deadlines. */
+  productionWorkflow?: ProductionWorkflowRollout;
+  authenticationSource?: "local" | "oidc";
+  /** Live group policy for the next required proof, distinct from issuance provenance. */
+  nextAuthenticationSource?: "local" | "oidc";
+  personallyAuthenticatedAt?: string;
+  personalAuthenticationPurpose?: "login" | "switch" | "reauthenticate";
   /** Installation authority is separate from ordinary agency roles. */
   installationOwner?: boolean;
   installationSuperadmin?: boolean;
@@ -711,7 +734,10 @@ export interface CheckpointProtectedReportCommand {
   ciphertextSha256: string;
 }
 
-export type RecordProtectedCiphertextCommand = CheckpointProtectedReportCommand;
+export type RecordProtectedCiphertextCommand = CheckpointProtectedReportCommand & {
+  /** A recovered browser's first server snapshot preserves the existing key deadline. */
+  preserveRecoveryDeadline?: true;
+};
 
 export interface ProtectedReportCheckpoint {
   ciphertextRevision: number;
@@ -826,6 +852,7 @@ export interface AgencyMediaSettings {
   /** Hours after server creation; null disables automatic demo-record deletion. */
   syntheticRetentionHours: number | null;
   authenticationLimits: AgencyAuthenticationLimits;
+  authenticationPolicy?: GroupAuthenticationPolicy;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -847,6 +874,7 @@ export interface UpdateAgencyMediaSettingsCommand {
   syntheticRetentionHours?: number | null;
   /** Omitted preserves the current password-attempt limits. */
   authenticationLimits?: AgencyAuthenticationLimits;
+  authenticationPolicy?: Omit<GroupAuthenticationPolicy,"groupId"|"revision"> & {expectedRevision:number};
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -920,7 +948,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
+export type AdminPanelKey = "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -936,16 +964,41 @@ export interface AdminAssignableRoleSummary extends AdminRoleSummary {
   assignmentMutable: boolean;
 }
 
+export interface AdminExternalIdentitySummary {
+  id: string;
+  providerId: string;
+  revision: number;
+  reviewRevision: number;
+  issuer: string;
+  subject: string;
+  displayName: string | null;
+  email: string | null;
+  /** Optional provider profile hint; never an identity key or local credential. */
+  username?: string | null;
+  createdAt: string;
+  status: "pending" | "denied" | "linked";
+  linkedUserId: string | null;
+  deniedAt: string | null;
+  reviewProviders?: Array<{ source: "draft" | "active"; revision: number }>;
+}
+
 export interface AdminUserSummary {
   id: string;
   displayName: string;
-  username: string;
+  /** Null when this account has no local password credential. */
+  username: string | null;
+  /** Username supplied by an approved linked SSO identity, if available. */
+  ssoUsername?: string | null;
+  /** Whether an approved external identity is currently linked to this user. */
+  ssoLinked?: boolean;
   active: boolean;
   revision: number;
   /** True only for the installation's current accountable owner. */
   owner?: boolean;
   superadmin?: boolean;
   roles: AdminRoleSummary[];
+  /** An unapproved directory entry; its id is a request id, never an application user id. */
+  externalIdentity?: AdminExternalIdentitySummary;
 }
 
 export interface AdminUserPage {
@@ -975,7 +1028,7 @@ export interface ProvisionedAdminUser {
 
 export interface UpdateAdminUserCommand {
   expectedRevision: number;
-  username: string;
+  username: string | null;
   displayName: string;
   active: boolean;
   note?: string;
@@ -1178,6 +1231,8 @@ export interface UpdatedAdminUserRoles extends AdminUserSummary {
 
 export interface ReauthenticateCommand {
   currentPassword: string;
+  /** Forces a new purpose-bound proof; never grants job authority. */
+  forcePersonalAuthentication?: true;
 }
 
 export interface ReauthenticationResult {
@@ -1610,6 +1665,20 @@ export interface AssignedCallsResponse {
   refreshedAt: string;
   /** Present on live API responses; optional only for pre-feature cached/static fixtures. */
   mediaPolicy?: ReportMediaPolicy;
+  /** Authoritative production-job readiness; synthetic fixtures remain independent. */
+  productionAccess?: ProductionJobAccess;
+}
+
+export interface ProductionJobAccess {
+  state: "preparation" | "ready" | "enrollment-required" | "agency-mismatch" | "schedule-required" | "handover-required" | "reauthentication-required" | "identity-confirmation-required" | "synthetic-only";
+  unit?: { id: string; callSign: string; name: string; organizationId: string };
+}
+
+/** Opaque one-use reminder; this is never authentication evidence. */
+export interface NewJobConfirmation {
+  token: string;
+  clinicianName: string;
+  unit: { id: string; callSign: string; name: string; organizationId: string };
 }
 
 export interface ClinicalDemoUnit {
@@ -2013,3 +2082,25 @@ export type EncounterDocument = {
 export * from "./analytics.js";
 
 export * from "./metrics.js";
+
+/** One local authentication policy is owned by a root agency and inherited by children. */
+export type GroupAuthenticationPolicy = {
+  groupId: string; revision: number; maximumSessionHours: number; temporaryPasswordHours: number;
+  accountAttemptsPer15Minutes: number; networkAttemptsPer5Minutes: number;
+};
+export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
+  groupName: string; organizationId: string; inherited: boolean; minimumPasswordLength: 12; mode: "local" | "oidc";
+  history: Array<{ actorId: string; displayName: string | null; occurredAt: string;
+    details: { prior?: GroupAuthenticationPolicy; policy?: GroupAuthenticationPolicy } }>;
+};
+/** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
+export interface OperationalUnitSummary {
+  id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;
+  /** Live prerequisites for ordinary work; absent in older static fixtures. */
+  scheduleSelected?: boolean;
+  enrolled?: boolean;
+}
+export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCursor: string | null; }
+export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }
+
+export * from "./schedules.js";

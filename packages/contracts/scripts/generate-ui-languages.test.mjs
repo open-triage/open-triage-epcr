@@ -35,3 +35,40 @@ test("language discovery requires English fallback and valid dictionaries", asyn
   await writeFile(path.join(directory, "bad name.json"), "{}");
   assert.deepEqual(await discoverUiLanguages(directory), ["en"]);
 });
+
+test("build discovery rejects malformed admin and capture keys before writing manifests", async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), "ui-languages-keys-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, "en.json"), JSON.stringify({
+    "admin.authenticationMaximumSessionHours": "Hours", "admin.capability.settings:read": "Read settings",
+    "noteUi.capture.microphoneDenied": "Microphone denied", "login.organizationDenied": "Denied",
+  }));
+  assert.deepEqual(await discoverUiLanguages(directory), ["en"]);
+  const outputs = [path.join(directory, "contracts.ts"), path.join(directory, "web.ts")];
+  for (const key of ["admin.authenticationField.maximumSessionHours", "admin.123", "noteUi.capture.error.code", "noteUi.capture.123"]) {
+    await writeFile(path.join(directory, "sv.json"), JSON.stringify({ [key]: "Translation" }));
+    await assert.rejects(generateUiLanguages({ directory, outputs }), /Invalid message dictionary: sv.json/);
+    await assert.rejects(readFile(outputs[0]), { code: "ENOENT" });
+    await assert.rejects(readFile(outputs[1]), { code: "ENOENT" });
+  }
+});
+
+test("production message dictionaries have unique top-level keys", async () => {
+  for (const language of await discoverUiLanguages()) {
+    const source = await readFile(new URL(`../../../apps/web/messages/${language}.json`, import.meta.url), "utf8");
+    const tokens = [...source.matchAll(/"(?:\\.|[^"\\])*"|[{}\[\]:,]/g)].map(match => match[0]);
+    const keys = new Set();
+    let depth = 0;
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index];
+      if (depth === 1 && token.startsWith('"') && tokens[index + 1] === ":") {
+        const key = JSON.parse(token);
+        assert.equal(keys.has(key), false, `${language}: duplicate message key ${key}`);
+        keys.add(key);
+      }
+      if (token === "{" || token === "[") depth++;
+      if (token === "}" || token === "]") depth--;
+    }
+    assert.equal(keys.size, Object.keys(JSON.parse(source)).length);
+  }
+});

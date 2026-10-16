@@ -142,6 +142,7 @@ export async function routeDispatchAssignment(
   const units = await writer.query<Array<{ id: string }>>(`
     select id from app_identity.operational_unit
     where organization_id = $1 and call_sign = $2 and active
+    for share
   `, [input.organizationId, projection.callSign]);
   const unit = units[0];
 
@@ -173,7 +174,7 @@ export async function routeDispatchAssignment(
     for update of ca
   `, [input.organizationId, input.sourceId, projection.sourceRecordId]);
   const existing = existingRows[0];
-  if (existing && (existing.call_sign !== projection.callSign || existing.response_number !== projection.responseNumber)) {
+  if (existing && (existing.unit_id !== unit.id || existing.response_number !== projection.responseNumber)) {
     throw new TypeError("Dispatch reassignment requires cancellation and a new sourceRecordId with a new response number");
   }
 

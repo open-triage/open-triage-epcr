@@ -28,7 +28,7 @@ export function requestNetworkSource(request: RequestLike): string | undefined {
   return address?.startsWith("::ffff:") ? address.slice(7) : address;
 }
 
-function cookieOptions(expiresAt?: string): Record<string, unknown> {
+export function cookieOptions(expiresAt?: string): Record<string, unknown> {
   return { httpOnly: true, secure: true, sameSite: "strict", path: "/api", ...(expiresAt ? { expires: new Date(expiresAt) } : {}) };
 }
 
@@ -43,7 +43,7 @@ export class ClinicianSessionController {
   @Post()
   async create(@Req() request: RequestLike, @Body() body: unknown, @Res({ passthrough: true }) response: SessionCookieResponse,
     @Headers("user-agent") userAgent?: string): Promise<AuthenticatedSession> {
-    const created = await this.sessions.create(validateCreateClinicianSession(body), new Date(), userAgent,
+    const created = await this.sessions.create(validateCreateClinicianSession(body), undefined, userAgent,
       requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
@@ -70,13 +70,13 @@ export class ClinicianSessionController {
     @Headers("authorization") authorization?: string
   ): Promise<AuthenticatedSession> {
     const created = await this.sessions.changePassword(sessionToken(request, authorization), validateChangePassword(body),
-      new Date(), request.headers["user-agent"], requestNetworkSource(request));
+      undefined, request.headers["user-agent"], requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
   }
 
-  @Post("reauthenticate")
-  @HttpCode(200)
+  // The common HTTP reauthentication endpoint is owned by AuthenticationModule,
+  // which routes by the session's trusted source. This local helper remains local.
   reauthenticate(
     @Req() request: RequestLike, @Body() body: unknown,
     @Headers("x-csrf-token") csrfToken: string | undefined,
@@ -84,7 +84,7 @@ export class ClinicianSessionController {
   ): Promise<ReauthenticationResult> {
     const command = validateReauthenticate(body);
     return this.sessions.reauthenticate(sessionToken(request, authorization), csrfToken, command.currentPassword,
-      new Date(), requestNetworkSource(request));
+      undefined, requestNetworkSource(request));
   }
 
   @Delete("current")

@@ -1,3 +1,5 @@
+import { SchedulesModule } from "./schedules/schedules.module.js";
+import { AuthenticationModule } from "./authentication/authentication.module.js";
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "./database/database.module.js";
 import { HealthController } from "./health.controller.js";
@@ -11,7 +13,7 @@ import { FeedbackModule } from "./feedback/feedback.module.js";
 import { ReviewModule } from "./review/review.module.js";
 
 @Module({
-  imports: [DatabaseModule, FormsModule, ReportsModule, SessionsModule, CallsModule, AdminModule, FeedbackModule, ReviewModule],
+  imports: [SchedulesModule, AuthenticationModule, DatabaseModule, FormsModule, ReportsModule, SessionsModule, CallsModule, AdminModule, FeedbackModule, ReviewModule],
   controllers: [HealthController, InstallationController]
 })
 export class AppModule {}

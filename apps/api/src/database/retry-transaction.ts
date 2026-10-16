@@ -1,5 +1,5 @@
 /** Retry only fully rolled-back transactions, preserving command identity and authorization checks. */
-export async function retryMediaTransaction<T>(transaction: () => Promise<T>): Promise<T> {
+export async function retryTransaction<T>(transaction: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await transaction();

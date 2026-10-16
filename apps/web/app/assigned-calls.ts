@@ -1,6 +1,9 @@
-import { platformRequestError } from "./platform-errors";
+import type { ConfirmNewJob } from "../components/new-job-confirmation";
+import { PlatformRequestError, platformErrorMessage, platformRequestError } from "./platform-errors";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "./installation-transition-generation";
 import type {
   AssignedCall,
+  NewJobConfirmation,
   AssignedCallsResponse,
   DispatchConflict,
   DispatchConflictDisposition,
@@ -19,19 +22,72 @@ import {
 
 export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
 
+function newJobConnectionError(): PlatformRequestError {
+  const code = "calls.newJobConnectionRequired";
+  return new PlatformRequestError(code, 0, platformErrorMessage({ code }, 0));
+}
+
+/** Normalize native fetch failures without hiding authorization, cancellation or context barriers. */
+async function newJobResponse(request: () => Promise<Response>): Promise<Response> {
+  try { return await request(); }
+  catch (error) {
+    if (error instanceof TypeError) throw newJobConnectionError();
+    throw error;
+  }
+}
+
+async function confirmedJobRequest(target: string, csrfToken: string, request: (token?: string) => Promise<Response>, confirm?: ConfirmNewJob): Promise<Response> {
+  const generation = authenticationInstallationGeneration();
+  let token: string | undefined;
+  for (;;) {
+    assertAuthenticationInstallationGeneration(generation);
+    const response = await newJobResponse(() => request(token));
+    assertAuthenticationInstallationGeneration(generation);
+    if (response.ok) return response;
+    const error = await platformRequestError(response);
+    if (!(error instanceof PlatformRequestError) || error.code !== "calls.identityConfirmationRequired" || !confirm) throw error;
+    const url = apiRequestUrl("/api/calls/new-job-confirmations");
+    if (!url) throw error;
+    const prepared = await newJobResponse(() => fetch(url, browserRequestInit({ method: "POST", headers: {
+      "content-type": "application/json", "x-csrf-token": csrfToken,
+    }, body: JSON.stringify({ target }) })));
+    assertAuthenticationInstallationGeneration(generation);
+    if (!prepared.ok) throw await platformRequestError(prepared);
+    const reminder = await prepared.json() as NewJobConfirmation | null;
+    assertAuthenticationInstallationGeneration(generation);
+    // A crossed checkpoint is reassessed by the server; an absent reminder grants no proof.
+    try { token = reminder ? await confirm(reminder) : undefined; }
+    catch (error) {
+      if (reminder) {
+        // Cancel this attempt. A concurrent user/storage switch independently revokes its session.
+        try { await fetch(url, browserRequestInit({ method: "DELETE", headers: {
+          "content-type": "application/json", "x-csrf-token": csrfToken,
+        }, body: JSON.stringify({ token: reminder.token }) })); } catch { /* Session/context revocation still fails closed. */ }
+      }
+      throw error;
+    }
+    assertAuthenticationInstallationGeneration(generation);
+  }
+}
+
 /** Create a patient report against the installation's active form. */
-export async function createNewPatientReport(session: import("@open-triage/contracts").ClinicianSession): Promise<ReopenOpenCallResponse> {
+export async function createNewPatientReport(session: import("@open-triage/contracts").ClinicianSession, confirm?: ConfirmNewJob): Promise<ReopenOpenCallResponse> {
+  const generation = authenticationInstallationGeneration();
   const url = apiRequestUrl("/api/reports");
-  if (!url) throw new Error("Creating a patient report requires a live connection.");
-  const response = await fetch(url, browserRequestInit({ method: "POST",
-    headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
-    body: JSON.stringify({ commandId: crypto.randomUUID(), reportId: crypto.randomUUID(), incidentId: crypto.randomUUID(),
-      patientId: crypto.randomUUID(), organizationId: session.organization.id, documentingUserId: session.user.id,
+  if (!url) throw newJobConnectionError();
+  const commandId = crypto.randomUUID(), reportId = crypto.randomUUID(), incidentId = crypto.randomUUID(), patientId = crypto.randomUUID();
+  const response = await confirmedJobRequest(`command:${commandId}`, session.csrfToken ?? session.accessToken ?? "", token => fetch(url, browserRequestInit({ method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "", ...(token ? { "x-job-confirmation": token } : {}) },
+    body: JSON.stringify({ commandId, reportId, incidentId,
+      patientId, organizationId: session.organization.id, documentingUserId: session.user.id,
       patientIdentityState: "unknown" }),
-  }));
+  })), confirm);
   if (!response.ok) throw await platformRequestError(response);
   const created = await response.json() as { id: string };
-  return reopenOpenCall(session.csrfToken ?? session.accessToken ?? "", created.id);
+  assertAuthenticationInstallationGeneration(generation);
+  const opened = await reopenOpenCall(session.csrfToken ?? session.accessToken ?? "", created.id);
+  assertAuthenticationInstallationGeneration(generation);
+  return opened;
 }
 
 
@@ -84,9 +140,13 @@ export function assignedCallsUrl(): string {
 }
 
 export async function fetchAssignedCalls(): Promise<AssignedCallsResponse> {
+  const generation = authenticationInstallationGeneration();
   const response = await fetch(assignedCallsUrl(), browserRequestInit());
+  assertAuthenticationInstallationGeneration(generation);
   if (!response.ok) throw await platformRequestError(response);
-  return response.json() as Promise<AssignedCallsResponse>;
+  const result = await response.json() as AssignedCallsResponse;
+  assertAuthenticationInstallationGeneration(generation);
+  return result;
 }
 
 export function openAssignmentUrl(assignmentId: string): string {
@@ -97,19 +157,17 @@ export function staticOpenAssignmentUrl(): string {
   return `${browserRequestConfiguration().basePath}/demo-open-assignment.json`;
 }
 
-export async function openAssignedCall(csrfToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
-  let response: Response;
-  try {
-    const staticExport = browserRequestConfiguration().mode === "static";
-    response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), browserRequestInit({
-      method: staticExport ? "GET" : "POST",
-      headers: staticExport ? {} : { "x-csrf-token": csrfToken }
-    }));
-  } catch {
-    throw new Error("The call could not be opened. Check your connection and try again.");
-  }
+export async function openAssignedCall(csrfToken: string, assignmentId: string, confirm?: ConfirmNewJob): Promise<OpenAssignmentResponse> {
+  const generation = authenticationInstallationGeneration();
+  const staticExport = browserRequestConfiguration().mode === "static";
+  const response = await confirmedJobRequest(`assignment:${assignmentId}`, csrfToken, token => fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), browserRequestInit({
+    method: staticExport ? "GET" : "POST",
+    headers: staticExport ? {} : { "x-csrf-token": csrfToken, ...(token ? { "x-job-confirmation": token } : {}) }
+  })), confirm);
+  assertAuthenticationInstallationGeneration(generation);
   if (!response.ok) throw await platformRequestError(response);
   const opened = await response.json() as OpenAssignmentResponse;
+  assertAuthenticationInstallationGeneration(generation);
   if (opened.assignmentId !== assignmentId) throw new Error("The static demo fixture does not match the selected assignment.");
   return opened;
 }

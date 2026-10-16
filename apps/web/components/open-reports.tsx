@@ -1,4 +1,7 @@
 "use client";
+import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
+import { useReturnFocus } from "./use-return-focus";
+import { PersonalAuthenticationField } from "./personal-authentication";
 
 import type {
   ClinicianSession,
@@ -7,7 +10,7 @@ import type {
 } from "@open-triage/contracts";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
-import { CLINICIAN_REAUTHENTICATED_EVENT, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { CLINICIAN_REAUTHENTICATED_EVENT, PersonalAuthenticationRedirect, reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
@@ -68,13 +71,18 @@ export function OpenReports({
   readonly onSessionEnded?: () => void;
   readonly refreshRequest?: number;
 }) {
+  const confirmNewJob = useNewJobConfirmation();
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [returningFocus,setReturningFocus]=useState(false);
+  const creationTrigger=useRef<HTMLButtonElement|null>(null);
   const [creating, setCreating] = useState(false);
+  useReturnFocus(creating,false,()=>returningFocus?creationTrigger.current:null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
+  const [recoveryPassword, setRecoveryPassword] = useState("");
   const [reauthenticating, setReauthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
@@ -265,18 +273,20 @@ export function OpenReports({
     event.preventDefault();
     setReauthenticating(true);
     setError(null);
-    const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
+    const password = recoveryPassword;
+    setRecoveryPassword("");
     try {
       await reauthenticateClinicianSession(password, csrfToken);
       recoveryReauthentication.current.reauthenticated();
       setReauthenticationId(null);
       await reopen(report);
     } catch (reauthenticationError) {
+      if (reauthenticationError instanceof PersonalAuthenticationRedirect) return;
       setError(reauthenticationError instanceof Error ? reauthenticationError.message : t("reports.reauthFailed"));
     } finally {
       setReauthenticating(false);
     }
-  }, [csrfToken, reopen, t]);
+  }, [csrfToken, recoveryPassword, reopen, t]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -300,16 +310,18 @@ export function OpenReports({
           <h1 id="open-reports-title">{t("reports.openReports")}</h1>
         </div>
         <button type="button" disabled={creating || reopeningId !== null || paused || Boolean(activeReportId)}
-          onClick={() => { void (async () => {
+          onClick={event => { creationTrigger.current=event.currentTarget;setReturningFocus(false);void (async () => {
             setCreating(true); setError(null);
             try {
-              const opened = await createNewPatientReport(session);
+              const opened = await createNewPatientReport(session, confirmNewJob);
               await prepareProtectedReport(csrfToken, opened.report.id, (payload) =>
                 restoreRecoveredReport(window.localStorage, session.user.id, opened.report.id, payload));
               await onReopened?.(opened);
               await refresh();
             } catch (reason) {
+              if (reason instanceof NewJobCanceledError) {setReturningFocus(reason.restoreFocus);return;}
               setError(reason instanceof Error ? reason.message : t("reports.refreshFailed"));
+              setReturningFocus(true);
             } finally { setCreating(false); }
           })(); }}>
           {creating ? t("reports.creatingPatient") : t("reports.newPatient")}
@@ -342,8 +354,7 @@ export function OpenReports({
               {reauthenticationId === report.reportId && <form className="report-reauthentication"
                 onSubmit={(event) => void reauthenticateAndReopen(event, report)}>
                 <p>{t("reports.reauthHelp")}</p>
-                <label>{t("reports.currentPassword")}<input name="currentPassword" type="password"
-                  autoComplete="current-password" required /></label>
+                <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />
                 <button type="submit" disabled={reauthenticating}>
                   {reauthenticating ? t("reports.confirming") : t("reports.confirmRecover")}
                 </button>

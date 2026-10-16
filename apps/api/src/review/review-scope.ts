@@ -16,6 +16,13 @@ export type ReviewScope = Readonly<{
 /** Shared, request-time authorization boundary for Review reads and commands. */
 export function reviewScope(session: ClinicianSession): ReviewScope {
   const capabilities = new Set(session.capabilities ?? []);
+  // Defense in depth for sessions carrying broad capabilities: installation
+  // authority must never widen a clinician's patient-data scope.
+  if (session.installationOwner || session.installationSuperadmin) {
+    capabilities.delete("review:all");
+    capabilities.delete("review:admin");
+    capabilities.delete("review:identifying");
+  }
   const reports = capabilities.has("review:all") ? "all" : capabilities.has("review:self") ? "own" : null;
   if (!reports) throw new ForbiddenException("Review report access is required");
   return {

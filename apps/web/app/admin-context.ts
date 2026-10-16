@@ -134,7 +134,7 @@ export const updateAgencyMediaSettings = (csrfToken: string, command: UpdateAgen
 
 export type AdminUserQuery = {
   search?: string;
-  state?: "active" | "disabled" | "all";
+  state?: "active" | "disabled" | "all" | "pending" | "denied";
   roleId?: string;
   cursor?: string;
   limit?: number;
@@ -186,6 +186,10 @@ export const replaceAdminUserRoles = (csrfToken: string, userId: string, command
 export const loadAdminUserSessions = (userId: string) =>
   catalogRequest<AdminSessionList>(`users/${userId}/sessions`);
 
+export const unlinkAdminUserSso = (csrfToken:string,userId:string,expectedRevision:number) =>
+  catalogRequest<{userId:string;unlinked:true;identitiesUnlinked:number;sessionsRevoked:number}>(`users/${userId}/sso/unlink`,csrfToken,
+    {method:"POST",body:JSON.stringify({expectedRevision})});
+
 export const revokeAdminUserSession = (csrfToken: string, userId: string, sessionId: string,
   confirmOwner = false) => catalogRequest<RevokedAdminSession>(`users/${userId}/sessions/${sessionId}`, csrfToken,
   { method: "DELETE", body: JSON.stringify(confirmOwner ? { confirmOwner: true } : {}) });
@@ -216,3 +220,25 @@ export const importCanonicalDefinitionFile = (csrfToken: string, kind: string, f
   catalogRequest<{ id: string }>(`canonical/${kind}/import-file`, csrfToken, {
     method: "POST", body: JSON.stringify({ file, catalogReleaseId })
   });
+
+export const loadOperationalUnits = (cursor?: string) => catalogRequest<import("@open-triage/contracts").OperationalUnitPage>(`units${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+export const saveOperationalUnit = (csrfToken: string, id: string | null, command: import("@open-triage/contracts").SaveOperationalUnitCommand) =>
+  catalogRequest<import("@open-triage/contracts").OperationalUnitSummary>(id ? `units/${id}` : "units", csrfToken,
+    { method: id ? "PUT" : "POST", body: JSON.stringify(command) });
+
+export const issueUnitEnrollment=(csrfToken:string,id:string)=>catalogRequest<{token:string;origin:string;expiresAt:string}>(`units/${id}/enrollment`,csrfToken,{method:"POST"});
+export const loadUnitInstallations=(id:string,cursor?:string)=>catalogRequest<{items:import("./installation-enrollment").InstallationSummary[];nextCursor:string|null}>(`units/${id}/installations${cursor?`?cursor=${encodeURIComponent(cursor)}`:""}`);
+
+export const loadWeeklySchedules = () => catalogRequest<{items:import("@open-triage/contracts").WeeklySchedule[]}>("schedules");
+export const saveWeeklySchedule = (csrfToken:string,id:string|null,body:import("@open-triage/contracts").SaveWeeklySchedule) =>
+  catalogRequest<import("@open-triage/contracts").WeeklySchedule>(id?`schedules/${id}`:"schedules",csrfToken,{method:id?"PUT":"POST",body:JSON.stringify(body)});
+export const loadUnitSchedule = (id:string) => catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`);
+export const selectUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number,previewToken:string) =>
+  catalogRequest<import("@open-triage/contracts").UnitSchedulePreview>(`units/${id}/schedule`,csrfToken,{method:"PUT",body:JSON.stringify({scheduleId,expectedRevision,previewToken})});
+
+export const previewWeeklySchedule = (csrfToken:string,id:string|null,body:import("@open-triage/contracts").SaveWeeklySchedule) =>
+  catalogRequest<import("@open-triage/contracts").ScheduleChangePreview>(id?`schedules/${id}/preview`:"schedules/preview",csrfToken,{method:"POST",body:JSON.stringify(body)});
+export const previewUnitSchedule = (csrfToken:string,id:string,scheduleId:string|null,expectedRevision:number) =>
+  catalogRequest<import("@open-triage/contracts").ScheduleChangePreview>(`units/${id}/schedule/preview`,csrfToken,{method:"POST",body:JSON.stringify({scheduleId,expectedRevision})});
+
+export const revokeUnitInstallation=(csrfToken:string,unitId:string,id:string)=>catalogRequest<{revoked:true;sessionsRevoked:number}>(`units/${unitId}/installations/${id}/revoke`,csrfToken,{method:"POST"});

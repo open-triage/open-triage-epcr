@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { nextMigrationVersion } from "./migration-version.mjs";
 import { catalogArtifactSha256 } from "./catalog-artifact-sha256.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -337,7 +338,7 @@ if (checkOnly) {
   const previousArtifact = committedOutput ? JSON.parse(committedOutput) : null;
   const sequence = (state?.sequence ?? 0) + 1;
   if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("Invalid analytics migration sequence");
-  const version = (30000000000000n + BigInt(sequence)).toString();
+  const version = nextMigrationVersion(await readdir(migrationsDirectory));
   const migrationName = `${version}_nemsis_analytics_${mappingSha256.slice(0, 12)}.sql`;
   const migrationPath = path.join(migrationsDirectory, migrationName);
   const migration = renderForwardMigration(previousArtifact, mappingSha256);

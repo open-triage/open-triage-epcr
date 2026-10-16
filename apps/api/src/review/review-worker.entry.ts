@@ -1,3 +1,4 @@
+import "@open-triage/contracts/runtime-node/check";
 import 'dotenv/config';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';

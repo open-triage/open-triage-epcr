@@ -9,6 +9,7 @@ import { useDebouncedValue } from "./use-debounced-value";
 import { useVisiblePolling } from "./use-visible-polling";
 import { useAvailableHeight } from "./use-available-height";
 import { activateListRow } from "./list-row-action";
+import { reviewAccess } from "../app/review-access";
 import { listAccessRemoved } from "../app/list-refresh";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { ReviewCriterionHelp } from "./review-criterion-help";
@@ -32,7 +33,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   onAttentionRefresh: (dataset: "real" | "synthetic") => void;
 }) {
   const dataset = callWindow?.dataset ?? (session.capabilities?.includes("clinical:demo") ? "synthetic" : "real");
-  const administrator = session.capabilities?.includes("review:admin") ?? false;
+  const { all: allReports, administrator } = reviewAccess(session);
   const queueCard = useAvailableHeight<HTMLElement>(64);
   const queueScroll = useRef<HTMLDivElement>(null);
   const queuePosition = useRef({ x: 0, y: 0, tableX: 0, tableY: 0, cardY: 0 });
@@ -508,28 +509,28 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         <div id="review-advanced-filters" className="review-controls" hidden={!moreFilters}>
           <label>{t("review.criterion")} <select value={criterion} onChange={(event) => { setCriterion(event.target.value); setQueuePage(1); }}>
             <option value="">{t("review.all")}</option>
-            {(routes ?? [...new Map((queue?.items ?? []).filter((item) => item.kind !== "overdue-unsigned").map((item) => [item.criterionId, { criterionId: item.criterionId, name: criterionLabel(item) }])).values()]).map((route) => <option key={route.criterionId} value={route.criterionId}>{route.name}</option>)}
+            {((administrator ? routes : null) ?? [...new Map((queue?.items ?? []).filter((item) => item.kind !== "overdue-unsigned").map((item) => [item.criterionId, { criterionId: item.criterionId, name: criterionLabel(item) }])).values()]).map((route) => <option key={route.criterionId} value={route.criterionId}>{route.name}</option>)}
           </select></label>
           <label>{t("review.from")} <input type="date" value={queueFrom} onChange={(event) => { setQueueFrom(event.target.value); setQueuePage(1); }} /></label>
           <label>{t("review.to")} <input type="date" value={queueTo} onChange={(event) => { setQueueTo(event.target.value); setQueuePage(1); }} /></label>
         </div>
         {queue && !queueScopeCurrent && !queueError && <p role="status">{t("list.refreshRetained")}</p>}
         {queueError && <p role="alert">{t("review.queueUnavailable")}{queue && ` ${t("list.refreshRetained")}`}</p>}
-        {(queueError || reviewersError) && <button type="button" onClick={() => setRefresh((value) => value + 1)}>{t("list.retry")}</button>}
-        {reviewersError && <p role="alert">{t("review.routingUnavailable")}{reviewers.length > 0 && ` ${t("list.refreshRetained")}`}</p>}
+        {(queueError || (administrator && reviewersError)) && <button type="button" onClick={() => setRefresh((value) => value + 1)}>{t("list.retry")}</button>}
+        {administrator && reviewersError && <p role="alert">{t("review.routingUnavailable")}{reviewers.length > 0 && ` ${t("list.refreshRetained")}`}</p>}
         {claimError && <p role="alert">{t(claimError === "conflict" ? "review.claimConflict" : "review.claimUnavailable")}</p>}
         {workflowError && <p role="alert">{t(workflowError === "conflict" ? "review.workflowConflict" : "review.workflowUnavailable")}</p>}
         {queue && <><p>{t("review.queueCount", { count: queue.total })}</p>
-          {(session.capabilities?.includes("review:all") || session.capabilities?.includes("review:admin")) &&
+          {(allReports || administrator) &&
             <section className="review-bulk" aria-label={t("review.workspace.bulkActions")}><div className="review-controls">
               <button type="button" disabled={!queueScopeCurrent} onClick={() => setBulkSelection({ key: loadedQueueScope, items: Object.fromEntries(
                 queue.items.map((item) => [item.id, item.version])) })}>{t("review.bulkSelectPage")}</button>
               <button type="button" onClick={() => setBulkSelection({ key: loadedQueueScope, items: {} })}>{t("review.bulkClearSelection")}</button>
               <span>{t("review.bulkSelected", { count: Object.keys(activeBulkSelection).length })}</span>
-              {session.capabilities?.includes("review:all") && <button type="button"
+              {allReports && <button type="button"
                 disabled={!queueScopeCurrent || queueError || !Object.keys(activeBulkSelection).length || bulkBusy}
                 onClick={() => void runBulk("claim")}>{t("review.bulkClaim")}</button>}
-              {session.capabilities?.includes("review:admin") && <>
+              {administrator && <>
                 <label>{t("review.bulkAssignee")} <select value={bulkAssignee}
                   onChange={(event) => setBulkAssignee(event.target.value)}>
                   <option value="">{t("review.chooseReviewer")}</option>
@@ -579,7 +580,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
               <td><div className="review-row-actions"><button id={`review-view-${item.id}`} type="button" aria-label={t("review.workspace.viewReview", { report: reportLabel(item.reportId, item.reportNumber) })}
                 aria-expanded={fullReportOpen && selectedItemId === item.id} aria-controls={fullReportOpen ? "review-full-report" : undefined}
                 onClick={() => selectReport(item.reportId, item, true)}>{t("review.workspace.view")}</button>
-                {!item.assigneeId && ["new", "in-review"].includes(item.status) && session.capabilities?.includes("review:all") && <button type="button" disabled={!!claiming} onClick={() => void claim(item)}>{t("review.claim")}</button>}</div></td>
+                {!item.assigneeId && ["new", "in-review"].includes(item.status) && allReports && <button type="button" disabled={!!claiming} onClick={() => void claim(item)}>{t("review.claim")}</button>}</div></td>
             </tr>)}
             </tbody></table>
           </div>}

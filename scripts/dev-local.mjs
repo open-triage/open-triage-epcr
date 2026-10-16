@@ -1,3 +1,4 @@
+import "../packages/contracts/runtime-node-check.cjs";
 import { execFile, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -15,6 +16,14 @@ const executeFile = promisify(execFile);
 const repository = fileURLToPath(new URL("../", import.meta.url));
 const transientDatabaseErrors = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P03", "08001", "08006"]);
 
+// Shell-exported credentials may be newer than the developer's .env.local.
+// Remove server-owned namespaces and credential names independently of that file.
+const serverEnvironmentPrefixes = ["DATABASE_", "PATIENT_KEY_", "AUTH_", "OFFLINE_RECOVERY_", "OIDC_",
+  "SUPABASE_", "REVIEW_REPORTING_", "REPORTING_REPLICA_", "RESTORED_DATABASE_", "WORKLOAD_DATABASE_"];
+const serverEnvironmentNames = new Set(["PORT", "WEB_ORIGIN", "AGENCY_BASE_DOMAIN", "PGHOST", "PGPORT", "PGUSER",
+  "PGPASSWORD", "PGDATABASE", "PGSERVICE", "PGSERVICEFILE", "PGPASSFILE", "PGSSLMODE", "PGOPTIONS"]);
+const credentialEnvironmentName = /(?:^|_)(?:SECRET|PASSWORD|TOKEN|CREDENTIALS?|PRIVATE_KEY)(?:_|$)/u;
+
 export function developmentEnvironment(fileContents, inherited = process.env) {
   const local = parse(fileContents);
   const api = { ...local, ...inherited };
@@ -28,8 +37,10 @@ export function developmentEnvironment(fileContents, inherited = process.env) {
     if (key.startsWith("NEXT_PUBLIC_")) web[key] = inherited[key] ?? value;
     else delete web[key];
   }
-  delete web.PORT;
-  delete web.DATABASE_URL;
+  for (const key of Object.keys(web)) {
+    if (!key.startsWith("NEXT_PUBLIC_") && (serverEnvironmentNames.has(key)
+      || serverEnvironmentPrefixes.some(prefix => key.startsWith(prefix)) || credentialEnvironmentName.test(key))) delete web[key];
+  }
   web.NEXT_PUBLIC_API_URL ||= "same-origin";
   web.OPEN_TRIAGE_API_UPSTREAM = `http://127.0.0.1:${port}`;
   web.OPEN_TRIAGE_PUBLIC_SITE_HOST = api.OPEN_TRIAGE_PUBLIC_SITE_HOST ?? "localhost";

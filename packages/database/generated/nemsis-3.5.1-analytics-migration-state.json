@@ -2,5 +2,5 @@
   "schemaVersion": "1.0.0",
   "sequence": 2,
   "mappingSha256": "b59e5c8988bbcc76c19d96b8787400b12efa1efda4c87a28d40ec9d10497bb28",
-  "migration": "30000000000002_nemsis_analytics_b59e5c8988bb.sql"
+  "migration": "20261001173917_nemsis_analytics_b59e5c8988bb.sql"
 }

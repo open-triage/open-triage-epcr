@@ -101,7 +101,6 @@ export class RolePackageService {
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         const session = await this.sessions.requireCapability(token, "roles:write", manager, now);
-        await this.sessions.requireRecentReauthentication(token, manager, now);
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`custom-roles:${session.organization.id}`]);
         const prepared = await this.prepare(manager, session, input, true);
         for (const role of prepared.package.roles) await this.activate(manager, session, role, prepared.existing.get(role.id));

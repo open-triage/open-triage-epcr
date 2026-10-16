@@ -15,6 +15,7 @@ import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
 import { DEFAULT_AGENCY_APPEARANCE } from "@open-triage/contracts";
+import { localPolicy } from "../dist/authentication/local-policy.js";
 import { AgencySettingsService } from "../dist/admin/agency-settings.service.js";
 import { FormPublicationService } from "../dist/forms/form-publication.service.js";
 import { OwnershipTransferService } from "../dist/admin/ownership-transfer.service.js";
@@ -141,10 +142,19 @@ integration("isolated agencies share staff only within their parent group; owner
     const childItem = await review.item(ownerLogin.sessionToken, itemIds[1], "real");
     assert.equal(childItem.id, itemIds[1]);
     await assert.rejects(review.item(ownerLogin.sessionToken, itemIds[2], "real"), /not found in scope/);
-    await review.claim(ownerLogin.sessionToken, itemIds[1], { commandId: randomUUID(), expectedVersion: childItem.version, dataset: "real" }, ownerLogin.session.csrfToken);
+    await assert.rejects(review.claim(ownerLogin.sessionToken, itemIds[1], {
+      commandId: randomUUID(), expectedVersion: childItem.version, dataset: "real"
+    }, ownerLogin.session.csrfToken), /Review-all access is required/);
+    assert.equal((await client.query("select count(*)::int n from clinical.review_assignment_history where item_id=$1", [itemIds[1]])).rows[0].n, 0);
+    // Group-wide clinical review requires an ordinary account with that role;
+    // installation authority cannot claim reports, including its own reports.
+    await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by)
+      select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='reviewer'`,
+      [rootAgency.id, staff, owner.userId]);
+    await review.claim(staffLogin.sessionToken, itemIds[1], { commandId: randomUUID(), expectedVersion: childItem.version, dataset: "real" }, staffLogin.session.csrfToken);
     const assignment = (await client.query("select organization_id,actor_id from clinical.review_assignment_history where item_id=$1", [itemIds[1]])).rows[0];
     assert.equal(assignment.organization_id, child.id);
-    assert.equal(assignment.actor_id, owner.userId);
+    assert.equal(assignment.actor_id, staff);
     await sessions.switchAgency(ownerLogin.sessionToken, child.id);
     assert.equal((await review.queue(ownerLogin.sessionToken, { dataset: "real" })).total, 1);
     // Starting configurations are published copies owned by the destination; all
@@ -173,12 +183,12 @@ integration("isolated agencies share staff only within their parent group; owner
       timeZone: "Europe/Stockholm", catalogReleaseId: catalog, agencyUniqueStateId: "START", agencyNumber: "START", stateCode: "36",
       settings: { language: "sv", regionalFormat: "sv-SE", timeZone: "Europe/Stockholm", syntheticRetentionHours: 48,
         reportMediaAllowanceBytes: 80 * 1024 * 1024, imageMediaLimitBytes: 8 * 1024 * 1024,
-        authenticationLimits: { accountAttemptsPer15Minutes: 25, networkAttemptsPer5Minutes: 70 },
         appearance: { ...DEFAULT_AGENCY_APPEARANCE, brandText: "Configured brand", helperText: "Agency credentials only.", pwaName: "Configured app" },
         demographics: { agencyUniqueStateId: "START", agencyNumber: "START", stateCode: "36", stateDisplay: "New York", stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null } },
       startingFormVersionId: sourceForm.id, startingValidationVersionId: publishedValidation.id };
     await assert.rejects(agencies.create(staffLogin.sessionToken, startingCommand), /installation owner/);
     await assert.rejects(agencies.create(ownerLogin.sessionToken, { ...startingCommand, catalogReleaseId: orphanCatalog }), /available published catalog/);
+    await assert.rejects(agencies.create(ownerLogin.sessionToken, { ...startingCommand, settings: { ...startingCommand.settings, authenticationLimits: { accountAttemptsPer15Minutes: 25, networkAttemptsPer5Minutes: 70 } } }), /effective group policy/, "agency creation cannot bypass the effective group policy");
     const configured = await agencies.create(ownerLogin.sessionToken, startingCommand);
     assert.equal((await sessions.get(ownerLogin.sessionToken)).organization.id, other.id, "creation must not switch the browser session");
     const [bundle] = (await client.query("select * from app_identity.active_configuration_bundle where organization_id=$1", [configured.id])).rows;
@@ -211,8 +221,12 @@ integration("isolated agencies share staff only within their parent group; owner
     assert.equal(createdSettings.syntheticRetentionHours, 48);
     assert.equal(createdSettings.reportMediaAllowanceBytes, 80 * 1024 * 1024);
     assert.equal(createdSettings.imageMediaLimitBytes, 8 * 1024 * 1024);
-    assert.equal(createdSettings.authenticationLimits.accountAttemptsPer15Minutes, 25);
+    assert.equal(createdSettings.authenticationLimits.accountAttemptsPer15Minutes, 20);
     assert.equal(createdSettings.appearance.brandText, "Configured brand");
+    await client.query("update app_identity.group_authentication_policy set account_attempt_limit=50,network_attempt_limit=90 where group_id=$1", [configured.id]);
+    const configuredChild = await agencies.create(ownerLogin.sessionToken, { ...startingCommand, name: "Configured child", parentOrganizationId: configured.id, startingFormVersionId: null, startingValidationVersionId: null });
+    assert.equal((await localPolicy(database.manager, configuredChild.id)).accountAttemptsPer15Minutes,50, "ordinary child creation retains its ancestor policy");
+    assert.equal((await localPolicy(database.manager, configured.id)).networkAttemptsPer5Minutes,90);
     assert.equal(createdSettings.demographics.stateDisplay, "New York");
     assert.equal(createdSettings.demographics.version, 1, "creation writes the complete initial demographic version");
     const replacement = await forms.clone(ownerLogin.sessionToken, { catalogReleaseId: catalog, displayName: "Replacement" });

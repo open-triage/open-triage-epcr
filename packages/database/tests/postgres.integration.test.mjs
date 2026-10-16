@@ -59,6 +59,43 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 
+  for (const optionalRoles of [["anon"], ["anon", "authenticated"]]) {
+    await t.test(`private authentication migrations revoke optional role defaults with ${optionalRoles.join(" and ")}`, async () => {
+      await client.query("begin");
+      try {
+        for (const role of optionalRoles) {
+          const exists = await client.query("select 1 from pg_roles where rolname = $1", [role]);
+          if (!exists.rowCount) await client.query(`create role ${role} nologin`);
+          await client.query(`alter default privileges in schema app_identity grant all on tables to ${role}`);
+        }
+        await client.query("drop table app_identity.oidc_credential_key, app_identity.agency_session_handoff");
+        await client.query(`alter table app_identity.production_workflow_rollout
+          rename constraint production_workflow_actor_requires_activation to production_workflow_rollout_check`);
+        for (const migration of [
+          "20261016163831_agency_oidc_key_management.sql",
+          "20261016170929_installation_superuser_agency_handoff.sql"
+        ]) {
+          await client.query(await readFile(path.join(repoRoot, "supabase/migrations", migration), "utf8"));
+        }
+        for (const table of ["app_identity.oidc_credential_key", "app_identity.agency_session_handoff"]) {
+          for (const role of optionalRoles) {
+            for (const privilege of ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"]) {
+              const result = await client.query("select has_table_privilege($1, $2, $3) as allowed", [role, table, privilege]);
+              assert.equal(result.rows[0].allowed, false, `${role} must not have ${privilege} on ${table}`);
+            }
+          }
+          const runtime = await client.query(`select
+            has_table_privilege('open_triage_api_runtime', $1, 'SELECT') as can_read,
+            has_table_privilege('open_triage_api_runtime', $1, 'INSERT') as can_insert,
+            has_table_privilege('open_triage_api_runtime', $1, 'DELETE') as can_delete`, [table]);
+          assert.deepEqual(runtime.rows[0], { can_read: true, can_insert: true, can_delete: false });
+        }
+      } finally {
+        await client.query("rollback");
+      }
+    });
+  }
+
   for (const role of [
     "open_triage_analyst",
     "open_triage_api_runtime",

@@ -19,17 +19,27 @@ class FakeClient {
     if (normalized.startsWith("select history.version, checksums.checksum")) {
       return { rows: [...this.applied].map(([version, checksum]) => ({ version, checksum })) };
     }
-    if (normalized === "begin") this.pending = [];
+    if (normalized === "begin") this.pending = new Map(this.applied);
     if (normalized === "rollback") this.pending = null;
     if (normalized === "commit") {
-      for (const [version, checksum] of this.pending ?? []) this.applied.set(version, checksum);
+      this.applied = this.pending;
       this.pending = null;
     }
     if (normalized.startsWith("insert into supabase_migrations.schema_migrations")) {
-      this.pending.push([parameters[0], null]);
+      this.pending.set(parameters[0], null);
     }
     if (normalized.startsWith("insert into open_triage_deploy.migration_checksums")) {
-      this.pending[this.pending.length - 1][1] = parameters[1];
+      this.pending.set(parameters[0], parameters[1]);
+    }
+    if (normalized.startsWith("delete from open_triage_deploy.migration_checksums")) {
+      if (this.pending.has(parameters[0])) this.pending.set(parameters[0], null);
+    }
+    if (normalized.startsWith("delete from supabase_migrations.schema_migrations")) {
+      this.pending.delete(parameters[0]);
+    }
+    if (normalized.startsWith("update supabase_migrations.schema_migrations set version")) {
+      this.pending.delete(parameters[0]);
+      this.pending.set(parameters[1], null);
     }
     if (sql.includes("raise_migration_failure")) throw new Error("synthetic migration failure");
     return { rows: [] };
@@ -48,6 +58,64 @@ async function migrationSet(files) {
 test("repository migration versions are globally unique", async () => {
   const migrations = await readMigrations(repositoryMigrations);
   assert.equal(new Set(migrations.map(({ version }) => version)).size, migrations.length);
+  assert.ok(migrations.every(({ version }) => !version.startsWith("3000")));
+  assert.deepEqual(migrations.filter(({ name }) => name.startsWith("nemsis_analytics_")).slice(0, 2).map(({ version }) => version),
+    ["20260928233346", "20261001173917"]);
+});
+
+for (const checksummed of [false, true]) {
+  test(`legacy analytics history is renamed without replay (${checksummed ? "checksummed" : "Supabase history"})`, async () => {
+    const migrations = (await readMigrations(repositoryMigrations)).filter(({ name }) => name.startsWith("nemsis_analytics_")).slice(0, 2);
+    const client = new FakeClient(migrations.map((migration, index) =>
+      [`3000000000000${index + 1}`, checksummed ? migration.checksum : null]));
+    assert.equal(await applyMigrations(client, migrations, silentLog), 0);
+    assert.deepEqual([...client.applied.keys()], migrations.map(({ version }) => version));
+    assert.ok(!client.queries.some(({ sql }) => sql.includes("create view analytics.epcr")));
+    assert.equal(await applyMigrations(client, migrations, silentLog), 0);
+    if (checksummed) {
+      assert.deepEqual([...client.applied.values()], migrations.map(({ checksum }) => checksum));
+    }
+  });
+}
+
+test("renaming analytics history rejects changed files or recorded checksums", async () => {
+  const migrations = (await readMigrations(repositoryMigrations)).filter(({ name }) => name.startsWith("nemsis_analytics_")).slice(0, 2);
+  for (const changedFile of [false, true]) {
+    const client = new FakeClient([["30000000000001", changedFile ? migrations[0].checksum : "0".repeat(64)]]);
+    const files = changedFile ? [{ ...migrations[0], checksum: "0".repeat(64) }] : migrations;
+    await assert.rejects(applyMigrations(client, files, silentLog), /Cannot reconcile renamed migration/);
+    assert.ok(client.applied.has("30000000000001"));
+    assert.ok(!client.queries.some(({ sql }) => sql === "begin"));
+  }
+});
+
+test("duplicate old and new analytics history converges without replay", async () => {
+  const migration = (await readMigrations(repositoryMigrations)).find(({ version }) => version === "20260928233346");
+  const client = new FakeClient([["30000000000001", migration.checksum], [migration.version, migration.checksum]]);
+  assert.equal(await applyMigrations(client, [migration], silentLog), 0);
+  assert.deepEqual([...client.applied], [[migration.version, migration.checksum]]);
+});
+
+test("failed history conversion rolls back the version and checksum together", async () => {
+  const migration = (await readMigrations(repositoryMigrations)).find(({ version }) => version === "20260928233346");
+  const client = new FakeClient([["30000000000001", migration.checksum]]);
+  const query = client.query.bind(client);
+  client.query = async (sql, parameters) => {
+    if (sql.startsWith("update supabase_migrations")) throw new Error("synthetic history update failure");
+    return query(sql, parameters);
+  };
+  await assert.rejects(applyMigrations(client, [migration], silentLog), /Failed to reconcile renamed migration/);
+  assert.deepEqual([...client.applied], [["30000000000001", migration.checksum]]);
+  assert.ok(client.queries.some(({ sql }) => sql === "rollback"));
+});
+
+test("ordinary pending migrations run after analytics history is converted", async () => {
+  const analytics = (await readMigrations(repositoryMigrations)).filter(({ name }) => name.startsWith("nemsis_analytics_")).slice(0, 2);
+  const pending = await migrationSet({ "20261017000000_use_analytics.sql": "select 'new analytics consumer';" });
+  const client = new FakeClient(analytics.map(({ checksum }, index) => [`3000000000000${index + 1}`, checksum]));
+  assert.equal(await applyMigrations(client, [...analytics, ...pending], silentLog), 1);
+  assert.ok(client.queries.some(({ sql }) => sql === pending[0].sql));
+  assert.ok(!client.queries.some(({ sql }) => sql.includes("create view analytics.epcr")));
 });
 
 test("duplicate migration versions fail before any migration can run", async () => {

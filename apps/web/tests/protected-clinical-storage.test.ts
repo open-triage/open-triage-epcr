@@ -309,3 +309,30 @@ test("logout still warns about pending media and previews after report commands 
     assert.equal(summary({ [kind]: {} } as Partial<Payload>).pendingReportCount, 1);
   }
 });
+
+
+test("a recovered persisted baseline does not rewrite restored work and still writes real changes and retries failures", async () => {
+  const baseline = { queuedChanges: [{ note: "retained pending work" }] };
+  const writes: unknown[] = [];
+  let failing = false;
+  const queue = new LatestProtectedWriteQueue<typeof baseline>(async payload => {
+    writes.push(structuredClone(payload));
+    if (failing) throw new Error("storage unavailable");
+  }, (previous, next) => JSON.stringify(previous) === JSON.stringify(next), baseline);
+  queue.request(structuredClone(baseline));
+  await queue.flush();
+  assert.deepEqual(writes, [], "restoration must not issue a fresh ciphertext receipt");
+  baseline.queuedChanges[0]!.note = "real edit through the reused caller object";
+  queue.request(baseline);
+  await queue.flush();
+  assert.equal(writes.length, 1, "the persisted baseline must be insulated from caller mutation");
+  failing = true;
+  const changed = { queuedChanges: [{ note: "next real edit" }] };
+  queue.request(changed);
+  await assert.rejects(queue.flush(), /storage unavailable/);
+  await new Promise(resolve => setImmediate(resolve));
+  failing = false;
+  queue.request(structuredClone(changed));
+  await queue.flush();
+  assert.equal(writes.length, 3, "a failed identical write must remain retryable");
+});

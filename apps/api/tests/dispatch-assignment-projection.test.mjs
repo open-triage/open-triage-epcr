@@ -145,3 +145,21 @@ test("the projection never derives or accepts ownership of eRecord.01", () => {
   assert.equal(projection.sourceRecordId, source.sourceRecordId);
   assert.notEqual(projection.sourceRecordId, "SYN-20260903-001-1");
 });
+
+test("renaming a call sign preserves immutable unit identity on update and cancellation", async () => {
+  for (const operation of ["upsert", "cancel"]) {
+    const canonical = copy();canonical.eventType=operation;
+    if(operation === "cancel") canonical.groups[0].instances[0].elements.push({id:"eTimes.14",values:[{kind:"scalar",occurrenceId:"cancellation-time",value:"2026-08-15T10:14:05-04:00"}]});
+    element(canonical,"eResponse.14").values[0].value="RENAMED-MEDIC";
+    let updated=false;
+    const writer={query:async (sql,parameters=[])=>{
+      if(sql.includes("from app_identity.operational_unit")) return [{id:unitId}];
+      if(sql.includes("from clinical.call_assignment ca")) return [{id:"30000000-0000-4000-8000-000000000030",incident_id:"30000000-0000-4000-8000-000000000031",unit_id:unitId,call_sign:"PREVIOUS-CALL-SIGN",response_number:"SYN-20260903-001-1",status:"assigned"}];
+      if(sql.includes("insert into clinical.dispatch_receipt")) return [receiptRow(canonical,parameters[8],JSON.parse(parameters[9]))];
+      if(sql.includes("update clinical.call_assignment")) {updated=true;return [];}
+      throw new Error(`Unexpected SQL ${sql}`);
+    }};
+    const result=await routeDispatchAssignment(writer,input(canonical));
+    assert.equal(result.unitId,unitId);assert.equal(updated,true);
+  }
+});

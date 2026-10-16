@@ -1,3 +1,4 @@
+import "@open-triage/contracts/runtime-node/check";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DataSource } from "typeorm";

@@ -1,3 +1,4 @@
+import { localPolicy } from "../authentication/local-policy.js";
 import { createHash } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -30,7 +31,7 @@ export class SessionAdministrationService {
     const actor = await this.sessions.requireCapability(token, "sessions:read", this.dataSource.manager, now);
     this.requireCombinedSessionAuthority(actor.capabilities, false);
     const users = await this.dataSource.query<Array<{ id: string }>>(
-      "select id from app_identity.app_user where organization_id = $1 and id = $2",
+      "select id from app_identity.app_user where app_identity.organization_group(organization_id) = app_identity.organization_group($1) and id = $2",
       [actor.organization.id, targetUserId]
     );
     if (!users[0]) throw new NotFoundException("User was not found");
@@ -41,10 +42,9 @@ export class SessionAdministrationService {
                where owner_record.user_id = app_user.id) as owner
       from app_identity.app_session session
       join app_identity.app_user app_user on app_user.id = session.user_id
-      join app_identity.local_credential credential on credential.user_id = app_user.id
       where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2
         and session.revoked_at is null and session.expires_at > $4
-        and session.credential_version = credential.credential_version
+        and app_identity.session_authentication_valid(session)
       order by session.last_activity_at desc, session.id
     `, [actor.organization.id, targetUserId, digest(token), now]);
     return { userId: targetUserId, items: rows.map((row) => ({
@@ -90,10 +90,10 @@ export class SessionAdministrationService {
   async resetCredential(token: string, targetUserId: string, command: ResetAdminCredentialCommand,
     now = new Date()): Promise<ResetAdminCredentialResult> {
     const verifier = await createPasswordVerifier(command.temporaryPassword);
-    const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
-    const expiresAt = new Date(now.getTime() + temporaryPasswordHours * 60 * 60 * 1_000);
     return this.dataSource.transaction(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "credentials:reset", manager, now);
+      const policy = await localPolicy(manager, actor.organization.id);
+      const expiresAt = new Date(now.getTime() + (policy?.temporaryPasswordHours ?? selectedInstallationSettings().authentication.temporaryPasswordHours) * 60 * 60 * 1_000);
       if (!actor.capabilities?.includes("users:read")) {
         throw new UnauthorizedException("users:read and credentials:reset are required");
       }
@@ -166,9 +166,8 @@ export class SessionAdministrationService {
       if (!actor.capabilities?.includes("users:read")) {
         throw new UnauthorizedException("users:read and users:write are required");
       }
-      await this.sessions.requireRecentReauthentication(token, manager, now);
       const targets = await manager.query<Array<{ id: string }>>(
-        "select id from app_identity.app_user where organization_id = $1 and id = $2 for update",
+        "select id from app_identity.app_user where app_identity.organization_group(organization_id) = app_identity.organization_group($1) and id = $2 for update",
         [actor.organization.id, targetUserId]
       );
       if (!targets[0]) throw new NotFoundException("User was not found");

@@ -12,6 +12,12 @@
 > still separate duties. See the [role regression coverage](../../packages/database/tests/admin-full-capabilities-postgres.integration.test.mjs).
 > The initial capability list below is not exhaustive today.
 
+> **Planned extension (2026-10-13).** [Authentication, units and shifts](authentication-units-and-shifts.md)
+> specifies OIDC alongside shared local authentication, explicit external-identity
+> onboarding and provider-independent sessions. It supersedes the external-identity
+> exclusion as planned scope, not delivered behavior; MFA and self-service
+> forgotten-password delivery remain outside that release.
+
 ## Problem Statement
 
 OpenTriage has durable application users, local credentials, sessions, and a small set of directly assigned capabilities, but it does not yet provide a complete administrative model for managing people and access. Administrators cannot safely create, rename, disable, reactivate, or inspect users; manage active sessions; define reusable roles; explain historical permission changes; or transfer installation ownership without direct database or CLI intervention.

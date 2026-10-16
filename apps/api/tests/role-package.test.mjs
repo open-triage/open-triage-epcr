@@ -129,13 +129,7 @@ test("preview round-trips an unchanged export and rejects incompatible, protecte
     capabilityKeys: ["clinical:demo"] }])), /system-only or unregistered/);
 });
 
-test("import requires Roles write and recent reauthentication, validates the ceiling, and atomically activates updates", async () => {
-  const staleService = new RolePackageService({ transaction: async (_isolation, work) => work(managerFor()) }, {
-    requireCapability: async () => session,
-    requireRecentReauthentication: async () => { throw new ForbiddenException("Recent password reauthentication is required"); }
-  });
-  await assert.rejects(staleService.import("opaque-session", portable(), now), ForbiddenException);
-
+test("import requires Roles write without extra reauthentication, validates the ceiling, and atomically activates updates", async () => {
   const manager = managerFor({
     existing: [{ id: roleId, protected: false, active: true, current_version_id: version1 }],
     histories: [{ role_id: roleId, id: version1, version: 1, display_name: first.displayName,
@@ -147,7 +141,7 @@ test("import requires Roles write and recent reauthentication, validates the cei
   });
   const service = new RolePackageService({ transaction: async (isolation, work) => {
     assert.equal(isolation, "SERIALIZABLE"); return work(manager);
-  } }, sessions("roles:write"));
+  } }, {...sessions("roles:write"),requireRecentReauthentication:async()=>{throw new Error("Admin import must not reauthenticate");}});
   const result = await service.import("opaque-session", portable(), now);
   assert.equal(result.importedAt, now.toISOString());
   assert.ok(manager.calls.some(({ sql }) => sql.includes("pg_advisory_xact_lock")));

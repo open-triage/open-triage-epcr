@@ -2,22 +2,22 @@
 
 import { activateListRow } from "./list-row-action";
 import { listAccessRemoved } from "../app/list-refresh";
-import { AdminText, useAdminCapabilityText, useAdminError, useAdminText } from "../app/admin-localization";
+import { AdminLanguageContext, AdminText, useAdminCapabilityText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminSessionSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
-import React, { useEffect, useRef, useState, type FormEvent } from "react";
+import React, { useContext, useEffect, useRef, useState, type FormEvent } from "react";
 import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAdminRoleHistory, loadAdminRoles,
   loadAdminUserRoleOptions, loadAdminUserSessions, loadAdminUsers, provisionAdminUser, reactivateAdminRole,
   replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, updateAdminRole, updateAdminUser,
   type AdminUserQuery } from "../app/admin-context";
-import { reauthenticateClinicianSession } from "../app/clinician-session";
-import { selectedInstallationSettings } from "../app/installation-settings";
 import { useAvailableHeight } from "./use-available-height";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { OwnershipTransferPanel } from "./ownership-transfer";
+import { ExternalIdentityManagement } from "./external-identities";
+import {UserSso} from "./user-sso";
+import { useReturnFocus } from "./use-return-focus";
 
-type StateFilter = "active" | "disabled" | "all";
-const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
+type StateFilter = "active" | "disabled" | "all" | "pending" | "denied";
 
 function RoleBadges({ roles, effective = true, owner = false, superadmin = false }: {
   readonly roles: AdminRoleSummary[]; readonly effective?: boolean; readonly owner?: boolean; readonly superadmin?: boolean;
@@ -33,9 +33,12 @@ function RoleBadges({ roles, effective = true, owner = false, superadmin = false
 }
 
 export function UsersPanel({ canCreate = false, canManage = false, canAssignRoles = false,
+  canReviewExternal = false, canManageExternal = false,
   canViewSessions = false, canRevokeSessions = false, canResetCredentials = false,
   currentUserId = "", csrfToken = "" }: {
   readonly canCreate?: boolean;
+  readonly canReviewExternal?: boolean;
+  readonly canManageExternal?: boolean;
   readonly canManage?: boolean;
   readonly canAssignRoles?: boolean;
   readonly canViewSessions?: boolean;
@@ -45,13 +48,14 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   readonly csrfToken?: string;
 }) {
   const t = useAdminText();
+  const language=useContext(AdminLanguageContext);
   const adminError = useAdminError();
   const tablePanel = useAvailableHeight<HTMLDivElement>(128);
   const [items, setItems] = useState<AdminUserSummary[]>([]);
   const [listError, setListError] = useState(false);
   const listRevision = useRef(0);
   const [roleOptions, setRoleOptions] = useState<AdminAssignableRoleSummary[]>([]);
-  const [query, setQuery] = useState<AdminUserQuery>({ state: "active" });
+  const [query, setQuery] = useState<AdminUserQuery>({ state: "all" });
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,25 +67,26 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   const [desiredActive, setDesiredActive] = useState(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [roleNote, setRoleNote] = useState("");
-  const [reauthenticationPassword, setReauthenticationPassword] = useState("");
   const [userSessions, setUserSessions] = useState<AdminSessionSummary[]>([]);
   const [securityLoading, setSecurityLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [identityDirty, setIdentityDirty] = useState(false);
   const [creationDirty, setCreationDirty] = useState(false);
   const [credentialDirty, setCredentialDirty] = useState(false);
+  const [externalIdentityDirty, setExternalIdentityDirty] = useState(false);
+  const [externalIdentityBusy, setExternalIdentityBusy] = useState(false);
+  const reviewAllowed=useRef(canReviewExternal);
+  useEffect(()=>{reviewAllowed.current=canReviewExternal;},[canReviewExternal]);
   const userTrigger = useRef("");
   const roleSetDirty = !!editing && (roleNote !== "" || selectedRoleIds.slice().sort().join(",") !== editing.roles.map((role) => role.id).sort().join(","));
-  useUnsavedChanges(identityDirty || roleSetDirty || credentialDirty || creationDirty);
-  const canLeaveUser = () => confirmDiscardChanges(identityDirty || roleSetDirty || credentialDirty);
-  function restoreUserFocus() {
-    requestAnimationFrame(() => (document.getElementById(userTrigger.current) ?? document.getElementById("users-heading"))?.focus({ preventScroll: true }));
-  }
+  useUnsavedChanges(identityDirty || roleSetDirty || credentialDirty || creationDirty || externalIdentityDirty);
+  const canLeaveUser = () => confirmDiscardChanges(identityDirty || roleSetDirty || credentialDirty || externalIdentityDirty);
+  useReturnFocus(!!editing,loading||saving||externalIdentityBusy,()=>document.getElementById(userTrigger.current)??document.getElementById("users-heading"));
   function closeUser(saved = false) {
     if (!saved && !canLeaveUser()) return;
-    setEditing(null); setIdentityDirty(false); setCredentialDirty(false); restoreUserFocus();
+    setExternalIdentityBusy(false); setEditing(null); setIdentityDirty(false); setCredentialDirty(false); setExternalIdentityDirty(false);
   }
-  const hasActions = canManage || canViewSessions || canResetCredentials;
+  const hasActions = canManage || canViewSessions || canResetCredentials || canReviewExternal;
 
   async function load(selected: AdminUserQuery, append = false) {
     const revision = ++listRevision.current;
@@ -91,7 +96,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       const page = await loadAdminUsers(selected);
       if (revision !== listRevision.current) return;
       setListError(false);
-      setItems((current) => append ? [...current, ...page.items] : page.items);
+      const visible=page.items.filter(row=>reviewAllowed.current||!row.externalIdentity);
+      setItems((current) => append ? [...current, ...visible] : visible);
       setNextCursor(page.nextCursor);
     } catch (reason) {
       if (revision !== listRevision.current) return;
@@ -103,26 +109,28 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   }
 
   useEffect(() => {
-    const revision = ++listRevision.current;
-    loadAdminUsers({ state: "active" }).then((page) => {
-      if (revision !== listRevision.current) return;
+    const revision = ++listRevision.current; let current=true;
+    loadAdminUsers({ state: "all" }).then((page) => {
+      if (!current || revision !== listRevision.current) return;
       setListError(false);
-      setItems(page.items);
+      setItems(page.items.filter(row=>reviewAllowed.current||!row.externalIdentity));
       setNextCursor(page.nextCursor);
-    }).catch((reason: unknown) => { if (revision === listRevision.current) {
+    }).catch((reason: unknown) => { if (current && revision === listRevision.current) {
       if (listAccessRemoved(reason)) setItems([]);
       setListError(true); setError(adminError(reason, "admin.usersCouldNot"));
-    } }).finally(() => { if (revision === listRevision.current) setLoading(false); });
-    loadAdminUserRoleOptions().then((result) => setRoleOptions(result.items))
-      .catch((reason: unknown) => setError(adminError(reason, "admin.rolesCouldNot")));
+    } }).finally(() => { if (current && revision === listRevision.current) setLoading(false); });
+    loadAdminUserRoleOptions().then((result) => {if(current)setRoleOptions(result.items);})
+      .catch((reason: unknown) => {if(current)setError(adminError(reason, "admin.rolesCouldNot"));});
+    return()=>{current=false;};
   }, [adminError]);
+
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const selected: AdminUserQuery = {
       search: String(data.get("search") ?? ""),
-      state: String(data.get("state") ?? "active") as StateFilter,
+      state: String(data.get("state") ?? "all") as StateFilter,
       roleId: String(data.get("roleId") ?? "")
     };
     setQuery(selected);
@@ -137,7 +145,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       username: String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
       temporaryPassword: String(data.get("temporaryPassword") ?? ""),
-      temporaryPasswordHours,
       roleIds: data.getAll("roleIds").map(String),
       note: String(data.get("note") ?? "") || undefined
     };
@@ -149,7 +156,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       form.reset();
       setCreateOpen(false); setCreationDirty(false);
       requestAnimationFrame(() => document.getElementById("create-user-trigger")?.focus());
-      setNotice(`${created.displayName} was created. Their temporary password expires ${new Date(created.temporaryPasswordExpiresAt).toLocaleString()}.`);
+      setNotice(t("admin.userCreatedNotice",{name:created.displayName,expires:new Date(created.temporaryPasswordExpiresAt).toLocaleString(language)}));
       await load(query);
     } catch (reason) {
       setError(adminError(reason, "admin.userCreationFailed"));
@@ -172,25 +179,24 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
 
   function beginEdit(user: AdminUserSummary) {
     if (!canLeaveUser()) return;
-    userTrigger.current = `manage-user-${user.id}`;
+    userTrigger.current = `manage-${user.externalIdentity?"external":"user"}-${user.id}`;
     setIdentityDirty(false); setCredentialDirty(false);
     setEditing(user);
     setDesiredActive(user.active);
     setSelectedRoleIds(user.roles.map((role) => role.id));
     setRoleNote("");
-    setReauthenticationPassword("");
     setError(null);
     setNotice(null);
     setUserSessions([]);
-    void refreshSessions(user.id);
+    if(!user.externalIdentity)void refreshSessions(user.id);
   }
 
   async function revokeSession(session: AdminSessionSummary) {
     if (!editing) return;
     const warning = session.owner
-      ? "This is an installation owner session. Confirm that you want to revoke it."
-      : session.current ? "This is your current session. Revoking it will sign you out. Continue?"
-        : "Revoke this session?";
+      ? t("admin.revokeOwnerSessionConfirm")
+      : session.current ? t("admin.revokeCurrentSessionConfirm")
+        : t("admin.revokeSessionConfirm");
     if (!window.confirm(warning)) return;
     setSecurityLoading(true);
     setError(null);
@@ -216,9 +222,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     const data = new FormData(form);
     const command: ResetAdminCredentialCommand = { expectedRevision: editing.revision,
       temporaryPassword: String(data.get("temporaryPassword") ?? ""),
-      temporaryPasswordHours,
       note: String(data.get("note") ?? "") || undefined };
-    if (!window.confirm(`Reset ${editing.displayName}'s credential and revoke every session?`)) return;
+    if (!window.confirm(t("admin.resetCredentialConfirm",{name:editing.displayName}))) return;
     setResetting(true);
     setError(null);
     try {
@@ -226,7 +231,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       form.reset(); setCredentialDirty(false);
       setEditing((current) => current ? { ...current, revision: reset.revision } : current);
       setUserSessions([]);
-      setNotice(`${editing.displayName}'s temporary credential expires ${new Date(reset.temporaryPasswordExpiresAt).toLocaleString()}. ${reset.sessionsRevoked} session${reset.sessionsRevoked === 1 ? " was" : "s were"} revoked. Account status was not changed.`);
+      setNotice(t("admin.credentialResetNotice",{name:editing.displayName,expires:new Date(reset.temporaryPasswordExpiresAt).toLocaleString(language),count:reset.sessionsRevoked}));
       await load(query);
     } catch (reason) {
       setError(adminError(reason, "admin.credentialResetFailed"));
@@ -244,7 +249,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     const active = data.get("active") === "true";
     const command: UpdateAdminUserCommand = {
       expectedRevision: editing.revision,
-      username: String(data.get("username") ?? ""),
+      username: editing.username === null ? null : String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
       active,
       note: String(data.get("note") ?? "") || undefined
@@ -255,10 +260,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     try {
       const updated = await updateAdminUser(csrfToken, editing.id, command);
       setNotice(updated.restoredRoles.length
-        ? `${updated.displayName} was reactivated. Roles restored: ${updated.restoredRoles.map((role) => role.displayName).join(", ") || "none"}. A fresh login is required; the credential was not reset.`
+        ? t("admin.userReactivatedNotice", { name: updated.displayName, roles: updated.restoredRoles.map(role => role.displayName).join(", ") })
         : !updated.active
-          ? `${updated.displayName} was disabled and ${updated.sessionsRevoked} active session${updated.sessionsRevoked === 1 ? " was" : "s were"} revoked. Roles are retained but ineffective.`
-          : `${updated.displayName} was updated.`);
+          ? t("admin.userDisabledNotice", { name: updated.displayName, count: updated.sessionsRevoked })
+          : t("admin.userUpdatedNotice", { name: updated.displayName }));
       await load(query);
       closeUser(true);
     } catch (reason) {
@@ -268,8 +273,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     }
   }
 
-  const protectedRoleSetChanged = Boolean(editing && roleOptions.some((role) => role.assignmentRestricted &&
-    (selectedRoleIds.includes(role.id) !== editing.roles.some((assigned) => assigned.id === role.id))));
 
   async function saveRoles() {
     if (!editing || !canAssignRoles) return;
@@ -279,15 +282,14 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     setError(null);
     setNotice(null);
     try {
-      if (protectedRoleSetChanged) {
-        await reauthenticateClinicianSession(reauthenticationPassword, csrfToken);
-      }
       const updated = await replaceAdminUserRoles(csrfToken, editing.id, command);
-      setEditing(updated);
+      setEditing(current => current?.id === updated.id ? {...current,...updated} : current);
       setSelectedRoleIds(updated.roles.map((role) => role.id));
       setRoleNote("");
-      setReauthenticationPassword("");
-      setNotice(`Roles updated for ${updated.displayName}. Added: ${updated.addedRoles.map((role) => role.displayName).join(", ") || "none"}; removed: ${updated.removedRoles.map((role) => role.displayName).join(", ") || "none"}.${updated.active ? "" : " Roles remain ineffective until reactivation."}`);
+      setNotice(t("admin.userRolesUpdatedNotice", { name: updated.displayName,
+        added: updated.addedRoles.map(role => role.displayName).join(", ") || t("admin.noRoles"),
+        removed: updated.removedRoles.map(role => role.displayName).join(", ") || t("admin.noRoles") }) +
+        (updated.active ? "" : ` ${t("admin.retainedRolesIneffectiveWhenDisabled")}`));
       await load(query);
     } catch (reason) {
       setError(adminError(reason, "admin.roleSetUpdateFailed"));
@@ -296,7 +298,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     }
   }
 
-  return <section className="admin-configuration admin-directory" aria-labelledby="users-heading">
+  const visibleItems=items.filter(row=>canReviewExternal||!row.externalIdentity);
+  return <section className="admin-configuration admin-directory users-directory" aria-labelledby="users-heading">
     <div className="section-heading"><h2 id="users-heading" tabIndex={-1}><AdminText messageKey="admin.users" /></h2>{canCreate && <button id="create-user-trigger" type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => { if (createOpen && !confirmDiscardChanges(creationDirty)) return; setCreationDirty(false); setCreateOpen((open) => !open); }}>
       {createOpen ? t("admin.cancelCreation") : t("admin.createUser")}</button>}</div>
@@ -307,7 +310,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           required autoComplete="off" /></label>
         <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
           required autoComplete="new-password" /></label>
-        <p className="admin-muted">{t("admin.temporaryAccessExpires", { hours: temporaryPasswordHours })}</p>
+        <p className="admin-muted">{t("admin.temporaryAccessPolicy")}</p>
         <fieldset className="admin-role-selection"><legend><AdminText messageKey="admin.initialRoles" /></legend>
           {roleOptions.filter((role) => role.active).map((role) => <label key={role.id}>
             <input name="roleIds" type="checkbox" value={role.id}
@@ -321,15 +324,18 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       </fieldset>
     </form>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
-    {editing && <section key={editing.id} className="admin-user-management"
-      aria-labelledby={`manage-user-${editing.id}`}>
-      <div className="section-heading"><h3 id={`manage-user-${editing.id}`}>{t("admin.manageName", { name: editing.displayName })}</h3>
-        <button type="button" onClick={() => closeUser() }><AdminText messageKey="admin.close" /></button></div>
-    {canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
-      <fieldset disabled={saving}><legend><AdminText messageKey="admin.identityAndAccess" /></legend>
+    {editing && (!editing.externalIdentity||canReviewExternal) && <section key={`${editing.externalIdentity?"external":"user"}-${editing.id}-${canManageExternal}-${canAssignRoles}`} className="admin-user-management"
+      aria-labelledby="managed-user-heading">
+      <div className="section-heading"><h3 id="managed-user-heading">{t("admin.manageName", { name: editing.displayName })}</h3>
+        <button type="button" disabled={externalIdentityBusy} onClick={() => closeUser() }><AdminText messageKey="admin.close" /></button></div>
+    {editing.externalIdentity && <ExternalIdentityManagement identity={editing.externalIdentity} language={language} csrfToken={csrfToken}
+      canManage={canManageExternal} canApprove={canManageExternal&&canAssignRoles} onDirtyChange={setExternalIdentityDirty} onBusyChange={setExternalIdentityBusy}
+      onComplete={(_result,action)=>{setNotice(t(action==="deny"?"admin.externalIdentityDeniedNotice":action==="approve"?"admin.externalIdentityApproved":"admin.externalIdentityIdentityLinkedUserRolesAnd"));closeUser(true);void load(query);}} />}
+    {!editing.externalIdentity && canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
+      <fieldset disabled={saving||externalIdentityBusy}><legend><AdminText messageKey="admin.identityAndAccess" /></legend>
         <label><AdminText messageKey="admin.displayName" /><input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
-        <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
-          pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label>
+        {editing.username !== null ? <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
+          pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label> : <><label>{t("admin.ssoUsername")}<input readOnly value={editing.ssoUsername??""} /></label><p><AdminText messageKey="admin.ssoOnlyAccount" /></p></>}
         <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend><AdminText messageKey="admin.completeRetainedRole" /></legend>
           {roleOptions.map((role) => <label key={role.id}>
             <input type="checkbox" value={role.id}
@@ -341,12 +347,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           {!editing.active && <p><AdminText messageKey="admin.retainedRolesIneffectiveWhenDisabled" /></p>}
           <label><AdminText messageKey="admin.roleChangeNote" /><textarea value={roleNote} maxLength={1000}
             onChange={(event) => setRoleNote(event.target.value)} /></label>
-          {protectedRoleSetChanged && <label><AdminText messageKey="admin.currentPasswordFor" />
-            <input type="password" value={reauthenticationPassword} maxLength={1024}
-              autoComplete="current-password" onChange={(event) => setReauthenticationPassword(event.target.value)} />
-          </label>}
           <button type="button" onClick={() => void saveRoles()}
-            disabled={protectedRoleSetChanged && !reauthenticationPassword}>{saving ? t("admin.saving") : t("admin.replaceRoleSet")}</button>
+            disabled={saving}>{saving ? t("admin.saving") : t("admin.replaceRoleSet")}</button>
         </fieldset>
         <label><AdminText messageKey="admin.status" /><select name="active" value={desiredActive ? "true" : "false"}
           onChange={(event) => setDesiredActive(event.target.value === "true")}>
@@ -363,7 +365,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <button type="button" onClick={() => closeUser() }><AdminText messageKey="admin.cancel" /></button></div>
       </fieldset>
     </form>}
-    {(canViewSessions || canResetCredentials || editing.owner) && <div className="admin-user-security">
+    {!editing.externalIdentity && (canViewSessions || canResetCredentials || editing.owner) && <div className="admin-user-security">
       {editing.owner && <OwnershipTransferPanel csrfToken={csrfToken} />}
       {canViewSessions && <div><h4><AdminText messageKey="admin.activeSessions" /></h4>
         <p className="admin-muted"><AdminText messageKey="admin.deviceLabelsAre" /></p>
@@ -374,26 +376,31 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <dl><div><dt><AdminText messageKey="admin.started" /></dt><dd><time dateTime={session.startedAt}>{new Date(session.startedAt).toLocaleString()}</time></dd></div>
             <div><dt><AdminText messageKey="admin.lastActivity" /></dt><dd><time dateTime={session.lastActivityAt}>{new Date(session.lastActivityAt).toLocaleString()}</time></dd></div>
             <div><dt><AdminText messageKey="admin.expires" /></dt><dd><time dateTime={session.expiresAt}>{new Date(session.expiresAt).toLocaleString()}</time></dd></div></dl>
-          {canRevokeSessions && <button type="button" className="button-danger" disabled={securityLoading} onClick={() => void revokeSession(session)}>
+          {canRevokeSessions && <button type="button" className="button-danger" disabled={securityLoading||externalIdentityBusy} onClick={() => void revokeSession(session)}>
             {session.current ? t("admin.revokeAndSign") : t("admin.revokeSession")}</button>}
         </li>)}</ul>}
       </div>}
-      {canResetCredentials && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-credential-reset" onChangeCapture={() => setCredentialDirty(true)} onSubmit={resetCredential}>
-        <fieldset disabled={resetting}><legend><AdminText messageKey="admin.resetCredential" /></legend>
+      {canResetCredentials && editing.username !== null && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-credential-reset" onChangeCapture={() => setCredentialDirty(true)} onSubmit={resetCredential}>
+        <fieldset disabled={resetting||externalIdentityBusy}><legend><AdminText messageKey="admin.resetCredential" /></legend>
           <p><AdminText messageKey="admin.credentialResetDoesNotReactivate" /></p>
           <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
             required autoComplete="new-password" /></label>
-          <p className="admin-muted">{t("admin.temporaryAccessExpires", { hours: temporaryPasswordHours })}</p>
+          <p className="admin-muted">{t("admin.temporaryAccessPolicy")}</p>
           <label><AdminText messageKey="admin.noteOptional" /><textarea name="note" maxLength={1000} /></label>
           <button type="submit" className="button-danger">{resetting ? t("admin.resetting") : t("admin.resetCredentialAnd")}</button>
         </fieldset>
       </form>}
     </div>}
+    {!editing.externalIdentity && editing.ssoLinked && canManageExternal && canViewSessions && canRevokeSessions && !editing.owner && !editing.superadmin && editing.id!==currentUserId &&
+      <UserSso userId={editing.id} revision={editing.revision} csrfToken={csrfToken} language={language}
+        onBusyChange={setExternalIdentityBusy} onDirtyChange={setExternalIdentityDirty}
+        onComplete={()=>{setNotice(t("admin.ssoUnlinked"));closeUser(true);void load(query);}}/>}
     </section>}
     <form className="admin-directory-filters" role="search" aria-label={t("admin.findUsers")} onSubmit={submit}>
       <label><AdminText messageKey="admin.search" /><input type="search" name="search" maxLength={100} placeholder={t("admin.displayNameOr")} /></label>
-      <label><AdminText messageKey="admin.status" /><select name="state" defaultValue="active">
+      <label><AdminText messageKey="admin.status" /><select name="state" defaultValue="all">
         <option value="active"><AdminText messageKey="admin.active" /></option><option value="disabled"><AdminText messageKey="admin.disabled" /></option><option value="all"><AdminText messageKey="admin.all" /></option>
+        {canReviewExternal&&<><option value="pending">{t("admin.externalIdentityPending")}</option><option value="denied">{t("admin.externalIdentityDenied")}</option></>}
       </select></label>
       <label><AdminText messageKey="admin.role" /><select name="roleId" defaultValue="">
         <option value=""><AdminText messageKey="admin.allRoles" /></option>
@@ -402,20 +409,20 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       <button type="submit" disabled={loading}><AdminText messageKey="admin.applyFilters" /></button>
     </form>
     {error && <p className="admin-error" role="alert">{error}</p>}
-    {listError && <>{items.length > 0 && <p role="status">{t("list.refreshRetained")}</p>}
+    {listError && <>{visibleItems.length > 0 && <p role="status">{t("list.refreshRetained")}</p>}
       <button type="button" disabled={loading} onClick={() => void load(query)}>{t("list.retry")}</button></>}
-    {loading && !items.length && <p role="status"><AdminText messageKey="admin.loadingUsers" /></p>}
-    {!loading && !error && !items.length && <p role="status"><AdminText messageKey="admin.noUsersMatchFilters" /></p>}
-    {items.length > 0 && <div ref={tablePanel} className="admin-table-scroll" tabIndex={0} role="region" aria-label={t("admin.users")}><table>
+    {loading && !visibleItems.length && <p role="status"><AdminText messageKey="admin.loadingUsers" /></p>}
+    {!loading && !error && !visibleItems.length && <p role="status"><AdminText messageKey="admin.noUsersMatchFilters" /></p>}
+    {visibleItems.length > 0 && <div ref={tablePanel} className="admin-table-scroll" tabIndex={0} role="region" aria-label={t("admin.users")}><table>
       <caption className="sr-only"><AdminText messageKey="admin.usersMatchingThe" /></caption>
       <thead><tr><th scope="col"><AdminText messageKey="admin.displayName" /></th><th scope="col"><AdminText messageKey="admin.username" /></th><th scope="col"><AdminText messageKey="admin.status" /></th><th scope="col"><AdminText messageKey="admin.roles" /></th>
         {hasActions && <th scope="col"><AdminText messageKey="admin.actions" /></th>}</tr></thead>
-      <tbody>{items.map((user) => <tr key={user.id} className="admin-directory-row" aria-selected={editing?.id === user.id} onClick={activateListRow}>
-        <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
-        <td>{user.active ? t("admin.active") : t("admin.disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
+      <tbody>{visibleItems.map((user) => <tr key={`${user.externalIdentity?"external":"user"}-${user.id}`} className="admin-directory-row" aria-selected={editing?.id === user.id&&!!editing.externalIdentity===!!user.externalIdentity} onClick={activateListRow}>
+        <th scope="row">{user.displayName}</th><td><code>{user.externalIdentity?user.externalIdentity.username??user.externalIdentity.email??t("admin.externalIdentitySignInRequest"):user.username ?? user.ssoUsername ?? t("admin.ssoOnly")}</code></td>
+        <td>{user.externalIdentity?t(user.externalIdentity.status==="denied"?"admin.externalIdentityDenied":"admin.externalIdentityPending"):user.active ? t("admin.active") : t("admin.disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
           owner={user.owner} superadmin={user.superadmin} /></td>
         {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? t("admin.currentAccount")
-          : <button id={`manage-user-${user.id}`} data-list-row-action type="button" onClick={() => beginEdit(user)}><AdminText messageKey="admin.manage" /></button>}</td>}
+          : <button id={`manage-${user.externalIdentity?"external":"user"}-${user.id}`} data-list-row-action type="button" disabled={externalIdentityBusy} onClick={() => beginEdit(user)}><AdminText messageKey="admin.manage" /></button>}</td>}
       </tr>)}</tbody>
     </table></div>}
     {nextCursor && <button type="button" disabled={loading} onClick={() => void load({ ...query, cursor: nextCursor }, true)}>
@@ -508,7 +515,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   const [listError, setListError] = useState(false);
   const listRevision = useRef(0);
   const [capabilityOptions, setCapabilityOptions] = useState<AdminCapabilityOption[]>([]);
-  const [selectedState, setSelectedState] = useState<StateFilter>("active");
+  const [selectedState, setSelectedState] = useState<"active" | "disabled" | "all">("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editorRole, setEditorRole] = useState<AdminRole | null | undefined>(undefined);
@@ -541,7 +548,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     return true;
   }
 
-  function load(state: StateFilter) {
+  function load(state: "active" | "disabled" | "all") {
     const revision = ++listRevision.current;
     setLoading(true);
     setError(null);
@@ -644,7 +651,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       {canWrite && editorRole === undefined && <button id="create-role-trigger" type="button" onClick={() => begin(null)}><AdminText messageKey="admin.createCustomRole" /></button>}
     </div>
     <label className="admin-role-state"><AdminText messageKey="admin.status" /><select value={selectedState} onChange={(event) => {
-      const next = event.target.value as StateFilter;
+      const next = event.target.value as "active" | "disabled" | "all";
       if (!closeInteractions(false)) return;
       setSelectedState(next);
       load(next);

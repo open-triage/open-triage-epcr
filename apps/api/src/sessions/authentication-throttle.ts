@@ -24,6 +24,11 @@ function secret(): Buffer {
   return decoded;
 }
 
+/** Derive a separate key for non-encryption authentication purposes. Never expose the installation secret. */
+export function schedulePreviewSigningKey(): Buffer {
+  return createHmac("sha256",secret()).update("open-triage-schedule-preview-key-v1").digest();
+}
+
 export function validateAuthenticationThrottleConfiguration(): void {
   secret();
 }
@@ -53,11 +58,11 @@ function buckets(username: string, networkSource: string | undefined, policy: Ag
 
 export async function beginAuthenticationAttempt(manager: Pick<EntityManager, "query">, username: string,
   networkSource: string | undefined, now: Date, scope: { organizationId?: string; userId?: string; portalOnly?: boolean } = {}): Promise<AuthenticationThrottle | undefined> {
-  const policies = await manager.query<AgencyPolicy[]>(`select settings.organization_id, account.id user_id,
-      settings.authentication_account_attempt_limit, settings.authentication_network_attempt_limit
+  const policies = await manager.query<AgencyPolicy[]>(`select policy.group_id organization_id, account.id user_id,
+      policy.account_attempt_limit as authentication_account_attempt_limit, policy.network_attempt_limit as authentication_network_attempt_limit
     from app_identity.local_credential credential
     join app_identity.app_user account on account.id = credential.user_id
-    left join app_identity.agency_settings settings on settings.organization_id = account.organization_id
+    left join app_identity.group_authentication_policy policy on policy.group_id = app_identity.organization_group(account.organization_id)
     where credential.username = $1 and (
       ($2::uuid is not null and account.id = $2) or ($2::uuid is null and (
         ($3::uuid is not null and app_identity.user_can_access_organization(account.id, $3)) or

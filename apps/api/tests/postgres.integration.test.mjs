@@ -1,6 +1,7 @@
+import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +12,9 @@ import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { SYNTHETIC_DEMO_FIXTURE, compileValidationRule, compiledValidationBundleSha256 } from "@open-triage/contracts";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
+import { agencyContextMiddleware } from "../dist/sessions/agency-context.middleware.js";
+import { INSTALLATION_COOKIE } from "../dist/sessions/installation-session.js";
+import { createPasswordVerifier } from "../dist/identity/password.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 import { FormPublicationService } from "../dist/forms/form-publication.service.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
@@ -1630,7 +1634,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     values ($1,$2,$3,$4,'Draft API fixture')`, [organizationId, validationVersionId, formVersionId, userId]);
 
   const app = await NestFactory.create(AppModule, { logger: false });
-  const integrationAccessToken = "draft-api-owner-token";
+  const integrationAccessToken = randomBytes(32).toString("base64url");
   const clinicianSessions = app.get(ClinicianSessionService);
   clinicianSessions.get = (token) => {
     assert.equal(token, integrationAccessToken);
@@ -1643,21 +1647,49 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       expiresAt: "2026-09-03T22:00:00.000Z"
     };
   };
-  const integrationCsrfToken = "draft-api-csrf-token";
+  const integrationCsrfToken = randomBytes(32).toString("base64url");
   clinicianSessions.assertCsrf = async (token, csrfToken) => {
     assert.equal(token, integrationAccessToken);
     assert.equal(csrfToken, integrationCsrfToken);
   };
+  app.use(agencyContextMiddleware);
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
   const address = app.getHttpServer().address();
   const baseUrl = `http://127.0.0.1:${address.port}/api`;
-  const request = async (path, method, body) => {
+  // Production fixtures use the same request middleware and explicit authority
+  // as deployment. Mocking personal auth cannot silently supply device context.
+  const origin = new URL(baseUrl).origin;
+  const unitId=randomUUID(), identityId=randomUUID(), registrationId=randomUUID(), scheduleId=randomUUID();
+  const deviceCredential=randomBytes(32).toString("base64url");
+  const digest=value=>createHash("sha256").update(value).digest("hex");
+  await client.query(`insert into app_identity.operational_unit(id,organization_id,name,call_sign)
+    values($1,$2,'Draft command unit',$3)`,[unitId,organizationId,`DRAFT-${unitId}`]);
+  await client.query('insert into app_identity.installation_identity(id) values($1)',[identityId]);
+  await client.query(`insert into app_identity.installation_registration(id,installation_identity_id,organization_id,unit_id,name,credential_sha256)
+    values($1,$2,$3,$4,'Draft command browser',$5)`,[registrationId,identityId,organizationId,unitId,digest(deviceCredential)]);
+  await client.query(`insert into app_identity.unit_enrollment(id,organization_id,unit_id,issued_by,token_sha256,origin,consumed_at,installation_id)
+    values($1,$2,$3,$4,$5,$6,clock_timestamp(),$7)`,[randomUUID(),organizationId,unitId,userId,digest(randomBytes(32)),origin,registrationId]);
+  await client.query(`insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password)
+    values($1,$2,$3,false)`,[userId,`draft-${userId}`,await createPasswordVerifier('Draft fixture password 42!')]);
+  await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id)
+    select $1,$2,id from app_identity.role where organization_id=$1 and system_key='clinician'`,[organizationId,userId]);
+  await client.query(`insert into app_identity.app_session(user_id,token_sha256,csrf_sha256,credential_version,
+    expires_at,organization_id,browser_origin,installation_registration_id)
+    values($1,$2,$3,1,clock_timestamp()+interval '12 hours',$4,$5,$6)`,
+    [userId,digest(integrationAccessToken),digest(integrationCsrfToken),organizationId,origin,registrationId]);
+  await client.query(`insert into app_identity.weekly_schedule(id,group_id,name) values($1,$2,'Explicit draft-fixture blank schedule')`,[scheduleId,organizationId]);
+  await client.query(`insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id)
+    values($1,1,clock_timestamp(),'[]',$2)`,[scheduleId,userId]);
+  await client.query(`insert into app_identity.unit_schedule_selection(organization_id,unit_id,revision,schedule_id,effective_at,actor_id)
+    values($1,$2,1,$3,clock_timestamp(),$4)`,[organizationId,unitId,scheduleId,userId]);
+  const request = async (path, method, body, paired=true) => {
     const response = await fetch(`${baseUrl}${path}`, {
       method, headers: {
         authorization: `Bearer ${integrationAccessToken}`,
         "x-csrf-token": integrationCsrfToken,
+        ...(paired ? {cookie:`${INSTALLATION_COOKIE}=${deviceCredential}`} : {}),
         ...(body ? { "content-type": "application/json" } : {})
       },
       body: body ? JSON.stringify(body) : undefined
@@ -1671,6 +1703,16 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     commandId: randomUUID(), reportId, incidentId: randomUUID(), patientId: randomUUID(),
     organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
   };
+  // This earlier HTTP check catches staged-rollout contract drift before the
+  // larger agency/provider/enrollment suites run.
+  const legacyCommand={...createCommand,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()};
+  const legacy=await request("/reports","POST",legacyCommand,false);
+  assert.equal(legacy.response.status,201,JSON.stringify(legacy.payload));
+  assert.equal((await client.query('select synthetic from clinical.report where id=$1',[legacyCommand.reportId])).rows[0].synthetic,false);
+  await enableProductionWorkflowForTesting(client,organizationId,userId);
+  const unpaired = await request("/reports", "POST", createCommand, false);
+  assert.equal(unpaired.response.status,403);
+  assert.equal(unpaired.payload.code,"calls.enrollmentRequired");
   const created = await request("/reports", "POST", createCommand);
   assert.equal(created.response.status, 201, JSON.stringify(created.payload));
   assert.equal(created.payload.revision, 0);

@@ -31,7 +31,7 @@ type DashboardRow = {
 const panelCapabilities: ReadonlyArray<readonly [AdminPanelKey, string]> = [
   ["dashboard", "admin-dashboard:read"], ["users", "users:read"], ["roles", "roles:read"],
   ["catalog", "catalog:read"], ["forms", "forms:read"], ["validation", "validation:read"],
-  ["settings", "settings:read"], ["review-settings", "review:admin"]
+  ["authentication", "settings:read"], ["schedules", "settings:read"], ["units", "settings:read"], ["settings", "settings:read"], ["review-settings", "review:admin"]
 ];
 
 function authorizedPanels(session: ClinicianSession): AdminPanelKey[] {
@@ -72,14 +72,17 @@ export class AdminService {
                count(*) filter (where status = 'signed') as signed_reports,
                count(*) filter (where status = 'signed' and updated_at >= now() - interval '24 hours') as signed_last_24_hours
         from clinical.report where organization_id = $1
+          and ($2::boolean or documenting_user_id = $3)
       ), error_stats as (
         select count(*) as reports_with_errors from clinical.report report
-        where report.organization_id = $1 and report.status = 'draft' and exists (
+        where report.organization_id = $1 and report.status = 'draft'
+          and ($2::boolean or report.documenting_user_id = $3) and exists (
           select 1 from clinical.validation_finding finding
           where finding.report_id = report.id and finding.revision = report.revision and finding.severity = 'error'
         )
       )
-      select (select count(*) from clinical.call_assignment where organization_id = $1 and status = 'assigned') as available_calls,
+      select (select count(*) from clinical.call_assignment where organization_id = $1 and status = 'assigned'
+        and ($2::boolean or synthetic_generated_by = $3)) as available_calls,
              report_stats.ongoing_reports, report_stats.signed_reports, report_stats.signed_last_24_hours,
              error_stats.reports_with_errors,
              (select count(*) from app_identity.agency_user where organization_id = $1 and active) as active_users,
@@ -88,7 +91,7 @@ export class AdminService {
              (select count(*) from pg_stat_activity where datname = current_database()) as database_connections,
              current_setting('max_connections')::integer as max_database_connections
       from report_stats cross join error_stats
-    `, [session.organization.id]) : [];
+    `, [session.organization.id, !(session.installationOwner || session.installationSuperadmin), session.user.id]) : [];
     const dashboard = dashboardRows[0];
     return {
       owner: session.user,

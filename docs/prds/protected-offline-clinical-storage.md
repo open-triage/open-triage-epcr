@@ -7,6 +7,12 @@
 > and [browser compatibility policy](../browser-state-compatibility.md).
 > Device enrollment, inventory, vehicle pairing, and device revocation remain deferred.
 
+> **Planned extension (2026-10-13).** [Authentication, units and shifts](authentication-units-and-shifts.md)
+> specifies browser/app installation enrollment to operational units, inventory
+> and revocation while preserving these recovery boundaries. It supersedes those
+> enrollment deferrals as planned scope, not delivered behavior; physical vehicle
+> management, hardware identity and immediate offline remote locking remain excluded.
+
 ## Problem Statement
 
 OpenTriage currently persists complete encounter documents, queued clinical

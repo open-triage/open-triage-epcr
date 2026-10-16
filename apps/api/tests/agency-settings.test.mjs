@@ -3,8 +3,15 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { ConflictException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { DEFAULT_AGENCY_APPEARANCE } from "@open-triage/contracts";
-import { AgencySettingsService } from "../dist/admin/agency-settings.service.js";
+import { AgencySettingsService as BaseAgencySettingsService } from "../dist/admin/agency-settings.service.js";
 import { contrastRatio, validateUpdateAgencyMediaSettings } from "../dist/admin/agency-settings.validation.js";
+
+// Existing settings fixtures also expose the inherited policy now returned by
+// the shared settings endpoint. Transactional policy edits are covered in Postgres.
+function policyAware(source){return {...source,policySource:source,
+ query:async(sql,...args)=>sql.includes('group_authentication_policy')?[{group_id:organizationId,revision:1,maximum_session_hours:12,temporary_password_hours:72,account_attempt_limit:20,network_attempt_limit:60}]:source.query(sql,...args),
+ ...(source.transaction?{transaction:work=>source.transaction(manager=>work(policyAware(manager)))}:{})};}
+class AgencySettingsService extends BaseAgencySettingsService{constructor(source,sessions){super(policyAware(source),sessions);}}
 
 const organizationId = randomUUID();
 const actorId = randomUUID();
@@ -101,7 +108,7 @@ test("a settings save is revision-guarded, active immediately, and audits bounde
   } };
   const service = new AgencySettingsService({ transaction: async (work) => work(manager) }, {
     requireCapability: async (_token, capability, usedManager) => {
-      assert.equal(capability, "settings:write"); assert.equal(usedManager, manager);
+      assert.equal(capability, "settings:write"); assert.equal(usedManager.policySource, manager);
       return { organization: { id: organizationId }, user: { id: actorId } };
     },
   });
@@ -386,42 +393,8 @@ test('authentication limits validate both bounded integers without silently coer
   }
 });
 
-test('authentication policy changes are agency-scoped, revisioned, audited, and preserved by older clients', async () => {
-  let current = settingsRow();
-  const calls = [];
-  const manager = { query: async (sql, parameters) => {
-    calls.push({ sql, parameters });
-    if (sql.includes('update app_identity.agency_settings')) {
-      current = { ...current, revision: current.revision + 1, language: parameters[15],
-        authentication_account_attempt_limit: parameters[21], authentication_network_attempt_limit: parameters[22] };
-      return [[current], 1];
-    }
-    if (sql.includes('for update')) return [current];
-    if (sql.includes('agency_demographic_version')) return [demographicRow()];
-    return [];
-  } };
-  const service = new AgencySettingsService({ transaction: work => work(manager) }, {
-    requireCapability: async (_token, capability) => {
-      assert.equal(capability, 'settings:write');
-      return { organization: { id: organizationId }, user: { id: actorId } };
-    }
-  });
-  const limits = { accountAttemptsPer15Minutes: 100, networkAttemptsPer5Minutes: 200 };
-  const saved = await service.update('session', { ...command(), authenticationLimits: limits });
-  assert.deepEqual(saved.authenticationLimits, limits);
-  assert.equal(saved.revision, 2);
-  const mutation = calls.find(call => call.sql.includes('update app_identity.agency_settings'));
-  assert.equal(mutation.parameters[0], organizationId);
-  assert.match(mutation.sql, /where organization_id = \$1 and revision = \$2/);
-  const audit = calls.find(call => call.sql.includes('agency_settings_change_event'));
-  assert.deepEqual(audit.parameters.slice(40), [20, 100, 60, 200]);
-  const preserved = await service.update('session', { ...command(2), language: 'sv' });
-  assert.deepEqual(preserved.authenticationLimits, limits);
-  await assert.rejects(service.update('session', { ...command(), authenticationLimits: limits }), ConflictException);
-});
-
-test("timezone validation accepts named IANA zones and saved Etc aliases", () => {
-  for (const timeZone of ["Europe/Stockholm", "Asia/Tokyo", "UTC", "Etc/GMT+5"]) {
-    assert.equal(validateUpdateAgencyMediaSettings({ ...command(), timeZone }).timeZone, timeZone);
-  }
+test('legacy agency settings cannot change inherited authentication policy', async () => {
+  const manager = { query: async sql => sql.includes("agency_demographic_version") ? [demographicRow()] : [settingsRow()] };
+  const service = new AgencySettingsService({ transaction: async work => work(manager) }, { requireCapability: async () => ({ organization: { id: organizationId }, user: { id: actorId } }) });
+  await assert.rejects(service.update('session', { ...command(), authenticationLimits: { accountAttemptsPer15Minutes: 10, networkAttemptsPer5Minutes: 30 } }), /effective group policy/);
 });

@@ -3,6 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
+import { createAgencyReviewer } from "./fixtures/review-user.mjs";
 import { ReviewService } from "../dist/review/review.service.js";
 import { reconcileReviewAssignments } from "../dist/review/review-assignment.js";
 
@@ -277,11 +278,7 @@ integrationTest("Review criterion routing is configured without validation-write
     join app_identity.app_user u on u.id=v.created_by and u.active
     where v.status='published' and rule.value->'executionTargets' ? 'review' limit 1`)).rows[0];
   if (!criterion) return t.skip("No published Review criterion is available");
-  const owner = (await client.query(`select user_id from app_identity.installation_owner`)).rows[0];
-  if (!owner) await client.query(`insert into app_identity.installation_owner
-    (user_id,established_by_operator_id) values ($1,'review-test')`,
-  [criterion.created_by]);
-  const actorId = owner?.user_id ?? criterion.created_by;
+  const actorId = await createAgencyReviewer(client, criterion.organization_id, criterion.created_by);
   await client.query("set local role open_triage_api_runtime");
   let session = { user: { id: actorId }, organization: { id: criterion.organization_id },
     capabilities: ["review:all", "review:admin"] };

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { assertClinicalRouteCacheHeaders } from "./helpers/clinical-route-cache-headers.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -57,6 +58,22 @@ test("service-worker runtime caching is restricted to reviewed static shell reso
   assert.match(worker, /pathname\.startsWith\("\/api\/"\)/);
   assert.match(worker, /pathname\.endsWith\("\.json"\)/);
   assert.doesNotMatch(worker, /cache\.put\(event\.request, response\.clone\(\)\)[\s\S]*origin ===/);
-  assert.equal(callsController.match(/@Header\("Cache-Control", "no-store, private"\)/g)?.length, 4);
-  assert.equal(reportsController.match(/@Header\("Cache-Control", "no-store, private"\)/g)?.length, 24);
+  assertClinicalRouteCacheHeaders(callsController, "assigned-calls.controller.ts");
+  assertClinicalRouteCacheHeaders(reportsController, "draft-report.controller.ts");
+});
+
+
+test("clinical cache protection rejects one missing route header and accepts additional protected routes", () => {
+  const header = '@Header("Cache-Control", "no-store, private")';
+  const fixture = `import { Controller, Get, Post as Submit, Delete, Header } from "@nestjs/common";
+    @Controller("clinical") class ClinicalController {
+      @Get("existing") ${header} read() {}
+      @Submit("new") ${header} create() {}
+    }`;
+  assert.equal(assertClinicalRouteCacheHeaders(fixture).length, 2);
+  assert.throws(() => assertClinicalRouteCacheHeaders(fixture.replace(header, "")), /ClinicalController\.read.*no-store|no-store.*ClinicalController\.read/);
+  const expanded = fixture.replace(/}\s*$/, `@Delete("attempt") ${header} cancel() {} }`);
+  assert.equal(assertClinicalRouteCacheHeaders(expanded).length, 3, "new protected routes need no count update");
+  assert.throws(() => assertClinicalRouteCacheHeaders(expanded.replace(header, `// ${header}\n`)), /ClinicalController\.read/,
+    "a header in a comment cannot protect a route");
 });

@@ -58,6 +58,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await page.route("**/api/super-admin/agencies", async (route) => {
       if (route.request().method() === "POST") {
         created = route.request().postDataJSON() as Record<string, unknown>;
+        expect(created.settings).not.toHaveProperty("authenticationLimits");
         expect(route.request().headers()["x-csrf-token"]).toBe("csrf");
         if (conflict) return route.fulfill({ status: 409, json: { code: "admin.hostnameReserved", params: {} } });
         return route.fulfill({ json: { ...agencies[1], ...created, hostname: `${created?.hostname}.example.test`, id: "new-agency" } });

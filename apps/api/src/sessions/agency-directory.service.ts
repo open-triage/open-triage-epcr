@@ -11,6 +11,15 @@ export const agencySummary = (row: AgencyRow): AgencySummary => ({ id: row.id, n
   parentOrganizationId: row.parent_organization_id, groupId: row.parent_organization_id ?? row.id,
   hostname: row.hostname, active: row.active, revision: Number(row.revision), timeZone: row.deployment_timezone });
 
+/** Match the development origins accepted by allowsOrigin and used by callbacks. */
+export function registeredAgencyOrigin(hostname:string,environment:Record<string,string|undefined>=process.env):string {
+  if(environment.NODE_ENV!=="production"&&/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(hostname)){
+    const port=new URL(environment.WEB_ORIGIN??"http://localhost:3000").port;
+    return `http://${hostname}${port?`:${port}`:""}`;
+  }
+  return `https://${hostname}`;
+}
+
 @Injectable()
 export class AgencyDirectoryService {
   constructor(@InjectDataSource() private readonly database: DataSource) {}
@@ -46,7 +55,7 @@ export class AgencyDirectoryService {
     return rows.map(agencySummary);
   }
 
-  async allowsOrigin(origin: string): Promise<boolean> {
+  async allowsOrigin(origin: string,manager:Pick<EntityManager,"query">=this.database.manager): Promise<boolean> {
     let url: URL;
     try { url = new URL(origin); } catch { return false; }
     if (origin === (process.env.WEB_ORIGIN ?? "http://localhost:3000")) return true;
@@ -54,7 +63,7 @@ export class AgencyDirectoryService {
     const localDevelopment = process.env.NODE_ENV !== "production" && url.protocol === "http:" &&
       /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(url.hostname) && url.port === portal.port;
     if (url.origin !== origin || (!localDevelopment && (url.protocol !== "https:" || url.port))) return false;
-    const agency = await this.registeredAgency(url.hostname);
+    const agency = await this.registeredAgency(url.hostname,manager);
     return agency?.active === true && agency.root_active === true;
   }
 }

@@ -48,6 +48,10 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_SECRET_BASE64 } }
             - name: AUTH_RATE_LIMIT_SECRET_BASE64
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: AUTH_RATE_LIMIT_SECRET_BASE64 } }
+            - name: OIDC_CREDENTIAL_KEY_VERSION
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OIDC_CREDENTIAL_KEY_VERSION, optional: true } }
+            - name: OIDC_CREDENTIAL_KEYS_JSON
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OIDC_CREDENTIAL_KEYS_JSON, optional: true } }
             - name: OFFLINE_RECOVERY_KEY_VERSION
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OFFLINE_RECOVERY_KEY_VERSION } }
             - name: OFFLINE_RECOVERY_SECRET_BASE64

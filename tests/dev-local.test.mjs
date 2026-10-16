@@ -26,6 +26,25 @@ test("root configuration keeps API ports and secrets out of the web process, inc
   assert.throws(() => developmentEnvironment("PORT=3000", {}), /different from the web port/);
 });
 
+
+test("inherited server credentials remain API-only when an older local file omits their names", () => {
+  const privateKeys = ["OIDC_CREDENTIAL_KEYS_JSON", "OIDC_CREDENTIAL_KEY_VERSION",
+    "PATIENT_KEY_SECRET_BASE64", "PATIENT_KEY_INSTALLATION_ID", "PATIENT_KEY_VERSION",
+    "AUTH_RATE_LIMIT_SECRET_BASE64", "AUTH_TRUST_PROXY_HOPS", "OFFLINE_RECOVERY_SECRET_BASE64",
+    "OFFLINE_RECOVERY_WRAPPING_KEYS_JSON", "OFFLINE_RECOVERY_KEY_VERSION", "DATABASE_LOGGING",
+    "REVIEW_REPORTING_REPLICA_DATABASE_URL", "PGPASSWORD", "SUPABASE_SERVICE_ROLE_KEY", "FUTURE_SERVER_SECRET_BASE64"];
+  const inherited = { PATH: "/bin", NODE_ENV: "development", NEXT_PUBLIC_API_URL: "same-origin",
+    ...Object.fromEntries(privateKeys.map(key => [key, "synthetic-private-fixture"])) };
+  const { api, web } = developmentEnvironment("PORT=3001\nNEXT_PUBLIC_BASE_PATH=/clinical", inherited);
+  for (const key of privateKeys) {
+    assert.equal(Object.hasOwn(web, key), false, `${key} must remain outside the web environment`);
+    assert.equal(api[key], inherited[key]);
+  }
+  assert.equal(web.PATH, "/bin");assert.equal(web.NODE_ENV, "development");
+  assert.equal(web.NEXT_PUBLIC_API_URL, "same-origin");assert.equal(web.NEXT_PUBLIC_BASE_PATH, "/clinical");
+  assert.equal(web.OPEN_TRIAGE_API_UPSTREAM, "http://127.0.0.1:3001");
+});
+
 test("rejects invalid connection URLs without echoing their contents and only recovers default local Supabase", () => {
   for (const url of [undefined, "secret", "https://secret@example.org/db", "postgres://localhost"]) {
     assert.throws(() => databaseTarget(url), (error) => !error.message.includes("secret"));

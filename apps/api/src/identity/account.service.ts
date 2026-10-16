@@ -1,3 +1,5 @@
+import { localPolicy } from "../authentication/local-policy.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
 import { randomUUID } from "node:crypto";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
@@ -28,6 +30,7 @@ export class AccountService {
         "select app_identity.organization_group($1) id", [input.organizationId]);
       if (!group?.id) throw new Error("No organization has that immutable ID");
       const organizationId = group.id;
+      const policy = await localPolicy(manager, organizationId);
       await manager.query(
         "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
         [userId, organizationId, input.displayName.trim()]
@@ -35,7 +38,7 @@ export class AccountService {
       await manager.query(
         `insert into app_identity.local_credential
           (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
-         values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
+         values ($1, $2, $3, true, now() + make_interval(hours => $4))`, [userId, username, verifier, policy?.temporaryPasswordHours ?? selectedInstallationSettings().authentication.temporaryPasswordHours]
       );
       await this.assignProtectedRoles(manager, organizationId, userId, BUILT_IN_ROLES[input.role],
         "Initial account provisioning");
@@ -122,20 +125,21 @@ export class AccountService {
         const account = rows[0];
         if (!account) throw new Error("No local account has that immutable user ID");
         const target = { organizationId: account.organization_id, userId: account.user_id };
-        await this.replacePassword(manager, account.user_id, verifier);
+        await this.replacePassword(manager, account.user_id, verifier, account.organization_id);
         await this.auditOperator(manager, "user.reset_password", target, operator, "succeeded");
         return { organizationId: account.organization_id, userId: account.user_id };
       });
     });
   }
 
-  private async replacePassword(manager: EntityManager, userId: string, verifier: string): Promise<void> {
+  private async replacePassword(manager: EntityManager, userId: string, verifier: string, organizationId: string | null = null): Promise<void> {
+    const policy = await localPolicy(manager, organizationId);
     await manager.query(
       `update app_identity.local_credential
        set password_verifier = $2, must_change_password = true,
-           temporary_password_expires_at = now() + interval '72 hours',
+           temporary_password_expires_at = now() + make_interval(hours => $3),
            credential_version = credential_version + 1, password_changed_at = null, updated_at = now()
-       where user_id = $1`, [userId, verifier]
+       where user_id = $1`, [userId, verifier, policy?.temporaryPasswordHours ?? selectedInstallationSettings().authentication.temporaryPasswordHours]
     );
     await manager.query(
       `update app_identity.app_session set revoked_at = now(), revocation_reason = 'password_reset'

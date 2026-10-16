@@ -433,7 +433,7 @@ test("a second browser recovers its own offline copy without replacing the first
     await second.goto(page.url());
     await expect(second.getByRole("heading", { name: "Open reports" })).toBeVisible();
     await second.getByRole("button", { name: "Reopen report" }).click();
-    await expect(second.getByText("Confirm your password to recover protected work from this browser.")).toBeVisible();
+    await expect(second.getByText("Confirm your identity to recover protected work from this browser.")).toBeVisible();
     await second.getByLabel("Current password").fill("current-password");
     await second.getByRole("button", { name: "Confirm and recover" }).click();
     await expect(second.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
@@ -699,7 +699,7 @@ test("one online-opened report remains editable through connection loss using on
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
-  await expect(page.getByText("Confirm your password to recover protected work from this browser.")).toBeVisible();
+  await expect(page.getByText("Confirm your identity to recover protected work from this browser.")).toBeVisible();
   await page.getByLabel("Current password").fill("current-password");
   await page.getByRole("button", { name: "Confirm and recover" }).click();
   await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("ENCRYPTED-OFFLINE-RECOVERY");

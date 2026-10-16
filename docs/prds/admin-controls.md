@@ -15,6 +15,12 @@
 > integration-management panels remain broader scope. Original problem statements
 > and unresolved-risk notes below are design history, not a current gap inventory.
 
+> **Planned extension (2026-10-13).** [Authentication, units and shifts](authentication-units-and-shifts.md)
+> specifies Authentication, operational Units/Devices and Shift Schedule
+> administration. It brings those selected administration areas into planned
+> scope; physical fleet management and general integration/history browsers
+> remain outside that release.
+
 > Offline clinical persistence and grant behavior is specified by the
 > [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md).
 > It supersedes broader offline-grant statements here where the documents

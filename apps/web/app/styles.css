@@ -221,8 +221,8 @@ fieldset { min-inline-size: 0; }
 .admin-user-create label { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
 .admin-user-create input, .admin-user-create textarea { min-height: 44px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; color: var(--text-color); background: #fff; font: inherit; font-size: var(--text-control); }
 .admin-role-selection { display: flex; flex-wrap: wrap; gap: 10px 16px; grid-column: 1 / -1; padding: 12px; border: 1px solid var(--line); }
-.admin-role-selection label { display: flex; align-items: center; gap: 7px; }
-.admin-role-selection input { min-height: 0; }
+.agency-settings .admin-role-selection label:has(input[type="checkbox"]), .admin-role-selection label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 7px; min-height: 44px; }
+.agency-settings .admin-role-selection input[type="checkbox"], .admin-role-selection input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; flex: 0 0 20px; }
 .admin-user-note { grid-column: 1 / -1; }
 .admin-user-note textarea { min-height: 72px; resize: vertical; }
 .admin-user-create button { justify-self: start; }
@@ -237,11 +237,11 @@ fieldset { min-inline-size: 0; }
 .admin-session-list > li > div { display: flex; justify-content: space-between; gap: 12px; }
 .admin-session-list > li > div span { color: var(--green); font-weight: 800; }
 .admin-session-list dl { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px 0; }
-.admin-session-list button, .admin-credential-reset button { min-height: 44px; padding: 7px 13px; }
-.admin-credential-reset { padding: 0 16px 16px; }
-.admin-credential-reset fieldset { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); }
-.admin-credential-reset label { display: grid; gap: 6px; font-weight: 750; }
-.admin-credential-reset input, .admin-credential-reset textarea { min-height: 44px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; font: inherit; font-size: var(--text-control); }
+.admin-session-list button, .admin-credential-reset button, .admin-sso-unlink button { min-height: 44px; padding: 7px 13px; }
+.admin-credential-reset, .admin-sso-unlink { padding: 0 16px 16px; }
+.admin-credential-reset fieldset, .admin-sso-unlink fieldset { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); }
+.admin-credential-reset label, .admin-sso-unlink label { display: grid; gap: 6px; font-weight: 750; }
+.admin-credential-reset input, .admin-credential-reset textarea, .admin-sso-unlink input { min-height: 44px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; font: inherit; font-size: var(--text-control); }
 .admin-directory-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; padding: 18px; }
 .admin-directory-filters label, .admin-role-state { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
 .admin-directory-filters input, .admin-directory-filters select, .admin-role-state select { min-height: 44px; padding: 8px 10px; border: 1px solid #aeb9b0; border-radius: 6px; color: var(--text-color); background: #fff; font: inherit; font-size: var(--text-control); }
@@ -286,6 +286,12 @@ fieldset { min-inline-size: 0; }
 .admin-capability-options small { display: block; margin-top: 3px; color: var(--muted); font-weight: 500; }
 .admin-role-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .admin-role-editor-actions button:disabled { cursor: not-allowed; opacity: .65; }
+.unit-directory { display: grid; gap: 12px; padding: 18px; }
+.unit-directory > .section-heading { padding: 0; }
+.unit-directory > .section-heading h2 { margin: 0; }
+.unit-directory > p, .unit-directory > button { margin: 0; }
+.unit-directory > button { justify-self: start; }
+.unit-directory > .admin-table-scroll { min-width: 0; padding: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .catalog-empty, .catalog-editor { display: grid; min-width: 0; align-content: start; gap: 12px; padding: 18px; }
 .catalog-editor > *, .catalog-element-editor > * { min-width: 0; }
@@ -1101,6 +1107,7 @@ fieldset { min-inline-size: 0; }
 
 .agency-settings form { max-width: 900px; }
 .agency-settings .form-actions { position: sticky; bottom: 0; padding: 10px 0; background: var(--paper); }
+.agency-settings .agency-settings-actions { position: static; }
 .stationary-section-selector { display: none; }
 @media (min-width: 901px) {
   .stationary-presentation:has(> .stationary-record-workspace:not([hidden])) { padding-bottom: 0; }
@@ -1150,7 +1157,9 @@ fieldset { min-inline-size: 0; }
 .repeated-custom-fields > fieldset { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
 .repeated-custom-fields [data-custom-occurrence-id] > button { justify-self: start; }
 
+.admin-directory-row[tabindex="0"]:hover,
 .admin-directory-row:has([data-list-row-action]):hover { background: color-mix(in srgb, var(--green) 8%, transparent); cursor: pointer; }
+.admin-directory-row[tabindex="0"]:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .admin-directory-row[aria-selected="true"] { background: color-mix(in srgb, var(--green) 14%, transparent); }
 
 .metric-library { min-width: 0; }
@@ -1198,3 +1207,82 @@ fieldset { min-inline-size: 0; }
   .agency-management .agency-table { max-height: 55dvh; }
 }
 .review-agency-name { display: block; margin-top: 0.25rem; }
+
+.authentication-policy-history { max-height: 12rem; overflow-y: auto; }
+.unit-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--green); border-radius: 8px; color: var(--text-color); background: var(--surface, white); }
+.unit-dialog::backdrop { background: rgb(12 18 14 / 48%); }
+.unit-dialog > h3 { margin: 0 0 12px; }
+.unit-dialog > form { display: grid; gap: 12px; }
+.unit-dialog > form > label, .unit-dialog > form > p { margin: 0; }
+:where(.unit-dialog, .installation-enrollment) label { display: grid; gap: 7px; margin: 12px 0; }
+:where(.unit-dialog, .installation-enrollment) label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
+:where(.unit-dialog, .installation-enrollment) input:not([type="checkbox"]) { width: 100%; padding: 10px 12px; min-height: 44px; border: 1px solid var(--green); border-radius: 6px; color: var(--text-color); font-size: var(--text-control); }
+
+.installation-enrollment { max-width: 720px; margin: 0 auto; padding: 16px; overflow-wrap: anywhere; }
+.installation-enrollment form { display: grid; gap: 8px; }
+
+.unit-installation-inventory { max-height: min(35dvh, 320px); }
+
+.installation-enrollment h1 { font-size: var(--text-heading); }
+
+.oidc-metadata-value { overflow-wrap: anywhere; margin-inline-start: 0; }
+
+/* Keep the compact provider editor actions from covering credential fields. */
+.agency-settings .oidc-draft .form-actions { position: static; }
+.oidc-draft > div:not(.form-actions) { display: grid; gap: 8px; }
+.oidc-history-scroll { max-height: 320px; overflow: auto; min-width: 0; }
+.oidc-history { width: 100%; min-width: 640px; border-collapse: collapse; }
+.oidc-history th, .oidc-history td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.oidc-history th { position: sticky; top: 0; background: var(--surface, #fff); }
+.agency-settings :is(.oidc-identity-acknowledgment, .oidc-checkbox) { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.agency-settings :is(.oidc-identity-acknowledgment, .oidc-checkbox) input { width: 20px; min-height: 20px; flex-shrink: 0; }
+
+.schedule-editor .admin-table-scroll { padding: 0; }
+
+.external-identities td { overflow-wrap: anywhere; }
+.external-identity-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.external-identity-dialog :is(dd, p) { overflow-wrap: anywhere; }
+.external-identity-dialog form { display: grid; gap: 12px; }
+.agency-settings .external-identity-dialog .form-actions { position: static; padding: 0; background: transparent; }
+.external-identity-dialog select { width: 100%; }
+.external-identities .admin-table-scroll { max-height: min(65dvh, var(--available-height, 65dvh)); overflow: auto; }
+@media (max-width: 640px) {
+  .external-identities table { min-width: 680px; }
+}
+.external-identities td:last-child { white-space: nowrap; }
+.external-identities td:last-child button { overflow-wrap: normal; min-width: 80px; }
+.authentication-policy > nav.form-actions { position: static; }
+
+.production-workflow .admin-table-scroll { max-height: min(45dvh, 30rem); overflow: auto; padding: 0; }
+
+.admin-external-identity-details { margin: 16px 18px; }
+.admin-external-identity-details dd { overflow-wrap: anywhere; min-width: 0; }
+.admin-user-management > .form-actions, .admin-user-management > p { margin: 16px 18px; }
+
+.agency-settings .admin-user-management .form-actions { position: static; padding: 0; background: transparent; }
+.admin-management-actions { grid-column: 1 / -1; }
+
+/* Shared insets for the authentication, user and schedule workspaces. */
+:is(.authentication-policy, .users-directory, .schedules-directory, .schedule-editor) > .section-heading { gap: 12px; padding: 18px; }
+.authentication-policy > .oidc-draft { min-width: 0; max-width: 936px; padding: 18px; }
+.authentication-policy .oidc-draft > h3 { margin: 0 0 12px; }
+.authentication-policy .oidc-draft > form { padding: 0; }
+.authentication-policy .oidc-draft .form-actions { padding: 10px 0; background: transparent; }
+.authentication-policy .oidc-draft > :last-child { margin-bottom: 0; }
+.authentication-policy .oidc-draft > :is(h4, p) { margin-block: 12px; }
+.users-directory > .admin-user-management { margin: 18px; }
+.admin-user-management > .section-heading h3 { margin: 0; }
+.admin-user-management-form > fieldset { padding: 0; border: 0; }
+.admin-user-create :is(fieldset, label, input, select, textarea) { min-width: 0; max-width: 100%; }
+.admin-user-create :is(input:not([type="checkbox"]), select, textarea) { width: 100%; }
+.admin-user-create p { margin: 0; }
+.admin-role-selection > label:not(:has(input[type="checkbox"])) { display: grid; gap: 6px; width: 100%; min-width: 0; }
+.schedules-directory > button { margin-block: 0 12px; }
+.schedule-editor form > p { margin: 0; }
+.authentication-policy .oidc-draft > .form-actions { margin-block: 12px; padding: 0; }
+.authentication-policy .oidc-draft form p { margin: 0; }
+:is(.users-directory, .schedules-directory) > .admin-table-scroll { margin-inline: 18px; padding-inline: 0; }
+
+.oidc-registration { display: grid; gap: 12px; margin-top: 18px; }
+.oidc-registration :is(h4, p) { margin: 0; }
+.oidc-registration code { overflow-wrap: anywhere; }

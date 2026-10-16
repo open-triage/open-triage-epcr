@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AdminAssignableRoleSummary, AdminCapabilityDefinition, AdminRole, AdminRoleList, AdminRoleSummary, AdminRoleSummaryList, AdminUserPage
+  AdminAssignableRoleSummary, AdminCapabilityDefinition, AdminRole, AdminRoleList, AdminRoleSummary, AdminRoleSummaryList, AdminUserPage, AdminExternalIdentitySummary
 } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 
-type UserState = "active" | "disabled" | "all";
+type UserState = "active" | "disabled" | "all" | "pending" | "denied";
 type UserCursor = {
   active: boolean;
   displayName: string;
@@ -18,11 +18,16 @@ type UserCursor = {
   state: UserState;
   search: string;
   roleId: string | null;
+  kind?: "user" | "external";
 };
 type UserRow = {
-  id: string; display_name: string; username: string; active: boolean; revision: string | number;
+  id: string; display_name: string; username: string | null; active: boolean; revision: string | number;
   owner: boolean; superadmin: boolean;
+  sso_linked: boolean;
+  sso_username: string | null;
   roles: AdminRoleSummary[] | string | null;
+  kind?: "user" | "external";
+  regional_identity?: AdminExternalIdentitySummary | null;
 };
 type RoleRow = {
   id: string; display_name: string; description: string | null; active: boolean; protected: boolean;
@@ -35,12 +40,12 @@ function one(value: unknown): string | undefined {
     : typeof value === "string" ? value : undefined;
 }
 
-function state(value: unknown, fallback: UserState = "active"): UserState {
+function state(value: unknown, fallback: UserState = "active", review = false): UserState {
   const selected = one(value) ?? fallback;
-  if (selected !== "active" && selected !== "disabled" && selected !== "all") {
+  if (selected !== "active" && selected !== "disabled" && selected !== "all" && !(review && ["pending", "denied"].includes(selected))) {
     throw new BadRequestException("state must be active, disabled, or all");
   }
-  return selected;
+  return selected as UserState;
 }
 
 function parsedJsonArray<T>(value: T[] | string | null): T[] {
@@ -63,6 +68,7 @@ function decodeCursor(value: string | undefined, expected: Omit<UserCursor, "act
   try {
     const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<UserCursor>;
     if (typeof parsed.active !== "boolean" || typeof parsed.displayName !== "string" || !UUID.test(parsed.id ?? "") ||
+        parsed.kind !== undefined && !["user", "external"].includes(parsed.kind) ||
         parsed.state !== expected.state || parsed.search !== expected.search || parsed.roleId !== expected.roleId) throw new Error();
     return parsed as UserCursor;
   } catch {
@@ -83,7 +89,7 @@ export class UserRoleReadService {
 
   async users(token: string, input: Record<string, unknown>): Promise<AdminUserPage> {
     const session = await this.sessions.requireCapability(token, "users:read");
-    const selectedState = state(input.state);
+    const selectedState = state(input.state, "active", true);
     const search = (one(input.search) ?? "").trim().normalize("NFC").toLocaleLowerCase("en-US").slice(0, 100);
     const roleId = one(input.roleId) ?? null;
     if (roleId && !UUID.test(roleId)) throw new BadRequestException("roleId must be a UUID");
@@ -92,7 +98,10 @@ export class UserRoleReadService {
     const pageSize = Math.min(requestedLimit, MAX_PAGE_SIZE);
     const cursor = decodeCursor(one(input.cursor), { state: selectedState, search, roleId });
     const rows = await this.dataSource.query<UserRow[]>(`
-      select u.id, u.display_name, credential.username, u.active, u.revision,
+      with directory as (select u.id, u.display_name, credential.username,
+        (select linked.username_hint from app_identity.regional_identity_request linked
+          where linked.linked_user_id=u.id and linked.username_hint is not null
+          order by linked.linked_at desc,linked.id limit 1) sso_username, u.active, u.revision,
         exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
         exists (select 1 from app_identity.installation_owner installation_owner
           where installation_owner.user_id = u.id) as owner,
@@ -104,35 +113,56 @@ export class UserRoleReadService {
           from app_identity.user_role_assignment assignment
           join app_identity.role role
             on role.organization_id = assignment.organization_id and role.id = assignment.role_id
-          where assignment.organization_id = u.organization_id and assignment.user_id = u.id
+          where assignment.organization_id = $1 and assignment.user_id = u.id
             and assignment.ended_at is null and not role.hidden
-        ), '[]'::jsonb) as roles
+        ), '[]'::jsonb) as roles, 'user'::text kind, null::jsonb regional_identity,
+        exists(select 1 from app_identity.regional_identity_request linked where linked.linked_user_id=u.id) sso_linked
       from app_identity.app_user u
-      join app_identity.local_credential credential on credential.user_id = u.id
+      left join app_identity.local_credential credential on credential.user_id = u.id
       where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1)
-        and ($2 = 'all' or u.active = ($2 = 'active'))
-        and ($3 = '' or lower(u.display_name) like $4 escape '\\' or credential.username like $4 escape '\\')
-        and ($5::uuid is null or exists (
+      union all
+      select r.id, normalize(coalesce(r.display_name,r.username_hint,r.subject),NFC), null, r.username_hint, false, r.review_revision,
+        false,false,'[]'::jsonb,'external',jsonb_build_object(
+          'id',r.id,'providerId',r.provider_id,'revision',r.first_revision,'reviewRevision',r.review_revision,
+          'issuer',r.issuer,'subject',r.subject,'displayName',r.display_name,'email',r.email,'username',r.username_hint,'createdAt',r.created_at,
+          'status',case when r.denied_at is null then 'pending' else 'denied' end,
+          'linkedUserId',null,'deniedAt',r.denied_at,'reviewProviders',coalesce((
+            select jsonb_agg(jsonb_build_object('source',p.source,'revision',v.revision))
+            from app_identity.oidc_provider_state s
+            cross join lateral (values ('draft',s.draft_revision),('active',s.active_revision)) p(source,revision)
+            join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=p.revision
+            where s.group_id=r.group_id and v.provider_id=r.provider_id and v.configuration->>'issuer'=r.issuer
+          ),'[]'::jsonb)),false
+      from app_identity.regional_identity_request r
+      where $10::boolean and r.group_id=app_identity.organization_group($1) and r.linked_user_id is null)
+      select u.* from directory u
+      where ($2 = 'all' or (u.kind='user' and $2 in ('active','disabled') and u.active=($2='active'))
+        or (u.kind='external' and u.regional_identity->>'status'=$2))
+        and ($3 = '' or lower(u.display_name) like $4 escape '\\' or lower(u.username) like $4 escape '\\'
+          or lower(u.sso_username) like $4 escape '\\'
+          or lower(u.regional_identity->>'email') like $4 escape '\\' or lower(u.regional_identity->>'subject') like $4 escape '\\')
+        and ($5::uuid is null or (u.kind='user' and exists (
           select 1 from app_identity.user_role_assignment role_filter
-          where role_filter.organization_id = u.organization_id and role_filter.user_id = u.id
+          where role_filter.organization_id = $1 and role_filter.user_id = u.id
             and role_filter.role_id = $5 and role_filter.ended_at is null
-        ))
-        and ($6::boolean is null or (not u.active, lower(u.display_name), u.id) >
-          (not $6::boolean, $7, $8::uuid))
-      order by not u.active, lower(u.display_name), u.id
+        )))
+        and ($6::boolean is null or (not u.active, lower(u.display_name), u.id,u.kind) >
+          (not $6::boolean, $7, $8::uuid,$11::text))
+      order by not u.active, lower(u.display_name), u.id,u.kind
       limit $9
     `, [session.organization.id, selectedState, search, literalLike(search), roleId,
-      cursor?.active ?? null, cursor?.displayName ?? "", cursor?.id ?? null, pageSize + 1]);
+      cursor?.active ?? null, cursor?.displayName ?? "", cursor?.id ?? null, pageSize + 1,
+      session.capabilities?.includes("settings:read") ?? false,cursor?.kind??"user"]);
     const visible = rows.slice(0, pageSize);
     const last = visible.at(-1);
     return {
-      items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,
+      items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,ssoUsername:row.sso_username??null,ssoLinked:row.sso_linked,
         active: row.active, revision: Number(row.revision), owner: row.owner, superadmin: row.superadmin,
-        roles: parsedJsonArray(row.roles) })),
+        roles: parsedJsonArray(row.roles),...(row.regional_identity?{externalIdentity:row.regional_identity}:{}) })),
       pageSize,
       nextCursor: rows.length > pageSize && last ? encodeCursor({ active: last.active,
         displayName: last.display_name.normalize("NFC").toLocaleLowerCase("en-US"), id: last.id,
-        state: selectedState, search, roleId }) : null
+        state: selectedState, search, roleId,kind:last.kind??"user" }) : null
     };
   }
 

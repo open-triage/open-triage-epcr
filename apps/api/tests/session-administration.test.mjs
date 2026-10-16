@@ -18,6 +18,7 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
   const manager = { query: async (sql, parameters = []) => {
     const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(event);
+    if (event.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: "organization-id", revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
     if (event.sql.startsWith("select session.id, session.revoked_at")) return [{ id: sessionId,
       revoked_at: null, current: false, owner: false, ...session }];
     if (event.sql.startsWith("select app_user.id, app_user.active")) return [{ id: targetId,
@@ -37,6 +38,7 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
     query: async (sql, parameters = []) => {
       const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
       events.push(event);
+    if (event.sql.includes("select * from app_identity.group_authentication_policy")) return [{ group_id: "organization-id", revision: 1, maximum_session_hours: 12, temporary_password_hours: 72, account_attempt_limit: 20, network_attempt_limit: 60 }];
       if (event.sql.startsWith("select id from app_identity.app_user")) return [{ id: targetId }];
       if (event.sql.startsWith("select session.id, session.created_at")) return [{ id: sessionId,
         created_at: "2026-09-11T08:00:00.000Z", last_activity_at: "2026-09-11T11:59:00.000Z",
@@ -73,7 +75,7 @@ test("session listing requires combined read authority and exposes only bounded 
   assert.doesNotMatch(JSON.stringify(result), /ip|geo|token/i);
   const query = events.find(({ sql }) => sql.startsWith("select session.id, session.created_at"));
   assert.match(query.sql, /revoked_at is null/);
-  assert.match(query.sql, /session\.credential_version = credential\.credential_version/);
+  assert.match(query.sql, /session_authentication_valid\(session\)/);
   await assert.rejects(setup({ capabilities: ["sessions:read"] }).service.list("token", targetId), UnauthorizedException);
 });
 
@@ -144,13 +146,13 @@ test("credential reset rolls back credential, revision, and revocations when saf
   assert.equal(events.at(-1).sql, "rollback");
 });
 
-test("administrative recovery purge is recent-authenticated, user-wide, audited, and content blind", async () => {
+test("administrative recovery purge uses login authority, is user-wide, audited, and content blind", async () => {
   const { service, events } = setup();
   const result = await service.purgeOfflineRecovery("actor-token", targetId,
     { reason: "Confirmed lost browser" }, now);
   assert.deepEqual(result, { userId: targetId, purgedEnvelopeCount: 2,
     revokedGrantCount: 3, appliesToAllBrowsers: true });
-  assert.ok(events.some(({ sql }) => sql === "recent-reauthentication"));
+  assert.ok(!events.some(({ sql }) => sql === "recent-reauthentication"));
   const purge = events.find(({ sql }) => sql.includes("purge_user_recovery_as_administrator"));
   assert.deepEqual(purge.parameters, [organizationId, targetId, actorId, "Confirmed lost browser"]);
   const audit = events.find(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"));

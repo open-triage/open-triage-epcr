@@ -70,7 +70,7 @@ storage policies](https://knowledge.broadcom.com/external/article/423594/error-c
 [DNS/NTP and network failure modes](https://knowledge.broadcom.com/external/article/323411/common-issues-with-a-vsphere-with-tanzu.html),
 and [VM class compatibility](https://knowledge.broadcom.com/external/article/456622/vks-worker-nodes-stuck-in-provisioning-s.html).
 
-Install Node.js 22+, Helm, and a cluster-compatible `kubectl` on the administration
+Install Node.js 22.12.0+, Helm, and a cluster-compatible `kubectl` on the administration
 host. Install the matching vSphere plugin, Tanzu CLI, or TKGI CLI where applicable.
 The preparation/deployment helpers use Node's standard library: they do not need
 `npm ci`. Builders additionally need Docker/BuildKit; the SQL setup example needs

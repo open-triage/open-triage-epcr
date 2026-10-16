@@ -107,8 +107,11 @@ test("the authenticated call-list integration returns only the clinician's assig
   const queries = [];
   const dataSource = {
     query: async (sql, parameters) => {
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
       queries.push({ sql, parameters });
       if (sql.includes("purge_expired_synthetic_records")) return [];
+      if (sql.includes("select synthetic from app_identity.app_user")) return [{synthetic:true}];
+      if (sql.includes("order by id for share") || sql.includes("order by role.id for share")) return [];
       return [{
         id: "32000000-0000-4000-8000-000000000011",
         call_number: "SYN-20260903-001",
@@ -134,6 +137,7 @@ test("the authenticated call-list integration returns only the clinician's assig
       }];
     }
   };
+  dataSource.transaction = async work => work(dataSource);
   const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
     assert.equal(capability, "clinical:document");
@@ -160,9 +164,9 @@ test("the authenticated call-list integration returns only the clinician's assig
     imageMediaLimitBytes: 10 * 1024 * 1024,
     settingsRevision: 1,
   });
-  assert.deepEqual(queries[1].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
-  assert.match(queries[1].sql, /ca\.status in \('assigned', 'canceled'\)/);
-  assert.match(queries[1].sql, /uc\.user_id = \$1/);
+  assert.deepEqual(queries[4].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
+  assert.match(queries[4].sql, /ca\.status in \('assigned', 'canceled'\)/);
+  assert.match(queries[4].sql, /uc\.user_id=\$1/);
 });
 
 test("the assigned-call endpoint requires a current clinician session", async () => {
@@ -174,7 +178,8 @@ test("removing clinical document authority blocks assigned-call access on the ne
   let canDocument = true;
   let queries = 0;
   const remainingCapabilities = ["admin-dashboard:read"];
-  const dataSource = { query: async () => { queries += 1; return []; } };
+  const dataSource = { query: async sql => { queries += 1; return sql.includes("from app_identity.production_workflow_rollout") ? [{group_id:"group",revision:1,enabled_at:new Date()}] : []; } };
+  dataSource.transaction = async work => work(dataSource);
   const sessions = { requireCapability: async (_token, capability) => {
     assert.equal(capability, "clinical:document");
     assert.deepEqual(remainingCapabilities, ["admin-dashboard:read"]);
@@ -184,19 +189,21 @@ test("removing clinical document authority blocks assigned-call access on the ne
   const service = new AssignedCallsService(dataSource, sessions);
 
   await service.list(session.accessToken);
-  assert.equal(queries, 3);
+  const beforeWithdrawal = queries;
+  assert.ok(beforeWithdrawal > 0);
   canDocument = false;
   await assert.rejects(service.list(session.accessToken), UnauthorizedException);
   await assert.rejects(
     service.open(session.accessToken, "32000000-0000-4000-8000-000000000011"),
     UnauthorizedException,
   );
-  assert.equal(queries, 3, "an old unit assignment must not be queried after authority is removed");
+  assert.equal(queries, beforeWithdrawal, "an old unit assignment must not be queried after authority is removed");
 });
 
 test("generation context returns every eligible active unit and only counts unopened synthetic calls", async () => {
   const queries = [];
   const service = new AssignedCallsService({ query: async (sql, parameters) => {
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
     queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
     if (sql.includes("from app_identity.unit_clinician")) return [
       { id: "unit-1", call_sign: "Medic 1", name: "First", agency_time_zone: "America/New_York" },
@@ -252,7 +259,12 @@ test("opening and retrying one assignment creates one draft without an automatic
   const isolations = [];
   let patientInsertParameters = null;
   const manager = { query: async (sql, parameters) => {
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
     const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("select synthetic from app_identity.app_user")) return [{synthetic:true}];
+    if (normalized.includes("order by id for share") || normalized.includes("order by role.id for share")) return [];
+    if (normalized.includes("for share of u")) return [];
+    if (normalized.includes("select 1 from app_identity.unit_clinician uc")) return [{exists:1}];
     if (normalized.includes("for update of ca")) return [assignment];
     if (normalized.includes("active_configuration_bundle")) {
       return [{ id: "latest-published-version", catalog_release_id: "catalog-release",
@@ -361,6 +373,7 @@ for (const expiresAt of ["2026-09-09T12:00:00.000Z", null]) {
     const audits = [];
     const writes = [];
     const manager = { query: async (sql, parameters) => {
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
       const normalized = sql.replace(/\s+/g, " ");
       if (normalized.includes("pg_advisory_xact_lock")) return [];
       if (normalized.includes("from app_identity.unit_clinician") && normalized.includes("ou.id = $3")) return [{
@@ -444,6 +457,7 @@ test("generation rejects missing current Clinical Demo authority before any data
 test("generation creates an unopened call even when the clinician has another draft report", async () => {
   let generated;
   const manager = { query: async (sql, parameters) => {
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("pg_advisory_xact_lock")) return [];
     if (normalized.includes("from app_identity.unit_clinician")) return [{
@@ -504,7 +518,7 @@ test("a serialization failure while opening an assignment surfaces as a retriabl
 });
 
 test("a not-found error while opening an assignment keeps its original status instead of becoming a conflict", async () => {
-  const dataSource = transactional({ query: async () => [] });
+  const dataSource = transactional({ query: async (sql,parameters) => sql.includes("from app_identity.production_workflow_rollout") ? [{group_id:parameters[0],revision:1,enabled_at:new Date()}] : [] });
   const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
     assert.equal(capability, "clinical:document");

@@ -35,6 +35,8 @@ export function secretBundle(migrationFile) {
       `PATIENT_KEY_INSTALLATION_ID=${randomUUID()}`, "PATIENT_KEY_VERSION=1",
       `PATIENT_KEY_SECRET_BASE64=${randomBytes(32).toString("base64")}`,
       `AUTH_RATE_LIMIT_SECRET_BASE64=${randomBytes(32).toString("base64")}`,
+      "OIDC_CREDENTIAL_KEY_VERSION=1",
+      `OIDC_CREDENTIAL_KEYS_JSON=${JSON.stringify({ "1": randomBytes(32).toString("base64") })}`,
       "OFFLINE_RECOVERY_KEY_VERSION=1",
       `OFFLINE_RECOVERY_SECRET_BASE64=${randomBytes(32).toString("base64")}`,
     );

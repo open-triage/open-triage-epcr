@@ -13,14 +13,14 @@ OpenTriage applies two independent controls to every password verification path:
   second per source with a three-times burst by default. The main API Ingress
   remains independent so clinical traffic is not subject to this safety limit.
 
-## Agency configuration
+## Group configuration
 
-In **Admin → Agency Settings → Login attempt limits**, an administrator with
+In **Admin → Authentication → Effective group policy**, an administrator with
 `settings:write` can set the account and shared-network limits independently to
 whole numbers from 1 through 1,000. Both successful and unsuccessful password
 checks count, including sign-in, password changes, and reauthentication. The
 15-minute account and five-minute network windows are fixed. Defaults remain
-20 and 60 for existing and new agencies; unknown usernames use those defaults.
+20 and 60 for newly created groups; unknown usernames use those defaults.
 
 For a 50-person shared-login demo, start with 100 account attempts and 200
 network attempts, then rehearse on the intended deployment. These are attempt
@@ -30,11 +30,12 @@ progressive failed-password delays remain active and may still reject a burst.
 
 Changes are revision-guarded and audited with their old/new values. Every
 password check resolves the current policy; changing it does not clear attempts
-or failure evidence already recorded. Clients omitting `authenticationLimits`
-preserve the existing policy. Network bucket digests now include the resolved
-agency identity, so one agency's policy does not change another's allowance.
-The first upgrade to agency-scoped network buckets starts fresh network counters;
-account and installation counters retain their existing keys.
+or failure evidence already recorded. Child agencies inherit the root policy. The old Agency Settings API rejects changed
+`authenticationLimits`; unrelated saves retain its legacy values. Network bucket
+digests use the root group identity, and immutable-user account keys remain shared
+across siblings. Existing root account, network and installation keys are retained.
+Changes require recent personal authentication. See
+[group policy migration](group-authentication-policy.md) for explicit conflict resolution.
 
 Counter upserts and result updates lock buckets in a consistent order. Keep
 that ordering when changing this code: concurrent sign-ins previously could
