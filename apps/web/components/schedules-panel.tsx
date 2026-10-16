@@ -5,6 +5,7 @@ import { loadWeeklySchedules,previewWeeklySchedule,saveWeeklySchedule } from "..
 import { listAccessRemoved } from "../app/list-refresh";
 import { confirmDiscardChanges,useUnsavedChanges } from "./unsaved-changes";
 import { activateListRow } from "./list-row-action";
+import { useReturnFocus } from "./use-return-focus";
 import { useAvailableHeight } from "./use-available-height";
 export function SchedulesPanel({csrfToken,canManage,language}:{csrfToken:string;canManage:boolean;language:string}) {
   const sv=language==="sv";const t=useCallback((en:string,se:string)=>sv?se:en,[sv]);
@@ -16,11 +17,12 @@ export function SchedulesPanel({csrfToken,canManage,language}:{csrfToken:string;
   const generation=useRef(0),trigger=useRef<HTMLButtonElement|null>(null);
   const table=useAvailableHeight<HTMLDivElement>(100);
   useUnsavedChanges(dirty);
+  useReturnFocus(!!editor,busy,()=>document.getElementById(trigger.current?.id??""));
   const load=useCallback(async()=>{const request=++generation.current;setBusy(true);try{const rows=await loadWeeklySchedules();if(request===generation.current){setItems(rows.items);setError(null);}}
     catch(reason){if(request===generation.current){if(listAccessRemoved(reason)){setItems([]);setEditor(null);}setError(t("Schedules could not be refreshed. Loaded results are retained.","Scheman kunde inte uppdateras. Inlästa resultat behålls."));}}
     finally{if(request===generation.current)setBusy(false);}},[t]);
   useEffect(()=>{let active=true;void Promise.resolve().then(()=>{if(active)void load();});return()=>{active=false;};},[load]);
-  function close(saved=false){if(!saved&&!confirmDiscardChanges(dirty))return;setChangePreview(null);setEditor(null);setDirty(false);requestAnimationFrame(()=>document.getElementById(trigger.current?.id??"")?.focus());}
+  function close(saved=false){if(!saved&&!confirmDiscardChanges(dirty))return;setChangePreview(null);setEditor(null);setDirty(false);}
   if(editor) return <section className="admin-configuration agency-settings admin-directory schedule-editor"><div className="section-heading"><h2>{editor.id?t("Edit schedule","Redigera schema"):t("Create schedule","Skapa schema")}</h2></div>
     <form onSubmit={async event=>{event.preventDefault();setBusy(true);try{const body={name:editor.name,breakpoints:editor.breakpoints,...(editor.id?{expectedRevision:editor.revision}:{})};
       if(!changePreview){setChangePreview(await previewWeeklySchedule(csrfToken,editor.id,body));setError(null);}

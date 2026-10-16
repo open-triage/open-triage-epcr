@@ -22,7 +22,11 @@ for(const language of ['en','sv'])test(`${language} schedules author blank/weekl
  await page.route('**/__schedules?*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body style="--green:#663399;--green-dark:#442266"><div id="root"></div><script src="/__schedule-script"></script></body></html>`}));
  await page.route('**/api/admin/context',route=>route.fulfill({json:{organization:{id:'agency',name:'EMS'},panels:['schedules','units'],capabilities:['settings:read','settings:write'],dashboard:null,activeConfiguration:null}}));
  await page.route('**/api/admin/schedules**',async route=>{
-  if(route.request().method()==='GET')return route.fulfill(fail?{status:503,json:{message:'Unavailable'}}:{json:{items:schedules}});
+  if(route.request().method()==='GET'){
+   // Keep the post-save refresh busy across a frame; focus must follow the committed directory.
+   if(schedules.length)await new Promise(resolve=>setTimeout(resolve,75));
+   return route.fulfill(fail?{status:503,json:{message:'Unavailable'}}:{json:{items:schedules}});
+  }
   expect(route.request().headers()['x-csrf-token']).toBe('csrf');const body=route.request().postDataJSON();
   if(route.request().url().endsWith('/preview'))return route.fulfill({json:{effectiveAt:'2026-10-14T05:00:00Z',evaluatedAt:preview.evaluatedAt,previewToken:'schedule-preview'}});
   expect(body.previewToken).toBe('schedule-preview');
