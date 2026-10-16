@@ -5,6 +5,7 @@ import type { ProductionWorkflowReadiness } from "@open-triage/contracts";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { activePersonalProofPolicy } from "./active-personal-provider.js";
 import { decryptCredential } from "./oidc-credentials.js";
+import {decryptAgencyCredential} from "./agency-oidc-keys.js";
 import { lockProductionWorkflowAuthority, productionWorkflow } from "./production-workflow.js";
 
 @Injectable()
@@ -23,7 +24,7 @@ export class ProductionWorkflowService {
         activePersonalProofPolicy({group_id:rollout.groupId,provider_id:policy.provider_id,
           configuration:policy.configuration,discovery:policy.active_discovery,
           discovery_health:policy.active_discovery?"healthy":"unchecked",encrypted_credential:policy.encrypted_credential});
-        if (!decryptCredential(policy.encrypted_credential,rollout.groupId,policy.provider_id)) throw new Error();
+        if (!await decryptAgencyCredential(manager,policy.encrypted_credential,rollout.groupId,policy.provider_id)) throw new Error();
         providerReady = true;
       } catch { providerReady = false; }
     }

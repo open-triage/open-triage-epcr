@@ -12,7 +12,8 @@ import { createPasswordVerifier, verifyPassword } from "../identity/password.js"
 import { beginAuthenticationAttempt, finishAuthenticationAttempt } from "./authentication-throttle.js";
 import { AgencyDirectoryService } from "./agency-directory.service.js";
 import { agencyRequest } from "./agency-context.js";
-import { decryptCredential, encryptCredential } from "../authentication/oidc-credentials.js";
+import { encryptCredential } from "../authentication/oidc-credentials.js";
+import {encryptAgencyCredential,decryptAgencyCredential} from "../authentication/agency-oidc-keys.js";
 import { assertValidatedPersonalProof, personalProofPolicyDigest, type ValidatedPersonalProof } from "../authentication/personal-proof.js";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
@@ -178,7 +179,7 @@ export class ClinicianSessionService {
     // CSRF is recoverable only for signed-in OIDC browsers. It is encrypted at rest
     // and bound to this exact token/group; provider tokens never enter the browser.
     const csrf = row.authentication_source === 'oidc' && row.encrypted_csrf && row.oidc_group_id
-      ? decryptCredential(row.encrypted_csrf,row.oidc_group_id,`csrf:${digest(sessionToken)}`) : undefined;
+      ? await decryptAgencyCredential(manager,row.encrypted_csrf,row.oidc_group_id,`csrf:${digest(sessionToken)}`) : undefined;
     const session = await this.publicSession({...row,must_change_password:row.authentication_source==='oidc'?false:row.must_change_password}, new Date(row.created_at), new Date(row.expires_at), csrf, manager);
     if (row.authentication_source) {
       session.authenticationSource=row.authentication_source;
@@ -474,7 +475,7 @@ export class ClinicianSessionService {
        personal_identity_request_id,personal_group_id,personal_revision,latest_personal_proof_policy_sha256)
       values($1,$2,$3,null,$4,$4,$5,$6,$7,$8,$9,'oidc',$10,$11,$10,$12,$13,$14,$15,$16::jsonb,$12,$13,$14,$15) returning id`,
       [account.user_id,digest(sessionToken),digest(csrfToken),now,expiresAt,coarseDeviceLabel(userAgent),account.organization_id,agencyRequest.getStore()!.origin,registrationId,
-       proof.purpose==='reauthenticate' && !sameUserTransition?'switch':proof.purpose,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy),JSON.stringify(encryptCredential(csrfToken,account.group_id,`csrf:${digest(sessionToken)}`))]));
+       proof.purpose==='reauthenticate' && !sameUserTransition?'switch':proof.purpose,proof.authenticatedAt,identityRequestId,account.group_id,revision,personalProofPolicyDigest(policy),JSON.stringify(await encryptAgencyCredential(manager,csrfToken,account.group_id,`csrf:${digest(sessionToken)}`))]));
     await this.audit(manager,account,'authentication.sign_in','succeeded',inserted[0]?.id);
     return {sessionToken,session:await this.getAuthenticated(sessionToken,now,true,manager)};
   }

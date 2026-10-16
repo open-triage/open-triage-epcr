@@ -8,7 +8,8 @@ import { ClinicianSessionService, type CreatedSession } from "../sessions/clinic
 import { AgencyDirectoryService } from "../sessions/agency-directory.service.js";
 import { agencyRequest } from "../sessions/agency-context.js";
 import { mutationRows } from "../database/mutation-result.js";
-import { encryptCredential, decryptCredential } from "./oidc-credentials.js";
+import { encryptCredential } from "./oidc-credentials.js";
+import {encryptAgencyCredential,decryptAgencyCredential} from "./agency-oidc-keys.js";
 import { ExternalIdentityService } from "./external-identity.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 import { testAuthorization, personalCodeExchange, type TestBinding } from "./oidc-test-protocol.js";
@@ -73,7 +74,7 @@ export class OidcPersonalService {
   if(!version)throw new ServiceUnavailableException({code:"login.personalProofUnavailable"});
   const policy=this.policy(version),correlation=random();
   const binding:TestBinding={state:random(),nonce:random(),verifier:random(),callback:`${origin}/api/sessions/oidc/callback`,pkce:true};
-  const authorizationUrl=await testAuthorization(version.discovery,version.configuration.clientId,decryptCredential(version.encrypted_credential,version.group_id,version.provider_id),version.configuration.scopes,binding,{policy,purpose});
+  const authorizationUrl=await testAuthorization(version.discovery,version.configuration.clientId,await decryptAgencyCredential(this.database.manager,version.encrypted_credential,version.group_id,version.provider_id),version.configuration.scopes,binding,{policy,purpose});
   let proofNotBefore=0;
   await this.database.transaction(async manager=>{
    if(previousToken)await this.sessions.lockPersonalAuthenticationContext(manager,null,previousToken);
@@ -95,7 +96,7 @@ export class OidcPersonalService {
     (state_sha256,correlation_sha256,group_id,revision,organization_id,origin,purpose,encrypted_binding,created_at,expires_at)
     values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$9::timestamptz+interval '5 minutes')`,
     [digest(binding.state),digest(correlation),group!.id,version.revision,agency.id,origin,purpose,
-     JSON.stringify(encryptCredential(JSON.stringify({binding,previousToken:purpose==='reauthenticate'?previousToken:undefined,installationCredential:context?.installationCredential,userAgent,policy,metadata:version.discovery}),group!.id,`personal:${binding.state}`)),began]);
+     JSON.stringify(await encryptAgencyCredential(manager,JSON.stringify({binding,previousToken:purpose==='reauthenticate'?previousToken:undefined,installationCredential:context?.installationCredential,userAgent,policy,metadata:version.discovery}),group!.id,`personal:${binding.state}`)),began]);
   });
   // Signed auth_time has second precision. Do not deliver authorization until
   // its unambiguous lower bound, so an earlier authentication in the same second
@@ -119,12 +120,12 @@ export class OidcPersonalService {
   let result='failed';
   try{
    if(url.origin!==attempt.origin||url.pathname!=="/api/sessions/oidc/callback"||url.searchParams.has('error'))throw new Error();
-   const saved=JSON.parse(decryptCredential(attempt.encrypted_binding,attempt.group_id,`personal:${state}`)) as Binding;
+   const saved=JSON.parse(await decryptAgencyCredential(this.database.manager,attempt.encrypted_binding,attempt.group_id,`personal:${state}`)) as Binding;
    return await agencyRequest.run({origin:attempt.origin,organizationId:attempt.organization_id,installationCredential:saved.installationCredential},async()=>{
     if(!await this.agencies.allowsOrigin(attempt.origin))throw new Error();
     const version=await this.active(attempt.group_id);
     if(!version||Number(version.revision)!==Number(attempt.revision)||personalProofPolicyDigest(this.policy(version))!==personalProofPolicyDigest(saved.policy))throw new Error();
-    const validated=await personalCodeExchange(saved.metadata,version.configuration.clientId,decryptCredential(version.encrypted_credential,attempt.group_id,version.provider_id),saved.binding,url,version.configuration.mappings,saved.policy,attempt.purpose,new Date(attempt.created_at));
+    const validated=await personalCodeExchange(saved.metadata,version.configuration.clientId,await decryptAgencyCredential(this.database.manager,version.encrypted_credential,attempt.group_id,version.provider_id),saved.binding,url,version.configuration.mappings,saved.policy,attempt.purpose,new Date(attempt.created_at),version.configuration.privateOrigins);
     const completed=await this.database.transaction(async manager=>{
      const identity=await this.identities.record(manager,{groupId:attempt.group_id,providerId:version.provider_id,revision:Number(version.revision),organizationId:attempt.organization_id},validated.identity);
      await this.sessions.lockPersonalAuthenticationContext(manager,identity.requestId,saved.previousToken);

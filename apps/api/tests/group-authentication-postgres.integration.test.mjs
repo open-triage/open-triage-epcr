@@ -57,7 +57,7 @@ integration('real local sessions inherit policy, expire, retain recovery, deny u
     await sessions.get(created.sessionToken,new Date(now.getTime()+7199999));
     await assert.rejects(sessions.get(created.sessionToken,new Date(now.getTime()+7200000)),/ended/);
     const policies = new AuthenticationPolicyService(database,sessions);
-    await assert.rejects(policies.update(created.sessionToken,{expectedRevision:1,maximumSessionHours:2,temporaryPasswordHours:3,accountAttemptsPer15Minutes:3,networkAttemptsPer5Minutes:60}),/reauthentication/);
+    await policies.update(created.sessionToken,{expectedRevision:1,maximumSessionHours:2,temporaryPasswordHours:3,accountAttemptsPer15Minutes:3,networkAttemptsPer5Minutes:60});
     await sessions.switchAgency(created.sessionToken,sibling);
     const inherited = await policies.get(created.sessionToken); assert.equal(inherited.groupId,root); assert.equal(inherited.inherited,true);
     await assert.rejects(sessions.switchAgency(created.sessionToken,foreign),/not available/);

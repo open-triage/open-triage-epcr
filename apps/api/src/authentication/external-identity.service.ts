@@ -10,12 +10,12 @@ import { lockAssignedRoles } from "../admin/role-assignment-locks.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 
-export type ValidatedExternalIdentity = { issuer: string; subject: string; displayName: string | null; email: string | null };
-type RequestRow = { id:string;group_id:string;provider_id:string;first_revision:string;issuer:string;subject:string;display_name:string|null;email:string|null;created_at:Date;linked_user_id:string|null;linked_at:Date|null;review_revision?:string;denied_at?:Date|null };
+export type ValidatedExternalIdentity = { issuer: string; subject: string; displayName: string | null; email: string | null; username?: string | null };
+type RequestRow = { id:string;group_id:string;provider_id:string;first_revision:string;issuer:string;subject:string;display_name:string|null;email:string|null;username_hint:string|null;created_at:Date;linked_user_id:string|null;linked_at:Date|null;review_revision?:string;denied_at?:Date|null };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const conflict = () => new ConflictException({code:"admin.externalIdentityConflict"});
 function view(row:RequestRow){return {id:row.id,providerId:row.provider_id,revision:Number(row.first_revision),reviewRevision:Number(row.review_revision??1),issuer:row.issuer,subject:row.subject,
-  displayName:row.display_name,email:row.email,createdAt:row.created_at.toISOString(),status:row.linked_user_id?"linked":row.denied_at?"denied":"pending",linkedUserId:row.linked_user_id,linkedAt:row.linked_at?.toISOString()??null,deniedAt:row.denied_at?.toISOString()??null};}
+  displayName:row.display_name,email:row.email,username:row.username_hint??null,createdAt:row.created_at.toISOString(),status:row.linked_user_id?"linked":row.denied_at?"denied":"pending",linkedUserId:row.linked_user_id,linkedAt:row.linked_at?.toISOString()??null,deniedAt:row.denied_at?.toISOString()??null};}
 function assertReview(row:RequestRow,expected:unknown){
   if(expected===undefined){if(row.denied_at)throw conflict();return;}
   if(!Number.isSafeInteger(expected)||Number(expected)<1||Number(expected)!==Number(row.review_revision??1))throw conflict();
@@ -25,17 +25,24 @@ export function externalIdentity(claims:Record<string,unknown>,mappings:OidcDraf
   const issuer=claims.iss,subject=claims.sub;
   if(typeof issuer!=="string"||!issuer||Buffer.byteLength(issuer)>2048||typeof subject!=="string"||!subject||Buffer.byteLength(subject)>255||/[\u0000-\u001f\u007f]/.test(subject))throw new Error("Invalid external identity");
   const hint=(key:string,limit:number)=>{const value=Object.hasOwn(claims,key)?claims[key]:null;return typeof value==="string"&&!/[\u0000-\u001f\u007f]/.test(value)&&value.length<=limit?value:null;};
-  return {issuer,subject,displayName:hint(mappings.displayName,256),email:hint(mappings.email,320)};
+  return {issuer,subject,displayName:hint(mappings.displayName,256),email:hint(mappings.email,320),username:hint(mappings.username??"preferred_username",256)||null};
 }
 @Injectable()
 export class ExternalIdentityService {
   constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService, private readonly roles:UserRoleAssignmentService=new UserRoleAssignmentService(database,sessions)){}
   /** Called only after code/signature validation and final transaction binding checks. */
   async record(manager:EntityManager,scope:{groupId:string;providerId:string;revision:number;organizationId:string},identity:ValidatedExternalIdentity){
-    const params=[scope.groupId,scope.providerId,scope.revision,scope.organizationId,identity.issuer,identity.subject,identity.displayName,identity.email];
+    const params=[scope.groupId,scope.providerId,scope.revision,scope.organizationId,identity.issuer,identity.subject,identity.displayName,identity.email,identity.username??null];
     const rows=mutationRows<RequestRow>(await manager.query(`insert into app_identity.regional_identity_request
-      (group_id,provider_id,first_revision,organization_id,issuer,subject,display_name,email)
-      values($1,$2,$3,$4,$5,$6,$7,$8) on conflict(group_id,provider_id,issuer,subject) do nothing returning *`,params));
+      (group_id,provider_id,first_revision,organization_id,issuer,subject,display_name,email,username_hint)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict(group_id,provider_id,issuer,subject) do update
+      set display_name=coalesce(regional_identity_request.display_name,excluded.display_name),
+          email=coalesce(regional_identity_request.email,excluded.email),
+          username_hint=coalesce(regional_identity_request.username_hint,excluded.username_hint)
+      where (regional_identity_request.display_name is null and excluded.display_name is not null)
+         or (regional_identity_request.email is null and excluded.email is not null)
+         or (regional_identity_request.username_hint is null and excluded.username_hint is not null)
+      returning *`,params));
     const row=rows[0]??(await manager.query<RequestRow[]>(`select * from app_identity.regional_identity_request
       where group_id=$1 and provider_id=$2 and issuer=$3 and subject=$4`,[scope.groupId,scope.providerId,identity.issuer,identity.subject]))[0];
     if(!row)throw conflict();

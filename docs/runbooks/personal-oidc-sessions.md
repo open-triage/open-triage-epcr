@@ -18,28 +18,26 @@ replacement for an OIDC-issued session, renew freshness, or extend its deadline.
 
 ## Approve a trustworthy personal proof contract
 
-An installation operator must supply `OIDC_PERSONAL_PROOF_POLICIES_JSON` in the
-private API deployment Secret. Its absence fails closed for personal OIDC login
-while identity-only diagnostics remain usable. Discovery metadata, `prompt=login`,
-ID-token `iat`, arbitrary `acr`/`amr`, or `auth_time` alone never approve a contract.
-Regional IT must first establish that the declared issuer/client methods and signed
-claims prove the intended person's fresh personal authentication, including cached
-organization SSO, shared-device handover and disabled accounts.
+Use **Admin → Authentication → Personal authentication requirements** to approve
+the group's provider, set its required AMR methods and optional exact ACR, and
+configure an optional signed purpose claim. These settings are saved with the
+draft and take effect only after discovery, a real diagnostic and activation of
+that exact revision. Child agencies inherit the group's settings. Clearing the
+approval explicitly disables personal proof for that revision; it cannot fall
+back to an installation policy. Signature validation and fresh signed `auth_time`
+remain mandatory. Review the provider's real behavior, including cached SSO,
+shared-device handover and disabled accounts, before production activation.
 
-The value is an array of explicitly reviewed contracts. A fictional example:
+Setup uses the agency configuration and does not require environment editing or
+API restarts. Discovery, prompts, token `iat` and arbitrary method claims never
+approve a contract on their own. A fictional requirements example:
 
 ```json
-[
-  {
-    "id": "reviewed-personal-contract-v1",
-    "groupId": "11111111-1111-4111-8111-111111111111",
-    "providerId": "22222222-2222-4222-8222-222222222222",
-    "issuer": "https://fictional-provider.example/issuer",
-    "clientId": "fictional-client",
-    "acr": "fictional:interactive-personal",
-    "requiredAmr": ["fictional-personal"]
-  }
-]
+{
+  "id": "reviewed-personal-contract-v1",
+  "acr": "fictional:interactive-personal",
+  "requiredAmr": ["fictional-personal"]
+}
 ```
 
 These strings are examples, not regional AD FS/PAS claims or agreed deployment
@@ -49,7 +47,13 @@ client or integration requires another explicitly reviewed contract. Contracts
 have a canonical digest, recorded separately for issuance and the latest proof.
 Reordering JSON fields or the required-method list does not change the digest.
 
-The required ACR must match exactly and every declared required AMR must be
+Set `acr` to an exact nonempty string to require that value in the signed ID
+token. Set it explicitly to JSON `null` for a reviewed contract that relies on
+authentication methods and freshness without an ACR requirement. Omitting `acr`,
+using an empty string, or using `false` is invalid. Existing string-valued
+contracts retain their exact-match behavior. With `acr: null`, authorization
+requests omit `acr_values` and the essential ACR claim request; a returned ACR
+does not contribute to approval. Every declared required AMR must still be
 present in signature-validated ID-token claims. Signed `auth_time` must be an
 integer at or after the next whole second following transaction creation and no
 later than current server time. Authorization URL delivery waits to that boundary
@@ -57,6 +61,16 @@ outside the database transaction, so earlier authentication in the transaction's
 starting second cannot qualify. Provider/server clocks therefore need to agree.
 A transaction expires after five minutes. No clock-skew allowance silently admits
 older personal authentication.
+
+For fictional local Duende testing, approve personal authentication in the panel,
+enter `pwd` as the required AMR and uncheck **Require a specific authentication
+context (ACR)**. This saves `acr: null`. Keep the public-only origin list empty.
+Save, inspect, perform a diagnostic, link the identity to an ordinary test user in
+Users → Manage, and activate the tested draft. Then perform a fresh provider
+login for application access. This does not approve a regional production
+contract. Changing string/null ACR or any other proof requirements changes the
+contract digest; existing proof must be refreshed before it satisfies the new
+contract.
 
 The application's login, switch or sensitive-action purpose is bound to immutable
 server transaction state, state/nonce, PKCE and the authorization code. If the

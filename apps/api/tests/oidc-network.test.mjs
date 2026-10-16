@@ -25,8 +25,8 @@ test('real pinned HTTPS discovery validates certificates and denies redirects, o
     const origin=`https://idp.test:${server.address().port}`;
     const moduleUrl=new URL('../dist/authentication/oidc-network.js',import.meta.url).href;
     async function fetch(pathname,trust=true,hostname='idp.test'){
-      const script=`import {providerJson} from ${JSON.stringify(moduleUrl)};let lookups=0;try{const body=await providerJson(${JSON.stringify(origin.replace('idp.test',hostname)+pathname)},async()=>{lookups++;return [{address:${JSON.stringify(address)},family:4}]});console.log(JSON.stringify({body,lookups}));}catch(error){console.error(error.message);process.exitCode=1;}`;
-      return execute(process.execPath,['--input-type=module','-e',script],{env:{...process.env,NODE_EXTRA_CA_CERTS:trust?path.join(directory,'cert.pem'):'',OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([origin,origin.replace('idp.test',hostname)])},timeout:10000});
+      const script=`import {providerJson} from ${JSON.stringify(moduleUrl)};let lookups=0;try{const body=await providerJson(${JSON.stringify(origin.replace('idp.test',hostname)+pathname)},async()=>{lookups++;return [{address:${JSON.stringify(address)},family:4}]},${JSON.stringify([origin,origin.replace('idp.test',hostname)])});console.log(JSON.stringify({body,lookups}));}catch(error){console.error(error.message);process.exitCode=1;}`;
+      return execute(process.execPath,['--input-type=module','-e',script],{env:{...process.env,NODE_EXTRA_CA_CERTS:trust?path.join(directory,'cert.pem'):''},timeout:10000});
     }
     assert.deepEqual(JSON.parse((await fetch('/valid')).stdout),{body:{issuer:'https://idp.test'},lookups:1});
     await assert.rejects(fetch('/valid',false),error=>/self-signed|certificate/i.test(error.stderr));

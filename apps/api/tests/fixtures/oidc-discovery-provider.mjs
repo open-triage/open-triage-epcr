@@ -23,6 +23,11 @@ export async function discoveryProvider(){
       res.setHeader('content-type','application/json');
       if(req.url==='/adfs/.well-known/openid-configuration')res.end(JSON.stringify({issuer:`${fixture.origin}/adfs`,authorization_endpoint:`${fixture.origin}/authorize`,token_endpoint:`${fixture.origin}/token`,jwks_uri:`${fixture.origin}/jwks`,userinfo_endpoint:`${fixture.origin}/userinfo`,end_session_endpoint:`${fixture.origin}/logout`,response_types_supported:['code'],subject_types_supported:['public'],id_token_signing_alg_values_supported:['RS256'],token_endpoint_auth_methods_supported:['client_secret_post'],code_challenge_methods_supported:['S256'],...fixture.metadataOverrides}));
       else if(req.url==='/jwks'){fixture.jwksCount++;res.end(JSON.stringify({keys:fixture.keys}));}
+      else if(req.url==='/userinfo'){
+        fixture.userinfoCount=(fixture.userinfoCount??0)+1;
+        if(req.headers.authorization!=='Bearer fictional-access-token'){res.writeHead(401).end('{}');return;}
+        res.end(JSON.stringify({sub:'fictional-provider-user',name:'Alice Smith',email:'alice@example.test',...fixture.userinfoOverrides}));
+      }
       else if(req.url.startsWith('/authorize?')){
         fixture.authorizationCount++;const params=new URL(req.url,fixture.origin).searchParams;
         if(fixture.browserLogin&&!params.has('confirm')){const next=new URL(req.url,fixture.origin);next.searchParams.set('confirm','1');res.setHeader('content-type','text/html');res.end(`<a href="${next.href.replaceAll('&','&amp;')}">Continue fictional provider login</a>`);return;}

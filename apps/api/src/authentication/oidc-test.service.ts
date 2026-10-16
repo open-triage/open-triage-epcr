@@ -7,7 +7,8 @@ import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { agencyRequest } from "../sessions/agency-context.js";
 import { AgencyDirectoryService } from "../sessions/agency-directory.service.js";
-import { decryptCredential,encryptCredential } from "./oidc-credentials.js";
+import { encryptCredential } from "./oidc-credentials.js";
+import {encryptAgencyCredential,decryptAgencyCredential} from "./agency-oidc-keys.js";
 import { ExternalIdentityService } from "./external-identity.service.js";
 import { type OidcDraft } from "./oidc-draft.service.js";
 import { testAuthorization,testCodeExchange,type TestBinding } from "./oidc-test-protocol.js";
@@ -22,7 +23,6 @@ export class OidcTestService {
  private async authority(token:string,manager:EntityManager=this.database.manager){
   if(manager.queryRunner?.isTransactionActive)await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
   const actor=await this.sessions.requireCapability(token,"settings:write",manager);
-  await this.sessions.requireRecentReauthentication(token,manager);
   const [group]=await manager.query<Array<{id:string}>>("select app_identity.organization_group($1) id",[actor.organization.id]);
   return {actor,groupId:group!.id};
  }
@@ -30,22 +30,22 @@ export class OidcTestService {
   const body=input as Record<string,unknown>;
   if(!body||typeof body!=="object"||Array.isArray(body)||Object.keys(body).some(key=>key!=="expectedRevision")||!Number.isSafeInteger(body.expectedRevision)||Number(body.expectedRevision)<1)throw new UnprocessableEntityException("A saved draft revision is required");
   const revision=Number(body.expectedRevision),origin=agencyRequest.getStore()?.origin;
-  if(!origin||!await this.agencies.allowsOrigin(origin))throw new UnauthorizedException("A registered agency origin is required");
+  if(!origin||!await this.agencies.allowsOrigin(origin))throw new UnauthorizedException({code:"admin.oidcAgencyOriginRequired"});
   const {actor,groupId}=await this.authority(token);
   const agency=await this.agencies.forLogin();
-  if(!agency||agency.id!==actor.organization.id)throw new UnauthorizedException("Open the selected agency address");
+  if(!agency||agency.id!==actor.organization.id)throw new UnauthorizedException({code:"admin.oidcAgencyOriginRequired"});
   const [version]=await this.database.query<Version[]>("select v.* from app_identity.oidc_provider_version v join app_identity.oidc_provider_state s using(group_id) where v.group_id=$1 and v.revision=$2 and s.draft_revision=v.revision",[groupId,revision]);
   if(!version)throw new ConflictException("The provider draft changed");
   if(version.discovery_health!=="healthy"||!version.discovery||!version.encrypted_credential)throw new UnprocessableEntityException("Inspect the complete provider draft first");
   const binding:TestBinding={state:random(),nonce:random(),verifier:random(),callback:`${origin}/api/sessions/oidc/callback`,pkce:version.discovery.pkceS256===true};
   const correlation=random();
-  const authorizationUrl=await testAuthorization(version.discovery,version.configuration.clientId,decryptCredential(version.encrypted_credential,groupId,version.provider_id),version.configuration.scopes,binding);
+  const authorizationUrl=await testAuthorization(version.discovery,version.configuration.clientId,await decryptAgencyCredential(this.database.manager,version.encrypted_credential,groupId,version.provider_id),version.configuration.scopes,binding);
   await this.database.transaction(async manager=>{
    const current=await this.authority(token,manager);
    await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[groupId]);
    const [state]=await manager.query<Array<{draft_revision:string}>>("select draft_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
    if(current.groupId!==groupId||current.actor.organization.id!==agency.id||Number(state?.draft_revision)!==revision)throw new ConflictException("The provider draft changed");
-   await manager.query("insert into app_identity.oidc_test_transaction(state_sha256,correlation_sha256,group_id,revision,organization_id,actor_id,origin,action,return_path,encrypted_binding,expires_at,pkce_s256) values($1,$2,$3,$4,$5,$6,$7,'draft_test','/',$8::jsonb,now()+interval '5 minutes',$9)",[digest(binding.state),digest(correlation),groupId,revision,agency.id,actor.user.id,origin,JSON.stringify(encryptCredential(JSON.stringify({binding,token,metadata:version.discovery}),groupId,`test:${binding.state}`)),binding.pkce]);
+   await manager.query("insert into app_identity.oidc_test_transaction(state_sha256,correlation_sha256,group_id,revision,organization_id,actor_id,origin,action,return_path,encrypted_binding,expires_at,pkce_s256) values($1,$2,$3,$4,$5,$6,$7,'draft_test','/',$8::jsonb,now()+interval '5 minutes',$9)",[digest(binding.state),digest(correlation),groupId,revision,agency.id,actor.user.id,origin,JSON.stringify(await encryptAgencyCredential(manager,JSON.stringify({binding,token,metadata:version.discovery}),groupId,`test:${binding.state}`)),binding.pkce]);
   });
   return {authorizationUrl,correlation};
  }
@@ -69,14 +69,14 @@ export class OidcTestService {
    failureCode="origin_changed";
    if(!origin||url.origin!==origin||url.pathname!=="/api/sessions/oidc/callback"||!await this.agencies.allowsOrigin(origin))throw new Error("Invalid origin");
    failureCode="transaction_invalid";
-   const {binding,token,metadata}=JSON.parse(decryptCredential(attempt.encrypted_binding,attempt.group_id,`test:${state}`)) as {binding:TestBinding;token:string;metadata:Version["discovery"]};
+   const {binding,token,metadata}=JSON.parse(await decryptAgencyCredential(this.database.manager,attempt.encrypted_binding,attempt.group_id,`test:${state}`)) as {binding:TestBinding;token:string;metadata:Version["discovery"]};
    failureCode="authority_changed";
    const authority=await this.authority(token);
    if(authority.groupId!==attempt.group_id||authority.actor.organization.id!==attempt.organization_id||authority.actor.user.id!==attempt.actor_id)throw new Error("Authority changed");
    if(url.searchParams.has("error")){result="canceled";failureCode="canceled";}
    else {
     failureCode="provider_validation";
-    const validated=await testCodeExchange(metadata,attempt.configuration.clientId,decryptCredential(attempt.encrypted_credential,attempt.group_id,attempt.provider_id),binding,url,attempt.configuration.mappings);
+    const validated=await testCodeExchange(metadata,attempt.configuration.clientId,await decryptAgencyCredential(this.database.manager,attempt.encrypted_credential,attempt.group_id,attempt.provider_id),binding,url,attempt.configuration.mappings,attempt.configuration.privateOrigins);
     await this.database.transaction(async manager=>{
      failureCode="authority_changed";
      const fresh=await this.authority(token,manager);

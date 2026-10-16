@@ -42,14 +42,13 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    if(role)await owner.query('insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) values($1,$2,$3,$4)',[group,id,role,reviewer.userId]);
   }
   await seedProtectedRecoveryReports(owner,child,alpha,reviewer.userId);
-  const issuer=`${fixture.origin}/adfs`,configuration={name:'Fictional provider',issuer,discoveryUrl:'',clientId:'fictional-client',scopes:['openid'],mappings:{displayName:'name',email:'email'},clientAuthentication:'client_secret_post'};
+  const issuer=`${fixture.origin}/adfs`,configuration={name:'Fictional provider',issuer,discoveryUrl:'',clientId:'fictional-client',scopes:['openid'],mappings:{displayName:'name',email:'email'},clientAuthentication:'client_secret_post',privateOrigins:[fixture.origin],personalProof:{id:'controlled-interactive-contract-v1',acr:'fixture:interactive-personal',requiredAmr:['fixture-personal']}};
   const metadata={issuer,authorization_endpoint:`${fixture.origin}/authorize`,token_endpoint:`${fixture.origin}/token`,jwks_uri:`${fixture.origin}/jwks`,id_token_signing_alg_values_supported:['RS256'],pkceS256:true};
   await owner.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,discovery,discovery_health,created_by) values($1,1,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6),($1,2,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6)",[group,provider,JSON.stringify(configuration),JSON.stringify(encryptCredential('fresh-provider-secret',group,provider)),JSON.stringify(metadata),reviewer.userId]);
   await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision,active_revision,active_discovery) values($1,2,1,$2::jsonb)',[group,JSON.stringify(metadata)]);
   await owner.query("update app_identity.group_authentication_policy set mode='oidc' where group_id=$1",[group]);
   for(const [id,subject] of [[alpha,'fictional-alpha'],[beta,'fictional-beta'],[empty,'fictional-empty']])await owner.query('insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,1,$3,$4,$5,$6,$7,now())',[group,provider,child,issuer,subject,id,reviewer.userId]);
   await owner.query("insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,denied_at,denied_by,review_revision) values($1,$2,1,$3,$4,'fictional-denied',clock_timestamp(),$5,2)",[group,provider,child,issuer,reviewer.userId]);
-  const policy={id:'controlled-interactive-contract-v1',groupId:group,providerId:provider,issuer,clientId:configuration.clientId,acr:'fixture:interactive-personal',requiredAmr:['fixture-personal']};
   let beforeRevision=false,disable=false,withdrawOrigin=false,expired=false,reassign=false;
   fixture.beforeToken=async()=>{
    if(beforeRevision)await owner.query('update app_identity.oidc_provider_state set active_revision=2 where group_id=$1',[group]);
@@ -60,6 +59,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
   };
   control=createServer((req,res)=>{let text='';req.on('data',part=>text+=part);req.on('end',async()=>{try{
    const command=JSON.parse(text||'{}');
+   if(command.proofAvailable!==undefined)await owner.query("update app_identity.oidc_provider_version set configuration=jsonb_set(configuration,'{personalProof}',$2::jsonb) where group_id=$1",[group,JSON.stringify(command.proofAvailable?configuration.personalProof:null)]);
    if(command.token!==undefined)fixture.tokenOverrides=command.token;
    if(command.fresh){fixture.tokenOverrides={...fixture.tokenOverrides,auth_time:Math.floor(Date.now()/1000)};}
    if(command.claimsMode!==undefined)fixture.personalProofMode=command.claimsMode;
@@ -99,7 +99,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    }
    res.setHeader('content-type','application/json');res.end(JSON.stringify(answer));
   }catch{res.writeHead(500).end('{}');}});});control.listen(0,'127.0.0.1');await once(control,'listening');
-  const result=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-personal-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,DATABASE_URL:runtimeUrl.toString(),OIDC_CREDENTIAL_KEYS_JSON:keys,OIDC_PERSONAL_PROOF_POLICIES_JSON:JSON.stringify([policy]),OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_CONTROL_URL:`http://127.0.0.1:${control.address().port}`,OIDC_ALPHA:alpha,OIDC_BETA:beta,OIDC_LOCAL_USER:reviewer.userId,OIDC_LOCAL_PASSWORD:password,OIDC_OTHER:other,OIDC_GROUP:group,OIDC_CHILD:child},timeout:180000,maxBuffer:1024*1024}).catch(error=>{throw new Error(error.stderr||error.stdout||error.message);});
+  const result=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-personal-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,DATABASE_URL:runtimeUrl.toString(),OIDC_CREDENTIAL_KEYS_JSON:keys,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_CONTROL_URL:`http://127.0.0.1:${control.address().port}`,OIDC_ALPHA:alpha,OIDC_BETA:beta,OIDC_LOCAL_USER:reviewer.userId,OIDC_LOCAL_PASSWORD:password,OIDC_OTHER:other,OIDC_GROUP:group,OIDC_CHILD:child},timeout:180000,maxBuffer:1024*1024}).catch(error=>{throw new Error(error.stderr||error.stdout||error.message);});
   assert.match(result.stdout,/"sharedSessions":true/);assert.match(result.stdout,/"sensitiveActionCompleted":true/);assert.match(result.stdout,/"outgoingAuthorityDenied":true/);
   const [credentials]=await owner.query('select count(*)::int count from app_identity.local_credential where user_id=any($1::uuid[])',[[alpha,beta,empty]]);assert.equal(credentials.count,0);
   const audit=await owner.query("select details from app_identity.authentication_event where details->>'kind'='oidc_personal'");assert(audit.length>5);assert.doesNotMatch(JSON.stringify(audit),/fictional-alpha|fictional-beta|fictional-access-token|fresh-provider-secret|code_verifier|ciphertext|nonce/);

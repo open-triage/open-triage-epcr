@@ -46,11 +46,11 @@ try{
  await page.evaluate(s=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s)),reviewer.body);await page.reload();
  // A leftover failed personal flow must not steal the next diagnostic callback.
  await context.addCookies([{name:'open_triage_oidc_personal',value:'aborted-old-personal-flow',domain:'child.localhost',path:'/api/sessions/oidc/callback',httpOnly:true,secure:true,sameSite:'Lax'}]);
- await page.getByLabel('Your password for OIDC changes').fill(password);await control({subject:'activation-reviewer'});
+ await control({subject:'activation-reviewer'});
  await page.getByRole('button',{name:'Test provider login',exact:true}).click({noWaitAfter:true});await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();
  assert(!(await context.cookies()).some(c=>c.name==='open_triage_oidc_personal'));
  await page.getByRole('link',{name:'Continue fictional provider login'}).click();await page.waitForURL(u=>u.origin===origin);
- await expect(page.getByText('Revision 1: Identity validated. S256 PKCE: Yes.')).toBeVisible();assert.equal(await token(),reviewerToken);
+ await expect(page.getByRole('button',{name:'Activate tested SSO',exact:true})).toBeVisible();assert.equal(await token(),reviewerToken);
  let tested=(await request('admin/authentication/oidc')).body.test;
  const activation={expectedRevision:1,testId:tested.testId};
  // Inspection after a successful test cannot accidentally approve different metadata.
@@ -64,9 +64,9 @@ try{
  await control({holdAuthority:true});pending=agencyRequest.run({origin},()=>drafts.activate(reviewerToken,activation));pending.catch(()=>{});
  for(let i=0;i<100;i++){if((await control({waiting:true})).waiting)break;await new Promise(r=>setTimeout(r,20));if(i===99)throw Error('Activation did not wait for held assignment row');}
  await control({withdrawAuthority:true});await assert.rejects(pending);assert.equal((await control({inspect:true})).state.active_revision,null);await control({restoreAuthority:true});
- const previousContract=process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;await assert.rejects(agencyRequest.run({origin},()=>drafts.activate(reviewerToken,activation)),e=>e.getResponse?.().code==='admin.oidcActivationProofRequired');process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=previousContract;
- await control({ageProof:reviewerToken});await assert.rejects(agencyRequest.run({origin},()=>drafts.activate(reviewerToken,activation)),e=>e.getStatus?.()===403);await request('sessions/reauthenticate',{currentPassword:password},reviewerCsrf);
- await page.reload();await page.getByLabel('Your password for OIDC changes').fill(password);await page.getByRole('button',{name:'Activate tested SSO',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'SSO activated.'})).toBeVisible();
+ await control({proofAvailable:false});await assert.rejects(agencyRequest.run({origin},()=>drafts.activate(reviewerToken,activation)),e=>e.getResponse?.().code==='admin.oidcActivationProofRequired');await control({proofAvailable:true});
+ await control({ageProof:reviewerToken});// Activation uses the live administrator session even after its proof ages.
+ await page.reload();await page.getByRole('button',{name:'Activate tested SSO',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'SSO activated.'})).toBeVisible();
  const state=await control({inspect:true});assert.equal(state.policy.mode,'oidc');assert.equal(state.state.active_revision,'1');assert(state.audit.some(e=>e.result==='succeeded'));assert(state.audit.some(e=>e.result==='failed'));
  assert.equal((await request('reports/91200000-0000-4000-8000-000000000003')).status,200,'Current local report remains readable after activation');
  const preserved=await request('sessions/current');assert.equal(preserved.status,200);assert.equal(preserved.body.expiresAt,reviewer.body.expiresAt);assert.equal(preserved.body.authenticationSource,'local');assert.equal(preserved.body.nextAuthenticationSource,'oidc');

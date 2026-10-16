@@ -3,24 +3,25 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { randomUUID } from "node:crypto";
 import type { ServerMetadata } from "openid-client";
 import { DataSource, type EntityManager } from "typeorm";
+import {registeredAgencyOrigin} from "../sessions/agency-directory.service.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
-import { approvedPersonalProofPolicy } from "./personal-proof.js";
-import { encryptCredential } from "./oidc-credentials.js";
-import { checkedAddress, providerJson, providerUrl } from "./oidc-network.js";
+import { approvedPersonalProofPolicy,type PersonalProofRequirements } from "./personal-proof.js";
+import {generateAgencyKey,encryptAgencyCredential} from "./agency-oidc-keys.js";
+import { checkedAddress, providerJson, providerUrl,privateProviderOrigins } from "./oidc-network.js";
 import { publicSigningKeyIds } from "./oidc-signing-keys.js";
 import { oidcConfiguration } from "./oidc-library.js";
 
 export type OidcDraft = { name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
-  mappings: { displayName: string; email: string }; clientAuthentication: "client_secret_post" };
-type Version = { revision: string | number; provider_id: string; configuration: OidcDraft; credential_configured: boolean;
+  mappings: { displayName: string; email: string; username?: string }; clientAuthentication: "client_secret_post";personalProof?:PersonalProofRequirements|null;privateOrigins?:string[] };
+type Version = { group_id:string; revision: string | number; provider_id: string; configuration: OidcDraft; credential_configured: boolean;
   discovery: unknown; discovery_health: string; discovered_at: Date | null; created_at: Date; created_by: string;
   changed_fields?: string[]; credential_replaced?: boolean; actor_name?:string|null };
-const columns = "revision,provider_id,configuration,(encrypted_credential is not null) as credential_configured,discovery,discovery_health,discovered_at,created_at,created_by";
+const columns = "group_id,revision,provider_id,configuration,(encrypted_credential is not null) as credential_configured,discovery,discovery_health,discovered_at,created_at,created_by";
 function invalid(field: string): never { throw new UnprocessableEntityException({ code: "admin.oidcInvalid", params: { field } }); }
 export function validateOidcDraft(input: unknown): { expectedRevision: number; configuration: OidcDraft; replacementSecret?: string } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return invalid("draft");
   const body = input as Record<string, unknown>;
-  const keys = ["expectedRevision","name","issuer","discoveryUrl","clientId","scopes","mappings","clientAuthentication","replacementSecret"];
+  const keys = ["expectedRevision","name","issuer","discoveryUrl","clientId","scopes","mappings","clientAuthentication","replacementSecret","personalProof","privateOrigins"];
   if (Object.keys(body).some(key => !keys.includes(key)) || !Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 0) return invalid("draft");
   const text = (field: string, limit: number) => { const value = body[field]; if (typeof value !== "string" || value.length > limit || /[\u0000-\u001f\u007f]/.test(value)) return invalid(field); return value.trim(); };
   const name = text("name",120), issuer = text("issuer",2048), discoveryUrl = text("discoveryUrl",2048), clientId = text("clientId",500);
@@ -28,22 +29,34 @@ export function validateOidcDraft(input: unknown): { expectedRevision: number; c
   if (body.clientAuthentication !== "client_secret_post") return invalid("clientAuthentication");
   if (!Array.isArray(body.scopes) || body.scopes.length > 20 || body.scopes.some(scope => typeof scope !== "string" || !/^[\x21\x23-\x5b\x5d-\x7e]{1,100}$/.test(scope))) return invalid("scopes");
   const mappings = body.mappings as Record<string,unknown> | undefined;
-  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings) || Object.keys(mappings).some(key => !["displayName","email"].includes(key)) ||
+  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings) || Object.keys(mappings).some(key => !["displayName","email","username"].includes(key)) ||
       ["displayName","email"].some(key => typeof mappings[key] !== "string" || !/^[^\s\u0000-\u001f\u007f]{0,256}$/.test(String(mappings[key])))) return invalid("mappings");
+  if (mappings.username !== undefined && (typeof mappings.username !== "string" || !/^[^\s\u0000-\u001f\u007f]{0,256}$/.test(mappings.username))) return invalid("mappings");
   let replacementSecret: string | undefined;
   if (body.replacementSecret !== undefined) {
     if (typeof body.replacementSecret !== "string" || body.replacementSecret.length < 1 || body.replacementSecret.length > 4096 || /[\u0000-\u001f\u007f]/.test(body.replacementSecret)) return invalid("replacementSecret");
     replacementSecret = body.replacementSecret;
   }
+  let personalProof=body.personalProof as PersonalProofRequirements|null|undefined;
+  if(body.personalProof!==undefined&&body.personalProof!==null){
+    if(typeof body.personalProof!=="object"||Array.isArray(body.personalProof)||Object.keys(body.personalProof).some(key=>!["id","acr","requiredAmr","purposeClaim","purposes"].includes(key)))return invalid("personalProof");
+    try{approvedPersonalProofPolicy({groupId:"validation",providerId:"validation",issuer,clientId},body.personalProof as PersonalProofRequirements);personalProof={...(body.personalProof as PersonalProofRequirements),requiredAmr:[...(body.personalProof as PersonalProofRequirements).requiredAmr].sort()};}catch{return invalid("personalProof");}
+  }
+  if(body.privateOrigins!==undefined){
+    if(!Array.isArray(body.privateOrigins)||body.privateOrigins.length>20)return invalid("privateOrigins");
+    try{privateProviderOrigins(body.privateOrigins as string[]);}catch{return invalid("privateOrigins");}
+  }
   return { expectedRevision: Number(body.expectedRevision), configuration: {name,issuer,discoveryUrl,clientId,
-    scopes:[...new Set(body.scopes)] as string[],mappings:mappings as OidcDraft["mappings"],clientAuthentication:"client_secret_post"}, replacementSecret };
+    scopes:[...new Set(body.scopes)] as string[],mappings:mappings as OidcDraft["mappings"],clientAuthentication:"client_secret_post",
+    ...(body.personalProof!==undefined?{personalProof}:{}),
+    ...(body.privateOrigins!==undefined?{privateOrigins:[...new Set(body.privateOrigins)] as string[]}:{} )}, replacementSecret };
 }
 export function missingOidcFields(configuration: OidcDraft, hasCredential: boolean) {
   return [!configuration.name && "name", !configuration.issuer && "issuer", !configuration.clientId && "clientId",
     !configuration.scopes.includes("openid") && "openid", !configuration.mappings.displayName && "displayName", !hasCredential && "credential"].filter(Boolean);
 }
 function view(row?: Version) {
-  return row ? { revision: Number(row.revision), ...row.configuration, credentialConfigured: row.credential_configured,
+  return row ? { revision: Number(row.revision), ...row.configuration, credentialConfigured: row.credential_configured,personalProof:row.configuration.personalProof??null,privateOrigins:row.configuration.privateOrigins??[],
     requiredFields: missingOidcFields(row.configuration,row.credential_configured), discovery: row.discovery,
     discoveryHealth: row.discovery_health, discoveredAt: row.discovered_at?.toISOString() ?? null } : null;
 }
@@ -60,13 +73,16 @@ export class OidcDraftService {
   }
   async get(token: string) {
     const {groupId} = await this.group(token,"settings:read");
+    const [scope]=await this.database.query<Array<{name:string;agency_count:number}>>(`select name,
+      (select count(*)::integer from app_identity.organization member where app_identity.organization_group(member.id)=$1 and member.active) agency_count
+      from app_identity.organization where id=$1`,[groupId]);
     const [state] = await this.database.query<Array<{draft_revision:string;active_revision:string|null;active_discovery:unknown}>>("select draft_revision,active_revision,active_discovery from app_identity.oidc_provider_state where group_id=$1",[groupId]);
     // Compare immutable revisions in SQL; encrypted envelopes and configuration
     // values never enter the history response. Include the predecessor of the
     // oldest visible version rather than comparing only the bounded page.
     const rows = await this.database.query<Version[]>(`select ${columns},
       (select u.display_name from app_identity.app_user u where u.id=v.created_by) actor_name,
-      array(select field from unnest(array['name','issuer','discoveryUrl','clientId','scopes','mappings','clientAuthentication']) field
+      array(select field from unnest(array['name','issuer','discoveryUrl','clientId','scopes','mappings','clientAuthentication','personalProof','privateOrigins']) field
         where v.configuration->field is distinct from (select p.configuration->field from app_identity.oidc_provider_version p
           where p.group_id=v.group_id and p.revision=v.revision-1)) changed_fields,
       encrypted_credential is not null and encrypted_credential is distinct from
@@ -80,34 +96,50 @@ export class OidcDraftService {
       "select actor_id,(select u.display_name from app_identity.app_user u where u.id=e.actor_id) actor_name,occurred_at,result,details from app_identity.authentication_event e where organization_id=$1 and details->>'kind'='oidc' and details->>'operation'='activate' order by occurred_at desc,id desc limit 20",[groupId]);
     const integrationChanged=!!active && !!draft && active.provider_id!==draft.provider_id;
     const [links]=active ? await this.database.query<Array<{count:number}>>("select count(*)::int count from app_identity.regional_identity_request where group_id=$1 and provider_id=$2 and issuer=$3 and linked_user_id is not null",[groupId,active.provider_id,active.configuration.issuer]) : [];
-    return { groupId, activeSnapshotReady:!!state?.active_discovery, identityImpact:{integrationChanged,activeRevision:active?Number(active.revision):null,draftRevision:draft?Number(draft.revision):null,linkedIdentities:links?.count??0}, activationHistory:activationHistory.map(event=>({actorId:event.actor_id,actorName:event.actor_name,occurredAt:event.occurred_at.toISOString(),result:event.result,revision:event.details.revision,previousRevision:event.details.previousRevision,failureCode:event.details.failureCode})), test:test ? {testId:test.state_sha256,revision:Number(test.revision),result:test.result,failureCode:test.failure_code,completedAt:test.completed_at.toISOString(),pkceS256:test.pkce_s256,freshPersonalAuthentication:test.fresh_personal_authentication,identityOutcome:test.identity_outcome,ordinaryAccess:false}:null, draft:view(draft),active:view(active?{...active,discovery:state?.active_discovery??null,discovery_health:state?.active_discovery?"healthy":"unchecked"}:undefined), registration: {flow:"authorization_code",clientAuthentication:"client_secret_post",
+    const [key]=await this.database.query<Array<{version:number}>>('select version from app_identity.oidc_credential_key where group_id=$1 order by version desc limit 1',[groupId]);
+    return { groupId,groupName:scope!.name,agencyCount:scope!.agency_count,credentialKeyVersion:Number(key?.version??0), activeSnapshotReady:!!state?.active_discovery, identityImpact:{integrationChanged,activeRevision:active?Number(active.revision):null,draftRevision:draft?Number(draft.revision):null,linkedIdentities:links?.count??0}, activationHistory:activationHistory.map(event=>({actorId:event.actor_id,actorName:event.actor_name,occurredAt:event.occurred_at.toISOString(),result:event.result,revision:event.details.revision,previousRevision:event.details.previousRevision,failureCode:event.details.failureCode})), test:test ? {testId:test.state_sha256,revision:Number(test.revision),result:test.result,failureCode:test.failure_code,completedAt:test.completed_at.toISOString(),pkceS256:test.pkce_s256,freshPersonalAuthentication:test.fresh_personal_authentication,identityOutcome:test.identity_outcome,ordinaryAccess:false}:null, draft:view(draft),active:view(active?{...active,discovery:state?.active_discovery??null,discovery_health:state?.active_discovery?"healthy":"unchecked"}:undefined), registration: {flow:"authorization_code",clientAuthentication:"client_secret_post",
       requiredClaims:["iss","sub","aud","exp","iat","nonce"], pkce:"S256; confirm AD FS v6 registration support",
-      hosts:agencies.map(({hostname}) => ({origin:`https://${hostname}`,callbackUrl:`https://${hostname}/api/sessions/oidc/callback`,
-        logoutCallbackUrl:`https://${hostname}/api/sessions/oidc/logout-callback`})), globalLogout:false },
+      hosts:agencies.map(({hostname}) => {const origin=registeredAgencyOrigin(hostname);return {origin,callbackUrl:`${origin}/api/sessions/oidc/callback`,
+        logoutCallbackUrl:`${origin}/api/sessions/oidc/logout-callback`};}), globalLogout:false },
       history:rows.map(row => ({revision:Number(row.revision),createdAt:row.created_at.toISOString(),actorId:row.created_by,actorName:row.actor_name??null,credentialConfigured:row.credential_configured,discoveryHealth:row.discovery_health,
         status:Number(row.revision)===Number(state?.active_revision)?"active":Number(row.revision)===Number(state?.draft_revision)?"draft":"superseded",changedFields:row.changed_fields??[],credentialReplaced:row.credential_replaced??false})) };
   }
   async save(token: string, input: unknown) {
-    const command = validateOidcDraft(input);
+    const body = input as Record<string, unknown> | null;
+    const copying = !!body && Object.hasOwn(body, "copyActiveRevision");
+    if (copying && (Object.keys(body).some(key => !["expectedRevision", "copyActiveRevision"].includes(key)) ||
+      !Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 0 ||
+      !Number.isSafeInteger(body.copyActiveRevision) || Number(body.copyActiveRevision) < 1)) return invalid("draft");
+    const command = copying
+      ? { expectedRevision: Number(body!.expectedRevision), configuration: null as OidcDraft | null, replacementSecret: undefined }
+      : validateOidcDraft(input);
     try { await this.database.transaction(async manager => {
       const {actor,groupId} = await this.group(token,"settings:write",manager);
       await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[groupId]);
       const [state] = await manager.query<Array<{draft_revision:string;active_revision:string|null}>>("select draft_revision,active_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
       const [clock]=await manager.query<Array<{now:Date}>>("select clock_timestamp() now");
-      await this.sessions.requireRecentReauthentication(token,manager,clock!.now);
+      await this.sessions.requireCapability(token,"settings:write",manager,clock!.now);
       if (Number(state?.draft_revision ?? 0)!==command.expectedRevision) throw new ConflictException({code:"admin.oidcStale"});
       const [prior] = state ? await manager.query<Array<{provider_id:string;configuration:OidcDraft;encrypted_credential:unknown}>>("select provider_id,configuration,encrypted_credential from app_identity.oidc_provider_version where group_id=$1 and revision=$2",[groupId,state.draft_revision]) : [];
-      const matches=(version:typeof prior):version is NonNullable<typeof prior>=>!!version && version.configuration.issuer===command.configuration.issuer && version.configuration.clientId===command.configuration.clientId;
       const [active]=state?.active_revision ? await manager.query<Array<typeof prior>>("select provider_id,configuration,encrypted_credential from app_identity.oidc_provider_version where group_id=$1 and revision=$2",[groupId,state.active_revision]) : [];
+      if (copying) {
+        if (!active || Number(state?.active_revision) !== body!.copyActiveRevision) throw new ConflictException({code:"admin.oidcStale"});
+        command.configuration = structuredClone(active.configuration);
+      }
+      const configuration = command.configuration!;
+      const matches=(version:typeof prior):version is NonNullable<typeof prior>=>!!version && version.configuration.issuer===configuration.issuer && version.configuration.clientId===configuration.clientId;
       // Restoring the exact active integration after a rejected replacement draft
       // preserves its namespace, credential AAD and installed proof contract.
-      const baseline=matches(active)
+      const baseline=copying ? active : matches(active)
         ? matches(prior) && prior.provider_id===active.provider_id ? prior : active
         : matches(prior) ? prior : undefined;
       const providerId = baseline ? baseline.provider_id : randomUUID();
-      const credential = command.replacementSecret ? encryptCredential(command.replacementSecret,groupId,providerId) : baseline?.encrypted_credential ?? null;
+      if(configuration.personalProof===undefined&&baseline?.configuration.personalProof!==undefined)configuration.personalProof=baseline.configuration.personalProof;
+      if(configuration.privateOrigins===undefined&&baseline?.configuration.privateOrigins!==undefined)configuration.privateOrigins=baseline.configuration.privateOrigins;
+      if(command.replacementSecret||baseline?.encrypted_credential)await generateAgencyKey(manager,groupId,actor.user.id);
+      const credential = command.replacementSecret ? await encryptAgencyCredential(manager,command.replacementSecret,groupId,providerId) : baseline?.encrypted_credential ?? null;
       const revision = command.expectedRevision+1;
-      await manager.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,created_by) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6)",[groupId,revision,providerId,JSON.stringify(command.configuration),credential ? JSON.stringify(credential):null,actor.user.id]);
+      await manager.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,created_by) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6)",[groupId,revision,providerId,JSON.stringify(configuration),credential ? JSON.stringify(credential):null,actor.user.id]);
       await manager.query("insert into app_identity.oidc_provider_state(group_id,draft_revision) values ($1,$2) on conflict(group_id) do update set draft_revision=excluded.draft_revision",[groupId,revision]);
       await this.audit(manager,groupId,actor.user.id,revision,"draft_saved");
     }); } catch(error) {
@@ -116,11 +148,20 @@ export class OidcDraftService {
     }
     return this.get(token);
   }
+  async rotateKey(token:string,input:unknown){
+    if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(key=>key!=="expectedVersion")||!Number.isSafeInteger((input as {expectedVersion:number}).expectedVersion)||Number((input as {expectedVersion:number}).expectedVersion)<0)return invalid("credentialKeyVersion");
+    try{await this.database.transaction(async manager=>{
+      const {actor,groupId}=await this.group(token,"settings:write",manager);
+      const version=await generateAgencyKey(manager,groupId,actor.user.id,true,(input as {expectedVersion:number}).expectedVersion);
+      await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,details)
+        values($1,$2,'authentication.policy_update','succeeded',$3::jsonb)`,[groupId,actor.user.id,JSON.stringify({kind:'oidc',operation:'credential_key_rotated',keyVersion:version})]);
+    });}catch(error){if(error instanceof Error&&error.message==='OIDC key version changed')throw new ConflictException({code:'admin.oidcStale'});if(error instanceof Error&&error.message.startsWith('OIDC credential'))throw new ServiceUnavailableException({code:'admin.oidcEncryptionUnavailable'});throw error;}
+    return this.get(token);
+  }
   async inspect(token: string,input: unknown) {
     const expectedRevision = input && typeof input === "object" ? (input as Record<string,unknown>).expectedRevision : undefined;
     if (!Number.isSafeInteger(expectedRevision) || Number(expectedRevision)<1 || Object.keys(input as object).some(key => key!=="expectedRevision")) return invalid("expectedRevision");
     const {groupId} = await this.group(token,"settings:write");
-    await this.sessions.requireRecentReauthentication(token);
     const [row] = await this.database.query<Version[]>(`select ${columns} from app_identity.oidc_provider_version where group_id=$1 and revision=$2 and exists(select 1 from app_identity.oidc_provider_state where group_id=$1 and draft_revision=$2)`,[groupId,expectedRevision]);
     if (!row) throw new ConflictException({code:"admin.oidcStale"});
     const missing = missingOidcFields(row.configuration,row.credential_configured);
@@ -129,7 +170,7 @@ export class OidcDraftService {
     let healthy = false;
     try {
       const config = row.configuration;
-      const metadata = await providerJson(config.discoveryUrl || `${config.issuer.replace(/\/$/,"")}/.well-known/openid-configuration`);
+      const metadata = await providerJson(config.discoveryUrl || `${config.issuer.replace(/\/$/,"")}/.well-known/openid-configuration`,undefined,config.privateOrigins);
       if (metadata.issuer!==config.issuer || !Array.isArray(metadata.response_types_supported) || !metadata.response_types_supported.includes("code") ||
           !Array.isArray(metadata.token_endpoint_auth_methods_supported) || !metadata.token_endpoint_auth_methods_supported.includes("client_secret_post")) throw new Error("Unsupported provider");
       await oidcConfiguration(metadata as unknown as ServerMetadata,config.clientId,"discovery-only");
@@ -138,9 +179,9 @@ export class OidcDraftService {
         const value = metadata[key];
         if (value===undefined && ["userinfo_endpoint","end_session_endpoint"].includes(key)) continue;
         if (typeof value!=="string") throw new Error("Missing endpoint");
-        await checkedAddress(providerUrl(value)); endpoints[key]=value;
+        await checkedAddress(providerUrl(value),undefined,config.privateOrigins); endpoints[key]=value;
       }
-      const jwks = await providerJson(endpoints.jwks_uri!);
+      const jwks = await providerJson(endpoints.jwks_uri!,undefined,config.privateOrigins);
       const signingKeyIds=publicSigningKeyIds(jwks);
       discovery = {issuer:config.issuer,id_token_signing_alg_values_supported:metadata.id_token_signing_alg_values_supported,...endpoints,signingKeyIds,pkceS256:Array.isArray(metadata.code_challenge_methods_supported) && metadata.code_challenge_methods_supported.includes("S256")}; healthy=true;
     } catch { /* Provider bodies and error details never enter diagnostics or audit. */ }
@@ -151,7 +192,7 @@ export class OidcDraftService {
       await manager.query("select group_id from app_identity.group_authentication_policy where group_id=$1 for update",[groupId]);
       const [state] = await manager.query<Array<{draft_revision:string}>>("select draft_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
       const [clock]=await manager.query<Array<{now:Date}>>("select clock_timestamp() now");
-      await this.sessions.requireRecentReauthentication(token,manager,clock!.now);
+      await this.sessions.requireCapability(token,"settings:write",manager,clock!.now);
       if (Number(state?.draft_revision)!==expectedRevision) throw new ConflictException({code:"admin.oidcStale"});
       await manager.query("update app_identity.oidc_provider_version set discovery=case when $4='healthy' then $3::jsonb else discovery end,discovery_health=$4,discovered_at=now() where group_id=$1 and revision=$2",[groupId,expectedRevision,discovery?JSON.stringify(discovery):null,healthy?"healthy":"failed"]);
       await this.audit(manager,groupId,actor.user.id,Number(expectedRevision),healthy?"discovery_healthy":"discovery_failed");
@@ -176,7 +217,7 @@ export class OidcDraftService {
         "select draft_revision,active_revision from app_identity.oidc_provider_state where group_id=$1 for update",[groupId]);
       // Recheck freshness after waiting for concurrent writers, using database time.
       const [clock]=await manager.query<Array<{now:Date}>>("select clock_timestamp() now");
-      await this.sessions.requireRecentReauthentication(token,manager,clock!.now);
+      await this.sessions.requireCapability(token,"settings:write",manager,clock!.now);
       const live=await this.sessions.requireCapability(token,"settings:write",manager);
       if(live.user.id!==actor.user.id || live.organization.id!==actor.organization.id) throw new ConflictException({code:"admin.oidcStale"});
       let failureCode:string|undefined;
@@ -190,7 +231,7 @@ export class OidcDraftService {
         || JSON.stringify(tested.tested_discovery)!==JSON.stringify(version.discovery)) failureCode="admin.oidcActivationTestRequired";
       else if(active && active.provider_id!==version.provider_id && (acknowledgment?.activeRevision!==Number(state!.active_revision) || acknowledgment?.draftRevision!==revision))failureCode="admin.oidcIdentityAcknowledgmentRequired";
       else {
-        try { approvedPersonalProofPolicy({groupId,providerId:version.provider_id,issuer:version.configuration.issuer,clientId:version.configuration.clientId}); }
+        try { approvedPersonalProofPolicy({groupId,providerId:version.provider_id,issuer:version.configuration.issuer,clientId:version.configuration.clientId},version.configuration.personalProof); }
         catch { failureCode="admin.oidcActivationProofRequired"; }
       }
       if(!failureCode) {

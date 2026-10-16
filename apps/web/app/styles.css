@@ -1218,13 +1218,13 @@ fieldset { min-inline-size: 0; }
 
 /* Keep the compact provider editor actions from covering credential fields. */
 .agency-settings .oidc-draft .form-actions { position: static; }
-.oidc-draft > div { display: grid; gap: 8px; }
+.oidc-draft > div:not(.form-actions) { display: grid; gap: 8px; }
 .oidc-history-scroll { max-height: 320px; overflow: auto; min-width: 0; }
 .oidc-history { width: 100%; min-width: 640px; border-collapse: collapse; }
 .oidc-history th, .oidc-history td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .oidc-history th { position: sticky; top: 0; background: var(--surface, #fff); }
-.agency-settings .oidc-identity-acknowledgment { display: flex; align-items: center; gap: 8px; min-height: 44px; }
-.agency-settings .oidc-identity-acknowledgment input { width: 20px; min-height: 20px; flex-shrink: 0; }
+.agency-settings :is(.oidc-identity-acknowledgment, .oidc-checkbox) { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.agency-settings :is(.oidc-identity-acknowledgment, .oidc-checkbox) input { width: 20px; min-height: 20px; flex-shrink: 0; }
 
 .schedule-editor .admin-table-scroll { padding: 0; }
 
@@ -1250,3 +1250,7 @@ fieldset { min-inline-size: 0; }
 
 .agency-settings .admin-user-management .form-actions { position: static; padding: 0; background: transparent; }
 .admin-management-actions { grid-column: 1 / -1; }
+
+.oidc-registration { display: grid; gap: 12px; margin-top: 18px; }
+.oidc-registration :is(h4, p) { margin: 0; }
+.oidc-registration code { overflow-wrap: anywhere; }

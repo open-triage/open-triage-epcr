@@ -19,7 +19,7 @@ test("existing-Secret mode mounts one database credential per workload", () => {
   assert.equal(output.match(/key: DATABASE_URL/g)?.length, 6,
     "the review worker uses a second reference to the API role contract");
   assert.match(output, /key: AUTH_RATE_LIMIT_SECRET_BASE64/);
-  for (const key of ["OIDC_CREDENTIAL_KEY_VERSION", "OIDC_CREDENTIAL_KEYS_JSON", "OIDC_PRIVATE_ORIGINS_JSON"]) {
+  for (const key of ["OIDC_CREDENTIAL_KEY_VERSION", "OIDC_CREDENTIAL_KEYS_JSON"]) {
     assert.equal(output.split(`key: ${key}, optional: true`).length - 1, 1, "OIDC installation values belong to the API only");
   }
   assert.match(output, /key: OFFLINE_RECOVERY_KEY_VERSION/);

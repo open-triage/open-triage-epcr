@@ -973,6 +973,8 @@ export interface AdminExternalIdentitySummary {
   subject: string;
   displayName: string | null;
   email: string | null;
+  /** Optional provider profile hint; never an identity key or local credential. */
+  username?: string | null;
   createdAt: string;
   status: "pending" | "denied" | "linked";
   linkedUserId: string | null;

@@ -48,9 +48,8 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   const requests=await Promise.all(Array.from({length:12},()=>record()));assert.equal(new Set(requests.map(row=>row.requestId)).size,1);assert(requests.every(row=>row.status==='pending'&&row.ordinaryAccess===false));
   const requestId=requests[0].requestId;
   assert.deepEqual(await ownerDb.query('select id,user_id from app_identity.app_session order by id'),beforeSessions);
-  await assert.rejects(service.list(clinical.sessionToken,{}));await assert.rejects(service.link(signed.sessionToken,requestId,{userId:medic.userId,providerSource:"draft",expectedProviderRevision:1}),/reauthentication/);
+  await assert.rejects(service.list(clinical.sessionToken,{}));
   assert.equal((await service.list(foreignSession.sessionToken,{})).items.length,0);
-  await sessions.reauthenticate(signed.sessionToken,signed.session.csrfToken,password);
   await assert.rejects(service.link(signed.sessionToken,requestId,{userId:other.userId,providerSource:"draft",expectedProviderRevision:1}),error=>error.getStatus?.()===403);
   await assert.rejects(service.link(signed.sessionToken,requestId,{userId:installation.userId,providerSource:"draft",expectedProviderRevision:1}),error=>error.getStatus?.()===403);
   // Matching profile names/emails do not identify an application user.
@@ -77,6 +76,21 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   await assert.rejects(db.query('update app_identity.regional_identity_request set subject=$2 where id=$1',[requestId,'reinterpreted']),/permission denied/);
   await assert.rejects(db.query('delete from app_identity.regional_identity_request where id=$1',[requestId]),/permission denied/);
   await assert.rejects(db.query('update app_identity.regional_identity_request set linked_user_id=$2 where id=$1',[requestId,other.userId]),/already linked/);
+  // A later UserInfo lookup can fill absent hints without replacing captured
+  // evidence, changing approval state, or creating/updating application users.
+  const missingProfile={...identity,subject:'missing-profile',displayName:null,email:null,username:null};
+  const missingRequest=await record(scope,missingProfile);
+  const recovered=await record(scope,{...missingProfile,displayName:'Alice Smith',email:'alice@example.test',username:'alice'});
+  assert.equal(recovered.requestId,missingRequest.requestId);assert.equal(recovered.status,'pending');
+  await record(scope,{...missingProfile,displayName:'Changed Name',email:'different@example.test',username:'different'});
+  await record(scope,missingProfile);
+  const [profile]=await ownerDb.query('select display_name,email,username_hint,linked_user_id,review_revision from app_identity.regional_identity_request where id=$1',[missingRequest.requestId]);
+  assert.deepEqual(profile,{display_name:'Alice Smith',email:'alice@example.test',username_hint:'alice',linked_user_id:null,review_revision:'1'});
+  await assert.rejects(db.query('update app_identity.regional_identity_request set display_name=$2 where id=$1',[missingRequest.requestId,'Changed']),/immutable/);
+  await assert.rejects(db.query('update app_identity.regional_identity_request set email=null where id=$1',[missingRequest.requestId]),/immutable/);
+  await assert.rejects(db.query('update app_identity.regional_identity_request set username_hint=$2 where id=$1',[missingRequest.requestId,'Changed']),/immutable/);
+  assert.equal((await service.list(signed.sessionToken,{})).items.find(row=>row.id===missingRequest.requestId).username,'alice');
+  assert.deepEqual(await ownerDb.query('select id,display_name,active,revision from app_identity.app_user order by id'),beforeUsers);
   await assert.rejects(record({...scope,providerId:newProvider,revision:2},identity),/scope is invalid/);
   await assert.rejects(ownerDb.transaction(manager=>manager.query('insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,2,$1,$3,$4,$5,$6,now())',[root,newProvider,'https://provider.example/issuer','protected',installation.userId,actor.userId])),/ordinary active group user/);
   // Disablement commits while approval waits on the target row. Approval must

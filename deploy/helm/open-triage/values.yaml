@@ -116,7 +116,6 @@ secrets:
     authRateLimitSecretBase64: ""
     oidcCredentialKeyVersion: "1"
     oidcCredentialKeysJson: "{}"
-    oidcPrivateOriginsJson: "[]"
     offlineRecoveryKeyVersion: "1"
     offlineRecoverySecretBase64: ""
   migration:

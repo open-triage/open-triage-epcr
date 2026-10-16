@@ -28,7 +28,7 @@ test("root configuration keeps API ports and secrets out of the web process, inc
 
 
 test("inherited server credentials remain API-only when an older local file omits their names", () => {
-  const privateKeys = ["OIDC_CREDENTIAL_KEYS_JSON", "OIDC_CREDENTIAL_KEY_VERSION", "OIDC_PRIVATE_ORIGINS_JSON",
+  const privateKeys = ["OIDC_CREDENTIAL_KEYS_JSON", "OIDC_CREDENTIAL_KEY_VERSION",
     "PATIENT_KEY_SECRET_BASE64", "PATIENT_KEY_INSTALLATION_ID", "PATIENT_KEY_VERSION",
     "AUTH_RATE_LIMIT_SECRET_BASE64", "AUTH_TRUST_PROXY_HOPS", "OFFLINE_RECOVERY_SECRET_BASE64",
     "OFFLINE_RECOVERY_WRAPPING_KEYS_JSON", "OFFLINE_RECOVERY_KEY_VERSION", "DATABASE_LOGGING",

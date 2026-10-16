@@ -19,12 +19,13 @@ issuer, client identifier, credentials, claims or host registrations. If another
 mechanism is required, implement and test it before activation. Microsoft documents
 [AD FS code flow and PKCE](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/overview/ad-fs-openid-connect-oauth-flows-scenarios).
 
-Registration details show exact HTTPS URLs for active registered group agency
-hosts: `/api/sessions/oidc/callback` and `/api/sessions/oidc/logout-callback`.
-The callback handles real draft test login; the logout callback remains reserved
-for later protocol handling. Draft configuration does not enable provider logout.
-Logout
-registration is informational and does not enable regional global logout.
+The Authentication page ends with registration details for IT: confidential
+Authorization Code flow, client_secret_post, S256 PKCE, scope and signed-claim
+requirements, and exact `/api/sessions/oidc/callback` URLs for active registered
+group agency hosts. The callback handles draft tests and personal login.
+Discovery diagnostics and redundant origin labels are omitted. The reserved
+`/api/sessions/oidc/logout-callback` is not shown because provider logout is not
+implemented and no logout callback registration is needed.
 Required ID-token claims are `iss`, `sub`, `aud`, `exp`, `iat`, `nonce`; supported
 profile mappings are display name and optional email. Profile claims never grant
 roles and email must not link application identities automatically.
@@ -60,7 +61,7 @@ JWKS fetching and automatic signing-key rollover continue normally.
 When upgrading an existing integration, the snapshot migration adopts only
 activation-era successful test metadata that exactly matches retained metadata.
 Missing or ambiguous evidence stays unapproved; use independent installation
-recovery and **Prepare replacement draft** to save, inspect, test and activate a
+recovery and **Copy active configuration to new draft** to save, inspect, test and activate a
 new revision even when the editable settings are unchanged. Admin clearly marks
 the missing active snapshot. The migration never
 labels later or untested endpoint changes as previously approved.
@@ -78,14 +79,16 @@ approval. Acknowledgment does not approve that contract or transfer identity lin
 Profile or email equality cannot link identities automatically. Explicitly review
 and link identities from the replacement integration through Users → Manage.
 
-**Use active configuration** copies active editable settings into the editor;
-saving still creates a new draft requiring inspection and a fresh diagnostic test.
-Restoring an active issuer/client after an abandoned different integration reuses
-the active provider identity and its protected credential baseline. This also
-repairs previously saved restoration drafts that used the wrong provider ID,
-without rewriting any historical version. When the current draft already belongs
-to the active integration, its staged credential is retained; supply a known
-replacement secret to repair an incorrect staged credential.
+**Copy active configuration to new draft** immediately saves a new revision of
+all active settings and the active protected credential, replacing the current
+draft in the editor. Unsaved changes require confirmation before copying. The
+new revision preserves the active integration identity and starts without
+discovery or test evidence. The editor shows only the next activation step:
+check discovery, test provider login, then activate tested SSO. Failed discovery
+or login can be retried; editing requires saving before validation resumes.
+Once activated, these steps disappear until another draft is saved.
+Ordinary saves within the same integration retain the staged credential unless
+a replacement secret is supplied.
 
 Issued sessions retain immutable identity/provenance, fixed expiry and existing
 qualifying shift evidence. Credential rotation within the same integration also
@@ -96,14 +99,23 @@ integration and requires its own explicitly linked identity.
 
 ## Installation credential protection
 
-Inject `OIDC_CREDENTIAL_KEYS_JSON` into the API from the installation secret
-manager: an object mapping key versions to independently generated base64 32-byte
-keys. `OIDC_CREDENTIAL_KEY_VERSION` selects the current version (default `1`).
-`prepare:kubernetes` generates the initial dedicated key in the private API bundle;
-the Helm API deployment reads these values from its API Secret. The web receives
-neither keys nor credentials. No development fallback key exists. Without a valid
-key, replacement-credential saves fail closed while existing configuration stays
-intact. Never generate a new key on every deployment.
+Manage agency-group encryption keys from **Admin → Authentication**. The server
+creates an independent random 32-byte key when saving the first replacement
+client secret. **Generate encryption key** can initialize it earlier; **Rotate
+encryption key** creates a new version using the current administrator session.
+The panel returns the current version only. It never accepts or exposes raw keys.
+All child agencies inherit the owning group's keyring. Rotation retains older
+keys for saved provider revisions, in-flight transactions and session CSRF data.
+Concurrent rotations require the displayed current version and cannot overwrite
+one another. Keep key rows for as long as any retained envelope needs them.
+
+`OIDC_CREDENTIAL_KEYS_JSON` and `OIDC_CREDENTIAL_KEY_VERSION` remain API-only
+installation master wrapping keys. They protect the agency keys stored in the
+private database and continue to read legacy envelopes. `prepare:kubernetes`
+generates the initial master key; retain historical master versions while any
+agency key or legacy envelope depends on them. Back up the database and master
+keyring together. Missing or invalid master keys fail closed. No browser receives
+master or agency keys, and neither has a development fallback.
 
 Credentials use AES-256-GCM, a fresh random 96-bit nonce, and authenticated context
 containing group, immutable provider ID and key version. A changed issuer or client
@@ -127,21 +139,21 @@ policy. DNS lookup and response deadlines and a 256 KiB response limit bound wor
 JWKS has at most 100 keys. Metadata returned to browsers contains only issuer,
 relevant endpoint addresses, signing-key identifiers and PKCE support.
 
-By default only public unicast addresses are permitted. To support an internal
-regional IdP, an installation operator sets `OIDC_PRIVATE_ORIGINS_JSON` to exact
-HTTPS origins, for example `["https://idp.region.example"]`, through the protected
-API deployment configuration. The allowlist permits only RFC1918 and IPv6 ULA at
-those origins, including mapped IPv4. Loopback, link-local/metadata, unspecified,
-multicast, reserved and transition address ranges remain denied. Each separate
-endpoint origin needs independent consent. Agency administrators cannot extend
-this installation trust boundary through the draft editor. Installation egress
-controls should also restrict access to the intended regional IdP.
+By default only public unicast addresses are permitted. Under **Admin →
+Authentication**, set **Private provider HTTPS origins** to exact internal
+provider origins, one per line. Saving, discovery, diagnostic testing and
+activation bind those origins to the immutable provider revision. Each separate
+endpoint origin needs its own entry. An explicit empty list permits public
+addresses only.
+All discovery, token and JWKS requests use that revision's list. RFC1918 and IPv6
+ULA addresses are allowed only for listed origins; loopback, link-local/metadata,
+unspecified, multicast, reserved and transition addresses remain denied. Agency
+groups cannot borrow another group's approvals.
 
 ## Real draft test login
 
 After saving and inspecting a complete draft, an administrator opens the selected
-agency's registered origin, enters their current password and chooses **Test
-provider login**. The browser visits the provider; the GET callback returns to
+agency's registered origin and chooses **Test provider login**. The browser visits the provider; the GET callback returns to
 that same agency. Reloading the OIDC draft shows its latest completed test,
 configuration revision, S256 capability and identity validation result. Saving
 another draft revision removes the previous result from the current draft.
@@ -152,8 +164,8 @@ authentication. Linking requires a separate authorized review.
 
 Five-minute transactions bind agency, group, actor, purpose, registered origin,
 fixed `/` return path, immutable revision, state, nonce and PKCE verifier. The
-saved initiating session must still have write authority and recent local
-reauthentication at completion. A separate HttpOnly Secure Lax cookie is restricted
+saved initiating session must still be valid and have write authority at
+completion. Administrative actions do not require additional reauthentication. A separate HttpOnly Secure Lax cookie is restricted
 to the callback path; the application cookie remains Strict. Transactions consume
 atomically before network exchange; failures, expiry and concurrent replay cannot
 be reused. The final short commit rechecks authority, version, inspected metadata,
@@ -200,7 +212,7 @@ network access, personal authentication evidence, or physical deployment
 acceptance; those remain explicit regional acceptance work.
 
 Completed failures contain only a bounded category: `canceled` (restart),
-`expired` (confirm password and restart), `draft_changed` (inspect/retest the
+`expired` (start a new test), `draft_changed` (inspect/retest the
 saved version), `origin_changed` (open the registered agency origin),
 `authority_changed` (sign in and confirm current administration authority),
 `provider_validation` (IT checks client registration, callback, claims and signing
@@ -218,8 +230,7 @@ email or display name never selects an application user automatically.
 
 With settings-write and user-write authority, explicitly select an existing
 ordinary active group user and the current draft or active provider revision.
-Confirm personal authentication through the session's local or regional method
-to **Link existing user**. The target must be within the administrator’s capability boundary.
+Choose **Link existing user**. The target must be within the administrator’s capability boundary.
 Installation owners, superadmins and other installation recovery accounts cannot
 be linked here. A link preserves the immutable application user ID, roles, report
 authorship and existing audit records. The audit appends request/actor/target IDs

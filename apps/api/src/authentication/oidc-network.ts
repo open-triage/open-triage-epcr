@@ -7,8 +7,8 @@ export function providerUrl(value: string): URL {
   if (url.protocol !== "https:" || url.username || url.password || url.hash || url.search || value.length > 2048) throw new Error("Unsafe provider address");
   return url;
 }
-export function privateProviderOrigins(): Set<string> {
-  const values: unknown = JSON.parse(process.env.OIDC_PRIVATE_ORIGINS_JSON || "[]");
+export function privateProviderOrigins(origins:string[]=[]): Set<string> {
+  const values: unknown = origins;
   if (!Array.isArray(values) || values.some(value => typeof value !== "string" || providerUrl(value).origin !== value)) throw new Error("Invalid private provider origins");
   return new Set(values);
 }
@@ -16,12 +16,12 @@ export function permittedAddress(address: string, privateOrigin = false): boolea
   let parsed = ipaddr.parse(address);
   if (parsed.kind() === "ipv6" && (parsed as ipaddr.IPv6).isIPv4MappedAddress()) parsed = (parsed as ipaddr.IPv6).toIPv4Address();
   const range = parsed.range();
-  // Explicit installation consent only opens RFC1918/ULA, never loopback,
+  // Explicit agency consent only opens RFC1918/ULA, never loopback,
   // link-local metadata, multicast, reserved, transition or unspecified ranges.
   return range === "unicast" || (privateOrigin && ["private", "uniqueLocal"].includes(range));
 }
-export async function checkedAddress(url: URL, resolve = lookup) {
-  const privateOrigin = privateProviderOrigins().has(url.origin);
+export async function checkedAddress(url: URL, resolve = lookup, origins?:string[]) {
+  const privateOrigin = privateProviderOrigins(origins).has(url.origin);
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = await Promise.race([resolve(hostname, { all: true, verbatim: true }), new Promise<never>((_, reject) => {
     const timer = setTimeout(() => reject(new Error("DNS timeout")), 3000); timer.unref();
@@ -29,8 +29,8 @@ export async function checkedAddress(url: URL, resolve = lookup) {
   if (!addresses.length || addresses.some(value => !permittedAddress(value.address, privateOrigin))) throw new Error("Unsafe provider address");
   return addresses[0]!;
 }
-export async function providerJson(value: string, resolveAddress = lookup): Promise<Record<string, unknown>> {
-  const response=await providerFetch(value,undefined,resolveAddress);
+export async function providerJson(value: string, resolveAddress = lookup, origins?:string[]): Promise<Record<string, unknown>> {
+  const response=await providerFetch(value,undefined,resolveAddress,origins);
   try {
     const body:unknown=await response.json();
     if(!body||typeof body!=="object"||Array.isArray(body))throw new Error();
@@ -39,8 +39,8 @@ export async function providerJson(value: string, resolveAddress = lookup): Prom
 }
 
 /** The protocol library uses this for both token exchange and JWKS refresh. */
-export async function providerFetch(input: string | URL, init?: { method?: string; headers?: HeadersInit; body?: unknown }, resolveAddress = lookup): Promise<Response> {
-  const url=providerUrl(String(input)); const address=await checkedAddress(url,resolveAddress);
+export async function providerFetch(input: string | URL, init?: { method?: string; headers?: HeadersInit; body?: unknown }, resolveAddress = lookup, origins?:string[]): Promise<Response> {
+  const url=providerUrl(String(input)); const address=await checkedAddress(url,resolveAddress,origins);
   const method=init?.method ?? "GET";
   if (!["GET","POST"].includes(method) || init?.body && typeof init.body!=="string" && !(init.body instanceof URLSearchParams)) throw new Error("Unsupported provider request");
   const body=init?.body ? String(init.body):undefined;
