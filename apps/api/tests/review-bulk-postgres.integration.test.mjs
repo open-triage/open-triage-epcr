@@ -3,6 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
+import { createAgencyReviewer } from "./fixtures/review-user.mjs";
 import { ReviewService } from "../dist/review/review.service.js";
 import { eligibleReviewer } from "../dist/review/review-assignment.js";
 
@@ -31,6 +32,7 @@ integrationTest("bulk claim and assignment report independent, stale, and scoped
       owner.user_id reviewer_id from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id
     join app_identity.installation_owner owner on owner.user_id<>r.documenting_user_id where r.status='signed' limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report with a different installation owner is available");
+  candidate.reviewer_id = await createAgencyReviewer(client, candidate.organization_id, candidate.documenting_user_id);
   const initialQuery = async (sql, params) => (await client.query(sql, params)).rows;
   if (!await eligibleReviewer({ query: initialQuery }, candidate.organization_id,
     candidate.documenting_user_id, candidate.documenting_user_id, false)) {

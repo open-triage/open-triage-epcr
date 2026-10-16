@@ -3,6 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
+import { createAgencyReviewer } from "./fixtures/review-user.mjs";
 import { ReviewService } from "../dist/review/review.service.js";
 
 const integrationTest = process.env.DATABASE_URL ? test : test.skip;
@@ -113,6 +114,7 @@ integrationTest("independent review rejects the author after configuration chang
     join app_identity.installation_owner owner on owner.user_id<>r.documenting_user_id
     where r.status='signed' limit 1`)).rows[0];
   if (!candidate) return t.skip("No signed report with a different installation owner is available");
+  candidate.reviewer_id = await createAgencyReviewer(client, candidate.organization_id, candidate.documenting_user_id);
   const criterionId = randomUUID();
   const secondCriterionId = randomUUID();
   const itemId = randomUUID();
