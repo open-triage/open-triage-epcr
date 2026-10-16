@@ -326,3 +326,30 @@ test('queue search and assignment filters stay scoped, parameterized, and identi
   await assert.rejects(service.queue('token', { assignment: 'anyone' }), BadRequestException);
   await assert.rejects(service.queue('token', { search: 'x'.repeat(121) }), BadRequestException);
 });
+
+for (const authority of ["installationOwner", "installationSuperadmin"]) {
+  test(`${authority} has clinician Review scope even with broad session capabilities`, async () => {
+    const current = { ...session(["review:self", "review:all", "review:admin", "review:identifying"]),
+      [authority]: true };
+    assert.deepEqual(reviewScope(current), {
+      organizationId: "org-a", userId: "user-a", reports: "own", identifying: false,
+      administrator: false, defaultDataset: "real",
+    });
+    assert.throws(() => reviewScope({ ...current, capabilities: ["review:all"] }), ForbiddenException);
+    const queries = [];
+    const database = { query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (sql.includes("from clinical.report r join clinical.signed_snapshot")) {
+        assert.match(sql, /documenting_user_id/);
+        assert.equal(params[3], false, "Cross-clinician report access must be disabled");
+        assert.equal(params[4], "user-a");
+        return [];
+      }
+      return [];
+    } };
+    database.transaction = async (_level, work) => work(database);
+    const service = new ReviewService(database, { get: async () => current });
+    await assert.rejects(service.report("token", "another-clinician-report"), { status: 404 });
+    assert.ok(queries.length);
+  });
+}

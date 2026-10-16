@@ -48,6 +48,11 @@ integration('installation accounts bootstrap, authenticate and recover without a
     assert.equal(selected.organization.id,agency);
     assert.equal(selected.homeOrganizationId,undefined);
     assert.ok(selected.capabilities.includes('clinical:document'));
+    assert.ok(selected.capabilities.includes('review:self'));
+    for (const capability of ['review:all','review:admin','review:identifying']) {
+      assert.equal(selected.capabilities.includes(capability), false);
+      await assert.rejects(sessions.requireCapability(changed.sessionToken, capability), /capability is required/);
+    }
     assert.equal((await client.query('select organization_id from app_identity.app_user where id=$1',[owner.userId])).rows[0].organization_id,null);
     await client.query('update app_identity.organization set active=false where id=$1',[agency]);
     await assert.rejects(sessions.get(changed.sessionToken),/ended/);

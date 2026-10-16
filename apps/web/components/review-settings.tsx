@@ -6,6 +6,7 @@ import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { FieldHelp } from "./field-help";
 import { useVisiblePolling } from "./use-visible-polling";
 import { useAvailableHeight } from "./use-available-height";
+import { reviewAccess } from "../app/review-access";
 import { listAccessRemoved } from "../app/list-refresh";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -19,7 +20,7 @@ export function ReviewSettingsPanel({ session, language, online, section, active
   active: boolean;
   section?: ReviewSettingsSection;
 }) {
-  const administrator = session.capabilities?.includes("review:admin") ?? false;
+  const { administrator } = reviewAccess(session);
   const dataset = session.capabilities?.includes("clinical:demo") ? "synthetic" : "real";
   const [refresh, setRefresh] = useState(0);
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
@@ -248,7 +249,7 @@ export function ReviewSettingsPanel({ session, language, online, section, active
     heading?.focus({ preventScroll: true });
   }, [section, active, online]);
 
-  if (!session.capabilities?.includes("review:admin")) return null;
+  if (!administrator) return null;
   return <section className="review-workspace review-settings-workspace review-settings-card" aria-labelledby="review-settings-heading">
     <h2 id="review-settings-heading">{t("navigation.reviewSettings")}</h2>
     {!online ? <p role="status">{t("review.offline")}</p> : <>

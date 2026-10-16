@@ -142,10 +142,19 @@ integration("isolated agencies share staff only within their parent group; owner
     const childItem = await review.item(ownerLogin.sessionToken, itemIds[1], "real");
     assert.equal(childItem.id, itemIds[1]);
     await assert.rejects(review.item(ownerLogin.sessionToken, itemIds[2], "real"), /not found in scope/);
-    await review.claim(ownerLogin.sessionToken, itemIds[1], { commandId: randomUUID(), expectedVersion: childItem.version, dataset: "real" }, ownerLogin.session.csrfToken);
+    await assert.rejects(review.claim(ownerLogin.sessionToken, itemIds[1], {
+      commandId: randomUUID(), expectedVersion: childItem.version, dataset: "real"
+    }, ownerLogin.session.csrfToken), /Review-all access is required/);
+    assert.equal((await client.query("select count(*)::int n from clinical.review_assignment_history where item_id=$1", [itemIds[1]])).rows[0].n, 0);
+    // Group-wide clinical review requires an ordinary account with that role;
+    // installation authority cannot claim reports, including its own reports.
+    await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by)
+      select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='reviewer'`,
+      [rootAgency.id, staff, owner.userId]);
+    await review.claim(staffLogin.sessionToken, itemIds[1], { commandId: randomUUID(), expectedVersion: childItem.version, dataset: "real" }, staffLogin.session.csrfToken);
     const assignment = (await client.query("select organization_id,actor_id from clinical.review_assignment_history where item_id=$1", [itemIds[1]])).rows[0];
     assert.equal(assignment.organization_id, child.id);
-    assert.equal(assignment.actor_id, owner.userId);
+    assert.equal(assignment.actor_id, staff);
     await sessions.switchAgency(ownerLogin.sessionToken, child.id);
     assert.equal((await review.queue(ownerLogin.sessionToken, { dataset: "real" })).total, 1);
     // Starting configurations are published copies owned by the destination; all

@@ -22,7 +22,9 @@ test.beforeAll(async () => {
       const base={user:{id:'user',displayName:'User'},organization:{id:'org',name:'EMS'},
         csrfToken:'fixture',startedAt:'2026-10-01T12:00:00Z',capabilities:['review:admin','review:all']};
       function App(){const [revision,setRevision]=useState(0),[active,setActive]=useState(true),[draft,setDraft]=useState(true);
-        const session={...base,capabilities:[...base.capabilities]};
+        const authority=new URLSearchParams(location.search).get('authority');
+        const session={...base,capabilities:['review:self',...base.capabilities],
+          installationOwner:authority==='owner',installationSuperadmin:authority==='superuser'};
         const mode=new URLSearchParams(location.search).get('mode');
         return <><button onClick={()=>setRevision(revision+1)}>Parent update {revision}</button>
           <button onClick={()=>setActive(!active)}>Toggle active</button>
@@ -54,6 +56,7 @@ test.beforeEach(async ({ page }) => {
       "/api/review/queue": { dataset: "real", page: 1, pageSize: 25, total: 1, items: [item], assignmentCounts: { all: 1, mine: 0, unassigned: 1 } },
       [`/api/review/items/${itemId}`]: item,
       [`/api/review/reports/${reportId}`]: { id: reportId, groups: [], values: [], notes: [], reviewItems: [], amendmentSequence: 0 },
+      "/api/review/analytics/saved": [],
       "/api/review/eligible-reviewers": [], "/api/review/routes": [], "/api/review/outcomes": [],
       "/api/review/backlog": { work: [] },
       "/api/review/overdue-policy": { deadlineHours: 24, version: 1 },
@@ -181,3 +184,33 @@ test("call polling skips hidden browser tabs and overlapping requests", async ({
   });
   await expect.poll(() => assigned).toBe(2);
 });
+
+for (const authority of ["owner", "superuser"]) {
+  test(`${authority} cached broad grants never load routing or expose review administration`, async ({ page }) => {
+    const forbiddenRequests: string[] = [];
+    for (const pattern of ["**/api/review/routes", "**/api/review/eligible-reviewers**"]) {
+      await page.route(pattern, route => {
+        forbiddenRequests.push(route.request().url());
+        return route.fulfill({ status: 403, json: {} });
+      });
+    }
+    await page.goto(`/__loads?mode=review&authority=${authority}`);
+    await expect(page.getByRole("button", { name: "View PCR-1", exact: true })).toBeVisible();
+    await page.clock.runFor(16_000);
+    expect(counts.get("/api/review/routes") ?? 0).toBe(0);
+    expect(counts.get("/api/review/eligible-reviewers") ?? 0).toBe(0);
+    expect(forbiddenRequests).toEqual([]);
+    await expect(page.getByText("Routing settings are unavailable.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Claim", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Bulk actions" })).toHaveCount(0);
+    await page.getByRole("button", { name: "View PCR-1", exact: true }).click();
+    await expect.poll(() => counts.get(`/api/review/items/${itemId}`)).toBeGreaterThan(0);
+    expect(counts.get("/api/review/eligible-reviewers") ?? 0).toBe(0);
+    await page.goto(`/__loads?mode=settings&authority=${authority}`);
+    await page.clock.runFor(16_000);
+    await expect(page.getByRole("heading", { name: "Review settings" })).toHaveCount(0);
+    expect(forbiddenRequests).toEqual([]);
+    expect(counts.get("/api/review/routes") ?? 0).toBe(0);
+    expect(counts.get("/api/review/eligible-reviewers") ?? 0).toBe(0);
+  });
+}

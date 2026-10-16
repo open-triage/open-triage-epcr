@@ -103,3 +103,20 @@ test("Validation navigation requires dedicated read authority", async () => {
   const reviewer = new AdminService({}, { get: async () => ({ ...session, capabilities: ["review:all"] }) });
   await assert.rejects(reviewer.context("opaque-session"), UnauthorizedException);
 });
+
+for (const authority of ["installationOwner", "installationSuperadmin"]) {
+  test(`${authority} dashboard patient statistics remain scoped to their own work`, async () => {
+    const calls = [];
+    const service = new AdminService({ query: async (sql, parameters) => {
+      calls.push({ sql, parameters });
+      return [];
+    } }, { get: async () => ({ ...session, [authority]: true,
+      capabilities: ["admin-dashboard:read", "review:all"] }) });
+    await service.context("token");
+    const dashboard = calls.find(call => call.sql.includes("with report_stats"));
+    assert.deepEqual(dashboard.parameters, [session.organization.id, false, session.user.id]);
+    assert.match(dashboard.sql, /\(\$2::boolean or documenting_user_id = \$3\)/);
+    assert.match(dashboard.sql, /\(\$2::boolean or report.documenting_user_id = \$3\)/);
+    assert.match(dashboard.sql, /\(\$2::boolean or synthetic_generated_by = \$3\)/);
+  });
+}
