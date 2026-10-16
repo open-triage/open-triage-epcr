@@ -67,9 +67,13 @@ try{
  await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Agency Settings',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Agency Settings',exact:true})).toBeVisible();await expect(page.getByLabel('Your current password is required to save')).toHaveCount(0);
  await page.getByLabel('Maximum session duration (hours)').fill('8');await page.getByRole('button',{name:'Save',exact:true}).click();
+ await expect(page.getByText(/^Agency Settings saved\./)).toBeVisible();
+ // Routine inherited policy edits retain the session; explicitly request fresh
+ // personal proof to exercise the shared SSO reauthentication transition.
+ await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));try{await fixture.reauthenticateClinicianSession('',s.csrfToken);}catch{}});
  await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();await finish();await expect(page.locator('.session-identity')).toBeVisible();
  const reauthenticated=await stored();assert.equal(await token(),alphaToken);assert.equal(reauthenticated.expiresAt,alphaSession.expiresAt);assert.equal(reauthenticated.personalAuthenticationPurpose,'reauthenticate');
- await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Agency Settings',exact:true}).click();await page.getByLabel('Maximum session duration (hours)').fill('8');await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText(/^Agency Settings saved\./)).toBeVisible();assert.equal((await current()).body.expiresAt,alphaSession.expiresAt);
+ await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Agency Settings',exact:true}).click();await page.getByLabel('Maximum session duration (hours)').fill('7');await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText(/^Agency Settings saved\./)).toBeVisible();assert.equal((await current()).body.expiresAt,alphaSession.expiresAt);
  const alternate=await agencyRequest.run({origin,organizationId:process.env.OIDC_CHILD},async()=>{const begin=await personal.begin({purpose:'login'});const response=await fetch(begin.authorizationUrl,{redirect:'manual'});const confirm=new URL(begin.authorizationUrl);confirm.searchParams.set('confirm','1');const code=await fetch(confirm,{redirect:'manual'});return personal.callback(new URL(code.headers.get('location')),begin.correlation);});
  assert(alternate.created);await assert.rejects(sessions.requireRecentReauthentication(alternate.created.sessionToken));
  // Freshness is neither activity nor provider revision. Issuance stays version 1;
