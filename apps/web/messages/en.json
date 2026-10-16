@@ -1754,8 +1754,8 @@
   "admin.agencyNumber": "dAgency.02 — EMS Agency Number",
   "admin.agencyStateCode": "dAgency.04 — ANSI state code",
   "admin.agencyCredentialHelp": "Use your agency-issued credentials.",
-  "calls.production.enrollment-required": "Enroll this browser installation to an active unit to open new production jobs. Existing reports remain available. Ask an agency administrator for an enrollment code.",
-  "platform.error.calls.enrollmentRequired": "Enroll this browser installation to an active unit to open new production jobs. Existing reports remain available. Ask an agency administrator for an enrollment code.",
+  "calls.production.enrollment-required": "Enroll this browser installation to an active unit to open new calls. Existing reports remain available. Ask an agency administrator for an enrollment code.",
+  "platform.error.calls.enrollmentRequired": "Enroll this browser installation to an active unit to open new calls. Existing reports remain available. Ask an agency administrator for an enrollment code.",
   "calls.production.agency-mismatch": "This browser is enrolled to a unit in another agency. Select its agency to open new jobs, or ask an administrator to reassign the installation.",
   "platform.error.calls.enrolledAgencyMismatch": "This browser is enrolled to a unit in another agency. Select its agency to open new jobs, or ask an administrator to reassign the installation.",
   "calls.production.schedule-required": "This unit has no selected schedule. Ask an agency administrator to select a schedule; choose an explicitly blank schedule if no handovers are required.",
@@ -2019,5 +2019,6 @@
   "admin.ssoConnection": "SSO connection",
   "admin.ssoUnlink": "Unlink SSO and revoke sessions",
   "admin.ssoUnlinked": "SSO unlinked and sessions revoked. Signing in again requires identity approval.",
-  "admin.ssoUnlinkFailed": "Could not unlink SSO. Refresh the user and try again."
+  "admin.ssoUnlinkFailed": "Could not unlink SSO. Refresh the user and try again.",
+  "admin.unitRevocationEffect": "Revocation removes this browser’s pairing to this unit. Personal sign-in, existing reports and authorized Administration and Review work remain available. New calls for this unit stop until the browser is enrolled again. This is not remote erasure: protected records and recovery deadlines remain unchanged."
 }

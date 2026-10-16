@@ -31,7 +31,7 @@ type SessionRow = Omit<CredentialRow, "password_verifier" | "username"> & {
   encrypted_csrf?: ReturnType<typeof encryptCredential>; oidc_group_id?: string;
   session_id: string; created_at: Date | string; expires_at: Date | string; csrf_sha256: string;
   session_credential_version: string; revoked_at: Date | string | null;
-  browser_origin?: string | null; agency_access?: boolean; installation_available?: boolean; installation_registration_id?: string | null;
+  browser_origin?: string | null; agency_access?: boolean; installation_registration_id?: string | null;
 };
 export type CreatedSession = { session: AuthenticatedSession; sessionToken: string };
 const dummyVerifier = createPasswordVerifier("invalid-password-only");
@@ -141,13 +141,7 @@ export class ClinicianSessionService {
       select s.id as session_id, s.installation_registration_id, s.created_at, s.expires_at, s.csrf_sha256,
              s.authentication_source, app_identity.session_authentication_valid(s) as authentication_valid,
              s.personally_authenticated_at, s.personal_authentication_purpose, s.encrypted_csrf, s.oidc_group_id,
-             s.browser_origin, (s.installation_registration_id is null or exists(
-               select 1 from app_identity.installation_registration i
-               join app_identity.operational_unit unit on unit.id=i.unit_id and unit.organization_id=i.organization_id
-               join app_identity.organization agency on agency.id=i.organization_id
-               join app_identity.organization agency_group on agency_group.id=coalesce(agency.parent_organization_id,agency.id)
-               where i.id=s.installation_registration_id and i.revoked_at is null
-               and unit.active and agency.active and agency_group.active)) as installation_available,
+             s.browser_origin,
              case when s.organization_id is null then app_identity.is_installation_superadmin(s.user_id)
                else app_identity.user_can_access_organization(s.user_id, s.organization_id) end as agency_access,
              s.credential_version as session_credential_version, s.revoked_at,
@@ -161,7 +155,7 @@ export class ClinicianSessionService {
       where s.token_sha256 = $1
     `, [digest(sessionToken)]);
     const row = rows[0];
-    if (!row || row.revoked_at || !row.active || row.agency_access === false || row.installation_available === false ||
+    if (!row || row.revoked_at || !row.active || row.agency_access === false ||
         agencyRequest.getStore()?.organizationId && row.organization_id !== agencyRequest.getStore()!.organizationId ||
         row.browser_origin && agencyRequest.getStore()?.origin && row.browser_origin !== agencyRequest.getStore()!.origin ||
         timestamp(row.expires_at) <= now.getTime() ||
@@ -266,7 +260,12 @@ export class ClinicianSessionService {
         insert into app_identity.app_session
           (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label,
            organization_id, browser_origin, installation_registration_id, personally_authenticated_at, personal_authentication_purpose)
-        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, (select installation_registration_id from app_identity.app_session where token_sha256=$10), $5, 'login') returning id
+        values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, (select i.id from app_identity.app_session source
+             join app_identity.installation_registration i on i.id=source.installation_registration_id
+             join app_identity.operational_unit unit on unit.id=i.unit_id and unit.organization_id=i.organization_id
+             join app_identity.organization agency on agency.id=i.organization_id
+             join app_identity.organization agency_group on agency_group.id=coalesce(agency.parent_organization_id,agency.id)
+             where source.token_sha256=$10 and i.revoked_at is null and unit.active and agency.active and agency_group.active), $5, 'login') returning id
       `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0].credential_version,
         now, expiresAt, coarseDeviceLabel(userAgent), current.organization?.id ?? null, agencyRequest.getStore()?.origin ?? null, digest(sessionToken)]));
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);

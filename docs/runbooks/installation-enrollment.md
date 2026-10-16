@@ -52,8 +52,9 @@ Issue a new five-minute single-use QR from the incoming unit's Installations
 inventory. Open it in the enrolled browser or PWA, confirm the incoming unit and
 intended installation, then choose **Reassign and sign out**. The installation
 keeps its stable identity; its old registration stays in history and a new
-registration receives a rotated HttpOnly credential. The old credential and
-associated clinician sessions cannot authenticate again.
+registration receives a rotated HttpOnly credential. The old credential no longer supplies unit-job access. Associated clinician
+sessions are signed out by this explicit reassignment; a fresh personal login
+with a retired cookie is allowed as an unpaired session.
 
 Confirmation first tells every signed-in tab to use the normal protected-storage
 lock lifecycle. The transition waits for those tabs to settle pending local

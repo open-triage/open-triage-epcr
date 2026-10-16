@@ -1752,8 +1752,8 @@
   "admin.agencyNumber": "dAgency.02 — Organisationsnummer",
   "admin.agencyStateCode": "dAgency.04 — ANSI-delstatskod",
   "admin.agencyCredentialHelp": "Använd inloggningsuppgifterna från din organisation.",
-  "calls.production.enrollment-required": "Registrera den här webbläsarinstallationen till en aktiv enhet för att öppna nya produktionsuppdrag. Befintliga rapporter är tillgängliga. Be en administratör om en registreringskod.",
-  "platform.error.calls.enrollmentRequired": "Registrera den här webbläsarinstallationen till en aktiv enhet för att öppna nya produktionsuppdrag. Befintliga rapporter är tillgängliga. Be en administratör om en registreringskod.",
+  "calls.production.enrollment-required": "Registrera den här webbläsarinstallationen till en aktiv enhet för att öppna nya uppdrag. Befintliga rapporter är tillgängliga. Be en administratör om en registreringskod.",
+  "platform.error.calls.enrollmentRequired": "Registrera den här webbläsarinstallationen till en aktiv enhet för att öppna nya uppdrag. Befintliga rapporter är tillgängliga. Be en administratör om en registreringskod.",
   "calls.production.agency-mismatch": "Webbläsaren är registrerad till en enhet i en annan organisation. Välj den organisationen för nya uppdrag, eller be en administratör att flytta installationen.",
   "platform.error.calls.enrolledAgencyMismatch": "Webbläsaren är registrerad till en enhet i en annan organisation. Välj den organisationen för nya uppdrag, eller be en administratör att flytta installationen.",
   "calls.production.schedule-required": "Enheten har inget valt schema. Be en administratör att välja ett schema; välj ett uttryckligen tomt schema om skiftbyten inte behövs.",
@@ -2017,5 +2017,6 @@
   "admin.ssoConnection": "SSO-anslutning",
   "admin.ssoUnlink": "Koppla från SSO och avsluta sessioner",
   "admin.ssoUnlinked": "SSO har kopplats från och sessionerna avslutats. Ny inloggning kräver identitetsgodkännande.",
-  "admin.ssoUnlinkFailed": "Det gick inte att koppla från SSO. Uppdatera användaren och försök igen."
+  "admin.ssoUnlinkFailed": "Det gick inte att koppla från SSO. Uppdatera användaren och försök igen.",
+  "admin.unitRevocationEffect": "Återkallelse tar bort webbläsarens koppling till denna enhet. Personlig inloggning, befintliga journaler och behörig åtkomst till Administration och Granskning är fortfarande tillgängliga. Nya uppdrag för enheten stoppas tills webbläsaren kopplas igen. Detta är ingen fjärradering: skyddade journaler och återställningsfrister är oförändrade."
 }

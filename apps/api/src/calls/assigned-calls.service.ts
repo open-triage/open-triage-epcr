@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES } from "@open-triage/contracts";
+import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type {
   AssignedCall,
   AssignedCallsResponse,
@@ -64,6 +64,7 @@ type ReportRow = {
   revision: string | number;
   status: "draft" | "signed";
   synthetic: boolean;
+  synthetic_generated_by: string | null;
   dispatch_canceled_at: Date | string | null;
   dispatch_cancellation_revision: string | number | null;
   dispatch_cancellation_receipt_id: string | null;
@@ -221,18 +222,18 @@ export class AssignedCallsService {
         join app_identity.organization organization on organization.id=ca.organization_id
         left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
         where ca.organization_id = $2 and ou.active
-          and ((not ca.synthetic and not incident.synthetic and (ou.id=$4::uuid or ($6::boolean and exists(
-              select 1 from app_identity.unit_clinician uc where uc.user_id=$1
-              and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id))))
-            or (ca.synthetic and incident.synthetic and $5::boolean and exists(
-              select 1 from app_identity.unit_clinician uc where uc.user_id=$1
-              and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id)))
+          and ca.synthetic=incident.synthetic
+          and (ca.synthetic or not exists(select 1 from app_identity.app_user reader
+            where reader.id=$1 and (reader.synthetic or reader.id=$6::uuid)))
+          and (ou.id=$4::uuid or ($5::boolean and exists(
+            select 1 from app_identity.unit_clinician uc where uc.user_id=$1
+            and uc.organization_id=ca.organization_id and uc.unit_id=ca.unit_id)))
           and ca.status in ('assigned', 'canceled')
           and (ca.expires_at is null or ca.expires_at > $3)
         order by ca.dispatched_at desc, ca.id
       `, [current.user.id, current.organization.id, now,
-        ["ready", "identity-confirmation-required"].includes(productionAccess.state) ? productionAccess.unit!.id : null,
-        current.capabilities?.includes("clinical:demo") ?? false, productionAccess.state === "preparation"]);
+        ["ready", "identity-confirmation-required", "preparation"].includes(productionAccess.state) ? productionAccess.unit?.id ?? null : null,
+        productionAccess.state === "preparation" && !productionAccess.unit, SYNTHETIC_DEMO_FIXTURE.userId]);
       const activeSettings = await manager.query<MediaSettingsRow[]>(`
         select revision, report_media_allowance_bytes, image_media_limit_bytes from app_identity.agency_settings
         where organization_id = $1
@@ -259,13 +260,11 @@ export class AssignedCallsService {
     const [units, unopenedCalls] = await Promise.all([
       this.dataSource.query<EligibleUnitRow[]>(`
         select ou.id, ou.call_sign, ou.name, organization.deployment_timezone as agency_time_zone
-        from app_identity.unit_clinician uc
-        join app_identity.operational_unit ou
-          on ou.organization_id = uc.organization_id and ou.id = uc.unit_id
+        from app_identity.operational_unit ou
         join app_identity.organization organization on organization.id = ou.organization_id
-        where uc.user_id = $1 and uc.organization_id = $2 and ou.active
+        where ou.organization_id = $1 and ou.active
         order by ou.call_sign, ou.id
-      `, [session.user.id, session.organization.id]),
+      `, [session.organization.id]),
       this.dataSource.query<Array<{ exists: boolean }>>(`select exists (
         select 1 from clinical.call_assignment
         where organization_id = $1 and synthetic_generated_by = $2
@@ -293,14 +292,16 @@ export class AssignedCallsService {
         await manager.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
           `synthetic-call:${session.organization.id}:${session.user.id}:${unitId}`,
         ]);
+        await manager.query(`select id from app_identity.organization
+          where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
+          order by id for share`, [session.organization.id]);
         const units = await manager.query<EligibleUnitRow[]>(`
           select ou.id, ou.call_sign, ou.name, organization.deployment_timezone as agency_time_zone
-          from app_identity.unit_clinician uc
-          join app_identity.operational_unit ou
-            on ou.organization_id = uc.organization_id and ou.id = uc.unit_id
+          from app_identity.operational_unit ou
           join app_identity.organization organization on organization.id = ou.organization_id
-          where uc.user_id = $1 and uc.organization_id = $2 and ou.id = $3 and ou.active
-        `, [session.user.id, session.organization.id, unitId]);
+          where ou.organization_id = $1 and ou.id = $2 and ou.active
+          for share of ou
+        `, [session.organization.id, unitId]);
         const unit = units[0];
         if (!unit) throw new NotFoundException("The selected unit is not eligible for synthetic calls");
         const existing = await manager.query<AssignedCallRow[]>(`
@@ -366,7 +367,7 @@ export class AssignedCallsService {
           where id=$1 and organization_id=$2 and (expires_at is null or expires_at>clock_timestamp()) for share`,
           [target.slice(11),current.organization.id]);
         if (!assignment || assignment.status === "canceled") throw new NotFoundException("Assignment unavailable");
-        if (assignment.report_id || assignment.synthetic) return null;
+        if (assignment.report_id) return null;
         if (access.unit && assignment.unit_id !== access.unit.id) throw new NotFoundException("Assignment unavailable");
       }
       return prepareNewJobConfirmation(manager, accessToken, current, this.schedules, target);
@@ -379,10 +380,6 @@ export class AssignedCallsService {
       const opened = await this.dataSource.transaction(async (manager) => {
         const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken });
         const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
-        // Synthetic fixtures also serialize unit deactivation before assignment locking.
-        await manager.query(`select u.id from app_identity.operational_unit u
-          join clinical.call_assignment ca on ca.unit_id=u.id and ca.organization_id=u.organization_id
-          where ca.id=$1 and ca.organization_id=$2 and ca.synthetic for share of u`, [assignmentId, current.organization.id]);
         const assignments = await manager.query<OpenableAssignmentRow[]>(`
           select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                  organization.deployment_timezone as agency_time_zone,
@@ -405,26 +402,28 @@ export class AssignedCallsService {
           return { assignment, reportId: assignment.report_id, replacement: null };
         }
 
-        if (assignment.synthetic) {
-          const [fixture] = await manager.query(`select 1 from app_identity.unit_clinician uc
-            join app_identity.operational_unit u on u.id=uc.unit_id and u.organization_id=uc.organization_id
-            join clinical.incident i on i.id=$4 and i.organization_id=uc.organization_id
-            where uc.user_id=$1 and uc.organization_id=$2 and uc.unit_id=$3 and u.active and i.synthetic`,
-            [current.user.id, current.organization.id, assignment.unit_id, assignment.incident_id]);
-          if (!current.capabilities?.includes("clinical:demo") || !fixture) throw new NotFoundException("Synthetic assignment is unavailable");
-        } else {
-          assertProductionJobAccess(productionAccess);
-          if (productionAccess.state === "preparation") {
-            const [legacy] = await manager.query(`select uc.unit_id from app_identity.unit_clinician uc
-              join app_identity.operational_unit u on u.id=uc.unit_id and u.organization_id=uc.organization_id
-              where uc.user_id=$1 and uc.organization_id=$2 and uc.unit_id=$3 and u.active for share of u`,
-              [current.user.id,current.organization.id,assignment.unit_id]);
-            if (!legacy) throw new NotFoundException("Assignment is unavailable in this clinician's assigned unit");
-          } else if (assignment.unit_id !== productionAccess.unit!.id) throw new NotFoundException("Assignment is unavailable in this enrolled unit");
-          const [incident] = await manager.query(`select id from clinical.incident where id=$1 and organization_id=$2 and not synthetic`,
-            [assignment.incident_id, current.organization.id]);
-          if (!incident) throw new NotFoundException("Production assignment is unavailable");
+        // Synthetic is dispatch provenance, not a receiving-role requirement.
+        // Preserve the dedicated fictional fixture's existing production ceiling.
+        const synthetic = assignment.synthetic;
+        if (!synthetic) {
+          const [subject] = await manager.query<Array<{synthetic:boolean}>>(
+            "select synthetic from app_identity.app_user where id=$1", [current.user.id]);
+          if (subject?.synthetic || current.user.id === SYNTHETIC_DEMO_FIXTURE.userId) {
+            assertProductionJobAccess({state:"synthetic-only"});
+          }
         }
+        assertProductionJobAccess(productionAccess);
+        if (productionAccess.state === "preparation" && !productionAccess.unit) {
+          const [legacy] = await manager.query(`select uc.unit_id from app_identity.unit_clinician uc
+            join app_identity.operational_unit u on u.id=uc.unit_id and u.organization_id=uc.organization_id
+            where uc.user_id=$1 and uc.organization_id=$2 and uc.unit_id=$3 and u.active for share of u`,
+            [current.user.id,current.organization.id,assignment.unit_id]);
+          if (!legacy) throw new NotFoundException("Assignment is unavailable in this clinician's assigned unit");
+        } else if (assignment.unit_id !== productionAccess.unit!.id) throw new NotFoundException("Assignment is unavailable in this enrolled unit");
+        const [incident] = await manager.query(`select id from clinical.incident
+          where id=$1 and organization_id=$2 and synthetic=$3`,
+          [assignment.incident_id, current.organization.id, synthetic]);
+        if (!incident) throw new NotFoundException("Assignment incident is unavailable for this call dataset");
 
         const versions = await manager.query<Array<{ id: string; catalog_release_id: string; validation_version_id: string;
           form_definition_sha256: string; catalog_artifact_sha256: string; validation_compiled_sha256: string }>>(`
@@ -455,10 +454,8 @@ export class AssignedCallsService {
             (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
           values ($1, $2, 'unknown', $3, $4)
         `, [patientId, current.organization.id, patientKey, patientKeyConfig.keyVersion]);
-        if (!assignment.synthetic) {
-          assertProductionJobAccess(await productionJobAccess(manager, accessToken, current, this.schedules,
-            { target: `assignment:${assignmentId}`, token: confirmationToken, consume: true }));
-        }
+        assertProductionJobAccess(await productionJobAccess(manager, accessToken, current, this.schedules,
+          { target: `assignment:${assignmentId}`, token: confirmationToken, consume: true }));
         await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
@@ -591,7 +588,7 @@ export class AssignedCallsService {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
         select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id,
-               form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256, revision, status, synthetic,
+               form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256, revision, status, synthetic, synthetic_generated_by,
                expires_at, media_settings_revision, report_media_allowance_bytes, image_media_limit_bytes,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
         from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -623,7 +620,7 @@ export class AssignedCallsService {
           clinicalForm,
           revision: Number(report.revision),
           status: "draft" as const,
-          ...(report.synthetic && assignment.synthetic && assignment.synthetic_generated_by === documentingUserId
+          ...(report.synthetic && assignment.synthetic && report.synthetic_generated_by !== null && report.synthetic_generated_by !== undefined
             ? { demoMutable: true } : {}),
           ...(report.expires_at ? { expiresAt: new Date(report.expires_at).toISOString() } : {}),
           document,

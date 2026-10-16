@@ -49,7 +49,8 @@ integration('runtime PostgreSQL reassignment races rotate authority, demand fres
  assert.equal(moved.reassigned,true);
  await assert.rejects(run(enrolled.credential,()=>service.current(enrolled.credential)),/Enrollment required/);
  await assert.rejects(run(moved.credential,()=>sessions.getAuthenticated(oldSession.sessionToken)),/session has ended/);
- await assert.rejects(login(enrolled.credential),/registration is unavailable/);
+ const retiredLogin=await login(enrolled.credential);
+ assert.equal((await run(enrolled.credential,()=>sessions.getAuthenticated(retiredLogin.sessionToken))).user.id,userId);
  assert.equal((await run(other.credential,()=>sessions.getAuthenticated(otherSession.sessionToken))).user.id,userId);
  assert.equal((await admin.query(`select count(*) n from app_identity.app_session where installation_registration_id=$1 and revoked_at is null`,[moved.installation.id])).rows[0].n,'0');
  const fresh=await login(moved.credential);assert.equal(fresh.session.user.id,userId);

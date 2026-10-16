@@ -8,6 +8,7 @@ import { DataSource } from 'typeorm';
 import { SYNTHETIC_DEMO_FIXTURE } from '@open-triage/contracts';
 import { AssignedCallsService } from '../dist/calls/assigned-calls.service.js';
 import { DraftReportService } from '../dist/reports/draft-report.service.js';
+import { ProtectedReportKeyService } from '../dist/reports/protected-report-key.service.js';
 import { InstallationEnrollmentService } from '../dist/admin/installation-enrollment.service.js';
 import { ClinicianSessionService } from '../dist/sessions/clinician-session.service.js';
 import { AgencyDirectoryService } from '../dist/sessions/agency-directory.service.js';
@@ -151,7 +152,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  // cannot authorize synthetic listing from the stale outer session snapshot.
  await admin.query('insert into app_identity.unit_clinician(organization_id,unit_id,user_id) values($1,$2,$3)',[agency,otherUnit,user]);
  const generated=await run(undefined,()=>calls.generateSynthetic(unpaired.sessionToken,unpaired.session.csrfToken,otherUnit));
- assert.ok((await state(binding,paired)).assignedCalls.some(x=>x.id===generated.assignment.id));
+ assert.ok(!(await state(binding,paired)).assignedCalls.some(x=>x.id===generated.assignment.id),'paired Demo users receive only their enrolled unit');
  let initial=true;
  const changingSession={requireCapability:async(...args)=>{const result=await sessions.requireCapability(...args);
   if(initial){initial=false;await admin.query(`update app_identity.user_role_assignment a set ended_at=clock_timestamp(),ended_by=$3 from app_identity.role r
@@ -298,7 +299,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  // Synthetic accounts are confined even when enrolled, rostered and assigned a real call.
  const demo=await run(binding.credential,()=>sessions.create({username:SYNTHETIC_DEMO_FIXTURE.username,password:SYNTHETIC_DEMO_FIXTURE.password}));
  await admin.query('insert into app_identity.unit_clinician(organization_id,unit_id,user_id) values($1,$2,$3)',[agency,firstUnit,SYNTHETIC_DEMO_FIXTURE.userId]);
- assert.equal((await state(binding,demo)).productionAccess.state,'synthetic-only');
+
  assert.ok(!(await state(binding,demo)).assignedCalls.some(x=>x.id===blocked));
  await assert.rejects(open(binding,demo,blocked),denied('calls.syntheticOnly'));
  // Two different clinicians cannot acquire duplicate reports or each other's ownership.
@@ -323,7 +324,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[canceled])).rows[0].report_id,null);
  // Device revocation wins before the opening obtains its registration lock.
  const revoked=await dispatch(raceUnit);await admin.query('begin');await admin.query('select id from app_identity.installation_registration where id=$1 for update',[raceBinding.installation.id]);
- const revokeWait=open(raceBinding,raceSession,revoked);const revokeDenied=assert.rejects(revokeWait,/session has ended/);
+ const revokeWait=open(raceBinding,raceSession,revoked);const revokeDenied=assert.rejects(revokeWait,denied('calls.enrollmentRequired'));
  await new Promise(r=>setTimeout(r,150));await admin.query('update app_identity.installation_registration set revoked_at=clock_timestamp() where id=$1',[raceBinding.installation.id]);await admin.query('commit');await revokeDenied;
  assert.equal((await admin.query('select report_id from clinical.call_assignment where id=$1',[revoked])).rows[0].report_id,null);
  // Reassignment retires the old tab, new login has only the incoming unit's jobs.
@@ -338,6 +339,63 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  await assert.rejects(open(moved,fresh,otherAssignment),/not found/);
  assert.deepEqual((await admin.query('select organization_id,unit_id from app_identity.installation_registration where id=$1',[moved.installation.id])).rows[0],{organization_id:agency,unit_id:otherUnit});
  await run(moved.credential,()=>sessions.switchAgency(fresh.sessionToken,agency));scope=agency;
+ // Demo dispatch follows the same paired-unit/schedule route as production.
+ // Any authorized clinician can receive generated calls without a Demo role or personal unit roster.
+ const receivingUnit=await unit(agency),outsideDemoUnit=await unit(agency);
+ const receivingBinding=await pair(receivingUnit),outsideDemoBinding=await pair(outsideDemoUnit);
+ const demoReceiver=randomUUID(),demoReceiverName=`demo-receiver-${demoReceiver}`;
+ await admin.query("insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,'Receiving Demo clinician')",[demoReceiver,agency]);
+ await admin.query(`insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password)
+   values($1,$2,$3,false)`,[demoReceiver,demoReceiverName,await createPasswordVerifier(password)]);
+ await admin.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id)
+   select $1,$2,id from app_identity.role where organization_id=$1 and system_key='demo'`,[agency,demoReceiver]);
+ const receivingDemo=await run(receivingBinding.credential,()=>sessions.create({username:demoReceiverName,password}));
+ const outsideDemo=await run(outsideDemoBinding.credential,()=>sessions.create({username:demoReceiverName,password}));
+ const productionReceiver=await login(receivingBinding.credential);
+ const generateFor=unitId=>run(binding.credential,()=>calls.generateSynthetic(demo.sessionToken,demo.session.csrfToken,unitId));
+ const incomingDemo=await generateFor(receivingUnit),outsideDemoCall=await generateFor(outsideDemoUnit),incomingProduction=await dispatch(receivingUnit);
+ assert.equal((await admin.query('select count(*)::int n from app_identity.unit_clinician where user_id=$1',[demoReceiver])).rows[0].n,0);
+ assert.equal((await state(receivingBinding,receivingDemo)).productionAccess.state,'schedule-required');
+ assert.equal((await state(receivingBinding,receivingDemo)).assignedCalls.length,0,'Demo calls also require the selected unit schedule');
+ await blank(receivingUnit);await blank(outsideDemoUnit);
+ const demoListing=await state(receivingBinding,receivingDemo),productionListing=await state(receivingBinding,productionReceiver);
+ assert.equal(demoListing.productionAccess.unit.id,receivingUnit);
+ assert.ok(demoListing.assignedCalls.some(call=>call.id===incomingDemo.assignment.id));
+ assert.ok(demoListing.assignedCalls.some(call=>call.id===incomingProduction));
+ assert.ok(!demoListing.assignedCalls.some(call=>call.id===outsideDemoCall.assignment.id));
+ assert.ok(productionListing.assignedCalls.some(call=>call.id===incomingProduction));
+ assert.ok(productionListing.assignedCalls.some(call=>call.id===incomingDemo.assignment.id),'ordinary clinical users receive generated calls for their paired unit');
+ assert.ok(!productionReceiver.session.capabilities.includes('clinical:demo'));
+ await assert.rejects(run(receivingBinding.credential,()=>calls.generateSynthetic(productionReceiver.sessionToken,productionReceiver.session.csrfToken,receivingUnit)),/capability/);
+ await assert.rejects(open(outsideDemoBinding,outsideDemo,incomingDemo.assignment.id),/enrolled unit/);
+ const received=await open(receivingBinding,productionReceiver,incomingDemo.assignment.id);
+ assert.equal(received.report.documentingUserId,user);assert.equal(received.report.demoMutable,true);
+ assert.equal((await admin.query('select synthetic_generated_by from clinical.report where id=$1',[received.report.id])).rows[0].synthetic_generated_by,SYNTHETIC_DEMO_FIXTURE.userId,'dispatch generator provenance is retained');
+ assert.equal((await run(receivingBinding.credential,()=>reports.reopen(productionReceiver.sessionToken,received.report.id))).report.demoMutable,true);
+ await assert.rejects(run(receivingBinding.credential,()=>reports.reopen(receivingDemo.sessionToken,received.report.id)),/not found/);
+ const keys=new ProtectedReportKeyService(db,sessions),reportKey=Buffer.alloc(32,0x65).toString('base64');
+ const keyEnvelope=await run(receivingBinding.credential,()=>keys.register(productionReceiver.sessionToken,received.report.id,{schemaVersion:1,recoveryHandle:randomUUID(),reportKeyBase64:reportKey},productionReceiver.session.csrfToken));
+ await run(receivingBinding.credential,()=>sessions.reauthenticate(productionReceiver.sessionToken,productionReceiver.session.csrfToken,password));
+ const beforeUnlinkGrant=await run(receivingBinding.credential,()=>keys.createRecoveryGrant(productionReceiver.sessionToken,received.report.id,{schemaVersion:1,envelopeVersion:1},productionReceiver.session.csrfToken));
+ const pendingDemo=await generateFor(receivingUnit);
+ assert.deepEqual(await run(undefined,()=>enrollment.revoke('admin',receivingUnit,receivingBinding.installation.id)),{revoked:true,sessionsRevoked:0});
+ assert.equal((await run(receivingBinding.credential,()=>sessions.getAuthenticated(productionReceiver.sessionToken))).user.id,user);
+ const recovered=await run(receivingBinding.credential,()=>keys.consumeRecoveryGrant(productionReceiver.sessionToken,received.report.id,{schemaVersion:1,envelopeVersion:1,grant:beforeUnlinkGrant.grant},productionReceiver.session.csrfToken));
+ assert.equal(recovered.reportKeyBase64,reportKey,'unlinking cannot block release of an authorized own-report recovery grant');
+ const afterUnlinkGrant=await run(receivingBinding.credential,()=>keys.createRecoveryGrant(productionReceiver.sessionToken,received.report.id,{schemaVersion:1,envelopeVersion:1},productionReceiver.session.csrfToken));
+ assert.equal((await run(receivingBinding.credential,()=>keys.consumeRecoveryGrant(productionReceiver.sessionToken,received.report.id,{schemaVersion:1,envelopeVersion:1,grant:afterUnlinkGrant.grant},productionReceiver.session.csrfToken))).reportKeyBase64,reportKey);
+ assert.equal(new Date((await admin.query('select recovery_deadline from offline_recovery.report_key_envelope where report_id=$1',[received.report.id])).rows[0].recovery_deadline).toISOString(),keyEnvelope.recoveryDeadline,'pairing changes never renew the recovery deadline');
+ assert.equal((await state(receivingBinding,productionReceiver)).productionAccess.state,'enrollment-required');
+ assert.equal((await state(receivingBinding,productionReceiver)).assignedCalls.length,0);
+ await assert.rejects(open(receivingBinding,productionReceiver,pendingDemo.assignment.id),denied('calls.enrollmentRequired'));
+ assert.equal((await run(receivingBinding.credential,()=>reports.reopen(productionReceiver.sessionToken,received.report.id))).report.id,received.report.id,'unlinking preserves existing owned work');
+ const additionalPatient={commandId:randomUUID(),reportId:randomUUID(),incidentId:(await admin.query('select incident_id from clinical.report where id=$1',[received.report.id])).rows[0].incident_id,patientId:randomUUID(),organizationId:agency,documentingUserId:user,patientIdentityState:'unknown'};
+ await run(receivingBinding.credential,()=>reports.create(productionReceiver.sessionToken,additionalPatient));
+ const syntheticFollow=(await admin.query('select synthetic,synthetic_generated_by,synthetic_source_assignment_id from clinical.report where id=$1',[additionalPatient.reportId])).rows[0];
+ assert.deepEqual(syntheticFollow,{synthetic:true,synthetic_generated_by:SYNTHETIC_DEMO_FIXTURE.userId,synthetic_source_assignment_id:incomingDemo.assignment.id},'additional patients retain the original synthetic dispatch provenance');
+ const unpairedReceiver=await run(receivingBinding.credential,()=>sessions.create({username,password}));
+ assert.equal((await state(receivingBinding,unpairedReceiver)).productionAccess.state,'enrollment-required','a revoked cookie does not obstruct a fresh personal login');
+ assert.ok((await state(outsideDemoBinding,outsideDemo)).assignedCalls.some(call=>call.id===outsideDemoCall.assignment.id),'other paired devices are unaffected');
  // Live role withdrawal wins before a stale new-job command acquires authority.
  const roleBlocked=await dispatch(otherUnit);
  await admin.query('begin');

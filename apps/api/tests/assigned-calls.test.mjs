@@ -164,9 +164,11 @@ test("the authenticated call-list integration returns only the clinician's assig
     imageMediaLimitBytes: 10 * 1024 * 1024,
     settingsRevision: 1,
   });
-  assert.deepEqual(queries[4].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
-  assert.match(queries[4].sql, /ca\.status in \('assigned', 'canceled'\)/);
-  assert.match(queries[4].sql, /uc\.user_id=\$1/);
+  const listing = queries.find(({sql}) => sql.includes("from clinical.call_assignment ca"));
+  assert.deepEqual(listing.parameters?.slice(0, 2), [session.user.id, session.organization.id]);
+  assert.match(listing.sql, /ca\.status in \('assigned', 'canceled'\)/);
+  assert.match(listing.sql, /ca\.synthetic=incident\.synthetic/);
+  assert.doesNotMatch(listing.sql, /clinical:demo/);
 });
 
 test("the assigned-call endpoint requires a current clinician session", async () => {
@@ -205,7 +207,7 @@ test("generation context returns every eligible active unit and only counts unop
   const service = new AssignedCallsService({ query: async (sql, parameters) => {
     if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
     queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
-    if (sql.includes("from app_identity.unit_clinician")) return [
+    if (sql.includes("from app_identity.operational_unit ou")) return [
       { id: "unit-1", call_sign: "Medic 1", name: "First", agency_time_zone: "America/New_York" },
       { id: "unit-2", call_sign: "Medic 2", name: "Second", agency_time_zone: "America/New_York" }
     ];
@@ -227,8 +229,8 @@ test("generation context returns every eligible active unit and only counts unop
     ],
     hasUnopenedCall: true
   });
-  assert.match(queries[0].sql, /uc\.user_id = \$1.*ou\.active/);
-  assert.deepEqual(queries[0].parameters, [session.user.id, session.organization.id]);
+  assert.match(queries[0].sql, /ou\.organization_id = \$1.*ou\.active/);
+  assert.deepEqual(queries[0].parameters, [session.organization.id]);
   assert.match(queries[1].sql, /from clinical\.call_assignment/);
   assert.match(queries[1].sql, /synthetic_generated_by = \$2/);
   assert.match(queries[1].sql, /status = 'assigned'/);
@@ -259,10 +261,14 @@ test("opening and retrying one assignment creates one draft without an automatic
   const isolations = [];
   let patientInsertParameters = null;
   const manager = { query: async (sql, parameters) => {
-    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:null}];
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("select synthetic from app_identity.app_user")) return [{synthetic:true}];
     if (normalized.includes("order by id for share") || normalized.includes("order by role.id for share")) return [];
+    if (normalized.includes("from app_identity.installation_registration")) return [];
+    if (normalized.includes("select s.id from app_identity.app_session")) return [{id:"session"}];
+    if (normalized.includes("select uc.unit_id from app_identity.unit_clinician") || normalized.includes("select unit_id from app_identity.unit_clinician")) return [{unit_id:assignment.unit_id}];
+    if (normalized.includes("select id from clinical.incident")) return [{id:assignment.incident_id}];
     if (normalized.includes("for share of u")) return [];
     if (normalized.includes("select 1 from app_identity.unit_clinician uc")) return [{exists:1}];
     if (normalized.includes("for update of ca")) return [assignment];
@@ -279,7 +285,7 @@ test("opening and retrying one assignment creates one draft without an automatic
       writes.push("report");
       reports.set(parameters[0], {
         id: parameters[0], documenting_user_id: parameters[7], form_version_id: parameters[5],
-        catalog_release_id: parameters[6], revision: "0", status: "draft", synthetic: true
+        catalog_release_id: parameters[6], revision: "0", status: "draft", synthetic: true, synthetic_generated_by: parameters[9]
       });
       return [];
     }
@@ -373,10 +379,10 @@ for (const expiresAt of ["2026-09-09T12:00:00.000Z", null]) {
     const audits = [];
     const writes = [];
     const manager = { query: async (sql, parameters) => {
-    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
+    if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:null}];
       const normalized = sql.replace(/\s+/g, " ");
-      if (normalized.includes("pg_advisory_xact_lock")) return [];
-      if (normalized.includes("from app_identity.unit_clinician") && normalized.includes("ou.id = $3")) return [{
+      if (normalized.includes("pg_advisory_xact_lock") || normalized.includes("from app_identity.organization")) return [];
+      if (normalized.includes("from app_identity.operational_unit ou") && normalized.includes("ou.id = $2")) return [{
         id: unitId, call_sign: "Medic 32", name: "Medic 32", agency_time_zone: "America/New_York"
       }];
       if (normalized.includes("from clinical.call_assignment ca") && normalized.includes("synthetic_generated_by")) {
@@ -459,8 +465,8 @@ test("generation creates an unopened call even when the clinician has another dr
   const manager = { query: async (sql, parameters) => {
     if (sql.includes("from app_identity.production_workflow_rollout")) return [{group_id: parameters[0],revision:1,enabled_at:new Date()}];
     const normalized = sql.replace(/\s+/g, " ");
-    if (normalized.includes("pg_advisory_xact_lock")) return [];
-    if (normalized.includes("from app_identity.unit_clinician")) return [{
+    if (normalized.includes("pg_advisory_xact_lock") || normalized.includes("from app_identity.organization")) return [];
+    if (normalized.includes("from app_identity.operational_unit ou")) return [{
       id: "32000000-0000-4000-8000-000000000010", call_sign: "Medic 32", name: "Medic 32",
       agency_time_zone: "America/New_York"
     }];

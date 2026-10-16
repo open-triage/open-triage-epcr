@@ -72,7 +72,8 @@ export class InstallationEnrollmentService {
  if(!registration) throw new NotFoundException("Installation not found in this unit and agency");
  if(registration.revoked_at) return {revoked:true,sessionsRevoked:0};
  await manager.query(`update app_identity.installation_registration set revoked_at=clock_timestamp() where id=$1`,[installationId]);
- const sessionsRevoked=await revokeRegistrationSessions(manager,installationId);
+ // Removing a unit pairing must not revoke the clinician identity/session.
+ const sessionsRevoked=0;
  await manager.query(`insert into app_identity.installation_event(organization_id,unit_id,installation_id,actor_id,event_type,details)
  values($1,$2,$3,$4,'installation-revoked',jsonb_build_object('scope','installation-registration','sessionsRevoked',$5::integer))`,
  [actor.organization.id,unitId,installationId,actor.user.id,sessionsRevoked]);

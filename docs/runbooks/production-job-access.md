@@ -74,11 +74,21 @@ real/synthetic classification. Ordinary standalone production creation uses the
 same device/schedule gate. Authorized Admin and Review work remain independent of
 new-job readiness.
 
-Synthetic roster mappings apply only to synthetic assignments on synthetic incidents
-for users with the Demo capability. The immutable demonstration fixture identity and
-users explicitly marked synthetic cannot list or open real production jobs even
-when paired or rostered to the unit. Demo permission cannot relabel an existing
-production incident as disposable synthetic work.
+Generated synthetic calls use the same enrolled-unit listing, schedule,
+confirmation and opening checks as production calls. Any authorized clinician on
+a paired device can receive them; Demo permission is required for generation and
+Demo-only editing tools, not normal receipt and documentation. The generating
+user selects an active agency unit. Call and report synthetic classification,
+generator provenance, source-assignment links and retention remain unchanged,
+including additional patients documented by a recipient without Demo permission.
+Report ownership belongs to the clinician who opens the call. The dedicated
+fictional fixture and explicitly synthetic account identities still cannot take
+real production jobs.
+
+A revoked pairing removes new unit-job access without revoking personal sign-in,
+existing reports or owner-authorized protected-report recovery. A retired cookie
+can create a fresh unpaired personal session. Explicit user-session revocation
+and the separate reassignment sign-out transition remain independent.
 
 The forward migration repairs only unsigned reports whose persisted assignment and
 incident both prove production provenance and whose report has no generated-synthetic

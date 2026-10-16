@@ -34,10 +34,9 @@ test("one eligible unit is automatic while multiple units require an explicit ch
   assert.equal(selectedClinicalDemoUnit(units, "retired-unit"), "");
 });
 
-test("Generate is available only when no report is active and no unopened call exists", () => {
-  assert.equal(canGenerateSyntheticCall(false, { hasUnopenedCall: false }), true);
-  assert.equal(canGenerateSyntheticCall(true, { hasUnopenedCall: false }), false);
-  assert.equal(canGenerateSyntheticCall(false, { hasUnopenedCall: true }), false);
+test("Generate remains available for other units while an unopened call exists", () => {
+  assert.equal(canGenerateSyntheticCall(false), true);
+  assert.equal(canGenerateSyntheticCall(true), false);
 });
 
 test("demo draft actions require a server-qualified open draft", () => {

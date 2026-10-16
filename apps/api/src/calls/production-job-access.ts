@@ -1,7 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import type { ClinicianSession, ProductionJobAccess, UnitSchedulePreview, NewJobConfirmation } from "@open-triage/contracts";
-import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 import { productionWorkflow } from "../authentication/production-workflow.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -25,14 +24,13 @@ export function assertProductionJobAccess(access: ProductionJobAccess): void {
  * Hold these locks until call creation commits. Device context never grants roles. */
 export async function productionJobAccess(manager: EntityManager, token: string, session: ClinicianSession,
   schedules: SchedulesService, confirmation?: JobConfirmation): Promise<ProductionJobAccess> {
-  const [subject] = await manager.query<Array<{ synthetic: boolean }>>(
+  await manager.query<Array<{ synthetic: boolean }>>(
     "select synthetic from app_identity.app_user where id=$1 for share", [session.user.id]);
   await manager.query(`select id from app_identity.user_role_assignment
     where user_id=$1 and ended_at is null order by id for share`, [session.user.id]);
   await manager.query(`select role.id from app_identity.role role
     where role.id in (select role_id from app_identity.user_role_assignment where user_id=$1 and ended_at is null)
     order by role.id for share`, [session.user.id]);
-  if (subject?.synthetic || session.user.id === SYNTHETIC_DEMO_FIXTURE.userId) return { state: "synthetic-only" };
   const rollout = await productionWorkflow(manager, session.organization.id, "share");
   if (rollout.state === "preparation") {
     // Preparation exempts only enrollment/schedules, never live session authority.
@@ -53,12 +51,22 @@ export async function productionJobAccess(manager: EntityManager, token: string,
     const [live] = await manager.query(`select s.id from app_identity.app_session s
       where token_sha256=$1 and s.organization_id=$2 and s.revoked_at is null and s.expires_at>clock_timestamp()
       and app_identity.session_authentication_valid(s) and app_identity.user_has_capability(s.user_id,s.organization_id,'clinical:document')
-      and (s.installation_registration_id is null or exists(select 1 from app_identity.installation_registration r
-        join app_identity.operational_unit u on u.id=r.unit_id and u.organization_id=r.organization_id
-        where r.id=s.installation_registration_id and r.revoked_at is null and u.active)) for update of s`, [digest(token),session.organization.id]);
+      for update of s`, [digest(token),session.organization.id]);
     if (!live) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
+    if (registrations.length) {
+      const enrolled = await enrolledUnitAccess(manager, token, session);
+      return enrolled.state === "ready" ? { state: "preparation", unit: enrolled.unit } : enrolled;
+    }
     return { state: "preparation" };
   }
+  const enrolled = await enrolledUnitAccess(manager, token, session);
+  if (enrolled.state !== "ready") return enrolled;
+  return { state: await currentShiftAccess(manager, token, enrolled.unit!, schedules, confirmation), unit: enrolled.unit };
+}
+
+/** A unit pairing never supplies personal authority. Shared by both call datasets. */
+async function enrolledUnitAccess(manager: EntityManager, token: string,
+  session: ClinicianSession): Promise<ProductionJobAccess> {
   const request = agencyRequest.getStore();
   if (!request?.installationCredential) return { state: "enrollment-required" };
   const [registration] = await manager.query<Array<{ id: string; organization_id: string; unit_id: string; revoked_at: Date | null }>>(
@@ -86,7 +94,7 @@ export async function productionJobAccess(manager: EntityManager, token: string,
     [digest(token), registration.id, request.origin, session.organization.id]);
   if (!associated?.live) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
   if (!associated.matches) return { state: "enrollment-required", unit };
-  return { state: await currentShiftAccess(manager, token, unit, schedules, confirmation), unit };
+  return { state: "ready", unit };
 }
 
 /** A preview is schedule evidence only. Only this session's personal proof qualifies.

@@ -1,4 +1,4 @@
-import type { ClinicalDemoUnit, SyntheticCallGenerationContext } from "@open-triage/contracts";
+import type { ClinicalDemoUnit } from "@open-triage/contracts";
 import type { BrowserRequestConfiguration } from "./browser-api";
 import type { PresentationMode } from "./presentation-mode";
 import type { ActiveDraftReport } from "./draft-report";
@@ -23,11 +23,10 @@ export function selectedClinicalDemoUnit(
   return units.some(({ id }) => id === currentUnitId) ? currentUnitId : "";
 }
 
-export function canGenerateSyntheticCall(
-  activeReport: boolean,
-  context: Pick<SyntheticCallGenerationContext, "hasUnopenedCall">,
-): boolean {
-  return !activeReport && !context.hasUnopenedCall;
+/** The server reuses an unopened generated call per selected unit. Other units
+ * must remain available to the dispatcher while that call is waiting. */
+export function canGenerateSyntheticCall(activeReport: boolean): boolean {
+  return !activeReport;
 }
 
 /** Uses only the server-qualified record boundary; no document content can opt in. */

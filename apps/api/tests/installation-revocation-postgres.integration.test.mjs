@@ -51,32 +51,37 @@ integration('device-scoped revocation races, live authority, re-enrollment and i
  await assert.rejects(db.query(`update app_identity.app_session set installation_registration_id=$2 where token_sha256=$1`,[digest(unpaired.sessionToken),ignoredBinding.installation.id]),error=>error.code==='23514');
  const raceRegistration=await enroll();
  // Lock registration as a concurrent revoker would. A verified login must wait,
- // then reject the revoked binding instead of publishing an unrevoked session.
+ // then publish a personal session with no usable unit binding.
  await admin.query('begin');
  await admin.query(`select id from app_identity.installation_registration where id=$1 for update`,[raceRegistration.installation.id]);
- const waitingLogin=login(raceRegistration.credential);const deniedLogin=assert.rejects(waitingLogin,/registration is unavailable/);
+ const waitingLogin=login(raceRegistration.credential);
  await new Promise(resolve=>setTimeout(resolve,200));
  await admin.query(`update app_identity.installation_registration set revoked_at=clock_timestamp() where id=$1`,[raceRegistration.installation.id]);
- await admin.query('commit');await deniedLogin;
+ await admin.query('commit');
+ const racedLogin=await waitingLogin;
+ assert.equal((await admin.query('select installation_registration_id from app_identity.app_session where token_sha256=$1',[digest(racedLogin.sessionToken)])).rows[0].installation_registration_id,null);
  await assert.rejects(db.query(`insert into app_identity.app_session(user_id,token_sha256,csrf_sha256,credential_version,expires_at,organization_id,installation_registration_id)
  values($1,$2,$3,1,now()+interval '1 hour',$4,$5)`,[userId,digest(secret()),digest(secret()),organizationId,raceRegistration.installation.id]),error=>error.code==='23514');
  const result=await run(undefined,()=>enrollment.revoke('admin',unitId,first.installation.id));
- assert.deepEqual(result,{revoked:true,sessionsRevoked:1});
- await assert.rejects(run(first.credential,()=>sessions.getAuthenticated(a.sessionToken)),/session has ended/);
+ assert.deepEqual(result,{revoked:true,sessionsRevoked:0});
+ const afterRevocation=await login(first.credential);
+ assert.equal((await run(first.credential,()=>sessions.getAuthenticated(afterRevocation.sessionToken))).user.id,userId);
+ assert.equal((await run(first.credential,()=>sessions.getAuthenticated(a.sessionToken))).user.id,userId);
+ assert.equal((await admin.query('select installation_registration_id from app_identity.app_session where token_sha256=$1',[digest(afterRevocation.sessionToken)])).rows[0].installation_registration_id,null);
  assert.equal((await run(second.credential,()=>sessions.getAuthenticated(b.sessionToken))).user.id,userId);
  assert.equal((await run(undefined,()=>sessions.getAuthenticated(unpaired.sessionToken))).user.id,userId);
  assert.deepEqual(await run(undefined,()=>enrollment.revoke('admin',unitId,first.installation.id)),{revoked:true,sessionsRevoked:0});
  const event=(await admin.query(`select details from app_identity.installation_event where installation_id=$1 and event_type='installation-revoked'`,[first.installation.id])).rows;
- assert.deepEqual(event,[{details:{scope:'installation-registration',sessionsRevoked:1}}]);
+ assert.deepEqual(event,[{details:{scope:'installation-registration',sessionsRevoked:0}}]);
  const historyBefore=(await admin.query(`select id,organization_id,unit_id,installation_identity_id,credential_sha256,revoked_at from app_identity.installation_registration where id=$1`,[first.installation.id])).rows;
  const reenrolled=await enroll(first.credential,a.sessionToken);
  assert.equal(reenrolled.installation.installationId,first.installation.installationId);
  assert.notEqual(reenrolled.credential,first.credential);assert.notEqual(reenrolled.installation.id,first.installation.id);
  assert.deepEqual((await admin.query(`select id,organization_id,unit_id,installation_identity_id,credential_sha256,revoked_at from app_identity.installation_registration where id=$1`,[first.installation.id])).rows,historyBefore);
- await assert.rejects(login(first.credential),/registration is unavailable/);
+ assert.equal((await login(first.credential)).session.user.id,userId);
  // Removing only the installation cookie must not invert session→registration
  // locks during password replacement. A revoker already owns registration and
- // must be able to revoke its session before the waiting proof can proceed.
+ // must be able to complete explicit personal-session revocation before proof proceeds.
  const absentCookie=await login(ignoredBinding.credential);
  const originalCredential=(await admin.query('select credential_version,password_verifier from app_identity.local_credential where user_id=$1',[userId])).rows[0];
  await admin.query('begin');
@@ -101,10 +106,12 @@ integration('device-scoped revocation races, live authority, re-enrollment and i
  const replacement=await run(reenrolled.credential,()=>sessions.changePassword(fresh.sessionToken,{currentPassword:password,newPassword:'Device replacement password 84!',csrfToken:fresh.session.csrfToken}));
  assert.equal((await admin.query(`select installation_registration_id from app_identity.app_session where token_sha256=$1`,[digest(replacement.sessionToken)])).rows[0].installation_registration_id,reenrolled.installation.id);
  await admin.query(`update app_identity.operational_unit set active=false where id=$1`,[unitId]);
- await assert.rejects(run(reenrolled.credential,()=>sessions.getAuthenticated(replacement.sessionToken)),/session has ended/);
+ assert.equal((await run(reenrolled.credential,()=>sessions.getAuthenticated(replacement.sessionToken))).user.id,userId);
  await assert.rejects(run(reenrolled.credential,()=>enrollment.current(reenrolled.credential)),/Enrollment required/);
+ const noUnitReplacement=await run(reenrolled.credential,()=>sessions.changePassword(replacement.sessionToken,{currentPassword:'Device replacement password 84!',newPassword:'Device unpaired password 96!',csrfToken:replacement.session.csrfToken}));
+ assert.equal((await admin.query('select installation_registration_id from app_identity.app_session where token_sha256=$1',[digest(noUnitReplacement.sessionToken)])).rows[0].installation_registration_id,null,'password completion must not copy an inactive pairing');
  assert.equal((await run(undefined,()=>enrollment.inventory('admin',unitId))).items.length,6);
  assert.equal((await admin.query(`select unit_id from app_identity.installation_registration where id=$1`,[first.installation.id])).rows[0].unit_id,unitId);
- assert.equal((await run(undefined,()=>enrollment.revoke('admin',unitId,reenrolled.installation.id))).sessionsRevoked,1);
+ assert.equal((await run(undefined,()=>enrollment.revoke('admin',unitId,reenrolled.installation.id))).sessionsRevoked,0);
  } finally {await admin.query('rollback');await db.destroy();await admin.end();}
 });

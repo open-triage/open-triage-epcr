@@ -1,6 +1,6 @@
 import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import pg from "pg";
@@ -113,6 +113,11 @@ integration("new demo patients support the generated-report lifecycle without a 
     }
     const command = () => ({ commandId: randomUUID(), reportId: randomUUID(), incidentId: randomUUID(),
       patientId: randomUUID(), organizationId, documentingUserId: actorId, patientIdentityState: "unknown" });
+    // Synthetic creation still requires a live personal session during preparation.
+    await client.query(`insert into app_identity.app_session(user_id,organization_id,token_sha256,csrf_sha256,credential_version,expires_at)
+      select user_id,$2,$3,$4,credential_version,clock_timestamp()+interval '1 hour'
+      from app_identity.local_credential where user_id=$1`,
+      [userId,organizationId,createHash('sha256').update('demo').digest('hex'),createHash('sha256').update('proof').digest('hex')]);
     await client.query("set local role open_triage_api_runtime");
 
     const demo = command();

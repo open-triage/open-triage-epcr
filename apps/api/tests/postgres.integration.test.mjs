@@ -1677,8 +1677,8 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     select $1,$2,id from app_identity.role where organization_id=$1 and system_key='clinician'`,[organizationId,userId]);
   await client.query(`insert into app_identity.app_session(user_id,token_sha256,csrf_sha256,credential_version,
     expires_at,organization_id,browser_origin,installation_registration_id)
-    values($1,$2,$3,1,clock_timestamp()+interval '12 hours',$4,$5,$6)`,
-    [userId,digest(integrationAccessToken),digest(integrationCsrfToken),organizationId,origin,registrationId]);
+    values($1,$2,$3,1,clock_timestamp()+interval '12 hours',$4,$5,null)`,
+    [userId,digest(integrationAccessToken),digest(integrationCsrfToken),organizationId,origin]);
   await client.query(`insert into app_identity.weekly_schedule(id,group_id,name) values($1,$2,'Explicit draft-fixture blank schedule')`,[scheduleId,organizationId]);
   await client.query(`insert into app_identity.weekly_schedule_version(schedule_id,revision,effective_at,breakpoints,actor_id)
     values($1,1,clock_timestamp(),'[]',$2)`,[scheduleId,userId]);
@@ -1709,6 +1709,10 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   const legacy=await request("/reports","POST",legacyCommand,false);
   assert.equal(legacy.response.status,201,JSON.stringify(legacy.payload));
   assert.equal((await client.query('select synthetic from clinical.report where id=$1',[legacyCommand.reportId])).rows[0].synthetic,false);
+  await client.query('update app_identity.app_session set installation_registration_id=$2 where token_sha256=$1',[digest(integrationAccessToken),registrationId]);
+  const missingPairingCookie=await request("/reports","POST",createCommand,false);
+  assert.equal(missingPairingCookie.response.status,403,'a paired session cannot borrow the unpaired preparation fallback');
+  assert.equal(missingPairingCookie.payload.code,"calls.enrollmentRequired");
   await enableProductionWorkflowForTesting(client,organizationId,userId);
   const unpaired = await request("/reports", "POST", createCommand, false);
   assert.equal(unpaired.response.status,403);

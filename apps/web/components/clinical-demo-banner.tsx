@@ -77,7 +77,7 @@ export function ClinicalDemoBanner({
   }, [authorized]);
 
   if (!authorized || !context) return null;
-  const canGenerate = canGenerateSyntheticCall(activeReport !== null, context);
+  const canGenerate = canGenerateSyntheticCall(activeReport !== null);
   const multipleUnits = context.eligibleUnits.length > 1;
   const targetUnitId = multipleUnits ? selectedUnitId : context.eligibleUnits[0]?.id ?? "";
 

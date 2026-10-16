@@ -19,7 +19,7 @@ for(const language of ['en','sv'])test(`${language} administrator confirms devic
  const t=(en:string,sv:string)=>language==='sv'?sv:en;
  await harness(page,inventoryScript);let revoked=false;
  await page.route('**/api/admin/units/unit/installations',r=>r.fulfill({json:{items:[{id:'lost',name:'Lost browser',revokedAt:revoked?'2026-10-13':null},{id:'other',name:'Other clinician device',revokedAt:null}],nextCursor:null}}));
- await page.route('**/api/admin/units/unit/installations/lost/revoke',r=>{expect(r.request().headers()['x-csrf-token']).toBe('csrf');expect(r.request().method()).toBe('POST');revoked=true;return r.fulfill({json:{revoked:true,sessionsRevoked:1}});});
+ await page.route('**/api/admin/units/unit/installations/lost/revoke',r=>{expect(r.request().headers()['x-csrf-token']).toBe('csrf');expect(r.request().method()).toBe('POST');revoked=true;return r.fulfill({json:{revoked:true,sessionsRevoked:0}});});
  await page.goto(`/__device?language=${language}`);
  const trigger=page.getByRole('button',{name:t('Devices','Enheter'),exact:true});await trigger.focus();await trigger.press('Enter');
  const dialog=page.getByRole('dialog');await expect(dialog).toContainText(t('This is not remote erasure','Detta är ingen fjärradering'));
@@ -32,13 +32,13 @@ for(const language of ['en','sv'])test(`${language} administrator confirms devic
  await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
 });
 
-for(const transition of ['reconnection','connected polling'])test(`${transition} locks authority while retaining pending ciphertext and its deadline`,async({page})=>{
+for(const transition of ['reconnection','connected polling'])test(`${transition} withdraws unit calls while preserving personal authority, pending ciphertext and its deadline`,async({page})=>{
  await page.clock.install();
  await harness(page,gateScript);let revoked=false,assessments=0;
  await page.addInitScript(stored=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(stored)),session);
  await page.route('**/api/installation',r=>r.fulfill({json:{settings:productionSettings}}));
- await page.route('**/api/sessions/current',r=>{assessments++;return r.fulfill(revoked?{status:401,json:{message:'Revoked installation'}}:{json:session});});
- await page.route('**/api/calls/assigned',r=>r.fulfill({json:{assignedCalls:[],canceledAssignmentIds:[],refreshedAt:new Date().toISOString()}}));
+ await page.route('**/api/sessions/current',r=>{assessments++;return r.fulfill({json:session});});
+ await page.route('**/api/calls/assigned',r=>r.fulfill({json:{assignedCalls:[],canceledAssignmentIds:[],productionAccess:revoked?{state:'enrollment-required'}:{state:'ready'},refreshedAt:new Date().toISOString()}}));
  await page.route('**/api/reports/open',r=>r.fulfill({json:{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}}));
  await page.goto('/__device?clinical=1');await expect(page.getByRole('heading',{name:'Assigned calls',exact:true})).toBeVisible();
  const snapshot=async()=>page.evaluate(async()=>{
@@ -56,7 +56,29 @@ for(const transition of ['reconnection','connected polling'])test(`${transition}
  expect(assessments).toBe(prior);await expect(page.getByRole('heading',{name:'Assigned calls',exact:true})).toBeVisible();
  await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,value:true});window.dispatchEvent(new Event('online'));});
  }else{revoked=true;await page.clock.runFor(30_100);}
- await expect(page.getByRole('heading',{name:'Sign in',exact:true})).toBeVisible();
- expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();
+ await expect(page.getByRole('heading',{name:'Assigned calls',exact:true})).toBeVisible();
+ await expect(page.getByText('Enroll this browser installation to an active unit to open new calls. Existing reports remain available. Ask an agency administrator for an enrollment code.',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')??'null')?.user.id)).toBe(session.user.id);
  expect(await snapshot()).toEqual(before);
+});
+
+for(const language of ['en','sv'])test(`${language} a retired unit registration does not obstruct personal sign-in`,async({page})=>{
+ const t=(en:string,sv:string)=>language==='sv'?sv:en;
+ await harness(page,gateScript);
+ await page.addInitScript(language=>localStorage.setItem('open-triage:ui-language',language),language);
+ await page.route('**/api/installation',r=>r.fulfill({json:{settings:productionSettings}}));
+ await page.route('**/api/sessions/authentication-options',r=>r.fulfill({json:{organization:false}}));
+ await page.route('**/api/sessions',r=>r.fulfill({json:session}));
+ await page.route('**/api/sessions/current',r=>r.fulfill({json:session}));
+ await page.route('**/api/calls/assigned',r=>r.fulfill({json:{assignedCalls:[],canceledAssignmentIds:[],productionAccess:{state:'enrollment-required'},refreshedAt:new Date().toISOString()}}));
+ await page.route('**/api/reports/open',r=>r.fulfill({json:{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}}));
+ await page.goto('/__device?login=1');
+ await page.getByLabel(t('Username','Användarnamn'),{exact:true}).fill('unittest');
+ await page.getByLabel(t('Password','Lösenord'),{exact:true}).fill('Permanent fixture password 42!');
+ await page.getByRole('button',{name:t('Sign in','Logga in'),exact:true}).click();
+ await expect(page.getByRole('heading',{name:t('Assigned calls','Tilldelade uppdrag'),exact:true})).toBeVisible();
+ await expect(page.getByText(t(
+  'Enroll this browser installation to an active unit to open new calls. Existing reports remain available. Ask an agency administrator for an enrollment code.',
+  'Registrera den här webbläsarinstallationen till en aktiv enhet för att öppna nya uppdrag. Befintliga rapporter är tillgängliga. Be en administratör om en registreringskod.'),{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')??'null')?.user.id)).toBe(session.user.id);
 });

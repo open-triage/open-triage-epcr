@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { UnauthorizedException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import { agencyRequest } from "./agency-context.js";
 import { mutationRows } from "../database/mutation-result.js";
@@ -29,11 +28,9 @@ export async function lockInstallationForSession(manager: Pick<EntityManager, "q
     join app_identity.organization a on a.id=i.organization_id
     join app_identity.organization g on g.id=coalesce(a.parent_organization_id,a.id)
     where i.credential_sha256=$1 for share of u`, [hash, request.origin]);
-  // A bootstrap cookie alone is not enrollment and must preserve unpaired Admin/Review access.
-  if (!binding) return null;
-  if (binding.revoked_at || !binding.active || !binding.origin_allowed) {
-    throw new UnauthorizedException("This installation registration is unavailable; enroll again before signing in");
-  }
+  // Enrollment grants unit-job access, not personal authentication. Retired,
+  // inactive or wrong-origin credentials leave this fresh session unpaired.
+  if (!binding || binding.revoked_at || !binding.active || !binding.origin_allowed) return null;
   return binding.id;
 }
 
