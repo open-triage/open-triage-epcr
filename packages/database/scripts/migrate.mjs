@@ -15,6 +15,9 @@ const renamedAnalyticsMigrations = [
   { oldVersion: "30000000000002", version: "20261001173917", checksum: "7349db72932ec20be3e436386534c435075347c0d9acad4bec8c550dfeb75fd4" },
 ];
 const compatibleMigrationChecksums = new Map([
+  // Optional Supabase role revokes preserve the same privileges on existing databases.
+  ["20261016163831", new Map([["2edf729792be12364e5029b9b092250b25217f0544c3017e2c865dd6db99944d", "ada5ebc6b989541720166a9e24f252ffe1a9dbc8aeb8639e20cee8848f928fff"]])],
+  ["20261016170929", new Map([["213f9090b134641a2fbd71056dd9d73957c2a5b638fe10a6c786420663f60d3b", "e37a5e6b1baffc93ed0c03f85a9d618c80350ba6f640ac1954d2c82c5b21735b"]])],
   // Agency-group terminology changes only comments and exception wording.
   ["20261012101529", new Map([["c7a7a015006d0682c4eded66696d052fa9bb3af0eba5eb74dacd0b727ff1e4c1", "2b3f86444847bc49860236ce062aa9df447f3d97f38812c417078151ac4a0d97"]])],
   // Portable role revokes and ordered table creation preserve applied Review schemas.

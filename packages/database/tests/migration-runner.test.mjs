@@ -351,3 +351,19 @@ test("portable Review revokes preserve applied checksums and reject unrelated ed
     await assert.rejects(applyMigrations(client, [{ ...migration, checksum: "0".repeat(64) }], silentLog), /has been modified/);
   }
 });
+
+test("portable OIDC key and agency handoff revokes preserve applied history and reject other changes", async () => {
+  const migrations = await readMigrations(repositoryMigrations);
+  for (const [version, oldChecksum, currentChecksum] of [
+    ["20261016163831", "2edf729792be12364e5029b9b092250b25217f0544c3017e2c865dd6db99944d", "ada5ebc6b989541720166a9e24f252ffe1a9dbc8aeb8639e20cee8848f928fff"],
+    ["20261016170929", "213f9090b134641a2fbd71056dd9d73957c2a5b638fe10a6c786420663f60d3b", "e37a5e6b1baffc93ed0c03f85a9d618c80350ba6f640ac1954d2c82c5b21735b"],
+  ]) {
+    const migration = migrations.find(entry => entry.version === version);
+    assert.equal(migration?.checksum, currentChecksum);
+    const client = new FakeClient([[version, oldChecksum]]);
+    await applyMigrations(client, [migration], silentLog);
+    assert.equal(client.applied.get(version), oldChecksum);
+    assert.ok(!client.queries.some(({ sql }) => sql === migration.sql));
+    await assert.rejects(applyMigrations(client, [{...migration, checksum:"0".repeat(64)}], silentLog), /has been modified/);
+  }
+});
