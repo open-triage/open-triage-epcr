@@ -23,10 +23,12 @@ test('child reads the root policy and changes target the root with attributable 
   const audit = events.find(event => event.sql.includes('insert into app_identity.authentication_event'));
   assert.deepEqual(audit.parameters.slice(0,2), ['root','actor']); assert.doesNotMatch(audit.parameters[2], /"password"|credential|token/i);
 });
-test('missing capability, recent authentication and stale revisions block policy writes', async () => {
-  for (const options of [{ denied: true }, { recent: false }, {}]) {
+test('missing capability and stale revisions block policy writes', async () => {
+  for (const options of [{ denied: true }, {}]) {
     const { service, events } = setup(options);
-    await assert.rejects(service.update('token', options.denied || options.recent === false ? command : { ...command, expectedRevision: 2 }));
+    await assert.rejects(service.update('token', options.denied ? command : { ...command, expectedRevision: 2 }));
     assert.equal(events.some(event => event.sql.startsWith('update ')), false);
   }
 });
+
+test('policy writes use existing login authority without fresh confirmation',async()=>{await setup({recent:false}).service.update('token',command);});

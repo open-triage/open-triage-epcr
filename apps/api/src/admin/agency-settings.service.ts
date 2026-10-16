@@ -1,3 +1,5 @@
+import {updateLocalPolicy} from "../authentication/authentication-policy.service.js";
+import {localPolicy} from "../authentication/local-policy.js";
 import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -87,19 +89,26 @@ export class AgencySettingsService {
     const settings = await this.settings(this.dataSource, session.organization.id);
     const demographic = await this.demographic(this.dataSource, session.organization.id);
     if (!settings || !demographic) throw new NotFoundException("Agency Settings were not found");
-    return this.present(settings, demographic);
+    return {...this.present(settings, demographic),authenticationPolicy:await localPolicy(this.dataSource,session.organization.id)};
   }
 
   async update(sessionToken: string, command: UpdateAgencyMediaSettingsCommand): Promise<AgencyMediaSettings> {
     return this.dataSource.transaction(async (manager) => {
+      if(command.authenticationPolicy && manager.queryRunner?.isTransactionActive)
+        await this.sessions.lockPersonalAuthenticationContext(manager,null,sessionToken);
       const session = await this.sessions.requireCapability(sessionToken, "settings:write", manager);
-      return this.updateInTransaction(manager, session.organization.id, session.user.id, command);
+      const updated=await this.updateInTransaction(manager, session.organization.id, session.user.id, command);
+      await this.sessions.requireCapability(sessionToken,"settings:write",manager);
+      return updated;
     });
   }
 
   /** Internal persistence shared by authorized settings updates and owner agency creation. */
   async updateInTransaction(manager: EntityManager, organizationId: string, actorId: string,
     command: UpdateAgencyMediaSettingsCommand): Promise<AgencyMediaSettings> {
+    const authenticationPolicy=command.authenticationPolicy
+      ? await updateLocalPolicy(manager,organizationId,actorId,command.authenticationPolicy)
+      : await localPolicy(manager,organizationId);
     await manager.query(`insert into app_identity.agency_settings (organization_id)
       values ($1) on conflict (organization_id) do nothing`, [organizationId]);
     const currentSettings = await this.settings(manager, organizationId, true);
@@ -118,7 +127,7 @@ export class AgencySettingsService {
     const authenticationLimits = command.authenticationLimits ?? this.authenticationLimits(currentSettings);
     if (authenticationLimits.accountAttemptsPer15Minutes !== currentSettings.authentication_account_attempt_limit ||
         authenticationLimits.networkAttemptsPer5Minutes !== currentSettings.authentication_network_attempt_limit) {
-      throw new UnprocessableEntityException("Manage inherited login limits in Authentication; Agency Settings no longer changes them");
+      throw new UnprocessableEntityException("Manage inherited login limits through the effective group policy");
     }
     if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
         Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
@@ -127,7 +136,7 @@ export class AgencySettingsService {
         currentSettings.authentication_network_attempt_limit === authenticationLimits.networkAttemptsPer5Minutes &&
         (currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)) === syntheticRetentionHours &&
         currentSettings.regional_format === (command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat) &&
-        currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
+        currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return {...this.present(currentSettings,currentDemographic),authenticationPolicy};
 
     const updatedRows = mutationRows<SettingsRow>(await manager.query(`
       update app_identity.agency_settings set
@@ -158,7 +167,7 @@ export class AgencySettingsService {
           currentDemographic, command.demographics)
       : currentDemographic;
     await this.audit(manager, organizationId, actorId, currentSettings, updated);
-    return this.present(updated, updatedDemographic);
+    return {...this.present(updated,updatedDemographic),authenticationPolicy};
   }
 
   private settings(source: Pick<DataSource, "query"> | Pick<EntityManager, "query">, organizationId: string,

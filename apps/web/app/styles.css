@@ -1101,6 +1101,7 @@ fieldset { min-inline-size: 0; }
 
 .agency-settings form { max-width: 900px; }
 .agency-settings .form-actions { position: sticky; bottom: 0; padding: 10px 0; background: var(--paper); }
+.agency-settings .agency-settings-actions { position: static; }
 .stationary-section-selector { display: none; }
 @media (min-width: 901px) {
   .stationary-presentation:has(> .stationary-record-workspace:not([hidden])) { padding-bottom: 0; }

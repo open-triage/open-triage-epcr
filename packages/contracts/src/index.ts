@@ -852,6 +852,7 @@ export interface AgencyMediaSettings {
   /** Hours after server creation; null disables automatic demo-record deletion. */
   syntheticRetentionHours: number | null;
   authenticationLimits: AgencyAuthenticationLimits;
+  authenticationPolicy?: GroupAuthenticationPolicy;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -873,6 +874,7 @@ export interface UpdateAgencyMediaSettingsCommand {
   syntheticRetentionHours?: number | null;
   /** Omitted preserves the current password-attempt limits. */
   authenticationLimits?: AgencyAuthenticationLimits;
+  authenticationPolicy?: Omit<GroupAuthenticationPolicy,"groupId"|"revision"> & {expectedRevision:number};
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;

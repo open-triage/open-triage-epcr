@@ -1,3 +1,4 @@
+import {validateLocalPolicy} from "../authentication/authentication-policy.service.js";
 import { UnprocessableEntityException } from "@nestjs/common";
 import {
   DEFAULT_AGENCY_APPEARANCE,
@@ -139,7 +140,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "authenticationPolicy", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
@@ -193,6 +194,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     catch { throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null"); }
   }
   return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(body.authenticationPolicy===undefined?{}:{authenticationPolicy:validateLocalPolicy(body.authenticationPolicy)}),
     ...(authenticationLimits === undefined ? {} : { authenticationLimits }),
     ...(body.syntheticRetentionHours === undefined ? {} : { syntheticRetentionHours: body.syntheticRetentionHours as number | null }),
     ...(body.regionalFormat === undefined ? {} : { regionalFormat: body.regionalFormat }),

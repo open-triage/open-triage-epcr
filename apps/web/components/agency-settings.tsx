@@ -1,5 +1,6 @@
 "use client";
 
+import { EffectiveGroupPolicyFields,validEffectiveGroupPolicy } from "./effective-group-policy";
 import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
@@ -22,7 +23,10 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
-  return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
+  return { expectedRevision: settings.revision,
+    ...(settings.authenticationPolicy?{authenticationPolicy:{expectedRevision:settings.authenticationPolicy.revision,
+      maximumSessionHours:settings.authenticationPolicy.maximumSessionHours,temporaryPasswordHours:settings.authenticationPolicy.temporaryPasswordHours,
+      accountAttemptsPer15Minutes:settings.authenticationPolicy.accountAttemptsPer15Minutes,networkAttemptsPer5Minutes:settings.authenticationPolicy.networkAttemptsPer5Minutes}}:{}),language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
     syntheticRetentionHours: settings.syntheticRetentionHours === undefined ? DEFAULT_SYNTHETIC_RETENTION_HOURS : settings.syntheticRetentionHours,
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
@@ -106,6 +110,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
     draft.appearance.pwaName.trim() && draft.appearance.pwaShortName.trim() &&
     draft.demographics.agencyUniqueStateId.trim() && draft.demographics.agencyNumber.trim() &&
     /^[0-9]{2}$/.test(draft.demographics.stateCode);
+  const validPolicy=!draft?.authenticationPolicy||validEffectiveGroupPolicy(draft.authenticationPolicy);
   const unchanged = !!settings && !!draft && JSON.stringify({ ...draft, expectedRevision: settings.revision,
     syntheticRetentionHours: proposedRetentionHours,
     reportMediaAllowanceBytes: proposedBytes, imageMediaLimitBytes: proposedImageBytes }) === JSON.stringify(editable(settings));
@@ -135,7 +140,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settings || !draft || !validAllowance || !validImageLimit || !validRetentionHours || !complete || !canWrite) return;
+    if (!settings || !draft || !validPolicy || !validAllowance || !validImageLimit || !validRetentionHours || !complete || !canWrite) return;
     const form = new FormData(event.currentTarget);
     setBusy(true); setError(null); setNotice(null);
     try {
@@ -284,10 +289,12 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
         {!creating && <small>{resolveMessage(language, "admin.currentDemographicVersion", { version: settings?.demographics.version ?? 0, codeSystem: draft.demographics.stateCodeSystem ?? resolveMessage(language, "admin.notRecorded") })}</small>}
       </fieldset>
 
+      {!creating && draft.authenticationPolicy && <EffectiveGroupPolicyFields language={language} disabled={!canWrite||busy}
+        value={draft.authenticationPolicy} onChange={authenticationPolicy=>setDraft(current=>current?{...current,authenticationPolicy}:current)}/>}
       {!creating && <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>}
       {!canWrite && <p>{t("settings.readOnly")}</p>}
-      {canWrite && <div className="form-actions"><button type="submit"
-        disabled={busy || !validAllowance || !validImageLimit || !validRetentionHours || !complete || !creating && unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button>
+      {canWrite && <div className="form-actions agency-settings-actions"><button type="submit"
+        disabled={busy || !validPolicy || !validAllowance || !validImageLimit || !validRetentionHours || !complete || !creating && unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button>
         {creation && <button type="button" disabled={busy} onClick={creation.onCancel}>{t("admin.cancel")}</button>}</div>}
     </form>}
   </section>;

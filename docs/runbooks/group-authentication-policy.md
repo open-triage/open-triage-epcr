@@ -1,10 +1,13 @@
 # Group authentication policy migration
 
-Authentication owns maximum session duration, temporary-password lifetime and
-login attempt limits for a root agency and all its children. Agency Settings
-retains its historical columns for compatibility; changing those columns through
-the old API is rejected. New authentication policy changes require the existing
-five-minute personal password reauthentication and append an attributable event.
+Agency Settings edits maximum session duration, temporary-password lifetime and
+login attempt limits for a root agency and all its children. The **Effective
+group policy** fields use the same bottom **Save** button as the other agency
+settings. Both revisions are checked and both updates commit in one transaction.
+The historical per-agency columns remain for compatibility; changing those
+columns through the old API is rejected. Policy changes require an authenticated
+session with settings-write authority and append an attributable event; there is
+no additional password or OIDC confirmation for administrative actions.
 
 The migration adopts existing root duration and attempt limits only when every
 existing child agrees. It stops and names a conflicting group instead of choosing

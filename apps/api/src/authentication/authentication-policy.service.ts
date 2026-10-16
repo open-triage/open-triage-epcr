@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { DataSource } from "typeorm";
+import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { localPolicy, type LocalPolicy } from "./local-policy.js";
 
@@ -38,10 +38,19 @@ export class AuthenticationPolicyService {
     await this.database.transaction(async manager => {
       if(manager.queryRunner?.isTransactionActive)await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
       const actor = await this.sessions.requireCapability(token, "settings:write", manager);
-      await this.sessions.requireRecentReauthentication(token, manager);
-      await manager.query("select group_id from app_identity.group_authentication_policy where group_id=app_identity.organization_group($1) for update", [actor.organization.id]);
-      const prior = await localPolicy(manager, actor.organization.id);
+      await updateLocalPolicy(manager,actor.organization.id,actor.user.id,command);
+    });
+    return this.get(token);
+  }
+}
+
+/** Caller supplies settings-write authority and the encompassing transaction. */
+export async function updateLocalPolicy(manager:EntityManager,organizationId:string,actorId:string,command:ReturnType<typeof validateLocalPolicy>):Promise<LocalPolicy>{
+      await manager.query("select group_id from app_identity.group_authentication_policy where group_id=app_identity.organization_group($1) for update", [organizationId]);
+      const prior = await localPolicy(manager, organizationId);
       if (!prior || prior.revision !== command.expectedRevision) throw new ConflictException({ code: "admin.authenticationPolicyStale" });
+      if (prior.maximumSessionHours===command.maximumSessionHours && prior.temporaryPasswordHours===command.temporaryPasswordHours &&
+          prior.accountAttemptsPer15Minutes===command.accountAttemptsPer15Minutes && prior.networkAttemptsPer5Minutes===command.networkAttemptsPer5Minutes) return prior;
       const groupId = prior.groupId;
       await manager.query(`update app_identity.group_authentication_policy set maximum_session_hours=$2,
         temporary_password_hours=$3, account_attempt_limit=$4, network_attempt_limit=$5, revision=revision+1
@@ -49,8 +58,6 @@ export class AuthenticationPolicyService {
         command.accountAttemptsPer15Minutes, command.networkAttemptsPer5Minutes]);
       await manager.query(`insert into app_identity.authentication_event (organization_id,actor_id,action,result,details)
         values ($1,$2,'authentication.policy_update','succeeded',$3::jsonb)`,
-      [groupId, actor.user.id, JSON.stringify({ prior, policy: { ...command, groupId, revision: prior.revision + 1 } })]);
-    });
-    return this.get(token);
-  }
+      [groupId, actorId, JSON.stringify({ prior, policy: { ...command, groupId, revision: prior.revision + 1 } })]);
+      return (await localPolicy(manager,organizationId))!;
 }
