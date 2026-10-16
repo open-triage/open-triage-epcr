@@ -9,7 +9,18 @@ create table app_identity.oidc_credential_key (
  primary key(group_id,version)
 );
 create index oidc_credential_key_actor_idx on app_identity.oidc_credential_key(created_by);
-revoke all on app_identity.oidc_credential_key from public,anon,authenticated,open_triage_api_runtime;
+revoke all on app_identity.oidc_credential_key from public,open_triage_api_runtime;
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on app_identity.oidc_credential_key from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select,insert on app_identity.oidc_credential_key to open_triage_api_runtime;
 -- Automatic activation has no human actor. Once enabled, prerequisites remain
 -- enforced even if a schedule, enrollment or provider later becomes unavailable.

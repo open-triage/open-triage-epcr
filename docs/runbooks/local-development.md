@@ -33,6 +33,20 @@ loaded in a subshell:
 )
 ```
 
+Generated NEMSIS analytics migrations use the same UTC timestamp ordering as
+ordinary migrations. Generate them with `npm run generate:database` after adding
+any schema migrations they depend on. The generator chooses a version after the
+existing migration files, including when the local clock is behind. Commit the
+generated SQL, mapping JSON, and migration-state JSON together.
+
+The original analytics versions `30000000000001` and `30000000000002` were renamed
+to `20260928233346` and `20261001173917` (their original commit times in UTC).
+On an existing database, run the repository migration command above before using
+Supabase CLI migration commands. It converts those two history entries under the
+migration lock, preserves their recorded SQL and checksums, and does not execute
+their SQL again. Fresh databases apply the renamed files in timestamp order.
+The Supabase CLI alone does not perform this repository-specific history conversion.
+
 For a local demonstration installation, create its ordinary organization using
 the local Supabase Studio SQL editor at http://localhost:54323. This statement
 preserves an existing organization:

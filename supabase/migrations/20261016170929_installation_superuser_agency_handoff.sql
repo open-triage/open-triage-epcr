@@ -20,6 +20,17 @@ create table app_identity.agency_session_handoff (
 create index agency_session_handoff_source_idx on app_identity.agency_session_handoff(source_session_id);
 create index agency_session_handoff_target_idx on app_identity.agency_session_handoff(target_organization_id);
 create index agency_session_handoff_expiry_idx on app_identity.agency_session_handoff(expires_at);
-revoke all on app_identity.agency_session_handoff from public,anon,authenticated,open_triage_api_runtime;
+revoke all on app_identity.agency_session_handoff from public,open_triage_api_runtime;
+-- Supabase roles are optional on standalone PostgreSQL installations.
+do $$
+declare optional_role text;
+begin
+  foreach optional_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = optional_role) then
+      execute format('revoke all on app_identity.agency_session_handoff from %I', optional_role);
+    end if;
+  end loop;
+end;
+$$;
 grant select,insert on app_identity.agency_session_handoff to open_triage_api_runtime;
 grant update(challenge_sha256,code_sha256,issued_at,consumed_at) on app_identity.agency_session_handoff to open_triage_api_runtime;

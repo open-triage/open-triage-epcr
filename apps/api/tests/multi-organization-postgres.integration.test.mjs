@@ -188,7 +188,7 @@ integration("isolated agencies share staff only within their parent group; owner
       startingFormVersionId: sourceForm.id, startingValidationVersionId: publishedValidation.id };
     await assert.rejects(agencies.create(staffLogin.sessionToken, startingCommand), /installation owner/);
     await assert.rejects(agencies.create(ownerLogin.sessionToken, { ...startingCommand, catalogReleaseId: orphanCatalog }), /available published catalog/);
-    await assert.rejects(agencies.create(ownerLogin.sessionToken, { ...startingCommand, settings: { ...startingCommand.settings, authenticationLimits: { accountAttemptsPer15Minutes: 25, networkAttemptsPer5Minutes: 70 } } }), /Authentication/, "agency creation cannot bypass personal authentication for group policy changes");
+    await assert.rejects(agencies.create(ownerLogin.sessionToken, { ...startingCommand, settings: { ...startingCommand.settings, authenticationLimits: { accountAttemptsPer15Minutes: 25, networkAttemptsPer5Minutes: 70 } } }), /effective group policy/, "agency creation cannot bypass the effective group policy");
     const configured = await agencies.create(ownerLogin.sessionToken, startingCommand);
     assert.equal((await sessions.get(ownerLogin.sessionToken)).organization.id, other.id, "creation must not switch the browser session");
     const [bundle] = (await client.query("select * from app_identity.active_configuration_bundle where organization_id=$1", [configured.id])).rows;

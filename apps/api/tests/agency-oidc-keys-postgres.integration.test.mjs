@@ -17,6 +17,12 @@ integration('agency keys isolate groups and authenticated contexts, preserve leg
   const [{id:actor}]=await query('select id from app_identity.app_user limit 1');
   const group=randomUUID(),other=randomUUID();
   for(const id of [group,other])await query("insert into app_identity.organization(id,name,deployment_timezone) values($1,'OIDC key test','UTC')",[id]);
+  // Browser roles are optional on plain PostgreSQL; provision this test's
+  // privilege-check subjects transactionally rather than relying on the host.
+  for(const role of ['anon','authenticated']){
+   const exists=await query('select 1 from pg_roles where rolname=$1',[role]);
+   if(!exists.length)await db.query(`create role ${role} nologin`);
+  }
   await db.query('set local role open_triage_api_runtime');
   const legacy=encryptCredential('legacy secret',group,'provider');
   assert.equal(await decryptAgencyCredential(manager,legacy,group,'provider'),'legacy secret');

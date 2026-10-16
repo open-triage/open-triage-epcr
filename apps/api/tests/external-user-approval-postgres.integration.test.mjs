@@ -99,7 +99,7 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   const usersOnly=new UserRoleReadService(db,{requireCapability:async()=>({organization:{id:child},user:{id:actor.userId},capabilities:['users:read']})});
   assert.equal((await usersOnly.users('fixture',{state:'all',search:'Pagination collision'})).items.length,1);
   assert.equal((await usersOnly.users('fixture',{state:'pending'})).items.length,0);
-  const request=await record('NewExactSubject');
+  const request=await record('NewExactSubject','new.clinician.provider');
   assert.equal(request.ordinaryAccess,false);
   const directory=await identities.list(token,{});assert.deepEqual(directory.items[0].reviewProviders,[{source:'draft',revision:2},{source:'active',revision:1}]);
   for(const input of [{...command,temporaryPassword:password},{...command,note:7},{...command,providerSource:['draft']},{...command,roleIds:[clinician,clinician]}])await assert.rejects(identities.approve(token,request.requestId,input),error=>error.getStatus?.()===400);
@@ -121,8 +121,9 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   assert.equal((await ownerDb.query('select count(*)::int count from app_identity.app_session where user_id=$1',[noRoles.linkedUserId]))[0].count,0);
   const local=await new UserProvisioningService(db,sessions).provision(token,{username:'local.child',displayName:'Local child clinician',temporaryPassword:password,roleIds:[clinician]});
   await ownerDb.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[local.userId]);
-  for(const [id,username,search] of [[userId,null,'external'],[local.userId,'local.child','local.child']]){
+  for(const [id,username,search] of [[userId,null,'new.clinician.provider'],[local.userId,'local.child','local.child']]){
    const page=await reads.users(token,{search,roleId:clinician,state:'all'});assert.equal(page.items.length,1);assert.equal(page.items[0].id,id);assert.equal(page.items[0].username,username);assert.deepEqual(page.items[0].roles.map(role=>role.id),[clinician]);
+   if(username===null)assert.equal(page.items[0].ssoUsername,'new.clinician.provider');
    assert.equal((await reads.users(foreignSession.sessionToken,{search})).items.length,0);
    const replaced=await roles.replace(token,id,{expectedRevision:page.items[0].revision,roleIds:[]});assert.equal(replaced.username,username);
    const restored=await roles.replace(token,id,{expectedRevision:replaced.revision,roleIds:[clinician]});assert.equal(restored.roles[0].id,clinician);

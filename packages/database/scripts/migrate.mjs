@@ -6,6 +6,14 @@ import pg from "pg";
 
 const migrationName = /^(\d+)_([a-z0-9][a-z0-9_-]*)\.sql$/;
 const lockName = "open-triage-forward-only-migrations-v1";
+// These generated migrations originally used a separate, always-last sequence.
+// Keep their SQL immutable and translate applied history to the commit-time UTC
+// versions before considering pending migrations. Never replay an applied view
+// rebuild: later migrations may already have changed or depend on those views.
+const renamedAnalyticsMigrations = [
+  { oldVersion: "30000000000001", version: "20260928233346", checksum: "cc042f393c5c47e51ca1a9dec032e41413a675865cd43a4d2ed9ad41dd0c74cb" },
+  { oldVersion: "30000000000002", version: "20261001173917", checksum: "7349db72932ec20be3e436386534c435075347c0d9acad4bec8c550dfeb75fd4" },
+];
 const compatibleMigrationChecksums = new Map([
   // Agency-group terminology changes only comments and exception wording.
   ["20261012101529", new Map([["c7a7a015006d0682c4eded66696d052fa9bb3af0eba5eb74dacd0b727ff1e4c1", "2b3f86444847bc49860236ce062aa9df447f3d97f38812c417078151ac4a0d97"]])],
@@ -144,6 +152,42 @@ export async function applyMigrations(client, migrations, log = console) {
        order by history.version`,
     );
     const applied = new Map(result.rows.map((row) => [row.version, row.checksum]));
+
+    for (const { oldVersion, version, checksum } of renamedAnalyticsMigrations) {
+      if (!applied.has(oldVersion)) continue;
+      const migration = migrations.find((item) => item.version === version);
+      if (!migration || migration.checksum !== checksum ||
+          (applied.get(oldVersion) && applied.get(oldVersion) !== checksum) ||
+          (applied.get(version) && applied.get(version) !== checksum)) {
+        throw new Error(`Cannot reconcile renamed migration ${oldVersion}: missing or modified migration ${version}`);
+      }
+      await client.query("begin");
+      try {
+        // Remove the referencing checksum first; the history FK is immediate.
+        await client.query("delete from open_triage_deploy.migration_checksums where version = $1", [oldVersion]);
+        if (applied.has(version)) {
+          await client.query("delete from supabase_migrations.schema_migrations where version = $1", [oldVersion]);
+        } else {
+          await client.query(
+            "update supabase_migrations.schema_migrations set version = $2, name = $3 where version = $1",
+            [oldVersion, version, migration.name],
+          );
+        }
+        if (applied.get(oldVersion) && !applied.get(version)) {
+          await client.query(
+            "insert into open_triage_deploy.migration_checksums (version, checksum) values ($1, $2)",
+            [version, checksum],
+          );
+        }
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw new Error(`Failed to reconcile renamed migration ${oldVersion}`, { cause: error });
+      }
+      applied.set(version, applied.get(version) || applied.get(oldVersion));
+      applied.delete(oldVersion);
+      log.info(`Reconciled migration ${oldVersion} as ${version} without replaying SQL`);
+    }
 
     for (const migration of migrations) {
       const recordedChecksum = applied.get(migration.version);

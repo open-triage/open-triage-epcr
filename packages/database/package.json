@@ -32,7 +32,7 @@
     "scale:test:ci": "node scripts/run-scale-tests.mjs --profile ci --output artifacts/scale-test-ci.json",
     "scale:test:production": "node scripts/run-scale-tests.mjs --profile production --output artifacts/scale-test-production.json",
     "test": "node --test tests/*.test.mjs",
-    "test:integration": "npm run build -w @open-triage/api && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/review-access-postgres.integration.test.mjs tests/admin-full-capabilities-postgres.integration.test.mjs",
+    "test:integration": "npm run build -w @open-triage/api && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/analytics-migration-history-postgres.integration.test.mjs tests/review-access-postgres.integration.test.mjs tests/admin-full-capabilities-postgres.integration.test.mjs",
     "audit:localization": "node scripts/audit-catalog-localization.mjs",
     "audit:form-localization": "node scripts/audit-form-validation-localization.mjs",
     "install:synthetic:runtime": "node scripts/migrate.mjs && node scripts/load-nemsis-catalog.mjs && node scripts/bootstrap-synthetic-installation.mjs && node scripts/seed-initial-validation-versions.mjs && node scripts/seed-install-definitions.mjs",
