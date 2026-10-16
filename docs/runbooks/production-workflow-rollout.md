@@ -27,22 +27,21 @@ reports keep their existing clinical permission checks. Synthetic identities
 remain confined to synthetic work. Session expiry, access withdrawal and any
 already-associated device revocation remain enforced throughout preparation.
 
-In **Admin → Authentication → Production workflow rollout**, inspect the entire
-group's missing-schedule and unenrolled-unit counts and the paginated unit list.
-Resolve each active unit using Units and Devices and Shift Schedules. Select an
-explicit blank schedule where scheduled handovers are unnecessary; missing
-selection is not a blank schedule. Enroll each intended browser/app installation,
-including ordinary workstation browsers that need to take new jobs. The unit
-readiness check verifies at least one live registration per active unit; it cannot
-inventory hardware or prove that every intended installation was enrolled.
+In **Admin → Units**, resolve the missing-schedule and device-enrollment warnings
+for every active unit in the group. Select an explicit blank schedule where
+scheduled handovers are unnecessary; a missing selection is not a blank schedule.
+Enroll each intended browser/app installation, including ordinary workstations.
+Readiness verifies at least one live registration per active unit; it cannot
+inventory hardware or prove every intended installation was enrolled.
 
-Refresh readiness and authenticate personally before selecting **Enable
-production requirements**. The server rechecks group authority, the current
-revision, freshness and readiness atomically. Activation is attributable and
-one-way through the normal API. Existing cookies are not renewed or silently
-rebound. Enrollment can associate an existing eligible same-origin session. If
-enrollment did not associate a session, sign in again to establish that binding.
-Enabling one group does not enable unrelated groups.
+The API checks preparation groups in bounded batches every five seconds. It
+automatically enables requirements once the provider is usable and every active
+unit has an effective schedule selection and live device registration. Empty
+groups are not enabled. Activation is recorded as an automatic audit event and
+remains one-way: later withdrawal never restores preparation access. Existing
+cookies retain their expiry and device binding. The worker uses separate short
+transactions and locks rollout rows before checking readiness, without acquiring
+session, unit or registration locks. It never overlaps its own scans.
 
 Once enabled, new production jobs require matching live enrollment, agency
 permissions, an explicit effective schedule and current-shift personal proof.
@@ -51,7 +50,7 @@ per-call grace reminder have separate clinical explanations. Expiry or withdrawn
 access ends the session; shift changes alone leave existing owned reports usable.
 Unpaired Admin, Review, existing-report reopening and idempotent continuations
 retain their ordinary authorization, as does same-user protected recovery.
-The readiness view remains live after activation, so a later withdrawn device or
+Unit warnings remain live after activation, so a later withdrawn device or
 missing schedule is visible. Deactivated units keep their report/history links.
 
 ## Deployment prerequisites
@@ -63,9 +62,9 @@ credential and installation-approved personal-proof contract. A mutable draft
 snapshot never substitutes for a missing approved active snapshot. Repair those
 cases through installation-owner/superadmin recovery; do not fake provider proof.
 
-Configure `OIDC_PERSONAL_PROOF_POLICIES_JSON` only after the deployment's issuer,
-client, provider identity, claims and fresh personal authentication behavior have
-been agreed with regional IT. A generic successful OIDC redirect does not prove
+Configure personal authentication requirements in Admin → Authentication only
+after the deployment's issuer, client, claims and fresh personal authentication
+behavior have been agreed with regional IT. A generic successful OIDC redirect does not prove
 regional AD FS/PAS freshness, user switching or account-disable behavior.
 
 Register active agency hosts and TLS ingress/proxy routing with the original

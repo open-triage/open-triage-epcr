@@ -571,7 +571,6 @@ export function ClinicianSessionGate({ children }: {
   const nextAuthenticationSource = (session as ClinicianSession & { nextAuthenticationSource?: "local" | "oidc" }).nextAuthenticationSource ?? session.authenticationSource ?? "local";
   return (
     <NewJobConfirmationProvider language={language} onLogout={requestLogout}>
-      {session?.productionWorkflow?.state === "preparation" && <p role="status">{t("calls.production.preparation")}</p>}
     <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>

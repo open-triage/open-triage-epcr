@@ -1945,7 +1945,6 @@
   "admin.workflowInvalid": "Bekräfta införandet med aktuell beredskapsrevision.",
   "admin.workflowStale": "Införandet ändrades. Uppdatera beredskapen före aktivering.",
   "admin.workflowPreparationRequired": "Slutför förberedelser för autentisering, schema och enhetsregistrering före aktivering.",
-  "calls.production.preparation": "Förberedelse av produktionsflöde: befintliga enhetstilldelningar gäller tills organisationsgruppen uttryckligen aktiverar registrerings- och skiftkrav.",
   "admin.workflowCounts": "{total} aktiva enheter; {schedules} saknar schema; {enrollment} enheter saknar registrerad installation.",
   "admin.workflowPrevious": "Föregående enheter",
   "admin.workflowNext": "Nästa enheter",
@@ -2014,5 +2013,7 @@
   "admin.ssoUnlink": "Koppla från SSO och avsluta sessioner",
   "admin.ssoUsernameUnavailable": "Anges inte av leverantören",
   "admin.ssoUnlinked": "SSO har kopplats från och sessionerna avslutats. Ny inloggning kräver identitetsgodkännande.",
-  "admin.ssoUnlinkFailed": "Det gick inte att koppla från SSO. Uppdatera användaren och försök igen."
+  "admin.ssoUnlinkFailed": "Det gick inte att koppla från SSO. Uppdatera användaren och försök igen.",
+  "admin.unitScheduleRequiredWarning": "Välj ett arbetspasschema före ordinarie arbete.",
+  "admin.unitEnrollmentRequiredWarning": "Registrera en enhet före ordinarie arbete."
 }

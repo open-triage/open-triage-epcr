@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, Injectable, Logger, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
 import type { ProductionWorkflowReadiness } from "@open-triage/contracts";
@@ -10,6 +10,30 @@ import { lockProductionWorkflowAuthority, productionWorkflow } from "./productio
 
 @Injectable()
 export class ProductionWorkflowService {
+  private timer?:ReturnType<typeof setInterval>;
+  private scanning=false;
+  private scanAfter:string|null=null;
+  private readonly logger=new Logger(ProductionWorkflowService.name);
+  onModuleInit(){this.timer=setInterval(()=>{void this.automaticallyEnable().catch(()=>this.logger.warn('Automatic workflow readiness check failed'));},5000);this.timer.unref();}
+  onModuleDestroy(){if(this.timer)clearInterval(this.timer);}
+  async automaticallyEnable(){
+    if(this.scanning)return;
+    this.scanning=true;
+    try{await this.database.transaction(async manager=>{
+      // Only the rollout rows are locked. Readiness reads never acquire session,
+      // unit or registration locks, preserving the clinical lock order.
+      const groups=await manager.query<Array<{group_id:string}>>(`select group_id from app_identity.production_workflow_rollout
+        where enabled_at is null and ($1::uuid is null or group_id>$1::uuid) order by group_id limit 50 for update skip locked`,[this.scanAfter]);
+      this.scanAfter=groups.length===50?groups[49]!.group_id:null;
+      for(const group of groups){
+        const ready=await this.readiness(manager,group.group_id);
+        if(!ready.canEnable||ready.totalUnits===0)continue;
+        await manager.query('update app_identity.production_workflow_rollout set enabled_at=clock_timestamp(),enabled_by=null,revision=revision+1 where group_id=$1 and enabled_at is null',[group.group_id]);
+        await manager.query(`insert into app_identity.authentication_event(organization_id,action,result,details)
+          values($1,'authentication.policy_update','succeeded',$2::jsonb)`,[group.group_id,JSON.stringify({kind:'production-workflow-enabled',automatic:true,revision:ready.revision+1})]);
+      }
+    });}finally{this.scanning=false;}
+  }
   constructor(@InjectDataSource() private readonly database: DataSource, private readonly sessions: ClinicianSessionService) {}
   private async readiness(manager: EntityManager, organizationId: string, offset = 0): Promise<ProductionWorkflowReadiness> {
     const rollout = await productionWorkflow(manager, organizationId);
@@ -64,7 +88,6 @@ export class ProductionWorkflowService {
       const rollout = await productionWorkflow(manager, initial.organization.id, "update");
       await this.sessions.lockPersonalAuthenticationContext(manager, null, token, rollout.groupId);
       const actor = await this.sessions.requireCapability(token, "settings:write", manager);
-      await this.sessions.requireRecentReauthentication(token, manager);
       if (actor.organization.id !== initial.organization.id || rollout.revision !== expectedRevision || rollout.state !== "preparation") {
         throw new ConflictException({ code: "admin.workflowStale" });
       }
@@ -73,7 +96,7 @@ export class ProductionWorkflowService {
       const ready = await this.readiness(manager, actor.organization.id);
       if (!ready.canEnable) throw new ConflictException({ code: "admin.workflowPreparationRequired" });
       const [clock] = await manager.query<Array<{now: Date}>>("select clock_timestamp() as now");
-      await this.sessions.requireRecentReauthentication(token, manager, new Date(clock!.now));
+      await this.sessions.requireCapability(token,"settings:write",manager,new Date(clock!.now));
       await manager.query(`update app_identity.production_workflow_rollout set enabled_at=clock_timestamp(),enabled_by=$2,revision=revision+1 where group_id=$1`, [rollout.groupId, actor.user.id]);
       await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,details)
         values($1,$2,'authentication.policy_update','succeeded',$3::jsonb)`,

@@ -16,7 +16,7 @@ export async function authenticationRolloutPreflight(client) {
     .map(([groupId,values])=>({groupId,members:values}));
   return {phase:schema.policy_migrated?'group-policy-migrated':'before-group-policy-migration',conflicts,members,
     ready:conflicts.length===0, nextStep:conflicts.length?'Record explicit administrator decisions and align legacy values before migrating. See docs/runbooks/group-authentication-policy.md.':
-      'Apply forward migrations, then inspect Admin > Authentication > Production workflow rollout. Enable explicitly only after preparation and regional acceptance.'};
+      'Apply forward migrations, configure OIDC in Admin > Authentication, and resolve schedule and enrollment warnings in Units. Workflow enforcement enables automatically once prerequisites are ready.'};
 }
 
 if (process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href) {

@@ -30,7 +30,15 @@ export class UnitsService {
     if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(cursor)) {
       throw new UnprocessableEntityException("Invalid unit cursor");
     }
-    const rows = await this.database.query<OperationalUnitSummary[]>(`select ${columns}
+    const rows = await this.database.query<OperationalUnitSummary[]>(`select ${columns},
+      exists(select 1 from app_identity.unit_schedule_selection selection
+        where selection.organization_id=operational_unit.organization_id and selection.unit_id=operational_unit.id
+          and selection.effective_at<=clock_timestamp() and selection.schedule_id is not null
+          and selection.revision=(select max(latest.revision) from app_identity.unit_schedule_selection latest
+            where latest.unit_id=operational_unit.id and latest.effective_at<=clock_timestamp())) as "scheduleSelected",
+      exists(select 1 from app_identity.installation_registration registration
+        where registration.organization_id=operational_unit.organization_id and registration.unit_id=operational_unit.id
+          and registration.revoked_at is null) as enrolled
       from app_identity.operational_unit where organization_id=$1 and ($2::uuid is null or id>$2::uuid)
       order by id limit 51`, [actor.organization.id, cursor ?? null]);
     return { items: rows.slice(0, 50), nextCursor: rows.length > 50 ? rows[49]!.id : null };

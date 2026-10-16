@@ -1947,7 +1947,6 @@
   "admin.workflowInvalid": "Confirm the rollout using the current readiness revision.",
   "admin.workflowStale": "Rollout state changed. Refresh readiness before enabling.",
   "admin.workflowPreparationRequired": "Complete authentication, schedule and unit enrollment preparation before enabling.",
-  "calls.production.preparation": "Production workflow preparation: existing unit assignments apply until your agency group explicitly enables enrollment and shift requirements.",
   "admin.workflowCounts": "{total} active units; {schedules} missing schedules; {enrollment} units without an enrolled installation.",
   "admin.workflowPrevious": "Previous units",
   "admin.workflowNext": "Next units",
@@ -2016,5 +2015,7 @@
   "admin.ssoUnlink": "Unlink SSO and revoke sessions",
   "admin.ssoUsernameUnavailable": "Not supplied by the provider",
   "admin.ssoUnlinked": "SSO unlinked and sessions revoked. Signing in again requires identity approval.",
-  "admin.ssoUnlinkFailed": "Could not unlink SSO. Refresh the user and try again."
+  "admin.ssoUnlinkFailed": "Could not unlink SSO. Refresh the user and try again.",
+  "admin.unitScheduleRequiredWarning": "Select a shift schedule before ordinary work.",
+  "admin.unitEnrollmentRequiredWarning": "Enroll a device before ordinary work."
 }

@@ -32,7 +32,7 @@ const denied=code=>error=>error.getResponse?.().code===code;
 integration('upgrade inventories conflicts read-only and explicit rollout preserves identity, recovery, legacy scope and mutation races',async()=>{
  const name=`rollout_${randomUUID().replaceAll('-','')}`,admin=new pg.Client({connectionString:process.env.DATABASE_URL});await admin.connect();await admin.query(`create database ${name}`);
  const url=new URL(process.env.DATABASE_URL);url.pathname=`/${name}`;
- const savedKeys=process.env.OIDC_CREDENTIAL_KEYS_JSON,savedProof=process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;
+ const savedKeys=process.env.OIDC_CREDENTIAL_KEYS_JSON;
  let blockingConnected=false;
  const blocking=new pg.Client({connectionString:url.toString()});
  const migration=new pg.Client({connectionString:url.toString()}),owner=new DataSource({type:'postgres',url:url.toString()}),db=new DataSource({type:'postgres',url:url.toString(),extra:{options:'-c role=open_triage_api_runtime',max:6}});
@@ -134,8 +134,6 @@ integration('upgrade inventories conflicts read-only and explicit rollout preser
     assert.equal((await owner.query('select count(*)::integer n from clinical.report where id=$1',[attempt.reportId]))[0].n,0);
     if(job)assert.equal((await owner.query('select report_id from clinical.call_assignment where id=$1',[job]))[0].report_id,null);
   }
-  await assert.rejects(run(()=>workflow.enable(token,{expectedRevision:1,confirm:true})),denied('login.reauthenticationRequired'));
-  await run(()=>sessions.reauthenticate(token,unpaired.session.csrfToken,password));
   assert.equal((await run(()=>workflow.get(token))).canEnable,false);
   await assert.rejects(run(()=>workflow.enable(token,{expectedRevision:1,confirm:true})),denied('admin.workflowPreparationRequired'));
   const blank=await run(()=>schedules.save(token,null,{name:'Explicit blank',breakpoints:[]}));
@@ -176,13 +174,12 @@ integration('upgrade inventories conflicts read-only and explicit rollout preser
   const provider=randomUUID(),issuer='https://controlled-rollout-provider.example',clientId='controlled-rollout-client';
   const configuration={issuer,clientId},metadata={issuer,pkceS256:true};
   process.env.OIDC_CREDENTIAL_KEYS_JSON=JSON.stringify({'1':randomBytes(32).toString('base64')});
-  process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON='[]';
   await owner.query("insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,encrypted_credential,discovery,discovery_health,created_by) values($1,1,$2,$3::jsonb,$4::jsonb,$5::jsonb,'healthy',$6)",[other,provider,JSON.stringify(configuration),JSON.stringify(encryptCredential('fictional readiness credential',other,provider)),JSON.stringify(metadata),secondActor.userId]);
   await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision,active_revision,active_discovery) values($1,1,1,$2::jsonb)',[other,JSON.stringify(metadata)]);
   await owner.query("update app_identity.group_authentication_policy set mode='oidc' where group_id=$1",[other]);
   const readOther=()=>runOther(()=>otherWorkflow.get(contenders[0].sessionToken));
   assert.equal((await readOther()).providerReady,false,'Discovery alone never approves personal authentication');
-  process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=JSON.stringify([{id:'Controlled fixture contract',groupId:other,providerId:provider,issuer,clientId,acr:'fixture',requiredAmr:['pwd']}]);
+  await owner.query("update app_identity.oidc_provider_version set configuration=jsonb_set(configuration,'{personalProof}',$2::jsonb) where group_id=$1",[other,JSON.stringify({id:'Controlled fixture contract',acr:'fixture',requiredAmr:['pwd']})]);
   assert.equal((await readOther()).providerReady,true);
   const keys=process.env.OIDC_CREDENTIAL_KEYS_JSON;process.env.OIDC_CREDENTIAL_KEYS_JSON='{}';assert.equal((await readOther()).providerReady,false);process.env.OIDC_CREDENTIAL_KEYS_JSON=keys;
   await owner.query('update app_identity.oidc_provider_state set active_discovery=null where group_id=$1',[other]);
@@ -191,5 +188,5 @@ integration('upgrade inventories conflicts read-only and explicit rollout preser
   const many=Array.from({length:51},()=>randomUUID());for(const id of many)await owner.query("insert into app_identity.operational_unit(id,organization_id,name,call_sign) values($1::uuid,$2,'Later preparation',$1::text)",[id,group]);
   const page=await run(()=>workflow.get(token));assert.equal(page.units.length,50);assert.equal(page.totalUnits,53);assert.equal(page.missingSchedules,51);assert.equal(page.unenrolledUnits,51);
   assert.equal((await run(()=>workflow.get(token,50))).units.length,3);
- }catch(error){console.error(error);throw error;}finally{if(savedKeys===undefined)delete process.env.OIDC_CREDENTIAL_KEYS_JSON;else process.env.OIDC_CREDENTIAL_KEYS_JSON=savedKeys;if(savedProof===undefined)delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;else process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=savedProof;if(blockingConnected){await blocking.query('rollback').catch(()=>{});await blocking.end().catch(()=>{});}await migration.end();if(db.isInitialized)await db.destroy();if(owner.isInitialized)await owner.destroy();await admin.query(`drop database ${name} with(force)`);await admin.end();}
+ }catch(error){console.error(error);throw error;}finally{if(savedKeys===undefined)delete process.env.OIDC_CREDENTIAL_KEYS_JSON;else process.env.OIDC_CREDENTIAL_KEYS_JSON=savedKeys;if(blockingConnected){await blocking.query('rollback').catch(()=>{});await blocking.end().catch(()=>{});}await migration.end();if(db.isInitialized)await db.destroy();if(owner.isInitialized)await owner.destroy();await admin.query(`drop database ${name} with(force)`);await admin.end();}
 });

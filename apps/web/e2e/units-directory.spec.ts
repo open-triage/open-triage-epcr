@@ -21,7 +21,7 @@ test.beforeAll(async()=>{
 for(const language of ['en','sv']) {
   test(`${language} agency unit directory creates, edits and deactivates by keyboard on desktop and mobile`,async({page},testInfo)=>{
     const t=(en:string,sv:string)=>language==='sv'?sv:en;
-    let rows:Array<{id:string;organizationId:string;name:string;callSign:string;active:boolean;revision:number}>=[];
+    let rows:Array<{id:string;organizationId:string;name:string;callSign:string;active:boolean;revision:number;scheduleSelected?:boolean;enrolled?:boolean}>=[];
     let failRefresh=false;
     await page.route('**/__units-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
     await page.route('**/__units?*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__units-script"></script></body></html>`}));
@@ -31,7 +31,7 @@ for(const language of ['en','sv']) {
       if(request.method()==='GET') return route.fulfill(failRefresh?{status:503,json:{message:'Unavailable'}}:{json:{items:rows,nextCursor:null}});
       expect(request.headers()['x-csrf-token']).toBe('csrf');
       const body=request.postDataJSON();
-      if(request.method()==='POST') rows.push({id:'30000000-0000-4000-8000-000000000010',organizationId:'agency',revision:1,...body});
+      if(request.method()==='POST') rows.push({id:'30000000-0000-4000-8000-000000000010',organizationId:'agency',revision:1,scheduleSelected:false,enrolled:false,...body});
       else {expect(body.expectedRevision).toBe(rows[0]!.revision);rows=[{...rows[0]!,...body,revision:rows[0]!.revision+1}];}
       return route.fulfill({json:rows[0]});
     });
@@ -48,6 +48,7 @@ for(const language of ['en','sv']) {
         await dialog.getByRole('button',{name:t('Save','Spara'),exact:true}).focus();await page.keyboard.press('Enter');
         await expect(dialog).toHaveCount(0);await expect(create).toBeFocused();
       }
+      if(rows[0]!.active){await expect(page.getByText(t('Select a shift schedule before ordinary work.','Välj ett arbetspasschema före ordinarie arbete.'))).toBeVisible();await expect(page.getByText(t('Enroll a device before ordinary work.','Registrera en enhet före ordinarie arbete.'))).toBeVisible();}
       const edit=page.getByRole('button',{name:`${t('Edit','Redigera')} Medic 7`,exact:true});
       await edit.focus();await edit.press('Enter');
       const dialog=page.getByRole('dialog');

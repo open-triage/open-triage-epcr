@@ -2096,6 +2096,9 @@ export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
 /** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
 export interface OperationalUnitSummary {
   id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;
+  /** Live prerequisites for ordinary work; absent in older static fixtures. */
+  scheduleSelected?: boolean;
+  enrolled?: boolean;
 }
 export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCursor: string | null; }
 export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }

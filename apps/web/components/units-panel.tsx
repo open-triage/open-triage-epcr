@@ -1,4 +1,5 @@
 "use client";
+import { resolveMessage } from "../app/localization";
 import { UnitInstallations } from "./unit-installations";
 import { UnitScheduleEditor } from "./unit-schedule";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -61,7 +62,10 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
     </tr></thead><tbody>{items.map(unit => {
       const edit = () => { if (!confirmDiscardChanges(dirty)) return; setDirty(false);setEditor({ ...unit }); };
       return <tr key={unit.id} onClick={event => canManage && activateListRow(event)} className="admin-directory-row">
-        <td>{unit.name}</td><td>{unit.callSign}</td><td>{unit.active ? text("Active","Aktiv") : text("Inactive","Inaktiv")}</td>
+        <td>{unit.name}</td><td>{unit.callSign}</td><td>{unit.active ? text("Active","Aktiv") : text("Inactive","Inaktiv")}
+          {unit.active && unit.scheduleSelected===false && <p>{resolveMessage(language,"admin.unitScheduleRequiredWarning")}</p>}
+          {unit.active && unit.enrolled===false && <p>{resolveMessage(language,"admin.unitEnrollmentRequiredWarning")}</p>}
+        </td>
         <td>{canManage && <button data-list-row-action type="button" onClick={event => { trigger.current=event.currentTarget;edit(); }}>{text("Edit","Redigera")} {unit.name}</button>} <button id={`unit-schedule-${unit.id}`} type="button" onClick={event => { trigger.current=event.currentTarget;setScheduleUnit(unit); }}>{text("Schedule","Schema")} {unit.name}</button>{canManage&&unit.active&&<UnitInstallations unitId={unit.id} unitName={unit.name} csrfToken={csrfToken} language={language}/>}</td>
       </tr>;
     })}</tbody></table></div>
