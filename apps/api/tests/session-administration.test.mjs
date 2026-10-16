@@ -12,7 +12,7 @@ const sessionId = "10000000-0000-4000-8000-000000000001";
 const now = new Date("2026-09-11T12:00:00.000Z");
 
 function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke", "credentials:reset"],
-  target = {}, targetOnly = [], session = {}, failAudit = false } = {}) {
+  target = {}, targetOnly = [], session = {}, failAudit = false, installationAdministrator = false } = {}) {
   const events = [];
   const actor = { user: { id: actorId }, organization: { id: organizationId }, capabilities };
   const manager = { query: async (sql, parameters = []) => {
@@ -23,6 +23,7 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
       revoked_at: null, current: false, owner: false, ...session }];
     if (event.sql.startsWith("select app_user.id, app_user.active")) return [{ id: targetId,
       active: false, revision: "7", owner: false, actor_owner: false, ...target }];
+    if (event.sql.startsWith("select (app_identity.is_installation_superadmin")) return [{ allowed: installationAdministrator }];
     if (event.sql.startsWith("select distinct capability.capability_key")) return targetOnly;
     if (event.sql.startsWith("select id from app_identity.app_user")) return [{ id: targetId }];
     if (event.sql.startsWith("select count(*) as revoked")) return [{ revoked: "3" }];
@@ -170,4 +171,15 @@ test("security command validation accepts only bounded, credential-safe inputs",
     temporaryPasswordHours: 24 }));
   assert.throws(() => validateResetAdminCredential({ expectedRevision: 2, temporaryPassword: "Replacement password 84!",
     temporaryPasswordHours: 72, note: "Replacement password 84!" }));
+});
+
+test("installation administrators can reset reviewer credentials without review access", async () => {
+  const { service, events } = setup({ installationAdministrator: true,
+    targetOnly: [{ capability_key: "review:admin" }] });
+  const result = await service.resetCredential("token", targetId, {
+    expectedRevision: 7, temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 72
+  }, now);
+  assert.equal(result.revision, 8);
+  assert.equal(events.some(({ sql }) => sql.startsWith("select distinct capability")), false);
+  assert.equal(events.at(-1).sql, "commit");
 });

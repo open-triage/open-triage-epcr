@@ -12,7 +12,7 @@ const command = (overrides = {}) => ({ expectedRevision: 4, username: "renamed.u
   active: false, note: "Planned leave", ...overrides });
 
 function setup({ target = {}, actor = {}, targetOnly = [], currentRoleIds = [roleId], sessionsRevoked = 2,
-  failCredential } = {}) {
+  failCredential, installationAdministrator = false } = {}) {
   const events = [];
   const selectedTarget = { id: targetId, display_name: "Original User", username: "original.user",
     active: true, revision: "4", owner: false, ...target };
@@ -22,6 +22,7 @@ function setup({ target = {}, actor = {}, targetOnly = [], currentRoleIds = [rol
     const normalized = sql.replace(/\s+/g, " ").trim();
     events.push({ sql: normalized, parameters });
     if (normalized.startsWith("select u.id, u.display_name")) return [selectedTarget];
+    if (normalized.startsWith("select (app_identity.is_installation_superadmin")) return [{ allowed: installationAdministrator }];
     if (normalized.startsWith("select distinct capability.capability_key")) return targetOnly;
     if (normalized.startsWith("select role.id, role.display_name")) {
       return currentRoleIds.map((id) => ({ id, display_name: "Clinician", active: true, protected: true }));
@@ -124,4 +125,22 @@ test("SSO-only lifecycle preserves null username and rejects creating a credenti
  await assert.rejects(setup({target:{username:null}}).service.update("token",targetId,command()),BadRequestException);
  await assert.rejects(setup().service.update("token",targetId,command({username:null})),BadRequestException);
  assert.equal(validateUpdateAdminUser(command({username:null})).username,null);
+});
+
+for (const active of [true, false]) {
+  test(`installation administrators can save reviewer accounts with active=${active} without review access`, async () => {
+    const { service, events } = setup({ installationAdministrator: true,
+      targetOnly: [{ capability_key: "review:admin" }] });
+    const result = await service.update("token", targetId, command({ active }));
+    assert.equal(result.active, active);
+    assert.equal(events.some(({ sql }) => sql.startsWith("select distinct capability")), false);
+    assert.equal(events.at(-1).sql, "commit");
+  });
+}
+
+test("patient-review administration remains a privilege ceiling for ordinary administrators", async () => {
+  const { service, events } = setup({ actor: { installationOwner: true, installationSuperadmin: true },
+    targetOnly: [{ capability_key: "review:admin" }] });
+  await assert.rejects(service.update("token",targetId,command({active:true})),ForbiddenException);
+  assert.equal(events.some(({sql}) => sql.startsWith("update app_identity.app_user")),false);
 });

@@ -1,3 +1,4 @@
+import { assertUserAdministrationCeiling } from "./user-administration-authority.js";
 import { localPolicy } from "../authentication/local-policy.js";
 import { createHash } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
@@ -19,7 +20,7 @@ type SessionRow = {
 };
 type RevocationTarget = { id: string; revoked_at: Date | string | null; current: boolean; owner: boolean };
 type ResetTarget = {
-  id: string; active: boolean; revision: string | number; owner: boolean; actor_owner: boolean; superadmin: boolean;
+  id: string; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
 };
 
 @Injectable()
@@ -101,14 +102,12 @@ export class SessionAdministrationService {
         select app_user.id, app_user.active, app_user.revision,
                exists (select 1 from app_identity.installation_superadmin where user_id=app_user.id) superadmin,
                exists (select 1 from app_identity.installation_owner target_owner
-                 where target_owner.user_id = app_user.id) as owner,
-               exists (select 1 from app_identity.installation_owner actor_owner
-                 where actor_owner.user_id = $3) as actor_owner
+                 where target_owner.user_id = app_user.id) as owner
         from app_identity.app_user app_user
         join app_identity.local_credential credential on credential.user_id = app_user.id
         where app_identity.organization_group(app_user.organization_id) = app_identity.organization_group($1) and app_user.id = $2
         for update of app_user, credential
-      `, [actor.organization.id, targetUserId, actor.user.id]);
+      `, [actor.organization.id, targetUserId]);
       const target = rows[0];
       if (!target) throw new NotFoundException("User was not found");
       if (target.id === actor.user.id) throw new ForbiddenException("Administrators cannot reset their own credential");
@@ -116,24 +115,8 @@ export class SessionAdministrationService {
       if (Number(target.revision) !== command.expectedRevision) {
         throw new ConflictException("This user changed after it was loaded");
       }
-      if (!target.actor_owner) {
-        const targetOnly = await manager.query<Array<{ capability_key: string }>>(`
-          select distinct capability.capability_key
-          from app_identity.user_role_assignment assignment
-          join app_identity.role role on role.organization_id = assignment.organization_id
-            and role.id = assignment.role_id and role.active and role.assignable
-          join app_identity.role_version version on version.organization_id = role.organization_id
-            and version.role_id = role.id and version.id = role.current_version_id
-          join app_identity.role_version_capability capability on capability.organization_id = version.organization_id
-            and capability.role_id = version.role_id and capability.role_version_id = version.id
-          join app_identity.capability definition on definition.key = capability.capability_key
-          where app_identity.organization_group(assignment.organization_id) = app_identity.organization_group($1) and assignment.user_id = $2 and assignment.ended_at is null
-            and definition.administrative and not (capability.capability_key = any($3::text[]))
-        `, [actor.organization.id, target.id, actor.capabilities ?? []]);
-        if (targetOnly.length) {
-          throw new ForbiddenException("A more-capable user cannot be reset by this administrator");
-        }
-      }
+      await assertUserAdministrationCeiling(manager, actor, target.id,
+        "A more-capable user cannot be reset by this administrator");
       await manager.query(`update app_identity.local_credential
         set password_verifier = $2, must_change_password = true, temporary_password_expires_at = $3,
             credential_version = credential_version + 1, password_changed_at = null, updated_at = $4

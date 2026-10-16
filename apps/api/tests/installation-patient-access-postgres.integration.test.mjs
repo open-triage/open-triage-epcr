@@ -3,6 +3,11 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { DataSource } from 'typeorm';
+import { ClinicianSessionService } from '../dist/sessions/clinician-session.service.js';
+import { UserLifecycleService } from '../dist/admin/user-lifecycle.service.js';
+import { SessionAdministrationService } from '../dist/admin/session-administration.service.js';
+import { createPasswordVerifier } from '../dist/identity/password.js';
 import { readMigrations, applyMigrations } from '../../../packages/database/scripts/migrate.mjs';
 import { AdminService } from '../dist/admin/admin.service.js';
 import { ReviewService } from '../dist/review/review.service.js';
@@ -19,6 +24,7 @@ integration('installation patient-data ceiling overrides role grants across agen
   await admin.query(`create database ${name}`);
   const url = new URL(process.env.DATABASE_URL); url.pathname = `/${name}`;
   const client = new pg.Client({ connectionString: url.toString() });
+  const runtime = new DataSource({ type: 'postgres', url: url.toString(), extra: { options: '-c role=open_triage_api_runtime' } });
   try {
     await client.connect();
     await applyMigrations(client, await readMigrations(fileURLToPath(new URL('../../../supabase/migrations', import.meta.url))), { info() {} });
@@ -104,7 +110,46 @@ integration('installation patient-data ceiling overrides role grants across agen
       assert.equal(await can(reviewer, agency, 'review:admin'), true);
     }
     assert.equal(await can(reviewer, other, 'review:all'), false);
+    // Exercise real runtime sessions against the production Demo role as well as
+    // reviewer permissions. Both have review:admin, which installation accounts
+    // deliberately lack, while user administration must remain available.
+    await client.query('reset role');
+    const demo = randomUUID(), password = 'User administration fixture 42!';
+    await client.query("insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,'Demo account')", [demo, root]);
+    await client.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by)
+      select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='demo'`, [root,demo,owner]);
+    const verifier = await createPasswordVerifier(password);
+    for (const user of [owner,superuser,reviewer,demo]) {
+      await client.query(`insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password)
+        values($1,$2,$3,false)`, [user,`fixture.${user}`,verifier]);
+    }
+    await runtime.initialize();
+    const sessions = new ClinicianSessionService(runtime);
+    const lifecycle = new UserLifecycleService(runtime,sessions);
+    const credentials = new SessionAdministrationService(runtime,sessions);
+    for (const user of [owner,superuser]) {
+      const login = await sessions.create({username:`fixture.${user}`,password});
+      for (const agency of [root,child]) {
+        await sessions.switchAgency(login.sessionToken,agency);
+        for (const target of [reviewer,demo]) {
+          const [before] = await runtime.query('select revision,display_name from app_identity.app_user where id=$1',[target]);
+          const command = { expectedRevision:Number(before.revision), username:`fixture.${target}`,displayName:before.display_name,active:true };
+          const saved = await lifecycle.update(login.sessionToken,target,command);
+          assert.equal(saved.revision,command.expectedRevision+1,'Save user succeeds even without changing fields');
+          const reset = await credentials.resetCredential(login.sessionToken,target,{
+            expectedRevision:saved.revision,temporaryPassword:password,temporaryPasswordHours:72
+          });
+          assert.equal(reset.revision,saved.revision+1,'credential management uses the same installation authority');
+          for (const capability of denied) assert.equal(await can(user,agency,capability),false,'account management never grants patient access');
+        }
+      }
+      await sessions.switchAgency(login.sessionToken,other);
+      const [before] = await runtime.query('select revision from app_identity.app_user where id=$1',[demo]);
+      await assert.rejects(lifecycle.update(login.sessionToken,demo,{expectedRevision:Number(before.revision),username:`fixture.${demo}`,displayName:'Out of scope',active:true}),error=>error.getStatus?.()===404);
+    }
+
   } finally {
+    if (runtime.isInitialized) await runtime.destroy();
     await client.end();
     await admin.query(`drop database ${name} with (force)`);
     await admin.end();
