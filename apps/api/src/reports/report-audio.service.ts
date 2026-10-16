@@ -4,7 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { DeleteReportAudioNoteResponse, ReportAudioNote, ReportAudioNoteMutationResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
-import { retryMediaTransaction } from "./report-media-transaction.js";
+import { retryTransaction } from "../database/retry-transaction.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
 import { inspectNoteMutation, recordMediaAccess, recordNoteMutation, type ReportNoteAction } from "./report-note-collaboration.js";
@@ -124,7 +124,7 @@ export class ReportAudioService {
     apply: (manager: EntityManager, report: ReportRow, nextRevision: number, actorId: string) => Promise<T>): Promise<T> {
     const requestDigest = commandSha256(command);
     try {
-      return await retryMediaTransaction(() => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      return await retryTransaction(() => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [commandId]);

@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import { retryTransaction } from "../database/retry-transaction.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
@@ -195,7 +196,7 @@ export class DraftReportService {
     );
     const digest = commandSha256(command);
     try {
-      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      return await retryTransaction(() => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         // Acquire person/device/unit/session authority before command and incident rows.
         // Nonready access is asserted only for new production work, keeping existing work available.
         const jobAccess = await productionJobAccess(manager, accessToken, session, this.schedules,
@@ -324,7 +325,7 @@ export class DraftReportService {
         }
         await this.storeReceipt(manager, command.commandId, command.reportId, "create-draft", digest, result);
         return result;
-      });
+      }));
     } catch (error) {
       this.rethrowDatabaseConflict(error);
     }

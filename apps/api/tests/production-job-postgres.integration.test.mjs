@@ -103,7 +103,40 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  assert.equal((await run(undefined,()=>reports.reopen(unpaired.sessionToken,reportId))).report.formVersionId,original.form_version_id);
  const standalone={commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID(),organizationId:agency,documentingUserId:user,patientIdentityState:'unknown'};
  await assert.rejects(run(undefined,()=>reports.create(unpaired.sessionToken,standalone)),denied('calls.enrollmentRequired'));
- await run(binding.credential,()=>reports.create(paired.sessionToken,standalone));
+ // Force a committed schedule snapshot update after the SERIALIZABLE snapshot
+ // exists, before its first evaluation write. This reproduces the browser race
+ // deterministically instead of depending on request timing.
+ const racingSchedules=Object.create(schedules);
+ let collide=true,serializationFailures=0,evaluations=0;
+ racingSchedules.evaluateUnit=async(manager,organizationId,unitId)=>{
+  evaluations++;
+  if(collide){collide=false;await scheduleAdmin.getPreview('admin',unitId);}
+  try{return await schedules.evaluateUnit(manager,organizationId,unitId);}
+  catch(error){if(error.code==='40001')serializationFailures++;throw error;}
+ };
+ const racingReports=new DraftReportService(db,sessions,racingSchedules);
+ await run(binding.credential,()=>racingReports.create(paired.sessionToken,standalone));
+ assert.equal(serializationFailures,1,'the fixture must cause a real PostgreSQL serialization failure');
+ assert.equal(evaluations,3,'the whole creation transaction retries and rechecks schedule access before commit');
+ assert.equal((await run(binding.credential,()=>racingReports.create(paired.sessionToken,standalone))).id,standalone.reportId);
+ assert.equal((await admin.query('select count(*)::int n from clinical.report where id=$1',[standalone.reportId])).rows[0].n,1);
+ assert.equal((await admin.query('select count(*)::int n from clinical.command_receipt where idempotency_key=$1',[standalone.commandId])).rows[0].n,1);
+ // Authority can change between rolled-back attempts. A retry must fail closed
+ // rather than reuse the outer session assessment or partially create a report.
+ const revokedLogin=await login(binding.credential),revokedCommand={...standalone,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()};
+ collide=true;
+ const revokedSchedules=Object.create(racingSchedules);
+ revokedSchedules.evaluateUnit=async(...args)=>{
+  try{return await racingSchedules.evaluateUnit(...args);}
+  catch(error){
+   if(error.code==='40001')await admin.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='regression_test' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(revokedLogin.sessionToken)]);
+   throw error;
+  }
+ };
+ await assert.rejects(run(binding.credential,()=>new DraftReportService(db,sessions,revokedSchedules).create(revokedLogin.sessionToken,revokedCommand)),error=>error.getStatus?.()===401);
+ assert.equal(serializationFailures,2);
+ assert.equal((await admin.query('select count(*)::int n from clinical.report where id=$1',[revokedCommand.reportId])).rows[0].n,0);
+ assert.equal((await admin.query('select count(*)::int n from clinical.command_receipt where idempotency_key=$1',[revokedCommand.commandId])).rows[0].n,0);
  assert.equal((await admin.query('select synthetic from clinical.report where id=$1',[standalone.reportId])).rows[0].synthetic,false);
  const follow={...standalone,commandId:randomUUID(),reportId:randomUUID(),patientId:randomUUID(),incidentId:original.incident_id};
  await run(undefined,()=>reports.create(unpaired.sessionToken,follow));
