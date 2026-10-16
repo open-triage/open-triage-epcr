@@ -8,7 +8,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { agencyRequest } from "../sessions/agency-context.js";
 import { AgencyDirectoryService } from "../sessions/agency-directory.service.js";
 import { decryptCredential,encryptCredential } from "./oidc-credentials.js";
-import { RegionalIdentityService } from "./regional-identity.service.js";
+import { ExternalIdentityService } from "./external-identity.service.js";
 import { type OidcDraft } from "./oidc-draft.service.js";
 import { testAuthorization,testCodeExchange,type TestBinding } from "./oidc-test-protocol.js";
 const digest=(value:string)=>createHash("sha256").update(value).digest("hex");
@@ -18,7 +18,7 @@ type Version={provider_id:string;configuration:OidcDraft;encrypted_credential:En
 type Attempt={state_sha256:string;group_id:string;revision:string;organization_id:string;actor_id:string;origin:string;return_path:string;encrypted_binding:Envelope;pkce_s256:boolean;action:string;provider_id:string;configuration:OidcDraft;encrypted_credential:Envelope;discovery:Version["discovery"]};
 @Injectable()
 export class OidcTestService {
- constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly agencies:AgencyDirectoryService,private readonly identities:RegionalIdentityService = new RegionalIdentityService(database,sessions)){}
+ constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly agencies:AgencyDirectoryService,private readonly identities:ExternalIdentityService = new ExternalIdentityService(database,sessions)){}
  private async authority(token:string,manager:EntityManager=this.database.manager){
   if(manager.queryRunner?.isTransactionActive)await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
   const actor=await this.sessions.requireCapability(token,"settings:write",manager);

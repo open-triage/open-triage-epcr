@@ -19,7 +19,7 @@ for (const source of ['local', 'oidc'] as const) for (const language of ['en', '
  await context.route('**/__grace-script', r => r.fulfill({ contentType: 'text/javascript', body: script }));
  await context.route('**/__grace', r => r.fulfill({ contentType: 'text/html', body: `<html lang="${language}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}:root{--green:#663399;--green-dark:#442266}</style></head><body><div id="root"></div><script src="/__grace-script"></script></body></html>` }));
  await context.route('**/api/installation', r => r.fulfill({ json: { settings: { ...settings, language }, appearance: { ...DEFAULT_AGENCY_APPEARANCE, accentColor: "#663399", accentDarkColor: "#442266" } } }));
- await context.route('**/api/sessions/authentication-options', r => r.fulfill({ json: { regional: source === 'oidc' } }));
+ await context.route('**/api/sessions/authentication-options', r => r.fulfill({ json: { organization: source === 'oidc' } }));
  await context.route('**/api/sessions/current', r => { if (r.request().method() === 'DELETE') { current = null; sessionEnded = true; return r.fulfill({ json: { ended: true } }); } return current ? r.fulfill({ json: current }) : r.fulfill({ status: 401 }); });
  await context.route('**/api/reports/open', r => r.fulfill({ json: { openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() } }));
  await context.route('**/api/calls/assigned', r => r.fulfill({ json: { assignedCalls: jobs, canceledAssignmentIds: [], refreshedAt: new Date().toISOString(), productionAccess: { state: 'identity-confirmation-required', unit: { id: 'unit', callSign: 'Enrolled 18', name: 'Unit', organizationId: 'agency' } } } }));
@@ -61,7 +61,7 @@ for (const bodyKind of ['reminder', 'created report', 'reopened report']) test(`
  await context.route('**/__grace-script', r => r.fulfill({ contentType: 'text/javascript', body: script }));
  await context.route('**/__grace', r => r.fulfill({ contentType: 'text/html', body: '<html lang="en"><body><div id="root"></div><script src="/__grace-script"></script></body></html>' }));
  await context.route('**/api/installation', r => r.fulfill({ json: { settings, appearance: DEFAULT_AGENCY_APPEARANCE } }));
- await context.route('**/api/sessions/authentication-options', r => r.fulfill({ json: { regional: false } }));
+ await context.route('**/api/sessions/authentication-options', r => r.fulfill({ json: { organization: false } }));
  await context.route('**/api/sessions/current', r => {
   if (r.request().method() === 'DELETE') { ended = true; return r.fulfill({ json: { ended: true } }); }
   return ended ? r.fulfill({ status: 401 }) : r.fulfill({ json: session });
@@ -111,7 +111,7 @@ for(const target of ['assigned','standalone'] as const)for(const width of [390,1
  await context.route('**/__grace-script',r=>r.fulfill({contentType:'text/javascript',body:script}));
  await context.route('**/__grace',r=>r.fulfill({contentType:'text/html',body:`<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__grace-script"></script></body></html>`}));
  await context.route('**/api/installation',r=>r.fulfill({json:{settings:{...settings,language:'en'},appearance:DEFAULT_AGENCY_APPEARANCE}}));
- await context.route('**/api/sessions/authentication-options',r=>r.fulfill({json:{regional:false}}));
+ await context.route('**/api/sessions/authentication-options',r=>r.fulfill({json:{organization:false}}));
  await context.route('**/api/sessions/current',r=>r.fulfill({json:session}));
  await context.route('**/api/reports/open',r=>r.fulfill({json:{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}}));
  await context.route('**/api/calls/assigned',r=>r.fulfill({json:{assignedCalls:jobs,canceledAssignmentIds:[],refreshedAt:new Date().toISOString()}}));

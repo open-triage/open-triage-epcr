@@ -159,8 +159,8 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
     {context && mounted("Users") && <div hidden={activePanel !== "Users"}><UsersPanel
       canCreate={context.capabilities?.includes("users:write") ?? false}
       canManage={context.capabilities?.includes("users:write") ?? false}
-      canReviewRegional={context.capabilities.includes("settings:read")}
-      canManageRegional={context.capabilities.includes("settings:read")&&context.capabilities.includes("settings:write")&&context.capabilities.includes("users:write")}
+      canReviewExternal={context.capabilities.includes("settings:read")}
+      canManageExternal={context.capabilities.includes("settings:read")&&context.capabilities.includes("settings:write")&&context.capabilities.includes("users:write")}
       canAssignRoles={context.capabilities?.includes("roles:assign") ?? false}
       canViewSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read")) ?? false}
       canRevokeSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read") &&

@@ -18,7 +18,7 @@ import {ProtectedReportKeyService} from '../../dist/reports/protected-report-key
 import {ClinicianSessionService} from '../../dist/sessions/clinician-session.service.js';
 import {OidcPersonalService} from '../../dist/authentication/oidc-personal.service.js';
 import {AgencyDirectoryService} from '../../dist/sessions/agency-directory.service.js';
-import {RegionalIdentityService} from '../../dist/authentication/regional-identity.service.js';
+import {ExternalIdentityService} from '../../dist/authentication/external-identity.service.js';
 import {productionJobAccess} from '../../dist/calls/production-job-access.js';
 import {SchedulesService} from '../../dist/schedules/schedules.service.js';
 import {agencyRequest} from '../../dist/sessions/agency-context.js';
@@ -34,22 +34,22 @@ try{
  proxy=createServer((req,res)=>{if(route(req,res))return;if(req.url==='/fixture.js'){res.setHeader('content-type','text/javascript');res.end(bundled.outputFiles[0].text);return;}res.setHeader('content-type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`);});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const origin=`http://child.localhost:${proxy.address().port}`;process.env.WEB_ORIGIN=`http://localhost:${proxy.address().port}`;process.env.NODE_ENV='development';
  db=new DataSource({type:'postgres',url:process.env.DATABASE_URL,extra:{application_name:'personal-session-race'}});await db.initialize();
- const sessions=new ClinicianSessionService(db),personal=new OidcPersonalService(db,sessions,new AgencyDirectoryService(db),new RegionalIdentityService(db,sessions));
+ const sessions=new ClinicianSessionService(db),personal=new OidcPersonalService(db,sessions,new AgencyDirectoryService(db),new ExternalIdentityService(db,sessions));
  browser=await chromium.launch();const context=await browser.newContext({ignoreHTTPSErrors:true}),page=await context.newPage();await context.addInitScript(()=>{Object.defineProperty(navigator.storage,'persisted',{value:async()=>true});Object.defineProperty(navigator.storage,'persist',{value:async()=>true});});page.setDefaultTimeout(15000);
  const token=async()=> (await context.cookies()).find(cookie=>cookie.name==='open_triage_session')?.value;
  const current=()=>page.evaluate(async()=>{const response=await fetch('/api/sessions/current');return {status:response.status,body:await response.json()};});
  const stored=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null'));
- const start=async subject=>{await control({token:{sub:subject},claimsMode:'fresh'});await page.goto(origin);await page.getByRole('button',{name:'Sign in with regional identity',exact:true}).click();};
+ const start=async subject=>{await control({token:{sub:subject},claimsMode:'fresh'});await page.goto(origin);await page.getByRole('button',{name:'Sign in with your organization',exact:true}).click();};
  const finish=async()=>{await page.getByRole('link',{name:'Continue fictional provider login'}).click();await page.waitForURL(url=>url.origin===origin);};
  const authenticate=async subject=>{await start(subject);await finish();await expect(page.locator('.session-identity')).toBeVisible();};
- const logout=async()=>{await page.getByRole('button',{name:'Log out',exact:true}).first().click();await expect(page.getByRole('button',{name:'Sign in with regional identity',exact:true})).toBeEnabled();assert.equal(await token(),undefined);};
+ const logout=async()=>{await page.getByRole('button',{name:'Log out',exact:true}).first().click();await expect(page.getByRole('button',{name:'Sign in with your organization',exact:true})).toBeEnabled();assert.equal(await token(),undefined);};
  await page.goto(origin);
  const noIntent=await page.evaluate(async()=> (await fetch('/api/sessions/oidc/login',{method:'POST',headers:{'content-type':'application/json'},body:'{"purpose":"login"}'})).status);assert.equal(noIntent,401);
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:['login']})),error=>error.getStatus?.()===400);
  const proofEnvironment=process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'})),error=>error.getStatus?.()===503);process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=proofEnvironment;
  for(let attempt=0;attempt<2;attempt++){
-  await start('fictional-denied');await finish();await expect(page.getByText(/Your regional identity request was denied/)).toBeVisible();
+  await start('fictional-denied');await finish();await expect(page.getByText(/Your external identity request was denied/)).toBeVisible();
   assert.equal((await current()).status,401);assert.equal(await token(),undefined);assert.equal(await stored(),null);
  }
  const [deniedRequest]=await db.query("select linked_user_id,denied_at,review_revision from app_identity.regional_identity_request where subject='fictional-denied'");
@@ -176,17 +176,17 @@ try{
  await logout();
 
  // All approved-method/freshness negatives travel through real code exchange.
- for(const mode of ['cached','silent','method','future','outage']){await control({token:{sub:'fictional-alpha'},claimsMode:mode});await page.goto(origin);await page.getByRole('button',{name:'Sign in with regional identity'}).click();await finish();await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal((await current()).status,401);assert.equal(await token(),undefined);}
- await control({token:{sub:'fictional-alpha'},claimsMode:'fresh'});await page.goto(origin);await page.getByRole('button',{name:'Sign in with regional identity'}).click();
+ for(const mode of ['cached','silent','method','future','outage']){await control({token:{sub:'fictional-alpha'},claimsMode:mode});await page.goto(origin);await page.getByRole('button',{name:'Sign in with your organization'}).click();await finish();await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal((await current()).status,401);assert.equal(await token(),undefined);}
+ await control({token:{sub:'fictional-alpha'},claimsMode:'fresh'});await page.goto(origin);await page.getByRole('button',{name:'Sign in with your organization'}).click();
  await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();const state=new URL(page.url()).searchParams.get('state');const [sameSecond]=await db.query("select created_at from app_identity.oidc_personal_transaction where state_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(state)]);
  await control({token:{sub:'fictional-alpha',auth_time:Math.floor(new Date(sameSecond.created_at).getTime()/1000)}});await finish();assert.equal((await current()).status,401);
- await control({token:{sub:'fictional-alpha'},claimsMode:'fresh',beforeRevision:true,revision:1});await page.goto(origin);await page.getByRole('button',{name:'Sign in with regional identity'}).click();await finish();await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal(await token(),undefined);await control({beforeRevision:false,revision:1});
+ await control({token:{sub:'fictional-alpha'},claimsMode:'fresh',beforeRevision:true,revision:1});await page.goto(origin);await page.getByRole('button',{name:'Sign in with your organization'}).click();await finish();await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal(await token(),undefined);await control({beforeRevision:false,revision:1});
  // A confirmed handover settles encrypted writers before the start request
  // revokes authority, and a missing contract cannot retain the outgoing cookie.
  await authenticate('fictional-alpha');alphaToken=await token();
  delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;
  await page.getByRole('button',{name:'Switch user',exact:true}).click();
- await expect(page.getByRole('button',{name:'Sign in with regional identity',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Sign in with your organization',exact:true})).toBeEnabled();
  assert.equal(await token(),undefined);assert.equal((await current()).status,401);await assert.rejects(sessions.getAuthenticated(alphaToken));
  process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=proofEnvironment;
  await authenticate('fictional-alpha');alphaToken=await token();
@@ -230,7 +230,7 @@ try{
  const contextForRace={origin,organizationId:process.env.OIDC_CHILD,installationCredential:paired.credential};
  const tiny=new DataSource({type:'postgres',url:process.env.DATABASE_URL,extra:{max:1,connectionTimeoutMillis:1000}});await tiny.initialize();
  try{
-  const tinySessions=new ClinicianSessionService(tiny),tinyPersonal=new OidcPersonalService(tiny,tinySessions,new AgencyDirectoryService(tiny),new RegionalIdentityService(tiny,tinySessions));
+  const tinySessions=new ClinicianSessionService(tiny),tinyPersonal=new OidcPersonalService(tiny,tinySessions,new AgencyDirectoryService(tiny),new ExternalIdentityService(tiny,tinySessions));
   const reads=await Promise.all(Array.from({length:3},()=>agencyRequest.run(contextForRace,()=>tiny.transaction(manager=>tinySessions.getAuthenticated(raceToken,new Date(),false,manager)))));assert(reads.every(session=>session.user.id===process.env.OIDC_ALPHA));
   const starts=await Promise.all(Array.from({length:3},()=>agencyRequest.run(contextForRace,()=>tinyPersonal.begin({purpose:'reauthenticate'},raceToken,'race-csrf'))));
   const completions=await Promise.all(starts.map(async start=>{const authorize=new URL(start.authorizationUrl);authorize.searchParams.set('confirm','1');const response=await fetch(authorize,{redirect:'manual'});return agencyRequest.run(contextForRace,()=>tinyPersonal.callback(new URL(response.headers.get('location')),start.correlation));}));assert(completions.every(result=>result.created?.sessionToken===raceToken),'registered-device callbacks must use their held connection, even when the pool has one connection');
@@ -251,7 +251,7 @@ try{
  await blocker.commitTransaction();await blocker.release();
  assert.equal((await opening).error?.getStatus?.(),401);assert.equal((await reauth).created,undefined);await assert.rejects(sessions.getAuthenticated(raceToken));await control({disabled:false});
  // Revocation/expiry does not gain authority from current provider cookies.
- await control({expireSession:alphaToken});assert.equal((await current()).status,401);await page.goto(origin);await expect(page.getByRole('button',{name:'Sign in with regional identity'})).toBeVisible();
- await control({token:{sub:'fictional-alpha'},claimsMode:'cached'});await page.getByRole('button',{name:'Sign in with regional identity'}).click();await finish();assert.equal((await current()).status,401);
+ await control({expireSession:alphaToken});assert.equal((await current()).status,401);await page.goto(origin);await expect(page.getByRole('button',{name:'Sign in with your organization'})).toBeVisible();
+ await control({token:{sub:'fictional-alpha'},claimsMode:'cached'});await page.getByRole('button',{name:'Sign in with your organization'}).click();await finish();assert.equal((await current()).status,401);
  console.log(JSON.stringify({sharedSessions:true,sensitiveActionCompleted:true,outgoingAuthorityDenied:true,strictCookie:true,proofNegatives:true,revisionBinding:true,applicationLogout:true}));
 }finally{await browser?.close();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}await app.close();if(db?.isInitialized)await db.destroy();}

@@ -962,7 +962,7 @@ export interface AdminAssignableRoleSummary extends AdminRoleSummary {
   assignmentMutable: boolean;
 }
 
-export interface AdminRegionalIdentitySummary {
+export interface AdminExternalIdentitySummary {
   id: string;
   providerId: string;
   revision: number;
@@ -990,7 +990,7 @@ export interface AdminUserSummary {
   superadmin?: boolean;
   roles: AdminRoleSummary[];
   /** An unapproved directory entry; its id is a request id, never an application user id. */
-  regionalIdentity?: AdminRegionalIdentitySummary;
+  externalIdentity?: AdminExternalIdentitySummary;
 }
 
 export interface AdminUserPage {

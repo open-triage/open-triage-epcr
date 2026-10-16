@@ -52,7 +52,7 @@ integration('tested SSO activation preserves sessions, requires current draft an
   await owner.query('insert into app_identity.oidc_provider_state(group_id,draft_revision) values($1,1)',[group]);
   for(const [user,subject] of [[reviewer.userId,'activation-reviewer'],[medic.userId,'activation-medic'],[temporary.userId,'activation-temporary']])await owner.query('insert into app_identity.regional_identity_request(group_id,provider_id,first_revision,organization_id,issuer,subject,linked_user_id,linked_by,linked_at) values($1,$2,1,$3,$4,$5,$6,$7,now())',[group,provider,child,issuer,subject,user,reviewer.userId]);
   const sessions=new ClinicianSessionService(owner);const recovery=await sessions.create({username:'owner',password});
-  // Independent owner receives an ordinary agency context, never a regional identity.
+  // Independent owner receives an ordinary agency context, never a external identity.
   await sessions.switchAgency(recovery.sessionToken,child);
   let held;
   control=createServer((req,res)=>{let text='';req.on('data',p=>text+=p);req.on('end',async()=>{try{const cmd=JSON.parse(text||'{}'),answer={};

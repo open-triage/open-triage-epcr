@@ -7,7 +7,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {discoveryProvider} from './fixtures/oidc-discovery-provider.mjs';
 import { readMigrations,applyMigrations } from '../../../packages/database/scripts/migrate.mjs';
-import { RegionalIdentityService } from '../dist/authentication/regional-identity.service.js';
+import { ExternalIdentityService } from '../dist/authentication/external-identity.service.js';
 import { AccountService } from '../dist/identity/account.service.js';
 import { ClinicianSessionService } from '../dist/sessions/clinician-session.service.js';
 import { AgencyDirectoryService } from '../dist/sessions/agency-directory.service.js';
@@ -112,7 +112,7 @@ integration('OIDC persistence enforces authority, versions, masked secrets, safe
       const browser=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-test-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_PRIVATE_ORIGINS_JSON:JSON.stringify([fixture.origin]),OIDC_TEST_DATABASE_URL:url.toString(),OIDC_TEST_SESSION_TOKEN:regional.sessionToken,OIDC_TEST_CSRF:regional.session.csrfToken},timeout:30000}).catch(error=>{throw new Error(error.stderr||error.message);});
       assert.deepEqual(JSON.parse(browser.stdout),{browserRedirect:true,callbackCookie:true,strictSessionCookie:true});
       const [requestCount]=await manager.query('select count(*)::int count from app_identity.regional_identity_request where group_id=$1',[root]);assert.equal(requestCount.count,1,'Repeated real callbacks reuse one pending identity');
-      await new RegionalIdentityService(database,sessions).deny(regional.sessionToken,pendingIdentity.id,{expectedReviewRevision:1});
+      await new ExternalIdentityService(database,sessions).deny(regional.sessionToken,pendingIdentity.id,{expectedReviewRevision:1});
       assert.equal((await drafts.get(regional.sessionToken)).test.identityOutcome,'denied');
       fixture.browserLogin=false;
       await runTest();assert.equal((await drafts.get(regional.sessionToken)).test.result,'succeeded');

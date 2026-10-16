@@ -17,7 +17,7 @@ for(const source of ['local','oidc'] as const)test(`${source} logout settles its
  await context.route('**/__personal*',route=>route.fulfill({contentType:'text/html',body:`<html lang="en"><head><style>${css}</style></head><body><div id="root"></div><script src="/__fixture-script"></script></body></html>`}));
  await context.route('**/__fixture-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
  await context.route('**/api/installation',route=>route.fulfill({json:{settings:productionSettings,appearance:DEFAULT_AGENCY_APPEARANCE}}));
- await context.route('**/api/sessions/authentication-options',route=>route.fulfill({json:{regional:source==='oidc'}}));
+ await context.route('**/api/sessions/authentication-options',route=>route.fulfill({json:{organization:source==='oidc'}}));
  await context.route('**/api/calls/assigned',route=>route.fulfill({json:{assignedCalls:[],canceledAssignmentIds:[],refreshedAt:new Date().toISOString()}}));
  await context.route('**/api/reports/open',route=>route.fulfill({json:{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}}));
  await context.route('**/api/sessions/current',async route=>{
@@ -32,7 +32,7 @@ for(const source of ['local','oidc'] as const)test(`${source} logout settles its
  await context.route('https://idp.fixture.test/authorize',route=>route.fulfill({contentType:'text/html',body:'<p>Personal provider authentication</p>'}));
  await page.goto('/__personal');const other=await context.newPage();await other.goto('/__personal');await expect(page.getByText('Signed in as Outgoing clinician')).toBeVisible();await expect(other.getByText('Signed in as Outgoing clinician')).toBeVisible();
  await page.getByRole('button',{name:'Log out',exact:true}).click();await expect.poll(()=>started).toBe(true);
- const login=page.getByRole('button',{name:source==='oidc'?'Sign in with regional identity':'Sign in',exact:true});await expect(login).toBeDisabled();await expect(other.getByText('Signed in as Outgoing clinician')).toHaveCount(0);
+ const login=page.getByRole('button',{name:source==='oidc'?'Sign in with your organization':'Sign in',exact:true});await expect(login).toBeDisabled();await expect(other.getByText('Signed in as Outgoing clinician')).toHaveCount(0);
  expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();expect(loginCount).toBe(0);
  release();await expect(login).toBeEnabled();expect((await context.cookies()).some(cookie=>cookie.name==='open_triage_session')).toBe(false);
  if(source==='local'){await page.getByLabel('Username').fill('incoming');await page.getByLabel('Password',{exact:true}).fill('Fictional personal password 42!');await login.click();await expect(page.getByText('Signed in as Incoming clinician')).toBeVisible();expect((await context.cookies()).find(cookie=>cookie.name==='open_triage_session')?.value).toBe('incoming-cookie');}
@@ -43,10 +43,10 @@ for(const source of ['local','oidc'] as const)test(`${source} logout settles its
 test('a failed or stalled application logout locks local state and finishes within its bounded timeout',async({page,context})=>{
  const current=session('oidc');await page.addInitScript(value=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(value)),current);
  await page.route('**/__personal',route=>route.fulfill({contentType:'text/html',body:`<html><body><div id="root"></div><script src="/__fixture-script"></script></body></html>`}));await page.route('**/__fixture-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
- await page.route('**/api/installation',route=>route.fulfill({json:{settings:productionSettings,appearance:DEFAULT_AGENCY_APPEARANCE}}));await page.route('**/api/sessions/authentication-options',route=>route.fulfill({json:{regional:true}}));
+ await page.route('**/api/installation',route=>route.fulfill({json:{settings:productionSettings,appearance:DEFAULT_AGENCY_APPEARANCE}}));await page.route('**/api/sessions/authentication-options',route=>route.fulfill({json:{organization:true}}));
  await page.route('**/api/calls/assigned',route=>route.fulfill({json:{assignedCalls:[],canceledAssignmentIds:[]}}));await page.route('**/api/reports/open',route=>route.fulfill({json:{openCalls:[],completedReportIds:[]}}));
  await page.route('**/api/sessions/current',async route=>{if(route.request().method()==='DELETE')return;return route.fulfill({json:current});});
- await page.goto('/__personal');await page.getByRole('button',{name:'Log out'}).click();const login=page.getByRole('button',{name:'Sign in with regional identity'});await expect(login).toBeDisabled();await expect(login).toBeEnabled({timeout:7000});
+ await page.goto('/__personal');await page.getByRole('button',{name:'Log out'}).click();const login=page.getByRole('button',{name:'Sign in with your organization'});await expect(login).toBeDisabled();await expect(login).toBeEnabled({timeout:7000});
  expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toBeNull();await context.unrouteAll({behavior:'ignoreErrors'});
 });
 
@@ -59,7 +59,7 @@ for(const source of ['local','oidc'] as const)for(const transition of ['offline-
  await context.route('**/__deadline-script',route=>route.fulfill({contentType:'text/javascript',body:protectedScript}));
  await context.route('**/__deadline',route=>route.fulfill({contentType:'text/html',body:'<html><body><div id="root"></div><script src="/__deadline-script"></script></body></html>'}));
  await context.route('**/api/installation',route=>route.fulfill({json:{settings:productionSettings,appearance:DEFAULT_AGENCY_APPEARANCE}}));
- await context.route('**/api/sessions/authentication-options',route=>route.fulfill({json:{regional:source==='oidc'}}));
+ await context.route('**/api/sessions/authentication-options',route=>route.fulfill({json:{organization:source==='oidc'}}));
  await context.route('**/api/calls/assigned',route=>route.fulfill({json:{assignedCalls:[],canceledAssignmentIds:[]}}));await context.route('**/api/reports/open',route=>route.fulfill({json:{openCalls:[],completedReportIds:[]}}));
  await context.route('**/api/sessions/current',route=>outage?route.abort('failed'):denied?route.fulfill({status:401}):route.fulfill({json:ending}));
  await context.route('**/api/reports/deadline-report/**',route=>{const url=route.request().url();if(url.endsWith('/protected-key-envelope')){const body=route.request().postDataJSON();key=body.reportKeyBase64;handle=body.recoveryHandle;return route.fulfill({json:{schemaVersion:1,recoveryHandle:handle,recoveryDeadline:deadline,wrappingKeyVersion:1}});}if(url.endsWith('/protected-ciphertext-checkpoint'))return route.fulfill({json:route.request().postDataJSON()});return route.fulfill({json:{schemaVersion:1,recoveryDeadline:deadline}});});

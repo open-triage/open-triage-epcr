@@ -59,7 +59,7 @@ export function ProductionWorkflowPanel({language,csrfToken,canWrite}: {language
         <PersonalAuthenticationField language={language} value={password} onChange={setPassword} label={t("admin.personalPasswordToSave")}/>
         <button type="submit" disabled={!readiness.canEnable||(needsPassword&&!password)}>{t("admin.workflowEnable")}</button>
       </fieldset></form>}
-      <p>{t("admin.workflowRegionalPending")}</p>
+      <p>{t("admin.workflowDeploymentPending")}</p>
     </>}
   </section>;
 }

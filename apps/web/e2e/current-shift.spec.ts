@@ -57,7 +57,7 @@ for(const source of ['local','oidc'] as const)for(const language of ['en','sv'] 
  await expect(authenticate()).toHaveCount(0);await expect(page.getByText('SHIFT-017',{exact:true})).toHaveCount(0);
 });
 
-for(const invalidation of ['identity','unit','schedule','canceled','expired'] as const)test(`regional redirect intent is discarded after ${invalidation} changes`,async({context,page})=>{
+for(const invalidation of ['identity','unit','schedule','canceled','expired'] as const)test(`organization sign-in redirect intent is discarded after ${invalidation} changes`,async({context,page})=>{
  let attempts=0;
  const intent={assignmentId:call.id,userId:'shift-user',organizationId:'agency',createdAt:Date.now()-(invalidation==='expired'?600001:0)};
  await page.addInitScript(intent=>sessionStorage.setItem('open-triage.new-job-intent.v1',JSON.stringify(intent)),intent);

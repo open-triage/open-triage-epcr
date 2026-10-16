@@ -17,7 +17,7 @@ import {
   storeClinicianSession,
   sessionRequestToken
 } from "../app/clinician-session";
-import { beginPersonalClinicianSession,completePersonalClinicianSession,regionalLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
+import { beginPersonalClinicianSession,completePersonalClinicianSession,organizationLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
 import { NewJobConfirmationProvider } from "./new-job-confirmation";
 import { PersonalAuthenticationContext } from "./personal-authentication";
 import { LanguageSelector } from "./language-selector";
@@ -92,7 +92,7 @@ export function ClinicianSessionGate({ children }: {
   const [installationRecovery, setInstallationRecovery] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [regionalLogin,setRegionalLogin]=useState(false);
+  const [organizationLogin,setOrganizationLogin]=useState(false);
   const [transitionPending,setTransitionPending]=useState(false);
   useEffect(()=>{
     const update=()=>setTransitionPending(Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)));
@@ -251,10 +251,10 @@ export function ClinicianSessionGate({ children }: {
         // authentication and configuration have both completed successfully.
         const startupGeneration = authenticationInstallationGeneration();
         const personalResult=new URLSearchParams(window.location.search).get("authentication");
-        const [loaded, assessed,regional] = await Promise.all([
+        const [loaded, assessed,organizationAuthentication] = await Promise.all([
           loadInstallationConfiguration(),
           handoff&&'session' in handoff?handoff.session:personalResult==='completed'?completePersonalClinicianSession():serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
-          regionalLoginAvailable().catch(()=>false),
+          organizationLoginAvailable().catch(()=>false),
         ]);
         if (!current) return;
         let authenticated = assessed;
@@ -265,11 +265,11 @@ export function ClinicianSessionGate({ children }: {
           if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
         } catch { /* Language selection remains available without persistent storage. */ }
         setInstallation(loaded);
-        setRegionalLogin(regional);
+        setOrganizationLogin(organizationAuthentication);
         if(personalResult){
           window.history.replaceState(null,"",window.location.pathname);
           if(personalResult==='completed'&&authenticated)storeClinicianSession(window.localStorage,authenticated);
-          else setMessage(resolveMessage(loaded.settings.language,personalResult==='pending'?"login.regionalPending":personalResult==='denied'?"login.regionalDenied":"login.regionalFailed"));
+          else setMessage(resolveMessage(loaded.settings.language,personalResult==='pending'?"login.organizationPending":personalResult==='denied'?"login.organizationDenied":"login.organizationFailed"));
         }
         setSession(authenticated);
         setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));
@@ -383,15 +383,15 @@ export function ClinicianSessionGate({ children }: {
     if(purpose==='switch'&&!confirmDiscardChanges(unsavedEditors.current.size>0))return;
     setSubmitting(true);setMessage(null);
     try{await beginPersonalClinicianSession(purpose,authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
-    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.regionalFailed"));}
+    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
     finally{setSubmitting(false);}
   }
 
-  async function authenticateTemporaryRegional() {
+  async function authenticateTemporaryOrganization() {
     if(!authenticatedSession||submitting||lockingSession)return;
     setSubmitting(true);setMessage(null);
     try {await reauthenticateClinicianSession("",sessionRequestToken(authenticatedSession),true);}
-    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.regionalFailed"));}
+    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
     finally{setSubmitting(false);}
   }
 
@@ -504,8 +504,8 @@ export function ClinicianSessionGate({ children }: {
           </header>
           <div className="login-fields">
             {message && <p className="login-message" role="status">{message}</p>}
-            {regionalLogin && !installationRecovery?<><button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin('login')}>{t("login.regionalSignIn")}</button><button type="button" onClick={() => setInstallationRecovery(true)}>{t("login.installationRecovery")}</button></>:<>
-            {installationRecovery && <><p>{t("login.installationRecoveryHelp")}</p><button type="button" onClick={() => setInstallationRecovery(false)}>{t("login.regionalSignIn")}</button></>}
+            {organizationLogin && !installationRecovery?<><button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin('login')}>{t("login.organizationSignIn")}</button><button type="button" onClick={() => setInstallationRecovery(true)}>{t("login.installationRecovery")}</button></>:<>
+            {installationRecovery && <><p>{t("login.installationRecoveryHelp")}</p><button type="button" onClick={() => setInstallationRecovery(false)}>{t("login.organizationSignIn")}</button></>}
             <label>
               {t("login.username")}
               <input name="username" autoComplete="username" required />
@@ -522,12 +522,12 @@ export function ClinicianSessionGate({ children }: {
     );
   }
   if (authenticatedSession.passwordChangeRequired && authenticatedSession.nextAuthenticationSource==='oidc') {
-    return <main className="login-shell"><section className="login-card" aria-labelledby="temporary-regional-heading">
+    return <main className="login-shell"><section className="login-card" aria-labelledby="temporary-organization-heading">
       <p className="eyebrow">{t("login.accountSecurity")}</p>
-      <h1 id="temporary-regional-heading">{t("login.temporaryRegionalAuthentication")}</h1>
-      <p>{t("login.temporaryRegionalAuthenticationHelp")}</p>
+      <h1 id="temporary-organization-heading">{t("login.temporaryOrganizationAuthentication")}</h1>
+      <p>{t("login.temporaryOrganizationAuthenticationHelp")}</p>
       {message && <p className="login-message" role="status">{message}</p>}
-      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void authenticateTemporaryRegional()}>{t("login.regionalSignIn")}</button>
+      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void authenticateTemporaryOrganization()}>{t("login.organizationSignIn")}</button>
       <button type="button" disabled={submitting||lockingSession} onClick={requestLogout}>{t("navigation.logOut")}</button>
     </section></main>;
   }

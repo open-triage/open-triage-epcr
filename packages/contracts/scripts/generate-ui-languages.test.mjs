@@ -41,7 +41,7 @@ test("build discovery rejects malformed admin and capture keys before writing ma
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, "en.json"), JSON.stringify({
     "admin.authenticationMaximumSessionHours": "Hours", "admin.capability.settings:read": "Read settings",
-    "noteUi.capture.microphoneDenied": "Microphone denied", "login.regionalDenied": "Denied",
+    "noteUi.capture.microphoneDenied": "Microphone denied", "login.organizationDenied": "Denied",
   }));
   assert.deepEqual(await discoverUiLanguages(directory), ["en"]);
   const outputs = [path.join(directory, "contracts.ts"), path.join(directory, "web.ts")];

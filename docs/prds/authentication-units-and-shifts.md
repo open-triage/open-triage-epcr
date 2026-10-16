@@ -6,7 +6,7 @@ Regional staff need to use their existing personal identities in OpenTriage. Reg
 
 Shared Android devices will stay with operational units while clinicians change shifts. Windows workstations use staff members' own accounts. A device's unit and the person currently using it are separate facts: keeping the ambulance's device must not allow the incoming clinician to take new jobs under the outgoing clinician's identity. Existing reports and encrypted unsynchronized work must remain attributable and recoverable when authentication, pairing or a shift changes.
 
-The application already has local identities, roles, sessions, agency groups, dispatch-linked units and protected offline storage. Its current clinician-to-unit assignment and password-dependent session paths are insufficient for production device binding and regional SSO. Shift times vary by unit, so authentication changes also require unit administration and reusable shift schedules.
+The application already has local identities, roles, sessions, agency groups, dispatch-linked units and protected offline storage. Its current clinician-to-unit assignment and password-dependent session paths are insufficient for production device binding and organization SSO. Shift times vary by unit, so authentication changes also require unit administration and reusable shift schedules.
 
 # Solution
 
@@ -20,8 +20,8 @@ Shift handovers do not interrupt documentation already in progress. Existing ses
 
 # User Stories
 
-1. As a regional clinician, I want to sign in with my personal regional identity, so that my work is attributed to me without a separate ordinary OpenTriage password.
-2. As a clinician in a self-managed agency, I want to keep signing in with an OpenTriage username and password, so that my agency can operate without a regional identity provider.
+1. As a regional clinician, I want to sign in with my personal external identity, so that my work is attributed to me without a separate ordinary OpenTriage password.
+2. As a clinician in a self-managed agency, I want to keep signing in with an OpenTriage username and password, so that my agency can operate without a external identity provider.
 3. As a clinician, I want the same clinical workflow and permissions whichever login mode my agency uses, so that authentication changes do not change how I document care.
 4. As an agency administrator, I want authentication policy shared across my parent and child agencies, so that staff have one consistent login policy within the group.
 5. As an installation administrator, I want unrelated agency groups to choose their own login mode and provider, so that their identity arrangements remain independent.
@@ -36,8 +36,8 @@ Shift handovers do not interrupt documentation already in progress. Existing ses
 14. As an agency administrator, I want to replace or rotate credentials without revealing saved secrets, so that I can maintain the integration safely.
 15. As an agency administrator, I want configuration status and change history visible, so that I can see what is active and who changed it.
 16. As an agency administrator, I want sensitive authentication changes to require fresh authentication, so that an unattended administrative session cannot silently change the login policy.
-17. As an agency administrator, I want a newly authenticated but unknown regional identity to produce a pending access request, so that SSO success alone does not grant clinical access.
-18. As an agency administrator, I want to link an approved regional identity to an existing user, so that their roles, reports and audit history remain attached to the same person.
+17. As an agency administrator, I want a newly authenticated but unknown external identity to produce a pending access request, so that SSO success alone does not grant clinical access.
+18. As an agency administrator, I want to link an approved external identity to an existing user, so that their roles, reports and audit history remain attached to the same person.
 19. As an agency administrator, I want to create a new user and assign roles when approving a genuinely new identity, so that onboarding remains explicit.
 20. As a staff member, I want matching email addresses to require administrator review rather than automatic account merging, so that an unrelated identity cannot inherit my account.
 21. As an agency administrator, I want application roles to remain under application administration, so that regional profile attributes do not unexpectedly grant privileges.
@@ -119,7 +119,7 @@ The product owner confirmed these five modules and testing of all five. Each own
 - Bind each authentication transaction to its group, registered agency origin, intended action and allowed return destination. Validate state, nonce, issuer, audience, signatures, token validity and one-time use as appropriate to the protocol. Preserve existing CSRF and tenant protections through the cross-site callback rather than broadly weakening session-cookie policy.
 - Use discovery and the provider's advertised signing keys, including normal key rollover. Cache and refresh keys safely; reject an unverifiable token. Regional SAML certificate instructions explain the rotation requirement but do not create a SAML implementation commitment.
 - Distinguish normal login from explicit fresh-personal-authentication requests for shared-device login, user switching, shift checks, sensitive administration and protected recovery. A silent callback, token refresh or application reminder cannot advance the stored fresh-authentication time. Validate the regional mechanism and its evidence with AD FS/PAS; a requested prompt alone is not proof that the intended person authenticated.
-- OpenTriage logout ends the relevant application session and locks local clinical state. It does not invoke blanket regional logout. A subsequent shared-device login must not silently inherit the outgoing user's regional identity.
+- OpenTriage logout ends the relevant application session and locks local clinical state. It does not invoke blanket provider logout. A subsequent shared-device login must not silently inherit the outgoing user's external identity.
 - A same-user reauthentication must return the expected subject. A different subject follows the user-switch transition and cannot unlock the former user's pending work.
 
 The OIDC panel is the complete interface for normal integration configuration:
@@ -128,7 +128,7 @@ The OIDC panel is the complete interface for normal integration configuration:
 | --- | --- |
 | Editable provider configuration | Provider display name, issuer/discovery address, client ID, replacement credentials, scopes and supported profile-claim mappings. Required values and validation errors are visible. |
 | Secret handling | Show whether a credential is configured; accept replacement/rotation. Never return a saved secret to the browser or include it in history, exports or diagnostics. |
-| Registration details for IT | Show copyable exact callback and any applicable logout-registration URLs, supported flow, required claims and the addresses needed for the group's agency hosts. Showing a logout URL does not enable global regional logout. |
+| Registration details for IT | Show copyable exact callback and any applicable logout-registration URLs, supported flow, required claims and the addresses needed for the group's agency hosts. Showing a logout URL does not enable global provider logout. |
 | Discovered information | Show issuer, relevant endpoints, signing-key identifiers and discovery/validation health as read-only metadata. |
 | Lifecycle | Save a draft, check connectivity/discovery, perform a real test login, activate a tested configuration and inspect configuration history. Failed or incomplete drafts leave the active configuration intact. |
 | Effective policy | Show active login mode, group inheritance, maximum session duration, applicable local controls and incomplete/error states. |
@@ -144,7 +144,7 @@ DNS, TLS, installation secret-encryption infrastructure and deployment routing r
 - Keep one application-session lifecycle for local and OIDC users. Track authentication source and fresh-personal-authentication evidence separately from ordinary activity, refreshes and identity-reminder confirmations.
 - Maximum application-session duration is separately configurable from shift schedules. A fresh personal login starts a new session duration; a dialog acknowledgment, background refresh or activity does not. Preserve the existing limited-purpose recent-authentication gate for sensitive actions and recovery.
 - Reuse session-revocation administration and extend it to SSO accounts. Administrators must revoke all affected application sessions when immediate withdrawal across a user's devices is required. Disabling the local application user must continue to deny subsequent authorized server requests.
-- Disabling the regional identity is expected to prevent subsequent valid regional authentication, but does not itself revoke already-issued OpenTriage sessions. The actual AD FS/PAS treatment of cached regional sessions must be verified. A return after revocation must require the appropriate fresh personal authentication rather than silently minting another application session.
+- Disabling the external identity is expected to prevent subsequent valid organization authentication, but does not itself revoke already-issued OpenTriage sessions. The actual AD FS/PAS treatment of cached regional sessions must be verified. A return after revocation must require the appropriate fresh personal authentication rather than silently minting another application session.
 - In an SSO-only group, an IdP outage prevents login and new-job access that requires fresh authentication. Existing eligible work continues within ordinary session, authorization and offline limits. Do not introduce a silent password fallback or emergency bypass.
 - Expiry and revocation lock access independently of shift rules. Online requests consult current session and access state. A disconnected device cannot be promised immediate remote locking: already-unlocked offline work remains bounded by its existing local session deadline and is reassessed on reconnection.
 
@@ -241,7 +241,7 @@ Implementation validation must include the applicable focused checks and the rep
 - SAML implementation in this release, including a separate SAML certificate-management interface.
 - Direct BankID integration; any BankID flow is mediated by the regional AD FS/PAS configuration.
 - Automatic directory synchronization, SCIM, identity-provider group-to-role provisioning or automatic email-based account linking.
-- New MFA, passkey, password-composition/rotation policy, self-service forgotten-password delivery or emergency clinical authentication bypasses. Regional authentication methods remain the provider's responsibility.
+- New MFA, passkey, password-composition/rotation policy, self-service forgotten-password delivery or emergency clinical authentication bypasses. Organization authentication methods remain the provider's responsibility.
 - Production clinician-to-unit staffing rosters, payroll or workforce scheduling. Weekly schedules define authentication handovers, not attendance.
 - Physical vehicle/fleet management, hardware identity guarantees, attestation, MDM, remote erasure or a new native mobile application.
 - Per-unit form configuration; agency and child-agency forms remain the source of clinical configuration.
@@ -261,9 +261,9 @@ Retain the current [protected offline operating boundaries](../protected-offline
 
 Regional IT confirmed conventional OIDC/SAML support through AD FS and possible onward authentication through Clavister PAS. The product owner confirmed the regional AD FS version as **v6** on 13 October 2026. Development can proceed against a controlled OIDC provider while IT prepares registration. Production activation still needs the regional issuer/discovery address, client registration and credentials, allowed redirects for the relevant hosts, required scopes/claims and a test identity.
 
-Microsoft documents [AD FS OIDC flows and PKCE availability](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/overview/ad-fs-openid-connect-oauth-flows-scenarios), including PKCE support in AD FS 2019 and later. The regional version is confirmed as AD FS v6; verify the configured client-registration support. The [AD FS logout documentation](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/ad-fs-logout-openid-connect) and [SSO settings](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-single-sign-on-settings) also show why application logout, regional cookies and fresh authentication require separate acceptance checks. Follow [OIDC signing-key rotation](https://openid.net/specs/openid-connect-core-1_0.html#RotateSigKeys) through discovery rather than pinning a single signing certificate.
+Microsoft documents [AD FS OIDC flows and PKCE availability](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/overview/ad-fs-openid-connect-oauth-flows-scenarios), including PKCE support in AD FS 2019 and later. The regional version is confirmed as AD FS v6; verify the configured client-registration support. The [AD FS logout documentation](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/ad-fs-logout-openid-connect) and [SSO settings](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/operations/ad-fs-single-sign-on-settings) also show why application logout, provider cookies and fresh authentication require separate acceptance checks. Follow [OIDC signing-key rotation](https://openid.net/specs/openid-connect-core-1_0.html#RotateSigKeys) through discovery rather than pinning a single signing certificate.
 
-Specifically verify with IT that the chosen AD FS/PAS flow can require the intended person's fresh authentication on a shared Android installation; that returned evidence is sufficient to enforce freshness; and that a disabled regional user cannot regain application access through cached provider state. Verify Windows personal-session behavior separately. A successful generic OIDC test or a `prompt=login` request alone does not settle these deployment-specific questions.
+Specifically verify with IT that the chosen AD FS/PAS flow can require the intended person's fresh authentication on a shared Android installation; that returned evidence is sufficient to enforce freshness; and that a disabled SSO user cannot regain application access through cached provider state. Verify Windows personal-session behavior separately. A successful generic OIDC test or a `prompt=login` request alone does not settle these deployment-specific questions.
 
 ## Engineering decisions to resolve during implementation
 
@@ -273,6 +273,6 @@ The following details were not separately chosen by the product owner and must n
 - Define the exact prospective effective-time rule for edited schedules, unit schedule reassignment and transitions to or from an entirely blank schedule. Preserve the agreed current-shift behavior and show the effective result before saving.
 - Define migration handling for conflicting existing authentication values within a group and for existing units without a schedule or enrolled device. Make preparation and activation explicit without silently weakening existing controls.
 - Choose the maintained OIDC library, supported credential-authentication mechanism and protected credential storage in line with deployment capabilities and the regional registration. Determine callback correlation cookies narrowly enough to retain existing session/CSRF guarantees.
-- Confirm which returned claim or validated mechanism proves fresh personal authentication through AD FS/PAS, including user switching and account disablement. If the regional provider cannot supply the required behavior, treat that as an integration blocker to resolve with IT rather than treating silent SSO as fresh login.
+- Confirm which returned claim or validated mechanism proves fresh personal authentication through AD FS/PAS, including user switching and account disablement. If the identity provider cannot supply the required behavior, treat that as an integration blocker to resolve with IT rather than treating silent SSO as fresh login.
 
 No exact regional endpoint, secret, grace default, shift template or rollout date is invented here. The 07:00/15-minute example is an acceptance illustration, not a mandatory schedule.

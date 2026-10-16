@@ -1,7 +1,7 @@
 # Personal OIDC application sessions
 
 Personal login uses the existing OpenTriage session, immutable user identity,
-clinical workflows, Admin controls and protected browser storage. The regional
+clinical workflows, Admin controls and protected browser storage. The identity
 provider never supplies roles, and its access/ID tokens never enter the browser
 or durable session records. Ordinary users without local passwords use the same
 live agency, role, capability, origin, installation and revocation checks.
@@ -24,7 +24,7 @@ while identity-only diagnostics remain usable. Discovery metadata, `prompt=login
 ID-token `iat`, arbitrary `acr`/`amr`, or `auth_time` alone never approve a contract.
 Regional IT must first establish that the declared issuer/client methods and signed
 claims prove the intended person's fresh personal authentication, including cached
-regional SSO, shared-device handover and disabled accounts.
+organization SSO, shared-device handover and disabled accounts.
 
 The value is an array of explicitly reviewed contracts. A fictional example:
 
@@ -91,8 +91,8 @@ conventional OIDC does not need an invented custom claim.
 - Logout calls only OpenTriage's session endpoint. It locks all participating tabs
   before the server request and disables the next login until the cookie-clearing
   response finishes. A five-second request timeout keeps offline/stalled logout
-  bounded. No provider end-session/global regional logout is invoked. The next
-  regional login requires new approved personal proof despite regional cookies.
+  bounded. No provider end-session/global provider logout is invoked. The next
+  organization sign-in requires new approved personal proof despite provider cookies.
 
 The application cookie stays HttpOnly/Secure/SameSite=Strict. A distinct five-minute
 HttpOnly/Secure/Lax correlation cookie is restricted to the registered callback
@@ -113,7 +113,7 @@ It neither revokes existing local sessions/credentials nor changes their fixed e
 or already-satisfied shift evidence. Blank-schedule and eligible existing-report
 access retain their ordinary authority boundaries. An established temporary-password session remains limited to authentication: it
 cannot enter clinical or Admin work before completing its required personal SSO
-proof. Its recovery/current-session view displays the regional completion path,
+proof. Its recovery/current-session view displays the organization sign-in completion path,
 while ordinary authority reads still deny it. The resulting same-user OIDC
 replacement retains the temporary session's original fixed deadline.
 

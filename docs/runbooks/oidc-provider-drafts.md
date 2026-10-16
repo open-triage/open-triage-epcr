@@ -13,7 +13,7 @@ The maintained protocol library is [openid-client v6](https://github.com/panva/o
 pinned in the API package/lockfile. Use its server-side authorization-code flow,
 `ClientSecretPost` (`client_secret_post`), nonce and state validation, ID-token
 validation and S256 PKCE for code exchange. Discovery rejects a provider
-that does not advertise this client authentication mechanism. Regional IT must
+that does not advertise this client authentication mechanism. Your organization’s IT team must
 confirm that the AD FS v6 registration supports it and S256. Do not guess the
 issuer, client identifier, credentials, claims or host registrations. If another
 mechanism is required, implement and test it before activation. Microsoft documents
@@ -116,7 +116,7 @@ Keep historical keys while retained versions use them, add a new key/version for
 rotation, and replace the client credential through Authentication. Retiring old
 keys requires a separate controlled re-encryption/retention procedure.
 
-## Outbound discovery and regional private hosting
+## Outbound discovery and private identity-provider hosting
 
 All provider addresses must use HTTPS with valid TLS and no userinfo, fragments
 or query strings. Requests do not follow redirects. Every discovered endpoint is
@@ -146,7 +146,7 @@ that same agency. Reloading the OIDC draft shows its latest completed test,
 configuration revision, S256 capability and identity validation result. Saving
 another draft revision removes the previous result from the current draft.
 Failure/cancellation preserves the active policy and existing clinical access.
-This workflow records or reuses a pending regional identity request. It does not
+This workflow records or reuses a pending external identity request. It does not
 activate a provider, grant an application session or assert fresh personal
 authentication. Linking requires a separate authorized review.
 
@@ -209,7 +209,7 @@ this guidance in English/Swedish. Provider/library messages and identity/token
 contents never become diagnostics. Invalid state/correlation/replay callbacks
 receive an invalid-or-expired error without disclosing any stored transaction.
 
-## Review regional identity requests
+## Review external identity requests
 
 Open **Users** with both settings-read and user-read authority. Pending and denied
 requests appear alongside accounts in the group-scoped, paginated directory.
@@ -224,11 +224,11 @@ Installation owners, superadmins and other installation recovery accounts cannot
 be linked here. A link preserves the immutable application user ID, roles, report
 authorship and existing audit records. The audit appends request/actor/target IDs
 and revision without provider claims or tokens. A test still grants no ordinary
-application access after linking. Use **Create a regional user** to approve a new person with explicit roles, or
+application access after linking. Use **Create an SSO user** to approve a new person with explicit roles, or
 **Deny request** to record a durable refusal. Denied requests do not receive
 application sessions on subsequent sign-ins. Review revisions prevent stale or
 competing decisions from overwriting the latest review. See
-[regional identity review and approval](regional-identity-approval.md) for details.
+[external identity review and approval](external-identity-approval.md) for details.
 
 Identity keys contain owning group, immutable provider integration ID, exact
 case-sensitive issuer and exact subject. Concurrent callbacks reuse one request;

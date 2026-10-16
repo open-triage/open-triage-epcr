@@ -176,7 +176,7 @@ export class ClinicianSessionService {
       throw new UnauthorizedException("Registered application origin required");
     }
     // CSRF is recoverable only for signed-in OIDC browsers. It is encrypted at rest
-    // and bound to this exact token/group; regional tokens never enter the browser.
+    // and bound to this exact token/group; provider tokens never enter the browser.
     const csrf = row.authentication_source === 'oidc' && row.encrypted_csrf && row.oidc_group_id
       ? decryptCredential(row.encrypted_csrf,row.oidc_group_id,`csrf:${digest(sessionToken)}`) : undefined;
     const session = await this.publicSession({...row,must_change_password:row.authentication_source==='oidc'?false:row.must_change_password}, new Date(row.created_at), new Date(row.expires_at), csrf, manager);

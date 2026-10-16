@@ -16,7 +16,7 @@ import {ClinicianSessionService} from '../../dist/sessions/clinician-session.ser
 import {OidcPersonalService} from '../../dist/authentication/oidc-personal.service.js';
 import {AgencyDirectoryService} from '../../dist/sessions/agency-directory.service.js';
 import {OidcDraftService} from '../../dist/authentication/oidc-draft.service.js';
-import {RegionalIdentityService} from '../../dist/authentication/regional-identity.service.js';
+import {ExternalIdentityService} from '../../dist/authentication/external-identity.service.js';
 import {agencyRequest} from '../../dist/sessions/agency-context.js';
 import {decryptCredential} from '../../dist/authentication/oidc-credentials.js';
 const control=async cmd=>{const response=await fetch(process.env.ROTATION_CONTROL_URL,{method:'POST',body:JSON.stringify(cmd)});assert.equal(response.status,200,await response.clone().text());return response.json();};
@@ -29,7 +29,7 @@ try{
  proxy=createServer((req,res)=>{if(route(req,res))return;res.setHeader('content-type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body><div id="root" class="agency-settings"></div><script>${bundle.outputFiles[0].text}</script></body></html>`);});proxy.listen(0,'127.0.0.1');await once(proxy,'listening');
  const origin=`http://rotation.localhost:${proxy.address().port}`;process.env.WEB_ORIGIN=`http://localhost:${proxy.address().port}`;process.env.NODE_ENV='development';
  db=new DataSource({type:'postgres',url:process.env.DATABASE_URL,extra:{application_name:'rotation-race'}});await db.initialize();
- const sessions=new ClinicianSessionService(db),drafts=new OidcDraftService(db,sessions),personal=new OidcPersonalService(db,sessions,new AgencyDirectoryService(db),new RegionalIdentityService(db,sessions));
+ const sessions=new ClinicianSessionService(db),drafts=new OidcDraftService(db,sessions),personal=new OidcPersonalService(db,sessions,new AgencyDirectoryService(db),new ExternalIdentityService(db,sessions));
  const ownerToken=process.env.ROTATION_OWNER_TOKEN,password=process.env.ROTATION_PASSWORD,csrf=process.env.ROTATION_OWNER_CSRF;
  const inAgency=fn=>agencyRequest.run({origin},fn);
  const fresh=()=>inAgency(()=>sessions.reauthenticate(ownerToken,csrf,password));
@@ -53,7 +53,7 @@ try{
  const restored=await save({issuer:(await view()).active.issuer});assert.equal(restored.draft.revision,3);assert.equal((await version(3)).provider_id,baseline.provider_id);assert.deepEqual((await version(3)).encrypted_credential,baseline.encrypted_credential);assert.equal(restored.test,null);assert.equal(restored.identityImpact.integrationChanged,false);
  await assert.rejects(inAgency(()=>drafts.activate(ownerToken,{expectedRevision:3,testId:'a'.repeat(64)})),e=>e.getResponse?.().code==='admin.oidcActivationTestRequired');
  // Repair a persisted restoration made before this slice in another namespace.
- await control({legacyDraft:4});await page.reload();await expect(page.getByText(/Existing regional identity links stay/)).toBeVisible();await expect(page.getByRole('button',{name:'Save OIDC draft',exact:true})).toBeDisabled();await inspect();assert.equal((await diagnostic(4)).result,'succeeded');await page.getByRole('checkbox',{name:/I understand that the replacement/}).check();await authenticate();await page.getByRole('button',{name:'Prepare replacement draft',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Draft saved');const repaired=await view();assert.equal(repaired.draft.revision,5);assert.equal(repaired.test,null);await expect(page.getByRole('checkbox')).toHaveCount(0);await expect(page.getByText('No completed test login for this draft.')).toBeVisible();assert.equal((await version(5)).provider_id,baseline.provider_id);assert.deepEqual((await version(5)).encrypted_credential,baseline.encrypted_credential);assert.notEqual((await version(4)).provider_id,baseline.provider_id);
+ await control({legacyDraft:4});await page.reload();await expect(page.getByText(/Existing external identity links stay/)).toBeVisible();await expect(page.getByRole('button',{name:'Save OIDC draft',exact:true})).toBeDisabled();await inspect();assert.equal((await diagnostic(4)).result,'succeeded');await page.getByRole('checkbox',{name:/I understand that the replacement/}).check();await authenticate();await page.getByRole('button',{name:'Prepare replacement draft',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Draft saved');const repaired=await view();assert.equal(repaired.draft.revision,5);assert.equal(repaired.test,null);await expect(page.getByRole('checkbox')).toHaveCount(0);await expect(page.getByText('No completed test login for this draft.')).toBeVisible();assert.equal((await version(5)).provider_id,baseline.provider_id);assert.deepEqual((await version(5)).encrypted_credential,baseline.encrypted_credential);assert.notEqual((await version(4)).provider_id,baseline.provider_id);
  await control({resetAuthenticationWindow:true});
  await save({clientId:'rejected-new-registration',replacementSecret:'discarded-new-registration-secret'});
  const rotated='rotated-controlled-client-secret';const replacing=await save({clientId:(await view()).active.clientId,replacementSecret:rotated});assert.equal(replacing.draft.revision,7);assert.equal((await version(7)).provider_id,baseline.provider_id);assert.equal(decryptCredential((await version(7)).encrypted_credential,group,baseline.provider_id),rotated);assert.equal(process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON,contract);
@@ -92,7 +92,7 @@ try{
  // New integration remains separate: consent is tied to the exact immutable
  // draft and active revision, and an ordinary administrator cannot approve a
  // new installation trust contract by acknowledging identity consequences.
- const replacement=await save({clientId:'replacement-registration',replacementSecret:rotated});await page.reload();await expect(page.getByText(/Existing regional identity links stay/)).toBeVisible();await inspect();const tested=await diagnostic(replacement.draft.revision);assert.equal(tested.result,'succeeded');assert.equal(tested.identityOutcome,'pending');
+ const replacement=await save({clientId:'replacement-registration',replacementSecret:rotated});await page.reload();await expect(page.getByText(/Existing external identity links stay/)).toBeVisible();await inspect();const tested=await diagnostic(replacement.draft.revision);assert.equal(tested.result,'succeeded');assert.equal(tested.identityOutcome,'pending');
  const activation={expectedRevision:replacement.draft.revision,testId:tested.testId};
  await assert.rejects(inAgency(()=>drafts.activate(ownerToken,activation)),e=>e.getResponse?.().code==='admin.oidcIdentityAcknowledgmentRequired');
  await assert.rejects(inAgency(()=>drafts.activate(ownerToken,{...activation,identityChangeAcknowledgment:{activeRevision:1,draftRevision:replacement.draft.revision}})),e=>e.getResponse?.().code==='admin.oidcIdentityAcknowledgmentRequired');

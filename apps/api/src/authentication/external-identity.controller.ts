@@ -1,9 +1,9 @@
 import { Body,Controller,Get,Header,Headers,Param,Post,Query,Req } from "@nestjs/common";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
-import { RegionalIdentityService } from "./regional-identity.service.js";
+import { ExternalIdentityService } from "./external-identity.service.js";
 @Controller("admin/authentication/identities")
-export class RegionalIdentityController {
- constructor(private readonly identities:RegionalIdentityService){}
+export class ExternalIdentityController {
+ constructor(private readonly identities:ExternalIdentityService){}
  @Get() @Header("Cache-Control","no-store, private")
  list(@Query() query:Record<string,unknown>,@Req() request:{headers:{cookie?:string}},@Headers("authorization") authorization?:string){return this.identities.list(sessionToken(request,authorization),query);}
  @Post(":id/approve") @Header("Cache-Control","no-store, private")

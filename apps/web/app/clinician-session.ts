@@ -139,12 +139,12 @@ async function navigateToPersonalAuthentication(authorizationUrl: string,settle=
   window.location.assign(url.href);
   throw new PersonalAuthenticationRedirect("Personal authentication started");
 }
-export async function regionalLoginAvailable(): Promise<boolean> {
+export async function organizationLoginAvailable(): Promise<boolean> {
   const url=apiRequestUrl("/api/sessions/authentication-options");
   if(!url)return false;
   const response=await fetch(url,browserRequestInit({cache:"no-store"}));
   if(!response.ok)throw await platformRequestError(response);
-  return (await response.json() as {regional:boolean}).regional===true;
+  return (await response.json() as {organization:boolean}).organization===true;
 }
 export async function beginPersonalClinicianSession(purpose:"login"|"switch",csrfToken?:string):Promise<never>{
   const initialGeneration=authenticationInstallationGeneration(),url=apiRequestUrl("/api/sessions/oidc/login");

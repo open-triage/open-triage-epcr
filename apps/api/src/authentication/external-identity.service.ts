@@ -10,10 +10,10 @@ import { lockAssignedRoles } from "../admin/role-assignment-locks.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 
-export type ValidatedRegionalIdentity = { issuer: string; subject: string; displayName: string | null; email: string | null };
+export type ValidatedExternalIdentity = { issuer: string; subject: string; displayName: string | null; email: string | null };
 type RequestRow = { id:string;group_id:string;provider_id:string;first_revision:string;issuer:string;subject:string;display_name:string|null;email:string|null;created_at:Date;linked_user_id:string|null;linked_at:Date|null;review_revision?:string;denied_at?:Date|null };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const conflict = () => new ConflictException({code:"admin.regionalIdentityConflict"});
+const conflict = () => new ConflictException({code:"admin.externalIdentityConflict"});
 function view(row:RequestRow){return {id:row.id,providerId:row.provider_id,revision:Number(row.first_revision),reviewRevision:Number(row.review_revision??1),issuer:row.issuer,subject:row.subject,
   displayName:row.display_name,email:row.email,createdAt:row.created_at.toISOString(),status:row.linked_user_id?"linked":row.denied_at?"denied":"pending",linkedUserId:row.linked_user_id,linkedAt:row.linked_at?.toISOString()??null,deniedAt:row.denied_at?.toISOString()??null};}
 function assertReview(row:RequestRow,expected:unknown){
@@ -21,17 +21,17 @@ function assertReview(row:RequestRow,expected:unknown){
   if(!Number.isSafeInteger(expected)||Number(expected)<1||Number(expected)!==Number(row.review_revision??1))throw conflict();
 }
 /** The validated keys never pass through profile mapping, trimming or case folding. */
-export function regionalIdentity(claims:Record<string,unknown>,mappings:OidcDraft["mappings"]):ValidatedRegionalIdentity {
+export function externalIdentity(claims:Record<string,unknown>,mappings:OidcDraft["mappings"]):ValidatedExternalIdentity {
   const issuer=claims.iss,subject=claims.sub;
-  if(typeof issuer!=="string"||!issuer||Buffer.byteLength(issuer)>2048||typeof subject!=="string"||!subject||Buffer.byteLength(subject)>255||/[\u0000-\u001f\u007f]/.test(subject))throw new Error("Invalid regional identity");
+  if(typeof issuer!=="string"||!issuer||Buffer.byteLength(issuer)>2048||typeof subject!=="string"||!subject||Buffer.byteLength(subject)>255||/[\u0000-\u001f\u007f]/.test(subject))throw new Error("Invalid external identity");
   const hint=(key:string,limit:number)=>{const value=Object.hasOwn(claims,key)?claims[key]:null;return typeof value==="string"&&!/[\u0000-\u001f\u007f]/.test(value)&&value.length<=limit?value:null;};
   return {issuer,subject,displayName:hint(mappings.displayName,256),email:hint(mappings.email,320)};
 }
 @Injectable()
-export class RegionalIdentityService {
+export class ExternalIdentityService {
   constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService, private readonly roles:UserRoleAssignmentService=new UserRoleAssignmentService(database,sessions)){}
   /** Called only after code/signature validation and final transaction binding checks. */
-  async record(manager:EntityManager,scope:{groupId:string;providerId:string;revision:number;organizationId:string},identity:ValidatedRegionalIdentity){
+  async record(manager:EntityManager,scope:{groupId:string;providerId:string;revision:number;organizationId:string},identity:ValidatedExternalIdentity){
     const params=[scope.groupId,scope.providerId,scope.revision,scope.organizationId,identity.issuer,identity.subject,identity.displayName,identity.email];
     const rows=mutationRows<RequestRow>(await manager.query(`insert into app_identity.regional_identity_request
       (group_id,provider_id,first_revision,organization_id,issuer,subject,display_name,email)
@@ -43,7 +43,7 @@ export class RegionalIdentityService {
   }
   private async authority(token:string,write:boolean,manager:EntityManager=this.database.manager){
     const actor=await this.sessions.requireCapability(token,"settings:read",manager);
-    if(!actor.capabilities?.includes("users:read")||write&&(!actor.capabilities.includes("settings:write")||!actor.capabilities.includes("users:write")))throw new ForbiddenException({code:"admin.regionalIdentityForbidden"});
+    if(!actor.capabilities?.includes("users:read")||write&&(!actor.capabilities.includes("settings:write")||!actor.capabilities.includes("users:write")))throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
     if(write)await this.sessions.requireRecentReauthentication(token,manager);
     const [group]=await manager.query<Array<{id:string}>>("select app_identity.organization_group($1) id",[actor.organization.id]);
     return {actor,groupId:group!.id};
@@ -65,7 +65,7 @@ export class RegionalIdentityService {
     return {groupId,items:visible.map(row=>({...view(row),reviewProviders:providers.filter(provider=>provider.provider_id===row.provider_id&&provider.issuer===row.issuer).map(provider=>({source:provider.source,revision:Number(provider.revision)}))})),nextCursor:rows.length>limit?visible.at(-1)!.id:null};
   }
   async approve(token:string,requestId:string,input:unknown){
-    if(!uuid.test(requestId)||!input||typeof input!=="object"||Array.isArray(input))throw new BadRequestException("New regional user details are required");
+    if(!uuid.test(requestId)||!input||typeof input!=="object"||Array.isArray(input))throw new BadRequestException("New SSO user details are required");
     const command=input as Record<string,unknown>;
     if(Object.keys(command).some(key=>!["displayName","roleIds","note","providerSource","expectedProviderRevision","expectedReviewRevision"].includes(key))||
       typeof command.providerSource!=="string"||!["draft","active"].includes(command.providerSource)||command.note!==undefined&&typeof command.note!=="string"||!Number.isSafeInteger(command.expectedProviderRevision)||Number(command.expectedProviderRevision)<1)
@@ -78,7 +78,7 @@ export class RegionalIdentityService {
       await manager.query("select user_id from app_identity.installation_owner for update");
       const {actor,groupId}=await this.authority(token,true,manager);
       const [request]=await manager.query<RequestRow[]>("select * from app_identity.regional_identity_request where id=$1 and group_id=$2 for update",[requestId,groupId]);
-      if(!request)throw new NotFoundException({code:"admin.regionalIdentityMissing"});
+      if(!request)throw new NotFoundException({code:"admin.externalIdentityMissing"});
       if(request.linked_user_id)throw conflict();
       assertReview(request,command.expectedReviewRevision);
       // A draft test is evidence for its immutable provider keys, never active login evidence.
@@ -93,7 +93,7 @@ export class RegionalIdentityService {
       await manager.query("insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,$3)",[userId,groupId,profile.displayName]);
       await this.roles.replaceInTransaction(manager,token,userId,assignments);
       const final=await this.authority(token,true,manager);
-      if(final.groupId!==groupId||final.actor.user.id!==actor.user.id||final.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.regionalIdentityForbidden"});
+      if(final.groupId!==groupId||final.actor.user.id!==actor.user.id||final.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
       const [linked]=mutationRows<RequestRow>(await manager.query(`update app_identity.regional_identity_request set linked_user_id=$2,linked_by=$3,linked_at=now(),denied_at=null,denied_by=null,denial_note=null,review_revision=review_revision+1 where id=$1 and linked_user_id is null returning *`,[requestId,userId,actor.user.id]));
       if(!linked)throw conflict();
       await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,target_user_id,note,details)
@@ -111,7 +111,7 @@ export class RegionalIdentityService {
       await manager.query("select user_id from app_identity.installation_owner for update");
       const {actor,groupId}=await this.authority(token,true,manager);
       const [request]=await manager.query<RequestRow[]>("select * from app_identity.regional_identity_request where id=$1 and group_id=$2 for update",[requestId,groupId]);
-      if(!request)throw new NotFoundException({code:"admin.regionalIdentityMissing"});
+      if(!request)throw new NotFoundException({code:"admin.externalIdentityMissing"});
       if(request.linked_user_id){if(request.linked_user_id===command.userId)return view(request);throw conflict();}
       assertReview(request,command.expectedReviewRevision);
       const [current]=await manager.query<Array<{revision:string;provider_id:string;issuer:string}>>(`select v.revision,v.provider_id,v.configuration->>'issuer' issuer from app_identity.oidc_provider_state s join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=case when $2='active' then s.active_revision else s.draft_revision end where s.group_id=$1 for update of s`,[groupId,command.providerSource]);
@@ -120,20 +120,20 @@ export class RegionalIdentityService {
         where u.id=$1 and u.active and u.account_scope='agency' and app_identity.organization_group(u.organization_id)=$2
         and not exists(select 1 from app_identity.installation_owner where user_id=u.id)
         and not exists(select 1 from app_identity.installation_superadmin where user_id=u.id) for update of u`,[command.userId,groupId]);
-      if(!target)throw new ForbiddenException({code:"admin.regionalIdentityTarget"});
+      if(!target)throw new ForbiddenException({code:"admin.externalIdentityTarget"});
       // Role authoring updates the role row; assignment/lifecycle changes share
       // the owner and user locks. Hold assigned roles through the final checks.
       await manager.query(`select r.id from app_identity.user_role_assignment a
         join app_identity.role r on r.id=a.role_id and r.organization_id=a.organization_id
         where a.user_id=any($1::uuid[]) and a.ended_at is null order by r.organization_id,r.id for share of r`,[[target.id,actor.user.id]]);
       const currentAuthority=await this.authority(token,true,manager);
-      if(currentAuthority.groupId!==groupId||currentAuthority.actor.user.id!==actor.user.id||currentAuthority.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.regionalIdentityForbidden"});
+      if(currentAuthority.groupId!==groupId||currentAuthority.actor.user.id!==actor.user.id||currentAuthority.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
       const stronger=await manager.query(`select 1 from app_identity.user_role_assignment a
         join app_identity.role r on r.id=a.role_id and r.organization_id=a.organization_id and r.active and r.assignable
         join app_identity.role_version_capability c on c.role_version_id=r.current_version_id
         join app_identity.capability d on d.key=c.capability_key and d.administrative
         where a.user_id=$1 and a.ended_at is null and not(c.capability_key=any($2::text[])) limit 1`,[target.id,currentAuthority.actor.capabilities??[]]);
-      if(stronger.length)throw new ForbiddenException({code:"admin.regionalIdentityTarget"});
+      if(stronger.length)throw new ForbiddenException({code:"admin.externalIdentityTarget"});
       const [linked]=mutationRows<RequestRow>(await manager.query(`update app_identity.regional_identity_request set linked_user_id=$2,linked_by=$3,linked_at=now(),denied_at=null,denied_by=null,denial_note=null,review_revision=review_revision+1 where id=$1 and linked_user_id is null returning *`,[requestId,target.id,actor.user.id]));
       if(!linked)throw conflict();
       await manager.query(`insert into app_identity.authentication_event(organization_id,actor_id,action,result,target_user_id,details)
@@ -143,22 +143,22 @@ export class RegionalIdentityService {
   }
 
   async deny(token:string,requestId:string,input:unknown){
-    if(!uuid.test(requestId)||!input||typeof input!=="object"||Array.isArray(input))throw new BadRequestException({code:"admin.regionalIdentityInvalidReview"});
+    if(!uuid.test(requestId)||!input||typeof input!=="object"||Array.isArray(input))throw new BadRequestException({code:"admin.externalIdentityInvalidReview"});
     const command=input as Record<string,unknown>;
     if(Object.keys(command).some(key=>!["expectedReviewRevision","note"].includes(key))||!Number.isSafeInteger(command.expectedReviewRevision)||Number(command.expectedReviewRevision)<1||
-      command.note!==undefined&&(typeof command.note!=="string"||command.note.length>1000))throw new BadRequestException({code:"admin.regionalIdentityInvalidReview"});
+      command.note!==undefined&&(typeof command.note!=="string"||command.note.length>1000))throw new BadRequestException({code:"admin.externalIdentityInvalidReview"});
     return this.database.transaction(async manager=>{
       await this.authority(token,true,manager);
       await manager.query("select user_id from app_identity.installation_owner for update");
       const {actor,groupId}=await this.authority(token,true,manager);
       const [request]=await manager.query<RequestRow[]>("select * from app_identity.regional_identity_request where id=$1 and group_id=$2 for update",[requestId,groupId]);
-      if(!request)throw new NotFoundException({code:"admin.regionalIdentityMissing"});
+      if(!request)throw new NotFoundException({code:"admin.externalIdentityMissing"});
       if(request.linked_user_id)throw conflict();
       assertReview(request,command.expectedReviewRevision);
       if(request.denied_at)return view(request);
       await lockAssignedRoles(manager,[actor.user.id]);
       const current=await this.authority(token,true,manager);
-      if(current.groupId!==groupId||current.actor.user.id!==actor.user.id||current.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.regionalIdentityForbidden"});
+      if(current.groupId!==groupId||current.actor.user.id!==actor.user.id||current.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
       const [denied]=mutationRows<RequestRow>(await manager.query(`update app_identity.regional_identity_request
         set denied_at=clock_timestamp(),denied_by=$2,denial_note=$3,review_revision=review_revision+1
         where id=$1 and linked_user_id is null returning *`,[requestId,actor.user.id,command.note??null]));

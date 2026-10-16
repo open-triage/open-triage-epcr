@@ -8,7 +8,7 @@ import {readMigrations,applyMigrations} from '../../../packages/database/scripts
 import {AccountService} from '../dist/identity/account.service.js';
 import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
 import {AuthenticationPolicyService} from '../dist/authentication/authentication-policy.service.js';
-import {RegionalIdentityService} from '../dist/authentication/regional-identity.service.js';
+import {ExternalIdentityService} from '../dist/authentication/external-identity.service.js';
 import {UserRoleReadService} from '../dist/admin/user-role-read.service.js';
 import {UserRoleAssignmentService} from '../dist/admin/user-role-assignment.service.js';
 import {UserLifecycleService} from '../dist/admin/user-lifecycle.service.js';
@@ -34,7 +34,7 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   const actor=await accounts.provision({organizationId:root,username:'admin',displayName:'Reviewer',role:'administrator',temporaryPassword:password});
   const foreignActor=await accounts.provision({organizationId:foreign,username:'foreign',displayName:'Foreign reviewer',role:'administrator',temporaryPassword:password});
   await ownerDb.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null');
-  const sessions=new ClinicianSessionService(db),identities=new RegionalIdentityService(db,sessions),reads=new UserRoleReadService(db,sessions),roles=new UserRoleAssignmentService(db,sessions),lifecycle=new UserLifecycleService(db,sessions),security=new SessionAdministrationService(db,sessions);
+  const sessions=new ClinicianSessionService(db),identities=new ExternalIdentityService(db,sessions),reads=new UserRoleReadService(db,sessions),roles=new UserRoleAssignmentService(db,sessions),lifecycle=new UserLifecycleService(db,sessions),security=new SessionAdministrationService(db,sessions);
   const signed=await sessions.create({username:'admin',password}),foreignSession=await sessions.create({username:'foreign',password});
   await sessions.switchAgency(signed.sessionToken,child);
   await sessions.reauthenticate(signed.sessionToken,signed.session.csrfToken,password);
@@ -49,9 +49,9 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   const reviewRequest=await record('Literal%_ExactSubject');
   const pendingRows=await reads.users(token,{state:'pending',search:'literal%_',limit:'1'});
   assert.equal(pendingRows.items.length,1);assert.equal(pendingRows.items[0].id,reviewRequest.requestId);
-  assert.equal(pendingRows.items[0].regionalIdentity.reviewRevision,1);assert.equal(pendingRows.items[0].active,false);
+  assert.equal(pendingRows.items[0].externalIdentity.reviewRevision,1);assert.equal(pendingRows.items[0].active,false);
   assert.equal((await reads.users(foreignSession.sessionToken,{state:'all',search:'Literal%_'})).items.length,0);
-  assert.equal((await reads.users(token,{state:'all',roleId:clinician})).items.some(row=>row.regionalIdentity),false);
+  assert.equal((await reads.users(token,{state:'all',roleId:clinician})).items.some(row=>row.externalIdentity),false);
   assert.equal((await reads.users(token,{state:'active',search:'Literal%_'})).items.length,0);
   for(const bad of [{},{expectedReviewRevision:0},{expectedReviewRevision:1,note:'x'.repeat(1001)},{expectedReviewRevision:1,userId:actor.userId}])
    await assert.rejects(identities.deny(token,reviewRequest.requestId,bad),error=>error.getStatus?.()===400);
@@ -64,14 +64,14 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   assert.equal((await record('Literal%_ExactSubject')).status,'denied','repeat validated sign-in cannot undo a denial');
   assert.equal((await ownerDb.query('select count(*)::int count from app_identity.app_user'))[0].count,beforeDenial);
   assert.equal((await reads.users(token,{state:'pending',search:'Literal%_'})).items.length,0);
-  assert.equal((await reads.users(token,{state:'denied',search:'Literal%_'})).items[0].regionalIdentity.status,'denied');
+  assert.equal((await reads.users(token,{state:'denied',search:'Literal%_'})).items[0].externalIdentity.status,'denied');
   for(const input of [command,{...command,expectedReviewRevision:1}])await assert.rejects(identities.approve(token,reviewRequest.requestId,input),error=>error.getStatus?.()===409);
   await assert.rejects(identities.deny(token,reviewRequest.requestId,{expectedReviewRevision:1}),error=>error.getStatus?.()===409);
   const reconsidered=await identities.approve(token,reviewRequest.requestId,{...command,expectedReviewRevision:2,displayName:'Reconsidered clinician'});
   assert.equal(reconsidered.status,'linked');assert.equal(reconsidered.reviewRevision,3);assert.equal(reconsidered.deniedAt,null);
   await assert.rejects(identities.deny(token,reviewRequest.requestId,{expectedReviewRevision:3}),error=>error.getStatus?.()===409);
   const reconsideredRows=(await reads.users(token,{state:'all',search:'reconsidered'})).items;
-  assert.equal(reconsideredRows.length,1);assert.equal(reconsideredRows[0].id,reconsidered.linkedUserId);assert.equal(reconsideredRows[0].regionalIdentity,undefined);
+  assert.equal(reconsideredRows.length,1);assert.equal(reconsideredRows[0].id,reconsidered.linkedUserId);assert.equal(reconsideredRows[0].externalIdentity,undefined);
   const [denialAudit]=await ownerDb.query("select actor_id,note from app_identity.authentication_event where details->>'operation'='denied' and details->>'requestId'=$1",[reviewRequest.requestId]);
   assert.equal(denialAudit.actor_id,actor.userId);assert.equal(denialAudit.note,'Fictional review decision');
   // Shared audit action names do not make identity decisions policy revisions.
@@ -92,7 +92,7 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   await ownerDb.query("insert into app_identity.regional_identity_request(id,group_id,provider_id,first_revision,organization_id,issuer,subject,display_name) values($1,$2,$3,1,$4,$5,'Pagination collision','Pagination collision')",[collision,root,provider,child,issuer]);
   const firstMixed=await reads.users(token,{state:'all',search:'Pagination collision',limit:'1'});assert.equal(firstMixed.items.length,1);assert(firstMixed.nextCursor);
   const secondMixed=await reads.users(token,{state:'all',search:'Pagination collision',limit:'1',cursor:firstMixed.nextCursor});assert.equal(secondMixed.items.length,1);assert.equal(secondMixed.nextCursor,null);
-  assert.equal(!!firstMixed.items[0].regionalIdentity,!secondMixed.items[0].regionalIdentity);
+  assert.equal(!!firstMixed.items[0].externalIdentity,!secondMixed.items[0].externalIdentity);
   // Users-read alone cannot expose regional issuer, subject or profile hints.
   const usersOnly=new UserRoleReadService(db,{requireCapability:async()=>({organization:{id:child},user:{id:actor.userId},capabilities:['users:read']})});
   assert.equal((await usersOnly.users('fixture',{state:'all',search:'Pagination collision'})).items.length,1);
@@ -119,7 +119,7 @@ integration('runtime regional approval is atomic, source-bound, password-free an
   assert.equal((await ownerDb.query('select count(*)::int count from app_identity.app_session where user_id=$1',[noRoles.linkedUserId]))[0].count,0);
   const local=await new UserProvisioningService(db,sessions).provision(token,{username:'local.child',displayName:'Local child clinician',temporaryPassword:password,roleIds:[clinician]});
   await ownerDb.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[local.userId]);
-  for(const [id,username,search] of [[userId,null,'regional'],[local.userId,'local.child','local.child']]){
+  for(const [id,username,search] of [[userId,null,'external'],[local.userId,'local.child','local.child']]){
    const page=await reads.users(token,{search,roleId:clinician,state:'all'});assert.equal(page.items.length,1);assert.equal(page.items[0].id,id);assert.equal(page.items[0].username,username);assert.deepEqual(page.items[0].roles.map(role=>role.id),[clinician]);
    assert.equal((await reads.users(foreignSession.sessionToken,{search})).items.length,0);
    const replaced=await roles.replace(token,id,{expectedRevision:page.items[0].revision,roleIds:[]});assert.equal(replaced.username,username);

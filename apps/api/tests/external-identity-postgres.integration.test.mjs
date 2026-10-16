@@ -7,7 +7,7 @@ import {DataSource} from 'typeorm';
 import {readMigrations,applyMigrations} from '../../../packages/database/scripts/migrate.mjs';
 import {AccountService} from '../dist/identity/account.service.js';
 import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
-import {RegionalIdentityService} from '../dist/authentication/regional-identity.service.js';
+import {ExternalIdentityService} from '../dist/authentication/external-identity.service.js';
 const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
 integration('regional approval uses real runtime TypeORM, enforces identity scopes and races, and preserves existing user history',async()=>{
@@ -27,7 +27,7 @@ integration('regional approval uses real runtime TypeORM, enforces identity scop
   const sibling=await accounts.provision({organizationId:root,username:'sibling',displayName:'Second medic',role:'clinician',temporaryPassword:password});
   const other=await accounts.provision({organizationId:foreign,username:'foreign',displayName:'Foreign admin',role:'administrator',temporaryPassword:password});
   await ownerDb.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null');
-  const sessions=new ClinicianSessionService(db),service=new RegionalIdentityService(db,sessions),signed=await sessions.create({username:'admin',password}),foreignSession=await sessions.create({username:'foreign',password}),clinical=await sessions.create({username:'medic',password});
+  const sessions=new ClinicianSessionService(db),service=new ExternalIdentityService(db,sessions),signed=await sessions.create({username:'admin',password}),foreignSession=await sessions.create({username:'foreign',password}),clinical=await sessions.create({username:'medic',password});
   const provider=randomUUID(),issuer='https://provider.example/Issuer';
   const version=async(group,providerId,revision,iss=issuer)=>{await ownerDb.query('insert into app_identity.oidc_provider_version(group_id,revision,provider_id,configuration,created_by) values($1,$2,$3,$4::jsonb,$5)',[group,revision,providerId,JSON.stringify({issuer:iss}),actor.userId]);await ownerDb.query('insert into app_identity.oidc_provider_state(group_id,draft_revision) values($1,$2) on conflict(group_id) do update set draft_revision=$2',[group,revision]);};
   await version(root,provider,1);await version(foreign,provider,1);

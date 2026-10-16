@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AdminAssignableRoleSummary, AdminCapabilityDefinition, AdminRole, AdminRoleList, AdminRoleSummary, AdminRoleSummaryList, AdminUserPage, AdminRegionalIdentitySummary
+  AdminAssignableRoleSummary, AdminCapabilityDefinition, AdminRole, AdminRoleList, AdminRoleSummary, AdminRoleSummaryList, AdminUserPage, AdminExternalIdentitySummary
 } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -18,14 +18,14 @@ type UserCursor = {
   state: UserState;
   search: string;
   roleId: string | null;
-  kind?: "user" | "regional";
+  kind?: "user" | "external";
 };
 type UserRow = {
   id: string; display_name: string; username: string | null; active: boolean; revision: string | number;
   owner: boolean; superadmin: boolean;
   roles: AdminRoleSummary[] | string | null;
-  kind?: "user" | "regional";
-  regional_identity?: AdminRegionalIdentitySummary | null;
+  kind?: "user" | "external";
+  regional_identity?: AdminExternalIdentitySummary | null;
 };
 type RoleRow = {
   id: string; display_name: string; description: string | null; active: boolean; protected: boolean;
@@ -66,7 +66,7 @@ function decodeCursor(value: string | undefined, expected: Omit<UserCursor, "act
   try {
     const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<UserCursor>;
     if (typeof parsed.active !== "boolean" || typeof parsed.displayName !== "string" || !UUID.test(parsed.id ?? "") ||
-        parsed.kind !== undefined && !["user", "regional"].includes(parsed.kind) ||
+        parsed.kind !== undefined && !["user", "external"].includes(parsed.kind) ||
         parsed.state !== expected.state || parsed.search !== expected.search || parsed.roleId !== expected.roleId) throw new Error();
     return parsed as UserCursor;
   } catch {
@@ -116,7 +116,7 @@ export class UserRoleReadService {
       where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1)
       union all
       select r.id, normalize(coalesce(r.display_name,r.subject),NFC), null, false, r.review_revision,
-        false,false,'[]'::jsonb,'regional',jsonb_build_object(
+        false,false,'[]'::jsonb,'external',jsonb_build_object(
           'id',r.id,'providerId',r.provider_id,'revision',r.first_revision,'reviewRevision',r.review_revision,
           'issuer',r.issuer,'subject',r.subject,'displayName',r.display_name,'email',r.email,'createdAt',r.created_at,
           'status',case when r.denied_at is null then 'pending' else 'denied' end,
@@ -131,7 +131,7 @@ export class UserRoleReadService {
       where $10::boolean and r.group_id=app_identity.organization_group($1) and r.linked_user_id is null)
       select u.* from directory u
       where ($2 = 'all' or (u.kind='user' and $2 in ('active','disabled') and u.active=($2='active'))
-        or (u.kind='regional' and u.regional_identity->>'status'=$2))
+        or (u.kind='external' and u.regional_identity->>'status'=$2))
         and ($3 = '' or lower(u.display_name) like $4 escape '\\' or lower(u.username) like $4 escape '\\'
           or lower(u.regional_identity->>'email') like $4 escape '\\' or lower(u.regional_identity->>'subject') like $4 escape '\\')
         and ($5::uuid is null or (u.kind='user' and exists (
@@ -151,7 +151,7 @@ export class UserRoleReadService {
     return {
       items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,
         active: row.active, revision: Number(row.revision), owner: row.owner, superadmin: row.superadmin,
-        roles: parsedJsonArray(row.roles),...(row.regional_identity?{regionalIdentity:row.regional_identity}:{}) })),
+        roles: parsedJsonArray(row.roles),...(row.regional_identity?{externalIdentity:row.regional_identity}:{}) })),
       pageSize,
       nextCursor: rows.length > pageSize && last ? encodeCursor({ active: last.active,
         displayName: last.display_name.normalize("NFC").toLocaleLowerCase("en-US"), id: last.id,

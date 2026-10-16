@@ -8,9 +8,9 @@ import { OidcDraftService } from "./oidc-draft.service.js";
 import { OidcDraftController } from "./oidc-draft.controller.js";
 import { OidcTestController } from "./oidc-test.controller.js";
 import { OidcTestService } from "./oidc-test.service.js";
-import { RegionalIdentityService } from "./regional-identity.service.js";
-import { RegionalIdentityController } from "./regional-identity.controller.js";
+import { ExternalIdentityService } from "./external-identity.service.js";
+import { ExternalIdentityController } from "./external-identity.controller.js";
 import { OidcPersonalService } from "./oidc-personal.service.js";
 import { OidcPersonalController } from "./oidc-personal.controller.js";
-@Module({ imports: [SessionsModule], controllers: [AuthenticationPolicyController, OidcDraftController, OidcTestController, RegionalIdentityController,OidcPersonalController], providers: [ProductionWorkflowService, UserRoleAssignmentService, AuthenticationPolicyService, OidcDraftService, OidcTestService, RegionalIdentityService,OidcPersonalService] })
+@Module({ imports: [SessionsModule], controllers: [AuthenticationPolicyController, OidcDraftController, OidcTestController, ExternalIdentityController,OidcPersonalController], providers: [ProductionWorkflowService, UserRoleAssignmentService, AuthenticationPolicyService, OidcDraftService, OidcTestService, ExternalIdentityService,OidcPersonalService] })
 export class AuthenticationModule {}

@@ -25,7 +25,7 @@ Every new-job attempt inside any incoming grace window shows the server's curren
 clinician name and enrolled unit. Continue confirms only that attempt; Switch user
 uses the shared personal-authentication/storage transition in the effective next
 login mode. Local Switch ends the outgoing session before enabling the next login;
-regional Switch starts the protected provider transaction. Cancel retires the
+SSO Switch starts the protected provider transaction. Cancel retires the
 attempt. English/Swedish controls use the shared modal, native keyboard handling,
 and mobile-safe layout.
 
@@ -45,7 +45,7 @@ protected ciphertext deadlines. A 06:44 login confirmed at 06:50 still needs fre
 authentication after the 07:00 checkpoint in the 15-minute example. Overlapping
 incoming windows use the shared evaluator's complete checkpoint context. A zero-
 grace schedule has no reminder window. Outside grace, stale proof returns
-`reauthentication-required` and the shared clinical flow offers local or regional
+`reauthentication-required` and the shared clinical flow offers local or organization
 personal authentication. Explicit shift retries request a new proof even when a
 proof within five minutes remains recent for an ordinary sensitive/recovery action.
 Initial selection is prospective and does not invent a previous checkpoint.
@@ -54,7 +54,7 @@ A pending switch to blank does not bypass the outgoing schedule before its bound
 The server reassesses after authentication and again after call/command authority
 waits immediately before creating a report. Session expiry during those waits
 also denies creation. Authentication never owns a call-opening transaction, and
-same-user reauthentication preserves its original cookie and expiry. On a regional
+same-user reauthentication preserves its original cookie and expiry. On an OIDC
 redirect the browser retains only an expiring assignment/user/agency intent in
 session storage. On return it checks current identity and a fresh server listing;
 the actual opening operation independently checks current authority again.
@@ -98,7 +98,7 @@ English/Swedish browser transitions in `apps/web/e2e/current-shift.spec.ts` and
 `apps/web/e2e/new-job-confirmation.spec.ts`.
 `current-shift-oidc-postgres.integration.test.mjs` runs a separate real TLS
 provider, application API, deployment proxy and browser against a disposable
-PostgreSQL database. Both local password and regional browser journeys create
+PostgreSQL database. Both local password and organization sign-in browser journeys create
 real production reports and reopen existing work while shift proof is stale. It
 verifies signed proof across a handover during login,
 another-device freshness, outage, fixed expiry, actual standalone production

@@ -1,7 +1,7 @@
 import type { ServerMetadata } from "openid-client";
 import { oidcConfiguration } from "./oidc-library.js";
 import { publicSigningKeyIds } from "./oidc-signing-keys.js";
-import { regionalIdentity, type ValidatedRegionalIdentity } from "./regional-identity.service.js";
+import { externalIdentity, type ValidatedExternalIdentity } from "./external-identity.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 import { providerFetch } from "./oidc-network.js";
 import { validatePersonalProof, type PersonalProofPolicy, type PersonalAuthenticationPurpose } from "./personal-proof.js";
@@ -21,18 +21,18 @@ export async function testAuthorization(metadata: ServerMetadata, clientId: stri
 }
 type Validation = {identityValidated:true;freshPersonalAuthentication:false;pkceS256:boolean};
 export function testCodeExchange(metadata:ServerMetadata,clientId:string,secret:string,binding:TestBinding,callback:URL):Promise<Validation>;
-export function testCodeExchange(metadata:ServerMetadata,clientId:string,secret:string,binding:TestBinding,callback:URL,mappings:OidcDraft["mappings"]):Promise<Validation & {identity:ValidatedRegionalIdentity}>;
+export function testCodeExchange(metadata:ServerMetadata,clientId:string,secret:string,binding:TestBinding,callback:URL,mappings:OidcDraft["mappings"]):Promise<Validation & {identity:ValidatedExternalIdentity}>;
 export async function testCodeExchange(metadata: ServerMetadata, clientId: string, secret: string, binding: TestBinding, callback: URL, mappings?: OidcDraft["mappings"]) {
   const claims=await validatedCodeClaims(metadata,clientId,secret,binding,callback);
   // Identity diagnostics never approve personal proof, even with method claims.
-  const identity=regionalIdentity(claims as unknown as Record<string,unknown>,mappings??{displayName:"",email:""});
+  const identity=externalIdentity(claims as unknown as Record<string,unknown>,mappings??{displayName:"",email:""});
   const validation={identityValidated:true as const,freshPersonalAuthentication:false as const,pkceS256:binding.pkce};
   return mappings ? {...validation,identity} : validation;
 }
 export async function personalCodeExchange(metadata: ServerMetadata, clientId: string, secret: string, binding: TestBinding,
   callback: URL, mappings: OidcDraft["mappings"], policy: PersonalProofPolicy, purpose: PersonalAuthenticationPurpose, beganAt: Date) {
   const claims=await validatedCodeClaims(metadata,clientId,secret,binding,callback);
-  return {identity:regionalIdentity(claims as unknown as Record<string,unknown>,mappings),
+  return {identity:externalIdentity(claims as unknown as Record<string,unknown>,mappings),
     proof:validatePersonalProof(claims as unknown as Record<string,unknown>,policy,purpose,beganAt)};
 }
 async function validatedCodeClaims(metadata: ServerMetadata, clientId: string, secret: string, binding: TestBinding, callback: URL) {

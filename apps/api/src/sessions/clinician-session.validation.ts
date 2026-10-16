@@ -14,13 +14,13 @@ export function validateCreateClinicianSession(input: unknown): CreateClinicianS
   return { username: username.trim(), password };
 }
 
-export function validateReauthenticate(input: unknown, regional = false): ReauthenticateCommand {
+export function validateReauthenticate(input: unknown, organizationAuthentication = false): ReauthenticateCommand {
   if (!input || typeof input !== "object" || Array.isArray(input) ||
       Object.keys(input).some((key) => !["currentPassword", "forcePersonalAuthentication"].includes(key))) {
     throw new BadRequestException("The current password is required");
   }
   const { currentPassword, forcePersonalAuthentication } = input as Record<string, unknown>;
-  if (typeof currentPassword !== "string" || !regional && !currentPassword || currentPassword.length > 1024 ||
+  if (typeof currentPassword !== "string" || !organizationAuthentication && !currentPassword || currentPassword.length > 1024 ||
     forcePersonalAuthentication !== undefined && forcePersonalAuthentication !== true) {
     throw new BadRequestException("The current password is required");
   }

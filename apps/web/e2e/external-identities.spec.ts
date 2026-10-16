@@ -5,11 +5,11 @@ import path from 'node:path';
 let script:string,css:string;
 test.beforeAll(async()=>{
  css=await readFile(path.resolve(__dirname,'../app/styles.css'),'utf8');
- const result=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {UsersPanel} from './components/admin-directory';import {AdminLanguageContext} from './app/admin-localization';createRoot(document.getElementById('root')).render(<AdminLanguageContext.Provider value={document.documentElement.lang}><UsersPanel canReviewRegional canManageRegional={!location.search.includes('readonly')} csrfToken="csrf"/></AdminLanguageContext.Provider>);`}});script=result.outputFiles[0]!.text;
+ const result=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {UsersPanel} from './components/admin-directory';import {AdminLanguageContext} from './app/admin-localization';createRoot(document.getElementById('root')).render(<AdminLanguageContext.Provider value={document.documentElement.lang}><UsersPanel canReviewExternal canManageExternal={!location.search.includes('readonly')} csrfToken="csrf"/></AdminLanguageContext.Provider>);`}});script=result.outputFiles[0]!.text;
 });
 const id='91000000-0000-4000-8000-000000000001',userId='91000000-0000-4000-8000-000000000002';
 const identity={id,providerId:'91000000-0000-4000-8000-000000000003',revision:1,reviewRevision:1,deniedAt:null,issuer:'https://provider.example/Issuer',subject:'ExactCaseSubject',displayName:'<img src=x onerror=alert(1)>',email:'same@example.org',createdAt:new Date().toISOString(),status:'pending',reviewProviders:[{source:'draft',revision:1}],linkedUserId:null};
-const pending={id,displayName:identity.displayName,username:null,active:false,revision:1,roles:[],regionalIdentity:identity};
+const pending={id,displayName:identity.displayName,username:null,active:false,revision:1,roles:[],externalIdentity:identity};
 async function mount(page:import('@playwright/test').Page,language='en'){
  await page.route('**/__identities*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><style>${css}</style></head><body style="--green:#315ba8;--text-color:#202850"><div class="agency-settings" id="root"></div><script src="/__identity-script"></script></body></html>`}));
  await page.route('**/__identity-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
@@ -25,7 +25,7 @@ for(const width of [390,1440])test(`Users Manage links an explicitly selected ac
  });
  await page.route(`**/api/admin/authentication/identities/${id}/link`,route=>{
   expect(route.request().headers()['x-csrf-token']).toBe('csrf');expect(route.request().postDataJSON()).toEqual({userId,providerSource:'draft',expectedProviderRevision:1,expectedReviewRevision:1});
-  if(!conflict)linked=true;return conflict?route.fulfill({status:409,json:{code:'admin.regionalIdentityConflict'}}):route.fulfill({json:{...identity,status:'linked',linkedUserId:userId,reviewRevision:2}});
+  if(!conflict)linked=true;return conflict?route.fulfill({status:409,json:{code:'admin.externalIdentityConflict'}}):route.fulfill({json:{...identity,status:'linked',linkedUserId:userId,reviewRevision:2}});
  });
  await page.goto('/__identities');await expect(page.getByRole('cell',{name:identity.email,exact:false})).toBeVisible();await expect(page.locator('img')).toHaveCount(0);
  const manage=page.getByRole('button',{name:'Manage',exact:true});await manage.focus();await page.keyboard.press('Enter');const editor=page.locator('.admin-user-management');
@@ -40,7 +40,7 @@ for(const width of [390,1440])test(`Users Manage links an explicitly selected ac
 });
 for(const width of [390,1440])test(`Users Manage denies a request with an explicit review revision and supports the Denied filter at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});await mount(page);let denied=false;
- await page.route('**/api/admin/users?*',route=>{const state=new URL(route.request().url()).searchParams.get('state');return route.fulfill({json:{items:state==='pending'&&denied?[]:[{...pending,regionalIdentity:{...identity,status:denied?'denied':'pending',reviewRevision:denied?2:1,deniedAt:denied?new Date().toISOString():null}}],nextCursor:null}});});
+ await page.route('**/api/admin/users?*',route=>{const state=new URL(route.request().url()).searchParams.get('state');return route.fulfill({json:{items:state==='pending'&&denied?[]:[{...pending,externalIdentity:{...identity,status:denied?'denied':'pending',reviewRevision:denied?2:1,deniedAt:denied?new Date().toISOString():null}}],nextCursor:null}});});
  await page.route(`**/api/admin/authentication/identities/${id}/deny`,route=>{expect(route.request().postDataJSON()).toEqual({expectedReviewRevision:1,note:'Not an approved staff member'});denied=true;return route.fulfill({json:{...identity,status:'denied',reviewRevision:2}});});
  await page.goto('/__identities');await page.getByRole('button',{name:'Manage',exact:true}).click();const editor=page.locator('.admin-user-management');await editor.getByRole('button',{name:'Deny request',exact:true}).first().click();
  await editor.getByLabel('Note (optional)').fill('Not an approved staff member');const password=editor.getByLabel('Your password to review identity');await password.fill('Personal password 42!');const submit=editor.getByRole('button',{name:'Deny request',exact:true}).last();const passwordBox=await password.boundingBox(),submitBox=await submit.boundingBox();expect(passwordBox!.y+passwordBox!.height).toBeLessThanOrEqual(submitBox!.y);await submit.click();await expect(editor).toHaveCount(0);
@@ -60,6 +60,6 @@ for(const changed of [false,true])test(`identity review completion ${changed?'is
  await page.goto('/__identities');await page.getByRole('button',{name:'Manage',exact:true}).click();const editor=page.locator('.admin-user-management');await editor.getByRole('button',{name:'Deny request',exact:true}).first().click();await editor.getByLabel('Your password to review identity').fill('Personal password 42!');await editor.getByRole('button',{name:'Deny request',exact:true}).last().click();
  await page.waitForFunction(()=>(window as unknown as {reviewJsonWaiting?:boolean;releaseReviewJson?:()=>void}).reviewJsonWaiting);await expect(editor.getByRole('button',{name:'Close',exact:true})).toBeDisabled();
  await page.evaluate(changed=>{if(changed)localStorage.setItem('open-triage.installation-generation.v1','new-installation');(window as unknown as {reviewJsonWaiting?:boolean;releaseReviewJson?:()=>void}).releaseReviewJson!();},changed);
- if(changed){await expect(editor).toBeVisible();await expect(page.getByText('Regional identity request denied.',{exact:false})).toHaveCount(0);}
- else {await expect(editor).toHaveCount(0);await expect(page.getByRole('status')).toContainText('Regional identity request denied.');}
+ if(changed){await expect(editor).toBeVisible();await expect(page.getByText('External identity request denied.',{exact:false})).toHaveCount(0);}
+ else {await expect(editor).toHaveCount(0);await expect(page.getByRole('status')).toContainText('External identity request denied.');}
 });

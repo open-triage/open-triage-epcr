@@ -8,7 +8,7 @@ test.beforeAll(async()=>{
   const result=await build({bundle:true,write:false,format:"iife",platform:"browser",jsx:"automatic",define:{"process.env":JSON.stringify({NEXT_PUBLIC_API_URL:"same-origin"})},stdin:{resolveDir:path.resolve(__dirname,".."),loader:"tsx",contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {OidcDraftPanel} from './components/oidc-draft';createRoot(document.getElementById('root')).render(<OidcDraftPanel language={document.documentElement.lang} csrfToken="csrf" canWrite={!location.search.includes('readonly')}/>);`}});script=result.outputFiles[0]!.text;
 });
 const draft={revision:1,name:"Regional AD FS",issuer:"https://idp.example.org/adfs",discoveryUrl:"",clientId:"regional-client",scopes:["openid","profile"],mappings:{displayName:"name",email:"email"},credentialConfigured:true,requiredFields:[],discoveryHealth:"unchecked",discovery:null,discoveredAt:null};
-const initial={groupId:"group",draft,active:{...draft,name:"Active regional provider"},registration:{hosts:[{origin:"https://agency.example.org",callbackUrl:"https://agency.example.org/api/sessions/oidc/callback",logoutCallbackUrl:"https://agency.example.org/api/sessions/oidc/logout-callback"}],requiredClaims:["iss","sub","aud","exp","iat","nonce"]},history:[]};
+const initial={groupId:"group",draft,active:{...draft,name:"Active identity provider"},registration:{hosts:[{origin:"https://agency.example.org",callbackUrl:"https://agency.example.org/api/sessions/oidc/callback",logoutCallbackUrl:"https://agency.example.org/api/sessions/oidc/logout-callback"}],requiredClaims:["iss","sub","aud","exp","iat","nonce"]},history:[]};
 for(const width of [390,1440])test(`OIDC drafts mask credentials, retain active state on discovery failure and preserve edits at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});
   await page.route("**/__oidc",route=>route.fulfill({contentType:"text/html",body:`<html lang="en"><head><style>${css}</style></head><body style="--green:#315ba8;--text-color:#202850"><div class="admin-panel agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
@@ -34,7 +34,7 @@ for(const width of [390,1440])test(`OIDC drafts mask credentials, retain active 
   await expect(page.getByRole("alert")).toContainText("The OIDC draft changed");await expect(page.getByLabel("Provider name")).toHaveValue("Changed draft");await expect(page.getByLabel("Replacement client secret")).toHaveValue("");await expect(page.getByLabel("Your password for OIDC changes")).toHaveValue("");
   refreshFails=true;page.once("dialog",dialog=>dialog.accept());await page.getByRole("button",{name:"Reload OIDC draft"}).click();await expect(page.getByRole("alert")).toBeVisible();await expect(page.getByLabel("Provider name")).toHaveValue("Changed draft");
   saveFails=false;await page.getByLabel("Replacement client secret").fill("new-client-secret");await page.getByLabel("Your password for OIDC changes").fill("Personal password 42!");await page.getByRole("button",{name:"Save OIDC draft"}).click();await expect(page.getByRole("status")).toHaveText("Draft saved");
-  await page.getByLabel("Your password for OIDC changes").fill("Personal password 42!");await page.getByRole("button",{name:"Check discovery"}).click();await expect(page.getByRole("status")).toHaveText("Discovery failed. Active configuration retained.");await expect(page.getByText("Active provider: Active regional provider")).toBeVisible();
+  await page.getByLabel("Your password for OIDC changes").fill("Personal password 42!");await page.getByRole("button",{name:"Check discovery"}).click();await expect(page.getByRole("status")).toHaveText("Discovery failed. Active configuration retained.");await expect(page.getByText("Active provider: Active identity provider")).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:`/tmp/oidc-draft-${width}.png`,fullPage:true});
 });
 test("Swedish read-only discovery metadata exposes no credential inputs and preserves exact registration",async({page})=>{
@@ -44,7 +44,7 @@ test("Swedish read-only discovery metadata exposes no credential inputs and pres
   await page.goto("/__oidc?readonly=1");await expect(page.getByRole("heading",{name:"OIDC-leverantörens utkast"})).toBeVisible();await expect(page.getByLabel("Leverantörens namn")).toBeDisabled();await expect(page.locator('input[type="password"]')).toHaveCount(0);await expect(page.getByText("key-2026, key-2027")).toBeVisible();
 });
 
-test("a new OIDC draft leaves regional registration values for IT and can save an incomplete version",async({page})=>{
+test("a new OIDC draft leaves provider registration values for IT and can save an incomplete version",async({page})=>{
   await page.route("**/__oidc-new",route=>route.fulfill({contentType:"text/html",body:`<html lang="en"><head><style>${css}</style></head><body><div class="agency-settings" id="root"></div><script src="/__oidc-script"></script></body></html>`}));
   await page.route("**/__oidc-script",route=>route.fulfill({contentType:"text/javascript",body:script}));
   await page.route("**/api/sessions/reauthenticate",route=>route.fulfill({json:{reauthenticatedUntil:new Date(Date.now()+300000).toISOString()}}));
@@ -81,7 +81,7 @@ for(const language of ['en','sv'])test(`OIDC failures provide sanitized actionab
   await page.route('**/api/admin/authentication/oidc',route=>route.fulfill({json:{...initial,test:{revision:1,result:'failed',failureCode:'expired',pkceS256:true,freshPersonalAuthentication:false,completedAt:new Date().toISOString()}}}));
   await page.goto('/__oidc-errors?readonly=1');
   await expect(page.getByRole('alert')).toHaveText(language==='sv'?'Testet har gått ut. Bekräfta lösenordet och starta ett nytt test.':'The test expired. Confirm your password and start a new test.');
-  await expect(page.getByText(language==='sv'?'Aktiv leverantör: Active regional provider':'Active provider: Active regional provider')).toBeVisible();
+  await expect(page.getByText(language==='sv'?'Aktiv leverantör: Active identity provider':'Active provider: Active identity provider')).toBeVisible();
 });
 
 for(const language of ['en','sv'])for(const width of [390,1440])test(`tested SSO activation shows group/session transition and retains previous policy on stale activation in ${language} at ${width}px`,async({page})=>{
@@ -149,6 +149,6 @@ for(const language of ['en','sv'])test(`a legacy draft with identical visible se
   if(route.request().method()==='PUT'){const body=route.request().postDataJSON();expect(body).toMatchObject({expectedRevision:2,name:draft.name,issuer:draft.issuer,clientId:draft.clientId});expect(body).not.toHaveProperty('replacementSecret');state={...state,draft:{...draft,revision:3,discoveryHealth:'unchecked'},identityImpact:{...state.identityImpact,integrationChanged:false,draftRevision:3}};}
   return route.fulfill({json:state});
  });
- await page.goto('/__oidc-legacy');await expect(page.getByText(language==='sv'?/Befintliga regionala identitetskopplingar tillhör/:/Existing regional identity links stay/)).toBeVisible();await expect(page.getByRole('button',{name:language==='sv'?'Spara OIDC-utkast':'Save OIDC draft',exact:true})).toBeDisabled();
+ await page.goto('/__oidc-legacy');await expect(page.getByText(language==='sv'?/Befintliga externa identitetskopplingar tillhör/:/Existing external identity links stay/)).toBeVisible();await expect(page.getByRole('button',{name:language==='sv'?'Spara OIDC-utkast':'Save OIDC draft',exact:true})).toBeDisabled();
  await page.getByLabel(language==='sv'?'Ditt lösenord för OIDC-ändringar':'Your password for OIDC changes').fill('Fixture personal password 42!');await page.getByRole('button',{name:language==='sv'?'Förbered ersättningsutkast':'Prepare replacement draft',exact:true}).click();await expect(page.getByRole('status')).toHaveText(language==='sv'?'Utkast sparat':'Draft saved');await expect(page.getByRole('checkbox')).toHaveCount(0);await expect(page.getByRole('button',{name:language==='sv'?'Aktivera testad SSO':'Activate tested SSO',exact:true})).toBeDisabled();
 });

@@ -15,7 +15,7 @@ import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { useAvailableHeight } from "./use-available-height";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { OwnershipTransferPanel } from "./ownership-transfer";
-import { RegionalIdentityManagement } from "./regional-identities";
+import { ExternalIdentityManagement } from "./external-identities";
 import { useReturnFocus } from "./use-return-focus";
 
 type StateFilter = "active" | "disabled" | "all" | "pending" | "denied";
@@ -34,12 +34,12 @@ function RoleBadges({ roles, effective = true, owner = false, superadmin = false
 }
 
 export function UsersPanel({ canCreate = false, canManage = false, canAssignRoles = false,
-  canReviewRegional = false, canManageRegional = false,
+  canReviewExternal = false, canManageExternal = false,
   canViewSessions = false, canRevokeSessions = false, canResetCredentials = false,
   currentUserId = "", csrfToken = "" }: {
   readonly canCreate?: boolean;
-  readonly canReviewRegional?: boolean;
-  readonly canManageRegional?: boolean;
+  readonly canReviewExternal?: boolean;
+  readonly canManageExternal?: boolean;
   readonly canManage?: boolean;
   readonly canAssignRoles?: boolean;
   readonly canViewSessions?: boolean;
@@ -76,20 +76,20 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   const [identityDirty, setIdentityDirty] = useState(false);
   const [creationDirty, setCreationDirty] = useState(false);
   const [credentialDirty, setCredentialDirty] = useState(false);
-  const [regionalDirty, setRegionalDirty] = useState(false);
-  const [regionalBusy, setRegionalBusy] = useState(false);
-  const reviewAllowed=useRef(canReviewRegional);
-  useEffect(()=>{reviewAllowed.current=canReviewRegional;},[canReviewRegional]);
+  const [externalIdentityDirty, setExternalIdentityDirty] = useState(false);
+  const [externalIdentityBusy, setExternalIdentityBusy] = useState(false);
+  const reviewAllowed=useRef(canReviewExternal);
+  useEffect(()=>{reviewAllowed.current=canReviewExternal;},[canReviewExternal]);
   const userTrigger = useRef("");
   const roleSetDirty = !!editing && (roleNote !== "" || selectedRoleIds.slice().sort().join(",") !== editing.roles.map((role) => role.id).sort().join(","));
-  useUnsavedChanges(identityDirty || roleSetDirty || credentialDirty || creationDirty || regionalDirty);
-  const canLeaveUser = () => confirmDiscardChanges(identityDirty || roleSetDirty || credentialDirty || regionalDirty);
-  useReturnFocus(!!editing,loading||saving||regionalBusy,()=>document.getElementById(userTrigger.current)??document.getElementById("users-heading"));
+  useUnsavedChanges(identityDirty || roleSetDirty || credentialDirty || creationDirty || externalIdentityDirty);
+  const canLeaveUser = () => confirmDiscardChanges(identityDirty || roleSetDirty || credentialDirty || externalIdentityDirty);
+  useReturnFocus(!!editing,loading||saving||externalIdentityBusy,()=>document.getElementById(userTrigger.current)??document.getElementById("users-heading"));
   function closeUser(saved = false) {
     if (!saved && !canLeaveUser()) return;
-    setRegionalBusy(false); setEditing(null); setIdentityDirty(false); setCredentialDirty(false); setRegionalDirty(false);
+    setExternalIdentityBusy(false); setEditing(null); setIdentityDirty(false); setCredentialDirty(false); setExternalIdentityDirty(false);
   }
-  const hasActions = canManage || canViewSessions || canResetCredentials || canReviewRegional;
+  const hasActions = canManage || canViewSessions || canResetCredentials || canReviewExternal;
 
   async function load(selected: AdminUserQuery, append = false) {
     const revision = ++listRevision.current;
@@ -99,7 +99,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       const page = await loadAdminUsers(selected);
       if (revision !== listRevision.current) return;
       setListError(false);
-      const visible=page.items.filter(row=>reviewAllowed.current||!row.regionalIdentity);
+      const visible=page.items.filter(row=>reviewAllowed.current||!row.externalIdentity);
       setItems((current) => append ? [...current, ...visible] : visible);
       setNextCursor(page.nextCursor);
     } catch (reason) {
@@ -116,7 +116,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     loadAdminUsers({ state: "all" }).then((page) => {
       if (!current || revision !== listRevision.current) return;
       setListError(false);
-      setItems(page.items.filter(row=>reviewAllowed.current||!row.regionalIdentity));
+      setItems(page.items.filter(row=>reviewAllowed.current||!row.externalIdentity));
       setNextCursor(page.nextCursor);
     }).catch((reason: unknown) => { if (current && revision === listRevision.current) {
       if (listAccessRemoved(reason)) setItems([]);
@@ -182,7 +182,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
 
   function beginEdit(user: AdminUserSummary) {
     if (!canLeaveUser()) return;
-    userTrigger.current = `manage-${user.regionalIdentity?"regional":"user"}-${user.id}`;
+    userTrigger.current = `manage-${user.externalIdentity?"external":"user"}-${user.id}`;
     setIdentityDirty(false); setCredentialDirty(false);
     setEditing(user);
     setDesiredActive(user.active);
@@ -192,7 +192,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     setError(null);
     setNotice(null);
     setUserSessions([]);
-    if(!user.regionalIdentity)void refreshSessions(user.id);
+    if(!user.externalIdentity)void refreshSessions(user.id);
   }
 
   async function revokeSession(session: AdminSessionSummary) {
@@ -308,7 +308,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     }
   }
 
-  const visibleItems=items.filter(row=>canReviewRegional||!row.regionalIdentity);
+  const visibleItems=items.filter(row=>canReviewExternal||!row.externalIdentity);
   return <section className="admin-configuration admin-directory" aria-labelledby="users-heading">
     <div className="section-heading"><h2 id="users-heading" tabIndex={-1}><AdminText messageKey="admin.users" /></h2>{canCreate && <button id="create-user-trigger" type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => { if (createOpen && !confirmDiscardChanges(creationDirty)) return; setCreationDirty(false); setCreateOpen((open) => !open); }}>
@@ -334,14 +334,14 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       </fieldset>
     </form>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
-    {editing && (!editing.regionalIdentity||canReviewRegional) && <section key={`${editing.regionalIdentity?"regional":"user"}-${editing.id}-${canManageRegional}-${canAssignRoles}`} className="admin-user-management"
+    {editing && (!editing.externalIdentity||canReviewExternal) && <section key={`${editing.externalIdentity?"external":"user"}-${editing.id}-${canManageExternal}-${canAssignRoles}`} className="admin-user-management"
       aria-labelledby="managed-user-heading">
       <div className="section-heading"><h3 id="managed-user-heading">{t("admin.manageName", { name: editing.displayName })}</h3>
-        <button type="button" disabled={regionalBusy} onClick={() => closeUser() }><AdminText messageKey="admin.close" /></button></div>
-    {editing.regionalIdentity && <RegionalIdentityManagement identity={editing.regionalIdentity} language={language} csrfToken={csrfToken}
-      canManage={canManageRegional} canApprove={canManageRegional&&canAssignRoles} onDirtyChange={setRegionalDirty} onBusyChange={setRegionalBusy}
-      onComplete={(_result,action)=>{setNotice(t(action==="deny"?"admin.regionalIdentityDeniedNotice":action==="approve"?"admin.regionalIdentityApproved":"admin.regionalIdentityIdentityLinkedUserRolesAnd"));closeUser(true);void load(query);}} />}
-    {!editing.regionalIdentity && canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
+        <button type="button" disabled={externalIdentityBusy} onClick={() => closeUser() }><AdminText messageKey="admin.close" /></button></div>
+    {editing.externalIdentity && <ExternalIdentityManagement identity={editing.externalIdentity} language={language} csrfToken={csrfToken}
+      canManage={canManageExternal} canApprove={canManageExternal&&canAssignRoles} onDirtyChange={setExternalIdentityDirty} onBusyChange={setExternalIdentityBusy}
+      onComplete={(_result,action)=>{setNotice(t(action==="deny"?"admin.externalIdentityDeniedNotice":action==="approve"?"admin.externalIdentityApproved":"admin.externalIdentityIdentityLinkedUserRolesAnd"));closeUser(true);void load(query);}} />}
+    {!editing.externalIdentity && canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
       <fieldset disabled={saving}><legend><AdminText messageKey="admin.identityAndAccess" /></legend>
         <label><AdminText messageKey="admin.displayName" /><input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
         {editing.username !== null ? <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
@@ -376,7 +376,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <button type="button" onClick={() => closeUser() }><AdminText messageKey="admin.cancel" /></button></div>
       </fieldset>
     </form>}
-    {!editing.regionalIdentity && (canViewSessions || canResetCredentials || editing.owner) && <div className="admin-user-security">
+    {!editing.externalIdentity && (canViewSessions || canResetCredentials || editing.owner) && <div className="admin-user-security">
       {editing.owner && <OwnershipTransferPanel csrfToken={csrfToken} />}
       {canViewSessions && <div><h4><AdminText messageKey="admin.activeSessions" /></h4>
         <p className="admin-muted"><AdminText messageKey="admin.deviceLabelsAre" /></p>
@@ -407,7 +407,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       <label><AdminText messageKey="admin.search" /><input type="search" name="search" maxLength={100} placeholder={t("admin.displayNameOr")} /></label>
       <label><AdminText messageKey="admin.status" /><select name="state" defaultValue="all">
         <option value="active"><AdminText messageKey="admin.active" /></option><option value="disabled"><AdminText messageKey="admin.disabled" /></option><option value="all"><AdminText messageKey="admin.all" /></option>
-        {canReviewRegional&&<><option value="pending">{t("admin.regionalIdentityPending")}</option><option value="denied">{t("admin.regionalIdentityDenied")}</option></>}
+        {canReviewExternal&&<><option value="pending">{t("admin.externalIdentityPending")}</option><option value="denied">{t("admin.externalIdentityDenied")}</option></>}
       </select></label>
       <label><AdminText messageKey="admin.role" /><select name="roleId" defaultValue="">
         <option value=""><AdminText messageKey="admin.allRoles" /></option>
@@ -424,12 +424,12 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       <caption className="sr-only"><AdminText messageKey="admin.usersMatchingThe" /></caption>
       <thead><tr><th scope="col"><AdminText messageKey="admin.displayName" /></th><th scope="col"><AdminText messageKey="admin.username" /></th><th scope="col"><AdminText messageKey="admin.status" /></th><th scope="col"><AdminText messageKey="admin.roles" /></th>
         {hasActions && <th scope="col"><AdminText messageKey="admin.actions" /></th>}</tr></thead>
-      <tbody>{visibleItems.map((user) => <tr key={`${user.regionalIdentity?"regional":"user"}-${user.id}`} className="admin-directory-row" aria-selected={editing?.id === user.id&&!!editing.regionalIdentity===!!user.regionalIdentity} onClick={activateListRow}>
-        <th scope="row">{user.displayName}</th><td><code>{user.regionalIdentity?user.regionalIdentity.email??t("admin.regionalIdentitySignInRequest"):user.username ?? t("admin.ssoOnly")}</code></td>
-        <td>{user.regionalIdentity?t(user.regionalIdentity.status==="denied"?"admin.regionalIdentityDenied":"admin.regionalIdentityPending"):user.active ? t("admin.active") : t("admin.disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
+      <tbody>{visibleItems.map((user) => <tr key={`${user.externalIdentity?"external":"user"}-${user.id}`} className="admin-directory-row" aria-selected={editing?.id === user.id&&!!editing.externalIdentity===!!user.externalIdentity} onClick={activateListRow}>
+        <th scope="row">{user.displayName}</th><td><code>{user.externalIdentity?user.externalIdentity.email??t("admin.externalIdentitySignInRequest"):user.username ?? t("admin.ssoOnly")}</code></td>
+        <td>{user.externalIdentity?t(user.externalIdentity.status==="denied"?"admin.externalIdentityDenied":"admin.externalIdentityPending"):user.active ? t("admin.active") : t("admin.disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
           owner={user.owner} superadmin={user.superadmin} /></td>
         {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? t("admin.currentAccount")
-          : <button id={`manage-${user.regionalIdentity?"regional":"user"}-${user.id}`} data-list-row-action type="button" disabled={regionalBusy} onClick={() => beginEdit(user)}><AdminText messageKey="admin.manage" /></button>}</td>}
+          : <button id={`manage-${user.externalIdentity?"external":"user"}-${user.id}`} data-list-row-action type="button" disabled={externalIdentityBusy} onClick={() => beginEdit(user)}><AdminText messageKey="admin.manage" /></button>}</td>}
       </tr>)}</tbody>
     </table></div>}
     {nextCursor && <button type="button" disabled={loading} onClick={() => void load({ ...query, cursor: nextCursor }, true)}>

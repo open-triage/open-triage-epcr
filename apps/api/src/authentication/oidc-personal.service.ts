@@ -9,7 +9,7 @@ import { AgencyDirectoryService } from "../sessions/agency-directory.service.js"
 import { agencyRequest } from "../sessions/agency-context.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { encryptCredential, decryptCredential } from "./oidc-credentials.js";
-import { RegionalIdentityService } from "./regional-identity.service.js";
+import { ExternalIdentityService } from "./external-identity.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 import { testAuthorization, personalCodeExchange, type TestBinding } from "./oidc-test-protocol.js";
 import { personalProofPolicyDigest, type PersonalAuthenticationPurpose, type PersonalProofPolicy } from "./personal-proof.js";
@@ -24,7 +24,7 @@ type Binding={binding:TestBinding;previousToken?:string;installationCredential?:
 @Injectable()
 export class OidcPersonalService {
  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,
-  private readonly agencies:AgencyDirectoryService,private readonly identities:RegionalIdentityService){}
+  private readonly agencies:AgencyDirectoryService,private readonly identities:ExternalIdentityService){}
  private async active(groupId:string,manager:EntityManager=this.database.manager,lock=false):Promise<Version|undefined>{
   if(lock) {
    await manager.query('select group_id from app_identity.group_authentication_policy where group_id=$1 for share',[groupId]);
@@ -39,11 +39,11 @@ export class OidcPersonalService {
  private policy(version:Version){return activePersonalProofPolicy(version);}
  async options(){
   const agency=await this.agencies.forLogin();
-  if(!agency)return {regional:false};
+  if(!agency)return {organization:false};
   const [group]=await this.database.query<Array<{id:string}>>('select app_identity.organization_group($1) id',[agency.id]);
   // A configured provider remains visible during an outage; no local fallback.
   const [policy]=await this.database.query<Array<{mode:string}>>('select mode from app_identity.group_authentication_policy where group_id=$1',[group!.id]);
-  return {regional:policy?.mode==='oidc'};
+  return {organization:policy?.mode==='oidc'};
  }
  async begin(input:unknown,previousToken?:string,csrfToken?:string,userAgent?:string){
   const body=input as Record<string,unknown>;
