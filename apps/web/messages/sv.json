@@ -1994,5 +1994,8 @@
   "admin.authenticationMaximumSessionHours": "Maximal sessionslängd (timmar)",
   "admin.authenticationTemporaryPasswordHours": "Tillfälligt lösenords giltighet (timmar)",
   "admin.authenticationAccountAttemptsPer15Minutes": "Kontoförsök per 15 minuter",
-  "admin.authenticationNetworkAttemptsPer5Minutes": "Nätverksförsök per 5 minuter"
+  "admin.authenticationNetworkAttemptsPer5Minutes": "Nätverksförsök per 5 minuter",
+  "platform.error.auth.agencyHandoffInvalid": "Organisationsbytet har gått ut eller kunde inte verifieras. Gå tillbaka till den ursprungliga organisationen och försök igen.",
+  "platform.error.auth.agencyHandoffRestricted": "Sömlöst organisationsbyte är bara tillgängligt för installationssuperanvändare utan hemorganisation.",
+  "platform.error.auth.agencyHandoffOtherUser": "En annan person är inloggad hos målorganisationen. Logga ut personen där innan du byter."
 }

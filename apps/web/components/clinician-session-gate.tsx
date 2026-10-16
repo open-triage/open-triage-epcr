@@ -34,6 +34,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration, INSTALLATION_CONFIGURATION_STORAGE_KEY } from "../app/installation-settings";
+import {startAgencyHandoff,resumeAgencyHandoff} from "../app/agency-handoff";
 import { switchAgency } from "../app/agencies";
 import { availableUiLanguages, resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
@@ -244,13 +245,15 @@ export function ClinicianSessionGate({ children }: {
       if (inFlight || resolved) return;
       inFlight = true;
       try {
+        const handoff=await resumeAgencyHandoff();
+        if(handoff&&"redirecting" in handoff){resolved=true;return;}
         // Both requests are independent. Keep protected content gated until
         // authentication and configuration have both completed successfully.
         const startupGeneration = authenticationInstallationGeneration();
         const personalResult=new URLSearchParams(window.location.search).get("authentication");
         const [loaded, assessed,regional] = await Promise.all([
           loadInstallationConfiguration(),
-          personalResult==='completed'?completePersonalClinicianSession():serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
+          handoff&&'session' in handoff?handoff.session:personalResult==='completed'?completePersonalClinicianSession():serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
           regionalLoginAvailable().catch(()=>false),
         ]);
         if (!current) return;
@@ -447,6 +450,9 @@ export function ClinicianSessionGate({ children }: {
       throw new Error(t("admin.closeReportsToSwitchAgencies"));
     }
     if (!confirmDiscardChanges(unsavedEditors.current.size > 0)) return;
+    if(authenticatedSession.installationSuperadmin&&!("homeOrganizationId" in authenticatedSession&&authenticatedSession.homeOrganizationId)){
+      if(await startAgencyHandoff(id,sessionRequestToken(authenticatedSession)))return;
+    }
     await lockProtectedClinicalStorage();
     const changed = await switchAgency(sessionRequestToken(authenticatedSession), id);
     clearProtectedRuntimeReports();

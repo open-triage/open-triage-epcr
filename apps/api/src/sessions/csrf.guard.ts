@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { SESSION_COOKIE, bearerToken } from "./clinician-session.controller.js";
 import { ClinicianSessionService } from "./clinician-session.service.js";
 
@@ -16,6 +16,12 @@ export class CsrfGuard implements CanActivate {
     // Fresh login also works with an expired cookie. The non-simple header and
     // registered-origin middleware protect it; switch/reauth verify CSRF in service.
     if(request.method.toUpperCase()==="POST" && path==="/api/sessions/oidc/login" && request.headers['x-personal-authentication']==='1')return true;
+    // Target-host handoff bootstrap has its own browser challenge and one-use
+    // exchange; the source start/issue endpoints retain normal session CSRF.
+    if(request.method.toUpperCase()==="POST"&&/^\/api\/sessions\/agency-handoff\/(challenge|consume)\/?(?:\?.*)?$/.test(path)){
+      if(request.headers['x-agency-handoff']!=='1')throw new UnauthorizedException({code:'auth.agencyHandoffInvalid'});
+      return true;
+    }
     // Independent bearer enrollment requires a non-simple header, forcing origin/CORS validation.
     // Exact bootstrap routes never depend on a clinician cookie (including expired cookies).
     if (request.method.toUpperCase() === "POST" && /^\/api\/installations\/(preview|enroll)\/?$/.test(path) &&

@@ -1996,5 +1996,8 @@
   "admin.authenticationMaximumSessionHours": "Maximum session duration (hours)",
   "admin.authenticationTemporaryPasswordHours": "Temporary password expiry (hours)",
   "admin.authenticationAccountAttemptsPer15Minutes": "Account attempts per 15 minutes",
-  "admin.authenticationNetworkAttemptsPer5Minutes": "Network attempts per 5 minutes"
+  "admin.authenticationNetworkAttemptsPer5Minutes": "Network attempts per 5 minutes",
+  "platform.error.auth.agencyHandoffInvalid": "The agency switch expired or could not be verified. Return to the original agency and try again.",
+  "platform.error.auth.agencyHandoffRestricted": "Seamless agency switching is available only to installation superusers without a home agency.",
+  "platform.error.auth.agencyHandoffOtherUser": "Another person is signed in at the destination agency. Sign them out there before switching."
 }

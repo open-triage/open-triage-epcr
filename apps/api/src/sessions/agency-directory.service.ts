@@ -11,6 +11,15 @@ export const agencySummary = (row: AgencyRow): AgencySummary => ({ id: row.id, n
   parentOrganizationId: row.parent_organization_id, groupId: row.parent_organization_id ?? row.id,
   hostname: row.hostname, active: row.active, revision: Number(row.revision), timeZone: row.deployment_timezone });
 
+/** Match the development origins accepted by allowsOrigin and used by callbacks. */
+export function registeredAgencyOrigin(hostname:string,environment:Record<string,string|undefined>=process.env):string {
+  if(environment.NODE_ENV!=="production"&&/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(hostname)){
+    const port=new URL(environment.WEB_ORIGIN??"http://localhost:3000").port;
+    return `http://${hostname}${port?`:${port}`:""}`;
+  }
+  return `https://${hostname}`;
+}
+
 @Injectable()
 export class AgencyDirectoryService {
   constructor(@InjectDataSource() private readonly database: DataSource) {}
