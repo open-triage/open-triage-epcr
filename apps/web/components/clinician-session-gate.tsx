@@ -379,10 +379,9 @@ export function ClinicianSessionGate({ children }: {
     }
   }
 
-  async function personalLogin(purpose:"login"|"switch"){
-    if(purpose==='switch'&&!confirmDiscardChanges(unsavedEditors.current.size>0))return;
+  async function personalLogin(){
     setSubmitting(true);setMessage(null);
-    try{await beginPersonalClinicianSession(purpose,authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
+    try{await beginPersonalClinicianSession("login",authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
     catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
     finally{setSubmitting(false);}
   }
@@ -504,7 +503,7 @@ export function ClinicianSessionGate({ children }: {
           </header>
           <div className="login-fields">
             {message && <p className="login-message" role="status">{message}</p>}
-            {organizationLogin && !installationRecovery?<><button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin('login')}>{t("login.organizationSignIn")}</button><button type="button" onClick={() => setInstallationRecovery(true)}>{t("login.installationRecovery")}</button></>:<>
+            {organizationLogin && !installationRecovery?<><button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin()}>{t("login.organizationSignIn")}</button><button type="button" onClick={() => setInstallationRecovery(true)}>{t("login.installationRecovery")}</button></>:<>
             {installationRecovery && <><p>{t("login.installationRecoveryHelp")}</p><button type="button" onClick={() => setInstallationRecovery(false)}>{t("login.organizationSignIn")}</button></>}
             <label>
               {t("login.username")}
@@ -570,9 +569,8 @@ export function ClinicianSessionGate({ children }: {
   </UnsavedChangesContext.Provider>;
 
   const nextAuthenticationSource = (session as ClinicianSession & { nextAuthenticationSource?: "local" | "oidc" }).nextAuthenticationSource ?? session.authenticationSource ?? "local";
-  const switchUser = () => { if (nextAuthenticationSource === "oidc") void personalLogin("switch"); else requestLogout(); };
   return (
-    <NewJobConfirmationProvider language={language} onSwitch={switchUser}>
+    <NewJobConfirmationProvider language={language} onLogout={requestLogout}>
       {session?.productionWorkflow?.state === "preparation" && <p role="status">{t("calls.production.preparation")}</p>}
     <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
@@ -614,7 +612,6 @@ export function ClinicianSessionGate({ children }: {
               onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           </div>
         </div>
-        {nextAuthenticationSource==='oidc'&&<button type="button" disabled={submitting||lockingSession} onClick={()=>void personalLogin('switch')}>{t("login.switchUser")}</button>}
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">

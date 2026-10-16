@@ -1821,7 +1821,6 @@
   "login.personalProofRequired": "Confirm your identity with the identity provider.",
   "login.identityUnavailable": "The personal authentication attempt is unavailable or expired. Start again.",
   "login.reauthenticationRequired": "Recent personal reauthentication is required.",
-  "login.switchUser": "Switch user",
   "platform.error.login.personalProofUnavailable": "Organization personal authentication is unavailable. Contact your administrator.",
   "platform.error.login.personalProofRequired": "Confirm your identity with the identity provider.",
   "platform.error.login.identityUnavailable": "The personal authentication attempt is unavailable or expired. Start again.",

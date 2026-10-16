@@ -11,8 +11,8 @@ const NewJobConfirmationContext = createContext<ConfirmNewJob>(async () => { thr
 export const useNewJobConfirmation = () => useContext(NewJobConfirmationContext);
 
 /** One shared reminder for assigned and standalone production jobs. No persistent browser acknowledgment. */
-export function NewJobConfirmationProvider({ language, onSwitch, children }: {
-  language: string; onSwitch: () => void; children: ReactNode;
+export function NewJobConfirmationProvider({ language, onLogout, children }: {
+  language: string; onLogout: () => void; children: ReactNode;
 }) {
   const [reminder, setReminder] = useState<NewJobConfirmation | null>(null);
   const pending = useRef<{ resolve: (token: string) => void; reject: (error: Error) => void } | null>(null);
@@ -42,7 +42,7 @@ export function NewJobConfirmationProvider({ language, onSwitch, children }: {
             dialog.current?.close();
             pending.current?.resolve(reminder.token); pending.current = null; setReminder(null);
           }}>{t("calls.continueAs", { name: reminder.clinicianName })}</button>
-          <button type="button" onClick={() => { cancel(false); onSwitch(); }}>{t("login.switchUser")}</button>
+          <button type="button" onClick={() => { cancel(false); onLogout(); }}>{t("navigation.logOut")}</button>
           <button type="button" onClick={() => cancel()}>{t("mobile.dialog.cancel")}</button>
         </div>
       </>}

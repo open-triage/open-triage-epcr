@@ -88,7 +88,9 @@ conventional OIDC does not need an invented custom claim.
   recent proof. It preserves that session's expiry and records the latest identity,
   provider revision and contract separately from immutable issuance provenance.
   A proof in another browser/device/session cannot satisfy its gate.
-- Starting explicit Switch revokes the outgoing application session and clears its
+- The header and new-job reminder offer **Log out**, which ends the application
+  session and returns to sign-in without starting provider authentication. The
+  retained protocol-level switch operation revokes the outgoing session and clears its
   cookie. Cancellation, provider failure, pending review and a no-role incoming
   account cannot restore outgoing authority. A validated wrong subject during
   sensitive reauthentication also becomes a safe switch; a pending identity revokes

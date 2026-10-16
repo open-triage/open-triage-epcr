@@ -1819,7 +1819,6 @@
   "login.personalProofRequired": "Bekräfta din identitet hos identitetsleverantören.",
   "login.identityUnavailable": "Autentiseringsförsöket är inte tillgängligt eller har gått ut. Börja om.",
   "login.reauthenticationRequired": "Nylig personlig återautentisering krävs.",
-  "login.switchUser": "Byt användare",
   "platform.error.login.personalProofUnavailable": "Personlig autentisering via organisationen är inte tillgänglig. Kontakta administratören.",
   "platform.error.login.personalProofRequired": "Bekräfta din identitet hos identitetsleverantören.",
   "platform.error.login.identityUnavailable": "Autentiseringsförsöket är inte tillgängligt eller har gått ut. Börja om.",

@@ -11,7 +11,7 @@ test.beforeAll(async () => {
  script = (await build({ bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic', define: { 'process.env': JSON.stringify({ NEXT_PUBLIC_API_URL: 'same-origin' }) }, stdin: { resolveDir: path.resolve(__dirname, '..'), loader: 'tsx', contents: `import React from 'react';import{createRoot}from'react-dom/client';import{ClinicianSessionGate}from'./components/clinician-session-gate';import{openAssignedCall,createNewPatientReport}from'./app/assigned-calls';Object.assign(window,{runDelayedOpen:()=>openAssignedCall('csrf','10000000-0000-4000-8000-000000000001',async reminder=>{window.reminderFromDelayedRequest=reminder.clinicianName;return reminder.token}).catch(()=>{}).finally(()=>{window.delayedOpenSettled=true}),runDelayedCreate:session=>createNewPatientReport(session).then(()=>{window.createdReportAfterSwitch=true}).catch(()=>{}).finally(()=>{window.delayedOpenSettled=true})});createRoot(document.getElementById('root')).render(<ClinicianSessionGate><p>Protected editor</p></ClinicianSessionGate>);` } })).outputFiles[0]!.text;
 });
 const jobs = [1, 2].map(i => ({ ...assigned.assignedCalls[0], id: `10000000-0000-4000-8000-00000000000${i}`, callNumber: `GRACE-${i}` }));
-for (const source of ['local', 'oidc'] as const) for (const language of ['en', 'sv'] as const) for (const width of [390, 1440]) test(`${source} per-attempt grace Continue, cancellation, changed context and safe Switch in ${language} at ${width}px`, async ({ page, context }) => {
+for (const source of ['local', 'oidc'] as const) for (const language of ['en', 'sv'] as const) for (const width of [390, 1440]) test(`${source} per-attempt grace Continue, cancellation, changed context and safe logout in ${language} at ${width}px`, async ({ page, context }) => {
  await page.setViewportSize({ width, height: 844 });
  const session = { authenticationSource: source, csrfToken: 'csrf', user: { id: 'clinician', displayName: 'Outgoing clinician' }, organization: { id: 'agency', name: 'Fictional agency' }, startedAt: '2026-10-13T06:44:00Z', personallyAuthenticatedAt: '2026-10-13T06:44:00Z', expiresAt: '2099-01-01T00:00:00Z', capabilities: ['clinical:document'], workspaceAvailable: true };
  let current: typeof session | null = session, tokens = 0, creations = 0, stale = true, sessionEnded = false;
@@ -29,10 +29,11 @@ for (const source of ['local', 'oidc'] as const) for (const language of ['en', '
   if (!token || stale) { if (token) stale = false; return r.fulfill({ status: 403, json: { code: 'calls.identityConfirmationRequired' } }); }
   creations++; return r.fulfill({ status: 409, json: { code: 'calls.shiftReauthenticationRequired' } });
  });
- await context.route('**/api/sessions/oidc/login', r => { expect(r.request().postDataJSON().purpose).toBe('switch'); current = null; sessionEnded = true; return r.fulfill({ json: { authorizationUrl: 'https://grace-idp.fixture.test/authorize' } }); });
+ await context.route('**/api/sessions/oidc/login', r => { throw new Error('Logging out must not start provider authentication'); });
  await context.route('https://grace-idp.fixture.test/authorize', r => r.fulfill({ contentType: 'text/html', body: '<p>Personal provider authentication</p>' }));
  const other = await context.newPage(); await other.goto('/__grace');
  await page.goto('/__grace'); await expect(page.getByText('GRACE-1', { exact: true })).toBeVisible();
+ await expect(page.getByRole('button',{name:/^(Switch user|Byt användare)$/})).toHaveCount(0);
  const trigger = page.locator(`[data-assignment-id="${jobs[0]!.id}"]`).getByRole('button', { name: language === 'en' ? 'Open call' : 'Öppna uppdrag', exact: true });
  await trigger.focus(); await page.keyboard.press('Enter');
  const dialog = page.getByRole('dialog', { name: language === 'en' ? 'Confirm clinician and unit' : 'Bekräfta kliniker och enhet' });
@@ -47,8 +48,8 @@ for (const source of ['local', 'oidc'] as const) for (const language of ['en', '
  await proceed.click(); await expect(dialog).not.toBeVisible(); expect(creations).toBe(1);
  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')!).personallyAuthenticatedAt)).toBe(session.personallyAuthenticatedAt);
  await trigger.click(); await expect(dialog).toBeVisible(); await expect.poll(() => tokens).toBe(4);
- await dialog.getByRole('button', { name: language === 'en' ? 'Switch user' : 'Byt användare' }).click();
- if (source === 'oidc') await expect(page.getByText('Personal provider authentication')).toBeVisible();
+ await dialog.getByRole('button', { name: language === 'en' ? 'Log out' : 'Logga ut' }).click();
+ if (source === 'oidc') await expect(page.getByRole('button', {name:language === 'en' ? 'Sign in with your organization' : 'Logga in med din organisation',exact:true})).toBeVisible();
  else await expect(page.getByLabel(language === 'en' ? 'Username' : 'Användarnamn')).toBeVisible();
  await expect.poll(() => sessionEnded).toBe(true); await expect.poll(() => other.evaluate(() => localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();
  await expect(other.getByText('Signed in as Outgoing clinician')).toHaveCount(0);

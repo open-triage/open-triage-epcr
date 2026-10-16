@@ -29,7 +29,7 @@ let proxy,browser,db;
 try{
  await app.listen(0,'127.0.0.1');const api=await app.getUrl();
  const css=await readFile(new URL('../../../web/app/styles.css',import.meta.url),'utf8');
- const bundled=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:fileURLToPath(new URL('../../../web',import.meta.url)),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {ClinicianSessionGate} from './components/clinician-session-gate';import {lockProtectedClinicalStorage,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,flushProtectedReport} from './app/protected-clinical-storage';import {cachedOpenReports,cacheOpenedReport,queueDraftChange,restoreRecoveredReport} from './app/offline-reports';import {reauthenticateClinicianSession} from './app/clinician-session';window.fixture={reauthenticateClinicianSession,lockProtectedClinicalStorage,cachedOpenReports,queueDraftChange,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,cacheOpenedReport,flushProtectedReport,restoreRecoveredReport};createRoot(document.getElementById('root')).render(<ClinicianSessionGate><p>Shared clinical application</p></ClinicianSessionGate>);`}});
+ const bundled=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:fileURLToPath(new URL('../../../web',import.meta.url)),loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {ClinicianSessionGate} from './components/clinician-session-gate';import {lockProtectedClinicalStorage,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,flushProtectedReport} from './app/protected-clinical-storage';import {cachedOpenReports,cacheOpenedReport,queueDraftChange,restoreRecoveredReport} from './app/offline-reports';import {reauthenticateClinicianSession,beginPersonalClinicianSession} from './app/clinician-session';window.fixture={beginPersonalClinicianSession,reauthenticateClinicianSession,lockProtectedClinicalStorage,cachedOpenReports,queueDraftChange,protectedStorageActive,prepareProtectedReport,updateProtectedReport,recoverProtectedReport,cacheOpenedReport,flushProtectedReport,restoreRecoveredReport};createRoot(document.getElementById('root')).render(<ClinicianSessionGate><p>Shared clinical application</p></ClinicianSessionGate>);`}});
  const route=localRouting({OPEN_TRIAGE_API_UPSTREAM:api,OPEN_TRIAGE_PUBLIC_SITE_HOST:''});
  proxy=createServer((req,res)=>{if(route(req,res))return;if(req.url==='/fixture.js'){res.setHeader('content-type','text/javascript');res.end(bundled.outputFiles[0].text);return;}res.setHeader('content-type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`);});
  proxy.listen(0,'127.0.0.1');await once(proxy,'listening');const origin=`http://child.localhost:${proxy.address().port}`;process.env.WEB_ORIGIN=`http://localhost:${proxy.address().port}`;process.env.NODE_ENV='development';
@@ -41,13 +41,13 @@ try{
  const stored=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null'));
  const start=async subject=>{await control({token:{sub:subject},claimsMode:'fresh'});await page.goto(origin);await page.getByRole('button',{name:'Sign in with your organization',exact:true}).click();};
  const finish=async()=>{await page.getByRole('link',{name:'Continue fictional provider login'}).click();await page.waitForURL(url=>url.origin===origin);};
- const authenticate=async subject=>{await start(subject);await finish();await expect(page.locator('.session-identity')).toBeVisible();};
+ const authenticate=async subject=>{await start(subject);await finish();await expect(page.locator('.session-identity')).toBeVisible();await expect(page.getByRole('button',{name:'Switch user',exact:true})).toHaveCount(0);};
  const logout=async()=>{await page.getByRole('button',{name:'Log out',exact:true}).first().click();await expect(page.getByRole('button',{name:'Sign in with your organization',exact:true})).toBeEnabled();assert.equal(await token(),undefined);};
  await page.goto(origin);
  const noIntent=await page.evaluate(async()=> (await fetch('/api/sessions/oidc/login',{method:'POST',headers:{'content-type':'application/json'},body:'{"purpose":"login"}'})).status);assert.equal(noIntent,401);
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:['login']})),error=>error.getStatus?.()===400);
- const proofEnvironment=process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;
- await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'})),error=>error.getStatus?.()===503);process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=proofEnvironment;
+ await control({proofAvailable:false});
+ await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'})),error=>error.getStatus?.()===503);await control({proofAvailable:true});
  for(let attempt=0;attempt<2;attempt++){
   await start('fictional-denied');await finish();await expect(page.getByText(/Your external identity request was denied/)).toBeVisible();
   assert.equal((await current()).status,401);assert.equal(await token(),undefined);assert.equal(await stored(),null);
@@ -64,12 +64,12 @@ try{
  const missingCsrf=await page.evaluate(async()=> (await fetch('/api/sessions/oidc/login',{method:'POST',headers:{'content-type':'application/json','x-personal-authentication':'1'},body:'{"purpose":"switch"}'})).status);assert.equal(missingCsrf,401);assert.equal((await current()).status,200);
  await assert.rejects(agencyRequest.run({origin},()=>sessions.reauthenticate(alphaToken,alphaSession.csrfToken,'anything')),error=>error.getStatus?.()===403);
  const cookie=(await context.cookies()).find(cookie=>cookie.name==='open_triage_session');assert.equal(cookie.sameSite,'Strict');assert.equal(cookie.httpOnly,true);assert.equal(cookie.secure,true);assert(observations.every(callback=>!/open_triage_session=/.test(callback.cookie||'')));assert.match(observations[0].cookie,/open_triage_oidc_personal=/);
- await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Authentication',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Authentication',exact:true})).toBeVisible();await expect(page.getByLabel('Your current password is required to save')).toHaveCount(0);
+ await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Agency Settings',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Agency Settings',exact:true})).toBeVisible();await expect(page.getByLabel('Your current password is required to save')).toHaveCount(0);
  await page.getByLabel('Maximum session duration (hours)').fill('8');await page.getByRole('button',{name:'Save group policy',exact:true}).click();
  await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();await finish();await expect(page.locator('.session-identity')).toBeVisible();
  const reauthenticated=await stored();assert.equal(await token(),alphaToken);assert.equal(reauthenticated.expiresAt,alphaSession.expiresAt);assert.equal(reauthenticated.personalAuthenticationPurpose,'reauthenticate');
- await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Authentication',exact:true}).click();await page.getByLabel('Maximum session duration (hours)').fill('8');await page.getByRole('button',{name:'Save group policy',exact:true}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();assert.equal((await current()).body.expiresAt,alphaSession.expiresAt);
+ await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Agency Settings',exact:true}).click();await page.getByLabel('Maximum session duration (hours)').fill('8');await page.getByRole('button',{name:'Save group policy',exact:true}).click();await expect(page.getByText('Saved',{exact:true})).toBeVisible();assert.equal((await current()).body.expiresAt,alphaSession.expiresAt);
  const alternate=await agencyRequest.run({origin,organizationId:process.env.OIDC_CHILD},async()=>{const begin=await personal.begin({purpose:'login'});const response=await fetch(begin.authorizationUrl,{redirect:'manual'});const confirm=new URL(begin.authorizationUrl);confirm.searchParams.set('confirm','1');const code=await fetch(confirm,{redirect:'manual'});return personal.callback(new URL(code.headers.get('location')),begin.correlation);});
  assert(alternate.created);await assert.rejects(sessions.requireRecentReauthentication(alternate.created.sessionToken));
  // Freshness is neither activity nor provider revision. Issuance stays version 1;
@@ -181,14 +181,15 @@ try{
  await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();const state=new URL(page.url()).searchParams.get('state');const [sameSecond]=await db.query("select created_at from app_identity.oidc_personal_transaction where state_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(state)]);
  await control({token:{sub:'fictional-alpha',auth_time:Math.floor(new Date(sameSecond.created_at).getTime()/1000)}});await finish();assert.equal((await current()).status,401);
  await control({token:{sub:'fictional-alpha'},claimsMode:'fresh',beforeRevision:true,revision:1});await page.goto(origin);await page.getByRole('button',{name:'Sign in with your organization'}).click();await finish();await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal(await token(),undefined);await control({beforeRevision:false,revision:1});
- // A confirmed handover settles encrypted writers before the start request
+ // Exercise the retained protocol-level handover API directly; the UI only
+ // offers logout. A confirmed handover settles encrypted writers before the start request
  // revokes authority, and a missing contract cannot retain the outgoing cookie.
  await authenticate('fictional-alpha');alphaToken=await token();
- delete process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON;
- await page.getByRole('button',{name:'Switch user',exact:true}).click();
+ await control({proofAvailable:false});
+ await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));await fixture.beginPersonalClinicianSession('switch',s.csrfToken).catch(()=>{});});
  await expect(page.getByRole('button',{name:'Sign in with your organization',exact:true})).toBeEnabled();
  assert.equal(await token(),undefined);assert.equal((await current()).status,401);await assert.rejects(sessions.getAuthenticated(alphaToken));
- process.env.OIDC_PERSONAL_PROOF_POLICIES_JSON=proofEnvironment;
+ await control({proofAvailable:true});
  await authenticate('fictional-alpha');alphaToken=await token();
  const switchReport='91200000-0000-4000-8000-000000000002';
  await context.route(`**/api/reports/${switchReport}/protected-key-envelope`,route=>route.fulfill({json:{schemaVersion:1,recoveryHandle:route.request().postDataJSON().recoveryHandle,recoveryDeadline:deadline,wrappingKeyVersion:1}}));
@@ -200,9 +201,12 @@ try{
  await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));if(!await fixture.prepareProtectedReport(s.csrfToken,id))throw Error('Protected switch fixture unavailable');},switchReport);
  holdCheckpoint=true;
  await page.evaluate(id=>fixture.updateProtectedReport(id,{note:'PENDING SWITCH WORK'}),switchReport);
+ // Begin while the network checkpoint is actually in flight; direct protocol
+ // invocation has no browser click delay to establish that precondition.
+ await checkpointReady;
  let beginObserved=false;
  await context.route('**/api/sessions/oidc/login',async route=>{beginObserved=true;assert.equal(checkpointSettled,true,'begin must follow the settled checkpoint');assert.equal((await sessions.getAuthenticated(alphaToken)).user.id,process.env.OIDC_ALPHA);await route.continue();});
- await page.getByRole('button',{name:'Switch user',exact:true}).click();
+ await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));void fixture.beginPersonalClinicianSession('switch',s.csrfToken).catch(()=>{});});
  await checkpointReady;assert.equal(beginObserved,false,'switch must not revoke authority while the protected checkpoint is pending');
  assert.equal((await sessions.getAuthenticated(alphaToken)).user.id,process.env.OIDC_ALPHA);
  releaseCheckpoint();
@@ -213,8 +217,8 @@ try{
 
  // Cancellation cannot restore the outgoing app cookie.
  const pendingUrl=new URL(page.url());const canceled=new URL(pendingUrl.searchParams.get('redirect_uri'));canceled.searchParams.set('state',pendingUrl.searchParams.get('state'));canceled.searchParams.set('error','access_denied');await page.goto(canceled.href);await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal((await current()).status,401);
- await authenticate('fictional-alpha');alphaToken=await token();await control({token:{sub:'unknown-case-sensitive'}});await page.getByRole('button',{name:'Switch user',exact:true}).click();await finish();await expect(page.getByText(/awaiting access review/)).toBeVisible();assert.equal((await current()).status,401);await assert.rejects(sessions.getAuthenticated(alphaToken));
- await authenticate('fictional-alpha');alphaToken=await token();await control({token:{sub:'fictional-empty'}});await page.getByRole('button',{name:'Switch user',exact:true}).click();await finish();await expect(page.getByRole('heading',{name:'No workspace assigned'})).toBeVisible();await assert.rejects(sessions.getAuthenticated(alphaToken));assert.equal((await current()).body.workspaceAvailable,false);await logout();
+ await authenticate('fictional-alpha');alphaToken=await token();await control({token:{sub:'unknown-case-sensitive'}});await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));void fixture.beginPersonalClinicianSession('switch',s.csrfToken).catch(()=>{});});await finish();await expect(page.getByText(/awaiting access review/)).toBeVisible();assert.equal((await current()).status,401);await assert.rejects(sessions.getAuthenticated(alphaToken));
+ await authenticate('fictional-alpha');alphaToken=await token();await control({token:{sub:'fictional-empty'}});await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));void fixture.beginPersonalClinicianSession('switch',s.csrfToken).catch(()=>{});});await finish();await expect(page.getByRole('heading',{name:'No workspace assigned'})).toBeVisible();await assert.rejects(sessions.getAuthenticated(alphaToken));assert.equal((await current()).body.workspaceAvailable,false);await logout();
  await authenticate('fictional-alpha');alphaToken=await token();await control({disabled:true});assert.equal((await current()).status,401);await control({disabled:false});
  await assert.rejects(sessions.getAuthenticated(alternate.created.sessionToken));
  // Old activity must not take a session lock before personal authority. With
