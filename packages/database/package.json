@@ -1,6 +1,6 @@
 {
   "name": "@open-triage/database",
-  "version": "0.1.3",
+  "version": "0.1.6",
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
@@ -39,7 +39,7 @@
     "preflight:authentication": "node scripts/authentication-rollout-preflight.mjs"
   },
   "dependencies": {
-    "@open-triage/contracts": "0.1.3",
+    "@open-triage/contracts": "0.1.6",
     "pg": "^8.23.0"
   }
 }
