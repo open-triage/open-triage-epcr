@@ -2020,5 +2020,17 @@
   "admin.ssoUnlink": "Unlink SSO and revoke sessions",
   "admin.ssoUnlinked": "SSO unlinked and sessions revoked. Signing in again requires identity approval.",
   "admin.ssoUnlinkFailed": "Could not unlink SSO. Refresh the user and try again.",
-  "admin.unitRevocationEffect": "Revocation removes this browser’s pairing to this unit. Personal sign-in, existing reports and authorized Administration and Review work remain available. New calls for this unit stop until the browser is enrolled again. This is not remote erasure: protected records and recovery deadlines remain unchanged."
+  "admin.unitRevocationEffect": "Revocation removes this browser’s pairing to this unit. Personal sign-in, existing reports and authorized Administration and Review work remain available. New calls for this unit stop until the browser is enrolled again. This is not remote erasure: protected records and recovery deadlines remain unchanged.",
+  "enrollment.title": "Pair this installation",
+  "enrollment.failed": "Pairing failed. Try a new code.",
+  "enrollment.paired": "This installation is enrolled:",
+  "enrollment.name": "Installation name",
+  "enrollment.confirm": "I confirm this is the intended browser or PWA installation.",
+  "enrollment.reassign": "Reassign and sign out",
+  "enrollment.missingCode": "No pairing code.",
+  "enrollment.signIn": "Sign in again",
+  "settings.demoUnit": "Default unit for Demo users",
+  "settings.demoUnitNone": "No automatic pairing",
+  "settings.demoUnitsFailed": "Could not load units.",
+  "settings.demoUnitsRetry": "Retry loading units"
 }

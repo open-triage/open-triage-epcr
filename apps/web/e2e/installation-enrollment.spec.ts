@@ -10,7 +10,7 @@ test.beforeAll(async()=>{
 });
 for(const language of ['en','sv'])test(`${language} intended installation confirmation, multiple contexts, logout and cleared data`,async({page,context},testInfo)=>{
  const t=(en:string,sv:string)=>language==='sv'?sv:en;
- let inventory:string[]=[],consumed=0;
+ let inventory:string[]=[],consumed=0,failEnrollment=true;
  const code='A'.repeat(43);
  await context.route('**/__enroll-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
  await context.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
@@ -23,6 +23,7 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  expect(request.headers()['x-installation-enrollment']).toBe('1');
  const body=request.postDataJSON();expect(body.token).toBe(code);
  if(request.url().endsWith('/preview'))return route.fulfill({json:{unitName:'Medic 7',callSign:'M7'}});
+ if(failEnrollment){failEnrollment=false;return route.fulfill({status:503,json:{message:'Try again'}});}
  consumed++;expect(body.confirmInstallation).toBe(true);
  inventory.push(body.name);
  return route.fulfill({headers:{'set-cookie':`open_triage_installation=${body.name}; Path=/api; HttpOnly; SameSite=Strict`},json:{id:body.name,name:body.name}});
@@ -31,9 +32,8 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  await page.goto(`/__enroll?language=${language}#code=${code}`);
  await expect(page.getByText('Medic 7 — M7')).toBeVisible();
  expect(consumed).toBe(0);expect(page.url()).not.toContain(code);
- await page.getByRole('button',{name:t('Copy enrollment link for the intended installation','Kopiera kopplingslänk för avsedd installation')}).click();
- await expect(page.getByLabel(t('Copy this link, then open it in the intended browser or PWA','Kopiera länken och öppna den i avsedd webbläsare eller PWA'))).toHaveValue(`http://127.0.0.1:3109/__enroll?language=${language}#code=${code}`);
- expect(page.url()).not.toContain(code);expect(consumed).toBe(0);
+ await expect(page.getByRole('button',{name:/Copy enrollment|Kopiera kopplings/})).toHaveCount(0);
+ await expect(page.getByText(/A registration identifies|En registrering identifierar/)).toHaveCount(0);
  const button=page.getByRole('button',{name:t('Pair this installation','Koppla denna installation'),exact:true});
  await expect(button).toBeDisabled();
  await page.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Cab-browser');
@@ -42,6 +42,19 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  await page.setViewportSize({width:360,height:800});await button.scrollIntoViewIfNeeded();await expect(button).toBeInViewport();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:testInfo.outputPath(`enrollment-${language}-mobile.png`)});
+ await button.click();
+ await expect(page.getByRole('alert')).toHaveText(t('Pairing failed. Try a new code.','Kopplingen misslyckades. Försök med en ny kod.'));
+ await expect(button).toBeEnabled();
+ await expect(page.getByRole('checkbox')).toBeChecked();
+ // Reload loses the consumed URL fragment; it must not show an unfillable disabled form.
+ await page.reload();
+ await expect(page.getByRole('status')).toHaveText(t('No pairing code.','Ingen kopplingskod.'));
+ await expect(page.getByRole('textbox')).toHaveCount(0);
+ await expect(button).toHaveCount(0);
+ await page.goto(`/__enroll?language=${language}#code=${code}`);
+ await page.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Cab-browser');
+ await page.getByRole('checkbox').check();
+ await expect(button).toBeEnabled();
  await button.focus();await button.press('Enter');await expect(page.getByRole('status')).toContainText('Cab-browser');expect(consumed).toBe(1);
  expect(await page.evaluate(()=>document.cookie)).not.toContain('open_triage_installation');
  // Normal clinician logout clears clinician state only; the independent cookie persists.
@@ -128,7 +141,7 @@ for(const language of ['en','sv'])test(`${language} confirmed reassignment settl
  await expect.poll(()=>stale.evaluate(async()=> (await navigator.locks.query()).held?.some(lock=>lock.name==='open-triage.installation-clinical-context'))).toBe(true);
  await page.goto(`/__enroll?language=${language}#code=${'A'.repeat(43)}`);
  await expect(page.getByText('Medic 8 — M8')).toBeVisible();
- await expect(page.getByRole('alert')).toContainText(t('Reassignment signs out every clinician tab.','Omplacering loggar ut alla klinikerflikar.'));
+ await expect(page.getByRole('alert')).toHaveCount(0);
  const submit=page.getByRole('button',{name:t('Reassign and sign out','Omplacera och logga ut')});await expect(submit).toBeDisabled();
  await page.evaluate(()=>localStorage.setItem('open-triage.clinician-session.v1','old clinician'));
  await page.getByRole('checkbox').check();await submit.click();

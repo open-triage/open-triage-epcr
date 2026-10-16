@@ -398,3 +398,14 @@ test('legacy agency settings cannot change inherited authentication policy', asy
   const service = new AgencySettingsService({ transaction: async work => work(manager) }, { requireCapability: async () => ({ organization: { id: organizationId }, user: { id: actorId } }) });
   await assert.rejects(service.update('session', { ...command(), authenticationLimits: { accountAttemptsPer15Minutes: 10, networkAttemptsPer5Minutes: 30 } }), /effective group policy/);
 });
+
+
+test("Demo default unit validates UUIDs, explicit disabling, and omitted preservation", () => {
+  for (const demoUnitId of [randomUUID(), null]) {
+    assert.equal(validateUpdateAgencyMediaSettings({...command(), demoUnitId}).demoUnitId, demoUnitId);
+  }
+  assert.equal(validateUpdateAgencyMediaSettings(command()).demoUnitId, undefined);
+  for (const demoUnitId of ["", "unit", 42, {}, []]) {
+    assert.throws(() => validateUpdateAgencyMediaSettings({...command(),demoUnitId}), UnprocessableEntityException);
+  }
+});

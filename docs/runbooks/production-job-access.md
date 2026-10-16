@@ -122,3 +122,15 @@ personal authentication to reach the checkpoint before expecting success.
 These controlled tests establish the configured contract's behavior. Regional
 AD FS/PAS, physical Android/PWA scanning and Windows personal-session acceptance
 remain the separate deployment dependencies described in the agreed PRD.
+
+
+Agency Settings → Demo records → Default unit for Demo users selects an optional
+active unit in that agency. A user with live Demo and clinical documentation
+permissions can use that unit without enrolling the browser. This personal
+default creates no installation registration and supplies no additional roles.
+Existing explicit pairings take precedence, including retired or revoked
+registrations; revocation cannot silently activate a default instead. Unit
+schedules and per-call confirmation still apply. Clearing the setting, disabling
+the unit, or withdrawing Demo permission stops automatic new-call routing;
+existing authorized reports remain available. The dedicated fictional demo
+account remains unable to receive real production work.

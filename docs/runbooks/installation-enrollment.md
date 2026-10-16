@@ -3,10 +3,12 @@
 Under Admin → Units, an agency administrator opens Installations for an active
 unit and issues a five-minute, single-use QR. The QR includes only an opaque
 random enrollment token in a URL fragment. Open the link in the intended browser
-or installed PWA. The confirmation page explains the storage context, names the
+or installed PWA. The compact confirmation page names the
 selected unit, requires an installation name and explicit confirmation, and
 never consumes a code automatically. A scanner that opens another browser must
-transfer the link to the intended installation before confirming.
+open the original link in the intended installation before confirming. The page
+removes the code from browser history immediately. Refreshing an unpaired page
+therefore shows “No pairing code”; reopen the original QR link to continue.
 
 The installation credential is a separate Secure, HttpOnly, SameSite=Strict
 cookie scoped to `/api`; JavaScript receives only inventory metadata. It remains

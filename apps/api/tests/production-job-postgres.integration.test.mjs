@@ -9,6 +9,7 @@ import { SYNTHETIC_DEMO_FIXTURE } from '@open-triage/contracts';
 import { AssignedCallsService } from '../dist/calls/assigned-calls.service.js';
 import { DraftReportService } from '../dist/reports/draft-report.service.js';
 import { ProtectedReportKeyService } from '../dist/reports/protected-report-key.service.js';
+import { AgencySettingsService } from '../dist/admin/agency-settings.service.js';
 import { InstallationEnrollmentService } from '../dist/admin/installation-enrollment.service.js';
 import { ClinicianSessionService } from '../dist/sessions/clinician-session.service.js';
 import { AgencyDirectoryService } from '../dist/sessions/agency-directory.service.js';
@@ -396,6 +397,47 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const unpairedReceiver=await run(receivingBinding.credential,()=>sessions.create({username,password}));
  assert.equal((await state(receivingBinding,unpairedReceiver)).productionAccess.state,'enrollment-required','a revoked cookie does not obstruct a fresh personal login');
  assert.ok((await state(outsideDemoBinding,outsideDemo)).assignedCalls.some(call=>call.id===outsideDemoCall.assignment.id),'other paired devices are unaffected');
+ // Agency Demo defaults are personal routing, never a persisted browser pairing.
+ const agencySettings=new AgencySettingsService(db,administrative);
+ const updateDefault=async demoUnitId=>{
+   const {authenticationPolicy,...current}=await agencySettings.get('admin');
+   return agencySettings.update('admin',{...current,expectedRevision:current.revision,demoUnitId});
+ };
+ await updateDefault(null);
+ const automaticUnit=await unit(agency),automaticAssignment=await dispatch(automaticUnit);
+ const automaticDemo=await run(undefined,()=>sessions.create({username:demoReceiverName,password}));
+ const priorSettings=await agencySettings.get('admin');
+ await updateDefault(automaticUnit);
+ assert.equal((await state(undefined,automaticDemo)).productionAccess.state,'schedule-required');
+ await blank(automaticUnit);
+ const automaticListing=await state(undefined,automaticDemo);
+ assert.equal(automaticListing.productionAccess.unit.id,automaticUnit);
+ assert.ok(automaticListing.assignedCalls.some(call=>call.id===automaticAssignment));
+ assert.equal((await state(undefined,unpairedReceiver)).productionAccess.state,'enrollment-required','ordinary clinicians do not receive Demo defaults');
+ assert.equal((await state(outsideDemoBinding,outsideDemo)).productionAccess.unit.id,outsideDemoUnit,'explicit pairing takes precedence');
+ assert.equal((await state(receivingBinding,receivingDemo)).productionAccess.state,'enrollment-required','revoked explicit pairings cannot fall back to a Demo default');
+ const autoOpened=await open(undefined,automaticDemo,automaticAssignment);
+ assert.equal(autoOpened.report.documentingUserId,demoReceiver);
+ assert.equal((await admin.query(`select installation_registration_id from app_identity.app_session where token_sha256=encode(sha256($1::bytea),'hex')`,[Buffer.from(automaticDemo.sessionToken)])).rows[0].installation_registration_id,null);
+ const defaultAudit=(await admin.query('select old_demo_unit_id,new_demo_unit_id from app_identity.agency_settings_change_event where organization_id=$1 and revision=$2',[agency,priorSettings.revision+1])).rows[0];
+ assert.deepEqual(defaultAudit,{old_demo_unit_id:null,new_demo_unit_id:automaticUnit});
+ const foreignUnit=await unit(child);
+ await assert.rejects(updateDefault(foreignUnit),/active unit in this agency/);
+ await assert.rejects(admin.query('update app_identity.agency_settings set demo_unit_id=$2 where organization_id=$1',[agency,foreignUnit]),/foreign key/);
+ await admin.query('update app_identity.operational_unit set active=false where id=$1',[automaticUnit]);
+ assert.equal((await state(undefined,automaticDemo)).productionAccess.state,'enrollment-required');
+ await updateDefault(null);
+ await assert.rejects(updateDefault(automaticUnit),/active unit in this agency/);
+ assert.equal((await state(undefined,automaticDemo)).productionAccess.state,'enrollment-required');
+ await admin.query('update app_identity.operational_unit set active=true where id=$1',[automaticUnit]);
+ await updateDefault(automaticUnit);
+ // A stale Demo capability snapshot cannot retain automatic routing after role withdrawal.
+ await admin.query(`update app_identity.user_role_assignment set ended_at=clock_timestamp(),ended_by=$2 where user_id=$1 and ended_at is null`,[demoReceiver,SYNTHETIC_DEMO_FIXTURE.userId]);
+ await admin.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id)
+   select $1,$2,id from app_identity.role where organization_id=$1 and system_key='clinician'`,[agency,demoReceiver]);
+ assert.equal((await state(undefined,automaticDemo)).productionAccess.state,'enrollment-required');
+ assert.equal((await run(undefined,()=>reports.reopen(automaticDemo.sessionToken,autoOpened.report.id))).report.id,autoOpened.report.id);
+ await updateDefault(null);
  // Live role withdrawal wins before a stale new-job command acquires authority.
  const roleBlocked=await dispatch(otherUnit);
  await admin.query('begin');

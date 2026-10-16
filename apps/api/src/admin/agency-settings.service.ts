@@ -19,6 +19,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { mutationRows } from "../database/mutation-result.js";
 
 type SettingsRow = {
+  demo_unit_id: string | null;
   organization_id: string;
   language: string;
   regional_format: "en-US" | "sv-SE" | null;
@@ -119,6 +120,12 @@ export class AgencySettingsService {
       throw new ConflictException({ message: "Agency Settings revision is stale",
         expectedRevision: command.expectedRevision, actualRevision });
     }
+    const demoUnitId = command.demoUnitId === undefined ? currentSettings.demo_unit_id ?? null : command.demoUnitId;
+    if (demoUnitId !== null && demoUnitId !== currentSettings.demo_unit_id) {
+      const [unit] = await manager.query(`select id from app_identity.operational_unit
+        where id=$1 and organization_id=$2 and active for share`, [demoUnitId, organizationId]);
+      if (!unit) throw new UnprocessableEntityException("Select an active unit in this agency");
+    }
     const appearanceChanged = JSON.stringify(this.appearance(currentSettings)) !== JSON.stringify(command.appearance);
     const syntheticRetentionHours = command.syntheticRetentionHours === undefined
       ? currentSettings.synthetic_retention_hours === null ? null : Number(currentSettings.synthetic_retention_hours)
@@ -129,7 +136,7 @@ export class AgencySettingsService {
         authenticationLimits.networkAttemptsPer5Minutes !== currentSettings.authentication_network_attempt_limit) {
       throw new UnprocessableEntityException("Manage inherited login limits through the effective group policy");
     }
-    if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
+    if ((currentSettings.demo_unit_id ?? null) === demoUnitId && Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
         Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
         currentSettings.language === command.language &&
         currentSettings.authentication_account_attempt_limit === authenticationLimits.accountAttemptsPer15Minutes &&
@@ -145,7 +152,7 @@ export class AgencySettingsService {
         logo_png_data_url = $7, accent_color = $8, accent_dark_color = $9,
         browser_theme_color = $10, pwa_background_color = $11, pwa_name = $12,
         pwa_short_name = $13, destructive_color = $14, inactive_button_color = $19, text_color = $20,
-        synthetic_retention_hours = $21,
+        synthetic_retention_hours = $21, demo_unit_id = $24,
         authentication_account_attempt_limit = $22, authentication_network_attempt_limit = $23,
         revision = revision + 1,
         updated_at = clock_timestamp(), updated_by = $15
@@ -159,7 +166,7 @@ export class AgencySettingsService {
       actorId, command.language, command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat,
       command.timeZone === undefined ? currentSettings.time_zone : command.timeZone,
       command.appearance.inactiveButtonColor, command.appearance.textColor, syntheticRetentionHours,
-      authenticationLimits.accountAttemptsPer15Minutes, authenticationLimits.networkAttemptsPer5Minutes]));
+      authenticationLimits.accountAttemptsPer15Minutes, authenticationLimits.networkAttemptsPer5Minutes, demoUnitId]));
     const updated = updatedRows[0];
     if (!updated) throw new ConflictException("Agency Settings revision is stale");
     const updatedDemographic = demographicChanged
@@ -235,8 +242,8 @@ export class AgencySettingsService {
        old_inactive_button_color,new_inactive_button_color,old_text_color,new_text_color,
        old_synthetic_retention_hours,new_synthetic_retention_hours,
        old_authentication_account_attempt_limit,new_authentication_account_attempt_limit,
-       old_authentication_network_attempt_limit,new_authentication_network_attempt_limit)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)`,
+       old_authentication_network_attempt_limit,new_authentication_network_attempt_limit,old_demo_unit_id,new_demo_unit_id)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46)`,
     [organizationId, actorId, prior.revision, updated.revision,
       prior.report_media_allowance_bytes, updated.report_media_allowance_bytes,
       prior.image_media_limit_bytes, updated.image_media_limit_bytes,
@@ -253,7 +260,7 @@ export class AgencySettingsService {
       oldAppearance.inactiveButtonColor, newAppearance.inactiveButtonColor, oldAppearance.textColor, newAppearance.textColor,
       prior.synthetic_retention_hours, updated.synthetic_retention_hours,
       prior.authentication_account_attempt_limit, updated.authentication_account_attempt_limit,
-      prior.authentication_network_attempt_limit, updated.authentication_network_attempt_limit]);
+      prior.authentication_network_attempt_limit, updated.authentication_network_attempt_limit, prior.demo_unit_id ?? null, updated.demo_unit_id ?? null]);
   }
 
   private authenticationLimits(row: SettingsRow): AgencyMediaSettings["authenticationLimits"] {
@@ -292,6 +299,7 @@ export class AgencySettingsService {
       effectiveFrom: new Date(demographic.effective_from).toISOString(),
     };
     return { organizationId: row.organization_id, language: row.language, regionalFormat: row.regional_format, timeZone: row.time_zone, reportMediaAllowanceBytes,
+      demoUnitId: row.demo_unit_id ?? null,
       syntheticRetentionHours: row.synthetic_retention_hours === null ? null : Number(row.synthetic_retention_hours),
       authenticationLimits: this.authenticationLimits(row),
       imageMediaLimitBytes: Number(row.image_media_limit_bytes),

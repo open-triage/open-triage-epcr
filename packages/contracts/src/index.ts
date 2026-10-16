@@ -845,6 +845,8 @@ export const DEFAULT_AGENCY_AUTHENTICATION_LIMITS: Readonly<AgencyAuthentication
 export const MAX_AGENCY_AUTHENTICATION_ATTEMPTS = 1_000;
 
 export interface AgencyMediaSettings {
+  /** Default for Demo users without an explicit installation pairing. */
+  demoUnitId?: string | null;
   organizationId: string;
   language: string;
   regionalFormat: "en-US" | "sv-SE" | null;
@@ -866,6 +868,8 @@ export interface AgencyMediaSettings {
 }
 
 export interface UpdateAgencyMediaSettingsCommand {
+  /** Omitted preserves the current default; null disables automatic pairing. */
+  demoUnitId?: string | null;
   expectedRevision: number;
   language: string;
   regionalFormat?: "en-US" | "sv-SE" | null;

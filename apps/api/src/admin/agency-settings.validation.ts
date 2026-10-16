@@ -140,12 +140,16 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "authenticationPolicy", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "demoUnitId", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "authenticationPolicy", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
   if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
     throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+  }
+  if (body.demoUnitId !== undefined && body.demoUnitId !== null &&
+      (typeof body.demoUnitId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(body.demoUnitId))) {
+    throw new UnprocessableEntityException("demoUnitId must be a unit UUID or null");
   }
   let authenticationLimits: UpdateAgencyMediaSettingsCommand["authenticationLimits"];
   if (body.authenticationLimits !== undefined) {
@@ -194,6 +198,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     catch { throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null"); }
   }
   return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(body.demoUnitId === undefined ? {} : { demoUnitId: body.demoUnitId as string | null }),
     ...(body.authenticationPolicy===undefined?{}:{authenticationPolicy:validateLocalPolicy(body.authenticationPolicy)}),
     ...(authenticationLimits === undefined ? {} : { authenticationLimits }),
     ...(body.syntheticRetentionHours === undefined ? {} : { syntheticRetentionHours: body.syntheticRetentionHours as number | null }),

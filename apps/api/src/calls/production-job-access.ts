@@ -32,6 +32,12 @@ export async function productionJobAccess(manager: EntityManager, token: string,
     where role.id in (select role_id from app_identity.user_role_assignment where user_id=$1 and ended_at is null)
     order by role.id for share`, [session.user.id]);
   const rollout = await productionWorkflow(manager, session.organization.id, "share");
+  const automatic = await automaticDemoUnitAccess(manager, token, session);
+  if (automatic) {
+    if (automatic.state !== "ready") return automatic;
+    return { state: rollout.state === "preparation" ? "preparation"
+      : await currentShiftAccess(manager, token, automatic.unit!, schedules, confirmation), unit: automatic.unit };
+  }
   if (rollout.state === "preparation") {
     // Preparation exempts only enrollment/schedules, never live session authority.
     // Lock immutable device associations too, even if its cookie has gone away.
@@ -62,6 +68,45 @@ export async function productionJobAccess(manager: EntityManager, token: string,
   const enrolled = await enrolledUnitAccess(manager, token, session);
   if (enrolled.state !== "ready") return enrolled;
   return { state: await currentShiftAccess(manager, token, enrolled.unit!, schedules, confirmation), unit: enrolled.unit };
+}
+
+/** Resolve a personal Demo default without creating a shared browser binding.
+ * Even a retired explicit registration takes precedence, so revocation cannot
+ * silently turn into automatic access to another unit. */
+async function automaticDemoUnitAccess(manager: EntityManager, token: string,
+  session: ClinicianSession): Promise<ProductionJobAccess | null> {
+  const request = agencyRequest.getStore();
+  const [selected] = await manager.query<Array<{ demo_unit_id: string }>>(`
+    select settings.demo_unit_id from app_identity.agency_settings settings
+    join app_identity.app_session s on s.organization_id=settings.organization_id
+    join app_identity.app_user u on u.id=s.user_id
+    where s.token_sha256=$1 and s.user_id=$2 and s.organization_id=$3
+      and s.revoked_at is null and s.expires_at>clock_timestamp() and u.active
+      and app_identity.session_authentication_valid(s)
+      and app_identity.user_can_access_organization(s.user_id,s.organization_id)
+      and app_identity.user_has_capability(s.user_id,s.organization_id,'clinical:demo')
+      and app_identity.user_has_capability(s.user_id,s.organization_id,'clinical:document')
+      and settings.demo_unit_id is not null and s.installation_registration_id is null
+      and not exists(select 1 from app_identity.installation_registration r where r.credential_sha256=$4)
+    for share of settings`, [digest(token),session.user.id,session.organization.id,
+      request?.installationCredential ? digest(request.installationCredential) : null]);
+  if (!selected?.demo_unit_id) return null;
+  await manager.query(`select id from app_identity.organization where id=$1
+    or id=(select parent_organization_id from app_identity.organization where id=$1)
+    order by id for share`, [session.organization.id]);
+  const [unit] = await manager.query<Array<{id:string;callSign:string;name:string;organizationId:string}>>(`
+    select u.id,u.call_sign as "callSign",u.name,u.organization_id as "organizationId"
+    from app_identity.operational_unit u
+    join app_identity.organization a on a.id=u.organization_id
+    join app_identity.organization g on g.id=coalesce(a.parent_organization_id,a.id)
+    where u.id=$1 and u.organization_id=$2 and u.active and a.active and g.active for share of u`,
+    [selected.demo_unit_id,session.organization.id]);
+  const [live] = await manager.query(`select id from app_identity.app_session
+    where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()
+      and installation_registration_id is null and app_identity.session_authentication_valid(app_session)
+    for update`, [digest(token)]);
+  if (!live) throw new UnauthorizedException({code:"calls.sessionExpired",params:{}});
+  return unit ? {state:"ready",unit} : {state:"enrollment-required"};
 }
 
 /** A unit pairing never supplies personal authority. Shared by both call datasets. */

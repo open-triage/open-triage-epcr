@@ -2018,5 +2018,17 @@
   "admin.ssoUnlink": "Koppla från SSO och avsluta sessioner",
   "admin.ssoUnlinked": "SSO har kopplats från och sessionerna avslutats. Ny inloggning kräver identitetsgodkännande.",
   "admin.ssoUnlinkFailed": "Det gick inte att koppla från SSO. Uppdatera användaren och försök igen.",
-  "admin.unitRevocationEffect": "Återkallelse tar bort webbläsarens koppling till denna enhet. Personlig inloggning, befintliga journaler och behörig åtkomst till Administration och Granskning är fortfarande tillgängliga. Nya uppdrag för enheten stoppas tills webbläsaren kopplas igen. Detta är ingen fjärradering: skyddade journaler och återställningsfrister är oförändrade."
+  "admin.unitRevocationEffect": "Återkallelse tar bort webbläsarens koppling till denna enhet. Personlig inloggning, befintliga journaler och behörig åtkomst till Administration och Granskning är fortfarande tillgängliga. Nya uppdrag för enheten stoppas tills webbläsaren kopplas igen. Detta är ingen fjärradering: skyddade journaler och återställningsfrister är oförändrade.",
+  "enrollment.title": "Koppla denna installation",
+  "enrollment.failed": "Kopplingen misslyckades. Försök med en ny kod.",
+  "enrollment.paired": "Denna installation är kopplad:",
+  "enrollment.name": "Installationsnamn",
+  "enrollment.confirm": "Jag bekräftar att detta är avsedd webbläsare eller PWA-installation.",
+  "enrollment.reassign": "Omplacera och logga ut",
+  "enrollment.missingCode": "Ingen kopplingskod.",
+  "enrollment.signIn": "Logga in igen",
+  "settings.demoUnit": "Standardenhet för Demo-användare",
+  "settings.demoUnitNone": "Ingen automatisk koppling",
+  "settings.demoUnitsFailed": "Det gick inte att hämta enheter.",
+  "settings.demoUnitsRetry": "Försök hämta enheter igen"
 }

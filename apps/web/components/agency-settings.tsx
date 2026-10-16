@@ -4,12 +4,12 @@ import { EffectiveGroupPolicyFields,validEffectiveGroupPolicy } from "./effectiv
 import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
-import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
+import type { OperationalUnitSummary, AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { DEFAULT_SYNTHETIC_RETENTION_HOURS, DEFAULT_AGENCY_AUTHENTICATION_LIMITS, DEFAULT_AGENCY_APPEARANCE,
   DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES,
   } from "@open-triage/contracts";
 import React, { type ReactNode, FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
+import { loadOperationalUnits, loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { TimeZoneSelect } from "./time-zone-select";
 import { applyAgencyColors } from "../app/installation-settings";
 import { formatClinicalDate, formatClinicalNumber, type RegionalFormat } from "../app/regional-format";
@@ -23,7 +23,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
-  return { expectedRevision: settings.revision,
+  return { expectedRevision: settings.revision, demoUnitId: settings.demoUnitId ?? null,
     ...(settings.authenticationPolicy?{authenticationPolicy:{expectedRevision:settings.authenticationPolicy.revision,
       maximumSessionHours:settings.authenticationPolicy.maximumSessionHours,temporaryPasswordHours:settings.authenticationPolicy.temporaryPasswordHours,
       accountAttemptsPer15Minutes:settings.authenticationPolicy.accountAttemptsPer15Minutes,networkAttemptsPer5Minutes:settings.authenticationPolicy.networkAttemptsPer5Minutes}}:{}),language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
@@ -41,7 +41,7 @@ function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsComma
 export function newAgencySettings(): AgencyMediaSettings {
   return { organizationId: "", revision: 1, language: "en", regionalFormat: null,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    syntheticRetentionHours: DEFAULT_SYNTHETIC_RETENTION_HOURS,
+    demoUnitId: null, syntheticRetentionHours: DEFAULT_SYNTHETIC_RETENTION_HOURS,
     authenticationLimits: { ...DEFAULT_AGENCY_AUTHENTICATION_LIMITS },
     reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, imageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES,
     defaultReportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, defaultImageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES,
@@ -72,6 +72,24 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
   const [allowanceMib, setAllowanceMib] = useState("50");
   const [imageLimitMib, setImageLimitMib] = useState("10");
   const [retentionHours, setRetentionHours] = useState(String(DEFAULT_SYNTHETIC_RETENTION_HOURS));
+  const [units, setUnits] = useState<OperationalUnitSummary[]>([]);
+  const [unitsError, setUnitsError] = useState(false);
+  const [unitsAttempt, setUnitsAttempt] = useState(0);
+  const [unitsLoaded, setUnitsLoaded] = useState(false);
+  useEffect(() => {
+    if (creating) return;
+    let active = true;
+    async function load() {
+      const items: OperationalUnitSummary[] = [];
+      let cursor: string | undefined;
+      try {
+        do { const page = await loadOperationalUnits(cursor); items.push(...page.items); cursor = page.nextCursor ?? undefined; } while (cursor && active);
+        if (active) { setUnits(items); setUnitsError(false); setUnitsLoaded(true); }
+      } catch { if (active) setUnitsError(true); }
+    }
+    void load();
+    return () => { active = false; };
+  }, [creating, unitsAttempt]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -199,6 +217,17 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
 
       <fieldset disabled={!canWrite || busy}>
         <legend>{t("settings.demoRecords")}</legend>
+        {!creating && <>
+          <label htmlFor={fieldId("demo-unit")}>{t("settings.demoUnit")}</label>
+          <select id={fieldId("demo-unit")} value={draft.demoUnitId ?? ""} disabled={!unitsLoaded}
+            onChange={event => setDraft(current => current ? {...current,demoUnitId:event.target.value || null} : current)}>
+            <option value="">{t("settings.demoUnitNone")}</option>
+            {draft.demoUnitId && !units.some(unit => unit.id === draft.demoUnitId) && <option value={draft.demoUnitId}>{draft.demoUnitId}</option>}
+            {units.filter(unit => unit.active || unit.id === draft.demoUnitId).map(unit =>
+              <option key={unit.id} value={unit.id} disabled={!unit.active}>{unit.callSign} — {unit.name}</option>)}
+          </select>
+          {unitsError && <p className="admin-error" role="alert">{t("settings.demoUnitsFailed")} <button type="button" onClick={() => setUnitsAttempt(value => value + 1)}>{t("settings.demoUnitsRetry")}</button></p>}
+        </>}
         <label htmlFor={fieldId("synthetic-retention-hours")}><strong>{t("settings.demoWipeHours")}</strong></label>
         <input id={fieldId("synthetic-retention-hours")} name="syntheticRetentionHours" type="number" min="1" step="1"
           value={retentionHours} aria-describedby={fieldId("synthetic-retention-help")} aria-invalid={!validRetentionHours}
