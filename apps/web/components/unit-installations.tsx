@@ -1,4 +1,5 @@
 "use client";
+import { resolveMessage } from "../app/localization";
 import React,{useRef,useState} from "react";
 import QRCode from "qrcode";
 import Image from "next/image";
@@ -14,9 +15,9 @@ export function UnitInstallations({unitId,unitName,csrfToken,language}:{unitId:s
  const [busy,setBusy]=useState(false),[error,setError]=useState(false);
  async function load(next?:string){setBusy(true);try{const page=await loadUnitInstallations(unitId,next);setItems(page.items);setCursor(page.nextCursor);setError(false);}catch(reason){if(listAccessRemoved(reason)){setItems([]);setCursor(null);setQr(null);setLink(null);}setError(true);}finally{setBusy(false);}}
  function close(){dialog.current?.close();setLink(null);setQr(null);setExpires(null);setConfirming(null);trigger.current?.focus();}
- return <><button ref={trigger} type="button" onClick={()=>{dialog.current?.showModal();void load();}}>{t("Installations","Installationer")} {unitName}</button>
- <dialog ref={dialog} className="unit-dialog" aria-label={`${t("Installations","Installationer")} ${unitName}`} onCancel={e=>{e.preventDefault();close();}}>
- <h3>{unitName}: {t("Installations","Installationer")}</h3>
+ return <><button ref={trigger} type="button" onClick={()=>{dialog.current?.showModal();void load();}}>{resolveMessage(language,"admin.unitDevices")}</button>
+ <dialog ref={dialog} className="unit-dialog" aria-label={`${resolveMessage(language,"admin.unitDevices")} ${unitName}`} onCancel={e=>{e.preventDefault();close();}}>
+ <h3>{unitName}: {resolveMessage(language,"admin.unitDevices")}</h3>
  <p>{t("Clearing site data or changing browser requires enrollment again. Old entries remain in the inventory. Pairing grants no clinician permissions.","Rensad webbplatsdata eller byte av webbläsare kräver ny koppling. Gamla poster behålls. Koppling ger inga kliniska behörigheter.")}</p>
  {error&&<p role="alert" className="admin-error">{t("Could not complete the action. Loaded inventory is retained.","Kunde inte slutföra åtgärden. Hämtade inventarier behålls.")}</p>}
  <div className="admin-table-scroll unit-installation-inventory"><table className="admin-table"><thead><tr><th>{t("Name","Namn")}</th><th>{t("Status","Status")}</th><th>{t("Actions","Åtgärder")}</th></tr></thead><tbody>{items.map(i=><tr key={i.id}><td>{i.name}</td><td>{i.revokedAt?t("Revoked","Återkallad"):t("Enrolled","Kopplad")}</td><td><button className="button-danger" disabled={busy||!!i.revokedAt} onClick={()=>setConfirming(i)}>{t("Revoke","Återkalla")} {i.name}</button></td></tr>)}</tbody></table></div>

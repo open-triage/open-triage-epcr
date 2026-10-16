@@ -23,7 +23,7 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState<string | null>(null);
   const request = useRef(0);
-  const trigger = useRef<HTMLButtonElement | null>(null);
+  const trigger = useRef<HTMLElement | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   useReturnFocus(!!editor,busy,()=>trigger.current);
   useEffect(() => { if (editor && !dialog.current?.open) dialog.current?.showModal(); }, [editor]);
@@ -47,8 +47,8 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
     if (!saved && !confirmDiscardChanges(dirty)) return;
     setEditor(null);setDirty(false);
   }
-  if (scheduleUnit) return <UnitScheduleEditor unitId={scheduleUnit.id} unitName={scheduleUnit.name} csrfToken={csrfToken} canManage={canManage} language={language} onClose={() => { setScheduleUnit(null);requestAnimationFrame(() => document.getElementById(trigger.current?.id??"")?.focus()); }} />;
-  return <section className="admin-directory" aria-labelledby="units-heading">
+  if (scheduleUnit) return <UnitScheduleEditor unitId={scheduleUnit.id} unitName={scheduleUnit.name} csrfToken={csrfToken} canManage={canManage} language={language} onClose={() => { setScheduleUnit(null);void load(currentCursor);requestAnimationFrame(() => document.getElementById(trigger.current?.id??"")?.focus()); }} />;
+  return <section className="admin-directory unit-directory" aria-labelledby="units-heading">
     <div className="section-heading"><h2 id="units-heading">{text("Units","Enheter")}</h2>
       {canManage && <button className="button-primary" type="button" onClick={event => {
         if (!confirmDiscardChanges(dirty)) return;
@@ -61,12 +61,18 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
       <th>{text("Name","Namn")}</th><th>{text("Call sign","Anropssignal")}</th><th>{text("Status","Status")}</th><th>{text("Actions","Åtgärder")}</th>
     </tr></thead><tbody>{items.map(unit => {
       const edit = () => { if (!confirmDiscardChanges(dirty)) return; setDirty(false);setEditor({ ...unit }); };
-      return <tr key={unit.id} onClick={event => canManage && activateListRow(event)} className="admin-directory-row">
+      return <tr key={unit.id} tabIndex={canManage ? 0 : undefined}
+        aria-label={canManage ? `${resolveMessage(language, "admin.edit")}: ${unit.name}` : undefined}
+        onClick={event => canManage && activateListRow(event, () => { trigger.current=event.currentTarget;edit(); })}
+        onKeyDown={event => {
+          if (!canManage || event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+          event.preventDefault();trigger.current=event.currentTarget;edit();
+        }} className="admin-directory-row">
         <td>{unit.name}</td><td>{unit.callSign}</td><td>{unit.active ? text("Active","Aktiv") : text("Inactive","Inaktiv")}
           {unit.active && unit.scheduleSelected===false && <p>{resolveMessage(language,"admin.unitScheduleRequiredWarning")}</p>}
           {unit.active && unit.enrolled===false && <p>{resolveMessage(language,"admin.unitEnrollmentRequiredWarning")}</p>}
         </td>
-        <td>{canManage && <button data-list-row-action type="button" onClick={event => { trigger.current=event.currentTarget;edit(); }}>{text("Edit","Redigera")} {unit.name}</button>} <button id={`unit-schedule-${unit.id}`} type="button" onClick={event => { trigger.current=event.currentTarget;setScheduleUnit(unit); }}>{text("Schedule","Schema")} {unit.name}</button>{canManage&&unit.active&&<UnitInstallations unitId={unit.id} unitName={unit.name} csrfToken={csrfToken} language={language}/>}</td>
+        <td><div className="admin-role-editor-actions"><button id={`unit-schedule-${unit.id}`} type="button" onClick={event => { trigger.current=event.currentTarget;setScheduleUnit(unit); }}>{resolveMessage(language, "admin.unitSchedule")}</button>{canManage&&unit.active&&<UnitInstallations unitId={unit.id} unitName={unit.name} csrfToken={csrfToken} language={language}/>}</div></td>
       </tr>;
     })}</tbody></table></div>
     <div className="admin-role-editor-actions"><button type="button" disabled={busy || !currentCursor} onClick={() => void load()}>{text("First page","Första sidan")}</button>

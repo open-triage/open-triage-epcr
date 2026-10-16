@@ -21,7 +21,7 @@ for(const language of ['en','sv'])test(`${language} administrator confirms devic
  await page.route('**/api/admin/units/unit/installations',r=>r.fulfill({json:{items:[{id:'lost',name:'Lost browser',revokedAt:revoked?'2026-10-13':null},{id:'other',name:'Other clinician device',revokedAt:null}],nextCursor:null}}));
  await page.route('**/api/admin/units/unit/installations/lost/revoke',r=>{expect(r.request().headers()['x-csrf-token']).toBe('csrf');expect(r.request().method()).toBe('POST');revoked=true;return r.fulfill({json:{revoked:true,sessionsRevoked:1}});});
  await page.goto(`/__device?language=${language}`);
- const trigger=page.getByRole('button',{name:`${t('Installations','Installationer')} Medic 7`,exact:true});await trigger.focus();await trigger.press('Enter');
+ const trigger=page.getByRole('button',{name:t('Devices','Enheter'),exact:true});await trigger.focus();await trigger.press('Enter');
  const dialog=page.getByRole('dialog');await expect(dialog).toContainText(t('This is not remote erasure','Detta är ingen fjärradering'));
  const lost=dialog.getByRole('button',{name:`${t('Revoke','Återkalla')} Lost browser`,exact:true});await lost.focus();await lost.press('Enter');
  const confirm=dialog.getByRole('button',{name:t('Confirm revocation','Bekräfta återkallelse'),exact:true});await expect(confirm).toBeVisible();expect(revoked).toBe(false);

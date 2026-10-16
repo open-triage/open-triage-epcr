@@ -68,7 +68,7 @@ for(const language of ['en','sv'])test(`${language} administrator inventory and 
  return route.fulfill({json:{token:'A'.repeat(43),origin:'http://127.0.0.1:3109',expiresAt:'2026-10-13T17:00:00Z'}});
  });
  await page.goto(`/__enroll?admin=1&language=${language}`);
- const trigger=page.getByRole('button',{name:`${t('Installations','Installationer')} Medic 7`,exact:true});
+ const trigger=page.getByRole('button',{name:t('Devices','Enheter'),exact:true});
  await trigger.focus();await trigger.press('Enter');
  const dialog=page.getByRole('dialog');await expect(dialog.getByText('Rear PWA',{exact:true})).toBeVisible();
  const issue=dialog.getByRole('button',{name:t('Issue five-minute QR code','Utfärda femminuters QR-kod'),exact:true});

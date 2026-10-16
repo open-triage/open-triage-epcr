@@ -51,7 +51,7 @@ for(const language of ['en','sv'])test(`${language} schedules author blank/weekl
  await page.getByRole('button',{name:t('Save','Spara'),exact:true}).click();await expect(create).toBeFocused();
  await expect(page.getByRole('cell',{name:t('Blank schedule','Tomt schema'),exact:true})).toBeVisible();
  const units=page.getByRole('button',{name:t('Units','Enheter'),exact:true});await units.click();
- const scheduleButton=page.getByRole('button',{name:t('Schedule Medic 7','Schema Medic 7'),exact:true});await scheduleButton.click();
+ const scheduleButton=page.getByRole('button',{name:t('Schedule','Schema'),exact:true});await scheduleButton.click();
  await expect(page.getByRole('status').first()).toContainText(t('No schedule selected','Inget schema valt'));
  await page.getByLabel(t('Selected schedule','Valt schema'),{exact:true}).selectOption(scheduleId);await page.getByRole('button',{name:t('Preview effective time','Förhandsvisa ikraftträdande')}).click();await expect(effectivePreview).toBeVisible();await page.getByRole('button',{name:t('Save selection','Spara val')}).click();
  await expect(page.getByRole('status').first()).toContainText(t('Blank schedule','Tomt schema'));

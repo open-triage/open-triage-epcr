@@ -48,10 +48,47 @@ for(const language of ['en','sv']) {
         await dialog.getByRole('button',{name:t('Save','Spara'),exact:true}).focus();await page.keyboard.press('Enter');
         await expect(dialog).toHaveCount(0);await expect(create).toBeFocused();
       }
-      if(rows[0]!.active){await expect(page.getByText(t('Select a shift schedule before ordinary work.','Välj ett arbetspasschema före ordinarie arbete.'))).toBeVisible();await expect(page.getByText(t('Enroll a device before ordinary work.','Registrera en enhet före ordinarie arbete.'))).toBeVisible();}
-      const edit=page.getByRole('button',{name:`${t('Edit','Redigera')} Medic 7`,exact:true});
-      await edit.focus();await edit.press('Enter');
+      await expect(page.getByRole('button',{name:/^(Edit|Redigera) Medic 7$/})).toHaveCount(0);
+      const edit=page.getByRole('row',{name:`${t('Edit','Redigera')}: Medic 7`,exact:true});
+      await expect(edit.getByRole('button',{name:t('Schedule','Schema'),exact:true})).toBeVisible();
+      if(rows[0]!.active){await expect(edit.getByText(t('Select a shift schedule before ordinary work.','Välj ett arbetspasschema före ordinarie arbete.'))).toBeVisible();await expect(edit.getByText(t('Enroll a device before ordinary work.','Registrera en enhet före ordinarie arbete.'))).toBeVisible();}
+      const devices=edit.getByRole('button',{name:t('Devices','Enheter'),exact:true});
+      const spacing=await page.locator('.unit-directory').evaluate(section=>{
+        const rect=(selector:string)=>section.querySelector(selector)!.getBoundingClientRect();
+        const heading=rect('.section-heading h2'),description=rect(':scope > p');
+        const refresh=rect(':scope > button'),table=rect(':scope > .admin-table-scroll');
+        const pagination=rect(':scope > .admin-role-editor-actions');
+        const actions=section.querySelector('tbody td:last-child .admin-role-editor-actions')!;
+        return {
+          leftEdges:[heading.left,description.left,refresh.left,table.left,pagination.left],
+          tableGap:table.top-refresh.bottom,
+          paginationGap:pagination.top-table.bottom,
+          actionGap:parseFloat(getComputedStyle(actions).gap),
+        };
+      });
+      expect(Math.max(...spacing.leftEdges)-Math.min(...spacing.leftEdges)).toBeLessThan(1);
+      expect(spacing.tableGap).toBeGreaterThanOrEqual(8);
+      expect(spacing.paginationGap).toBeGreaterThanOrEqual(8);
+      expect(spacing.actionGap).toBeGreaterThanOrEqual(8);
+      await devices.click();
+      const inventory=page.getByRole('dialog',{name:`${t('Devices','Enheter')} Medic 7`,exact:true});
+      await expect(inventory).toBeVisible();
+      await expect(page.getByRole('dialog',{name:t('Edit unit','Redigera enhet'),exact:true})).toHaveCount(0);
+      await inventory.getByRole('button',{name:t('Close','Stäng'),exact:true}).click();
+      await expect(devices).toBeFocused();
+      await edit.getByRole('cell',{name:'Medic 7',exact:true}).click();
+      await expect(page.getByRole('dialog',{name:t('Edit unit','Redigera enhet'),exact:true})).toBeVisible();
+      await page.getByRole('dialog').getByRole('button',{name:t('Cancel','Avbryt'),exact:true}).click();
+      await expect(edit).toBeFocused();
+      await edit.focus();await edit.press(width===1280?'Enter':' ');
       const dialog=page.getByRole('dialog');
+      const headingInset=await dialog.evaluate(element=>{
+        const heading=element.querySelector('h3')!;
+        const style=getComputedStyle(element);
+        return heading.getBoundingClientRect().top-element.getBoundingClientRect().top
+          -parseFloat(style.borderTopWidth)-parseFloat(style.paddingTop);
+      });
+      expect(Math.abs(headingInset)).toBeLessThan(1);
       await dialog.getByLabel(t('Call sign','Anropssignal'),{exact:true}).fill(width===1280?'NEW-7':'FINAL-7');
       if(width===360) await dialog.getByLabel(t('Active','Aktiv'),{exact:true}).uncheck();
       const save=dialog.getByRole('button',{name:t('Save','Spara'),exact:true});
