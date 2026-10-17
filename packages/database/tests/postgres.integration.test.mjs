@@ -243,7 +243,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       "select key from app_identity.capability order by key"
     )).rows.map(({ key }) => key);
     assert.deepEqual(capabilityKeys, [
-      "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
+      "admin-dashboard:read", "audit:identifying", "audit:read", "catalog:publish", "catalog:read", "catalog:write",
       "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
       "forms:read", "forms:write", "review:admin", "review:all", "review:identifying",
       "review:self", "roles:assign", "roles:read", "roles:write",

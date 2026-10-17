@@ -93,7 +93,13 @@ integration('upgrade inventories conflicts read-only and explicit rollout preser
     report:(await owner.query('select id,organization_id,incident_id,patient_id,documenting_user_id,form_version_id,catalog_release_id,validation_version_id,form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,synthetic,expires_at,revision,status from clinical.report where id=$1',[report]))[0],
     recovery:await owner.query('select * from offline_recovery.report_key_envelope where report_id=$1',[report]),
     audit:await owner.query('select * from app_identity.authentication_event where actor_id=$1 order by id',[actor.userId])});
-  const original=await snapshot();await applyMigrations(migration,migrations,{info(){}});assert.deepEqual(await snapshot(),original);
+  const original=await snapshot();await applyMigrations(migration,migrations,{info(){}});
+  const upgraded=await snapshot();
+  // Later audit migrations add public UUIDs while retaining every original evidence field.
+  assert.ok(upgraded.audit.length>0);
+  for(const event of upgraded.audit)assert.match(event.audit_id,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(new Set(upgraded.audit.map(event=>event.audit_id)).size,upgraded.audit.length);
+  assert.deepEqual({...upgraded,audit:upgraded.audit.map(({audit_id,...evidence})=>evidence)},original);
   await db.initialize();const origin='https://rollout.example',directory=new AgencyDirectoryService(db);
   const agencies={allowsOrigin:async candidate=>candidate===origin,forLogin:async()=>({id:group,name:'Legacy root'}),accessible:(...args)=>directory.accessible(...args)};
   const sessions=new ClinicianSessionService(db,agencies),schedules=new SchedulesService(db,sessions),workflow=new ProductionWorkflowService(db,sessions),calls=new AssignedCallsService(db,sessions,schedules),reports=new DraftReportService(db,sessions,schedules),enrollment=new InstallationEnrollmentService(db,sessions,agencies);
