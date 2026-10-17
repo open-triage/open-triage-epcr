@@ -1,3 +1,5 @@
+import { AuditController } from "./audit.controller.js";
+import { AuditService } from "./audit.service.js";
 import { InstallationEnrollmentController } from "./installation-enrollment.controller.js";
 import { InstallationEnrollmentService } from "./installation-enrollment.service.js";
 import { UnitsController } from "./units.controller.js";
@@ -26,8 +28,8 @@ import { OrganizationsService } from "./organizations.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
-  controllers: [InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
-  providers: [InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
+  controllers: [AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
+  providers: [AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
     AgencySettingsService, OrganizationsService],
