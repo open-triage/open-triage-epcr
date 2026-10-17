@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
@@ -9,6 +10,7 @@ test("signed inspection applies amendments and withholds unrestricted content", 
   let capabilities = ["review:self"];
   let reportVisible = true;
   const manager = { async query(sql, params) {
+    if (sql.includes("with recorded_access")) return [{ recorded: params[3].length }];
     queries.push({ sql, params });
     if (sql.includes("from clinical.report r join clinical.signed_snapshot")) return reportVisible ? [{
       id: "report-a", reporting_date: "2026-10-02", signed_at: "2026-10-02T08:00:00Z", catalog_release_id: "release-a", form_version_id: "form-pinned",
@@ -108,6 +110,7 @@ test("volume validates filters, binds both scope dimensions, and suppresses stal
     if (sql.includes("select report_id,reporting_date::text")) return [];
     return [{ date: "2026-10-01", count: "2" }, { date: "2026-10-02", count: "0" }];
   }, async transaction(_isolation, run) { return run(this); } };
+  database.query = withAnalyticsAuditQuery(database.query.bind(database));
   const service = new ReviewService(database, { get: async () => current });
   const result = await service.volume("token", "real", "2026-10-01", "2026-10-02");
   assert.equal(result.total, 2);
@@ -235,6 +238,7 @@ test("claim requires review-all, CSRF, current unassigned version, and replays o
 test("only review administrators can inspect processing failures", async () => {
   const database = { query: async () => [] };
   let current = session(["review:all"]);
+  database.query = withAnalyticsAuditQuery(database.query.bind(database));
   const service = new ReviewService(database, { get: async () => current });
   await assert.rejects(service.backlog("token"), ForbiddenException);
   current = session(["review:all", "review:admin"]);
@@ -348,7 +352,8 @@ for (const authority of ["installationOwner", "installationSuperadmin"]) {
       return [];
     } };
     database.transaction = async (_level, work) => work(database);
-    const service = new ReviewService(database, { get: async () => current });
+    database.query = withAnalyticsAuditQuery(database.query.bind(database));
+  const service = new ReviewService(database, { get: async () => current });
     await assert.rejects(service.report("token", "another-clinician-report"), { status: 404 });
     assert.ok(queries.length);
   });

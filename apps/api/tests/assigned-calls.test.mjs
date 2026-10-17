@@ -29,7 +29,8 @@ function transactional(manager, isolations = []) {
   return { transaction(first, second) {
     const work = typeof first === "function" ? first : second;
     if (typeof first === "string") isolations.push(first);
-    return work(manager);
+    return work({ query: (sql, parameters) => sql.includes("with recorded_access")
+      ? Promise.resolve([{ recorded: parameters[3].length }]) : manager.query(sql, parameters) });
   } };
 }
 

@@ -1,3 +1,4 @@
+import { recordPatientAccess } from "../reports/patient-access-audit.js";
 import { randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -601,6 +602,8 @@ export class AssignedCallsService {
       const conflicts = await dispatchConflicts(manager, report.id);
       const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id,
         report.validation_version_id, report.validation_compiled_sha256);
+      await recordPatientAccess(manager, { organizationId: assignment.organization_id, actorId: documentingUserId,
+        reportIds: [report.id], action: "assignment.open", careProcess: "documentation" });
       return {
         assignmentId: assignment.id,
         report: {

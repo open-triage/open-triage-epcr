@@ -13,6 +13,7 @@ import { loadAnalyticsReports } from "./analytics-source.js";
 import { unifiedAnalyticsCsv } from "./analytics-csv.js";
 import { AnalyticsDiscoveryCache } from "./analytics-discovery-cache.js";
 import { listVisualizations, readVisualization, savedVisualization, validateSaveVisualization, writeVisualization } from "./analytics-saved.js";
+import { recordAnalyticsAccess } from "./analytics-access-audit.js";
 
 @Injectable()
 export class AnalyticsService {
@@ -40,7 +41,10 @@ export class AnalyticsService {
     const elements = candidates.filter((field) =>
       (purpose === "group" ? field.grouping : purpose === "filter" ? field.filtering : true) &&
       `${field.id} ${field.label}`.toLowerCase().includes(pagination.search.toLowerCase()));
-    return catalogPage(elements.slice((pagination.page - 1) * 50, pagination.page * 50), elements.length, pagination.page, scope);
+    const result = catalogPage(elements.slice((pagination.page - 1) * 50, pagination.page * 50), elements.length, pagination.page, scope);
+    await recordAnalyticsAccess(this.database, scope, { surface: "analytics", operation: "elements", dataset: scope.defaultDataset,
+      request: { search: pagination.search, page: pagination.page, purpose: purpose ?? null } });
+    return result;
   }
   async values(token: string, element: string, search?: string, page?: string) {
     const scope = reviewScope(await this.sessions.get(token));
@@ -48,8 +52,12 @@ export class AnalyticsService {
     const fields = await this.discoveryElements(scope);
     const field = fields.find((field) => field.id === element && field.filtering);
     if (!field) throw new BadRequestException("Recorded element is unavailable");
-    return this.discoveredValues.get(JSON.stringify([scope, element, pagination.search, pagination.page]), () =>
+    const result = await this.discoveredValues.get(JSON.stringify([scope, element, pagination.search, pagination.page]), () =>
       this.database.transaction("REPEATABLE READ", (database) => catalogValues(database, scope, field, pagination.search, pagination.page)));
+    // Cache hits disclose recorded values too; each response needs its own event.
+    await recordAnalyticsAccess(this.database, scope, { surface: "analytics", operation: "values", dataset: scope.defaultDataset,
+      request: { element: field.id, search: pagination.search, page: pagination.page } });
+    return result;
   }
   async query(token: string, input: AnalyticsDefinition) {
     return (await this.calculate(token, input)).result;
@@ -89,7 +97,7 @@ export class AnalyticsService {
       selection.ids.length > 50 || selection.ids.some((id) => typeof id !== "string" || id.length > 500)))
       throw new BadRequestException("Invalid catalog count selection");
     const reporting = await this.review.analyticsDatabase();
-    return reporting.transaction("REPEATABLE READ", async (database) => {
+    const computed = await reporting.transaction("REPEATABLE READ", async (database) => {
       const additional = selection.purpose === "values" ? [selection.element] : selection.ids;
       const { library, fields, definition, metric, reports } = await this.prepareQuery(database, scope, input.definition, additional);
       const selected = selection.purpose === "values" ? [] : selection.ids.map((id) => {
@@ -110,14 +118,22 @@ export class AnalyticsService {
       const matched = matchingAnalyticsReports(reports, definition);
       await contributeConfiguredDefinitions(database, scope, matched, [metric, ...selected], library);
       const population = countAnalyticsRecords(matched, definition, metric);
-      return { ...population, elements: selected.map((field) => {
+      const result = { ...population, elements: selected.map((field) => {
         // Candidate metrics use their own units and applicability, independently of the current metric.
         const candidate = selection.purpose === "metric" ? { ...definition, metric: field.id, unit: undefined, reducer: undefined } : definition;
         return { id: field.id, included: countAnalyticsRecords(matched, candidate,
           selection.purpose === "metric" ? field : metric, selection.purpose === "metric" ? undefined : field.id).included };
       }), values: selection.purpose === "values" ? values.map((identity) => ({ identity,
         included: countAnalyticsRecords(matched, definition, metric, selection.element, identity).included })) : [] };
+      const auditSelection: AnalyticsCatalogCountsRequest["selection"] = selection.purpose === "values"
+        ? { purpose: "values", element: selection.element, values }
+        : { purpose: selection.purpose, ids: selected.map((field) => field.id) };
+      return { result, definition, selection: auditSelection, reportIds: matched.map((report) => report.id) };
     });
+    await recordAnalyticsAccess(this.database, scope, { surface: "analytics", operation: "counts", dataset: scope.defaultDataset,
+      from: computed.definition.from, through: computed.definition.through, reportIds: computed.reportIds,
+      request: { definition: computed.definition, selection: computed.selection } });
+    return computed.result;
   }
   private async prepareDefinition(database: EntityManager, scope: ReviewScope, input: AnalyticsDefinition, additionalElements: string[] = []) {
     const library = await configuredAnalyticsLibrary(database, scope);
@@ -161,7 +177,7 @@ export class AnalyticsService {
   private async calculate(token: string, input: AnalyticsDefinition) {
     const scope = reviewScope(await this.sessions.get(token));
     const reporting = await this.review.analyticsDatabase();
-    return reporting.transaction("REPEATABLE READ", async (database) => {
+    const computed = await reporting.transaction("REPEATABLE READ", async (database) => {
       const { library, fields, definition, metric, health, backlog, lag, region, reports: availableReports } = await this.prepareQuery(database, scope, input);
       // Apply clinical filters before evaluating configured metrics/rules or
       // resolving labels, as picker counts already do. Excluded reports cannot
@@ -201,15 +217,24 @@ export class AnalyticsService {
       // Every contributing value, selected source revision and authorization scope does.
       result.exportRevision = createHash("sha256").update(JSON.stringify({ ...result, freshness: { status: result.freshness.status },
         scope, reports: reports.map((report) => [report.id, report.revision]), contributions })).digest("hex");
-      return { result, contributions };
+      return { result, contributions, scope };
     });
+    await recordAnalyticsAccess(this.database, scope, { surface: "analytics", operation: "query", dataset: scope.defaultDataset,
+      from: computed.result.definition.from, through: computed.result.definition.through,
+      reportIds: computed.contributions.map((row) => row.reportId), request: { definition: computed.result.definition } });
+    return computed;
   }
   async export(token: string, command: { definition: AnalyticsDefinition; expectedRevision: string; kind: "aggregate" | "records" }) {
     if (!command || !["aggregate", "records"].includes(command.kind) || !/^[a-f0-9]{64}$/.test(command.expectedRevision ?? ""))
       throw new BadRequestException("Invalid analytics export request");
-    const { result, contributions } = await this.calculate(token, command.definition);
+    const { result, contributions, scope } = await this.calculate(token, command.definition);
     if (result.exportRevision !== command.expectedRevision)
       throw new ConflictException({ message: "Analytical source changed; review the refreshed result before exporting", result });
-    return unifiedAnalyticsCsv(result, contributions, command.kind);
+    const csv = unifiedAnalyticsCsv(result, contributions, command.kind);
+    await recordAnalyticsAccess(this.database, scope, { surface: "analytics", operation: `export.${command.kind}`,
+      dataset: scope.defaultDataset, from: result.definition.from, through: result.definition.through,
+      reportIds: contributions.map((row) => row.reportId),
+      request: { definition: result.definition, kind: command.kind, expectedRevision: command.expectedRevision } });
+    return csv;
   }
 }

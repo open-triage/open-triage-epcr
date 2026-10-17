@@ -1,12 +1,18 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import { ReviewController } from "../dist/review/review.controller.js";
+import { ReviewController as ActualReviewController } from "../dist/review/review.controller.js";
 import { ReviewService as ActualReviewService } from "../dist/review/review.service.js";
+
+class ReviewController extends ActualReviewController {
+  constructor(service) { super(service instanceof ActualReviewService ? service : { auditExport: async () => {}, ...service }); }
+}
 
 class ReviewService extends ActualReviewService {
   constructor(database, sessions) {
-    super({ ...database, transaction: async (_isolation, run) => run(database) }, sessions);
+    const manager = { ...database, query: withAnalyticsAuditQuery(database.query.bind(database)) };
+    super({ ...manager, transaction: async (_isolation, run) => run(manager) }, sessions);
   }
 }
 import { aggregateRevision, analysisCsv, underlyingCsv } from "../dist/review/review-csv.js";

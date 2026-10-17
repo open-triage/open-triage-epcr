@@ -1,3 +1,4 @@
+import { recordPatientAccess } from "./patient-access-audit.js";
 import { ConflictException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 
@@ -99,6 +100,8 @@ export async function recordMediaAccess(
     noteId: string;
     mediaType: "photo" | "audio";
     actorId: string;
+    careProcess?: "documentation" | "review";
+    accessOrganizationId?: string;
   },
 ): Promise<void> {
   await manager.query(`
@@ -107,4 +110,8 @@ export async function recordMediaAccess(
     values ($1, $2, $3, $4, $5, $6, 'allowed')
   `, [input.organizationId, input.reportId, input.noteId, input.mediaType,
     input.actorId, input.mediaType === "photo" ? "open" : "retrieve"]);
+  await recordPatientAccess(manager, { organizationId: input.organizationId, actorId: input.actorId,
+    accessOrganizationId: input.accessOrganizationId, reportIds: [input.reportId],
+    action: input.mediaType === "photo" ? "photo.read" : "audio.read",
+    careProcess: input.careProcess ?? "documentation", resourceId: input.noteId });
 }

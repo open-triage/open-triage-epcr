@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -71,11 +72,13 @@ integration('installation patient-data ceiling overrides role grants across agen
     const query = async (sql, params) => (await client.query(sql, params)).rows;
     const can = async (user, agency, capability) => (await query(
       'select app_identity.user_has_capability($1,$2,$3) allowed', [user, agency, capability]))[0].allowed;
-    const denied = ['review:all', 'review:admin', 'review:identifying'];
+    const denied = ['review:all', 'review:admin', 'review:identifying', 'audit:identifying'];
     const database = { query: async (sql, params) => sql.includes('projection_health')
       ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null, persistent_failure_count: 0,
         retrying_count: 0, stale_run_count: 0, last_run_status: 'succeeded',
         is_read_only_replica: false, replay_lag_seconds: null }] : query(sql, params) };
+    // These projections intentionally have no primary clinical records. Audit persistence has its own real-record suite.
+    database.query = withAnalyticsAuditQuery(database.query);
     database.transaction = async (_level, work) => work(database);
     for (const user of [owner, superuser]) {
       for (const agency of [root, child, other]) {
