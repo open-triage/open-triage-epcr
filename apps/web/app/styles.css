@@ -1209,8 +1209,8 @@ fieldset { min-inline-size: 0; }
 .review-agency-name { display: block; margin-top: 0.25rem; }
 
 .authentication-policy-history { max-height: 12rem; overflow-y: auto; }
-.unit-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--green); border-radius: 8px; color: var(--text-color); background: var(--surface, white); }
-.unit-dialog::backdrop { background: rgb(12 18 14 / 48%); }
+:is(.unit-dialog, .audit-dialog) { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--green); border-radius: 8px; color: var(--text-color); background: var(--surface, white); }
+:is(.unit-dialog, .audit-dialog)::backdrop { background: rgb(12 18 14 / 48%); }
 .unit-dialog > h3 { margin: 0 0 12px; }
 .unit-dialog > form { display: grid; gap: 12px; }
 .unit-dialog > form > label, .unit-dialog > form > p { margin: 0; }
@@ -1286,3 +1286,47 @@ fieldset { min-inline-size: 0; }
 .oidc-registration { display: grid; gap: 12px; margin-top: 18px; }
 .oidc-registration :is(h4, p) { margin: 0; }
 .oidc-registration code { overflow-wrap: anywhere; }
+.audit-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.audit-panel h2, .audit-panel p { margin: 0; }
+.audit-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: end; }
+.audit-filters label { display: grid; gap: 4px; min-width: 0; }
+.audit-filters :is(input, select) { width: 100%; min-width: 0; }
+.audit-type-filter { grid-column: 1 / -1; min-width: 0; }
+.audit-type-filter > summary { min-height: 44px; align-content: center; cursor: pointer; color: var(--text-color); background: var(--inactive-button); border: 1px solid var(--green); border-radius: 4px; padding: 6px 10px; overflow-wrap: anywhere; }
+.audit-type-filter > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.audit-type-filter[open] > :not(summary) { margin-top: 8px; }
+.audit-type-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 4px 12px; }
+.audit-type-options label { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; overflow-wrap: anywhere; }
+.audit-type-options input { width: 20px; min-height: 20px; height: 20px; flex: 0 0 20px; accent-color: var(--green); }
+.audit-user-filter { display: grid; gap: 4px; min-width: 0; }
+.audit-user-filter :is([role="status"], [role="alert"]) { font-size: var(--text-caption); }
+.audit-help, .audit-results-label { font-size: var(--text-caption); }
+.audit-results { display: grid; min-width: 0; }
+.audit-table-scroll { overflow: auto; max-height: var(--available-height, max(180px, calc(100dvh - 560px))); border: 1px solid var(--line); }
+.audit-table { border-collapse: collapse; width: 100%; min-width: 760px; }
+.audit-table th, .audit-table td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; max-width: 220px; }
+.audit-table th { position: sticky; top: 0; background: var(--inactive-button); color: var(--text-color); overflow-wrap: normal; }
+.audit-table tbody tr { height: 44px; }
+.audit-dialog { width: min(720px, calc(100vw - 24px)); padding: 0; overflow: hidden; }
+.audit-dialog[open] { display: flex; flex-direction: column; }
+.audit-dialog-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.audit-dialog-heading h3 { margin: 0; max-width: 100%; overflow-wrap: anywhere; }
+.audit-dialog-content { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 20px; }
+.audit-dialog dl { margin: 0; }
+.audit-dialog dt { font-weight: 600; overflow-wrap: anywhere; }
+.audit-dialog dd { margin: 0 0 12px; overflow-wrap: anywhere; }
+.audit-identifiers { margin-bottom: 12px; }
+.audit-identifiers > summary { min-height: 44px; align-content: center; cursor: pointer; }
+.audit-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.audit-page-status { display: grid; gap: 2px; text-align: center; }
+.audit-page-status > :last-child { font-size: var(--text-caption); }
+@media (max-width: 900px) {
+  .audit-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .audit-filters { grid-template-columns: minmax(0, 1fr); }
+}
+
+.audit-clinical-values pre, .audit-event-dump pre { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
+.audit-event-dump { display: grid; gap: 10px; }
+.audit-event-dump > button { justify-self: start; }

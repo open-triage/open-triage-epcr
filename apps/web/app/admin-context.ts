@@ -1,3 +1,4 @@
+import type { AuditDump, AuditPage, AuditQuery, AuditUserPage, ClinicalAuditValues } from "@open-triage/contracts";
 import { platformRequestError } from "./platform-errors";
 import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, AuthoringVersionOption, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
 import type { AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
@@ -26,6 +27,16 @@ async function catalogRequest<T>(path: string, csrfToken?: string, init?: Reques
 }
 
 export const loadCatalogDraft = () => catalogRequest<CatalogDraft | null>("catalog-draft", undefined, undefined, { value: null });
+export const loadAuditPage = (query: AuditQuery) => catalogRequest<AuditPage>(
+  `audit?${new URLSearchParams(Object.entries({ ...query, categories: query.categories?.join(",") })
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string"))}`,
+  undefined, { cache: "no-store" });
+export const loadClinicalAuditValues = (source: string, id: string) => catalogRequest<ClinicalAuditValues>(
+  `audit/clinical-values/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, undefined, { cache: "no-store" });
+export const loadAuditDump = (source: string, id: string) => catalogRequest<AuditDump>(
+  `audit/payload/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, undefined, { cache: "no-store" });
+export const loadAuditUsers = (cursor?: string) => catalogRequest<AuditUserPage>(
+  `audit/users${cursor ? `?${new URLSearchParams({ cursor })}` : ""}`, undefined, { cache: "no-store" });
 export const loadCatalogVersions = () => catalogRequest<AuthoringVersionOption[]>("catalog-versions");
 export const loadCatalogVersion = (id: string) => catalogRequest<CatalogDefinitionView>(`catalog-versions/${id}`);
 export const loadActiveCatalogDefinition = () => catalogRequest<CatalogDefinitionView | null>("catalog-definition", undefined, undefined, { value: null });
