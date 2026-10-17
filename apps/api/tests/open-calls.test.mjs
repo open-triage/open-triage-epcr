@@ -28,7 +28,8 @@ function transactional(manager, isolations = []) {
   return { transaction(first, second) {
     const work = typeof first === "function" ? first : second;
     if (typeof first === "string") isolations.push(first);
-    return work(manager);
+    return work({ query: (sql, parameters) => sql.includes("with recorded_access")
+      ? Promise.resolve([{ recorded: parameters[3].length }]) : manager.query(sql, parameters) });
   } };
 }
 
@@ -106,7 +107,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
       }
     ];
   } };
-  const service = new DraftReportService(dataSource, sessions());
+  const service = new DraftReportService({ ...dataSource, ...transactional(dataSource) }, sessions());
   const controller = new DraftReportController(service, {});
 
   const result = await controller.listOpen(`Bearer ${ownerSession.accessToken}`);
@@ -140,7 +141,7 @@ test("stationary-completed reports are returned as reconciliation identities, no
     catalog_release_id: "62000000-0000-4000-8000-000000000003",
     validation_error_count: 0
   }] };
-  const service = new DraftReportService(dataSource, sessions());
+  const service = new DraftReportService({ ...dataSource, ...transactional(dataSource) }, sessions());
 
   const result = await service.listOpen(ownerSession.accessToken);
 
@@ -341,7 +342,8 @@ test("a concurrent save cannot pair revision R with document content from R+1", 
   const dataSource = { transaction: async (isolation, work) => {
     isolations.push(isolation);
     const snapshot = structuredClone(committed);
-    const manager = { query: async (sql) => {
+    const manager = { query: async (sql, parameters) => {
+      if (sql.includes("with recorded_access")) return [{ recorded: parameters[3].length }];
       const normalized = sql.replace(/\s+/g, " ");
       if (normalized.includes("select r.revision, ca.dispatch_revision")) {
         committed = { revision: "10", value: "CAD-REVISION-10" };
@@ -515,7 +517,7 @@ test("a clinician-owned report without a dispatch assignment appears in Open rep
       last_saved_at: "2026-09-03T14:00:00.000Z", revision: 0, form_version_id: "form", catalog_release_id: "catalog",
       validation_error_count: 0, demo_mutable: false, expires_at: null }];
   } };
-  const result = await new DraftReportService(dataSource, sessions()).listOpen(ownerSession.accessToken);
+  const result = await new DraftReportService({ ...dataSource, ...transactional(dataSource) }, sessions()).listOpen(ownerSession.accessToken);
   assert.match(listingSql, /left join clinical\.call_assignment/);
   assert.deepEqual(result.openCalls[0], { reportId, callNumber: "New patient · 42000000",
     dispatchReason: null, dispatchPriority: null, chiefComplaint: null, unitCallSign: null,

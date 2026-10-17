@@ -1,10 +1,12 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ReviewService as ActualReviewService } from "../dist/review/review.service.js";
 
 class ReviewService extends ActualReviewService {
   constructor(database, sessions) {
-    super({ ...database, transaction: async (_isolation, run) => run(database) }, sessions);
+    const manager = { ...database, query: withAnalyticsAuditQuery(database.query.bind(database)) };
+    super({ ...manager, transaction: async (_isolation, run) => run(manager) }, sessions);
   }
 }
 

@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -63,11 +64,11 @@ integrationTest("saved analyses keep ownership and re-evaluate shared results fo
   await client.query("set local role open_triage_api_runtime");
   let session = { capabilities: ["review:all","review:admin","review:identifying"],
     user: { id: users.owner_id }, organization: { id: users.organization_id } };
-  const query = async (sql, params) => sql.includes("projection_health")
+  const query = withAnalyticsAuditQuery(async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0,
       last_run_status: "succeeded", is_read_only_replica: false, replay_lag_seconds: null }]
-    : (await client.query(sql, params)).rows;
+    : (await client.query(sql, params)).rows);
   const manager = { query };
   const service = new ReviewService({ manager, query,
     transaction: async (level, work) => (typeof level === "function" ? level : work)(manager) },

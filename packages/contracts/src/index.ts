@@ -952,7 +952,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
+export type AdminPanelKey = "auditing" | "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -2108,3 +2108,4 @@ export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCurs
 export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }
 
 export * from "./schedules.js";
+export * from "./audit.js";

@@ -193,7 +193,9 @@ export class ReviewController {
     if (current !== revision)
       throw new ConflictException({ message: "Review workload changed; refresh before exporting",
         result: { ...result, exportRevision: current } });
-    return sendCsv(response, "review-workload.csv", workloadCsv(result));
+    const csv = workloadCsv(result);
+    await this.review.auditExport(bearerToken(authorization, cookie), "review.workload", "aggregate", result);
+    return sendCsv(response, "review-workload.csv", csv);
   }
 
   @Post("workload/records/export")
@@ -208,7 +210,9 @@ export class ReviewController {
     if (current !== revision) throw new ConflictException({
       message: "Review workload changed; refresh before exporting",
       result: { ...result, exportRevision: current } });
-    return sendCsv(response, "review-workload-records.csv", underlyingCsv(result));
+    const csv = underlyingCsv(result);
+    await this.review.auditExport(bearerToken(authorization, cookie), "review.workload", "records", result);
+    return sendCsv(response, "review-workload-records.csv", csv);
   }
 
   @Get("analysis/saved")
@@ -265,7 +269,9 @@ export class ReviewController {
     if (result.freshness.status !== "current" || current !== revision)
       throw new ConflictException({ message: "Review aggregate changed; refresh before exporting",
         result: { ...result, exportRevision: current } });
-    return sendCsv(response, "review-analysis.csv", analysisCsv(result));
+    const csv = analysisCsv(result);
+    await this.review.auditExport(bearerToken(authorization, cookie), "review.analysis", "aggregate", result);
+    return sendCsv(response, "review-analysis.csv", csv);
   }
 
   @Post("analysis/records/export")
@@ -278,7 +284,9 @@ export class ReviewController {
     if (result.freshness.status !== "current" || current !== revision)
       throw new ConflictException({ message: "Review records changed; refresh before exporting",
         result: { ...result, exportRevision: current } });
-    return sendCsv(response, "review-analysis-records.csv", underlyingCsv(result));
+    const csv = underlyingCsv(result);
+    await this.review.auditExport(bearerToken(authorization, cookie), "review.analysis", "records", result);
+    return sendCsv(response, "review-analysis-records.csv", csv);
   }
 
   @Get("reports/:id")
@@ -334,7 +342,9 @@ export class ReviewController {
     if (result.freshness.status !== "current" || current !== revision)
       throw new ConflictException({ message: "Review aggregate changed; refresh before exporting",
         result: { ...result, exportRevision: current } });
-    return sendCsv(response, "review-volume.csv", volumeCsv(result));
+    const csv = volumeCsv(result);
+    await this.review.auditExport(bearerToken(authorization, cookie), "review.volume", "aggregate", result);
+    return sendCsv(response, "review-volume.csv", csv);
   }
 
   @Post("volume/records/export")
@@ -351,7 +361,9 @@ export class ReviewController {
     if (result.freshness.status !== "current" || current !== revision)
       throw new ConflictException({ message: "Review records changed; refresh before exporting",
         result: { ...result, exportRevision: current } });
-    return sendCsv(response, "review-volume-records.csv", underlyingCsv(result));
+    const csv = underlyingCsv(result);
+    await this.review.auditExport(bearerToken(authorization, cookie), "review.volume", "records", result);
+    return sendCsv(response, "review-volume-records.csv", csv);
   }
   @Get("items/:id")
   @Header("Cache-Control", "no-store, private")

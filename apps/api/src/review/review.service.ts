@@ -1,3 +1,5 @@
+import { recordPatientAccess } from "../reports/patient-access-audit.js";
+import { recordAnalyticsAccess, type AnalyticsAuditInput } from "./analytics-access-audit.js";
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { EncounterValue, AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
@@ -325,7 +327,11 @@ export class ReviewService implements OnModuleDestroy {
     [reviewOrganizations(scope), dataset === "synthetic", scope.reports === "all", scope.userId,
       definition.filters.from, definition.filters.to]);
     if (rows.length > 20000) throw new BadRequestException("Review workload exceeds the item limit");
-    return reduceWorkload(rows, definition, scope.reports, scope.organizationId, observedAt);
+    const result = reduceWorkload(rows, definition, scope.reports, scope.organizationId, observedAt);
+    await recordAnalyticsAccess(this.database, scope, { surface: "review.workload", operation: "query", dataset,
+      from: definition.filters.from, through: definition.filters.to, reportIds: result.sources?.map((row) => row.reportId) ?? [],
+      request: { definition: result.definition } });
+    return result;
   }
 
   async analysisReviewFilters(token: string, requestedDataset?: string): Promise<ReviewAnalysisReviewFilters> {
@@ -553,7 +559,7 @@ export class ReviewService implements OnModuleDestroy {
           { criterionId: reviewFilter.criterionId } : {}),
           ...(reviewFilter.outcomeOptionId ? { outcomeOptionId: reviewFilter.outcomeOptionId } : {}) } } : {}) } };
     const analytics = await this.analyticsDatabase();
-    return analytics.transaction("REPEATABLE READ", async (database) => {
+    const result = await analytics.transaction<ReviewAnalysisResult>("REPEATABLE READ", async (database) => {
     const [health] = await database.query<Array<{
       observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
       persistent_failure_count: number; retrying_count: number; stale_run_count: number;
@@ -849,6 +855,9 @@ export class ReviewService implements OnModuleDestroy {
         values: [], summary: row[input.operation as "mean" | "median" | "minimum" | "maximum"] === null ? null :
           Number(row[input.operation as "mean" | "median" | "minimum" | "maximum"]) })) };
     });
+    await recordAnalyticsAccess(this.database, scope, { surface: "review.analysis", operation: "query", dataset,
+      from, through: to, reportIds: result.sources?.map((row) => row.reportId) ?? [], request: { definition: result.definition } });
+    return result;
   }
 
   async volume(token: string, requestedDataset?: string,
@@ -861,7 +870,7 @@ export class ReviewService implements OnModuleDestroy {
       throw new BadRequestException("Invalid Review date period");
     }
     const analytics = await this.analyticsDatabase();
-    return analytics.transaction("REPEATABLE READ", async (database) => {
+    const result = await analytics.transaction<ReviewVolumeResult>("REPEATABLE READ", async (database) => {
     const [health] = await database.query<Array<{
       observed_at: Date | string; oldest_backlog_age_seconds: string | number | null;
       persistent_failure_count: number; retrying_count: number;
@@ -909,6 +918,19 @@ export class ReviewService implements OnModuleDestroy {
       total: points.reduce((sum, point) => sum + point.count, 0),
       sources: sourceRows.map((row) => ({ reportId: row.report_id, reportingDate: row.reporting_date })) };
     });
+    await recordAnalyticsAccess(this.database, scope, { surface: "review.volume", operation: "query", dataset,
+      from, through: to, reportIds: result.sources?.map((row) => row.reportId) ?? [], request: { definition: result.definition } });
+    return result;
+  }
+
+  async auditExport(token: string, surface: AnalyticsAuditInput["surface"], kind: "aggregate" | "records",
+    result: ReviewAnalysisResult | ReviewVolumeResult | ReviewWorkloadResult): Promise<void> {
+    const scope = reviewScope(await this.sessions.get(token));
+    if (scope.organizationId !== result.population.organizationId || scope.reports !== result.population.scope)
+      throw new ForbiddenException({ code: "audit.scopeChanged" });
+    await recordAnalyticsAccess(this.database, scope, { surface, operation: `export.${kind}`,
+      dataset: result.definition.filters.dataset, from: result.definition.filters.from, through: result.definition.filters.to,
+      reportIds: result.sources?.map((row) => row.reportId) ?? [], request: { definition: result.definition, kind } });
   }
 
   private dataset(requested: string | undefined, scope: ReviewScope): "real" | "synthetic" {
@@ -1003,9 +1025,12 @@ export class ReviewService implements OnModuleDestroy {
 
   async report(token: string, id: string, requestedDataset?: string): Promise<ReviewSignedReport> {
     return this.database.transaction("REPEATABLE READ", async (manager) => {
-      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "report");
+      const session = await this.sessions.get(token, new Date(), false, manager);
+      const scope = await reviewTargetScope(manager, reviewScope(session), id, "report");
       const dataset = this.dataset(requestedDataset, scope);
       const report = await this.scopedReport(manager, scope, id, dataset);
+      await recordPatientAccess(manager, { organizationId: scope.organizationId, actorId: scope.userId,
+        accessOrganizationId: session.organization.id, reportIds: [id], action: "review.report", careProcess: "review" });
       const groups = await manager.query<Array<{ id: string; parent_group_instance_id: string | null;
         group_id: string; label: string; ordinal: number }>>(`
         select gi.id, gi.parent_group_instance_id, gi.group_id,
@@ -1083,7 +1108,8 @@ export class ReviewService implements OnModuleDestroy {
 
   async overdueDraft(token: string, itemId: string, requestedDataset?: string): Promise<ReviewOverdueDraft> {
     return this.database.transaction("REPEATABLE READ", async (manager) => {
-      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), itemId, "item");
+      const session = await this.sessions.get(token, new Date(), false, manager);
+      const scope = await reviewTargetScope(manager, reviewScope(session), itemId, "item");
       const dataset = this.dataset(requestedDataset, scope);
       const [row] = await manager.query<Array<{ id: string; catalog_release_id: string; form_version_id: string;
         created_at: Date | string; deadline_at: Date | string;
@@ -1095,6 +1121,8 @@ export class ReviewService implements OnModuleDestroy {
           and ($4::boolean or r.documenting_user_id=$5)`,
       [itemId,scope.organizationId,dataset === "synthetic",scope.reports === "all",scope.userId]);
       if (!row) throw new NotFoundException("Overdue draft was not found in Review scope");
+      await recordPatientAccess(manager, { organizationId: scope.organizationId, actorId: scope.userId,
+        accessOrganizationId: session.organization.id, reportIds: [row.id], action: "review.overdue", careProcess: "review" });
       const groups = await manager.query<Array<{ id: string; parent_group_instance_id: string | null;
         group_id: string; label: string; ordinal: number }>>(`
         select gi.id,gi.parent_group_instance_id,gi.group_id,
@@ -2092,7 +2120,8 @@ export class ReviewService implements OnModuleDestroy {
 
   async media(token: string, id: string, noteId: string, type: "photo" | "audio", requestedDataset?: string) {
     return this.database.transaction(async (manager) => {
-      const scope = await reviewTargetScope(manager, reviewScope(await this.sessions.get(token, new Date(), false, manager)), id, "report");
+      const session = await this.sessions.get(token, new Date(), false, manager);
+      const scope = await reviewTargetScope(manager, reviewScope(session), id, "report");
       if (!scope.identifying) throw new ForbiddenException("Review identifying access is required for media");
       await this.scopedReport(manager, scope, id, this.dataset(requestedDataset, scope));
       const table = type === "photo" ? "report_photo" : "report_audio";
@@ -2104,7 +2133,7 @@ export class ReviewService implements OnModuleDestroy {
       [id, noteId, scope.organizationId]);
       if (!rows[0]) throw new NotFoundException("Review media was not found");
       await recordMediaAccess(manager, { organizationId: scope.organizationId, reportId: id, noteId,
-        mediaType: type, actorId: scope.userId });
+        mediaType: type, actorId: scope.userId, careProcess: "review", accessOrganizationId: session.organization.id });
       return { bytes: rows[0].canonical_bytes, contentType: rows[0].content_type, sha256: rows[0].sha256 };
     });
   }

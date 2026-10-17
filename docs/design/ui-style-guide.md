@@ -81,6 +81,9 @@ row actions.
 - Analytics selector exception agreed 2026-10-04: omit Select buttons and the
   Actions column. Make each choice row focusable, named, and operable with Enter
   and Space. Value lists retain their checkboxes and whole-row toggling.
+- Audit log exception agreed 2026-10-17: omit Inspect buttons and the Actions
+  column. Clicking a row opens event details in a modal dialog. Make rows focusable,
+  named, and operable with Enter and Space; restore row focus when the dialog closes.
 - Reuse `ListRowAction` for a list item with a separate action button, or
   `activateListRow` with a named native action in a table row. Both keep
   embedded controls independent of the row action.

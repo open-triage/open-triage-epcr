@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -73,11 +74,11 @@ integrationTest("Review operational time uses offset-aware signed endpoints and 
   const service = new ReviewService({
     // Each scenario already owns a rollback-only database transaction.
     transaction: async function (_isolation, work) { return work(this); },
-    query: async (sql, params) => sql.includes("projection_health")
+    query: withAnalyticsAuditQuery(async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
       is_read_only_replica: false, replay_lag_seconds: null }]
-    : (await client.query(sql, params)).rows }, { get: async () => session });
+    : (await client.query(sql, params)).rows) }, { get: async () => session });
   const definition = { fieldId: "review.duration.response", operation: "mean",
     filters: { from: "2026-10-01", to: "2026-10-02", dataset: "real" } };
   const own = await service.analysis("unused", definition);
@@ -384,11 +385,11 @@ integrationTest("Review volume counts patient reports separately within incident
   const service = new ReviewService({
     // Each scenario already owns a rollback-only database transaction.
     transaction: async function (_isolation, work) { return work(this); },
-    query: async (sql, params) => sql.includes("projection_health")
+    query: withAnalyticsAuditQuery(async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
       is_read_only_replica: false, replay_lag_seconds: null }]
-    : (await client.query(sql, params)).rows }, { get: async () => session });
+    : (await client.query(sql, params)).rows) }, { get: async () => session });
   const volume = (dataset = "real") => service.volume("unused", dataset, "2026-10-01", "2026-10-02");
   assert.deepEqual((await volume()).points.map((point) => point.count), [2, 0]);
   assert.equal((await volume("synthetic")).total, 1);
@@ -437,11 +438,11 @@ integrationTest("Review basic analysis uses the scoped effective projection, pre
   const service = new ReviewService({
     // Each scenario already owns a rollback-only database transaction.
     transaction: async function (_isolation, work) { return work(this); },
-    query: async (sql, params) => sql.includes("projection_health")
+    query: withAnalyticsAuditQuery(async (sql, params) => sql.includes("projection_health")
     ? [{ observed_at: new Date(), oldest_backlog_age_seconds: null,
       persistent_failure_count: 0, retrying_count: 0, stale_run_count: 0, last_run_status: "succeeded",
       is_read_only_replica: false, replay_lag_seconds: null }]
-    : (await client.query(sql, params)).rows }, { get: async () => session });
+    : (await client.query(sql, params)).rows) }, { get: async () => session });
   const filters = { from: "2026-10-01", to: "2026-10-02", dataset: "real" };
   const distribution = await service.analysis("unused", { fieldId: "eSituation.11",
     operation: "distribution", filters });

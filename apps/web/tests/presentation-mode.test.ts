@@ -29,6 +29,8 @@ test("presentation mode persists independently in browser storage", () => {
 });
 
 test("capabilities control available modes and safe session defaults", () => {
+  assert.equal(defaultPresentationMode(["audit:read"]), "admin");
+  assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["audit:read"]), "admin");
   assert.equal(hasClinicalMode(["clinical:document"]), true);
   assert.equal(hasAdminMode(["clinical:document"]), false);
   assert.equal(defaultPresentationMode(["admin-dashboard:read"]), "admin");

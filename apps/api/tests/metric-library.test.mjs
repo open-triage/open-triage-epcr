@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -220,7 +221,7 @@ test('metric selector offers Records and only enabled Review definitions before 
     throw new Error(`Unexpected query: ${sql}`);
   } };
   const session = { organization: { id: 'org' }, user: { id: 'reviewer' }, capabilities: ['review:all', 'review:identifying'] };
-  const service = new AnalyticsService({ transaction: async (_isolation, callback) => callback(manager) }, { get: async () => session }, {});
+  const service = new AnalyticsService({ transaction: async (_isolation, callback) => callback({ ...manager, query: withAnalyticsAuditQuery(manager.query.bind(manager)) }) }, { get: async () => session }, {});
   const available = await service.elements('test', '', '1', 'metric');
   assert.deepEqual(available.items.map(item => item.id), ['records', 'metric:version:metric', 'rule:version:rule', 'rule:version:no-findings']);
   assert.equal(available.total, 4);
@@ -313,7 +314,7 @@ test('selector counts batch configured inputs and apply authorized dates, filter
     }
     throw new Error(`Unexpected query: ${sql}`);
   } };
-  const database = { transaction: async (isolation, callback) => { assert.equal(isolation, 'REPEATABLE READ'); return callback(manager); } };
+  const database = { transaction: async (isolation, callback) => { assert.equal(isolation, 'REPEATABLE READ'); return callback({ ...manager, query: withAnalyticsAuditQuery(manager.query.bind(manager)) }); } };
   const session = { organization: { id: 'org' }, user: { id: 'author' }, capabilities: ['review:self', 'review:identifying', 'clinical:demo'] };
   const service = new AnalyticsService(database, { get: async () => session }, { analyticsDatabase: async () => database });
   const definition = { ...query, metric: 'rule:version:rule', aggregation: 'percentage', outcome: 'fail',

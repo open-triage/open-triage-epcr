@@ -36,7 +36,8 @@ test("deletion tombstones are idempotent and prevent delayed uploads from revivi
 
 test("note and media audits are bounded metadata and never receive clinical content", async () => {
   const statements = [];
-  const manager = { query: async (sql, parameters) => { statements.push({ sql, parameters }); return []; } };
+  const manager = { query: async (sql, parameters) => { statements.push({ sql, parameters });
+    return sql.includes("with recorded_access") ? [{ recorded: parameters[3].length }] : []; } };
   const identity = {
     organizationId: randomUUID(), reportId: randomUUID(), noteId: randomUUID(),
     commandId: randomUUID(), actorId: randomUUID(),
@@ -49,4 +50,5 @@ test("note and media audits are bounded metadata and never receive clinical cont
   assert.doesNotMatch(serialized, /content|caption|canonical_bytes|sha256/i);
   assert.match(serialized, /report_note_mutation_event/);
   assert.match(serialized, /report_media_access_event/);
+  assert.match(serialized, /patient_access_event/);
 });

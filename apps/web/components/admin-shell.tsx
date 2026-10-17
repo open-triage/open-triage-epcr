@@ -1,5 +1,6 @@
 "use client";
 import { SchedulesPanel } from "./schedules-panel";
+import { AuditingPanel } from "./auditing-panel";
 import { UnitsPanel } from "./units-panel";
 import { AuthenticationPolicyPanel } from "./authentication-policy";
 
@@ -18,9 +19,10 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
 import { OrganizationManagement } from "./organization-management";
 
-type AdminPanel = "Shift schedules" | "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
+type AdminPanel = "Auditing" | "Shift schedules" | "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
+  ["auditing", "Auditing"],
   ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
   ["authentication", "Authentication"], ["units", "Units"], ["schedules", "Shift schedules"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
 ];
@@ -56,7 +58,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
 }) {
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
   const adminT = useAdminText();
-  const panelKeys: Record<AdminPanel, string> = { "Shift schedules": "navigation.shiftSchedules", Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
+  const panelKeys: Record<AdminPanel, string> = { Auditing: "navigation.auditing", "Shift schedules": "navigation.shiftSchedules", Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
     "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
     "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings", "Super-admin": "navigation.superAdmin" };
   const [context, setContext] = useState<AdminContext | null>(null);
@@ -105,6 +107,8 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
   const organization = context?.organization ?? session.organization;
   const panels = context ? panelDefinition.filter(([key]) => context.panels.includes(key)).map(([, panel]) => panel) : [];
   const mounted = (panel: AdminPanel) => panels.includes(panel) && (panel === activePanel || visitedPanels.includes(panel));
+  const patientAuditAllowed = !session.installationOwner && !session.installationSuperadmin &&
+    (context?.capabilities.includes("audit:identifying") ?? false);
 
   return <main className="admin-shell" aria-labelledby="admin-heading">
     <header className="admin-heading">
@@ -156,6 +160,10 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
       </dl>
     </section>}
 
+    {context && mounted("Auditing") && <div hidden={activePanel !== "Auditing"}><AuditingPanel
+      key={String(patientAuditAllowed)}
+      active={activePanel === "Auditing"} online={online}
+      canReadPatients={patientAuditAllowed} /></div>}
     {context && mounted("Users") && <div hidden={activePanel !== "Users"}><UsersPanel
       canCreate={context.capabilities?.includes("users:write") ?? false}
       canManage={context.capabilities?.includes("users:write") ?? false}

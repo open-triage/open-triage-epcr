@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -53,7 +54,7 @@ test("workload API validates scope, dataset, bounds, and item counting", async (
   const calls = [];
   const service = new ReviewService({ query: async (sql, params) => {
     calls.push({ sql, params }); return rows;
-  } }, { get: async () => session });
+  }, transaction: async (_level, run) => run({ query: withAnalyticsAuditQuery(async () => []) }) }, { get: async () => session });
   const result = await service.workload("token", definition("status"));
   assert.equal(result.population.scope, "own");
   assert.equal(result.population.unit, "review-item");

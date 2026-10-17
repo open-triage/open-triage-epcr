@@ -1,3 +1,4 @@
+import { withAnalyticsAuditQuery } from "./fixtures/analytics-audit-query.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AnalyticsDiscoveryCache } from '../dist/review/analytics-discovery-cache.js';
@@ -48,7 +49,7 @@ test('discovery memory is bounded and retains recently used entries', async () =
 
 function fixture() {
   const base = { user: { id: 'user' }, organization: { id: 'org' }, capabilities: ['review:all'] };
-  const state = { session: base, denied: false, authorizations: 0, elements: 0, values: 0, sourceReads: 0, queries: [] };
+  const state = { session: base, denied: false, authorizations: 0, elements: 0, values: 0, sourceReads: 0, queries: [], auditWrites: [], auditFailure: false };
   const manager = { query: async (sql, params) => {
     state.queries.push({ sql, params });
     if (sql.includes('from app_identity.active_configuration_bundle')) return [];
@@ -76,6 +77,14 @@ function fixture() {
     }
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
+  const readQuery = withAnalyticsAuditQuery(manager.query);
+  manager.query = async (sql, params) => {
+    if (sql.includes('insert into clinical_audit.analytics_access_event')) {
+      if (state.auditFailure) throw new Error('audit unavailable');
+      state.auditWrites.push(params);
+    }
+    return readQuery(sql, params);
+  };
   const database = { transaction: async (_level, run) => run(manager) };
   const service = new AnalyticsService(database, { get: async () => {
     state.authorizations++;
@@ -100,6 +109,12 @@ test('search, pagination, grouping, filtering and values reuse authorized discov
   assert.equal(state.authorizations, 6, 'cache hits still authorize');
   await service.values('token', 'eVitals.06', '120');
   await service.values('token', 'eVitals.06', '', '2');
+  assert.deepEqual(state.auditWrites.map(params => JSON.parse(params[11])), [
+    { search: '', page: 1, purpose: 'group' }, { search: '', page: 1, purpose: 'filter' },
+    { search: 'no match', page: 1, purpose: 'filter' }, { search: '', page: 2, purpose: 'group' },
+    { element: 'eVitals.06', search: '', page: 1 }, { element: 'eVitals.06', search: '', page: 1 },
+    { element: 'eVitals.06', search: '120', page: 1 }, { element: 'eVitals.06', search: '', page: 2 },
+  ]);
   assert.equal(state.values, 3, 'value search and page have distinct entries');
   assert.equal(state.queries.filter(({ sql }) => sql.includes('from analytics.review_operational_time_source')).length, 0,
     'grouping, filtering and value discovery do not scan nongroupable operational metrics');
@@ -107,6 +122,19 @@ test('search, pagination, grouping, filtering and values reuse authorized discov
 
 const recordsDefinition = { version: 1, metric: 'records', aggregation: 'count', visualization: 'line',
   from: '2026-08-01', through: '2026-10-05', groupBy: null, timeGrouping: 'week', filters: [] };
+
+test('audit snapshots keep full validated filters and value selections without extra caller fields', async () => {
+  const { service,state } = fixture();
+  const definition = { ...recordsDefinition,token: 'DO_NOT_CAPTURE', filters: [{ element: 'eVitals.06',
+    values: [{ type: 'number',value: 120,token: 'DO_NOT_CAPTURE' }] }] };
+  const result = await service.query('token',definition);
+  await service.counts('token',{ definition,selection: { purpose: 'values',element: 'eVitals.06',
+    values: [{ type: 'number',value: 120,token: 'DO_NOT_CAPTURE' }],token: 'DO_NOT_CAPTURE' } });
+  const requests = state.auditWrites.map(params => JSON.parse(params[11]));
+  assert.deepEqual(requests,[{ definition: result.definition }, { definition: result.definition,
+    selection: { purpose: 'values',element: 'eVitals.06',values: [{ type: 'number',value: 120 }] } }]);
+  assert.doesNotMatch(JSON.stringify(requests),/DO_NOT_CAPTURE/);
+});
 
 test('record graphs, picker counts and exports skip occurrence discovery but read live reports and authorize each request', async () => {
   const { service, state } = fixture();
@@ -117,6 +145,12 @@ test('record graphs, picker counts and exports skip occurrence discovery but rea
   { total: 1, included: 1, elements: [{ id: 'records', included: 1 }], values: [] });
   const csv = await service.export('token', { definition: recordsDefinition, expectedRevision: result.exportRevision, kind: 'records' });
   assert.ok(csv.includes('report'));
+  assert.deepEqual(state.auditWrites.map(params => [params[3],JSON.parse(params[11])]), [
+    ['query', { definition: recordsDefinition }],
+    ['counts', { definition: recordsDefinition, selection: { purpose: 'metric', ids: ['records'] } }],
+    ['query', { definition: recordsDefinition }],
+    ['export.records', { definition: recordsDefinition, kind: 'records', expectedRevision: result.exportRevision }],
+  ]);
   assert.equal(state.elements, 0);
   assert.equal(state.sourceReads, 3);
   assert.equal(state.authorizations, 3);
@@ -198,4 +232,49 @@ test('discovery isolates every scope and rejects revoked sessions and permission
   await assert.rejects(service.values('token', 'eVitals.06'), error => error.status === 403);
   assert.equal(state.elements, 6);
   assert.equal(state.values, 6);
+});
+
+
+test('analytics cache hits, empty queries and successful exports are audited; failures release no results', async () => {
+  const { state, service } = fixture();
+  await service.values('token', 'eVitals.06');
+  await service.values('token', 'eVitals.06');
+  assert.deepEqual(state.auditWrites.map(args => args[3]), ['values', 'values']);
+  assert.equal(state.values, 1);
+  const shown = await service.query('token', recordsDefinition);
+  await service.export('token', { definition: recordsDefinition, expectedRevision: shown.exportRevision, kind: 'aggregate' });
+  await service.export('token', { definition: recordsDefinition, expectedRevision: shown.exportRevision, kind: 'records' });
+  assert.deepEqual(state.auditWrites.map(args => args[3]), ['values','values','query','query','export.aggregate','query','export.records']);
+  await assert.rejects(service.export('token', { definition: recordsDefinition, expectedRevision: 'a'.repeat(64), kind: 'records' }), { status: 409 });
+  assert.equal(state.auditWrites.at(-1)[3], 'query', 'a refreshed conflict response is a query, not a successful CSV');
+  state.auditFailure = true;
+  await assert.rejects(service.values('token', 'eVitals.06'), /audit unavailable/);
+  await assert.rejects(service.query('token', recordsDefinition), /audit unavailable/);
+  await assert.rejects(service.export('token', { definition: recordsDefinition, expectedRevision: shown.exportRevision, kind: 'records' }), /audit unavailable/);
+});
+
+
+test('queries and exports release the read-only reporting transaction before writing primary audit evidence', async () => {
+  const { manager, base } = fixture();
+  let reading = false, writes = 0;
+  const primary = { transaction: async (_level, work) => {
+    assert.equal(reading, false, 'release the reporting connection before borrowing a primary audit connection');
+    return work({ query: async (sql, params) => {
+      assert.match(sql, /set_config|insert into clinical_audit|with recorded_access/);
+      if (sql.includes('insert into clinical_audit.analytics_access_event')) writes++;
+      return manager.query(sql, params);
+    } });
+  } };
+  const reporting = { transaction: async (_level, work) => {
+    reading = true;
+    try { return await work({ query: async (sql, params) => {
+      assert.doesNotMatch(sql, /insert into|set_config/, 'the reporting replica remains read-only');
+      return manager.query(sql, params);
+    } }); } finally { reading = false; }
+  } };
+  const service = new AnalyticsService(primary, { get: async () => base }, { analyticsDatabase: async () => reporting });
+  const shown = await service.query('token', recordsDefinition);
+  await service.counts('token', { definition: recordsDefinition, selection: { purpose: 'metric', ids: ['records'] } });
+  await service.export('token', { definition: recordsDefinition, expectedRevision: shown.exportRevision, kind: 'records' });
+  assert.equal(writes, 4);
 });

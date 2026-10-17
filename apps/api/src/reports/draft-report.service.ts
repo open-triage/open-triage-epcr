@@ -1,3 +1,4 @@
+import { recordPatientAccess } from "./patient-access-audit.js";
 import {
   ConflictException,
   GoneException,
@@ -838,6 +839,8 @@ export class DraftReportService {
         from clinical.element_occurrence where report_id = $1 order by element_id, ordinal, id
       `, [reportId]);
       const notes = await reportTextNotes(manager, reportId);
+      await recordPatientAccess(manager, { organizationId: session.organization.id, actorId: session.user.id,
+        reportIds: [reportId], action: "report.read", careProcess: "documentation" });
       return { ...report, groups, occurrences, notes };
     });
   }
@@ -845,57 +848,61 @@ export class DraftReportService {
   async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document", undefined, now);
     await this.dataSource.query("select retention.purge_expired_synthetic_records($1)", [now]);
-    const rows = await this.dataSource.query<OpenCallRow[]>(`
-      select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
-             ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
-             jsonb_path_query_first(dr.source_payload,
-               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
-               as dispatch_priority_code,
-             jsonb_path_query_first(dr.source_payload,
-               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
-               as dispatch_priority_display,
-             organization.deployment_timezone as agency_time_zone,
-             r.updated_at as last_saved_at, r.expires_at,
-             r.revision, r.form_version_id, r.catalog_release_id,
-             (r.synthetic and r.synthetic_generated_by is not null) as demo_mutable,
-             count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
-               as validation_error_count
-      from clinical.report r
-      left join clinical.call_assignment ca
-        on ca.organization_id = r.organization_id and ca.report_id = r.id
-      left join app_identity.operational_unit ou on ou.id = ca.unit_id
-      join app_identity.organization organization on organization.id = r.organization_id
-      left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
-      left join clinical.validation_finding vf on vf.report_id = r.id
-      where r.organization_id = $1 and r.documenting_user_id = $2 and r.status in ('draft', 'signed')
-      group by r.id, ca.id, ou.call_sign, organization.deployment_timezone, dr.id
-      order by r.updated_at desc, r.id
-    `, [session.organization.id, session.user.id]);
-    return {
-      openCalls: rows.filter((row) => row.status === "draft").map((row) => ({
-        reportId: row.report_id,
-        callNumber: row.call_number ?? `New patient · ${row.report_id.slice(0, 8)}`,
-        ...(row.dispatched_at ? { dispatchedAt: new Date(row.dispatched_at).toISOString() } : {}),
-        dispatchReason: row.dispatch_reason,
-        dispatchPriority: row.dispatch_priority_code ? {
-          code: row.dispatch_priority_code,
-          display: row.dispatch_priority_display ?? row.dispatch_priority_code,
-        } : null,
-        chiefComplaint: row.chief_complaint,
-        unitCallSign: row.unit_call_sign,
-        ...(row.agency_time_zone ? { agencyTimeZone: row.agency_time_zone } : {}),
-        lastSavedAt: new Date(row.last_saved_at).toISOString(),
-        syncStatus: "saved",
-        validationErrorCount: Number(row.validation_error_count),
-        revision: Number(row.revision),
-        formVersionId: row.form_version_id,
-        catalogReleaseId: row.catalog_release_id,
-        ...(row.demo_mutable ? { demoMutable: true } : {}),
-        ...(row.expires_at ? { expiresAt: new Date(row.expires_at).toISOString() } : {})
-      })),
-      completedReportIds: rows.filter((row) => row.status === "signed").map((row) => row.report_id),
-      refreshedAt: now.toISOString()
-    };
+    return withReportSnapshot(this.dataSource, async (manager) => {
+      const rows = await manager.query<OpenCallRow[]>(`
+        select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
+               ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
+               jsonb_path_query_first(dr.source_payload,
+                 '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
+                 as dispatch_priority_code,
+               jsonb_path_query_first(dr.source_payload,
+                 '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
+                 as dispatch_priority_display,
+               organization.deployment_timezone as agency_time_zone,
+               r.updated_at as last_saved_at, r.expires_at,
+               r.revision, r.form_version_id, r.catalog_release_id,
+               (r.synthetic and r.synthetic_generated_by is not null) as demo_mutable,
+               count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
+                 as validation_error_count
+        from clinical.report r
+        left join clinical.call_assignment ca
+          on ca.organization_id = r.organization_id and ca.report_id = r.id
+        left join app_identity.operational_unit ou on ou.id = ca.unit_id
+        join app_identity.organization organization on organization.id = r.organization_id
+        left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
+        left join clinical.validation_finding vf on vf.report_id = r.id
+        where r.organization_id = $1 and r.documenting_user_id = $2 and r.status in ('draft', 'signed')
+        group by r.id, ca.id, ou.call_sign, organization.deployment_timezone, dr.id
+        order by r.updated_at desc, r.id
+      `, [session.organization.id, session.user.id]);
+      await recordPatientAccess(manager, { organizationId: session.organization.id, actorId: session.user.id,
+        reportIds: rows.map((row) => row.report_id), action: "report.list", careProcess: "documentation" });
+      return {
+        openCalls: rows.filter((row) => row.status === "draft").map((row) => ({
+          reportId: row.report_id,
+          callNumber: row.call_number ?? `New patient · ${row.report_id.slice(0, 8)}`,
+          ...(row.dispatched_at ? { dispatchedAt: new Date(row.dispatched_at).toISOString() } : {}),
+          dispatchReason: row.dispatch_reason,
+          dispatchPriority: row.dispatch_priority_code ? {
+            code: row.dispatch_priority_code,
+            display: row.dispatch_priority_display ?? row.dispatch_priority_code,
+          } : null,
+          chiefComplaint: row.chief_complaint,
+          unitCallSign: row.unit_call_sign,
+          ...(row.agency_time_zone ? { agencyTimeZone: row.agency_time_zone } : {}),
+          lastSavedAt: new Date(row.last_saved_at).toISOString(),
+          syncStatus: "saved",
+          validationErrorCount: Number(row.validation_error_count),
+          revision: Number(row.revision),
+          formVersionId: row.form_version_id,
+          catalogReleaseId: row.catalog_release_id,
+          ...(row.demo_mutable ? { demoMutable: true } : {}),
+          ...(row.expires_at ? { expiresAt: new Date(row.expires_at).toISOString() } : {})
+        })),
+        completedReportIds: rows.filter((row) => row.status === "signed").map((row) => row.report_id),
+        refreshedAt: now.toISOString()
+      };
+    });
   }
 
   async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
@@ -945,6 +952,8 @@ export class DraftReportService {
           and r.status = 'draft'
       `, [reportId, session.organization.id, session.user.id]);
       if (!calls[0]) throw new NotFoundException(`Report ${reportId} was not found`);
+      await recordPatientAccess(manager, { organizationId: session.organization.id, actorId: session.user.id,
+        reportIds: [reportId], action: "report.reopen", careProcess: "documentation" });
       return {
         callNumber: calls[0].call_number ?? `New patient · ${reportId.slice(0, 8)}`,
         ...(calls[0].dispatched_at ? { dispatchedAt: new Date(calls[0].dispatched_at).toISOString() } : {}),
@@ -1121,6 +1130,9 @@ export class DraftReportService {
       `, [reportId, session.organization.id, session.user.id]);
       const row = rows[0];
       if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
+      // Include conditional reads: a 304 authorizes reuse of an existing cached record.
+      await recordPatientAccess(manager, { organizationId: session.organization.id, actorId: session.user.id,
+        reportIds: [reportId], action: "report.active", careProcess: "documentation" });
       const reportRevision = Number(row.revision);
       const dispatchRevision = Number(row.dispatch_revision ?? 0);
       const settingsRevision = Number(row.media_settings_revision);
