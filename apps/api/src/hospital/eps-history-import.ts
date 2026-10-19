@@ -23,7 +23,7 @@ export function historicalDestination(mapping: HistoricalMapping, form: Clinical
   if (mapping.destination.kind !== 'custom') return 'historicalDestination';
   const custom = form.customFields?.[id];
   if (!custom || custom.datatype !== 'string' || custom.correlatesTo || custom.groupDefinitionId) return 'historicalDestination';
-  if (type === 'Patient' && custom.recurrence !== 'single') return 'historicalDestination';
+  if (type === 'Patient' && (custom.recurrence !== 'single' || custom.identifying !== true)) return 'historicalDestination';
   return null;
 }
 

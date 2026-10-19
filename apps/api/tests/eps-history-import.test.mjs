@@ -58,7 +58,8 @@ test('canonical historical configuration round trips exact roles and units and r
  assert.equal(importCandidate({identity:'Observation/weight-2020',patientMatches:true,resource:observation},[mapping],completeForm).finding,null);
  const patient={resourceType:'Patient',id:'p',identifier:[{system:'urn:other',value:'0001'}]};
  const m={...mapping,resourceType:'Patient',system:'urn:other',code:'identifier',semanticRole:'patient-identifier',expectedUnit:undefined,destination:field};
- const singleForm=structuredClone(completeForm);singleForm.customFields.history.recurrence='single';
+ const singleForm=structuredClone(completeForm);singleForm.customFields.history.recurrence='single';singleForm.customFields.history.identifying=true;
+ const nonidentifying=structuredClone(singleForm);nonidentifying.customFields.history.identifying=false;assert.equal(historicalDestination(m,nonidentifying),'historicalDestination');
  const entry={identity:'Patient/p',patientMatches:true,resource:patient};
  assert.equal(importCandidate(entry,[m],singleForm,{field,namespace:'urn:primary',aliases:[]}).finding,'identifierNamespace');
  assert.equal(importCandidate(entry,[m],singleForm,{field,namespace:'urn:primary',aliases:['urn:other']}).finding,null);

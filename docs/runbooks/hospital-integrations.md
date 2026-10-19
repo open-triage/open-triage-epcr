@@ -242,7 +242,7 @@ can be appended to a repeatable custom history field through an explicit decisio
 Patient context initially supports a current identifier: select Patient, source
 code `identifier`, the exact source identifier namespace, text representation and
 the patient-identifier destination meaning. The destination must be `ePatient.01`
-or an explicitly designated single custom string field. Ambiguous, old, temporary
+or an explicitly designated single custom string field marked identifying. Ambiguous, old, temporary
 or period-limited identifiers remain view-only. If this is the configured lookup
 field, the source namespace must be that configuration's namespace or an explicit
 equivalent alias. Leading zeroes and separators remain unchanged. Preview retains

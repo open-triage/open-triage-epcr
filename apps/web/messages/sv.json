@@ -2428,7 +2428,7 @@
   "hospital.expectedUnitHelp": "Kvantitativa observationer kräver exakt enhetssystem och kod. Ingen enhetsomvandling görs. Lämna båda tomma för andra observationer.",
   "hospital.unitSystem": "Enhetssystem",
   "hospital.unitCode": "Enhetskod",
-  "hospital.patientContextHelp": "Använd källkoden identifier och identifierarens exakta namnrymd som källsystem. Endast ePatient.01 eller ett uttryckligen angivet eget textfält med ett värde stöds.",
+  "hospital.patientContextHelp": "Använd källkoden identifier och identifierarens exakta namnrymd som källsystem. Endast ePatient.01 eller ett uttryckligen angivet eget textfält med ett värde markerat som identifierande stöds.",
   "epsImport.historicalDestination": "Endast visning: målfältet kan inte bevara den konfigurerade betydelsen för historik eller patientidentifierare.",
   "epsImport.historicalDate": "Endast visning: ett entydigt datum eller en period krävs i källan.",
   "epsImport.historicalUnit": "Endast visning: källans enhet matchar inte exakt det konfigurerade systemet och koden.",

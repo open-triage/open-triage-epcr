@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
+import {ReviewService} from '../../dist/review/review.service.js';
+import {SignReportService} from '../../dist/reports/sign-report.service.js';
 import {EpsImportService} from '../../dist/hospital/eps-import.service.js';
 import {epsHistoryBrowser} from './eps-history-browser.mjs';
 
@@ -10,7 +12,7 @@ export async function epsHistoryJourney({database,query,sessions,configuration,a
  const original=structuredClone(fixtures[0]);
  try {
   const bundle=fixtures[0],patient=bundle.entry.find(e=>e.resource.resourceType==='Patient'),subject={reference:patient.fullUrl??`Patient/${patient.resource.id}`};
-  const observation={resourceType:'Observation',id:'eps007-weight-old',status:'final',code:{coding:[{system:'http://loinc.org',code:'29463-7',display:'Historical body weight'}]},subject,effectiveDateTime:'2020-05-12',valueQuantity:{value:78.5,system:'http://unitsofmeasure.org',code:'kg',unit:'kg'}};
+  const observation={resourceType:'Observation',id:'eps007-weight-old',status:'final',code:{coding:[{system:'http://loinc.org',code:'29463-7',display:'Historical body weight'}]},subject,note:[{text:'Fictional source name: Historical Privacy Sentinel'}],effectiveDateTime:'2020-05-12',valueQuantity:{value:78.5,system:'http://unitsofmeasure.org',code:'kg',unit:'kg'}};
   const procedure={resourceType:'Procedure',id:'eps007-procedure',status:'completed',code:{coding:[{system:'http://snomed.info/sct',code:'80146002',display:'Historical appendectomy'}]},subject,performedDateTime:'2015-01-01'};
   const second={...observation,id:'eps007-weight-new',effectiveDateTime:'2021-08-15',valueQuantity:{...observation.valueQuantity,value:82}};
   const mismatch={...observation,id:'eps007-wrong-unit',valueQuantity:{value:170,system:'http://unitsofmeasure.org',code:'[lb_av]',unit:'lb'}};
@@ -43,6 +45,13 @@ export async function epsHistoryJourney({database,query,sessions,configuration,a
   const occurrences=await query("select ordinal,value_text,provenance_detail from clinical.element_occurrence where report_id=$1 and tombstoned_at is null and provenance_detail ? 'epsImport' order by ordinal",[report.id]);
   assert.equal(occurrences.length,3);assert.deepEqual(occurrences.map(o=>o.ordinal),[0,1,2]);assert.match(JSON.stringify(occurrences),/2020-05-12/);assert.match(JSON.stringify(occurrences),/2015-01-01/);
   assert.equal((await query('select evidence from clinical.eps_import where id=$1',[result.id]))[0].evidence.mapping.sha256,canonical.sha256);
+  await query('savepoint signed_historical_context');
+  const current=await drafts.get(token,report.id),signed=await new SignReportService(database,sessions).sign(token,report.id,{commandId:randomUUID(),expectedRevision:current.revision,signerId:actor.user.id,attestation:{accepted:true}});
+  const [snapshot]=await query('select integrity_manifest from clinical.signed_snapshot where id=$1',[signed.signedSnapshotId]);assert.match(JSON.stringify(snapshot.integrity_manifest),/2020-05-12/);assert.match(JSON.stringify(snapshot.integrity_manifest),/2015-01-01/);assert.match(JSON.stringify(snapshot.integrity_manifest),new RegExp(canonical.sha256));
+  const reviewingActor=await sessions.get(adminToken);
+  const restrictedReview=new ReviewService(database,{get:async()=>({user:reviewingActor.user,organization:actor.organization,capabilities:['review:all','clinical:demo']})});
+  const redacted=await restrictedReview.report('fixture',report.id,'synthetic');assert.equal(redacted.identifying,false);assert.doesNotMatch(JSON.stringify(redacted),/Historical Privacy Sentinel|eps007-weight-old|200207252388/);assert.ok(redacted.values.every(v=>v.valueKind!=='text'));
+  await query('rollback to savepoint signed_historical_context');await query('release savepoint signed_historical_context');
   const patientPlan=await imports.plan(token,report.id,{binding:context.binding,entryId:entryId(patient.resource.id)});assert.equal(patientPlan.proposedValue,'different-current-identity');assert.equal(patientPlan.conflict,true);assert.equal(patientPlan.canAppend,false);
   await imports.apply(token,report.id,{planId:patientPlan.id,commandId:randomUUID(),decision:'replace'});
   const changed=await service.context(token,report.id);assert.notEqual(changed.binding,context.binding);assert.equal((await imports.history(token,report.id)).inconsistent,true);

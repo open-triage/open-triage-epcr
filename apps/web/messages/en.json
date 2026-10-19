@@ -2430,7 +2430,7 @@
   "hospital.expectedUnitHelp": "Quantity observations require an exact unit system and code. No unit conversion is performed. Leave both blank for non-quantity observations.",
   "hospital.unitSystem": "Unit system",
   "hospital.unitCode": "Unit code",
-  "hospital.patientContextHelp": "Use source code identifier and the exact identifier namespace as source system. Only ePatient.01 or an explicitly designated single custom text field is supported.",
+  "hospital.patientContextHelp": "Use source code identifier and the exact identifier namespace as source system. Only ePatient.01 or an explicitly designated single custom text field marked identifying is supported.",
   "epsImport.historicalDestination": "View only: this destination cannot preserve the configured historical or patient-identifier meaning.",
   "epsImport.historicalDate": "View only: an unambiguous source date or period is required.",
   "epsImport.historicalUnit": "View only: the source unit does not exactly match the configured system and code.",
