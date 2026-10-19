@@ -1,0 +1,2978 @@
+{
+  "resourceType": "Bundle",
+  "id": "b490737e-cff4-574e-bde1-1fcca5f866f4",
+  "meta": {
+    "profile": [
+      "http://hl7.eu/fhir/eps/StructureDefinition/bundle-eu-eps"
+    ],
+    "tag": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+        "code": "HTEST",
+        "display": "test health data"
+      }
+    ]
+  },
+  "language": "sv",
+  "identifier": {
+    "system": "urn:ietf:rfc:3986",
+    "value": "urn:uuid:cfd0c04f-2d93-5a89-984d-82fb99596505"
+  },
+  "type": "document",
+  "timestamp": "2026-08-19T09:00:00+02:00",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:f7cd6d12-0095-5131-a4c0-d8dfe5ee2a0d",
+      "resource": {
+        "resourceType": "Composition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/composition-eu-eps"
+          ]
+        },
+        "language": "sv",
+        "identifier": {
+          "system": "urn:ietf:rfc:3986",
+          "value": "urn:uuid:54aadd13-92a2-5f5e-b509-96710f11c214"
+        },
+        "status": "final",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "60591-5",
+              "display": "Patient summary Document"
+            }
+          ],
+          "text": "Patient summary Document"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "date": "2026-08-19T09:00:00+02:00",
+        "author": [
+          {
+            "reference": "urn:uuid:ceea7732-62c2-5b68-8594-ab25d0ab74a9"
+          }
+        ],
+        "title": "Patientöversikt (European Patient Summary)",
+        "confidentiality": "N",
+        "custodian": {
+          "reference": "urn:uuid:cb24bd2c-13bd-5cc9-a46c-5c6bf7f5acfd"
+        },
+        "section": [
+          {
+            "title": "Allergier och intoleranser",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "48765-2",
+                  "display": "Allergies and adverse reactions Document"
+                }
+              ],
+              "text": "Allergies and adverse reactions Document"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Allergen</th><th>Kritikalitet</th><th>Debut</th><th>Reaktion</th><th>Svårighetsgrad</th></tr></thead><tbody><tr><td>Penicillin</td><td>high</td><td>1972-06-18</td><td>Anafylaktisk reaktion</td><td>severe</td></tr><tr><td>Björkpollen</td><td>low</td><td>1988-04-02</td><td>Rinokonjunktivit</td><td>mild</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:3681dec0-e29f-5b1a-a964-7ed2d2b1e6db"
+              },
+              {
+                "reference": "urn:uuid:3da54433-9019-5d7d-b485-b753d4038c4a"
+              }
+            ]
+          },
+          {
+            "title": "Problemlista",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "11450-4",
+                  "display": "Problem list - Reported"
+                }
+              ],
+              "text": "Problem list - Reported"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Tillstånd</th><th>Debut</th><th>Status</th></tr></thead><tbody><tr><td>Essentiell hypertoni</td><td>1998-10-02</td><td>active</td></tr><tr><td>Diabetes mellitus typ 2</td><td>2004-06-30</td><td>active</td></tr><tr><td>Lungemfysem</td><td>2011-03-17</td><td>active</td></tr><tr><td>Stabil angina pectoris</td><td>2015-11-05</td><td>active</td></tr><tr><td>Förmaksflimmer</td><td>2017-09-22</td><td>active</td></tr><tr><td>Kronisk hjärtsvikt</td><td>2018-04-12</td><td>active</td></tr><tr><td>Stroke</td><td>2019-02-03</td><td>resolved</td></tr><tr><td>Vänstersidig hemipares</td><td>2019-02-03</td><td>active</td></tr><tr><td>Prostatacancer, lokalt avancerad</td><td>2020-08-11</td><td>active</td></tr><tr><td>Venöst bensår</td><td>2023-05-19</td><td>active</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:3052cfcc-61a2-5048-9e8c-18d9321791c8"
+              },
+              {
+                "reference": "urn:uuid:d7778a8e-3cc3-5241-bb38-da2ad0360c89"
+              },
+              {
+                "reference": "urn:uuid:c0ef6847-f06c-56de-82ec-ff8d94fc19a9"
+              },
+              {
+                "reference": "urn:uuid:131dea7e-e616-5d91-b7ec-8d56198f32a7"
+              },
+              {
+                "reference": "urn:uuid:12cd7877-d3e7-5607-9842-e8797dc64daa"
+              },
+              {
+                "reference": "urn:uuid:c0a5357a-7f81-517b-8726-f7e5b65c75d7"
+              },
+              {
+                "reference": "urn:uuid:d5ee969d-d8d3-575b-92d1-4d7b472ebcaa"
+              },
+              {
+                "reference": "urn:uuid:1ae4a743-bef0-52f1-a9a4-9dd535e2cd8f"
+              },
+              {
+                "reference": "urn:uuid:851526bf-7db5-564f-886b-75c2dfaf34f5"
+              },
+              {
+                "reference": "urn:uuid:847ac3be-c3ea-5366-9139-a16cd70a96e2"
+              }
+            ]
+          },
+          {
+            "title": "Läkemedelslista",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "10160-0",
+                  "display": "History of Medication use Narrative"
+                }
+              ],
+              "text": "History of Medication use Narrative"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Läkemedel</th><th>Dosering</th><th>Insatt</th><th>Indikation</th></tr></thead><tbody><tr><td>Apixaban 5 mg tablett</td><td>1 tablett (5 mg) 2 gånger dagligen</td><td>2017-10-05</td><td>Förmaksflimmer</td></tr><tr><td>Metoprolol depottablett 50 mg</td><td>1 tablett (50 mg) 1 gång dagligen på morgonen</td><td>2018-04-20</td><td>Kronisk hjärtsvikt</td></tr><tr><td>Ramipril 5 mg tablett</td><td>1 tablett (5 mg) 1 gång dagligen</td><td>2018-04-20</td><td>Kronisk hjärtsvikt</td></tr><tr><td>Furosemid 40 mg tablett</td><td>1 tablett (40 mg) 1 gång dagligen på morgonen</td><td>2018-04-20</td><td>Kronisk hjärtsvikt</td></tr><tr><td>Insulin glargin 100 E/ml injektionsvätska</td><td>22 enheter subkutant till natten</td><td>2016-02-08</td><td>Diabetes mellitus typ 2</td></tr><tr><td>Metformin 500 mg tablett</td><td>1 tablett (500 mg) 2 gånger dagligen i samband med måltid</td><td>2004-07-15</td><td>Diabetes mellitus typ 2</td></tr><tr><td>Glyceryltrinitrat 0,4 mg sublingual spray</td><td>1-2 doser under tungan vid bröstsmärta, vid behov</td><td>2015-11-10</td><td>Stabil angina pectoris</td></tr><tr><td>Tiotropium 18 mikrogram inhalationspulver</td><td>1 inhalation 1 gång dagligen</td><td>2011-04-05</td><td>Lungemfysem</td></tr><tr><td>Bikalutamid 150 mg tablett</td><td>1 tablett (150 mg) 1 gång dagligen som monoterapi (ingen GnRH-analog)</td><td>2020-09-14</td><td>Prostatacancer, lokalt avancerad</td></tr><tr><td>Atorvastatin 20 mg tablett</td><td>1 tablett (20 mg) 1 gång dagligen till kvällen</td><td>2015-11-10</td><td>Stabil angina pectoris</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:4989cf0d-a55d-53c3-8e8d-b41fd96b5f11"
+              },
+              {
+                "reference": "urn:uuid:a7f3203f-58db-58dc-9be3-d0e909b8eead"
+              },
+              {
+                "reference": "urn:uuid:0411b002-a42a-5158-9862-e209ea15e865"
+              },
+              {
+                "reference": "urn:uuid:624156cd-dde6-56ce-8095-a4390dd2e03b"
+              },
+              {
+                "reference": "urn:uuid:3857f230-b26a-5222-a4d6-86b891812057"
+              },
+              {
+                "reference": "urn:uuid:db26aee9-5f46-5113-b267-7e0933adfd04"
+              },
+              {
+                "reference": "urn:uuid:998af905-e5e9-5fdf-aaa4-df4f18ba6f2a"
+              },
+              {
+                "reference": "urn:uuid:48bb18cf-39c6-5850-9200-3dd5893a74e0"
+              },
+              {
+                "reference": "urn:uuid:d7b95f78-586f-5c5a-a1df-cdef6976bb5d"
+              },
+              {
+                "reference": "urn:uuid:689679f5-692b-5261-9b9b-65d0520810dd"
+              }
+            ]
+          },
+          {
+            "title": "Genomgångna åtgärder",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "47519-4",
+                  "display": "History of Procedures Document"
+                }
+              ],
+              "text": "History of Procedures Document"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Åtgärd</th><th>Datum</th></tr></thead><tbody><tr><td>Transuretral resektion av prostata (TURP)</td><td>2020-11-26</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:60d34a7c-5ed5-52ce-af2a-86ae79d170cc"
+              }
+            ]
+          },
+          {
+            "title": "Vaccinationer",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "11369-6",
+                  "display": "History of Immunization note"
+                }
+              ],
+              "text": "History of Immunization note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Vaccin</th><th>Datum</th></tr></thead><tbody><tr><td>Pneumokockvaccin</td><td>2021-11-04</td></tr><tr><td>Influensavaccin</td><td>2025-10-09</td></tr><tr><td>Covid-19-vaccin</td><td>2025-10-09</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:263f74b0-aef5-558f-8412-5cb71d9be612"
+              },
+              {
+                "reference": "urn:uuid:044bcc18-5130-5758-977f-05e3c86ea4a0"
+              },
+              {
+                "reference": "urn:uuid:3a119b89-4701-5338-b6ed-0ac39faf4eef"
+              }
+            ]
+          },
+          {
+            "title": "Laboratorieresultat",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "30954-2",
+                  "display": "Relevant diagnostic tests/laboratory data note"
+                }
+              ],
+              "text": "Relevant diagnostic tests/laboratory data note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Analys</th><th>Datum</th><th>Resultat</th><th>Tolkning</th></tr></thead><tbody><tr><td>Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood</td><td>2026-06-12</td><td>58 mmol/mol</td><td>High</td></tr><tr><td>Creatinine [Moles/volume] in Serum or Plasma</td><td>2026-06-12</td><td>118 umol/L</td><td>High</td></tr><tr><td>Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI)/1.73 sq M</td><td>2026-06-12</td><td>46 mL/min/{1.73_m2}</td><td>Low</td></tr><tr><td>Hemoglobin [Mass/volume] in Blood</td><td>2026-06-12</td><td>112 g/L</td><td>Low</td></tr><tr><td>Potassium [Moles/volume] in Serum or Plasma</td><td>2026-06-12</td><td>4.4 mmol/L</td><td>Inom referens</td></tr><tr><td>Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma</td><td>2026-06-12</td><td>1840 ng/L</td><td>High</td></tr><tr><td>Prostate specific Ag [Mass/volume] in Serum or Plasma</td><td>2026-05-04</td><td>12.4 ug/L</td><td>High</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:a4daa378-9283-578d-85ac-6f2486c56fda"
+              },
+              {
+                "reference": "urn:uuid:ba73fa79-db42-5b18-b1ae-f8689ade9347"
+              },
+              {
+                "reference": "urn:uuid:403a7c85-d3d0-57db-a10f-830f2f9d3501"
+              },
+              {
+                "reference": "urn:uuid:381b495a-4015-50c3-91a3-7899a2ef59cf"
+              },
+              {
+                "reference": "urn:uuid:adf2d69a-e272-50a3-b358-d992da6b6dc9"
+              },
+              {
+                "reference": "urn:uuid:35d97d89-ce6b-5ffb-97d1-c2e96d52df88"
+              },
+              {
+                "reference": "urn:uuid:60084f2f-4d2d-5154-97d0-8d9a67f8e828"
+              }
+            ]
+          },
+          {
+            "title": "Medicintekniska produkter",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "46264-8",
+                  "display": "History of medical device use"
+                }
+              ],
+              "text": "History of medical device use"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Produkt</th><th>I bruk sedan</th><th>Status</th></tr></thead><tbody><tr><td>Rollator</td><td>2019-06-01</td><td>I bruk</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:03ad3773-6ef4-5fb4-900d-f2076c81314c"
+              }
+            ]
+          },
+          {
+            "title": "Vårdplan",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "18776-5",
+                  "display": "Plan of care note"
+                }
+              ],
+              "text": "Plan of care note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Planerad åtgärd</th><th>Sedan</th><th>Status</th></tr></thead><tbody><tr><td>Planerat återbesök på Vårdcentralen Kvarnängen - årlig kontroll av hjärtsvikt och diabetes</td><td>2026-06-12</td><td>scheduled</td></tr><tr><td>Hemtjänst två besök dagligen - stöd med läkemedel, personlig vård och måltider</td><td>2019-06-01</td><td>in-progress</td></tr><tr><td>Sårvård av venöst bensår höger underben - kompressionsbehandling och omläggning två gånger per vecka</td><td>2023-05-19</td><td>in-progress</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:045daddb-8df2-54aa-9c93-48711be64fa7"
+              },
+              {
+                "reference": "urn:uuid:f4c5ef01-d031-5de2-901e-ccb9af447273"
+              },
+              {
+                "reference": "urn:uuid:168c33ae-e178-55ea-a818-ae37f34fe831"
+              }
+            ]
+          }
+        ],
+        "id": "f7cd6d12-0095-5131-a4c0-d8dfe5ee2a0d",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Document</td><td>Patientöversikt (European Patient Summary)</td></tr><tr><td>Patient</td><td>Arne Bergström</td></tr><tr><td>Document date</td><td>2026-08-19</td></tr><tr><td>Sections</td><td>Allergier och intoleranser, Problemlista, Läkemedelslista, Genomgångna åtgärder, Vaccinationer, Laboratorieresultat, Medicintekniska produkter, Vårdplan</td></tr><tr><td>Note</td><td>Synthetic example generated for the Nordic Hackathon 2026 - not a real patient.</td></tr></tbody></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+      "resource": {
+        "resourceType": "Patient",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/patient-eu-eps",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePatient"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "http://electronichealth.se/identifier/personnummer",
+            "value": "194302096997"
+          }
+        ],
+        "name": [
+          {
+            "text": "Arne Bergström",
+            "family": "Bergström",
+            "given": [
+              "Arne",
+              "Gustav"
+            ]
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 70 000 00 02",
+            "use": "home"
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1943-02-09",
+        "address": [
+          {
+            "use": "home",
+            "type": "physical",
+            "line": [
+              "Ängsbacken 8 A"
+            ],
+            "city": "Falkenberg",
+            "postalCode": "311 34",
+            "country": "SE"
+          }
+        ],
+        "communication": [
+          {
+            "language": {
+              "coding": [
+                {
+                  "system": "urn:ietf:bcp:47",
+                  "code": "sv",
+                  "display": "Swedish"
+                }
+              ],
+              "text": "Swedish"
+            },
+            "preferred": true
+          }
+        ],
+        "contact": [
+          {
+            "relationship": [
+              {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
+                    "code": "C",
+                    "display": "Emergency Contact"
+                  }
+                ],
+                "text": "Emergency Contact"
+              }
+            ],
+            "name": {
+              "text": "Mikael Bergström",
+              "family": "Bergström",
+              "given": [
+                "Mikael"
+              ]
+            },
+            "telecom": [
+              {
+                "system": "phone",
+                "value": "+45 20 00 00 03"
+              }
+            ],
+            "address": {
+              "city": "København",
+              "country": "DK"
+            }
+          }
+        ],
+        "id": "6c176c67-1aed-5cda-9a51-7833bc0e1246",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Arne Bergström</td></tr><tr><th>Gender</th><td>male</td></tr><tr><th>Date of birth</th><td>1943-02-09</td></tr><tr><th>Identifier</th><td>194302096997</td></tr><tr><th>Preferred language</th><td>Swedish</td></tr><tr><th>Address</th><td>Ängsbacken 8 A, Falkenberg, SE</td></tr><tr><th>Contact</th><td>Mikael Bergström (Emergency Contact), +45 20 00 00 03</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:cb24bd2c-13bd-5cc9-a46c-5c6bf7f5acfd",
+      "resource": {
+        "resourceType": "Organization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/organization-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBaseOrganization"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000107-1002"
+          },
+          {
+            "system": "urn:oid:2.5.4.97",
+            "value": "2321000107"
+          }
+        ],
+        "name": "Vårdcentralen Kvarnängen",
+        "address": [
+          {
+            "city": "Falkenberg",
+            "postalCode": "311 32",
+            "country": "SE"
+          }
+        ],
+        "id": "cb24bd2c-13bd-5cc9-a46c-5c6bf7f5acfd",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Organisation</th><td>Vårdcentralen Kvarnängen</td></tr><tr><th>Address</th><td>Falkenberg, SE</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a317dcd8-9f5f-5bfa-a799-74e64a29f1d7",
+      "resource": {
+        "resourceType": "Practitioner",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitioner-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitioner"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000107-2002"
+          }
+        ],
+        "name": [
+          {
+            "family": "Lövgren",
+            "given": [
+              "Märta"
+            ],
+            "prefix": [
+              "Dr"
+            ]
+          }
+        ],
+        "id": "a317dcd8-9f5f-5bfa-a799-74e64a29f1d7",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Dr Märta Lövgren</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ceea7732-62c2-5b68-8594-ab25d0ab74a9",
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitionerRole-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitionerRole"
+          ]
+        },
+        "practitioner": {
+          "reference": "urn:uuid:a317dcd8-9f5f-5bfa-a799-74e64a29f1d7"
+        },
+        "organization": {
+          "reference": "urn:uuid:cb24bd2c-13bd-5cc9-a46c-5c6bf7f5acfd"
+        },
+        "id": "ceea7732-62c2-5b68-8594-ab25d0ab74a9",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Role</th><td>Authoring practitioner at the custodian organisation</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3681dec0-e29f-5b1a-a964-7ed2d2b1e6db",
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/allergyIntolerance-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "type": "allergy",
+        "category": [
+          "medication"
+        ],
+        "criticality": "high",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "764146007",
+              "display": "Penicillin"
+            }
+          ],
+          "text": "Penicillin"
+        },
+        "patient": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "1972-06-18",
+        "reaction": [
+          {
+            "manifestation": [
+              {
+                "coding": [
+                  {
+                    "system": "http://snomed.info/sct",
+                    "code": "39579001",
+                    "display": "Anaphylaxis"
+                  }
+                ],
+                "text": "Anafylaktisk reaktion"
+              }
+            ],
+            "severity": "severe"
+          }
+        ],
+        "note": [
+          {
+            "text": "Anafylaxi efter fenoximetylpenicillin 1972, vårdad på akutmottagning. Undvik samtliga betalaktamantibiotika tills allergiutredning genomförts."
+          }
+        ],
+        "id": "3681dec0-e29f-5b1a-a964-7ed2d2b1e6db",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Allergen</th><td>Penicillin</td></tr><tr><th>Criticality</th><td>high</td></tr><tr><th>Type</th><td>allergy</td></tr><tr><th>Onset</th><td>1972-06-18</td></tr><tr><th>Reaction</th><td>Anafylaktisk reaktion</td></tr><tr><th>Severity</th><td>severe</td></tr><tr><th>Note</th><td>Anafylaxi efter fenoximetylpenicillin 1972, vårdad på akutmottagning. Undvik samtliga betalaktamantibiotika tills allergiutredning genomförts.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3da54433-9019-5d7d-b485-b753d4038c4a",
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/allergyIntolerance-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "type": "allergy",
+        "category": [
+          "environment"
+        ],
+        "criticality": "low",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "256262001",
+              "display": "European white birch pollen"
+            }
+          ],
+          "text": "Björkpollen"
+        },
+        "patient": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "1988-04-02",
+        "reaction": [
+          {
+            "manifestation": [
+              {
+                "coding": [
+                  {
+                    "system": "http://snomed.info/sct",
+                    "code": "878820003",
+                    "display": "Rhinoconjunctivitis"
+                  }
+                ],
+                "text": "Rinokonjunktivit"
+              }
+            ],
+            "severity": "mild"
+          }
+        ],
+        "id": "3da54433-9019-5d7d-b485-b753d4038c4a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Allergen</th><td>Björkpollen</td></tr><tr><th>Criticality</th><td>low</td></tr><tr><th>Type</th><td>allergy</td></tr><tr><th>Onset</th><td>1988-04-02</td></tr><tr><th>Reaction</th><td>Rinokonjunktivit</td></tr><tr><th>Severity</th><td>mild</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3052cfcc-61a2-5048-9e8c-18d9321791c8",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "59621000",
+              "display": "Essential hypertension"
+            }
+          ],
+          "text": "Essentiell hypertoni"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "1998-10-02",
+        "id": "3052cfcc-61a2-5048-9e8c-18d9321791c8",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Essentiell hypertoni</td></tr><tr><th>Onset</th><td>1998-10-02</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:d7778a8e-3cc3-5241-bb38-da2ad0360c89",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "44054006",
+              "display": "Type 2 diabetes mellitus"
+            }
+          ],
+          "text": "Diabetes mellitus typ 2"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2004-06-30",
+        "id": "d7778a8e-3cc3-5241-bb38-da2ad0360c89",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Diabetes mellitus typ 2</td></tr><tr><th>Onset</th><td>2004-06-30</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:c0ef6847-f06c-56de-82ec-ff8d94fc19a9",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "87433001",
+              "display": "Pulmonary emphysema"
+            }
+          ],
+          "text": "Lungemfysem"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2011-03-17",
+        "id": "c0ef6847-f06c-56de-82ec-ff8d94fc19a9",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Lungemfysem</td></tr><tr><th>Onset</th><td>2011-03-17</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:131dea7e-e616-5d91-b7ec-8d56198f32a7",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "233819005",
+              "display": "Stable angina"
+            }
+          ],
+          "text": "Stabil angina pectoris"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2015-11-05",
+        "id": "131dea7e-e616-5d91-b7ec-8d56198f32a7",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Stabil angina pectoris</td></tr><tr><th>Onset</th><td>2015-11-05</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:12cd7877-d3e7-5607-9842-e8797dc64daa",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "49436004",
+              "display": "Atrial fibrillation"
+            }
+          ],
+          "text": "Förmaksflimmer"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2017-09-22",
+        "id": "12cd7877-d3e7-5607-9842-e8797dc64daa",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Förmaksflimmer</td></tr><tr><th>Onset</th><td>2017-09-22</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:c0a5357a-7f81-517b-8726-f7e5b65c75d7",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "88805009",
+              "display": "Chronic congestive heart failure"
+            }
+          ],
+          "text": "Kronisk hjärtsvikt"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2018-04-12",
+        "id": "c0a5357a-7f81-517b-8726-f7e5b65c75d7",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Kronisk hjärtsvikt</td></tr><tr><th>Onset</th><td>2018-04-12</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:d5ee969d-d8d3-575b-92d1-4d7b472ebcaa",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "resolved"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "230690007",
+              "display": "Cerebrovascular accident"
+            }
+          ],
+          "text": "Stroke"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2019-02-03",
+        "id": "d5ee969d-d8d3-575b-92d1-4d7b472ebcaa",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Stroke</td></tr><tr><th>Onset</th><td>2019-02-03</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:1ae4a743-bef0-52f1-a9a4-9dd535e2cd8f",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "278287000",
+              "display": "Left hemiparesis"
+            }
+          ],
+          "text": "Vänstersidig hemipares"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2019-02-03",
+        "id": "1ae4a743-bef0-52f1-a9a4-9dd535e2cd8f",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Vänstersidig hemipares</td></tr><tr><th>Onset</th><td>2019-02-03</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:851526bf-7db5-564f-886b-75c2dfaf34f5",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "399068003",
+              "display": "Malignant neoplasm of prostate"
+            }
+          ],
+          "text": "Prostatacancer, lokalt avancerad"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2020-08-11",
+        "id": "851526bf-7db5-564f-886b-75c2dfaf34f5",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Prostatacancer, lokalt avancerad</td></tr><tr><th>Onset</th><td>2020-08-11</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:847ac3be-c3ea-5366-9139-a16cd70a96e2",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1237117000",
+              "display": "Venous ulcer of lower leg"
+            }
+          ],
+          "text": "Venöst bensår"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "onsetDateTime": "2023-05-19",
+        "id": "847ac3be-c3ea-5366-9139-a16cd70a96e2",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Venöst bensår</td></tr><tr><th>Onset</th><td>2023-05-19</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e422489b-f42b-501f-b1e0-8abefb04cd7e",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "B01AF02",
+              "display": "apixaban"
+            }
+          ],
+          "text": "Apixaban 5 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "e422489b-f42b-501f-b1e0-8abefb04cd7e",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Apixaban 5 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:4989cf0d-a55d-53c3-8e8d-b41fd96b5f11",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:e422489b-f42b-501f-b1e0-8abefb04cd7e",
+          "display": "Apixaban 5 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2017-10-05"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (5 mg) 2 gånger dagligen",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "49436004",
+                "display": "Atrial fibrillation"
+              }
+            ],
+            "text": "Förmaksflimmer"
+          }
+        ],
+        "id": "4989cf0d-a55d-53c3-8e8d-b41fd96b5f11",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Apixaban 5 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (5 mg) 2 gånger dagligen</td></tr><tr><th>Period</th><td>2017-10-05</td></tr><tr><th>Reason</th><td>Förmaksflimmer</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:8981c4d3-83f3-5f71-8e8b-08e51b39a34b",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "C07AB02",
+              "display": "metoprolol"
+            }
+          ],
+          "text": "Metoprolol depottablett 50 mg"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "8981c4d3-83f3-5f71-8e8b-08e51b39a34b",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metoprolol depottablett 50 mg</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a7f3203f-58db-58dc-9be3-d0e909b8eead",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:8981c4d3-83f3-5f71-8e8b-08e51b39a34b",
+          "display": "Metoprolol depottablett 50 mg"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2018-04-20"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (50 mg) 1 gång dagligen på morgonen",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "88805009",
+                "display": "Chronic congestive heart failure"
+              }
+            ],
+            "text": "Kronisk hjärtsvikt"
+          }
+        ],
+        "id": "a7f3203f-58db-58dc-9be3-d0e909b8eead",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metoprolol depottablett 50 mg</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (50 mg) 1 gång dagligen på morgonen</td></tr><tr><th>Period</th><td>2018-04-20</td></tr><tr><th>Reason</th><td>Kronisk hjärtsvikt</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:7e7846d5-cfc3-53f7-9728-da0e297d2fe8",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "C09AA05",
+              "display": "ramipril"
+            }
+          ],
+          "text": "Ramipril 5 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "7e7846d5-cfc3-53f7-9728-da0e297d2fe8",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Ramipril 5 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:0411b002-a42a-5158-9862-e209ea15e865",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:7e7846d5-cfc3-53f7-9728-da0e297d2fe8",
+          "display": "Ramipril 5 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2018-04-20"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (5 mg) 1 gång dagligen",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "88805009",
+                "display": "Chronic congestive heart failure"
+              }
+            ],
+            "text": "Kronisk hjärtsvikt"
+          }
+        ],
+        "id": "0411b002-a42a-5158-9862-e209ea15e865",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Ramipril 5 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (5 mg) 1 gång dagligen</td></tr><tr><th>Period</th><td>2018-04-20</td></tr><tr><th>Reason</th><td>Kronisk hjärtsvikt</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:32633f47-df00-58a8-b6b4-d07997db27e5",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "C03CA01",
+              "display": "furosemide"
+            }
+          ],
+          "text": "Furosemid 40 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "32633f47-df00-58a8-b6b4-d07997db27e5",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Furosemid 40 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:624156cd-dde6-56ce-8095-a4390dd2e03b",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:32633f47-df00-58a8-b6b4-d07997db27e5",
+          "display": "Furosemid 40 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2018-04-20"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (40 mg) 1 gång dagligen på morgonen",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "88805009",
+                "display": "Chronic congestive heart failure"
+              }
+            ],
+            "text": "Kronisk hjärtsvikt"
+          }
+        ],
+        "id": "624156cd-dde6-56ce-8095-a4390dd2e03b",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Furosemid 40 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (40 mg) 1 gång dagligen på morgonen</td></tr><tr><th>Period</th><td>2018-04-20</td></tr><tr><th>Reason</th><td>Kronisk hjärtsvikt</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:c087ecf0-9be7-5500-a1a8-87ac6b7ac8a5",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "A10AE04",
+              "display": "insulin glargine"
+            }
+          ],
+          "text": "Insulin glargin 100 E/ml injektionsvätska"
+        },
+        "id": "c087ecf0-9be7-5500-a1a8-87ac6b7ac8a5",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Insulin glargin 100 E/ml injektionsvätska</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3857f230-b26a-5222-a4d6-86b891812057",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:c087ecf0-9be7-5500-a1a8-87ac6b7ac8a5",
+          "display": "Insulin glargin 100 E/ml injektionsvätska"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2016-02-08"
+        },
+        "dosage": [
+          {
+            "text": "22 enheter subkutant till natten",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "44054006",
+                "display": "Type 2 diabetes mellitus"
+              }
+            ],
+            "text": "Diabetes mellitus typ 2"
+          }
+        ],
+        "id": "3857f230-b26a-5222-a4d6-86b891812057",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Insulin glargin 100 E/ml injektionsvätska</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>22 enheter subkutant till natten</td></tr><tr><th>Period</th><td>2016-02-08</td></tr><tr><th>Reason</th><td>Diabetes mellitus typ 2</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e6cb4777-be49-532d-84ad-2936b4b8e23b",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "A10BA02",
+              "display": "metformin"
+            }
+          ],
+          "text": "Metformin 500 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "e6cb4777-be49-532d-84ad-2936b4b8e23b",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metformin 500 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:db26aee9-5f46-5113-b267-7e0933adfd04",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:e6cb4777-be49-532d-84ad-2936b4b8e23b",
+          "display": "Metformin 500 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2004-07-15"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (500 mg) 2 gånger dagligen i samband med måltid",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "44054006",
+                "display": "Type 2 diabetes mellitus"
+              }
+            ],
+            "text": "Diabetes mellitus typ 2"
+          }
+        ],
+        "id": "db26aee9-5f46-5113-b267-7e0933adfd04",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metformin 500 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (500 mg) 2 gånger dagligen i samband med måltid</td></tr><tr><th>Period</th><td>2004-07-15</td></tr><tr><th>Reason</th><td>Diabetes mellitus typ 2</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:cd04a9e7-8166-56d2-b802-e9b83d668b1e",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "C01DA02",
+              "display": "glyceryl trinitrate"
+            }
+          ],
+          "text": "Glyceryltrinitrat 0,4 mg sublingual spray"
+        },
+        "id": "cd04a9e7-8166-56d2-b802-e9b83d668b1e",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Glyceryltrinitrat 0,4 mg sublingual spray</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:998af905-e5e9-5fdf-aaa4-df4f18ba6f2a",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:cd04a9e7-8166-56d2-b802-e9b83d668b1e",
+          "display": "Glyceryltrinitrat 0,4 mg sublingual spray"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2015-11-10"
+        },
+        "dosage": [
+          {
+            "text": "1-2 doser under tungan vid bröstsmärta, vid behov",
+            "asNeededBoolean": true
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "233819005",
+                "display": "Stable angina"
+              }
+            ],
+            "text": "Stabil angina pectoris"
+          }
+        ],
+        "id": "998af905-e5e9-5fdf-aaa4-df4f18ba6f2a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Glyceryltrinitrat 0,4 mg sublingual spray</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1-2 doser under tungan vid bröstsmärta, vid behov</td></tr><tr><th>Period</th><td>2015-11-10</td></tr><tr><th>Reason</th><td>Stabil angina pectoris</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:478ddb77-9f95-5c77-bfe1-61a47e870c84",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "R03BB04",
+              "display": "tiotropium bromide"
+            }
+          ],
+          "text": "Tiotropium 18 mikrogram inhalationspulver"
+        },
+        "id": "478ddb77-9f95-5c77-bfe1-61a47e870c84",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Tiotropium 18 mikrogram inhalationspulver</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:48bb18cf-39c6-5850-9200-3dd5893a74e0",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:478ddb77-9f95-5c77-bfe1-61a47e870c84",
+          "display": "Tiotropium 18 mikrogram inhalationspulver"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2011-04-05"
+        },
+        "dosage": [
+          {
+            "text": "1 inhalation 1 gång dagligen",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "87433001",
+                "display": "Pulmonary emphysema"
+              }
+            ],
+            "text": "Lungemfysem"
+          }
+        ],
+        "id": "48bb18cf-39c6-5850-9200-3dd5893a74e0",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Tiotropium 18 mikrogram inhalationspulver</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 inhalation 1 gång dagligen</td></tr><tr><th>Period</th><td>2011-04-05</td></tr><tr><th>Reason</th><td>Lungemfysem</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f095986b-60f9-5f43-903a-481ea683d62a",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "L02BB03",
+              "display": "bicalutamide"
+            }
+          ],
+          "text": "Bikalutamid 150 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "f095986b-60f9-5f43-903a-481ea683d62a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Bikalutamid 150 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:d7b95f78-586f-5c5a-a1df-cdef6976bb5d",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:f095986b-60f9-5f43-903a-481ea683d62a",
+          "display": "Bikalutamid 150 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2020-09-14"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (150 mg) 1 gång dagligen som monoterapi (ingen GnRH-analog)",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "399068003",
+                "display": "Malignant neoplasm of prostate"
+              }
+            ],
+            "text": "Prostatacancer, lokalt avancerad"
+          }
+        ],
+        "id": "d7b95f78-586f-5c5a-a1df-cdef6976bb5d",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Bikalutamid 150 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (150 mg) 1 gång dagligen som monoterapi (ingen GnRH-analog)</td></tr><tr><th>Period</th><td>2020-09-14</td></tr><tr><th>Reason</th><td>Prostatacancer, lokalt avancerad</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:bc498bb2-ca92-539e-b773-d3e42379812b",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "C10AA05",
+              "display": "atorvastatin"
+            }
+          ],
+          "text": "Atorvastatin 20 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "bc498bb2-ca92-539e-b773-d3e42379812b",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Atorvastatin 20 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:689679f5-692b-5261-9b9b-65d0520810dd",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:bc498bb2-ca92-539e-b773-d3e42379812b",
+          "display": "Atorvastatin 20 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "effectivePeriod": {
+          "start": "2015-11-10"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (20 mg) 1 gång dagligen till kvällen",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "233819005",
+                "display": "Stable angina"
+              }
+            ],
+            "text": "Stabil angina pectoris"
+          }
+        ],
+        "id": "689679f5-692b-5261-9b9b-65d0520810dd",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Atorvastatin 20 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (20 mg) 1 gång dagligen till kvällen</td></tr><tr><th>Period</th><td>2015-11-10</td></tr><tr><th>Reason</th><td>Stabil angina pectoris</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:60d34a7c-5ed5-52ce-af2a-86ae79d170cc",
+      "resource": {
+        "resourceType": "Procedure",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/procedure-eu-core"
+          ]
+        },
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "90199006",
+              "display": "Transurethral resection of prostate"
+            }
+          ],
+          "text": "Transuretral resektion av prostata (TURP)"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "performedDateTime": "2020-11-26",
+        "note": [
+          {
+            "text": "Utförd på Länssjukhuset Söderås, Varberg. Ingen peroperativ komplikation."
+          }
+        ],
+        "id": "60d34a7c-5ed5-52ce-af2a-86ae79d170cc",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Procedure</th><td>Transuretral resektion av prostata (TURP)</td></tr><tr><th>Date</th><td>2020-11-26</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Note</th><td>Utförd på Länssjukhuset Söderås, Varberg. Ingen peroperativ komplikation.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:263f74b0-aef5-558f-8412-5cb71d9be612",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "981000221107",
+              "display": "Streptococcus pneumoniae antigen only vaccine product"
+            }
+          ],
+          "text": "Pneumokockvaccin"
+        },
+        "patient": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "occurrenceDateTime": "2021-11-04",
+        "id": "263f74b0-aef5-558f-8412-5cb71d9be612",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Pneumokockvaccin</td></tr><tr><th>Date</th><td>2021-11-04</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:044bcc18-5130-5758-977f-05e3c86ea4a0",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1181000221105",
+              "display": "Vaccine product containing only Influenza virus antigen (medicinal product)"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BB02",
+              "display": "influenza, inactivated, split virus or surface antigen"
+            }
+          ],
+          "text": "Influensavaccin"
+        },
+        "patient": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "occurrenceDateTime": "2025-10-09",
+        "id": "044bcc18-5130-5758-977f-05e3c86ea4a0",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Influensavaccin</td></tr><tr><th>Date</th><td>2025-10-09</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3a119b89-4701-5338-b6ed-0ac39faf4eef",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1119305005",
+              "display": "SARS-CoV-2 antigen vaccine"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BN04",
+              "display": "covid-19, protein subunit"
+            }
+          ],
+          "text": "Covid-19-vaccin"
+        },
+        "patient": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "occurrenceDateTime": "2025-10-09",
+        "id": "3a119b89-4701-5338-b6ed-0ac39faf4eef",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Covid-19-vaccin</td></tr><tr><th>Date</th><td>2025-10-09</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a4daa378-9283-578d-85ac-6f2486c56fda",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "59261-8",
+              "display": "Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood"
+            }
+          ],
+          "text": "Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-06-12",
+        "valueQuantity": {
+          "value": 58,
+          "unit": "mmol/mol",
+          "system": "http://unitsofmeasure.org",
+          "code": "mmol/mol"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "High"
+              }
+            ],
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 27,
+              "unit": "mmol/mol",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/mol"
+            },
+            "high": {
+              "value": 42,
+              "unit": "mmol/mol",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/mol"
+            }
+          }
+        ],
+        "id": "a4daa378-9283-578d-85ac-6f2486c56fda",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood</td></tr><tr><th>Date</th><td>2026-06-12</td></tr><tr><th>Result</th><td>58 mmol/mol</td></tr><tr><th>Interpretation</th><td>High</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ba73fa79-db42-5b18-b1ae-f8689ade9347",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "14682-9",
+              "display": "Creatinine [Moles/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Creatinine [Moles/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-06-12",
+        "valueQuantity": {
+          "value": 118,
+          "unit": "umol/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "umol/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "High"
+              }
+            ],
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 60,
+              "unit": "umol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "umol/L"
+            },
+            "high": {
+              "value": 105,
+              "unit": "umol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "umol/L"
+            }
+          }
+        ],
+        "id": "ba73fa79-db42-5b18-b1ae-f8689ade9347",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Creatinine [Moles/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-06-12</td></tr><tr><th>Result</th><td>118 umol/L</td></tr><tr><th>Interpretation</th><td>High</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:403a7c85-d3d0-57db-a10f-830f2f9d3501",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "62238-1",
+              "display": "Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI)/1.73 sq M"
+            }
+          ],
+          "text": "Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI)/1.73 sq M"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-06-12",
+        "valueQuantity": {
+          "value": 46,
+          "unit": "mL/min/{1.73_m2}",
+          "system": "http://unitsofmeasure.org",
+          "code": "mL/min/{1.73_m2}"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "L",
+                "display": "Low"
+              }
+            ],
+            "text": "Low"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 60,
+              "unit": "mL/min/{1.73_m2}",
+              "system": "http://unitsofmeasure.org",
+              "code": "mL/min/{1.73_m2}"
+            }
+          }
+        ],
+        "id": "403a7c85-d3d0-57db-a10f-830f2f9d3501",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI)/1.73 sq M</td></tr><tr><th>Date</th><td>2026-06-12</td></tr><tr><th>Result</th><td>46 mL/min/{1.73_m2}</td></tr><tr><th>Interpretation</th><td>Low</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:381b495a-4015-50c3-91a3-7899a2ef59cf",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "718-7",
+              "display": "Hemoglobin [Mass/volume] in Blood"
+            }
+          ],
+          "text": "Hemoglobin [Mass/volume] in Blood"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-06-12",
+        "valueQuantity": {
+          "value": 112,
+          "unit": "g/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "g/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "L",
+                "display": "Low"
+              }
+            ],
+            "text": "Low"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 134,
+              "unit": "g/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "g/L"
+            },
+            "high": {
+              "value": 170,
+              "unit": "g/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "g/L"
+            }
+          }
+        ],
+        "id": "381b495a-4015-50c3-91a3-7899a2ef59cf",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Hemoglobin [Mass/volume] in Blood</td></tr><tr><th>Date</th><td>2026-06-12</td></tr><tr><th>Result</th><td>112 g/L</td></tr><tr><th>Interpretation</th><td>Low</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:adf2d69a-e272-50a3-b358-d992da6b6dc9",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2823-3",
+              "display": "Potassium [Moles/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Potassium [Moles/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-06-12",
+        "valueQuantity": {
+          "value": 4.4,
+          "unit": "mmol/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "mmol/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 3.5,
+              "unit": "mmol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/L"
+            },
+            "high": {
+              "value": 4.6,
+              "unit": "mmol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/L"
+            }
+          }
+        ],
+        "id": "adf2d69a-e272-50a3-b358-d992da6b6dc9",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Potassium [Moles/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-06-12</td></tr><tr><th>Result</th><td>4.4 mmol/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:35d97d89-ce6b-5ffb-97d1-c2e96d52df88",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "33762-6",
+              "display": "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-06-12",
+        "valueQuantity": {
+          "value": 1840,
+          "unit": "ng/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "ng/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "High"
+              }
+            ],
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 300,
+              "unit": "ng/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "ng/L"
+            }
+          }
+        ],
+        "id": "35d97d89-ce6b-5ffb-97d1-c2e96d52df88",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-06-12</td></tr><tr><th>Result</th><td>1840 ng/L</td></tr><tr><th>Interpretation</th><td>High</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:60084f2f-4d2d-5154-97d0-8d9a67f8e828",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2857-1",
+              "display": "Prostate specific Ag [Mass/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Prostate specific Ag [Mass/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "effectiveDateTime": "2026-05-04",
+        "valueQuantity": {
+          "value": 12.4,
+          "unit": "ug/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "ug/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Länssjukhuset Söderås"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "High"
+              }
+            ],
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 4.0,
+              "unit": "ug/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "ug/L"
+            }
+          }
+        ],
+        "id": "60084f2f-4d2d-5154-97d0-8d9a67f8e828",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Prostate specific Ag [Mass/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-05-04</td></tr><tr><th>Result</th><td>12.4 ug/L</td></tr><tr><th>Interpretation</th><td>High</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:cfb489f9-cc6f-54a8-b68b-0ee94121fbab",
+      "resource": {
+        "resourceType": "Device",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/device-eu-eps"
+          ]
+        },
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "404946006",
+              "display": "Wheeled walking frame"
+            }
+          ],
+          "text": "Rollator"
+        },
+        "patient": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "id": "cfb489f9-cc6f-54a8-b68b-0ee94121fbab",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Device</th><td>Rollator</td></tr><tr><th>Status</th><td>active</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:03ad3773-6ef4-5fb4-900d-f2076c81314c",
+      "resource": {
+        "resourceType": "DeviceUseStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/deviceUseStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "timingPeriod": {
+          "start": "2019-06-01"
+        },
+        "device": {
+          "reference": "urn:uuid:cfb489f9-cc6f-54a8-b68b-0ee94121fbab",
+          "display": "Rollator"
+        },
+        "note": [
+          {
+            "text": "Utprovad av arbetsterapeut efter stroke 2019. Används inomhus och utomhus."
+          }
+        ],
+        "id": "03ad3773-6ef4-5fb4-900d-f2076c81314c",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Device</th><td>Rollator</td></tr><tr><th>In use since</th><td>2019-06-01</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Note</th><td>Utprovad av arbetsterapeut efter stroke 2019. Används inomhus och utomhus.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:045daddb-8df2-54aa-9c93-48711be64fa7",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Planerat återbesök på Vårdcentralen Kvarnängen - årlig kontroll av hjärtsvikt och diabetes",
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "period": {
+          "start": "2026-06-12"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Appointment",
+              "status": "scheduled",
+              "description": "Planerat återbesök på Vårdcentralen Kvarnängen - årlig kontroll av hjärtsvikt och diabetes",
+              "reasonCode": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://snomed.info/sct",
+                      "code": "88805009",
+                      "display": "Chronic congestive heart failure"
+                    }
+                  ],
+                  "text": "Kronisk hjärtsvikt"
+                }
+              ],
+              "scheduledPeriod": {
+                "start": "2026-09-15"
+              }
+            }
+          }
+        ],
+        "id": "045daddb-8df2-54aa-9c93-48711be64fa7",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Planerat återbesök på Vårdcentralen Kvarnängen - årlig kontroll av hjärtsvikt och diabetes</td></tr><tr><th>Status</th><td>scheduled</td></tr><tr><th>Scheduled</th><td>2026-09-15</td></tr><tr><th>Plan active since</th><td>2026-06-12</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f4c5ef01-d031-5de2-901e-ccb9af447273",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Hemtjänst två besök dagligen - stöd med läkemedel, personlig vård och måltider",
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "period": {
+          "start": "2019-06-01"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Appointment",
+              "status": "in-progress",
+              "description": "Hemtjänst två besök dagligen - stöd med läkemedel, personlig vård och måltider",
+              "reasonCode": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://snomed.info/sct",
+                      "code": "278287000",
+                      "display": "Left hemiparesis"
+                    }
+                  ],
+                  "text": "Vänstersidig hemipares"
+                }
+              ]
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Beviljad av kommunens biståndsenhet. Kontaktperson finns i den samordnade individuella planen (SIP)."
+          }
+        ],
+        "id": "f4c5ef01-d031-5de2-901e-ccb9af447273",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Hemtjänst två besök dagligen - stöd med läkemedel, personlig vård och måltider</td></tr><tr><th>Status</th><td>in-progress</td></tr><tr><th>Plan active since</th><td>2019-06-01</td></tr><tr><th>Note</th><td>Beviljad av kommunens biståndsenhet. Kontaktperson finns i den samordnade individuella planen (SIP).</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:168c33ae-e178-55ea-a818-ae37f34fe831",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Sårvård av venöst bensår höger underben - kompressionsbehandling och omläggning två gånger per vecka",
+        "subject": {
+          "reference": "urn:uuid:6c176c67-1aed-5cda-9a51-7833bc0e1246",
+          "display": "Arne Bergström"
+        },
+        "period": {
+          "start": "2023-05-19"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Appointment",
+              "status": "in-progress",
+              "description": "Sårvård av venöst bensår höger underben - kompressionsbehandling och omläggning två gånger per vecka",
+              "reasonCode": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://snomed.info/sct",
+                      "code": "1237117000",
+                      "display": "Venous ulcer of lower leg"
+                    }
+                  ],
+                  "text": "Venöst bensår"
+                }
+              ]
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Utförs av distriktssköterska i hemmet."
+          }
+        ],
+        "id": "168c33ae-e178-55ea-a818-ae37f34fe831",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Sårvård av venöst bensår höger underben - kompressionsbehandling och omläggning två gånger per vecka</td></tr><tr><th>Status</th><td>in-progress</td></tr><tr><th>Plan active since</th><td>2023-05-19</td></tr><tr><th>Note</th><td>Utförs av distriktssköterska i hemmet.</td></tr></table></div>"
+        }
+      }
+    }
+  ]
+}

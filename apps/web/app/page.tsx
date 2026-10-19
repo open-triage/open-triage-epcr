@@ -1,5 +1,6 @@
 "use client";
 
+import { PatientSummaryButton } from "../components/patient-summary";
 import { ExceptionalValueMenu } from "../components/exceptional-value-menu";
 
 import { DialogCancelButton, DialogRemoveButton } from "../components/documentation-dialog-buttons";
@@ -828,6 +829,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           </div></div>
         </>}
         {report && <div className="draft-actions">
+          <PatientSummaryButton reportId={report.id} organizationId={session.organization.id} userId={session.user.id} documentKey={JSON.stringify(encounter.document)} ready={syncStatus === "Saved"} language={language} />
           <span className={`sync-status sync-${syncStatus === "Pending sync" ? "pending-sync" : syncStatus === "Saving" ? "saving" : syncStatus === "Conflict" ? "conflict" : "saved"}`} role="status" aria-live="polite">{syncStatus === "Pending sync" ? t("mobile.pendingStatus") : syncStatus === "Saving" ? t("mobile.savingStatus") : syncStatus === "Conflict" ? t("mobile.saveNeedsAttention") : t("mobile.savedStatus")}</span>
           {syncStatus === "Conflict" && <button type="button" onClick={retryFailedSave}>{t("mobile.retrySave")}</button>}
           {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>{t("mobile.timeline")} <span aria-hidden="true">· {timelineEvents.length}</span></button>}

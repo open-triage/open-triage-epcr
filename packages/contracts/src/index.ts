@@ -2113,3 +2113,5 @@ export * from "./schedules.js";
 export * from "./audit.js";
 
 export * from "./hospital-integration.js";
+
+export * from "./patient-summary.js";

@@ -1,3 +1,5 @@
+import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
+import {epsJourney} from './fixtures/eps-journey.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -25,7 +27,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await client.query('begin');
   const query=async(sql,args)=>(await client.query(sql,args)).rows;let sequence=0;
   const manager={query};const database={query,manager,transaction:async(first,second)=>{const work=typeof first==='function'?first:second;const point=`eps_${++sequence}`;await client.query(`savepoint ${point}`);try{const result=await work(manager);await client.query(`release savepoint ${point}`);return result;}catch(error){await client.query(`rollback to savepoint ${point}`);throw error;}}};
-  const [baseline]=await query('select d.organization_id,v.catalog_release_id from forms.agency_stationary_default d join forms.form_version v on v.id=d.form_version_id limit 1');assert.ok(baseline,'Full preflight must seed the ordinary published demonstration form');
+  const baseline=await hospitalFixtureBaseline(query);
   const [group]=await query('select app_identity.organization_group($1) id',[baseline.organization_id]);
   const accounts=new AccountService(database),sessions=new ClinicianSessionService(database),service=new HospitalService(database,sessions);
   const username=`eps-${randomUUID()}`,password='Hospital test password 42!';
@@ -66,6 +68,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await assert.rejects(service.save(medicSession.sessionToken,body));await assert.rejects(service.save(token,body));
   view=await service.test(token,{expectedRevision:1});assert.equal(view.tests[0].publication,false);
   view=await service.activate(token,{expectedRevision:1,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});assert.equal(view.active.revision,1);
+  await epsJourney({database,query,sessions,configuration:service,adminToken:token,otherToken:otherSession.sessionToken,body});
   const activeHash=view.active.mapping.sha256;
   view=await service.save(token,{...body,expectedRevision:1,replacementSecret:undefined,patientIdentifier:{...body.patientIdentifier,field:alternative.field}});
   assert.equal(view.active.mapping.sha256,activeHash);assert.equal(view.draft.mapping.definition.patientIdentifier.field.kind,alternative.field.kind);

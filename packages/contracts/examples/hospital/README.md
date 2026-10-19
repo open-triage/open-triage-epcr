@@ -26,3 +26,9 @@ absence values. Coded inequality repair selects an enabled alternative dispositi
 when active rules require one; incompatible protected clinical values still fail
 validation rather than being overwritten. Existing synthetic labelling, expiry, credential
 bootstrap and fixture identities are unchanged.
+
+Complete worked documents (including narrative) for the read-only EPS display
+regressions are pinned under `apps/api/tests/fixtures/hospital/`. They were
+retrieved from the same public Bundle endpoints on 2026-10-19. The adapter reads
+`$samples` and `$exchange` listings, then indexes identifiers from each document's
+Composition subject. Listing display identifiers are never used for matching.
