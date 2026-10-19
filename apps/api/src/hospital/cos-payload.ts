@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { hospitalFieldId, type CosConnectionSettings, type HospitalField } from '@open-triage/contracts';
-import { compileCosMapping, resolveCosCareUnit } from './cos-configuration.js';
+import { identifierOptions } from './hospital-mapping.js';
+import { compileCosMapping, cosMappingPackage, resolveCosCareUnit } from './cos-configuration.js';
 import { contentDigest, type CanonicalPackage } from '../admin/canonical-package.js';
 import { effectiveSignedPdfOccurrences, type SignedOccurrence, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
 export const bytesHash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -23,7 +24,30 @@ export function cosEligibility(rows:SignedOccurrence[]):'transported'|'excluded'
  const care=coded(rows,'eDisposition.28'),transport=coded(rows,'eDisposition.30');
  return unit==='4227001'&&care&&['4228001','4228003','4228005','4228007','4228009'].includes(care)&&transport&&['4230001','4230003','4230005','4230007'].includes(transport)?'transported':'waiting';
 }
+/** Collect all missing requirements together; no patient values enter Review evidence. */
+export function cosIdentifierRequirements(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings){
+ source={...source,occurrences:effectiveSignedPdfOccurrences(source),signerId:source.amendments.at(-1)?.authorId??source.signerId};
+ const configuredField=cosMappingPackage(p).definition.patientIdentifier.field;
+ const patientField=identifierOptions(source.configuration).find(option=>option.field.kind===configuredField.kind&&option.id===hospitalFieldId(configuredField))??{field:configuredField,id:hospitalFieldId(configuredField),name:hospitalFieldId(configuredField),localization:null};
+ let mapping:ReturnType<typeof compileCosMapping>;
+ try{mapping=compileCosMapping(p,source.configuration);}catch(error){
+  if(error instanceof Error&&'getStatus' in error&&typeof error.getStatus==='function'&&error.getStatus()===422)return {missing:['configuration'],patientField};
+  throw error;
+ }
+ const missing:string[]=[];
+ try{scalar(source,mapping.patientIdentifier.field,'patientIdentifier');}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
+ if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))missing.push('patientNamespace');
+ if(!settings.staff.find(row=>row.userId===source.signerId)?.hsaId)missing.push('staff');
+ let destination:{hospital:string;localCareUnit:string}|undefined;
+ try{destination={hospital:scalar(source,{kind:'nemsis',elementId:'eDisposition.01'},'destination'),localCareUnit:scalar(source,{kind:'nemsis',elementId:'eDisposition.02'},'destination')};}
+ catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
+ if(destination&&!resolveCosCareUnit(settings,destination))missing.push('careUnit');
+ if(!settings.organizationHsaId)missing.push('organization');
+ if(!settings.encounterNamespace)missing.push('encounter');
+ return {missing,patientField};
+}
 export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
+ const identifierSource=source;
  source={...source,occurrences:effectiveSignedPdfOccurrences(source)};
  if(source.occurrences.length>COS_SIMULATOR_LIMITS.sourceOccurrences)throw new CosFinding('simulatorLimit','failed');
  let sourceBytes=0;for(const row of source.occurrences){sourceBytes+=typeof row.value_text==='string'?Buffer.byteLength(row.value_text):0;if(sourceBytes>COS_SIMULATOR_LIMITS.textBytes)throw new CosFinding('simulatorLimit','failed');}
@@ -31,6 +55,8 @@ export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,
  if(eligibility!=='transported')throw new CosFinding(eligibility==='excluded'?'noContact':'eligibility',eligibility==='excluded'?'excluded':'waiting');
  if(settings.mode!=='simulator')throw new CosFinding('liveUnverified','failed');
  const mapping=compileCosMapping(p,source.configuration);
+ const requirements=cosIdentifierRequirements(identifierSource,p,settings);
+ if(requirements.missing.length)throw new CosFinding(requirements.missing[0]!);
  const patient=scalar(source,mapping.patientIdentifier.field,'patientIdentifier');
  if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))throw new CosFinding('patientNamespace');
  const amendment=source.amendments.at(-1);

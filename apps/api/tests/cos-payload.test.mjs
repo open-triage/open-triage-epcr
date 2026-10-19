@@ -2,7 +2,7 @@ import {PersistentCosSimulator} from '../dist/hospital/cos-simulator.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {signedPdfFixture} from './fixtures/signed-pdf-source.mjs';
-import {buildCosPayload,cosEligibility,COS_SIMULATOR_LIMITS} from '../dist/hospital/cos-payload.js';
+import {buildCosPayload,cosIdentifierRequirements,cosEligibility,COS_SIMULATOR_LIMITS} from '../dist/hospital/cos-payload.js';
 import {COS_PROFILE,cosMappingPackage} from '../dist/hospital/cos-configuration.js';
 import {makePackage} from '../dist/admin/canonical-package.js';
 export function deliveryFixture(){
@@ -68,4 +68,31 @@ test('simulator rejects changed contact identity without its recorded digest bef
  const receiver=new PersistentCosSimulator({transaction:()=>{throw new Error('must not reach storage');}});
  await assert.rejects(receiver.contact('report',payload),{code:'identityConflict'});
  await assert.rejects(receiver.note('report','delivery',payload),{code:'identityConflict'});
+});
+
+test('all identifier requirements are collected without patient values, including ambiguous patient and encounter namespace',()=>{
+ const f=deliveryFixture();f.source.occurrences=f.source.occurrences.filter(row=>row.element_id!=='ePatient.01');
+ f.settings.staff=[];f.settings.careUnits=[];f.settings.organizationHsaId='';f.settings.encounterNamespace='';
+ const found=cosIdentifierRequirements(f.source,f.mapping,f.settings);
+ assert.deepEqual(found.missing,['patientIdentifier','staff','careUnit','organization','encounter']);
+ assert.equal(found.patientField.id,'ePatient.01');assert.doesNotMatch(JSON.stringify(found),/200207252388|Fictional hospital/);
+ const duplicate=deliveryFixture();duplicate.source.occurrences.push({...duplicate.source.occurrences.find(row=>row.element_id==='ePatient.01'),id:'duplicate-patient'});
+ assert.deepEqual(cosIdentifierRequirements(duplicate.source,duplicate.mapping,duplicate.settings).missing,['patientIdentifier']);
+});
+
+test('Review and payload evaluate amendment additions and removals exactly once',()=>{
+ const f=deliveryFixture(),patient=f.source.occurrences.find(row=>row.element_id==='ePatient.01');
+ f.source.amendmentSequence=1;f.source.amendments=[{id:'amendment',sequence:1,authorId:f.source.signerId,signedAt:f.source.signedAt,reason:'Correction',canonicalSha256:'a'.repeat(64),changes:[
+  {action:'remove',targetId:patient.id,original:patient},
+  {action:'add',corrected:{...patient,id:'new-patient-occurrence',value_text:'corrected-identity'}}]}];
+ assert.deepEqual(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing,[]);
+ assert.equal(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended').contact.patient.value,'corrected-identity');
+ assert.equal(patient.value_text,'200207252388');
+});
+
+test('unavailable configured patient field retains exact canonical identity for protected troubleshooting',()=>{
+ const f=deliveryFixture();f.source.configuration.definition.sections[0].fields=f.source.configuration.definition.sections[0].fields.filter(row=>row.source.elementId!=='ePatient.01');
+ const result=cosIdentifierRequirements(f.source,f.mapping,f.settings);
+ assert.deepEqual(result.missing,['configuration']);assert.deepEqual(result.patientField.field,{kind:'nemsis',elementId:'ePatient.01'});
+ assert.equal(result.patientField.id,'ePatient.01');assert.equal(result.patientField.name,'ePatient.01');
 });

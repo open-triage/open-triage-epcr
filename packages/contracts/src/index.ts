@@ -152,7 +152,8 @@ export interface ReviewQueueItem {
   criterionDescription?: string | null;
   assigneeName?: string | null;
   criterionId: string;
-  kind?: "criterion" | "overdue-unsigned";
+  kind?: "criterion" | "overdue-unsigned" | "missing-transmission-identifiers";
+  transmissionReason?: "patient-identity" | "integration-mapping";
   deadlineAt?: string | null;
   deadlineSource?: "call-completed" | "report-created" | null;
   resolutionReason?: string | null;
@@ -184,7 +185,20 @@ export interface ReviewAssignmentEvent {
   assignedAt: string;
 }
 
+export interface ReviewTransmissionEvidence {
+  integration: "cos";
+  deliveryId: string;
+  amendmentSequence: number;
+  configurationRevision: string;
+  mappingId: string;
+  mappingRevision: number;
+  mappingSha256: string;
+  missing: string[];
+  patientField: { field: import("./hospital-integration.js").HospitalField; id: string; name: string; localization?: { sv?: { label?: string; name?: string; title?: string } } | null } | null;
+}
+
 export interface ReviewCriterionRoute {
+  transmissionReason?: "patient-identity" | "integration-mapping";
   criterionId: string;
   name: string;
   route: "unassigned" | "author" | "named";
@@ -237,6 +251,9 @@ export interface ReviewBulkResult {
 }
 
 export interface ReviewItemDetail extends ReviewQueueItem {
+  transmission?: ReviewTransmissionEvidence;
+  transmissionRestricted?: boolean;
+  transmissionHistory?: Array<{ itemVersion: number; active: boolean; recordedAt: string; evidence: ReviewTransmissionEvidence }>;
   overdueHistory?: Array<{ action: "detected" | "resolved-by-signing" | "closed-exceptionally" |
     "signed-after-exception"; recordedAt: string; itemVersion: number;
     actorId: string | null; reasonCode: ReviewOverdueExceptionCode | null }>;
@@ -376,7 +393,7 @@ export interface ReviewSignedReport {
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
   notes: ReportNote[];
-  reviewItems?: Array<{ id: string; criterionId: string; criterionName?: string; status: ReviewQueueItem["status"];
+  reviewItems?: Array<{ id: string; criterionId: string; criterionName?: string; kind?: ReviewQueueItem["kind"]; transmissionReason?: ReviewQueueItem["transmissionReason"]; status: ReviewQueueItem["status"];
     outcome: ReviewQueueItem["outcome"]; clearancePending: boolean; closureReason: string | null }>;
 }
 
