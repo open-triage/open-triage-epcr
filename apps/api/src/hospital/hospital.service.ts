@@ -4,7 +4,7 @@ import { ConflictException, Injectable, ServiceUnavailableException } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, type EntityManager } from 'typeorm';
-import { DEFAULT_HOSPITAL_PATIENT_FIELD, type HospitalMappingDefinition } from '@open-triage/contracts';
+import { type HospitalIntegrationLifecycleState, DEFAULT_HOSPITAL_PATIENT_FIELD, type HospitalMappingDefinition } from '@open-triage/contracts';
 import { ClinicianSessionService } from '../sessions/clinician-session.service.js';
 import { clinicalFormConfiguration } from '../forms/clinical-form-configuration.js';
 import { generateAgencyKey, encryptAgencyCredential, decryptAgencyCredential } from '../authentication/agency-oidc-keys.js';
@@ -14,7 +14,7 @@ import { discoverPackages, writePackage, type CanonicalPackage } from '../admin/
 import { EPS_ENDPOINT, compileMapping, contentDigest, identifier, identifierOptions, invalid, keys, makePackage, mappingPackage } from './hospital-mapping.js';
 
 type Version={revision:string;endpoint:string;canonical_mapping:CanonicalPackage;catalog_release_id:string;form_version_id:string;credential_id:string;encrypted_credential:CredentialEnvelope|null;created_at:Date;created_by:string};
-type State={draft_revision:string;active_revision:string|null;state_revision:string};
+type State={draft_revision:string;active_revision:string|null;state_revision:string;paused_revision:string|null};
 const stale=()=>new ConflictException({code:'hospital.stale'});
 function revision(value:unknown,min=0):number {if(!Number.isSafeInteger(value)||Number(value)<min)return invalid();return Number(value);}
 @Injectable()
@@ -61,7 +61,16 @@ export class HospitalService {
     let options:ReturnType<typeof identifierOptions>=[];
     try {options=identifierOptions((await this.currentForm(this.database.manager,groupId)).form);}catch(error){if(!(error instanceof ServiceUnavailableException))throw error;}
     const form=await this.currentForm(this.database.manager,groupId).catch(()=>null);
-    return {clinicalOptions:form?clinicalOptions(form.form):[],clinicalFindings:form&&rows[0]?clinicalMappings(mappingPackage(rows[0].canonical_mapping).definition.clinicalMappings).map(m=>({id:m.id,...importDestination(m,form.form)})):[],groupId,groupName,stateRevision:Number(state?.state_revision??0),draft:this.view(rows[0]),active:this.view(active),options,
+    const draft=rows[0];
+    const paused=state?.paused_revision?await this.version(this.database.manager,groupId,Number(state.paused_revision)):undefined;
+    const currentHealth=await this.database.query<Array<{revision:string;result:'healthy'|'failed'}>>('select distinct on(revision) revision,result from app_identity.hospital_eps_test where group_id=$1 and revision=any($2::bigint[]) order by revision,created_at desc,id desc',[groupId,[active?.revision,paused?.revision,draft?.revision].filter(Boolean)]);
+    const latestTest=(revision:string|undefined)=>currentHealth.find(test=>test.revision===revision);
+    const baseline=active??paused;
+    const operationState:HospitalIntegrationLifecycleState={pausedRevision:state?.paused_revision?Number(state.paused_revision):null,
+      credentialReplacement:!!draft&&!!baseline&&JSON.stringify(draft.encrypted_credential)!==JSON.stringify(baseline.encrypted_credential),
+      activeHealth:latestTest(active?.revision)?.result??'untested',pausedHealth:latestTest(paused?.revision)?.result??'untested',draftHealth:latestTest(draft?.revision)?.result??'untested',
+      verification:'read-only-live-connectivity',keyManagement:'agency-envelope'};
+    return {...operationState,clinicalOptions:form?clinicalOptions(form.form):[],clinicalFindings:form&&rows[0]?clinicalMappings(mappingPackage(rows[0].canonical_mapping).definition.clinicalMappings).map(m=>({id:m.id,...importDestination(m,form.form)})):[],groupId,groupName,stateRevision:Number(state?.state_revision??0),draft:this.view(rows[0]),active:this.view(active),options,
       defaultPatientField:DEFAULT_HOSPITAL_PATIENT_FIELD,defaultEndpoint:EPS_ENDPOINT,
       tests:tests.map(t=>({id:t.id,revision:Number(t.revision),result:t.result,createdAt:t.created_at.toISOString(),kind:'read-only-connectivity',publication:false})),
       history:rows.map(row=>({revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,sha256:row.canonical_mapping.sha256,createdAt:row.created_at.toISOString(),actorId:row.created_by,status:Number(row.revision)===Number(state?.active_revision)?'active':Number(row.revision)===Number(state?.draft_revision)?'draft':'superseded'})),
@@ -146,8 +155,39 @@ export class HospitalService {
         compileMapping(row.canonical_mapping,await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id));
         try{await writePackage(row.canonical_mapping,groupId);}catch{throw new ServiceUnavailableException({code:'hospital.fileUnavailable'});}
       }
-      await manager.query('update app_identity.hospital_eps_state set active_revision=$2,state_revision=state_revision+1 where group_id=$1',[groupId,deactivate?null:expected]);
-      await this.audit(manager,groupId,actor.user.id,row,deactivate?'deactivate':'activate');
+      await manager.query('update app_identity.hospital_eps_state set paused_revision=case when $3 then coalesce(active_revision,paused_revision) else null end,active_revision=$2,state_revision=state_revision+1 where group_id=$1',[groupId,deactivate?null:expected,deactivate]);
+      await this.audit(manager,groupId,actor.user.id,deactivate&&state?.active_revision?await this.version(manager,groupId,Number(state.active_revision)):row,deactivate?'deactivate':'activate');
+    });return this.get(token);
+  }
+  /** Credential-only revision: exact mapping/recipient pins are copied, never regenerated. */
+  async rotateCredential(token:string,input:unknown) {
+    const body=keys(input,['expectedRevision','replacementSecret']);const expected=revision(body.expectedRevision,1);
+    if(typeof body.replacementSecret!=='string'||body.replacementSecret.length<1||body.replacementSecret.length>4096||/[\u0000-\u001f\u007f]/.test(body.replacementSecret))return invalid();
+    await this.database.transaction(async manager=>{
+      const {actor,groupId}=await this.locked(token,manager,expected);
+      const prior=await this.version(manager,groupId,expected);
+      let credential:CredentialEnvelope;
+      try{await generateAgencyKey(manager,groupId,actor.user.id);credential=await encryptAgencyCredential(manager,body.replacementSecret as string,groupId,`hospital-eps:${prior.credential_id}`);}
+      catch{throw new ServiceUnavailableException({code:'hospital.encryptionUnavailable'});}
+      await manager.query(`insert into app_identity.hospital_eps_version(group_id,revision,credential_id,endpoint,canonical_mapping,catalog_release_id,form_version_id,encrypted_credential,created_by)
+        select group_id,$2,credential_id,endpoint,canonical_mapping,catalog_release_id,form_version_id,$3::jsonb,$4 from app_identity.hospital_eps_version where group_id=$1 and revision=$5`,[groupId,expected+1,JSON.stringify(credential),actor.user.id,expected]);
+      await manager.query('update app_identity.hospital_eps_state set draft_revision=$2,state_revision=state_revision+1 where group_id=$1',[groupId,expected+1]);
+      await this.audit(manager,groupId,actor.user.id,await this.version(manager,groupId,expected+1),'credential_replace');
+    });return this.get(token);
+  }
+  /** Resume the previously activated configuration even when an unrelated import is a draft. */
+  async resume(token:string,input:unknown){
+    const body=keys(input,['expectedRevision','expectedStateRevision','expectedPausedRevision']);
+    const expected=revision(body.expectedRevision,1),stateRevision=revision(body.expectedStateRevision,1),paused=revision(body.expectedPausedRevision,1);
+    await this.database.transaction(async manager=>{
+      const {actor,groupId,state}=await this.locked(token,manager,expected);
+      if(state?.active_revision||Number(state?.paused_revision)!==paused||Number(state?.state_revision)!==stateRevision)throw stale();
+      const row=await this.version(manager,groupId,paused);
+      const [tested]=await manager.query<Array<{result:string}>>('select result from app_identity.hospital_eps_test where group_id=$1 and revision=$2 order by created_at desc,id desc limit 1',[groupId,paused]);
+      if(tested?.result!=='healthy')throw new ConflictException({code:'hospital.testRequired'});
+      compileMapping(row.canonical_mapping,await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id));
+      await manager.query('update app_identity.hospital_eps_state set active_revision=$2,paused_revision=null,state_revision=state_revision+1 where group_id=$1',[groupId,paused]);
+      await this.audit(manager,groupId,actor.user.id,row,'resume');
     });return this.get(token);
   }
   async files(token:string){

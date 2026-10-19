@@ -1,4 +1,5 @@
 import {reconcileCosReview} from '../dist/hospital/cos-reconcile.js';
+import {credentialWorkFixture} from './fixtures/cos-credential-work.mjs';
 import {automaticRetryFixture} from './fixtures/cos-automatic-retry.mjs';
 import sharp from 'sharp';
 import {mappingRepairJourney} from './fixtures/cos-mapping-repair.mjs';
@@ -16,7 +17,7 @@ import {AccountService} from '../dist/identity/account.service.js';
 import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
 import {ValidationAuthoringService} from '../dist/admin/validation-authoring.service.js';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,randomBytes} from 'node:crypto';
 import {DataSource} from 'typeorm';
 import {FormPublicationService} from '../dist/forms/form-publication.service.js';
 import {canonicalDefinitionSha256} from '../dist/forms/form-publication.validation.js';
@@ -33,7 +34,7 @@ const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
 for(const run of [1,2])integration(`durable COS signature queue, separately committed receiver, restart and concurrent workers (isolated run ${run})`,async()=>{
  const db=new DataSource({type:'postgres',url:process.env.DATABASE_URL,synchronize:false});await db.initialize();
- const reports=[];let group;
+ const reports=[];let group;const priorCredentialKeys=process.env.OIDC_CREDENTIAL_KEYS_JSON;process.env.OIDC_CREDENTIAL_KEYS_JSON??=JSON.stringify({'1':randomBytes(32).toString('base64')});
  try{
   const baseline=await hospitalFixtureBaseline(db.query.bind(db));
   const sharedState=await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]);
@@ -337,6 +338,11 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const {format,schemaVersion,sha256,...portable}=mapping;
   const newer=makePackage({...portable,version:'2',definition:{...mapping.definition,revision:2,patientIdentifier:{...mapping.definition.patientIdentifier,field:{kind:'nemsis',elementId:'ePatient.05'}}}});
   await config(next+1,newer);await processCosWork(db);
+  assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[pinned]))[0].state,'waiting','changed mapping exposes older unprepared work for explicit Review repair');
+  assert.equal((await db.query('select 1 from clinical.cos_payload where report_id=$1',[pinned])).length,0);
+  // Restoring the exact original activation resumes its pinned payload interpretation.
+  await db.query('update app_identity.hospital_cos_state set active_revision=$2 where group_id=$1',[group,next]);await processCosWork(db);
+  await db.query('update app_identity.hospital_cos_state set active_revision=$2 where group_id=$1',[group,next+1]);
   const [pin]=await db.query('select d.mapping_sha256,p.bundle from clinical.cos_delivery d join clinical.cos_payload p on p.delivery_id=d.id where d.report_id=$1',[pinned]);assert.equal(pin.mapping_sha256,mapping.sha256);assert.equal(pin.bundle.entry[0].resource.subject.identifier.value,'200207252388');
   const [waiting]=await db.query('select * from clinical.cos_delivery where report_id=$1',[missing]);
   const [remapState]=await db.query('select state_revision from app_identity.hospital_cos_state where group_id=$1',[group]);
@@ -392,7 +398,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const racingWorkerDb={query:db.query.bind(db),transaction:db.transaction.bind(db),createQueryRunner:()=>{
    const runner=db.createQueryRunner(),query=runner.query.bind(runner);
    runner.query=async(sql,...args)=>{
-    if(!changed&&sql.includes('select d.*,v.settings')){await query('select 1');changed=true;await changing.commitTransaction();}
+    if(!changed&&sql.includes('v.settings,v.canonical_mapping from clinical.cos_delivery d')){await query('select 1');changed=true;await changing.commitTransaction();}
     return query(sql,...args);
    };return runner;
   }};
@@ -639,8 +645,9 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const noEncounter=await draft({'eDisposition.30':'4230013'});await sign(noEncounter);await processCosWork(db);
   assert.ok((await db.query('select finding from clinical.cos_delivery where report_id=$1',[noEncounter]))[0]);settings.encounterNamespace=oldEncounter;
   await mappingRepairJourney({db,sample,settings:{...settings,defaultAmbulanceCareUnit:'fictional-ambulance'},draft,sign,reviewer,run,noDefault,noEncounter,attachPhoto});
+  await credentialWorkFixture({db,draft,sign,simulator,group,actorId:sample.documenting_user_id,recoveryReview,recoverySessions,retryInput});
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);
   assert.deepEqual(await db.query('select * from app_identity.active_configuration_bundle where organization_id=$1',[baseline.organization_id]),sharedBundle);
   if(previous)await db.query('update app_identity.hospital_cos_state set active_revision=$2 where group_id=$1',[group,previous.active_revision]);else await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);
- }finally{if(group)await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);await db.destroy();}
+ }finally{if(priorCredentialKeys===undefined)delete process.env.OIDC_CREDENTIAL_KEYS_JSON;else process.env.OIDC_CREDENTIAL_KEYS_JSON=priorCredentialKeys;if(group)await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);await db.destroy();}
 });

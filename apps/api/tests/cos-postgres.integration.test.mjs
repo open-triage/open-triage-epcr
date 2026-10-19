@@ -1,3 +1,4 @@
+import {credentialLifecycle} from './fixtures/hospital-credential-lifecycle.mjs';
 import {savepointDataSource} from "./fixtures/savepoint-data-source.mjs";
 import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
 import assert from 'node:assert/strict';
@@ -111,7 +112,7 @@ integration('COS real database and browser setup preserves tested revisions, can
     let input;for await(const part of req)input=(input??'')+part;const command=input?JSON.parse(input):undefined;
     if(command)assert.equal(req.headers['x-csrf-token'],'browser-csrf');
     const route=req.url.replace('/api/admin/hospital/cos','');
-    const result=route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
+    const result=route==='/rotate-credential'?await service.rotateCredential(token,command):route==='/resume'?await service.resume(token,command):route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
    }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{code:'hospital.invalid'}));}
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -143,6 +144,7 @@ integration('COS real database and browser setup preserves tested revisions, can
   assert.equal(await page.getByRole('button',{name:'Activate COS simulator',exact:true}).isDisabled(),true);
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();const artifact=await download;
   assert.deepEqual(JSON.parse(await readFile(await artifact.path(),'utf8')),exported);
+  await credentialLifecycle({kind:'cos',service,token,page,query,otherToken:otherSession.sessionToken,medicToken:medicSession.sessionToken,assets:bundled.outputFiles[0].text});
   const audits=await query("select details from app_identity.configuration_event where organization_id=$1 and details->>'integration'='cos'",[group.id]);assert.doesNotMatch(JSON.stringify(audits),/private-team|ciphertext|fictional-staff/);
   // Normal Admin save/test/activate uses the same scheme registry as delivery and Review.
   for(const namespace of ['urn:oid:1.2.752.129.2.1.3.2','urn:oid:1.2.752.129.2.1.3.3']){

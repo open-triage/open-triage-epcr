@@ -23,7 +23,7 @@ export async function updateCosRetryDue(manager:EntityManager,deliveryId:string,
 /** Append through the same immutable recovery-command journal consumed by the ordinary worker. */
 export async function scheduleDueCosRetries(database:DataSource,limit:number,now:Date){
  const candidates=await database.query<Array<{delivery_id:string;report_id:string}>>(`select s.delivery_id,d.report_id from clinical.cos_retry_state s join clinical.cos_delivery d on d.id=s.delivery_id join clinical.cos_retry_policy p on p.delivery_id=d.id join app_identity.hospital_cos_state c on c.group_id=d.group_id join clinical.report r on r.id=d.report_id
- where s.next_due<=$1 and s.retries_used<jsonb_array_length(p.schedule_minutes) and d.state='failed' and d.finding='outage' and c.active_revision=d.configuration_revision
+ where s.next_due<=$1 and s.retries_used<jsonb_array_length(p.schedule_minutes) and d.state='failed' and d.finding='outage' and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,c.active_revision)
  and (r.expires_at is null or r.expires_at>clock_timestamp())
  and exists(select 1 from clinical.review_item i where i.report_id=d.report_id and i.kind='cos-delivery-failed' and i.active_match)
  and not exists(select 1 from clinical.cos_delivery b where b.report_id=d.report_id and (b.state='uncertain' or b.amendment_sequence>d.amendment_sequence or (b.amendment_sequence=d.amendment_sequence and b.created_at>d.created_at)))
@@ -39,7 +39,7 @@ export async function scheduleDueCosRetries(database:DataSource,limit:number,now
    join clinical.report r on r.id=d.report_id
    join clinical.review_item i on i.report_id=d.report_id and i.kind='cos-delivery-failed' and i.active_match
    where d.id=$1 and s.next_due<=$2 and s.retries_used<jsonb_array_length(p.schedule_minutes)
-    and d.state='failed' and d.finding='outage' and c.active_revision=d.configuration_revision
+    and d.state='failed' and d.finding='outage' and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,c.active_revision)
     and (r.expires_at is null or r.expires_at>clock_timestamp())
     and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and (barrier.state='uncertain' or barrier.amendment_sequence>d.amendment_sequence or (barrier.amendment_sequence=d.amendment_sequence and barrier.created_at>d.created_at)))
     and not exists(select 1 from clinical.amendment a where a.report_id=d.report_id and a.sequence>d.amendment_sequence)
@@ -55,6 +55,6 @@ export async function scheduleDueCosRetries(database:DataSource,limit:number,now
 }
 /** Live operational projection; original policy stays immutable alongside attempt lineage. */
 export async function cosRetryStatus(manager:Pick<EntityManager,'query'>,deliveryId:string){
- const [row]=await manager.query<Array<{schedule_minutes:number[];configuration_revision:string;retries_used:number;next_due:Date|null;active_revision:string|null;attempts:number}>>(`select p.*,s.retries_used,s.next_due,c.active_revision,(select count(*)::integer from clinical.cos_attempt a join clinical.cos_recovery_command command on command.id=a.recovery_command_id where command.delivery_id=p.delivery_id and command.automatic_ordinal is not null) attempts from clinical.cos_retry_policy p join clinical.cos_retry_state s using(delivery_id) join clinical.cos_delivery d on d.id=p.delivery_id join app_identity.hospital_cos_state c on c.group_id=d.group_id where p.delivery_id=$1`,[deliveryId]);
- return row?{scheduleMinutes:row.schedule_minutes,configurationRevision:Number(row.configuration_revision),reserved:row.retries_used,attempts:row.attempts,nextDue:row.next_due?.toISOString()??null,exhausted:row.retries_used>=row.schedule_minutes.length,paused:Number(row.active_revision)!==Number(row.configuration_revision)}:undefined;
+ const [row]=await manager.query<Array<{schedule_minutes:number[];configuration_revision:string;retries_used:number;next_due:Date|null;active_revision:string|null;compatible:boolean;attempts:number}>>(`select p.*,s.retries_used,s.next_due,c.active_revision,app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,c.active_revision) compatible,(select count(*)::integer from clinical.cos_attempt a join clinical.cos_recovery_command command on command.id=a.recovery_command_id where command.delivery_id=p.delivery_id and command.automatic_ordinal is not null) attempts from clinical.cos_retry_policy p join clinical.cos_retry_state s using(delivery_id) join clinical.cos_delivery d on d.id=p.delivery_id join app_identity.hospital_cos_state c on c.group_id=d.group_id where p.delivery_id=$1`,[deliveryId]);
+ return row?{scheduleMinutes:row.schedule_minutes,configurationRevision:Number(row.configuration_revision),reserved:row.retries_used,attempts:row.attempts,nextDue:row.next_due?.toISOString()??null,exhausted:row.retries_used>=row.schedule_minutes.length,paused:!row.compatible}:undefined;
 }

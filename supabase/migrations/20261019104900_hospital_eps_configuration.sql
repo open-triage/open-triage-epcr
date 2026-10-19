@@ -39,7 +39,7 @@ grant select,insert on app_identity.hospital_eps_version,app_identity.hospital_e
 grant select,insert,update on app_identity.hospital_eps_state to open_triage_api_runtime;
 alter table app_identity.configuration_event drop constraint configuration_event_action_check,
   add constraint configuration_event_action_check check(action in (
-    'form.draft_create','form.draft_save','form.draft_delete','form.publish','form.activate','configuration.activate',
+    'catalog.draft_delete','form.draft_create','form.draft_save','form.draft_delete','form.publish','form.activate','configuration.activate',
     'hospital.draft_save','hospital.test','hospital.activate','hospital.deactivate'
   ));
 create trigger hospital_eps_version_append_only before update or delete on app_identity.hospital_eps_version

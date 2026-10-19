@@ -17,7 +17,7 @@ export async function mappingRepairJourney({db,sample,settings,draft,sign,review
  const config=new CosService(db,sessions),review=new ReviewService(metadataDatabase,sessions);
  let browser,server;
  try{
-  process.env.OPENTRIAGE_DEFINITIONS_ROOT=folder;process.env.OIDC_CREDENTIAL_KEYS_JSON=JSON.stringify({'1':randomBytes(32).toString('base64')});
+  process.env.OPENTRIAGE_DEFINITIONS_ROOT=folder;process.env.OIDC_CREDENTIAL_KEYS_JSON??=JSON.stringify({'1':randomBytes(32).toString('base64')});
   let current=await config.get('fixture');
   const body={expectedRevision:current.draft.revision,endpoint:'https://cos.example.invalid',authentication:'api-key',settings:{...settings,staff:[{userId:reviewer.userId,hsaId:'fictional-other-staff'}]},patientIdentifier:{field:{kind:'nemsis',elementId:'ePatient.01'},namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:[]},clinicalMappings:[{id:'repair-text',source:{kind:'nemsis',elementId:'eNarrative.01'},linkId:'404684003',answerType:'string'}],replacementSecret:'fictional-repair-credential'};
   async function activate(view){view=await config.test('fixture',{expectedRevision:view.draft.revision});assert.equal(view.tests[0].result,'healthy');return config.activate('fixture',{expectedRevision:view.draft.revision,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});}

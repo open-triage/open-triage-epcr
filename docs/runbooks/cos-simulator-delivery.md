@@ -249,3 +249,39 @@ and actual receiver attempts are shown separately, so superseded work cannot loo
 like a remote attempt. Manual recovery clears a pending due time and never resets
 the finite automatic budget. The failure item stays open until confirmed storage.
 This simulator evidence does not establish live COS acceptance.
+
+Credential replacement and pause/resume are available in each integration's Admin
+panel. **Save credential replacement only** copies the exact canonical mapping,
+recipient settings and published form/catalog pins into a new local configuration
+revision. It stores the replacement encrypted; it never retrieves a saved secret.
+Test that exact revision and activate it explicitly. A failed replacement test or
+stale activation leaves the working active revision intact. EPS testing is a live
+read-only connection check; COS testing remains local simulator verification and
+does not prove a real COS credential or recipient contract.
+
+COS credential-only activations retain immutable, tested compatibility edges.
+Workers and manual/automatic recovery may consume an older prepared delivery only
+when its exact configuration is the current activation or an ancestor through
+these edges. The original payload/PDF/mapping, preparation revision and retry
+policy/budget remain unchanged. Attempt intent records both preparation and
+activation revisions. Any mapping, endpoint, recipient, retry schedule or other
+operational setting change breaks compatibility; waiting unprepared work requires
+explicit Review revalidation, and prepared work cannot be silently remapped.
+
+Pause preserves queued deliveries, attempts, due times and Review concerns. An
+already committed receiver intent may finish; pause does not retract it. Reports
+signed while paused are not discovered or queued later. **Resume previous
+activation** restores the last activated, still successfully tested revision using
+an optimistic state check. A mapping imported while paused stays an untested
+draft, independently of resume. EPS previews remain exact-configuration-bound:
+credential activation requires a fresh preview before submission, and accepted or
+unknown clinical versions remain protected against repeat publication.
+
+The integrations reuse agency credential-envelope encryption and the existing
+Authentication panel's encryption-key rotation. Retained keys continue to decrypt
+immutable configuration history. Neither current team-token nor simulator
+contract requires a signing key or client certificate; no additional integration
+key material is exported. Canonical mapping packages contain no credentials,
+credential references, key material or operational activation state. Configuration
+history records redacted credential-replacement, test, activation, pause and resume
+events under the existing group authority.

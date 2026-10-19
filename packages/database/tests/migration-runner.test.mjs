@@ -367,3 +367,12 @@ test("portable OIDC key and agency handoff revokes preserve applied history and 
     await assert.rejects(applyMigrations(client, [{...migration, checksum:"0".repeat(64)}], silentLog), /has been modified/);
   }
 });
+
+test('the hospital audit compatibility correction accepts only its exact recorded predecessor without replay',async()=>{
+ const migrations=await readMigrations(path.resolve(import.meta.dirname,'../../../supabase/migrations'));
+ const migration=migrations.find(m=>m.version==='20261019104900');assert.ok(migration);
+ const client=new FakeClient([[migration.version,'7bf3f21028e955d7b4e3fbccbba7bdea10ae9f727b0ecf2d5ae63408559b9e27']]);
+ assert.equal(await applyMigrations(client,[migration],{info(){}}),0);
+ assert.ok(!client.queries.some(({sql})=>sql===migration.sql),'already applied hospital tables must not be replayed');
+ const unknown=new FakeClient([[migration.version,'f'.repeat(64)]]);await assert.rejects(applyMigrations(unknown,[migration],{info(){}}),/has been modified/);
+});

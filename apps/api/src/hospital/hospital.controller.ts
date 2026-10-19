@@ -11,6 +11,10 @@ export class HospitalController {
  save(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.save(sessionToken(req,auth),body);}
  @Post('inspect-mappings') @Header('Cache-Control','no-store, private')
  inspectMappings(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.inspectClinical(sessionToken(req,auth),body);}
+ @Post('rotate-credential') @Header('Cache-Control','no-store, private')
+ rotateCredential(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.rotateCredential(sessionToken(req,auth),body);}
+ @Post('resume') @Header('Cache-Control','no-store, private')
+ resume(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.resume(sessionToken(req,auth),body);}
  @Post('test') @Header('Cache-Control','no-store, private')
  test(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.test(sessionToken(req,auth),body);}
  @Post('activate') @Header('Cache-Control','no-store, private')
