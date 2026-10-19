@@ -120,11 +120,13 @@ integration('COS real database and browser setup preserves tested revisions, can
   await page.getByLabel('Identifier namespace',{exact:true}).fill(body.patientIdentifier.namespace);
   await page.getByLabel('Patient identifier field').selectOption(alternative.id);
   await page.getByLabel('Target template link ID').fill('418799008');
+  await page.getByLabel('PDF SNOMED link identifier',{exact:true}).fill('371530004');
   await page.getByRole('button',{name:'Save COS draft',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Draft revision: 6'));
   assert.equal((await service.get(token)).active.revision,1);
   await page.getByRole('button',{name:'Test simulator configuration',exact:true}).click();await page.getByText('Simulator configuration passed',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Activate COS simulator',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Active revision: 6'));
   assert.equal((await service.get(token)).draft.mapping.definition.clinicalMappings[0].linkId,'418799008');
+  assert.equal((await service.get(token)).draft.mapping.definition.pdfLinkId,'371530004');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'mobile fields fit');
   if(process.env.COS_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.COS_SCREENSHOT_DIR,'cos-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:900});

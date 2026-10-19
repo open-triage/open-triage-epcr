@@ -36,12 +36,13 @@ export function clinicalMappings(input:unknown):CosMappingDefinition['clinicalMa
 export function cosMappingPackage(input:unknown):CanonicalPackage & {definition:CosMappingDefinition} {
   keys(input,['format','schemaVersion','kind','name','version','catalog','definition','sha256']);
   const p=parsePackage(input,'hospital-mapping');keys(p.catalog,['sha256']);
-  const d=keys(p.definition,['schemaVersion','id','revision','authoredAt','author','profile','patientIdentifier','clinicalMappings']);
+  const d=keys(p.definition,['schemaVersion','id','revision','authoredAt','author','profile','patientIdentifier','clinicalMappings','pdfLinkId']);
   const profile=keys(d.profile,Object.keys(COS_PROFILE));
   if(d.schemaVersion!==1||typeof d.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(d.id)||!Number.isSafeInteger(d.revision)||Number(d.revision)<1||
     typeof d.author!=='string'||d.author.length>120||typeof d.authoredAt!=='string'||!Number.isFinite(Date.parse(d.authoredAt))||
     Object.entries(COS_PROFILE).some(([key,value])=>profile[key]!==value)||p.version!==String(d.revision))return invalid();
   identifier(d.patientIdentifier);clinicalMappings(d.clinicalMappings);
+  if(d.pdfLinkId!==undefined&&(typeof d.pdfLinkId!=='string'||!/^\d{6,18}$/.test(d.pdfLinkId)||d.pdfLinkId==='62521000052103'||(d.clinicalMappings as CosMappingDefinition['clinicalMappings']).some(row=>row.linkId===d.pdfLinkId)))return invalid();
   return p as CanonicalPackage & {definition:CosMappingDefinition};
 }
 /** A rebuildable projection: only immutable canonical input and pinned catalog/form. */
