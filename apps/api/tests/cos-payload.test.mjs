@@ -89,3 +89,10 @@ test('Review and payload evaluate amendment additions and removals exactly once'
  assert.equal(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended').contact.patient.value,'corrected-identity');
  assert.equal(patient.value_text,'200207252388');
 });
+
+test('unavailable configured patient field retains exact canonical identity for protected troubleshooting',()=>{
+ const f=deliveryFixture();f.source.configuration.definition.sections[0].fields=f.source.configuration.definition.sections[0].fields.filter(row=>row.source.elementId!=='ePatient.01');
+ const result=cosIdentifierRequirements(f.source,f.mapping,f.settings);
+ assert.deepEqual(result.missing,['configuration']);assert.deepEqual(result.patientField.field,{kind:'nemsis',elementId:'ePatient.01'});
+ assert.equal(result.patientField.id,'ePatient.01');assert.equal(result.patientField.name,'ePatient.01');
+});
