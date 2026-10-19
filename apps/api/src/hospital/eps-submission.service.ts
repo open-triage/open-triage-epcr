@@ -4,7 +4,7 @@ import {DataSource,type EntityManager} from 'typeorm';
 import {randomUUID} from 'node:crypto';
 import {ClinicianSessionService} from '../sessions/clinician-session.service.js';
 import {reviewScope,reviewTargetScope,reviewIdentifying} from '../review/review-scope.js';
-import {signedReportPdfSource} from '../reports/signed-report-pdf.persistence.js';
+import {signedReportSource} from '../reports/signed-report-pdf.persistence.js';
 import {recordPatientAccess} from '../reports/patient-access-audit.js';
 import {decryptAgencyCredential} from '../authentication/agency-oidc-keys.js';
 import type {CredentialEnvelope} from '../authentication/oidc-credentials.js';
@@ -46,7 +46,7 @@ export class EpsSubmissionService{
    const [config]=await manager.query<Array<{revision:string;canonical_mapping:unknown;group_id:string}>>(`select v.* from app_identity.hospital_eps_state s join app_identity.hospital_eps_version v on v.group_id=s.group_id and v.revision=s.active_revision where s.group_id=app_identity.organization_group((select organization_id from clinical.report where id=$1))`,[reportId]);
    if(!config)throw new ConflictException({code:'epsSubmission.disabled'});
    if(body.lineageParentId){const [parent]=await manager.query<Array<{id:string}>>('select id from clinical.eps_submission where id=$1 and report_id=$2 and snapshot_id=$3 and amendment_sequence=$4',[body.lineageParentId,reportId,body.snapshotId,body.amendmentSequence]);if(!parent)throw new NotFoundException();}
-   const source=await signedReportPdfSource(manager,reportId,body.snapshotId as string,Number(body.amendmentSequence));
+   const source=await signedReportSource(manager,reportId,body.snapshotId as string,Number(body.amendmentSequence));
    if(!source.synthetic)throw new UnprocessableEntityException({code:'epsSubmission.fictionalOnly'});
    const output=buildEpsOutput(source,config.canonical_mapping,id);
    return {config,output,sourceHash:source.canonicalSha256};

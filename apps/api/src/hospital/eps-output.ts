@@ -2,14 +2,14 @@ import { hospitalFieldId } from '@open-triage/contracts';
 import { createHash } from 'node:crypto';
 import { mappingPackage } from './hospital-mapping.js';
 import { EPS_SECTIONS, outputMappings } from './eps-output-mapping.js';
-import { effectiveSignedPdfOccurrences, signedPdfValue, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
+import { effectiveSignedPdfOccurrences, signedPdfValue, type SignedReportClinicalSource } from '../reports/signed-report-pdf.js';
 export const EPS_PROFILE='http://hl7.eu/fhir/eps/StructureDefinition/bundle-eu-eps';
 export const EPS_DEPENDENCIES={'hl7.fhir.eu.eps':'1.0.0-ballot','hl7.fhir.r4.core':'4.0.1','hl7.terminology.r4':'7.1.0','hl7.fhir.uv.extensions.r4':'5.3.0','hl7.fhir.uv.ips':'2.0.0','hl7.fhir.eu.base':'2.0.0','hl7.fhir.uv.xver-r5.r4':'0.1.0','hl7.fhir.eu.extensions.r4':'1.3.0','ihe.pharm.mpd.r4':'1.0.0-comment-2'};
 export type EpsFinding={code:string;severity:'error'|'warning';mappingId?:string;section?:string};
 export const xml=(value:string)=>value.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
 const narrative=(text:string)=>({status:'generated',div:`<div xmlns="http://www.w3.org/1999/xhtml"><p>${xml(text).replace(/\n/g,'</p><p>')}</p></div>`});
 const absent={url:'http://hl7.org/fhir/StructureDefinition/data-absent-reason',valueCode:'unknown'};
-export function buildEpsOutput(source:SignedReportPdfSource,canonical:unknown,id:string){
+export function buildEpsOutput(source:SignedReportClinicalSource,canonical:unknown,id:string){
  const mapping=mappingPackage(canonical).definition,findings:EpsFinding[]=[];
  const rows=effectiveSignedPdfOccurrences(source);
  if(rows.length>10000||rows.reduce((total,row)=>total+Buffer.byteLength(JSON.stringify(row)),0)>2*1024*1024)throw new Error('epsSubmission.tooLarge');
