@@ -1,5 +1,9 @@
+import {signedReportPdfSource} from '../dist/reports/signed-report-pdf.persistence.js';
 import {CatalogAuthoringService} from '../dist/admin/catalog-authoring.service.js';
 import {identifierCorrectionContext,correctReviewIdentifier} from '../dist/review/review-identifier-correction.js';
+
+import {AuditService} from '../dist/admin/audit.service.js';
+import {retryCosReview} from '../dist/hospital/cos-retry.js';
 import {getDocument} from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {AmendReportService} from '../dist/reports/amend-report.service.js';
 import test from 'node:test';
@@ -169,12 +173,91 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const simulator=new PersistentCosSimulator(db);
   const outage=await draft();await sign(outage);await processCosWork(db,10,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
   assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[outage]))[0].state,'failed');
+  // 019: failure creates one shared operational home; clicking Retry never resolves it.
+  let recoveryActor={capabilities:['review:all','review:admin','review:identifying'],organization:{id:sample.organization_id},user:{id:sample.documenting_user_id}};
+  const recoverySessions={get:async()=>recoveryActor,assertCsrf:async()=>{},lockPersonalAuthenticationContext:async()=>{}};
+  const recoveryReview=new ReviewService(db,recoverySessions);
+  const [failureItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[outage]);
+  assert.ok(failureItem);assert.equal(failureItem.assignee_id,null);assert.equal(failureItem.active_match,true);
+  const failureRoute=(await recoveryReview.routes('fixture')).find(route=>route.transmissionReason==='delivery-failure');assert.equal(failureRoute.route,'unassigned');
+  await recoveryReview.claim('fixture',failureItem.id,{commandId:randomUUID(),expectedVersion:Number(failureItem.version),dataset:'synthetic'});
+  async function retryInput(itemId=failureItem.id){const detail=await recoveryReview.item('fixture',itemId,'synthetic');return {commandId:randomUUID(),expectedVersion:detail.version,dataset:'synthetic',deliveryId:detail.transmission.deliveryId,amendmentSequence:detail.transmission.amendmentSequence,configurationRevision:Number(detail.transmission.configurationRevision),stateRevision:detail.transmission.stateRevision};}
+  let retryCommand=await retryInput();
+  recoveryActor={...recoveryActor,capabilities:[]};await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand));
+  recoveryActor={...recoveryActor,capabilities:['review:all','review:admin','review:identifying']};
+  await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,{...retryCommand,dataset:'real'}));
+  await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,{...retryCommand,configurationRevision:999}));
+  recoveryActor={...recoveryActor,user:{id:randomUUID()}};await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand));
+  recoveryActor={...recoveryActor,user:{id:sample.documenting_user_id}};
+  const [originalPayload]=await db.query('select * from clinical.cos_payload where report_id=$1',[outage]);
+  const clicks=await Promise.allSettled([retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand),retryCosReview(db,recoverySessions,'fixture',failureItem.id,{...retryCommand,commandId:randomUUID()})]);
+  assert.equal(clicks.filter(x=>x.status==='fulfilled').length,1);
+  retryCommand={...retryCommand,commandId:(await db.query('select id from clinical.cos_recovery_command where report_id=$1',[outage]))[0].id};
+  await retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand);
+  assert.equal((await recoveryReview.item('fixture',failureItem.id,'synthetic')).status,'new');
+  const assigned=await recoveryReview.item('fixture',failureItem.id,'synthetic');
+  await recoveryReview.assign('fixture',failureItem.id,{commandId:randomUUID(),expectedVersion:assigned.version,dataset:'synthetic',assigneeId:null});
+  await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand),/assigned reviewer/);
+  const unassigned=await recoveryReview.item('fixture',failureItem.id,'synthetic');
+  await recoveryReview.claim('fixture',failureItem.id,{commandId:randomUUID(),expectedVersion:unassigned.version,dataset:'synthetic'});
+  recoveryActor={...recoveryActor,capabilities:[]};await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand));
+  recoveryActor={...recoveryActor,capabilities:['review:all','review:admin','review:identifying']};
+  await retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand);
+
+  await processCosWork(db,100,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt where report_id=$1',[outage]))[0].n,2);
+  assert.deepEqual((await db.query('select * from clinical.cos_payload where report_id=$1',[outage]))[0],originalPayload);
+  retryCommand=await retryInput();await retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand);
+  let recoveryEntered,recoveryRelease;
+  const recoveryArrived=new Promise(resolve=>recoveryEntered=resolve),recoveryBarrier=new Promise(resolve=>recoveryRelease=resolve);
+  const heldRecovery=processCosWork(db,100,{contact:async(...args)=>{recoveryEntered();await recoveryBarrier;return simulator.contact(...args);},note:simulator.note.bind(simulator)});
+  await recoveryArrived;
+  await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,retryCommand),/in progress/);
+  await processCosWork(db);
+  recoveryRelease();await heldRecovery;
+  const recovered=await recoveryReview.item('fixture',failureItem.id,'synthetic');assert.equal(recovered.status,'completed');assert.equal(recovered.activeMatch,false);
+  assert.equal(recovered.transmission.recoveryCommands.length,2);assert.equal(recovered.transmission.recoveryCommands[0].outcome,'failed');assert.equal(recovered.transmission.recoveryCommands[1].outcome,'confirmed');
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt where report_id=$1',[outage]))[0].n,3);
+  assert.equal((await db.query("select count(*)::int n from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[outage]))[0].n,1);
+  await assert.rejects(db.query('update clinical.cos_recovery_command set amendment_sequence=99 where id=$1',[retryCommand.commandId]));
+  const audit=new AuditService(db,{requireCapability:async()=>({...recoveryActor,capabilities:['audit:read','audit:identifying']})});
+  const recoveryAudit=await audit.list('fixture',{category:'review',targetId:failureItem.id,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
+  const manualAudit=recoveryAudit.entries.filter(e=>e.source==='clinical.cos_recovery_command');assert.equal(manualAudit.length,2);
+  assert.ok(manualAudit.every(e=>e.actorId===sample.documenting_user_id&&e.outcome==='queued'&&e.recovery.itemId===failureItem.id&&e.recovery.amendmentSequence===0));
+  assert.ok(recoveryAudit.entries.some(e=>e.source==='clinical.cos_delivery_event'&&e.outcome==='confirmed'&&e.actorId===sample.documenting_user_id));
+  assert.doesNotMatch(JSON.stringify(recoveryAudit.entries),/200207252388|Fictional documented assessment/);
+  // A definite outage after contact acceptance can resume the same note without a second contact.
+  const afterContact=await draft();await sign(afterContact);await processCosWork(db,100,{contact:simulator.contact.bind(simulator),note:async()=>{throw new CosRejected('outage');}});
+  const [contactFailure]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[afterContact]);
+  await recoveryReview.claim('fixture',contactFailure.id,{commandId:randomUUID(),expectedVersion:Number(contactFailure.version),dataset:'synthetic'});
+  await retryCosReview(db,recoverySessions,'fixture',contactFailure.id,await retryInput(contactFailure.id));await processCosWork(db);
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[afterContact]))[0].n,1);
+  assert.equal((await recoveryReview.item('fixture',contactFailure.id,'synthetic')).status,'completed');
   const partial=await draft();await sign(partial);await processCosWork(db,10,{contact:simulator.contact.bind(simulator),note:async()=>{throw new CosRejected('noteRejected');}});
   assert.equal((await db.query('select report_id from clinical.cos_simulator_contact where report_id=$1',[partial])).length,1);assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[partial]))[0].state,'failed');
   for(const stage of ['contact','note']){
    const id=await draft();await sign(id);await processCosWork(db,10,{contact:async(...args)=>{const r=await simulator.contact(...args);if(stage==='contact')throw new Error('lost contact acknowledgment');return r;},note:async(...args)=>{await simulator.note(...args);throw new Error('lost note acknowledgment');}});
    assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[id]))[0].state,'uncertain');
    await processCosWork(db);assert.equal((await db.query('select count(*)::int count from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1',[id]))[0].count,1,'restart never blind resends');
+  }
+  for(const unsafe of await db.query("select i.id from clinical.review_item i join clinical.cos_delivery d on d.report_id=i.report_id where i.kind='cos-delivery-failed' and d.state in ('uncertain','failed') and d.finding<>'outage' and i.organization_id=$1",[sample.organization_id])){
+   const detail=await recoveryReview.item('fixture',unsafe.id,'synthetic');assert.equal(detail.transmission.retryable,false);
+   if(!detail.assigneeId)await recoveryReview.claim('fixture',unsafe.id,{commandId:randomUUID(),expectedVersion:detail.version,dataset:'synthetic'});
+   await assert.rejects(retryCosReview(db,recoverySessions,'fixture',unsafe.id,await retryInput(unsafe.id)));
+  }
+  for(const crashStage of ['intent','contact','note']){
+   const crashed=await draft();await sign(crashed);let journalWrites=0;
+   const crash=new Error('process vanished before outcome journal commit');
+   const crashDatabase={query:db.query.bind(db),createQueryRunner:db.createQueryRunner.bind(db),transaction:async work=>{if(crashStage==='note'&&journalWrites++===0)return db.transaction(work);throw crash;}};
+   await assert.rejects(processCosWork(crashDatabase,100,{contact:async(...args)=>{if(crashStage==='intent')throw crash;const contact=await simulator.contact(...args);if(crashStage==='contact')throw crash;return contact;},note:async(...args)=>{await simulator.note(...args);throw crash;}}),error=>error===crash);
+   assert.equal((await db.query('select finding from clinical.cos_delivery where report_id=$1',[crashed]))[0].finding,crashStage==='note'?'contactStored':'inFlight');
+   assert.equal((await db.query("select id from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[crashed])).length,0);
+   await processCosWork(db);await processCosWork(db);
+   const [crashItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[crashed]);assert.ok(crashItem);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt where report_id=$1',[crashed]))[0].n,1,'restart classifies abandoned intent without resend');
+   const crashDetail=await recoveryReview.item('fixture',crashItem.id,'synthetic');assert.equal(crashDetail.transmission.finding,'outcomeUnknown');assert.equal(crashDetail.transmission.deliveryState,'uncertain');assert.equal(crashDetail.transmission.retryable,false);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[crashed]))[0].n,crashStage==='intent'?0:1);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_note where report_id=$1',[crashed]))[0].n,crashStage==='note'?1:0);
   }
   const pinned=await draft();await sign(pinned);
   const {format,schemaVersion,sha256,...portable}=mapping;
@@ -252,6 +335,24 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    const [target]=await db.query('select id from clinical.element_occurrence where report_id=$1 and element_id=$2',[id,field]);
    return amendService.amend(id,{commandId:randomUUID(),expectedSequence:sequence,authorId:sample.documenting_user_id,reason:'Fictional signed correction',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:target.id,value:{kind:'text',value:text}}]});
   }
+  // Later amendment failure reopens the same concern, retains old attempts, and rejects stale version selection.
+  const beforeNew=await retryInput();await amend(outage,1,'Later delivery correction');
+  await processCosWork(db,100,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
+  const reopenedFailure=await recoveryReview.item('fixture',failureItem.id,'synthetic');assert.equal(reopenedFailure.activeMatch,true);assert.equal(reopenedFailure.reopened,true);assert.equal(reopenedFailure.transmission.amendmentSequence,1);
+  await assert.rejects(retryCosReview(db,recoverySessions,'fixture',failureItem.id,{...beforeNew,commandId:randomUUID()}));
+  await retryCosReview(db,recoverySessions,'fixture',failureItem.id,await retryInput());await processCosWork(db);
+  assert.equal((await recoveryReview.item('fixture',failureItem.id,'synthetic')).status,'completed');
+  assert.equal((await db.query("select count(*)::int n from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[outage]))[0].n,1);
+  // An unconsumed retry overtaken by a new signed amendment is recorded as superseded,
+  // never shown forever as pending and never sends the older prepared payload.
+  const overtaken=await draft();await sign(overtaken);await processCosWork(db,100,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
+  const [overtakenItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[overtaken]);
+  await recoveryReview.claim('fixture',overtakenItem.id,{commandId:randomUUID(),expectedVersion:Number(overtakenItem.version),dataset:'synthetic'});
+  await retryCosReview(db,recoverySessions,'fixture',overtakenItem.id,await retryInput(overtakenItem.id));
+  await amend(overtaken,1,'New version before retry starts');await processCosWork(db);
+  const overtakenDetail=await recoveryReview.item('fixture',overtakenItem.id,'synthetic');assert.equal(overtakenDetail.transmission.recoveryCommands[0].outcome,'superseded');
+  assert.equal(overtakenDetail.status,'completed');
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1 and d.amendment_sequence=0',[overtaken]))[0].n,1);
   const queued=await draft();await sign(queued);await amend(queued,1,'First correction');await amend(queued,2,'Newest correction');
   assert.deepEqual((await db.query('select state from clinical.cos_delivery where report_id=$1 order by amendment_sequence',[queued])).map(x=>x.state),['superseded','superseded','pending']);
   await Promise.all([processCosWork(db),processCosWork(db)]);
@@ -302,6 +403,14 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const [permissions]=await db.query("select has_table_privilege('open_triage_analyst','clinical.cos_payload','select') analyst,has_table_privilege('open_triage_api_runtime','clinical.cos_payload','update') mutable");assert.deepEqual(permissions,{analyst:false,mutable:false});
   const rollback=new Error('rollback retention fixture');
   await assert.rejects(db.transaction(async manager=>{
+   await manager.query(`insert into clinical_audit.synthetic_purge_tombstone(record_type,record_id,organization_id,server_created_at,expired_at,purged_at) values('report',$1,$2,clock_timestamp()-interval '2 days',clock_timestamp()-interval '1 day',clock_timestamp())`,[outage,sample.organization_id]);
+   await manager.query("select set_config('open_triage.synthetic_purge_report',$1,true)",[outage]);
+   await manager.query('delete from clinical.signed_snapshot where report_id=$1',[outage]);
+   assert.equal((await manager.query('select id from clinical.cos_recovery_command where report_id=$1',[outage])).length,0);
+   throw rollback;
+  }),error=>error===rollback);
+
+  await assert.rejects(db.transaction(async manager=>{
    await manager.query(`insert into clinical_audit.synthetic_purge_tombstone(record_type,record_id,organization_id,server_created_at,expired_at,purged_at) values('report',$1,$2,clock_timestamp()-interval '2 days',clock_timestamp()-interval '1 day',clock_timestamp())`,[good,sample.organization_id]);
    await manager.query("select set_config('open_triage.synthetic_purge_report',$1,true)",[good]);
    await manager.query('delete from clinical.signed_snapshot where report_id=$1',[good]);
@@ -330,6 +439,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const customMapping=makePackage({...customPortable,version:'3',definition:{...mapping.definition,revision:3,patientIdentifier:{field:{kind:'custom',elementDefinitionId:customIdentity.id},namespace:'urn:oid:1.2.752.129.2.1.3.3',aliases:[]}}});
   await config(next+10,customMapping);
   const customReport=await draft();await sign(customReport);await processCosWork(db);
+  const [customOriginalSnapshot]=await db.query('select * from clinical.signed_snapshot where report_id=$1',[customReport]);
   const [customItem]=await db.query("select * from clinical.review_item where report_id=$1 and transmission_reason='patient-identity'",[customReport]);
   const customContext=await identifierCorrectionContext(db,correctionSessions,'fixture',customItem.id,'synthetic');
   assert.deepEqual(customContext.field,{kind:'custom',elementDefinitionId:customIdentity.id});
@@ -351,6 +461,8 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const customOutcome=await correctReviewIdentifier(db,correctionSessions,'fixture',customItem.id,customCommand);
   assert.equal((await db.query('select count(*)::int n from clinical.amendment where report_id=$1',[customReport]))[0].n,1);
 
+  const customSource=await signedReportPdfSource(db.manager,customReport,customOriginalSnapshot.id,1);assert.equal(customSource.configuration.customFields[customIdentity.id].title,customIdentity.title);
+  assert.deepEqual((await db.query('select * from clinical.signed_snapshot where report_id=$1',[customReport]))[0],customOriginalSnapshot);
   const [customAmendment]=await db.query('select author_id,attestation from clinical.amendment where id=$1',[customOutcome.amendmentId]);
   assert.equal(customAmendment.author_id,reviewer.userId);assert.equal(customAmendment.attestation.actorId,reviewer.userId);
   assert.equal((await db.query('select status from clinical.review_item where id=$1',[customItem.id]))[0].status,'completed');

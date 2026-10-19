@@ -96,3 +96,16 @@ test('unavailable configured patient field retains exact canonical identity for 
  assert.deepEqual(result.missing,['configuration']);assert.deepEqual(result.patientField.field,{kind:'nemsis',elementId:'ePatient.01'});
  assert.equal(result.patientField.id,'ePatient.01');assert.equal(result.patientField.name,'ePatient.01');
 });
+
+test('collector and payload share exact PNR, coordination and Carelink reserve scheme validation',()=>{
+ for(const [namespace,value] of [['urn:oid:1.2.752.129.2.1.3.1','200207252388'],['urn:oid:1.2.752.129.2.1.3.3','200207852385'],['urn:oid:1.2.752.129.2.1.3.2','198108320014']]){
+  const f=deliveryFixture(),{format,schemaVersion,sha256,...portable}=f.mapping;
+  f.mapping=makePackage({...portable,definition:{...portable.definition,patientIdentifier:{...portable.definition.patientIdentifier,namespace}}});
+  f.source.occurrences.find(row=>row.element_id==='ePatient.01').value_text=value;
+  assert.deepEqual(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing,[]);
+  assert.deepEqual(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'delivery').contact.patient,{system:namespace,value});
+  f.source.occurrences.find(row=>row.element_id==='ePatient.01').value_text='200207252389';
+  assert.ok(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing.includes('patientIdentifier'));
+  assert.throws(()=>buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'delivery'),{code:'patientIdentifier'});
+ }
+});

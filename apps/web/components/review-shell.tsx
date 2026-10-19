@@ -22,7 +22,7 @@ import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AnalyticsWorkspace } from "./analytics-workspace";
 
-type ReviewAction = "comment" | "assign" | "complete" | "await" | "resume" | "exception";
+type ReviewAction = "retry-cos" | "comment" | "assign" | "complete" | "await" | "resume" | "exception";
 
 export function ReviewShell({ session, language, online, attention, onAttentionRefresh, callWindow, onOpenSettings, onOpenHospitalSettings }: {
   onOpenHospitalSettings?: () => void;
@@ -127,9 +127,11 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       if (["new", "in-review"].includes(itemDetail.status)) actionOptions.push({ value: "await", label: t("review.awaitClinician") });
       if (itemDetail.status === "awaiting-clinician") actionOptions.push({ value: "resume", label: t("review.resumeReview") });
     }
-    if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "missing-transmission-identifiers" && (itemDetail.assigneeId === session.user.id || administrator))
+    if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "missing-transmission-identifiers" && itemDetail.kind !== "cos-delivery-failed" && (itemDetail.assigneeId === session.user.id || administrator))
       actionOptions.push({ value: "complete", label: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview"),
         submitLabel: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview") });
+    if(itemDetail.kind==='cos-delivery-failed'&&itemDetail.assigneeId===session.user.id&&!itemDetail.transmissionRestricted&&itemDetail.transmission?.retryable)
+      actionOptions.push({value:'retry-cos',label:t('review.recovery.retry'),submitLabel:t('review.recovery.retry')});
     if (itemDetail.kind === "overdue-unsigned" && itemDetail.status !== "completed" && administrator)
       actionOptions.push({ value: "exception", label: t("review.closeExceptionally") });
   }
@@ -145,7 +147,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     (activeAction === "assign" && !actionReviewers.some((user) => user.id === handoffTarget)) ||
     (activeAction === "complete" && closingNeedsAssignment && !canAssignToSelf) ||
     (activeAction === "complete" && !outcomes.some((option) => option.active && option.id === completionOutcomeId)) ||
-    (activeAction === "exception" && !exceptionCode);
+    (activeAction === "exception" && !exceptionCode) ||
+    (activeAction === "retry-cos" && !itemDetail.transmission?.retryable);
   const findingsDirty = !!commentDraft.trim() || reviewAction !== "comment";
 
   function resetFindingsAction() {
@@ -330,13 +333,14 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         current = next; commentSaved = true;
       }
       if (activeAction !== "comment") {
-        const endpoint = activeAction === "assign" ? "assign" : activeAction === "exception" ? "close-exceptionally" : "progress";
+        const endpoint = activeAction === "retry-cos" ? "retry-cos" : activeAction === "assign" ? "assign" : activeAction === "exception" ? "close-exceptionally" : "progress";
         const url = apiRequestUrl(`/api/review/items/${current.id}/${endpoint}`);
         if (!url) throw new Error("Review API is unavailable");
         const response = await fetch(url, browserRequestInit({ method: "POST",
           headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
           body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: current.version, dataset,
-            ...(activeAction === "assign" ? { assigneeId: handoffTarget } :
+            ...(activeAction === "retry-cos" ? {deliveryId:current.transmission!.deliveryId,amendmentSequence:current.transmission!.amendmentSequence,
+              configurationRevision:Number(current.transmission!.configurationRevision),stateRevision:current.transmission!.stateRevision} : activeAction === "assign" ? { assigneeId: handoffTarget } :
               activeAction === "exception" ? { reasonCode: exceptionCode } :
                 { status: activeAction === "complete" ? "completed" : activeAction === "await" ? "awaiting-clinician" : "in-review",
                   ...(activeAction === "complete" ? { outcomeOptionId: completionOutcomeId } : {}) }) }) }));
@@ -349,7 +353,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         const next = await response.json() as ReviewItemDetail;
         setItemDetail(next); setSelectedItem(next);
       }
-      resetFindingsAction(); setActionNotice(t("review.actionSaved"));
+      resetFindingsAction(); setActionNotice(t(activeAction === "retry-cos" ? "review.recovery.queued" : "review.actionSaved"));
     } catch {
       setWorkflowError("unavailable");
       if (commentSaved) setActionNotice(t("review.commentSavedActionFailed"));
@@ -656,17 +660,27 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           {draftDetail && <><h3>{t("review.overdueDraft")}</h3><p>{t("review.overdueDeadline")}: {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p></>}
           <div {...panel("review-detail", "findings", detailTab)}>
           {itemDetail?.findings.map((finding, index) => <MetricEvidence key={index} evidence={finding.metricEvidence} language={language} />)}
-            {itemDetail?.kind === "missing-transmission-identifiers" && <section aria-label={t("review.transmission.heading")}>
-              <h4>{t("review.transmission.heading")}</h4>
+            {itemDetail && ["missing-transmission-identifiers","cos-delivery-failed"].includes(itemDetail.kind ?? "") && <section aria-label={t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}>
+              <h4>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}</h4>
               {itemDetail.transmissionRestricted ? <p>{t("review.transmission.restricted")}</p> : itemDetail.transmission && <>
-                <p>{t(itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
+                <p>{t(itemDetail.kind==='cos-delivery-failed'?(itemDetail.activeMatch?'review.recovery.unconfirmed':'review.recovery.confirmed'):itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
+                {itemDetail.kind==='cos-delivery-failed' && <>
+                  <p>{t('review.recovery.simulator')}</p>
+                  <p>{t(`cosDelivery.state.${itemDetail.transmission.deliveryState}`)}</p>
+                  {itemDetail.transmission.finding&&<p>{t(`cosDelivery.finding.${itemDetail.transmission.finding}`)}</p>}
+                  <p>{t(itemDetail.transmission.deliveryState==='uncertain'?'review.recovery.uncertain':itemDetail.transmission.retryable?'review.recovery.ready':itemDetail.transmission.deliveryState==='confirmed'?'review.recovery.confirmed':itemDetail.transmission.deliveryState==='pending'?'review.recovery.queued':'review.recovery.correct')}</p>
+                  {!!itemDetail.transmission.recoveryCommands?.length&&<details><summary>{t('review.recovery.commands')}</summary><ol>{itemDetail.transmission.recoveryCommands.map(command=><li key={command.id}>
+                    {t('review.recovery.actor',{actor:command.actorId,sequence:command.amendmentSequence})} · {new Intl.DateTimeFormat(language,{dateStyle:'medium',timeStyle:'short'}).format(new Date(command.requestedAt))} · {t(`cosDelivery.state.${command.outcome}`)}
+                  </li>)}</ol></details>}
+                </>}
+
                 {itemDetail.transmissionReason === "patient-identity" && itemDetail.status !== "completed" && itemDetail.assigneeId === session.user.id && <ReviewIdentifierCorrection key={`${itemDetail.id}:${session.user.id}:${dataset}`} item={itemDetail} session={session} dataset={dataset} language={language} online={online} onSaved={next=>{setItemDetail(next);setSelectedItem(next);setRefresh(value=>value+1);setDetailRefresh(value=>value+1);setActionNotice(t("review.identifier.saved"));}}/>}
                 {itemDetail.transmission.patientField && <p>{t("review.transmission.patientField")}: {language === "sv" ? itemDetail.transmission.patientField.localization?.sv?.label ?? itemDetail.transmission.patientField.localization?.sv?.name ?? itemDetail.transmission.patientField.localization?.sv?.title ?? itemDetail.transmission.patientField.name : itemDetail.transmission.patientField.name} <code>{itemDetail.transmission.patientField.id}</code></p>}
                 <ul>{itemDetail.transmission.missing.map(code=><li key={code}>{t(`review.transmission.requirement.${code}`)}</li>)}</ul>
                 {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}
                 {onOpenHospitalSettings && session.capabilities?.includes("settings:write") && itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <button type="button" onClick={()=>{if(confirmDiscardChanges(findingsDirty))onOpenHospitalSettings();}}>{t("review.transmission.openAdmin")}</button>}
                 <p>{t("review.transmission.version", {sequence:itemDetail.transmission.amendmentSequence, revision:itemDetail.transmission.mappingRevision})}</p>
-                {!!itemDetail.transmissionHistory?.length && <details><summary>{t("review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
+                {!!itemDetail.transmissionHistory?.length && <details><summary>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.history':"review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
                   {t(event.active ? "review.transmission.unresolved" : "review.transmission.resolved")} · {new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(new Date(event.recordedAt))}
                 </li>)}</ol></details>}
               </>}

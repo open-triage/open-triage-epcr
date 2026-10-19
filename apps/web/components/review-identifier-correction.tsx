@@ -20,7 +20,7 @@ export function ReviewIdentifierCorrection({item,session,dataset,language,online
  function close(){if(busy||!confirmDiscardChanges(!!value||!!reason||attested))return;setOpen(false);trigger.current?.focus();}
  return <>
   <button ref={trigger} type="button" disabled={!online} onClick={()=>{setValue("");setReason("");setAttested(false);setOpen(true);void load();}}>{t("action")}</button>
-  <dialog ref={dialog} aria-labelledby={`identifier-heading-${item.id}`} className="confirmation-dialog" onCancel={event=>{event.preventDefault();close();}}>
+  <dialog ref={dialog} aria-labelledby={`identifier-heading-${item.id}`} className="unit-dialog" onCancel={event=>{event.preventDefault();close();}}>
    <form className="review-action-form" aria-busy={busy} onSubmit={async event=>{
     event.preventDefault();if(!context||busy||!online||!value.trim()||!reason.trim()||!attested)return;
     const command:ReviewIdentifierCorrectionCommand={commandId:pending.current?.commandId??crypto.randomUUID(),dataset,context,namespace:context.namespace,value,reason,attested};pending.current=command;setBusy(true);setError(null);
@@ -35,7 +35,7 @@ export function ReviewIdentifierCorrection({item,session,dataset,language,online
      <label>{t("reason")}<textarea required maxLength={2000} disabled={busy} value={reason} onChange={event=>{setReason(event.target.value);pending.current=null;}}/></label>
      <label><input type="checkbox" checked={attested} disabled={busy} onChange={event=>{setAttested(event.target.checked);pending.current=null;}}/>{t("attestation")}</label></>}
     {error&&<p role="alert">{error}</p>}
-    <div className="dialog-actions"><button type="button" disabled={busy} onClick={close}>{t("cancel")}</button><button type="button" disabled={busy||!online} onClick={()=>void load()}>{t("refresh")}</button><button className="primary" type="submit" disabled={busy||!online||!context||!value.trim()||!reason.trim()||!attested}>{t("submit")}</button></div>
+    <div className="admin-role-editor-actions"><button type="button" disabled={busy} onClick={close}>{t("cancel")}</button><button type="button" disabled={busy||!online} onClick={()=>void load()}>{t("refresh")}</button><button className="primary" type="submit" disabled={busy||!online||!context||!value.trim()||!reason.trim()||!attested}>{t("submit")}</button></div>
    </form>
   </dialog>
  </>;

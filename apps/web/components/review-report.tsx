@@ -80,6 +80,7 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       {report.cosDelivery.paused && <p>{t("cosDelivery.paused")}</p>}
       {report.cosDelivery.finding && <p>{t(`cosDelivery.finding.${report.cosDelivery.finding}`)}</p>}
       <p>{t("cosDelivery.refresh")}</p>
+      {report.cosDelivery.reviewItemId&&<a href={`/review-call?report=${report.id}&item=${report.cosDelivery.reviewItemId}&dataset=${dataset}`}>{t('review.recovery.open')}</a>}
     </section>}
     {full && "amendmentSequence" in report && report.amendmentSequence > 0 && <p className="review-report-amendments">{resolveMessage(language, "review.amendments", { count: report.amendmentSequence })}</p>}
     {full && report.document ? <StationaryRecord readOnly

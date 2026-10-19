@@ -192,6 +192,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
                 ["organizations", selected.analytics.organizationIds.map(id => agencyLabel(id,
                   selected.analytics?.organizations?.find(organization => organization.id === id)?.name)).join(", ") || missing] ] : []) ] as const).map(([label, value]) => <div key={label}>
                 <dt>{t(`auditUi.${label}`)}</dt><dd>{value ?? missing}</dd></div>)}</dl>
+            {selected.recovery&&<p><a href={`/review-call?report=${selected.recovery.reportId}&item=${selected.recovery.itemId}&dataset=${selected.recovery.dataset}`}>{t('review.recovery.open')}</a> · {t('review.transmission.version',{sequence:selected.recovery.amendmentSequence,revision:'—'})}</p>}
             <details className="audit-identifiers">
               <summary>{t("auditUi.identifiers")}</summary>
               <dl>{([ ["actorId", selected.actorId], ["targetId", selected.targetId],

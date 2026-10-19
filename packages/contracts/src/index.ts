@@ -152,8 +152,8 @@ export interface ReviewQueueItem {
   criterionDescription?: string | null;
   assigneeName?: string | null;
   criterionId: string;
-  kind?: "criterion" | "overdue-unsigned" | "missing-transmission-identifiers";
-  transmissionReason?: "patient-identity" | "integration-mapping";
+  kind?: "criterion" | "overdue-unsigned" | "missing-transmission-identifiers" | "cos-delivery-failed";
+  transmissionReason?: "patient-identity" | "integration-mapping" | "delivery-failure";
   deadlineAt?: string | null;
   deadlineSource?: "call-completed" | "report-created" | null;
   resolutionReason?: string | null;
@@ -207,7 +207,14 @@ export interface ReviewIdentifierCorrectionCommand {
   attested: boolean;
 }
 
+
+export interface RetryCosReviewCommand {
+ commandId: string; expectedVersion: number; dataset: "real" | "synthetic";
+ deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
+}
 export interface ReviewTransmissionEvidence {
+ deliveryState?: string; finding?: string | null; stateRevision?: number; retryable?: boolean;
+ recoveryCommands?: Array<{id:string; actorId:string; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
   integration: "cos";
   deliveryId: string;
   amendmentSequence: number;
@@ -220,7 +227,7 @@ export interface ReviewTransmissionEvidence {
 }
 
 export interface ReviewCriterionRoute {
-  transmissionReason?: "patient-identity" | "integration-mapping";
+  transmissionReason?: "patient-identity" | "integration-mapping" | "delivery-failure";
   criterionId: string;
   name: string;
   route: "unassigned" | "author" | "named";
@@ -400,7 +407,7 @@ export interface ReviewReportGroup {
 }
 
 export interface ReviewSignedReport {
-  cosDelivery?: { simulated: true; state: string; finding: string | null; paused: boolean; updatedAt: string; configurationRevision: number; mappingRevision: number } | null;
+  cosDelivery?: { reviewItemId?: string; simulated: true; state: string; finding: string | null; paused: boolean; updatedAt: string; configurationRevision: number; mappingRevision: number } | null;
   /** Explicit immutable artifact identity; absent in static/demo-only projections. */
   signedSnapshotId?: string;
   signedRevision?: number;
