@@ -61,7 +61,7 @@ integration('COS real database and browser setup preserves tested revisions, can
 
   await assert.rejects(service.save(token,{...body,groupId:foreignId}));
   let view=await service.save(token,body);assert.equal(view.draft.revision,1);assert.equal(view.active,null);assert.doesNotMatch(JSON.stringify(view),/private-team|encrypted_credential|ciphertext/);
-  await sessions.switchAgency(token,childId);const inherited=await service.get(token);assert.equal(inherited.groupId,group.id);assert.deepEqual(inherited.draft,view.draft);await sessions.switchAgency(token,group.id);
+  await sessions.switchAgency(token,childId);const inherited=await service.get(token);assert.equal(inherited.groupId,group.id);assert.deepEqual(inherited.draft,view.draft);assert.equal(inherited.draft.settings.defaultAmbulanceCareUnit,view.draft.settings.defaultAmbulanceCareUnit);await sessions.switchAgency(token,group.id);
   const files=await service.files(token);assert.equal(files.length,1);
   const exported=await service.export(token,'1');assert.deepEqual(JSON.parse(await readFile(path.join(folder,files[0].file),'utf8')),exported);
   assert.equal((await service.files(otherSession.sessionToken)).length,0);await assert.rejects(service.export(otherSession.sessionToken,'1'));await assert.rejects(service.importFile(otherSession.sessionToken,{expectedRevision:0,file:files[0].file}));
@@ -119,10 +119,13 @@ integration('COS real database and browser setup preserves tested revisions, can
   await page.goto(origin);await page.getByLabel('Patient identifier field').waitFor();
   await page.getByLabel('Identifier namespace',{exact:true}).fill(body.patientIdentifier.namespace);
   await page.getByLabel('Patient identifier field').selectOption(alternative.id);
+  await page.getByLabel('Default ambulance care-unit HSA identifier',{exact:true}).fill('fictional-inherited-ambulance');
   await page.getByLabel('Target template link ID').fill('418799008');
   await page.getByLabel('PDF SNOMED link identifier',{exact:true}).fill('371530004');
   await page.getByRole('button',{name:'Save COS draft',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Draft revision: 6'));
   assert.equal((await service.get(token)).active.revision,1);
+  assert.equal((await service.get(token)).draft.settings.defaultAmbulanceCareUnit,'fictional-inherited-ambulance');
+  await sessions.switchAgency(token,childId);assert.equal((await service.get(token)).draft.settings.defaultAmbulanceCareUnit,'fictional-inherited-ambulance');await sessions.switchAgency(token,group.id);
   await page.getByRole('button',{name:'Test simulator configuration',exact:true}).click();await page.getByText('Simulator configuration passed',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Activate COS simulator',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Active revision: 6'));
   assert.equal((await service.get(token)).draft.mapping.definition.clinicalMappings[0].linkId,'418799008');

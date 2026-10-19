@@ -89,6 +89,14 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[good]))[0].state,'confirmed');
   assert.equal((await db.query('select a.id from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1',[good])).length,1);
   assert.equal((await db.query('select id from clinical.cos_delivery where report_id=$1',[old])).length,0,'activation never backfills');
+  // Every non-transport care fact uses the same durable signed-version receiver path.
+  for(const care of ['4228001','4228003','4228005','4228007','4228009'])for(const transport of ['4230009','4230013']){
+   const id=await draft({'eDisposition.28':care,'eDisposition.30':transport});await sign(id);await processCosWork(db);
+   const [contact]=await db.query('select content as contact from clinical.cos_simulator_contact where report_id=$1',[id]);
+   assert.equal(contact.contact.careUnit,'fictional-ambulance');
+   assert.deepEqual(contact.contact.disposition,{unit:'4227001',care,transport});
+   assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[id]))[0].state,'confirmed');
+  }
   const missing=await draft({'ePatient.01':null});await sign(missing);await processCosWork(db);assert.equal((await db.query('select finding from clinical.cos_delivery where report_id=$1',[missing]))[0].finding,'patientIdentifier');
   const [patientItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='missing-transmission-identifiers'",[missing]);
   assert.equal(patientItem.transmission_reason,'patient-identity');assert.equal(patientItem.assignee_id,sample.documenting_user_id);
@@ -291,6 +299,33 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    const [target]=await db.query('select id from clinical.element_occurrence where report_id=$1 and element_id=$2',[id,field]);
    return amendService.amend(id,{commandId:randomUUID(),expectedSequence:sequence,authorId:sample.documenting_user_id,reason:'Fictional signed correction',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:target.id,value:{kind:'text',value:text}}]});
   }
+  // Eligibility/routing amendments use effective immutable values and replace only this report's receiver version.
+  const routeChanged=await draft();await sign(routeChanged);await processCosWork(db);
+  const [transportTarget]=await db.query("select id from clinical.element_occurrence where report_id=$1 and element_id='eDisposition.30'",[routeChanged]);
+  async function amendTransport(sequence,code){return amendService.amend(routeChanged,{commandId:randomUUID(),expectedSequence:sequence,authorId:sample.documenting_user_id,reason:'Fictional disposition correction',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:transportTarget.id,value:{kind:'coded',code}}]});}
+  await amendTransport(1,'4230013');await processCosWork(db);
+  let [routeCurrent]=await db.query('select * from clinical.cos_simulator_current where report_id=$1',[routeChanged]);
+  assert.equal(routeCurrent.amendment_sequence,1);assert.equal(routeCurrent.contact.careUnit,'fictional-ambulance');assert.equal(routeCurrent.contact.disposition.transport,'4230013');
+  await amendTransport(2,'4230009');await amendTransport(3,'4230001');await processCosWork(db);
+  [routeCurrent]=await db.query('select * from clinical.cos_simulator_current where report_id=$1',[routeChanged]);
+  assert.equal(routeCurrent.amendment_sequence,3);assert.equal(routeCurrent.contact.careUnit,'fictional-ed');
+  assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1 and amendment_sequence=2',[routeChanged]))[0].state,'superseded');
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_note where report_id=$1',[routeChanged]))[0].n,3);
+  const [deliveredUnit]=await db.query("select id from clinical.element_occurrence where report_id=$1 and element_id='eDisposition.27'",[routeChanged]);
+  await amendService.amend(routeChanged,{commandId:randomUUID(),expectedSequence:4,authorId:sample.documenting_user_id,reason:'Fictional contact correction after delivery',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:deliveredUnit.id,value:{kind:'coded',code:'4227007'}}]});await processCosWork(db);
+  assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1 and amendment_sequence=4',[routeChanged]))[0].state,'excluded');
+  assert.equal((await db.query('select amendment_sequence from clinical.cos_simulator_current where report_id=$1',[routeChanged]))[0].amendment_sequence,3,'exclusion is not remote retraction');
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_note where report_id=$1',[routeChanged]))[0].n,3);
+  const contactCorrected=await draft({'ePatient.01':null,'ePatient.05':null,'eDisposition.30':'4230013'});await sign(contactCorrected);await processCosWork(db);
+  const [contactReview]=await db.query("select id from clinical.review_item where report_id=$1 and transmission_reason='patient-identity'",[contactCorrected]);assert.ok(contactReview);
+  const [unitTarget]=await db.query("select id from clinical.element_occurrence where report_id=$1 and element_id='eDisposition.27'",[contactCorrected]);
+  async function amendContact(sequence,code){await amendService.amend(contactCorrected,{commandId:randomUUID(),expectedSequence:sequence,authorId:sample.documenting_user_id,reason:'Fictional contact correction',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:unitTarget.id,value:{kind:'coded',code}}]});}
+  await amendContact(1,'4227005');await processCosWork(db);
+  assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1 and amendment_sequence=1',[contactCorrected]))[0].state,'excluded');
+  assert.equal((await db.query('select status from clinical.review_item where id=$1',[contactReview.id]))[0].status,'completed');
+  await amendContact(2,'4227001');await processCosWork(db);
+  assert.equal((await db.query('select active_match from clinical.review_item where id=$1',[contactReview.id]))[0].active_match,true);
+  assert.equal((await db.query('select report_id from clinical.cos_simulator_contact where report_id=$1',[contactCorrected])).length,0);
   // Later amendment failure reopens the same concern, retains old attempts, and rejects stale version selection.
   const beforeNew=await retryInput();await amend(outage,1,'Later delivery correction');
   await processCosWork(db,100,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
@@ -390,6 +425,13 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    assert.equal((await manager.query('select id from clinical.review_transmission_history where report_id=$1',[expiring])).length,0);
    throw rollback;
   }),error=>error===rollback);
+  // A later configuration without a default leaves a mapping concern; stale hospital fields cannot rescue it.
+  settings.defaultAmbulanceCareUnit='';await config(next+100);
+  const noDefault=await draft({'eDisposition.30':'4230013'});await sign(noDefault);await processCosWork(db);
+  assert.deepEqual((await db.query('select state,finding from clinical.cos_delivery where report_id=$1',[noDefault]))[0],{state:'waiting',finding:'ambulanceCareUnit'});
+  const [defaultReview]=await db.query("select transmission_reason,assignee_id from clinical.review_item where report_id=$1 and active_match",[noDefault]);
+  assert.equal(defaultReview.transmission_reason,'integration-mapping');
+  assert.equal((await db.query('select report_id from clinical.cos_simulator_contact where report_id=$1',[noDefault])).length,0);
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);
   assert.deepEqual(await db.query('select * from app_identity.active_configuration_bundle where organization_id=$1',[baseline.organization_id]),sharedBundle);
   if(previous)await db.query('update app_identity.hospital_cos_state set active_revision=$2 where group_id=$1',[group,previous.active_revision]);else await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);

@@ -96,3 +96,26 @@ test('unavailable configured patient field retains exact canonical identity for 
  assert.deepEqual(result.missing,['configuration']);assert.deepEqual(result.patientField.field,{kind:'nemsis',elementId:'ePatient.01'});
  assert.equal(result.patientField.id,'ePatient.01');assert.equal(result.patientField.name,'ePatient.01');
 });
+
+test('contact assessment, treatment and refusal route only to explicit ambulance unit and preserve exact disposition',()=>{
+ for(const care of ['4228001','4228003','4228005','4228007','4228009'])for(const transport of ['4230009','4230013']){
+  const f=deliveryFixture();
+  f.source.occurrences.find(row=>row.element_id==='eDisposition.28').code=care;
+  f.source.occurrences.find(row=>row.element_id==='eDisposition.30').code=transport;
+  assert.equal(cosEligibility(f.source.occurrences),'nonTransport');
+  const result=buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'id');
+  assert.equal(result.contact.careUnit,'fixture-ambulance','residual hospital destination cannot route non-transport');
+  assert.deepEqual(result.contact.disposition,{unit:'4227001',care,transport});
+  f.source.occurrences=f.source.occurrences.filter(row=>!['eDisposition.01','eDisposition.02'].includes(row.element_id));
+  assert.deepEqual(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing,[]);
+  f.settings.defaultAmbulanceCareUnit='';
+  assert.deepEqual(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing,['ambulanceCareUnit']);
+  assert.throws(()=>buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'id'),{code:'ambulanceCareUnit',state:'waiting'});
+ }
+ for(const transport of ['4230011','unknown',null]){
+  const f=deliveryFixture();f.source.occurrences.find(row=>row.element_id==='eDisposition.30').code=transport;
+  assert.equal(cosEligibility(f.source.occurrences),'waiting');
+ }
+ const duplicate=deliveryFixture();duplicate.source.occurrences.push({...duplicate.source.occurrences.find(row=>row.element_id==='eDisposition.30'),code:'4230013'});
+ assert.equal(cosEligibility(duplicate.source.occurrences),'waiting');
+});
