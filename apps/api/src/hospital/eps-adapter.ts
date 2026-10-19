@@ -1,3 +1,4 @@
+import {contentDigest} from '../admin/canonical-package.js';
 import { hospitalIdentifiersMatch, parsePatientSummary, type HospitalIdentifier } from '@open-triage/contracts';
 import { providerFetch } from '../authentication/oidc-network.js';
 import { EPS_ENDPOINT } from './hospital-mapping.js';
@@ -30,7 +31,7 @@ export class EpsAdapter {
       }
     }
     if(paths.size>100) throw new Error('eps.limit');
-    const matches: {summary:ReturnType<typeof parsePatientSummary>['summary'];documentId:string}[]=[];
+    const matches: {summary:ReturnType<typeof parsePatientSummary>['summary'];documentId:string;documentSha256:string}[]=[];
     // Bounded concurrency; failures abort the lookup rather than becoming no-match.
     const pending=[...paths];
     let failed=false;
@@ -39,8 +40,8 @@ export class EpsAdapter {
         try {
         if(Date.now()>deadline)throw new Error('eps.timeout');
         const path=pending.shift()!;
-        const parsed=parsePatientSummary(await this.read(path));
-        if(parsed.identifiers.some(remote=>hospitalIdentifiersMatch(configuration,identifier,remote)))matches.push({summary:parsed.summary,documentId:path});
+        const source=await this.read(path),parsed=parsePatientSummary(source);
+        if(parsed.identifiers.some(remote=>hospitalIdentifiersMatch(configuration,identifier,remote)))matches.push({summary:parsed.summary,documentId:path,documentSha256:contentDigest(source)});
         }catch(error){failed=true;throw error;}
       }
     }));

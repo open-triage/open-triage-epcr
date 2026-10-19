@@ -9,6 +9,8 @@ export class HospitalController {
  get(@Req() req:Request,@Headers('authorization') auth?:string){return this.service.get(sessionToken(req,auth));}
  @Put() @Header('Cache-Control','no-store, private')
  save(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.save(sessionToken(req,auth),body);}
+ @Post('inspect-mappings') @Header('Cache-Control','no-store, private')
+ inspectMappings(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.inspectClinical(sessionToken(req,auth),body);}
  @Post('test') @Header('Cache-Control','no-store, private')
  test(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.test(sessionToken(req,auth),body);}
  @Post('activate') @Header('Cache-Control','no-store, private')

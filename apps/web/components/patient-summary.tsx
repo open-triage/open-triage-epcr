@@ -1,4 +1,5 @@
 "use client";
+import { EpsImports, EpsImportWarning } from './eps-imports';
 import { useEffect, useRef, useState } from 'react';
 import type { EpsContext, EpsLookup } from '@open-triage/contracts';
 import { browserRequestConfiguration, browserRequestInit, browserRouteUrl } from '../app/browser-api';
@@ -51,7 +52,7 @@ export function PatientSummaryButton({reportId, organizationId, userId, document
     if(open)dialog.current?.showModal();
     else if(dialog.current?.open){dialog.current.close();trigger.current?.focus();}
   },[open]);
-  if(browserRequestConfiguration().mode==='static'||current.status==='disabled')return null;
+  if(browserRequestConfiguration().mode==='static')return null;
   const summary=current.result?.summary;
   async function openSummary(){
     try {
@@ -64,8 +65,9 @@ export function PatientSummaryButton({reportId, organizationId, userId, document
     }catch{if(activeScope.current===key){setState({key,status:'failed'});setOpenKey(null);}}
   }
   return <div className="eps-control">
-    <button ref={trigger} type="button" disabled={current.status!=='available'} onClick={()=>void openSummary()}>{t('button')}</button>
-    <span role="status">{t(current.status)}</span>
+    <EpsImportWarning reportId={reportId} documentKey={documentKey} language={language}/>
+    <button hidden={current.status==='disabled'} ref={trigger} type="button" disabled={current.status!=='available'} onClick={()=>void openSummary()}>{t('button')}</button>
+    <span hidden={current.status==='disabled'} role="status">{t(current.status)}</span>
     {current.status==='failed'&&<button type="button" onClick={()=>{setState({key,status:'checking'});setRetry(value=>value+1);}}>{t('retry')}</button>}
     <dialog ref={dialog} className="eps-dialog" aria-labelledby="eps-title" onCancel={()=>setOpenKey(null)} onClose={()=>{setOpenKey(null);trigger.current?.focus();}}>
       {open&&summary&&<><header><h2 id="eps-title">{summary.title||t('button')}</h2><button autoFocus type="button" onClick={()=>setOpenKey(null)}>{t('close')}</button></header>
@@ -76,6 +78,7 @@ export function PatientSummaryButton({reportId, organizationId, userId, document
           <dt>{t('date')}</dt><dd>{summary.date||t('unknown')}</dd>
           <dt>{t('retrieved')}</dt><dd>{current.result?.retrievedAt}</dd>
         </dl><p>{t('readOnly')}</p>
+        {current.result?.context&&<EpsImports key={key} reportId={reportId} binding={current.result.context.binding} language={language} ready={ready}/>}
         {summary.findings.length>0&&<div role="note"><strong>{t('references')}</strong><ul>{summary.findings.map((finding,i)=><li key={i}>{finding}</li>)}</ul></div>}
         <table><thead><tr><th>{t('section')}</th><th>{t('content')}</th></tr></thead><tbody>{summary.clinicalSections.map((section,i)=><tr key={i}><th scope="row">{section.title}</th><td>{section.content||t('unknown')}</td></tr>)}</tbody></table>
         <h3>{t('sourceDetails')}</h3>
