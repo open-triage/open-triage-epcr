@@ -16,8 +16,12 @@ function scalar(source:SignedReportClinicalSource,field:HospitalField,code:strin
  return row.value_text;
 }
 export { cosEligibility } from './cos-eligibility.js';
+/** Resolve a raw immutable signed version, applying amendments exactly once. */
+export function resolveSignedCosCareUnit(source:SignedReportClinicalSource,settings:CosConnectionSettings):string {
+ return cosCareUnitFor({...source,occurrences:effectiveSignedPdfOccurrences(source)},settings);
+}
 /** The route follows signed disposition facts, never residual destination fields. */
-export function cosCareUnitFor(source:SignedReportClinicalSource,settings:CosConnectionSettings):string {
+function cosCareUnitFor(source:SignedReportClinicalSource,settings:CosConnectionSettings):string {
  if(cosEligibility(source.occurrences)==='nonTransport'){
   const unit=resolveCosCareUnit(settings,null);
   if(!unit?.trim())throw new CosFinding('ambulanceCareUnit');
@@ -47,6 +51,7 @@ export function cosIdentifierRequirements(source:SignedReportClinicalSource,p:Ca
  try{cosCareUnitFor(source,settings);}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
  if(!settings.organizationHsaId)missing.push('organization');
  if(!settings.encounterNamespace)missing.push('encounter');
+ if(!mapping.pdfLinkId)missing.push('pdfMapping');
  return {missing,patientField};
 }
 export function buildCosPayload(source:SignedReportClinicalSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
