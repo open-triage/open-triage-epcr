@@ -1,3 +1,4 @@
+import {epsSubmissionJourney} from './fixtures/eps-submission-journey.mjs';
 import {epsHistoryConfiguration} from './fixtures/eps-history-configuration.mjs';
 import {savepointDataSource} from "./fixtures/savepoint-data-source.mjs";
 import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
@@ -71,6 +72,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await assert.rejects(service.save(medicSession.sessionToken,body));await assert.rejects(service.save(token,body));
   view=await service.test(token,{expectedRevision:1});assert.equal(view.tests[0].publication,false);
   view=await service.activate(token,{expectedRevision:1,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});assert.equal(view.active.revision,1);
+  await epsSubmissionJourney({database,query,sessions,configuration:service,adminToken:token,otherToken:otherSession.sessionToken,body});
   await epsJourney({database,query,sessions,configuration:service,adminToken:token,otherToken:otherSession.sessionToken,body,historyFieldId});
   const activeHash=view.active.mapping.sha256;
   view=await service.save(token,{...body,expectedRevision:1,replacementSecret:undefined,patientIdentifier:{...body.patientIdentifier,field:alternative.field}});
@@ -108,15 +110,17 @@ integration('EPS real database and browser setup preserves tested revisions, can
    }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{code:'hospital.invalid'}));}
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const origin=`http://127.0.0.1:${server.address().port}`;browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844}});await context.addCookies([{name:'eps-session',value:'authorized',url:origin}]);const page=await context.newPage();
-  await page.goto(origin);await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').waitFor();assert.equal(await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').inputValue(),'ePatient.01');await page.getByLabel('Replacement team credential').fill('private-team-credential');await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').selectOption(alternative.id);await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();
-  await page.getByRole('status').waitFor();assert.equal((await service.get(token)).draft.revision,4);assert.equal((await service.get(token)).active.revision,1);
+  await page.goto(origin);await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').waitFor();assert.equal(await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').inputValue(),'ePatient.01');await page.getByRole('button',{name:'Add output mapping',exact:true}).click();await page.getByLabel('Signed source field').selectOption('eNarrative.01');await page.getByLabel('EPS section').selectOption('patientStory');await page.getByLabel('Replacement team credential').fill('private-team-credential');await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').selectOption(alternative.id);await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();
+  await page.getByRole('status').waitFor();assert.equal((await service.get(token)).draft.mapping.definition.outputMappings[0].source.elementId,'eNarrative.01');assert.equal((await service.get(token)).draft.revision,4);assert.equal((await service.get(token)).active.revision,1);
   await page.getByRole('button',{name:'Test read-only connection',exact:true}).click();await page.getByText('Connection verified',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Activate EPS',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Active revision: 4'));assert.equal((await service.get(token)).active.revision,4);
+  const mappedDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();const mappedPackage=JSON.parse(await readFile(await (await mappedDownload).path(),'utf8'));assert.equal(mappedPackage.definition.outputMappings[0].source.elementId,'eNarrative.01');
   const fileResponse=page.waitForResponse(response=>response.url().endsWith('/files'));await page.getByRole('button',{name:'Find saved mapping files',exact:true}).click();const fileResult=await fileResponse;assert.equal(fileResult.status(),200,await fileResult.text());await page.getByLabel('Saved mapping files',{exact:false}).selectOption(files[0].file);
   await page.getByRole('button',{name:'Import selected file as draft',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Draft revision: 5'));assert.equal((await service.get(token)).active.revision,4);
   assert.equal(await page.getByRole('button',{name:'Activate EPS',exact:true}).isDisabled(),true);
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();const artifact=await download;assert.ok(artifact.suggestedFilename().endsWith('.json'));
   assert.deepEqual(JSON.parse(await readFile(await artifact.path(),'utf8')),exported);
+  await page.getByLabel('Import mapping JSON file',{exact:false}).setInputFiles({name:'eps-output-roundtrip.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(mappedPackage))});await page.waitForFunction(()=>document.body.textContent.includes('Draft revision: 6'));assert.equal((await service.get(token)).draft.mapping.sha256,mappedPackage.sha256);await page.getByLabel('Signed source field').waitFor();assert.equal(await page.getByLabel('Signed source field').inputValue(),'eNarrative.01');
   await page.getByRole('button',{name:'COS',exact:true}).click();await page.getByText('Simulator tests run locally',{exact:false}).waitFor();
   await page.getByRole('button',{name:'EPS',exact:true}).click();await page.getByRole('button',{name:'Deactivate EPS',exact:true}).click();await page.getByRole('group',{name:'EPS configuration',exact:true}).locator('../..').getByText('Active revision: Inactive',{exact:false}).waitFor();assert.equal((await service.get(token)).active,null);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'mobile fields must fit');

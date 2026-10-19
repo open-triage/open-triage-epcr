@@ -1,3 +1,4 @@
+import { outputMappings } from './eps-output-mapping.js';
 import {clinicalMappings,importDestination} from './eps-import-mapping.js';
 import { UnprocessableEntityException } from '@nestjs/common';
 import { type ClinicalFormConfiguration, type HospitalField, type HospitalMappingDefinition, hospitalFieldId } from '@open-triage/contracts';
@@ -32,13 +33,14 @@ export function mappingPackage(input:unknown): CanonicalPackage & {definition:Ho
   keys(input,['format','schemaVersion','kind','name','version','catalog','definition','sha256']);
   const p=parsePackage(input,'hospital-mapping');
   keys(p.catalog,['sha256']);
-  const d=keys(p.definition,['schemaVersion','id','revision','authoredAt','author','profile','patientIdentifier','clinicalMappings']);
+  const d=keys(p.definition,['schemaVersion','id','revision','authoredAt','author','profile','patientIdentifier','clinicalMappings','outputMappings']);
   const profile=keys(d.profile,['package','version','fhirVersion']);
   if(d.schemaVersion!==1||typeof d.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(d.id)||!Number.isSafeInteger(d.revision)||Number(d.revision)<1||
     typeof d.author!=='string'||d.author.length>120||typeof d.authoredAt!=='string'||!Number.isFinite(Date.parse(d.authoredAt))||
     profile.package!=='hl7.fhir.eu.eps'||profile.version!=='1.0.0-ballot'||profile.fhirVersion!=='4.0.1'||p.version!==String(d.revision))return invalid();
   identifier(d.patientIdentifier);
   clinicalMappings(d.clinicalMappings);
+  outputMappings(d.outputMappings);
   return p as CanonicalPackage & {definition:HospitalMappingDefinition};
 }
 export function compileMapping(p:CanonicalPackage, form:ClinicalFormConfiguration) {
@@ -47,6 +49,7 @@ export function compileMapping(p:CanonicalPackage, form:ClinicalFormConfiguratio
   const options=identifierOptions(form);
   if(!options.some(option=>option.field.kind===selected.kind&&hospitalFieldId(option.field)===id))throw new UnprocessableEntityException({code:'hospital.fieldUnavailable'});
   for(const item of clinicalMappings(mapping.clinicalMappings)) { if(importDestination(item,form,mapping.patientIdentifier).finding)throw new UnprocessableEntityException({code:"hospital.clinicalIncompatible"}); }
+  outputMappings(mapping.outputMappings,form);
   return structuredClone(mapping.patientIdentifier);
 }
 export function identifierOptions(form:ClinicalFormConfiguration) {

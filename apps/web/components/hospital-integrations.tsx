@@ -1,7 +1,7 @@
 "use client";
 import {CosIntegrationsPanel} from './cos-integrations';
 import React,{useEffect,useState} from 'react';
-import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type EpsClinicalMapping,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
+import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type EpsOutputMapping,type EpsClinicalMapping,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
 import {resolveMessage} from '../app/localization';
 import {platformRequestError,PlatformRequestError} from '../app/platform-errors';
@@ -16,8 +16,8 @@ type View={groupName:string;stateRevision:number;draft:Version|null;active:Versi
  history:{revision:number;sha256:string;status:string;createdAt:string}[];
  events:{action:string;occurredAt:string;actorId:string}[]};
 type FileEntry={file:string;compatible:boolean;mapping:Mapping|null};
-const empty={endpoint:'https://hackathon2026.vadimperetok.in/fhir',field:DEFAULT_HOSPITAL_PATIENT_FIELD,namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:'',clinicalMappings:[] as EpsClinicalMapping[]};
-function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n'),clinicalMappings:value.mapping.definition.clinicalMappings??[]}:empty;}
+const empty={endpoint:'https://hackathon2026.vadimperetok.in/fhir',field:DEFAULT_HOSPITAL_PATIENT_FIELD,namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:'',clinicalMappings:[] as EpsClinicalMapping[],outputMappings:[] as EpsOutputMapping[]};
+function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n'),clinicalMappings:value.mapping.definition.clinicalMappings??[],outputMappings:value.mapping.definition.outputMappings??[]}:empty;}
 export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTab="eps"}:{initialTab?:"eps"|"cos";language:string;csrfToken:string;canWrite:boolean}){
  const t=(key:string)=>resolveMessage(language,`hospital.${key}`);
  const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[tab,setTab]=useState<string>(initialTab),[cosOpened,setCosOpened]=useState(initialTab==='cos'),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
@@ -55,7 +55,7 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
     <p>{t('active')}: {value.active?.revision??t('inactive')} — {t('draft')}: {value.draft?.revision??t('unsaved')}</p>
     <p>{t('connectivityHelp')}</p>
     {tested&&<p>{t('testRevision')}: {tested.revision} — {t(tested.result)} — {new Date(tested.createdAt).toLocaleString(language)}</p>}
-    <form onSubmit={event=>{event.preventDefault();void action('',{expectedRevision:expected.expectedRevision,endpoint:draft.endpoint,authentication:'team-token',clinicalMappings:draft.clinicalMappings,patientIdentifier:{field:draft.field,namespace:draft.namespace,aliases:draft.aliases.split(/\s+/).filter(Boolean)},...(secret?{replacementSecret:secret}:{})},'PUT');}}>
+    <form onSubmit={event=>{event.preventDefault();void action('',{expectedRevision:expected.expectedRevision,endpoint:draft.endpoint,authentication:'team-token',clinicalMappings:draft.clinicalMappings,outputMappings:draft.outputMappings,patientIdentifier:{field:draft.field,namespace:draft.namespace,aliases:draft.aliases.split(/\s+/).filter(Boolean)},...(secret?{replacementSecret:secret}:{})},'PUT');}}>
      <fieldset disabled={busy||!canWrite}><legend>{t('configuration')}</legend>
       <label>{t('endpoint')}<input type="url" required value={draft.endpoint} onChange={event=>setDraft({...draft,endpoint:event.target.value})}/></label>
       <label>{t('authentication')}<select value="team-token" onChange={()=>{}}><option value="team-token">{t('teamToken')}</option></select></label>
@@ -80,6 +80,14 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
        <button type="button" onClick={()=>{setBusy(true);void request('/inspect-mappings',{clinicalMappings:draft.clinicalMappings}).then(rows=>setMappingFindings({key:JSON.stringify(draft.clinicalMappings),rows})).catch(failed).finally(()=>setBusy(false));}}>{t('inspectMappings')}</button>
        {(mappingFindings.key===JSON.stringify(draft.clinicalMappings)?mappingFindings.rows:[]).map(f=><p key={f.id} role="status">{f.label}: {resolveMessage(language,`epsImport.${f.finding??'compatible'}`)}</p>)}
        <button type="button" onClick={()=>setDraft({...draft,clinicalMappings:[...draft.clinicalMappings,{id:crypto.randomUUID(),resourceType:'AllergyIntolerance',system:'http://snomed.info/sct',code:'',destination:value.clinicalOptions?.[0]?.field??DEFAULT_HOSPITAL_PATIENT_FIELD,representation:'coded'}]})}>{t('addMapping')}</button>
+      </fieldset>
+      <fieldset><legend>{t('outputMappings')}</legend><p>{t('outputHelp')}</p>
+       {draft.outputMappings.map((m,index)=><fieldset key={m.id}><legend>{index+1}</legend>
+        <label>{t('outputSource')}<select value={hospitalFieldId(m.source)} onChange={e=>{const source=value.clinicalOptions?.find(o=>o.id===e.target.value)?.field;if(source)setDraft({...draft,outputMappings:draft.outputMappings.map((v,i)=>i===index?{...v,source}:v)});}}>{value.clinicalOptions?.map(o=><option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}</select></label>
+        <label>{t('outputSection')}<select value={m.section} onChange={e=>setDraft({...draft,outputMappings:draft.outputMappings.map((v,i)=>i===index?{...v,section:e.target.value as EpsOutputMapping['section']}:v)})}>{['problems','allergies','medications','procedures','devices','patientStory','patientHistory'].map(section=><option key={section} value={section}>{t(`outputSections.${section}`)}</option>)}</select></label>
+        <button type="button" onClick={()=>setDraft({...draft,outputMappings:draft.outputMappings.filter((_,i)=>i!==index)})}>{t('removeMapping')}</button>
+       </fieldset>)}
+       <button type="button" onClick={()=>setDraft({...draft,outputMappings:[...draft.outputMappings,{id:crypto.randomUUID(),source:value.clinicalOptions?.[0]?.field??DEFAULT_HOSPITAL_PATIENT_FIELD,section:'patientStory',representation:'signed-narrative'}]})}>{t('addOutputMapping')}</button>
       </fieldset>
       <p>{t(value.draft?.credentialConfigured?'credentialConfigured':'credentialMissing')}</p>
       <label>{t('credential')}<input type="password" autoComplete="off" maxLength={4096} value={secret} onChange={event=>setSecret(event.target.value)}/></label>
