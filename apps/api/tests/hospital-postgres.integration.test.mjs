@@ -1,3 +1,4 @@
+import {savepointDataSource} from "./fixtures/savepoint-data-source.mjs";
 import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
 import {epsJourney} from './fixtures/eps-journey.mjs';
 import assert from 'node:assert/strict';
@@ -25,8 +26,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
  try{
   process.env.OPENTRIAGE_DEFINITIONS_ROOT=folder;process.env.OIDC_CREDENTIAL_KEYS_JSON=JSON.stringify({'1':randomBytes(32).toString('base64')});
   await client.query('begin');
-  const query=async(sql,args)=>(await client.query(sql,args)).rows;let sequence=0;
-  const manager={query};const database={query,manager,transaction:async(first,second)=>{const work=typeof first==='function'?first:second;const point=`eps_${++sequence}`;await client.query(`savepoint ${point}`);try{const result=await work(manager);await client.query(`release savepoint ${point}`);return result;}catch(error){await client.query(`rollback to savepoint ${point}`);throw error;}}};
+  const database=savepointDataSource(client),{query,manager}=database;
   const baseline=await hospitalFixtureBaseline(query);
   const [group]=await query('select app_identity.organization_group($1) id',[baseline.organization_id]);
   const accounts=new AccountService(database),sessions=new ClinicianSessionService(database),service=new HospitalService(database,sessions);
