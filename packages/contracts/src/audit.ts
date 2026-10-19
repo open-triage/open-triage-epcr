@@ -14,6 +14,7 @@ export type AuditTargetKind = "user" | "role" | "roleVersion" | "rolePackage" | 
 export type AuditTarget = { kind: AuditTargetKind; label: string | null; version?: number | null; occurredAt?: string };
 export type AuditOrganization = { id: string; name: string | null };
 export type AuditEntry = {
+  recovery?: {reportId:string; itemId:string; dataset:"real"|"synthetic"; amendmentSequence:number};
   // Permanent UUID; source tables may retain separate internal numeric keys.
   id: string; category: AuditCategory; source: string; occurredAt: string; actorId: string | null; action: string;
   actorUsername: string | null; actorDisplayName: string | null;

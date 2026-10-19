@@ -127,3 +127,29 @@ Documenting a corrected identifier and explicitly revalidating configuration
 are subsequent workflow slices; this condition does not mutate signed values or
 resend an uncertain delivery. Evidence contains no patient identifier value and
 expires with its report under the ordinary synthetic retention workflow.
+
+### Deliberate recovery from Review
+
+The first failed or uncertain delivery opens one stable **COS transmission failed**
+Review concern per report. It defaults to the shared queue; ordinary clinician,
+named-reviewer and shared routing, assignment and agency/dataset scope apply.
+A later failure reopens the same concern and keeps its prior evidence and attempts.
+Only confirmation of the latest delivery resolves it. Queueing and retry clicks
+keep it open, and generic Review completion is blocked in the API and database.
+
+The assigned reviewer with live report-relative identifying access can deliberately
+retry a definite `outage`. The command pins the item version, latest signed
+amendment, active configuration/state and immutable mapping. It records the manual
+actor and selected version. The same per-report advisory lock coordinates commands
+and workers; stale or duplicate clicks cannot make parallel attempts. The worker
+reuses the verified prepared Bundle/PDF/contact bytes and appends a new attempt.
+There is no automatic retry schedule in this slice.
+
+Payload, credential and identity findings require the indicated correction. An
+uncertain remote result blocks resend, including after process restart and newer
+amendments. Integration configuration changes require deliberate revalidation;
+retry never silently translates or changes the clinical payload or recipient.
+Audit event details and report status link to the authorized Review concern. They
+have no Retry control. Recovery evidence and commands expire with the report.
+This remains the explicit development simulator; actual Cambio acceptance is the
+separate ticket 024 gate.

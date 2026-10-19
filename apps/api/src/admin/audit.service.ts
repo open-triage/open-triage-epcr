@@ -15,7 +15,7 @@ function source(table: string, action: string, options: {
   outcome: string;
   time?: string; actor?: string; target?: string; targetKind?: string; organization?: string;
   join?: string; patient?: string; accessOrganization?: string; careProcess?: string; resource?: string; analytics?: string;
-  targetLabel?: string; inspection?: string;
+  targetLabel?: string; inspection?: string; recovery?: string;
   // Additional metadata UUIDs only: never index identifiers from protected payloads.
   searchIds?: string;
 }): string {
@@ -29,6 +29,7 @@ function source(table: string, action: string, options: {
     ${options.careProcess ?? "null"}::text care_process,
     ${options.resource ?? "null"}::uuid resource_id, ${options.analytics ?? "null"}::jsonb analytics,
     ${options.inspection ?? "null"}::jsonb inspection,
+    ${options.recovery ?? "null"}::jsonb recovery,
     ${options.searchIds ?? "'{}'::uuid[]"}::uuid[] search_ids
     from ${table} e ${options.join ?? ""}
     where ${options.organization ?? "e.organization_id"} = $1`;
@@ -75,7 +76,12 @@ export const auditSources: Record<AuditCategory, string[]> = {
       when 'key_expired' then 'expired' when 'policy_shortened' then 'applied' end` }),
     source("offline_recovery.key_lifecycle_event", "e.event_type", { actor: "e.actor_user_id", target: "e.report_id", outcome: "e.outcome" }),
     source("offline_recovery.report_recovery_event", "e.action", { actor: "e.user_id", target: "e.report_id", outcome: "e.outcome" })],
-  review: [source("clinical.review_assignment_history", "e.action", { time: "e.assigned_at", target: "e.item_id",
+  review: [source("clinical.cos_recovery_command", "'cos.manual-retry'", {time:"e.created_at",target:"e.item_id",outcome:"'queued'",
+    join:"join clinical.report r on r.id=e.report_id",organization:"r.organization_id",
+    recovery:"jsonb_build_object('reportId',e.report_id,'itemId',e.item_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'amendmentSequence',e.amendment_sequence)"}),
+    source("clinical.cos_delivery_event", "'cos.delivery'", {time:"e.created_at",actor:"coalesce(e.actor_id,c.actor_id)",target:"i.id",outcome:"e.state",
+      join:"join clinical.report r on r.id=e.report_id join clinical.cos_delivery d on d.id=e.delivery_id join clinical.review_item i on i.report_id=r.id and i.kind='cos-delivery-failed' left join clinical.cos_attempt a on a.id=e.attempt_id left join clinical.cos_recovery_command c on c.id=a.recovery_command_id",organization:"r.organization_id",
+      recovery:"jsonb_build_object('reportId',e.report_id,'itemId',i.id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'amendmentSequence',d.amendment_sequence)"}),source("clinical.review_assignment_history", "e.action", { time: "e.assigned_at", target: "e.item_id",
     outcome: "case when e.assignee_id is null then 'unassigned' else 'assigned' end" }),
     source("clinical.review_overdue_history", "e.action", { time: "e.recorded_at", target: "e.item_id",
       outcome: `case e.action when 'detected' then 'opened' when 'resolved-by-signing' then 'resolved'
@@ -189,7 +195,7 @@ export class AuditService {
       type Row = { category: AuditCategory; source: string; event_id: string; occurred_at: Date | string; cursor_time: string;
         actor_id: string | null; action: string; target_id: string | null; target_kind: AuditTargetKind; target_label: string | null; outcome: string | null;
         patient_id: string | null; access_organization_id: string | null; care_process: string | null;
-        resource_id: string | null; analytics: AuditEntry["analytics"]; inspection: AuditEntry["inspection"] };
+        resource_id: string | null; analytics: AuditEntry["analytics"]; inspection: AuditEntry["inspection"]; recovery: AuditEntry["recovery"] };
       // Counts and rows share every scope/filter predicate. Retain the first page's
       // upper time bound so subsequent inspection events do not move the page total.
       const snapshot = "least($3::timestamptz, coalesce($10::timestamptz, statement_timestamp()), statement_timestamp())";
@@ -259,6 +265,7 @@ export class AuditService {
         accessOrganizationName: organizations.get(row.access_organization_id ?? "")?.name ?? null,
         resourceId: row.resource_id,
         inspection: row.inspection,
+        ...(row.recovery ? {recovery:row.recovery} : {}),
         resource: row.resource_id ? targets.get(`${auditResourceKind(row.action)}:${row.resource_id}`) ?? {
           kind: auditResourceKind(row.action), label: null,
         } : null,

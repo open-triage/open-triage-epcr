@@ -1,3 +1,4 @@
+import { reconcileCosFailure } from './cos-recovery-review.js';
 import { mutationRows } from '../database/mutation-result.js';
 import type { EntityManager } from 'typeorm';
 import { cosMappingPackage } from './cos-configuration.js';
@@ -24,4 +25,5 @@ export async function queueSignedCos(manager:EntityManager,reportId:string,snaps
   for(const old of obsolete)await manager.query(`insert into clinical.cos_delivery_event(delivery_id,report_id,actor_id,state,evidence) values($1,$2,$3,'superseded',$4::jsonb)`,[old.id,reportId,actorId,JSON.stringify({newerDeliveryId:rows[0].id})]);
  }
  if(rows[0])await manager.query(`insert into clinical.cos_delivery_event(delivery_id,report_id,actor_id,state) values($1,$2,$3,'pending')`,[rows[0].id,reportId,actorId]);
+ if(rows[0])await reconcileCosFailure(manager,reportId);
 }

@@ -258,8 +258,8 @@ test("only review administrators can inspect processing failures", async () => {
   assert.deepEqual((await service.backlog("token")).work, []);
 });
 
-for (const kind of ["clinical", "overdue", "transmission"]) test(`Review ${kind} routing is admin-only, versioned, replay-safe, and validates named reviewers`, async () => {
-  const criterionId = kind === "clinical" ? "123e4567-e89b-42d3-a456-426614174021" : kind === "overdue" ? "123e4567-e89b-42d3-a456-426614174099" : "123e4567-e89b-42d3-a456-426614174098";
+for (const kind of ["clinical", "overdue", "transmission", "delivery-failure"]) test(`Review ${kind} routing is admin-only, versioned, replay-safe, and validates named reviewers`, async () => {
+  const criterionId = kind === "clinical" ? "123e4567-e89b-42d3-a456-426614174021" : kind === "overdue" ? "123e4567-e89b-42d3-a456-426614174099" : kind === "transmission" ? "123e4567-e89b-42d3-a456-426614174098" : "123e4567-e89b-42d3-a456-426614174097";
   const namedId = "123e4567-e89b-42d3-a456-426614174022";
   let current = session(["review:all"]);
   let eligible = true;
@@ -268,7 +268,7 @@ for (const kind of ["clinical", "overdue", "transmission"]) test(`Review ${kind}
   const manager = { async query(sql, params) {
     if (sql.includes("from app_identity.organization")) return [{ id: params[0] }];
     if (sql.includes("from validation.version v")) return kind === "clinical" ? [{ id: "published" }] : [];
-    if (sql.includes("review_cos_criterion_id")) return [{id:"123e4567-e89b-42d3-a456-426614174098"}];
+    if (sql.includes("review_cos_criterion_id")) { assert.match(sql,/delivery-failure/); return [{id:"123e4567-e89b-42d3-a456-426614174098"},{id:"123e4567-e89b-42d3-a456-426614174097"}]; }
     if (sql.includes("insert into validation.rule_identity")) {assert.notEqual(kind,"clinical");assert.equal(params[0],criterionId);return [];}
     if (sql.includes("review_overdue_criterion_id")) return [{ id: "123e4567-e89b-42d3-a456-426614174099" }];
     if (sql.includes("insert into clinical.review_criterion_route (")) return [];

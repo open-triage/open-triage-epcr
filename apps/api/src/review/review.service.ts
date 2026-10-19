@@ -1,3 +1,5 @@
+import { retryCosReview } from '../hospital/cos-retry.js';
+import type { RetryCosReviewCommand } from '@open-triage/contracts';
 import { renderSignedReportPdf, SignedPdfError, type PdfLanguage } from "../reports/signed-report-pdf.js";
 import { signedReportPdfSource } from "../reports/signed-report-pdf.persistence.js";
 import { recordPatientAccess } from "../reports/patient-access-audit.js";
@@ -1134,7 +1136,7 @@ export class ReviewService implements OnModuleDestroy {
       [id, scope.organizationId]);
       const [cos] = await manager.query<Array<{state:string;finding:string|null;paused:boolean;updated_at:Date;configuration_revision:string;mapping_revision:number}>>(`select d.state,d.finding,s.active_revision is null paused,d.updated_at,d.configuration_revision,d.mapping_revision from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id where d.report_id=$1 and d.organization_id=$2 order by d.created_at desc,d.id desc limit 1`,[id,scope.organizationId]);
       return { ...await this.formView(manager, id, report.form_version_id, report.catalog_release_id, values, identifying, true),
-        cosDelivery:cos?{simulated:true,state:cos.state,finding:cos.finding,paused:cos.paused,updatedAt:cos.updated_at.toISOString(),configurationRevision:Number(cos.configuration_revision),mappingRevision:cos.mapping_revision}:null,
+        cosDelivery:cos?{...(reviewItems.find(item=>item.kind==='cos-delivery-failed')?{reviewItemId:reviewItems.find(item=>item.kind==='cos-delivery-failed')!.id}:{}),simulated:true,state:cos.state,finding:cos.finding,paused:cos.paused,updatedAt:cos.updated_at.toISOString(),configurationRevision:Number(cos.configuration_revision),mappingRevision:cos.mapping_revision}:null,
         id, signedSnapshotId: report.signed_snapshot_id, signedRevision: Number(report.signed_revision),
         reportingDate: report.reporting_date, signedAt: new Date(report.signed_at).toISOString(),
         amendmentSequence: changes.at(-1)?.sequence ?? 0, identifying,
@@ -1215,7 +1217,7 @@ export class ReviewService implements OnModuleDestroy {
           and i.status<>'completed')::text unavailable_assignees
       from clinical.review_item i join clinical.report r on r.id=i.report_id
       where i.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
-        and ((i.kind in ('criterion','missing-transmission-identifiers') and r.status='signed') or i.kind='overdue-unsigned')
+        and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed') and r.status='signed') or i.kind='overdue-unsigned')
         and ($3::boolean or r.documenting_user_id=$4)`, parameters);
     const summary: ReviewAttentionResponse = { dataset, asOf: new Date().toISOString(),
       total: Number(counts?.total ?? 0),
@@ -1277,7 +1279,7 @@ export class ReviewService implements OnModuleDestroy {
       filters.from ?? null, filters.to ?? null, filters.search?.trim() || null];
     const assignmentWhere = filters.assignment === "mine" ? "and i.assignee_id=$4" : filters.assignment === "unassigned" ? "and i.assignee_id is null" : "";
     const where = `i.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
-      and ((i.kind in ('criterion','missing-transmission-identifiers') and r.status='signed') or i.kind='overdue-unsigned')
+      and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed') and r.status='signed') or i.kind='overdue-unsigned')
       and ($3::boolean or r.documenting_user_id=$4)
       and ($5::uuid is null or i.criterion_id=$5) and ($6::text is null or i.priority=$6)
       and ($7::text is null or ($7='incomplete' and i.status<>'completed') or i.status=$7)
@@ -1393,7 +1395,7 @@ export class ReviewService implements OnModuleDestroy {
       left join clinical.review_outcome_revision outcome
         on outcome.option_id=i.outcome_option_id and outcome.revision=i.outcome_revision
       where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
-        and r.synthetic=$3 and ((i.kind in ('criterion','missing-transmission-identifiers') and r.status='signed')
+        and r.synthetic=$3 and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed') and r.status='signed')
           or i.kind='overdue-unsigned') and ($4::boolean or r.documenting_user_id=$5)`,
     [id, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
     const row = rows[0];
@@ -1415,7 +1417,7 @@ export class ReviewService implements OnModuleDestroy {
       from clinical.review_progress_history h left join clinical.review_outcome_revision o
         on o.option_id=h.outcome_option_id and o.revision=h.outcome_revision
       where h.item_id=$1 and h.organization_id=$2 order by h.item_version`, [id, scope.organizationId]);
-    const transmissionHistory = row.kind === "missing-transmission-identifiers" && identifying ?
+    const transmissionHistory = ["missing-transmission-identifiers","cos-delivery-failed"].includes(row.kind ?? "") && identifying ?
       await this.database.query<Array<{item_version:string;active:boolean;recorded_at:Date|string;evidence:NonNullable<ReviewItemDetail["transmission"]>}>>(
         'select item_version,active,recorded_at,evidence from clinical.review_transmission_history where item_id=$1 and organization_id=$2 order by item_version', [id,scope.organizationId]) : [];
     const overdueHistory = row.kind === "overdue-unsigned" ? await this.database.query<Array<{
@@ -1443,6 +1445,13 @@ export class ReviewService implements OnModuleDestroy {
       where decision.organization_id=$1 and decision.item_id=$2
       order by decision.amendment_sequence,decision.recorded_at,decision.id`,
     [scope.organizationId, id]);
+    if(row.kind==='cos-delivery-failed'&&identifying&&transmissionHistory.length){
+      const evidence=transmissionHistory.at(-1)!.evidence;
+      const [live]=await this.database.query<Array<{state:string;finding:string|null;state_revision:string;active_revision:string|null}>>(`select d.state,d.finding,s.state_revision,s.active_revision from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id where d.id=$1 and d.report_id=$2`,[evidence.deliveryId,row.report_id]);
+      if(live){evidence.deliveryState=live.state;evidence.finding=live.finding;evidence.stateRevision=Number(live.state_revision);evidence.retryable=live.state==='failed'&&live.finding==='outage'&&Number(live.active_revision)===Number(evidence.configurationRevision);}
+      const commands=await this.database.query<Array<{id:string;actor_id:string;delivery_id:string;amendment_sequence:number;created_at:Date;state:string}>>(`select c.*,coalesce((select e.state from clinical.cos_attempt a join clinical.cos_delivery_event e on e.attempt_id=a.id where a.recovery_command_id=c.id order by e.created_at desc,e.id desc limit 1),d.state) state from clinical.cos_recovery_command c join clinical.cos_delivery d on d.id=c.delivery_id where c.item_id=$1 order by c.created_at,c.id`,[id]);
+      evidence.recoveryCommands=commands.map(c=>({id:c.id,actorId:c.actor_id,deliveryId:c.delivery_id,amendmentSequence:c.amendment_sequence,requestedAt:c.created_at.toISOString(),outcome:c.state}));
+    }
     const detailTargets = [...new Set([...(row.findings ?? []), ...decisions.flatMap((decision) => decision.findings)]
       .flatMap((finding) => [finding.primaryTarget.elementId, ...(finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)]))];
     const detailVisibility = identifying || !detailTargets.length ? [] :
@@ -1487,7 +1496,7 @@ export class ReviewService implements OnModuleDestroy {
       })), progressHistory: progress.map((event) => ({ commandId: event.command_id,
         actorId: event.actor_id, itemVersion: Number(event.item_version), status: event.status,
         outcome: reviewOutcome(event), reason: event.reason, evaluationId: event.evaluation_id, recordedAt: new Date(event.recorded_at).toISOString() })),
-      ...(row.kind === "missing-transmission-identifiers" ? {
+      ...(["missing-transmission-identifiers","cos-delivery-failed"].includes(row.kind ?? "") ? {
         transmissionRestricted: !identifying,
         ...(transmissionHistory.length ? {transmission: transmissionHistory.at(-1)!.evidence} : {}),
         transmissionHistory: transmissionHistory.map(event=>({itemVersion:Number(event.item_version),active:event.active,
@@ -1686,7 +1695,7 @@ export class ReviewService implements OnModuleDestroy {
       from (select criterion_id,name,null::text transmission_reason from published union all
         select clinical.review_overdue_criterion_id($1::uuid),'Overdue unsigned draft'::text,null::text union all
         select clinical.review_cos_criterion_id($1::uuid,reason),reason,reason
-        from unnest(array['patient-identity','integration-mapping']) reason) p
+        from unnest(array['patient-identity','integration-mapping','delivery-failure']) reason) p
       left join clinical.review_criterion_route route
         on route.organization_id=$1 and route.criterion_id=p.criterion_id
       order by p.name,p.criterion_id`, [scope.organizationId]);
@@ -1798,7 +1807,7 @@ export class ReviewService implements OnModuleDestroy {
       [scope.organizationId, criterionId]);
       const systemId = (await manager.query<Array<{ id: string }>>(`
         select clinical.review_overdue_criterion_id($1::uuid) id`, [scope.organizationId]))[0]!.id;
-      const systemCosIds = await manager.query<Array<{id:string}>>(`select clinical.review_cos_criterion_id($1,reason) id from unnest(array['patient-identity','integration-mapping']) reason`,[scope.organizationId]);
+      const systemCosIds = await manager.query<Array<{id:string}>>(`select clinical.review_cos_criterion_id($1,reason) id from unnest(array['patient-identity','integration-mapping','delivery-failure']) reason`,[scope.organizationId]);
       const builtIn = criterionId === systemId || systemCosIds.some(row=>row.id===criterionId);
       if (!exists[0] && !builtIn)
         throw new NotFoundException("Published Review criterion was not found");
@@ -2049,6 +2058,11 @@ export class ReviewService implements OnModuleDestroy {
     return this.item(token, id, command.dataset);
   }
 
+  async retryCos(token:string,id:string,command:RetryCosReviewCommand,csrfToken?:string):Promise<ReviewItemDetail>{
+    await retryCosReview(this.database,this.sessions,token,id,command,csrfToken);
+    return this.item(token,id,command.dataset);
+  }
+
   async progress(token: string, id: string, command: ReviewProgressCommand,
     csrfToken?: string): Promise<ReviewItemDetail> {
     const validUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -2079,7 +2093,7 @@ export class ReviewService implements OnModuleDestroy {
         scope.reports === "all", scope.userId]);
       const item = rows[0];
       if (!item) throw new NotFoundException("Review item was not found in scope");
-      if (item.kind === "missing-transmission-identifiers") {
+      if (["missing-transmission-identifiers","cos-delivery-failed"].includes(item.kind)) {
         if (!reviewIdentifying(scope,item.documenting_user_id)) throw new ForbiddenException("Identifying report access is required");
         if (command.status === "completed") throw new ConflictException("Transmission requirements must be resolved through the technical workflow");
       }
