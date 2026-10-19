@@ -1,3 +1,4 @@
+import {epsHistoryConfiguration} from './fixtures/eps-history-configuration.mjs';
 import {savepointDataSource} from "./fixtures/savepoint-data-source.mjs";
 import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
 import {epsJourney} from './fixtures/eps-journey.mjs';
@@ -48,6 +49,8 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await validations.activate(token,validation.id,{formVersionId:versionId,catalogReleaseId:baseline.catalog_release_id,changeNote:'EPS populated configuration fixture'});
   assert.equal((await query('select form_version_id from app_identity.active_configuration_bundle where organization_id=$1',[group.id]))[0].form_version_id,versionId);
 
+  const {historyFieldId}=await epsHistoryConfiguration({database,query,sessions,token,organizationId:group.id,authorId:admin.userId,definition});
+
   const foreignId=randomUUID();await query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Other EPS group',$2,'UTC')",[foreignId,`eps-${foreignId}.example.org`]);
   const other=await accounts.provision({organizationId:foreignId,username:`other-${username}`,displayName:'Other admin',role:'administrator',temporaryPassword:password});
   await query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[other.userId]);
@@ -68,7 +71,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await assert.rejects(service.save(medicSession.sessionToken,body));await assert.rejects(service.save(token,body));
   view=await service.test(token,{expectedRevision:1});assert.equal(view.tests[0].publication,false);
   view=await service.activate(token,{expectedRevision:1,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});assert.equal(view.active.revision,1);
-  await epsJourney({database,query,sessions,configuration:service,adminToken:token,otherToken:otherSession.sessionToken,body});
+  await epsJourney({database,query,sessions,configuration:service,adminToken:token,otherToken:otherSession.sessionToken,body,historyFieldId});
   const activeHash=view.active.mapping.sha256;
   view=await service.save(token,{...body,expectedRevision:1,replacementSecret:undefined,patientIdentifier:{...body.patientIdentifier,field:alternative.field}});
   assert.equal(view.active.mapping.sha256,activeHash);assert.equal(view.draft.mapping.definition.patientIdentifier.field.kind,alternative.field.kind);
