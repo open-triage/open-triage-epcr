@@ -6,7 +6,7 @@ import { generateDocument, randomFromSeed, validationProblems } from '@open-tria
 
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 
-function installedFixture() {
+function installedFixture(patientIndex = 0) {
   const catalog = read('../defines/catalog/catalog_nemsis-3.5.1.json');
   const validation = read('../defines/validation/validation_nemsis-full.json');
   const codes = catalog.elements.flatMap(element => [
@@ -41,6 +41,11 @@ function installedFixture() {
     groups: catalog.groups.map(group => ({ id: group.id, parent: group.parentId })),
   };
   const source = read('../apps/web/app/data/synthetic-encounter-document.json');
+  if (patientIndex) {
+    const dispatch = read('../packages/contracts/examples/dispatch/synthetic-assignment-02.json');
+    source.groups = source.groups.filter(group => !group.id.startsWith('ePatient'))
+      .concat(dispatch.groups.filter(group => group.id.startsWith('ePatient')));
+  }
   // Opening a dispatch assigns its report number on the server before Populate.
   source.groups.push({ id: 'eRecordSection', instances: [{ instanceId: 'server-record',
     parentInstanceId: source.groups.find(group => group.id === 'PatientCareReportGroup').instances[0].instanceId,
@@ -71,3 +76,45 @@ for (const preserveExisting of [true, false]) {
     }
   });
 }
+
+const patientValue = (document, id) => document.groups.flatMap(group => group.instances.flatMap(instance => instance.elements))
+  .find(element => element.id === id)?.values[0];
+for (const [index, name] of ['andrea', 'arne'].entries()) {
+  for (const preserveExisting of [false, true]) {
+    test(`${name}: ${preserveExisting ? 'Populate' : 'CLI'} retains the service identity and derives coherent age`, () => {
+      const patient = read(`../packages/contracts/examples/hospital/${name}-patient.json`);
+      const input = installedFixture(index);
+      for (const seed of [1, 17, 49]) {
+        const { document } = generateDocument({ ...input, preserveExisting, random: randomFromSeed(seed) });
+        assert.equal(patientValue(document, 'ePatient.01').value, patient.identifier[0].value);
+        assert.equal(patientValue(document, 'ePatient.02').value, patient.name[0].family);
+        assert.equal(patientValue(document, 'ePatient.03').value, patient.name[0].given[0]);
+        assert.equal(patientValue(document, 'ePatient.04')?.value, patient.name[0].given[1]);
+        assert.equal(patientValue(document, 'ePatient.17').value, patient.birthDate);
+        assert.equal(patientValue(document, 'ePatient.18').value, patient.telecom.find(item => item.system === 'phone').value);
+        const home = patient.address.find(address => address.use === 'home');
+        assert.equal(patientValue(document, 'ePatient.05').value, home.line[0]);
+        assert.equal(patientValue(document, 'ePatient.09').value, home.postalCode.replaceAll(' ', ''));
+        for (const id of ['ePatient.06', 'ePatient.07', 'ePatient.08', 'ePatient.10']) {
+          assert.ok(!patientValue(document, id) || patientValue(document, id).kind === 'null', `${id} must not invent a US locality`);
+        }
+        assert.equal(patientValue(document, 'ePatient.25').code, patient.gender === 'female' ? '9919001' : '9919003');
+        assert.equal(patientValue(document, 'ePatient.15').value, index ? 83 : 24);
+        assert.equal(patientValue(document, 'ePatient.16').code, '2516009');
+        assert.deepEqual(validationProblems(input.bundle, document, input.now.toISOString()), []);
+        assert.equal(document.encounter.synthetic, true);
+      }
+    });
+  }
+}
+
+test('a documented care disposition incompatible with absent locality fails without inventing demographics or changing care', () => {
+  const input = installedFixture();
+  input.source.groups.push({ id: 'eDispositionSection', instances: [{ instanceId: 'documented-disposition', elements: [
+    { id: 'eDisposition.28', values: [{ kind: 'coded', occurrenceId: 'documented-care', code: '4228001' }] },
+  ] }] });
+  const original = structuredClone(input.source);
+  assert.throws(() => generateDocument({ ...input, preserveExisting: true, maxPasses: 2, random: randomFromSeed(1) }),
+    /Could not satisfy active validation.*Home County/);
+  assert.deepEqual(input.source, original);
+});

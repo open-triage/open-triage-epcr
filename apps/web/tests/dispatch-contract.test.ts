@@ -189,13 +189,19 @@ test("synthetic dispatch lifecycle validates against the strict envelope and pin
   assert.ok(findElement(cancellation, "eTimes.14"), "cancellation must include eTimes.14");
 
   const assignmentIds = identities(assignment);
-  for (const later of messages.slice(1)) {
+  for (const later of messages.filter(message => message.sourceRecordId === assignment.sourceRecordId)) {
     const laterIds = identities(later);
     for (const id of assignmentIds.instances) assert.ok(laterIds.instances.has(id), `group identity ${id} must remain stable`);
     for (const id of assignmentIds.occurrences) assert.ok(laterIds.occurrences.has(id), `occurrence identity ${id} must remain stable`);
   }
 
-  const phones = findElement(assignment, "ePatient.18")!.values;
+  for (const later of messages.filter(message => message.sourceRecordId === assignment.sourceRecordId)) {
+    for (const id of ["ePatient.01", "ePatient.02", "ePatient.03", "ePatient.05", "ePatient.09", "ePatient.17", "ePatient.18", "ePatient.19", "ePatient.25"]) {
+      assert.deepEqual(findElement(later, id), findElement(assignment, id), `${id} must retain the same patient throughout dispatch updates`);
+    }
+  }
+
+  const phones = findElement(await json(examplePaths[2]!) as DispatchMessage, "ePatient.18")!.values;
   assert.equal(phones.length, 2, "assignment demonstrates repeated telephone values");
   assert.deepEqual(phones.map(({ attributes }) => attributes?.PhoneNumberType), ["9913003", "9913005"]);
 });

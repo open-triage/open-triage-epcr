@@ -154,6 +154,12 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
   function makeValue(id, literal) {
     const spec = metadata.get(id);
     if (!spec) throw new Error(`Cannot generate ${id}: not in the clinical catalog`);
+    if (patientField(id)) {
+      const absent = spec.definition.permittedNotValues ?? [];
+      const notValue = absent.find(value => value.code === '7701003') ?? absent[0];
+      if (!notValue) throw new Error(`Cannot generate ${id}: dispatch patient demographics are unavailable`);
+      return { kind: 'null', occurrenceId: createId(), notValue: { code: notValue.code }, attributes: attributes() };
+    }
     const candidates = choices(id);
     const coded = spec.definition.valueSource?.kind !== 'scalar' || spec.choices !== undefined;
     if (coded) {
@@ -178,8 +184,25 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       ...(spec.base === 'dateTime' ? { precision: 'second', utcOffsetMinutes: 0 } : {}),
       attributes: { ...attributes(), ...(id === 'eVitals.16' ? { ETCO2Type: '3340001' } : {}) } };
   }
+  // A dispatch patient is one identity, not independent random fields. Keep the
+  // supplied demographics together for CLI generation as well as Populate. Missing
+  // identity data stays undocumented rather than inventing another person's data.
+  const patientIdentity = values('ePatient.01').some(value => ordinary(value));
+  const patientField = id => patientIdentity
+    && id.startsWith('ePatient.') && !['ePatient.15', 'ePatient.16'].includes(id);
   function set(id, literal, count = 1) {
+    if (patientField(id) && values(id).length) return;
     if (id === 'eRecord.01' || protectedElements.has(id)) return;
+    if (patientIdentity && ['ePatient.15', 'ePatient.16'].includes(id)) {
+      const birthDate = ordinary(values('ePatient.17')[0]);
+      const birth = new Date(String(birthDate ?? ''));
+      const at = new Date(dispatchedAt);
+      if (!Number.isFinite(+birth) || !Number.isFinite(+at) || birth > at) { remove(id); return; }
+      const years = at.getUTCFullYear() - birth.getUTCFullYear()
+        - (at.toISOString().slice(5, 10) < birth.toISOString().slice(5, 10) ? 1 : 0);
+      const age = years < 1 ? Math.floor((at - birth) / 86400000) : years;
+      literal = id === 'ePatient.15' ? age : years < 1 ? '2516001' : '2516009';
+    }
     const spec = metadata.get(id);
     if (!spec) throw new Error(`Rule references unavailable clinical field ${id}`);
     if (count > 100 || spec.maximum !== null && count > spec.maximum) throw new Error(`Impossible occurrence count for ${id}: ${count}`);
@@ -190,6 +213,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       occurrenceId: element.values[index]?.occurrenceId ?? createId(`occurrence:${id}:${instance.instanceId}:${index}`) }));
   }
   function remove(id) {
+    if (patientField(id)) return;
     if (id === 'eRecord.01' || protectedElements.has(id)) return;
     for (const group of document.groups) for (const instance of group.instances) {
       instance.elements = instance.elements.filter(element => element.id !== id);
@@ -202,6 +226,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     const id = fieldId(field);
     if (!metadata.has(id) || identity.has(id)) continue;
     const spec = metadata.get(id);
+    if (patientField(id) && !values(id).length && !spec.definition.permittedNotValues?.length) continue;
     if (spec.definition.valueSource?.kind !== 'scalar' && !choices(id).length &&
       !spec.definition.permittedNotValues?.length && !spec.definition.permittedPertinentNegatives?.length &&
       !field.required && !spec.minimum) { remove(id); continue; }
@@ -267,6 +292,11 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         let comparison = expression.comparison;
         if (!want) comparison = ({ equal: 'not-equal', 'not-equal': 'equal', 'less-than': 'greater-or-equal',
           'less-or-equal': 'greater-than', 'greater-than': 'less-or-equal', 'greater-or-equal': 'less-than' })[comparison];
+        if (comparison === 'not-equal' && choices(target).length) {
+          const alternatives = choices(target).filter(choice => String(choice.code) !== String(reference));
+          if (alternatives.length) set(target, pick(alternatives, random).code);
+          break;
+        }
         const adjustment = ({ 'less-than': -1, 'greater-than': 1, 'not-equal': 1 })[comparison] ?? 0;
         set(target, typeof reference === 'number' ? reference + adjustment : reference); break;
       }

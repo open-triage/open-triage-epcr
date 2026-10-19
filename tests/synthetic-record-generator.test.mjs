@@ -206,3 +206,33 @@ test('prefix repair respects form choice policies on both related fields', () =>
   ];
   assert.throws(() => generateDocument({ ...input, random: () => 0.1, maxPasses: 3 }), /Could not satisfy active validation.*county-state/);
 });
+
+test('dispatch birth dates derive ages in years or days and missing/invalid dates never produce random ages', () => {
+  for (const [birthDate, age, unit] of [['2002-07-25', 24, '2516009'], ['2026-09-10', 5, '2516001'],
+    [undefined, undefined, undefined], ['invalid', undefined, undefined], ['2027-01-01', undefined, undefined]]) {
+    const input = fixture();
+    input.source.groups.push({ id: 'PatientCareReportGroup', instances: [{ instanceId: 'patient', elements: [
+      { id: 'ePatient.01', values: [{ kind: 'scalar', occurrenceId: 'identity', value: 'fictional' }] },
+      ...(birthDate ? [{ id: 'ePatient.17', values: [{ kind: 'scalar', occurrenceId: 'birth', value: birthDate }] }] : []),
+    ] }] });
+    for (const id of ['ePatient.15', 'ePatient.16']) {
+      input.configuration.definition.sections[0].fields.push({ key: id, source: { kind: 'nemsis', elementId: id } });
+      input.model.elements.push({ id, base: id.endsWith('15') ? 'integer' : 'string', path: ['PatientCareReportGroup'],
+        minimum: 0, maximum: 1, definition: { datatype: { constraints: {} }, valueSource: { kind: id.endsWith('15') ? 'scalar' : 'inline-enumerated' } } });
+    }
+    input.configuration.catalogFields['ePatient.16'] = { codeChoices: ['2516001', '2516009'].map(code => ({ code, label: code })) };
+    const { document } = generateDocument({ ...input, random: seededRandom('age') });
+    const elements = document.groups.flatMap(group => group.instances.flatMap(instance => instance.elements));
+    assert.equal(elements.find(element => element.id === 'ePatient.15')?.values[0]?.value, age);
+    assert.equal(elements.find(element => element.id === 'ePatient.16')?.values[0]?.code, unit);
+  }
+});
+
+test('coded not-equal repair chooses a permitted alternative instead of the forbidden code', () => {
+  const input = fixture(['require compareValue("eSituation.02", "not-equal", "B")']);
+  for (const seed of ['first', 'second', 'third']) {
+    const { document } = generateDocument({ ...input, random: seededRandom(seed) });
+    assert.equal(value(document, 'eSituation.02').code, 'C');
+    assert.deepEqual(validationProblems(input.bundle, document, input.now.toISOString()), []);
+  }
+});

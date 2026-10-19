@@ -184,7 +184,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-patient-id",
-                      "value": "SYNTHETIC-PATIENT-0001"
+                      "value": "200207252388"
                     }
                   ]
                 },
@@ -194,28 +194,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-patient-dob",
-                      "value": "1980-01-01"
-                    }
-                  ]
-                },
-                {
-                  "id": "ePatient.18",
-                  "values": [
-                    {
-                      "kind": "scalar",
-                      "occurrenceId": "synthetic-phone-home",
-                      "value": "212-555-0101",
-                      "attributes": {
-                        "PhoneNumberType": "9913003"
-                      }
-                    },
-                    {
-                      "kind": "scalar",
-                      "occurrenceId": "synthetic-phone-mobile",
-                      "value": "212-555-0102",
-                      "attributes": {
-                        "PhoneNumberType": "9913005"
-                      }
+                      "value": "2002-07-25"
                     }
                   ]
                 },
@@ -225,8 +204,51 @@
                     {
                       "kind": "coded",
                       "occurrenceId": "synthetic-patient-sex",
-                      "code": "9919005",
-                      "display": "Unknown"
+                      "code": "9919001",
+                      "display": "Female"
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.18",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-phone-mobile",
+                      "value": "+46 70 000 00 01",
+                      "attributes": {
+                        "PhoneNumberType": "9913005"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.05",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-ePatient.05",
+                      "value": "Lärkstigen 12"
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.09",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-ePatient.09",
+                      "value": "75311"
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.19",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-ePatient.19",
+                      "value": "andrea.lindqvist@example.org"
                     }
                   ]
                 }
@@ -247,7 +269,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-patient-last-name",
-                      "value": "SYNTHETIC-01"
+                      "value": "Lindqvist"
                     }
                   ]
                 },
@@ -257,7 +279,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-patient-first-name",
-                      "value": "PATIENT-01"
+                      "value": "Andrea"
                     }
                   ]
                 }
@@ -369,6 +391,6 @@
   "replacementAssignment": null,
   "generatedFrom": {
     "path": "packages/contracts/examples/dispatch/synthetic-assignment-01.json",
-    "sha256": "b4f19c04792b5bda578f9dcb2e6adb0e6d0f8403e5a95e3c6efbdf07609aed8a"
+    "sha256": "393f03404ef9f167959334454d5ad576b0a2ddaeaaf64eb8f1ce2ac84c552612"
   }
 }
