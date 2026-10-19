@@ -1,4 +1,5 @@
 "use client";
+import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
 import { participateInInstallationTransition,transitionInstallation, INSTALLATION_TRANSITION_KEY,INSTALLATION_TRANSITION_EVENT,INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
@@ -152,6 +153,7 @@ export function ClinicianSessionGate({ children }: {
   const logoutHeadingId = useId();
   const logoutDialog = useRef<HTMLElement>(null);
   const sessionBar = useRef<HTMLElement>(null);
+  const measureSessionBar = useMeasuredParentHeight(sessionBar, "--session-bar-height");
   const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
     setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
   }, [activeReport?.id]);
@@ -168,16 +170,6 @@ export function ClinicianSessionGate({ children }: {
     if (logoutWarning) logoutDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
   }, [logoutWarning]);
 
-  useEffect(() => {
-    const bar = sessionBar.current;
-    const shell = bar?.parentElement;
-    if (!bar || !shell) return;
-    const measure = () => shell.style.setProperty("--session-bar-height", `${bar.getBoundingClientRect().height}px`);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, [session, presentationMode]);
 
   useEffect(() => {
     const viewport = sessionBar.current?.querySelector<HTMLElement>(".presentation-selector-scroll");
@@ -577,7 +569,7 @@ export function ClinicianSessionGate({ children }: {
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
     <div className={`authenticated-shell ${presentationMode}-shell${presentationMode !== "mobile" ? " desktop-shell" : ""}`}>
-      <header ref={sessionBar} className="session-bar">
+      <header ref={measureSessionBar} className="session-bar">
         <LanguageSelector language={language} onChange={(selected) => {
           setPreferredLanguage(selected);
           try { window.localStorage.setItem("open-triage:ui-language", selected); } catch { /* Keep the session preference. */ }
