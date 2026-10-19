@@ -1,3 +1,4 @@
+import {catalogElements} from '../../dist/review/analytics-catalog.js';
 import {mkdtemp,rm} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -33,5 +34,9 @@ export async function epsMedicationJourney({database,query,sessions,configuratio
   assert.equal((await imports.plan(token,report.id,{binding:context.binding,entryId:'urn:uuid:medication-second'})).alreadyImported,true);
   const current=await drafts.get(token,report.id);const signed=await new SignReportService(database,sessions).sign(token,report.id,{commandId:randomUUID(),expectedRevision:current.revision,signerId:actor.user.id,attestation:{accepted:true}});
   const [snapshot]=await query('select integrity_manifest from clinical.signed_snapshot where id=$1',[signed.signedSnapshotId]);assert.match(JSON.stringify(snapshot.integrity_manifest),/history-product/);assert.match(JSON.stringify(snapshot.integrity_manifest),/C09AA02/);assert.match(JSON.stringify(snapshot.integrity_manifest),/2020-01-01/);
+  const reviewer=await sessions.get(adminToken);
+  const scope={organizationId:actor.organization.id,userId:reviewer.user.id,reports:'all',identifying:false,defaultDataset:'synthetic'};
+  assert.ok(!(await catalogElements({query},scope,undefined,false)).some(e=>e.id.startsWith(`custom:${historyFieldId}:`)),'other reviewer cannot discover identifying imported source text');
+  assert.ok((await catalogElements({query},{...scope,userId:actor.user.id},undefined,false)).some(e=>e.id.startsWith(`custom:${historyFieldId}:`)),'own-report clinician still sees their medication history field');
  } finally {fixtures[0]=original;await query('rollback to savepoint eps_medication');await query('release savepoint eps_medication');process.env.OPENTRIAGE_DEFINITIONS_ROOT=oldRoot;await rm(folder,{recursive:true,force:true});}
 }
