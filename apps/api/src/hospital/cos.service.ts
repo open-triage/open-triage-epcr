@@ -70,8 +70,9 @@ export class CosService {
       events:events.map(event=>({action:event.action,occurredAt:event.occurred_at.toISOString(),actorId:event.actor_id,details:event.details}))};
   }
   async save(token:string,input:unknown) {
-    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping','settings','clinicalMappings']);
+    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping','settings','clinicalMappings','pdfLinkId']);
     const expected=revision(body.expectedRevision);
+    if(body.pdfLinkId!==undefined&&(typeof body.pdfLinkId!=='string'||body.pdfLinkId!==''&&!/^\d{6,18}$/.test(body.pdfLinkId)))return invalid();
     const endpoint=cosEndpoint(body.endpoint),settings=connectionSettings(body.settings);
     if(body.authentication!==settings.authentication)return invalid();
     if(body.replacementSecret!==undefined&&(typeof body.replacementSecret!=='string'||body.replacementSecret.length<1||body.replacementSecret.length>4096||/[\u0000-\u001f\u007f]/.test(body.replacementSecret)))return invalid();
@@ -96,7 +97,7 @@ export class CosService {
       const mapping=incoming??makePackage({kind:'hospital-mapping',name:`COS-${mappingId}`,version:String(mappingRevision),catalog:{sha256:dependencies.catalogHash},definition:{
         schemaVersion:1,id:mappingId,revision:mappingRevision,
         authoredAt:new Date().toISOString(),author:actor.user.id,
-        profile:COS_PROFILE,patientIdentifier,clinicalMappings:clinicalMappings(body.clinicalMappings??[])
+        profile:COS_PROFILE,patientIdentifier,...(body.pdfLinkId?{pdfLinkId:body.pdfLinkId as string}:{}),clinicalMappings:clinicalMappings(body.clinicalMappings??[])
       } satisfies CosMappingDefinition});
       compileMapping(mapping,dependencies.form);
       const credentialId=prior?.credential_id??randomUUID();

@@ -55,6 +55,7 @@ export type CosMappingDefinition = Omit<HospitalMappingDefinition, 'profile' | '
   profile: { package: 'cambio.cos.prehospital'; version: '2.0.0'; fhirVersion: '4.0.1';
     bundle: 'https://fhir.cambio.se/StructureDefinition/BundlePrehospitalNote/v2';
     questionnaire: 'https://fhir.cambio.se/StructureDefinition/QuestionnaireResponsePreHospitalNote/v2' };
+  pdfLinkId?: string;
   clinicalMappings: { id: string; source: HospitalField; linkId: string; answerType: 'string' | 'decimal' | 'boolean' | 'dateTime' }[];
 };
 export type CosConnectionSettings = {

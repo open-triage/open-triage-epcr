@@ -39,7 +39,7 @@ for (const width of [390, 1440]) test(`signed PDF inspection retains exact versi
     if (path === `/api/review/items/${itemId}`) return route.fulfill({ json: item });
     if (path === `/api/review/reports/${reportId}`) return route.fulfill({ json: { id: reportId, signedSnapshotId: snapshotId,
       signedRevision: 7, reportingDate: "2026-10-19", signedAt: item.signedAt, amendmentSequence: 1,
-      identifying: true, groups: [], values: [], notes: [], reviewItems: [] } });
+      identifying: true, groups: [], values: [], notes: [], reviewItems: [], cosDelivery: { simulated: true, state: width === 390 ? "uncertain" : "confirmed", finding: width === 390 ? "outcomeUnknown" : null, paused: false, updatedAt: item.signedAt, configurationRevision: 1, mappingRevision: 1 } } });
     if (path === `/api/review/reports/${reportId}/snapshots/${snapshotId}/pdf`) {
       reads++;
       expect(url.searchParams.get("amendmentSequence")).toBe("1");
@@ -53,6 +53,13 @@ for (const width of [390, 1440]) test(`signed PDF inspection retains exact versi
   });
   await page.goto("/");
   await page.getByRole("button", { name: "View PDF-001", exact: true }).click();
+  const delivery = page.getByRole("region", { name: "COS simulator delivery" });
+  await expect(delivery).toContainText(width === 390 ? "Outcome uncertain" : "Stored in simulator");
+  await expect(delivery).toContainText("Simulator storage does not verify live COS delivery.");
+  if (width === 390) await expect(delivery).toContainText("Automatic resending is stopped pending reconciliation.");
+  const deliveryBox = await delivery.boundingBox();
+  expect(deliveryBox!.x).toBeGreaterThanOrEqual(0); expect(deliveryBox!.x + deliveryBox!.width).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: `test-results/cos-delivery-${width}.png` });
   const preview = page.getByRole("button", { name: "Inspect signed PDF", exact: true }).first();
   await expect(preview).toBeVisible();
   await preview.click();
