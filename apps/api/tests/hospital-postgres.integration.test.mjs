@@ -1,3 +1,4 @@
+import {HospitalHistoryService} from '../dist/hospital/hospital-history.service.js';
 import {catalogAuditCompatibility} from './fixtures/catalog-audit-compatibility.mjs';
 import {credentialLifecycle} from './fixtures/hospital-credential-lifecycle.mjs';
 import {epsSubmissionJourney} from './fixtures/eps-submission-journey.mjs';
@@ -102,6 +103,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
    try{
     if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body style="--green:#315ba8"><div class="admin-panel agency-settings" id="root"></div><script src="/panel.js"></script></body></html>`);return;}
     if(req.url==='/panel.js'){res.setHeader('Content-Type','text/javascript');res.end(bundled.outputFiles[0].text);return;}
+    if(req.url.startsWith('/api/admin/hospital/history?')){assert.equal(req.headers.cookie,'eps-session=authorized');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await new HospitalHistoryService(database,sessions).list(token,Object.fromEntries(new URL(req.url,'http://localhost').searchParams))));return;}
     if(req.url==='/api/admin/hospital/cos'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await new CosService(database,sessions).get(token)));return;}
     if(!req.url.startsWith('/api/admin/hospital/eps')){res.writeHead(404);res.end();return;}
     assert.equal(req.headers.cookie,'eps-session=authorized');
@@ -127,7 +129,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await page.getByRole('button',{name:'COS',exact:true}).click();await page.getByText('Simulator tests run locally',{exact:false}).waitFor();
   await page.getByRole('button',{name:'EPS',exact:true}).click();await page.getByRole('button',{name:'Deactivate EPS',exact:true}).click();await page.getByRole('group',{name:'EPS configuration',exact:true}).locator('../..').getByText('Active revision: Inactive',{exact:false}).waitFor();assert.equal((await service.get(token)).active,null);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'mobile fields must fit');
-  await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'History',exact:true}).click();assert.equal(await page.getByRole('table').isVisible(),true);
+  await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'History',exact:true}).click();await page.getByRole('table').waitFor();assert.equal(await page.getByRole('table').isVisible(),true);
   await credentialLifecycle({kind:'eps',service,token,page,query,otherToken:otherSession.sessionToken,medicToken:medicSession.sessionToken,assets:bundled.outputFiles[0].text});
   const audits=await query("select details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%'",[group.id]);assert.ok(audits.length>8);assert.doesNotMatch(JSON.stringify(audits),/private-team|ciphertext|urn:patient|example.org/);
   // Recheck live authority after a successful configuration journey.

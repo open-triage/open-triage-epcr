@@ -1,0 +1,44 @@
+"use client";
+import {useEffect,useRef,useState} from 'react';
+import type {HospitalHistoryEntry,HospitalHistoryPage} from '@open-triage/contracts';
+import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
+import {resolveMessage} from '../app/localization';
+import {platformRequestError,PlatformRequestError} from '../app/platform-errors';
+import {activateListRow} from './list-row-action';
+import {useAvailableHeight} from './use-available-height';
+export function HospitalReviewLink({reportId,dataset,language}:{reportId:string;dataset:string;language:string}){
+ const [error,setError]=useState(false),[busy,setBusy]=useState(false),generation=useRef(0),request=useRef<AbortController|null>(null);
+ useEffect(()=>{const current=++generation.current;return()=>{generation.current=current+1;request.current?.abort();};},[reportId,dataset,language]);
+ async function open(){
+  if(busy)return;const current=generation.current,controller=new AbortController();request.current?.abort();request.current=controller;setBusy(true);setError(false);
+  try{const url=apiRequestUrl(`/api/admin/hospital/history/review/${reportId}?dataset=${dataset}`);if(!url)throw new Error();const response=await fetch(url,browserRequestInit({signal:controller.signal}));if(!response.ok)throw new Error();const link=await response.json();if(controller.signal.aborted||generation.current!==current)return;
+   // A full navigation re-establishes the destination's live agency/session boundary.
+   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+   window.location.assign(`/review-call?report=${link.reportId}&item=${link.itemId}&dataset=${link.dataset}`);
+  }catch{if(!controller.signal.aborted&&generation.current===current)setError(true);}finally{if(generation.current===current)setBusy(false);}
+ }
+ return <><a aria-disabled={busy} href={`/review-call?report=${reportId}&dataset=${dataset}`} onClick={event=>{event.preventDefault();void open();}}>{resolveMessage(language,'review.recovery.open')}</a>{error&&<span role="alert">{resolveMessage(language,'hospitalHistory.reviewDenied')}</span>}</>;
+}
+type HistoryProps={language:string;scopeKey:string;initialReportId?:string;initialDataset?:'real'|'synthetic';active?:boolean};
+export function HospitalHistoryPanel(props:HistoryProps){return <HistoryWorkspace key={props.scopeKey} {...props}/>;}
+function HistoryWorkspace({language,scopeKey,initialReportId='',initialDataset='real',active=true}:HistoryProps){
+ const t=(key:string)=>resolveMessage(language,`hospitalHistory.${key}`);
+ const [dataset,setDataset]=useState<string>(initialDataset),[destination,setDestination]=useState(''),[reportId,setReportId]=useState(initialReportId),[filters,setFilters]=useState({dataset:initialDataset as string,destination:'',reportId:initialReportId}),[cursor,setCursor]=useState<string|null>(null),[refresh,setRefresh]=useState(0);
+ const [loaded,setLoaded]=useState<HospitalHistoryPage|null>(null),[selected,setSelected]=useState<HospitalHistoryEntry|null>(null),[error,setError]=useState(false),[busy,setBusy]=useState(false);
+ const generation=useRef(0),scroll=useAvailableHeight<HTMLDivElement>(100);
+ useEffect(()=>{if(!active)return;let current=true;const version=++generation.current;void Promise.resolve().then(async()=>{if(!current)return;setBusy(true);setError(false);const query=new URLSearchParams({dataset:filters.dataset,...(filters.destination?{destination:filters.destination}:{}),...(filters.reportId?{reportId:filters.reportId}:{}),...(cursor?{cursor}:{})});const url=apiRequestUrl(`/api/admin/hospital/history?${query}`);if(!url)throw new Error();const response=await fetch(url,browserRequestInit());if(!response.ok)throw await platformRequestError(response,language);return response.json();}).then(page=>{if(current&&version===generation.current){setLoaded(page);setSelected(null);}}).catch(reason=>{if(current&&version===generation.current){if(reason instanceof PlatformRequestError&&[401,403,404,410].includes(reason.status)){generation.current++;setLoaded(null);setSelected(null);}setError(true);}}).finally(()=>{if(current)setBusy(false);});return()=>{current=false;};},[active,scopeKey,filters,cursor,refresh,language]);
+ const time=(value:string)=>new Date(value).toLocaleString(language);
+ const label=(kind:string,value:string)=>{const text=t(`${kind}.${value}`);return text===`hospitalHistory.${kind}.${value}`?t('unknown'):text;};
+ return <section className="hospital-history-panel" aria-label={t('title')}><h3>{t('title')}</h3><p>{t('help')}</p>
+ <form className="audit-filters" onSubmit={event=>{event.preventDefault();if(dataset!==filters.dataset||destination!==filters.destination||reportId.trim()!==filters.reportId){generation.current++;setLoaded(null);setSelected(null);}setFilters({dataset,destination,reportId:reportId.trim()});setCursor(null);setRefresh(v=>v+1);}}>
+ <label>{t('dataset')}<select aria-label={t('dataset')} value={dataset} onChange={e=>setDataset(e.target.value)}><option value="real">{t('real')}</option><option value="synthetic">{t('synthetic')}</option></select></label>
+ <label>{t('destination')}<select aria-label={t('destination')} value={destination} onChange={e=>setDestination(e.target.value)}><option value="">{t('all')}</option><option value="eps">{t('eps')}</option><option value="cos">{t('cos')}</option></select></label>
+ <label>{t('report')}<input value={reportId} onChange={e=>setReportId(e.target.value)}/></label><button disabled={busy} type="submit">{t('apply')}</button></form>
+ {error&&<p role="alert">{t(loaded?'retained':'failed')} <button onClick={()=>setRefresh(v=>v+1)}>{t('reload')}</button></p>}{busy&&<p role="status">{t('loading')}</p>}
+ {loaded&&<><div className="hospital-history-workspace"><div className="audit-table-scroll" ref={scroll} tabIndex={0} role="region" aria-label={t('title')}><table className="audit-table"><thead><tr>{['date','destination','report','version','state','attempts','actions'].map(key=><th key={key}>{t(key)}</th>)}</tr></thead><tbody>{loaded.entries.map(row=><tr key={row.id} className={selected?.id===row.id?'selected':''} onClick={e=>activateListRow(e,()=>setSelected(row))}><td>{time(row.updatedAt)}</td><td>{t(row.integration)} — {t(row.verification)}</td><td>{row.reportId??t('configuration')}</td><td>{row.amendmentSequence??'—'}</td><td>{label('states',row.state)}</td><td>{row.attemptCount}</td><td><button onClick={()=>setSelected(row)}>{t('inspect')}</button></td></tr>)}</tbody></table>{!loaded.entries.length&&<p role="status">{t('empty')}</p>}</div>
+ {selected&&<section className="hospital-history-inspector" aria-label={t('details')}><div className="form-actions"><h4>{t('details')}</h4><button onClick={()=>setSelected(null)}>{t('close')}</button></div><dl>{([['reference',selected.id],['report',selected.reportId],['snapshot',selected.snapshotId],['version',selected.amendmentSequence],['date',time(selected.createdAt)],['updated',time(selected.updatedAt)],['state',label('states',selected.state)],['attempts',selected.attemptCount],['configuration',selected.mapping.configurationRevision],['mapping',selected.mapping.id],['mappingRevision',selected.mapping.revision],['hash',selected.mapping.sha256],['payloadHash',selected.payloadSha256],['parent',selected.lineageParentId],...(selected.retry?[['nextRetry',selected.retry.nextDue?time(selected.retry.nextDue):'—'],['retryState',t(selected.retry.paused?'paused':selected.retry.exhausted?'exhausted':'scheduled')]]:[])] as [string,unknown][]).map(([key,value])=><div key={key}><dt>{t(key)}</dt><dd className="hospital-digest">{value===null?'—':String(value)}</dd></div>)}</dl>
+ {selected.review&&<HospitalReviewLink language={language} reportId={selected.review.reportId} dataset={selected.review.dataset}/>}
+ <p>{t(selected.verification==='simulator'?'simulatorHelp':selected.verification==='eps'?'epsHelp':'unverifiedHelp')}</p><h4>{t('events')}</h4>{selected.events.map(event=><article key={`${event.id}:${event.action}`}><p>{time(event.occurredAt)} · {label('actions',event.action)} · {label('states',event.state)}</p><p>{t(event.actorKind)}{(event.actorKind==='worker'?event.workerId:event.actorId)&&`: ${event.actorKind==='worker'?event.workerId:event.actorId}`}</p>{event.finding&&<p>{t('finding')}: {label('findings',event.finding)}</p>}<dl>{Object.entries(event.acknowledgement).map(([key,value])=><div key={key}><dt>{t(key)}</dt><dd className="hospital-digest">{String(value)}</dd></div>)}</dl><small>{event.id}{event.attemptId&&` · ${event.attemptId}`}</small></article>)}{selected.eventsTruncated&&<p>{t('truncated')}</p>}</section>}</div>
+ <div className="audit-pagination"><button disabled={!cursor||busy} onClick={()=>setCursor(null)}>{t('first')}</button><button disabled={!loaded.nextCursor||busy} onClick={()=>setCursor(loaded.nextCursor)}>{t('next')}</button></div></>}
+ </section>;
+}
