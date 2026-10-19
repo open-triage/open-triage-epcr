@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {readFile,mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
-export async function epsImportBrowser({imports,configuration,query,token,adminToken,reportId,binding,medication=false}) {
+export async function epsImportBrowser({imports,configuration,query,token,adminToken,reportId,binding,medication=false,crosswalk=false}) {
  const {build}=await import('esbuild'),{chromium}=await import('@playwright/test');
  const web=path.resolve(new URL('../../../web/',import.meta.url).pathname);
- const output=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:web,loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {EpsImports} from './components/eps-imports';import {HospitalIntegrationsPanel} from './components/hospital-integrations';const language=location.search.includes('sv')?'sv':'en';createRoot(document.getElementById('root')).render(location.search.includes('admin')?<HospitalIntegrationsPanel language={language} csrfToken="fixture" canWrite/>:<EpsImports reportId="${reportId}" binding="${binding}" language={language} ready/>);`}});
+ const output=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:web,loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {EpsImports} from './components/eps-imports';import {HospitalIntegrationsPanel} from './components/hospital-integrations';const language=location.search.includes('sv')?'sv':'en';createRoot(document.getElementById('root')).render(location.search.includes('admin')?<HospitalIntegrationsPanel language={language} csrfToken="fixture" canWrite/>:<EpsImports csrfToken="fixture-csrf" reportId="${reportId}" binding="${binding}" language={language} ready/>);`}});
  const css=await readFile(path.join(web,'app/styles.css'),'utf8');let server,browser;
  try{
   server=createServer(async(req,res)=>{try{
@@ -24,16 +24,29 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
    const context=await browser.newContext({viewport:{width,height}});await context.addCookies([{name:'eps-import-session',value:'authorized',url:origin}]);const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
    try {
     await page.goto(`${origin}/?${lang}`);const preview=page.getByRole('button',{name:lang==='en'?/^Preview import/:/^Förhandsgranska import/});await preview.first().waitFor();
+    if(crosswalk)assert.equal(await preview.count(),2);
     await preview.first().focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:lang==='en'?'Import selected item':'Importera vald uppgift',exact:true}).click();await page.getByRole('status').getByText(lang==='en'?'Decision saved. The report will refresh.':'Beslutet är sparat. Journalen uppdateras.',{exact:true}).waitFor();
-    await preview.nth(1).click();await page.getByRole('button',{name:lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation'}).waitFor();
+    await preview.nth(1).click();await page.getByRole('button',{name:crosswalk?(lang==='en'?'Import selected item':'Importera vald uppgift'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation'),exact:true}).waitFor();
+    if(crosswalk){await page.getByText(lang==='en'?'Imports the current medication identity only': 'Importerar endast det aktuella läkemedlets identitet',{exact:false}).waitFor();assert.match(await page.locator('.eps-import-preview input[readonly]').inputValue(),/RxNorm/);}
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.equal(await page.locator('.eps-import-preview textarea').first().evaluate(el=>{const r=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();return r.width>=p.width-2&&r.top>=p.top+18;}),true,'preview fields stack their labels and use the available width');
-    await page.screenshot({path:`/tmp/${medication?'eps006':'eps005'}-import-${lang}-${width}.png`});
-    await page.getByRole('button',{name:medication?(lang==='en'?'Add alongside existing history':'Lägg till bredvid befintlig anamnes'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation')}).click();
+    await page.screenshot({path:`/tmp/${crosswalk?'eps-crosswalk':medication?'eps006':'eps005'}-import-${lang}-${width}.png`});
+    await page.getByRole('button',{name:crosswalk?(lang==='en'?'Import selected item':'Importera vald uppgift'):medication?(lang==='en'?'Add alongside existing history':'Lägg till bredvid befintlig anamnes'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation')}).click();
     await page.getByRole('status').getByText(lang==='en'?'Decision saved. The report will refresh.':'Beslutet är sparat. Journalen uppdateras.',{exact:true}).waitFor();
     await page.reload();await preview.first().click();await page.getByText(lang==='en'?'This source item has already been handled.':'Källuppgiften har redan hanterats.',{exact:true}).waitFor();
     assert.deepEqual(errors,[]);
    }catch(error){await page.screenshot({path:'/tmp/eps005-failure.png'});await import('node:fs/promises').then(async fs=>fs.writeFile('/tmp/eps005-failure.html',await page.content()));throw error;}finally{await context.close();await query('rollback to savepoint eps_import_browser');await query('release savepoint eps_import_browser');}
+  }
+  if(crosswalk){
+   const context=await browser.newContext({viewport:{width:390,height:844}});await context.addCookies([{name:'eps-import-session',value:'authorized',url:origin}]);const page=await context.newPage();
+   try {
+    await page.goto(`${origin}/?admin`);await page.getByLabel('Destination code system',{exact:true}).first().waitFor();
+    assert.equal(await page.getByLabel('Destination code system',{exact:true}).first().inputValue(),'RxNorm');
+    assert.equal(await page.getByLabel('Destination code',{exact:true}).first().inputValue(),'1364430');
+    await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Compatible',{exact:false}).first().waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:'/tmp/eps-crosswalk-admin-mobile.png',fullPage:true});
+   } finally {await context.close();}
+   return;
   }
   if(medication){
    await query('savepoint medication_admin_browser');
@@ -41,7 +54,7 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
    try {
     await page.goto(`${origin}/?admin`);await page.getByLabel('Destination clinical meaning').selectOption('medication-history');
     await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Compatible',{exact:false}).waitFor();
-    await page.getByLabel('Representation').selectOption('coded');await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Choose a custom text field explicitly designated for medication history.',{exact:false}).waitFor();
+    await page.getByLabel('Representation').selectOption('coded');await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Choose a custom text field explicitly designated for medication history,',{exact:false}).waitFor();
     await page.getByLabel('Representation').selectOption('text');await page.getByLabel('Source code',{exact:true}).fill('C09AA02');
     const exported=await configuration.export(adminToken,'2');const state=await configuration.get(adminToken);
     await configuration.save(adminToken,{expectedRevision:2,endpoint:state.defaultEndpoint,authentication:'team-token',mapping:JSON.parse(JSON.stringify(exported))});assert.equal((await configuration.export(adminToken,'3')).sha256,exported.sha256);

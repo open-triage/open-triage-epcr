@@ -1,6 +1,7 @@
 export interface SignReportCommand {
   commandId: string;
   expectedRevision: number;
+  exportEps?: boolean;
   signerId: string;
   attestation: Record<string, unknown>;
   warningAcknowledgements?: Record<string, WarningAcknowledgement | true>;

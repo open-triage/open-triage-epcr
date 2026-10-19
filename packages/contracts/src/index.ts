@@ -152,7 +152,7 @@ export interface ReviewQueueItem {
   criterionDescription?: string | null;
   assigneeName?: string | null;
   criterionId: string;
-  kind?: "criterion" | "overdue-unsigned" | "missing-transmission-identifiers" | "cos-delivery-failed";
+  kind?: "criterion" | "overdue-unsigned" | "missing-transmission-identifiers" | "cos-delivery-failed" | "eps-export";
   transmissionReason?: "patient-identity" | "integration-mapping" | "delivery-failure";
   deadlineAt?: string | null;
   deadlineSource?: "call-completed" | "report-created" | null;

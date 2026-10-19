@@ -1,3 +1,4 @@
+import {queueEpsExportReview} from '../hospital/eps-export-review.js';
 import { queueSignedCos } from '../hospital/cos-queue.js';
 import { randomUUID } from "node:crypto";
 import {
@@ -279,6 +280,7 @@ export class SignReportService {
 
         await this.appendAudit(manager, report, command, snapshotId, canonicalSha256, signedAt);
         await queueSignedCos(manager, report.id, snapshotId, command.signerId);
+        if(command.exportEps)await queueEpsExportReview(manager,report.id,snapshotId);
         const result: SignedReportResult = {
           id: report.id,
           status: "signed",

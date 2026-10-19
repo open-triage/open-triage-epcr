@@ -15,6 +15,7 @@ export async function epsSubmissionBrowser({service,token,reportId,snapshotId,am
   if(req.url==='/'){res.setHeader('content-type','text/html');res.end(`<html lang="en"><style>${css}</style><body style="--green:#315ba8;--text-color:#112233"><div id="root"></div><script src="/app.js"></script></body></html>`);return;}
   if(req.url==='/app.js'){res.setHeader('content-type','text/javascript');res.end(bundled.outputFiles[0].text);return;}
   if(forcedStatus){res.writeHead(forcedStatus,{'content-type':'application/json'});res.end(JSON.stringify({code:'fixture.denied-or-unavailable'}));return;}
+  if(req.url.includes('/availability?')){res.setHeader('content-type','application/json');res.end(JSON.stringify(await service.availability(token,reportId,'synthetic')));return;}
   const kind=req.method==='POST'?(req.url.endsWith('/preview')?'preview':'submit'):'history';let input='';for await(const chunk of req)input+=chunk;const body=input?JSON.parse(input):{};let result;
   if(req.method==='POST'){assert.equal(req.headers['x-csrf-token'],csrfToken);result=kind==='preview'?await service.preview(token,reportId,body,req.headers['x-csrf-token']):await service.submit(token,reportId,body,req.headers['x-csrf-token']);}else result=await service.history(token,reportId,'synthetic');
   if(nextHold?.kind===kind){const delayed=nextHold;nextHold=null;delayed.markSeen();await delayed.gate;}
@@ -27,20 +28,20 @@ export async function epsSubmissionBrowser({service,token,reportId,snapshotId,am
  async function selectLoaded(){await page.getByLabel('Submission history').waitFor();const choice=await page.getByLabel('Submission history').locator('option').nth(1).getAttribute('value');await page.getByLabel('Submission history').selectOption(choice);await page.getByText('Patient identifier in this preview:',{exact:false}).waitFor();}
  for(const viewport of [{width:1280,height:900},{width:390,height:844}]){
   await page.setViewportSize(viewport);await page.goto(`http://127.0.0.1:${server.address().port}`);await page.getByRole('button',{name:'Submit EPS',exact:true}).click();await page.getByLabel('Submission history').waitFor();
-  await page.getByRole('button',{name:'Build and validate preview',exact:true}).click();await page.getByRole('button',{name:'Submit to public hackathon service',exact:true}).waitFor();await page.getByText('Processing…',{exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Build preview',exact:true}).click();await page.getByRole('button',{name:'Submit to public hackathon service',exact:true}).waitFor();await page.getByText('Processing…',{exact:true}).waitFor({state:'hidden'});
   assert.equal(await page.getByRole('button',{name:'Submit to public hackathon service',exact:true}).isDisabled(),true,'explicit fictional publication confirmation is required');
   assert.equal(await page.locator('script').count(),1,'signed narrative is rendered as text');assert.equal(await page.evaluate(()=>window.epsUnsafe),undefined);
   const dialog=page.getByRole('dialog');const box=await dialog.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=viewport.width+1);await page.screenshot({path:`/tmp/hospital-009-preview/submission-${viewport.width}.png`,fullPage:true});
   // Revalidation can deny access while another authorized preview response is still in flight.
   for(const status of [401,403,404,410]){
-   const delayed=hold('preview'),response=page.waitForResponse(r=>r.url().endsWith('/preview')&&r.request().method()==='POST');await page.getByRole('button',{name:'Build and validate preview',exact:true}).click();await delayed.seen;
+   const delayed=hold('preview'),response=page.waitForResponse(r=>r.url().endsWith('/preview')&&r.request().method()==='POST');await page.getByRole('button',{name:'Build preview',exact:true}).click();await delayed.seen;
    forcedStatus=status;await page.getByRole('button',{name:'Refresh results',exact:true}).click();await page.getByRole('alert').filter({hasText:'Report access is no longer available'}).waitFor();await noPrivate();
    delayed.release();await(await response).finished();await settle();await noPrivate();
    forcedStatus=0;await page.getByRole('button',{name:'Refresh results',exact:true}).click();await selectLoaded();
   }
   // Every response path shares the denial boundary, including a completed publication acknowledgement.
   for(const kind of ['history','submit']){
-   if(kind==='submit'){await page.getByRole('button',{name:'Build and validate preview',exact:true}).click();await page.getByText('Processing…',{exact:true}).waitFor({state:'hidden'});await page.getByRole('checkbox').check();}
+   if(kind==='submit'){await page.getByRole('button',{name:'Build preview',exact:true}).click();await page.getByText('Processing…',{exact:true}).waitFor({state:'hidden'});await page.getByRole('checkbox').check();}
    const delayed=hold(kind),response=page.waitForResponse(r=>kind==='history'?r.url().includes('/eps/submissions?'):r.url().endsWith('/submit'));
    await page.getByRole('button',{name:kind==='history'?'Refresh results':'Submit to public hackathon service',exact:true}).click();await delayed.seen;
    forcedStatus=403;await page.getByRole('button',{name:'Refresh results',exact:true}).click();await page.getByRole('alert').filter({hasText:'Report access is no longer available'}).waitFor();await noPrivate();

@@ -24,6 +24,8 @@ test("sign commands require a revision, signer, and explicit attestation", () =>
     clientTime: "2026-08-30T14:30:00-04:00"
   };
   assert.deepEqual(validateSignReportCommand(command), command);
+  assert.equal(validateSignReportCommand({...command,exportEps:true}).exportEps,true);
+  assert.throws(()=>validateSignReportCommand({...command,exportEps:"yes"}),SignReportValidationError);
   assert.throws(() => validateSignReportCommand({ ...command, expectedRevision: -1, attestation: {} }),
     (error) => error instanceof SignReportValidationError &&
       error.findings.some((finding) => finding.includes("expectedRevision")) &&

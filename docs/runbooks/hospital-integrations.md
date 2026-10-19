@@ -14,6 +14,16 @@ selection is `ePatient.01`. Enter the team credential and save a draft. The only
 initial transport is `https://hackathon2026.vadimperetok.in/fhir`, using the
 `X-Team-Token` header. The public hackathon service is for fictional patients.
 
+For the fictional hackathon examples, Andrea (`200207252388`) and Arne
+(`194302096997`) use `http://electronichealth.se/identifier/personnummer`.
+Ville (`201304822172`) uses `http://electronichealth.se/identifier/samordningsnummer`.
+To look up all three from the demo's single `ePatient.01` field, configure the
+personnummer namespace and explicitly add the samordningsnummer namespace under
+**Known namespace aliases**. Save, test, and activate the new revision. This is
+an explicit demo matching configuration, not a general assertion that these two
+identifier schemes are interchangeable. Matching still requires the exact value
+and a configured namespace; a valid number alone is insufficient.
+
 Test read-only connection issues `GET /Organization/$me` with the protected
 credential. It does not call `$validate`, send a patient document or prove document
 conformance. Activate the exact successfully tested revision. Editing preserves
@@ -27,11 +37,16 @@ secret or CLI action is required for normal configuration.
 ## Canonical mapping files
 
 Each save writes an `opentriage-definition` package of kind `hospital-mapping` to
-`OPENTRIAGE_DEFINITIONS_ROOT/hospital-mapping/local/<group-id>/`, using the existing
+`OPENTRIAGE_DEFINITIONS_ROOT/hospital-mapping/local/<group-organization-id>/`, using the existing
 canonical package atomic-file writer. The default root is `defines`. A failed
 file write prevents publication of the database draft pointer. A transaction
 failure after writing may leave a valid discoverable file, but never activates it.
 The directory must use the installation's ordinary persistent configuration storage.
+The group organization UUID is the result of `app_identity.organization_group`
+for the selected agency. It can differ from a child agency's UUID; it is not a
+legacy identifier. All local definition exports require an organization scope;
+forms, catalogs and validation use the selected agency UUID, while hospital
+mappings use the group owner. See [the definitions layout](../../defines/README.md).
 
 Find saved mapping files lists compatible files for the current group and shared
 bundled templates. Export downloads the same canonical content. Upload or import
@@ -189,7 +204,7 @@ cardinality and codes absent from the destination. A coded destination must perm
 the identical source code and system, plus unambiguous active/confirmed source
 statuses in their published status code systems. Missing, uncertain, refuted,
 entered-in-error, inactive/resolved or contradictory statuses cannot become a bare
-affirmative destination code. There is no inferred translation. Text
+affirmative destination code. Translations require an explicit crosswalk (see below); there is no inferred translation. Text
 mapping retains readable source narrative, exact coding, status and clinical dates.
 The original resource remains attached as protected provenance. Correlated custom
 groups and ambiguous destination instances are unavailable in this first journey.
@@ -276,7 +291,8 @@ NEMSIS `eHistory.12`–`.15` describe current medication identity, dose, unit an
 as grouped fields. This initial projection does not distribute an EPS regimen into
 those scalar fields or infer code conversions. It never writes `eMedications`
 encounter administrations. Use a custom text history field to preserve the whole
-regimen; coded-only medication imports are rejected.
+regimen. Explicit crosswalks can separately import a simplified current-medication
+identity into `eHistory.12`, as described below.
 
 A custom history field with multiple occurrences offers **Add alongside existing
 history** in the conflict preview. Keep and replace remain explicit choices.
@@ -295,3 +311,46 @@ the published privacy flag. The import guard preserves both boundaries and does
 not change the semantics of existing authored fields.
 
 Explicit signed EPS publication, canonical outgoing mappings, private pinned-validator setup, unknown-outcome handling, and live acceptance are described in [EPS submission](eps-submission.md).
+
+### Explicit NEMSIS allergy and medication crosswalks
+
+Coded allergy and medication mappings may include a `crosswalk` object with
+`system`, `code`, `display`, `relationship` (`equivalent` or `broader`), and an HTTPS
+`reference`. The existing mapping `system` and `code` remain the exact EPS source
+selector. The crosswalk is part of the canonical JSON and immutable hash; old
+packages without it retain exact-code behavior. Admin can inspect and edit these
+values, and the import preview displays the proposed destination code.
+
+The example fragment in
+[`eps-clinical-crosswalks.json`](../../packages/contracts/examples/hospital/eps-clinical-crosswalks.json)
+contains 18 medication and two allergy mappings for the fictional worked examples.
+Medication targets are NLM RxNorm ingredient concepts verified on 19 October 2026.
+They deliberately omit product strength, formulation and dosage. Birch pollen maps
+to the broader NEMSIS suggested pollen-allergy concept. These are explicit local
+simplifications, not a universal or lossless terminology mapping.
+
+Allergy crosswalks target `eHistory.06` or `.07` and require active, confirmed
+`type: allergy` sources. Targets must be enabled in the pinned destination list.
+Repeatable allergy fields support adding alongside existing documentation.
+
+Medication crosswalks target only `eHistory.12` with `semanticRole:
+medication-history` and `representation: coded`. They require an active statement
+without an effective-period end. RxNorm identifiers may come from the open external
+vocabulary even when absent from the non-exhaustive suggested list; an explicit
+form choice policy still restricts them. Each selected import creates its own
+`eHistory.CurrentMedsGroup`, preserving every existing medication and its dose.
+Dose, unit, route and frequency are not populated. Source regimen details remain
+in the preview, import history and signed provenance. Unknown extensions and
+unresolved medication references remain view-only. Source replay is idempotent.
+
+No custom fields are required. Import the complete canonical package through
+Admin → Hospital integrations → EPS, check mappings, save/test and activate.
+The example fragment alone is not a canonical package: it must be wrapped with
+the installation's identifier configuration and published catalog fingerprint.
+
+EPS problem-list Condition crosswalks can target `eHistory.08` (Medical/Surgical
+History) using an explicit ICD-10-CM code from the pinned destination choices.
+The field must be present and enabled in the report's form. Preview identifies
+the history projection and retains the complete source condition in provenance.
+Only active, confirmed conditions without abatement are imported as codes;
+resolved, remission, uncertain and unsupported conditions remain view-only.

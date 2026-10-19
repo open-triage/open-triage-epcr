@@ -28,7 +28,7 @@ export async function epsImportWorkspace({database,query,sessions,drafts,imports
     async function sign(){await workspace.flushSave();const result=await fetch('/api/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({commandId:crypto.randomUUID(),expectedRevision:workspace.revision.current,signerId:session.user.id,attestation:{accepted:true}})});if(!result.ok)throw new Error('Signing failed');setSigned(true);}
     return <><output aria-label="Sync status">{workspace.syncStatus}</output><output aria-label="Imported narrative">{values.find(e=>e.id==='eNarrative.01')?.values.map(v=>v.value).join('')}</output>
      <button disabled={!workspace.restored} onClick={edit}>Edit patient name</button><button onClick={sign}>Sign report</button>{signed&&<p>Signed</p>}
-     <EpsImports reportId={report.id} binding="${binding}" language="en" ready/></>;
+     <EpsImports csrfToken="fixture-csrf" onImported={workspace.refreshReport} reportId={report.id} binding="${binding}" language="en" ready/></>;
    }createRoot(document.getElementById('root')).render(<App/>);`}});
   let importedRevision=null,savedCommand=null,signedSnapshotId=null,polledImport=false;
   server=createServer(async(req,res)=>{try {

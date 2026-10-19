@@ -38,14 +38,14 @@ const MAX_PAGES = 500;
 function localized(label: string, localization: { sv?: { label?: string; name?: string } } | undefined, language: PdfLanguage) {
   return language === "sv" ? localization?.sv?.label ?? localization?.sv?.name ?? label : label;
 }
-function definition(source: SignedReportClinicalSource, value: SignedOccurrence, language: PdfLanguage) {
+function definition(source: Pick<SignedReportClinicalSource, "configuration">, value: SignedOccurrence, language: PdfLanguage) {
   const custom = source.configuration.customFields?.[String(value.element_identity_id)];
   const standard = source.configuration.catalogFields[value.element_id];
   if (!custom && !standard) throw new SignedPdfError("pdf.definitions-unavailable");
   return { custom, standard, label: custom ? localized(custom.title, custom.localization, language) :
     localized(standard!.name ?? value.element_id, standard!.localization, language) };
 }
-export function signedPdfValue(value: SignedOccurrence, source: SignedReportClinicalSource, language: PdfLanguage): string {
+export function signedPdfValue(value: SignedOccurrence, source: Pick<SignedReportClinicalSource, "configuration">, language: PdfLanguage): string {
   const t = language === "sv" ? sv : en;
   const { custom, standard } = definition(source, value, language);
   let result: string;
@@ -72,7 +72,7 @@ export function signedPdfValue(value: SignedOccurrence, source: SignedReportClin
 }
 
 /** Pure clinical projection: reads only the supplied signed manifest and bounded signed amendments. */
-export function effectiveSignedPdfOccurrences(source: SignedReportClinicalSource): SignedOccurrence[] {
+export function effectiveSignedPdfOccurrences(source: Pick<SignedReportClinicalSource, "occurrences" | "amendments" | "amendmentSequence">): SignedOccurrence[] {
   const effective = new Map(source.occurrences.map((value) => [value.id, structuredClone(value)]));
   if (effective.size !== source.occurrences.length || source.amendments.length !== source.amendmentSequence)
     throw new SignedPdfError("pdf.invalid-version");

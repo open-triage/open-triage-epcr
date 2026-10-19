@@ -17,7 +17,6 @@ export async function epsSubmissionJourney({database,query,sessions,configuratio
   const login=await sessions.create({username:'demo',password:'opentriagedemo'}),token=login.sessionToken,actor=login.session;
   const drafts=new DraftReportService(database,sessions),signer=new SignReportService(database,sessions),service=new EpsSubmissionService(database,sessions);
   const rawPreview=service.preview.bind(service),rawSubmit=service.submit.bind(service);service.preview=(t,id,body,csrf=actor.csrfToken)=>rawPreview(t,id,body,csrf);service.submit=(t,id,body,csrf=actor.csrfToken)=>rawSubmit(t,id,body,csrf);
-  service.validate=async()=>({engine:'hl7-validator-7.0.2',state:'passed',dependencies:{},issues:[]});
   let calls=0,published=[];service.publish=async(bundle,secret)=>{assert.equal(secret,'private-team-credential');calls++;published.push(bundle);return {state:'accepted',issues:[],headers:{'x-pass':'true','x-errors':'0','x-submission-score':'42','content-location':'https://hackathon2026.vadimperetok.in/clinical/submission/fictional'}};};
   let config=await configuration.get(adminToken);
   const mappings=[{id:'story',source:{kind:'nemsis',elementId:'eNarrative.01'},section:'patientStory',representation:'signed-narrative'}];
@@ -34,14 +33,16 @@ export async function epsSubmissionJourney({database,query,sessions,configuratio
   const story={id:randomUUID(),groupInstanceId:narrative.id,elementId:'eNarrative.01',ordinal:0,value:{kind:'text',value:'Fictional signed imported history <script>never executes</script>'}};
   await drafts.save(token,report.id,{commandId:randomUUID(),expectedRevision:report.revision,authorId:actor.user.id,groups:[patient,narrative],occurrences:[{id:randomUUID(),groupInstanceId:patient.id,elementId:'ePatient.01',ordinal:0,value:{kind:'text',value:'FICTIONAL-SUBMISSION-009'}},story]},actor.csrfToken);
   await query("update clinical.element_occurrence set provenance_detail=jsonb_build_object('epsImport',$2::jsonb) where id=$1",[story.id,JSON.stringify({documentVersion:'fictional-original',documentSha256:'c'.repeat(64),entryId:'confirmed-only',mappingId:'incoming-map',mappingRevision:1,decision:'replace'})]);
-  const current=await drafts.get(token,report.id),signed=await signer.sign(token,report.id,{commandId:randomUUID(),expectedRevision:current.revision,signerId:actor.user.id,attestation:{meaning:'author approval'}});
+  const current=await drafts.get(token,report.id),signed=await signer.sign(token,report.id,{commandId:randomUUID(),expectedRevision:current.revision,signerId:actor.user.id,attestation:{meaning:'author approval'},exportEps:true});
+  const [queued]=await query("select active_match,eps_snapshot_id from clinical.review_item where report_id=$1 and kind='eps-export'",[report.id]);
+  assert.equal(queued.active_match,true);assert.equal(queued.eps_snapshot_id,signed.signedSnapshotId);
   return {report,signed,story,current};}
   const {report,signed,story,current}=await createSigned();
   const input={snapshotId:signed.signedSnapshotId,amendmentSequence:0,dataset:'synthetic'};
   await assert.rejects(rawPreview(token,report.id,input));await assert.rejects(rawPreview(token,report.id,input,'wrong-csrf'));
   await assert.rejects(service.preview(otherToken,report.id,input));await assert.rejects(service.preview(token,report.id,{...input,dataset:'real'}));
   await query('set local role open_triage_api_runtime');let preview=await service.preview(token,report.id,input);await query('reset role');
-  assert.equal(preview.mappingSha256,initialHash);assert.equal(preview.validation.profile.state,'passed');assert.match(JSON.stringify(preview.bundle),/confirmed-only/);assert.match(JSON.stringify(preview.bundle),/&lt;script&gt;/);assert.match(JSON.stringify(preview.validation),/missingData/);
+  assert.equal(preview.mappingSha256,initialHash);assert.equal(preview.validation.profile.state,'pending');assert.equal(preview.validation.profile.engine,'receiver');assert.match(JSON.stringify(preview.bundle),/confirmed-only/);assert.match(JSON.stringify(preview.bundle),/&lt;script&gt;/);assert.match(JSON.stringify(preview.validation),/missingData/);
   // Editing the active identifier invalidates new previews, while the prepared old payload remains immutable.
   await activate({...body.patientIdentifier,field:{kind:'nemsis',elementId:'ePatient.05'}});
   const remapped=await service.preview(token,report.id,{...input,lineageParentId:preview.id});assert.equal(remapped.lineageParentId,preview.id);assert.notEqual(remapped.mappingSha256,preview.mappingSha256);assert.ok(remapped.validation.findings.some(row=>row.code==='patientIdentifier'));
@@ -50,7 +51,7 @@ export async function epsSubmissionJourney({database,query,sessions,configuratio
   const submit={submissionId:preview.id,commandId:randomUUID(),dataset:'synthetic',confirmPublicFictional:true};
   await assert.rejects(rawSubmit(token,report.id,submit));await assert.rejects(rawSubmit(token,report.id,submit,'wrong-csrf'));
   await assert.rejects(service.submit(otherToken,report.id,submit));await assert.rejects(service.submit(token,report.id,{...submit,confirmPublicFictional:false}));
-  await query('set local role open_triage_api_runtime');let result=await service.submit(token,report.id,submit);await query('reset role');assert.equal(result.state,'accepted');assert.equal(calls,1);assert.equal((await service.submit(token,report.id,submit)).state,'accepted');assert.equal((await service.submit(token,report.id,{...submit,commandId:randomUUID()})).state,'accepted');assert.equal(calls,1);
+  await query('set local role open_triage_api_runtime');let result=await service.submit(token,report.id,submit);await query('reset role');assert.equal(result.state,'accepted');assert.equal((await query("select active_match from clinical.review_item where report_id=$1 and kind='eps-export'",[report.id]))[0].active_match,false);assert.equal(calls,1);assert.equal((await service.submit(token,report.id,submit)).state,'accepted');assert.equal((await service.submit(token,report.id,{...submit,commandId:randomUUID()})).state,'accepted');assert.equal(calls,1);
   const duplicate=await service.preview(token,report.id,input);await assert.rejects(service.submit(token,report.id,{...submit,submissionId:duplicate.id,commandId:randomUUID()}));assert.equal(calls,1);await assert.rejects(service.submit(token,report.id,{...submit,submissionId:duplicate.id}));
   const audit=await query('select integration_provenance from clinical_audit.patient_access_event where report_id=$1',[report.id]);assert.doesNotMatch(JSON.stringify(audit),/FICTIONAL-SUBMISSION|confirmed-only|never executes|private-team/);
   const operational=await new HospitalHistoryService(database,sessions).list(adminToken,{dataset:'synthetic',reportId:report.id});
@@ -69,9 +70,9 @@ export async function epsSubmissionJourney({database,query,sessions,configuratio
   const rejectedSource=await createSigned(),rejectedInput={snapshotId:rejectedSource.signed.signedSnapshotId,amendmentSequence:0,dataset:'synthetic'};
   const rejectedPreview=await service.preview(token,rejectedSource.report.id,rejectedInput);
   service.publish=async()=>({state:'rejected',issues:[{severity:'error',code:'structure',expression:['Bundle.entry[0]']}],headers:{'x-pass':'false','x-errors':'1'}});
-  const rejected=await service.submit(token,rejectedSource.report.id,{...submit,submissionId:rejectedPreview.id,commandId:randomUUID()});assert.equal(rejected.state,'rejected');assert.equal(rejected.result.issues[0].code,'structure');
+  const rejected=await service.submit(token,rejectedSource.report.id,{...submit,submissionId:rejectedPreview.id,commandId:randomUUID()});assert.equal((await query("select active_match from clinical.review_item where report_id=$1 and kind='eps-export'",[rejectedSource.report.id]))[0].active_match,true);assert.equal(rejected.state,'rejected');assert.equal(rejected.result.issues[0].code,'structure');
   const deliberate=await service.preview(token,rejectedSource.report.id,{...rejectedInput,lineageParentId:rejectedPreview.id});assert.equal(deliberate.lineageParentId,rejectedPreview.id);assert.equal((await service.history(token,rejectedSource.report.id,'synthetic')).find(row=>row.id===rejectedPreview.id).state,'rejected');
-  service.validate=async()=>({engine:'unavailable',state:'unavailable',dependencies:{},issues:[]});const unavailable=await service.preview(token,rejectedSource.report.id,rejectedInput);await assert.rejects(service.submit(token,rejectedSource.report.id,{...submit,submissionId:unavailable.id,commandId:randomUUID()}));service.validate=async()=>({engine:'hl7-validator-7.0.2',state:'passed',dependencies:{},issues:[]});
+  service.validate=async()=>({engine:'unavailable',state:'unavailable',dependencies:{},issues:[]});const unavailable=await service.preview(token,rejectedSource.report.id,rejectedInput);await assert.rejects(service.submit(token,rejectedSource.report.id,{...submit,submissionId:unavailable.id,commandId:randomUUID()}));service.validate=async()=>({engine:'receiver',state:'pending',dependencies:{},issues:[]});
   await epsSubmissionBrowser({service,token,reportId:rejectedSource.report.id,snapshotId:rejectedSource.signed.signedSnapshotId,amendmentSequence:0,csrfToken:actor.csrfToken});
   assert.ok(original);assert.equal(published.length,1);
  }finally{await query('reset role');await query('rollback to savepoint eps_submission_journey');await query('release savepoint eps_submission_journey');process.env.OPENTRIAGE_DEFINITIONS_ROOT=originalRoot;await rm(folder,{recursive:true,force:true});}

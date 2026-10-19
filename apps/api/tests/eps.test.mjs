@@ -56,3 +56,49 @@ test('multiple matching summaries select the latest clinical instant across time
  const adapter=new EpsAdapter();adapter.read=async path=>path==='/$samples'?listing('id','earlier'):path==='/$exchange'?listing('organizationSlug','later'):path==='/Bundle/earlier'?earlier:later;
  const id=parsePatientSummary(earlier).identifiers[0];const found=await adapter.discover({...configuration,namespace:id.system},id);assert.equal(found.documentId,'/Organization/later/$document');
 });
+
+test('clinical section rows retain canonical resource identities for inline imports',()=>{
+ const bundle=structuredClone(fixtures[1]);
+ const allergy=bundle.entry.find(e=>e.resource.resourceType==='AllergyIntolerance');
+ bundle.entry[0].resource.section=[{title:'Allergies',entry:[{reference:`AllergyIntolerance/${allergy.resource.id}`},{reference:'https://example.invalid/missing'}]}];
+ const {summary}=parsePatientSummary(bundle);
+ const [entry,unresolved]=summary.clinicalSections[0].entries;
+ assert.equal(entry.identity,allergy.fullUrl);
+ assert.ok(summary.importEntries.some(candidate=>candidate.identity===entry.identity));
+ assert.ok(entry.label);assert.ok(entry.content);
+ assert.equal(unresolved.identity,'https://example.invalid/missing');
+ assert.ok(summary.findings.includes(unresolved.identity));
+});
+
+test('coordination-number EPS requires its configured namespace and does not match by number alone',async()=>{
+ const source=structuredClone(fixtures[1]);
+ const patient=source.entry.find(entry=>entry.resource.resourceType==='Patient').resource;
+ const remote={system:'http://electronichealth.se/identifier/samordningsnummer',value:'201304822172'};
+ patient.identifier=[remote];
+ const local={system:'http://electronichealth.se/identifier/personnummer',value:remote.value};
+ const configured={...configuration,namespace:local.system,aliases:[]};
+ const adapter=new EpsAdapter();
+ adapter.read=async path=>path==='/$samples'?listing('id','coordination-number'):path==='/$exchange'?{resourceType:'Parameters',parameter:[]}:source;
+ assert.equal(await adapter.discover(configured,local),null);
+ assert.equal((await adapter.discover({...configured,aliases:[remote.system]},local)).documentId,'/Bundle/coordination-number');
+ assert.equal(await adapter.discover({...configured,aliases:[remote.system]},{...local,value:'201304822173'}),null);
+});
+
+test('EPS narrative tables preserve cells and bind imports by unique labels, never row position',async()=>{
+ const {narrativeTables}=await import('@open-triage/contracts');
+ const source=structuredClone(fixtures[1]);
+ const conditions=source.entry.filter(entry=>entry.resource.resourceType==='Condition').slice(0,2);
+ conditions[0].resource.code={text:'First condition'};conditions[1].resource.code={text:'Second condition'};
+ source.entry[0].resource.section=[{title:'Conditions',entry:conditions.map(e=>({reference:e.fullUrl})),text:{div:'<div><p>Source note</p><table><thead><tr><th>Condition</th><th>Date</th><th>Note</th></tr></thead><tbody><tr><td>Second condition</td><td>2026-01-02</td><td></td></tr><tr><td>Text-only condition</td><td></td><td>Not a resource</td></tr><tr><td>First condition</td><td>2025-01-01</td><td>A &amp; B</td></tr></tbody></table></div>'}}];
+ const section=parsePatientSummary(source).summary.clinicalSections[0];
+ assert.deepEqual(section.tables[0].headers,['Condition','Date','Note']);
+ assert.deepEqual(section.tables[0].rows.map(r=>r.cells),[['Second condition','2026-01-02',''],['Text-only condition','','Not a resource'],['First condition','2025-01-01','A & B']]);
+ assert.deepEqual(section.tables[0].rows.map(r=>r.identity),[conditions[1].fullUrl,undefined,conditions[0].fullUrl]);
+ assert.equal(section.prose,'Source note');
+ conditions[1].resource.code.text='First condition';
+ assert.ok(parsePatientSummary(source).summary.clinicalSections[0].tables[0].rows.every(row=>!row.identity));
+ const inert=narrativeTables('<table><tr><th>Item</th></tr><tr><td><img src="https://bad" onerror="bad()">&lt;script&gt;hello&lt;/script&gt;<script>bad()</script></td></tr></table>');
+ assert.equal(inert.tables[0].rows[0].cells[0],'<script>hello</script>');
+ const complex=narrativeTables('<table><tr><th colspan="2">Heading</th></tr><tr><td>A</td><td>B</td></tr></table>');
+ assert.equal(complex.tables.length,0);assert.match(complex.prose,/Heading/);
+});

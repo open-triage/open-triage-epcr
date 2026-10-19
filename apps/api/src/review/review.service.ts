@@ -1223,7 +1223,7 @@ export class ReviewService implements OnModuleDestroy {
           and i.status<>'completed')::text unavailable_assignees
       from clinical.review_item i join clinical.report r on r.id=i.report_id
       where i.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
-        and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed') and r.status='signed') or i.kind='overdue-unsigned')
+        and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed','eps-export') and r.status='signed') or i.kind='overdue-unsigned')
         and ($3::boolean or r.documenting_user_id=$4)`, parameters);
     const summary: ReviewAttentionResponse = { dataset, asOf: new Date().toISOString(),
       total: Number(counts?.total ?? 0),
@@ -1285,7 +1285,7 @@ export class ReviewService implements OnModuleDestroy {
       filters.from ?? null, filters.to ?? null, filters.search?.trim() || null];
     const assignmentWhere = filters.assignment === "mine" ? "and i.assignee_id=$4" : filters.assignment === "unassigned" ? "and i.assignee_id is null" : "";
     const where = `i.organization_id=any($1::uuid[]) and r.organization_id=any($1::uuid[]) and r.synthetic=$2
-      and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed') and r.status='signed') or i.kind='overdue-unsigned')
+      and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed','eps-export') and r.status='signed') or i.kind='overdue-unsigned')
       and ($3::boolean or r.documenting_user_id=$4)
       and ($5::uuid is null or i.criterion_id=$5) and ($6::text is null or i.priority=$6)
       and ($7::text is null or ($7='incomplete' and i.status<>'completed') or i.status=$7)
@@ -1294,7 +1294,7 @@ export class ReviewService implements OnModuleDestroy {
       ${filters.attention ? `and (${attentionWhere[filters.attention]})` : ""}
       ${assignmentWhere}
       and ($10::text is null or strpos(lower(r.id::text),lower($10))>0
-        or strpos(lower(coalesce(${reviewCriterionNameSql}, case when i.kind='overdue-unsigned' then 'Overdue unsigned draft' else '' end)),lower($10))>0
+        or strpos(lower(coalesce(${reviewCriterionNameSql}, case when i.kind='overdue-unsigned' then 'Overdue unsigned draft' when i.kind='eps-export' then 'EPS export' else '' end)),lower($10))>0
         or ((${identifyingSql}) and strpos(lower(coalesce(${reviewReportNumberSql},'')),lower($10))>0))`;
     const badgeWhere = assignmentWhere ? where.replace(assignmentWhere, "") : where;
     const [counts, rows, assignmentCounts] = await Promise.all([
@@ -1418,7 +1418,7 @@ export class ReviewService implements OnModuleDestroy {
       left join clinical.review_outcome_revision outcome
         on outcome.option_id=i.outcome_option_id and outcome.revision=i.outcome_revision
       where i.id=$1 and i.organization_id=$2 and r.organization_id=$2
-        and r.synthetic=$3 and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed') and r.status='signed')
+        and r.synthetic=$3 and ((i.kind in ('criterion','missing-transmission-identifiers','cos-delivery-failed','eps-export') and r.status='signed')
           or i.kind='overdue-unsigned') and ($4::boolean or r.documenting_user_id=$5)`,
     [id, scope.organizationId, dataset === "synthetic", scope.reports === "all", scope.userId]);
     const row = rows[0];
@@ -2126,7 +2126,7 @@ export class ReviewService implements OnModuleDestroy {
         scope.reports === "all", scope.userId]);
       const item = rows[0];
       if (!item) throw new NotFoundException("Review item was not found in scope");
-      if (["missing-transmission-identifiers","cos-delivery-failed"].includes(item.kind)) {
+      if (["missing-transmission-identifiers","cos-delivery-failed","eps-export"].includes(item.kind)) {
         if (!reviewIdentifying(scope,item.documenting_user_id)) throw new ForbiddenException("Identifying report access is required");
         if (command.status === "completed") throw new ConflictException("Transmission requirements must be resolved through the technical workflow");
       }

@@ -1,11 +1,13 @@
 /** Read-only, lossless display projection. Source strings are text, never HTML or URLs to fetch. */
 export type SummaryRow = { path: string; value: string };
 export type SummarySection = { title: string; rows: SummaryRow[] };
+export type NarrativeTable = { headers: string[]; rows: { cells: string[]; identity?: string }[] };
+export type ClinicalSummaryEntry = { identity: string; label: string; content: string };
 export type PatientSummary = {
   title: string; patient: string; date: string | null; source: string; authors: string[];
   importEntries?: {identity:string; patientMatches:boolean; resource:Record<string,unknown>; medication?:Record<string,unknown>}[];
   documentVersion?: string;
-  sections: SummarySection[]; clinicalSections: {title:string; content:string}[]; findings: string[];
+  sections: SummarySection[]; clinicalSections: {title:string; content:string; entries?:ClinicalSummaryEntry[]; tables?:NarrativeTable[]; prose?:string}[]; findings: string[];
 };
 type Resource = Record<string, unknown>;
 const object = (value: unknown): Resource | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Resource : null;
@@ -22,6 +24,23 @@ export function narrativeText(value: string): string {
       return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : source;
     }).replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_, name: string) => ({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '}[name] ?? ''))
     .replace(/[ \t]+/g, ' ').trim();
+}
+/** Extract only simple rectangular XHTML tables into inert strings. Unsupported
+ * structures remain in prose; no source markup or attributes reach the browser. */
+export function narrativeTables(value: string): {tables:NarrativeTable[];prose:string} {
+  const tables:NarrativeTable[]=[];
+  const safe=value.replace(/<!--[^]*?-->/g,'').replace(/<(script|style)\b[^>]*>[^]*?<\/\1>/gi,'');
+  const remainder=safe.replace(/<table\b[^>]*>([^]*?)<\/table\s*>/gi,(whole:string,body:string)=>{
+    if(/<table\b|\b(?:rowspan|colspan)\s*=/i.test(body))return whole;
+    const rows=[...body.matchAll(/<tr\b[^>]*>([^]*?)<\/tr\s*>/gi)].map(row=>{
+      const cells=[...row[1]!.matchAll(/<(th|td)\b[^>]*>([^]*?)<\/\1\s*>/gi)];
+      return {header:cells.length>0&&cells.every(cell=>cell[1]!.toLowerCase()==='th'),cells:cells.map(cell=>narrativeText(cell[2]!))};
+    });
+    if(!rows.length||!rows[0]!.header||rows.some(row=>row.cells.length!==rows[0]!.cells.length))return whole;
+    tables.push({headers:rows[0]!.cells,rows:rows.slice(1).map(row=>({cells:row.cells}))});
+    return [...body.matchAll(/<caption\b[^>]*>([^]*?)<\/caption\s*>/gi)].map(caption=>caption[1]).join(' ');
+  });
+  return {tables,prose:narrativeText(remainder)};
 }
 export function parsePatientSummary(input: unknown): { summary: PatientSummary; identifiers: { system: string; value: string }[] } {
   const bundle = object(input);
@@ -71,7 +90,7 @@ export function parsePatientSummary(input: unknown): { summary: PatientSummary; 
     const names=list(resource?.name).map(name=>{const n=object(name);return text(n?.text)||[...list(n?.given).map(text),text(n?.family)].filter(Boolean).join(' ');}).filter(Boolean).join('; ');
     return text(ref?.display) || text(resource?.name) || names || (resource?.practitioner ? label(resource.practitioner,depth+1) : '') || text(ref?.reference);
   };
-  const clinicalSections: {title:string;content:string}[]=[];
+  const clinicalSections: PatientSummary['clinicalSections']=[];
   const sectionContent=(value:unknown,depth=0)=>{
     if(depth>40)throw new Error('eps.malformed');
     const section=object(value);if(!section)return;
@@ -82,7 +101,35 @@ export function parsePatientSummary(input: unknown): { summary: PatientSummary; 
       const div=text(object(resource.text)?.div);
       return div ? narrativeText(div) : rows(resource).map(row=>`${row.path}: ${row.value}`).join('\n');
     }).join('\n\n');
-    clinicalSections.push({title:text(section.title)||text(object(section.code)?.text),content});
+    const sectionEntries=list(section.entry).map(entry=>{
+      const reference=text(object(entry)?.reference),resource=index.get(reference);
+      if(!resource)return {identity:reference,label:reference,content:reference};
+      const identity=entries.find(e=>e.resource===resource)?.fullUrl||`${resource.resourceType}/${resource.id}`;
+      const code=object(resource.code??resource.medicationCodeableConcept);
+      const label=text(code?.text)||list(code?.coding).map(c=>text(object(c)?.display)||text(object(c)?.code)).filter(Boolean).join('; ')||text(resource.title)||text(resource.resourceType);
+      const narrative=text(object(resource.text)?.div);
+      return {identity,label,content:narrative?narrativeText(narrative):rows(resource).map(row=>`${row.path}: ${row.value}`).join('\n')};
+    });
+    const structured=narrativeTables(narrative);
+    // Never associate clinical actions by row order: narratives may omit entries,
+    // reorder them, or include additional text-only records. Require a unique
+    // exact source label in the first cell and a unique row for that identity.
+    const candidates=sectionEntries.map(entry=>{
+      const resource=index.get(entry.identity);
+      const medication=index.get(text(object(resource?.medicationReference)?.reference));
+      const concepts=[resource?.code,resource?.medicationCodeableConcept,medication?.code].map(object);
+      const labels=[text(object(resource?.medicationReference)?.display),...concepts.flatMap(code=>[text(code?.text),...list(code?.coding).map(c=>text(object(c)?.display))])].filter(Boolean);
+      return {identity:entry.identity,labels};
+    });
+    for(const table of structured.tables)for(const row of table.rows){
+      const matches=candidates.filter(candidate=>candidate.labels.includes(row.cells[0]??''));
+      if(matches.length===1)row.identity=matches[0]!.identity;
+    }
+    const identities=structured.tables.flatMap(table=>table.rows.map(row=>row.identity).filter(Boolean));
+    for(const table of structured.tables)for(const row of table.rows){
+      if(row.identity&&identities.filter(id=>id===row.identity).length!==1)delete row.identity;
+    }
+    clinicalSections.push({title:text(section.title)||text(object(section.code)?.text),content,entries:sectionEntries,...structured});
     list(section.section).forEach(child=>sectionContent(child,depth+1));
   };
   list(composition.section).forEach(section=>sectionContent(section));

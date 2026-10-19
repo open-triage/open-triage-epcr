@@ -10,13 +10,13 @@ can publish passing documents. Admin's GET connectivity check remains read-only.
 
 In Admin → Hospital integrations → EPS, configure the exact patient identifier and
 **Outgoing EPS mappings**, save, verify connectivity, and activate the revision.
-Each outgoing mapping explicitly selects a signed field and an EPS section.
+Each outgoing mapping explicitly selects a signed field and an EPS section or structured Patient target. Names map to Patient.name (family, given, middle given name, suffix); date of birth maps to Patient.birthDate. The explicit ePatient.25 crosswalk maps NEMSIS 9919001/9919003/9919005 to administrative gender female/male/unknown, not gender identity. Age is not converted into a fabricated birth date.
 The canonical `hospital-mapping` JSON contains `outputMappings` with stable identity,
-revision, catalog dependency hash, and `signed-narrative` representation. Imported
+revision, catalog dependency hash, and `signed-narrative` or `structured-patient` representation. Imported
 files preserve their existing bytes/hash identity; malformed or incompatible files
 are rejected. Existing identifier/import-only packages remain readable.
 
-The initial output uses faithful signed narrative, including documented qualifiers,
+Clinical sections use faithful signed narrative, including documented qualifiers,
 confirmed import source version/digest/entry/mapping/decision, and effective signed
 amendments. It does not manufacture structured longitudinal resources or translate
 local codes into an asserted terminology. Current medication administrations,
@@ -25,49 +25,25 @@ without information use `list-empty-reason:unavailable`, never `nilknown`. Missi
 required demographics use the EPS/IPS data-absent-reason pattern. Missing or
 ambiguous configured patient identity blocks submission.
 
-## Private validator prerequisite
+## Validation at submission
 
-Install Java21 and run:
+No Java runtime, local validator, or validator environment variables are required,
+including in production. Admin configures and activates the EPS connection and
+outgoing mappings through Hospital integrations.
 
-```sh
-node scripts/setup-eps-validator.mjs /private/writable/eps-validator
-```
+Preview checks the selected patient identifier and output mappings locally. Missing
+identity and incompatible mappings still block submission. Profile validation is
+marked **pending**, not passed. Preview never contacts a public validation service.
 
-Configure private server values with absolute paths:
+On explicit submission (including the opt-in checkbox at signing), the configured
+hackathon receiver validates the document through `POST /fhir/Bundle/$validate`.
+That endpoint can publish successful documents. Its OperationOutcome and acceptance
+headers determine the recorded accepted/rejected/unknown result. No other public
+service receives the document, and unknown outcomes are never automatically retried.
 
-```text
-EPS_VALIDATOR_JAVA=/absolute/path/to/java
-EPS_VALIDATOR_JAR=/private/writable/eps-validator/validator_cli-7.0.2.jar
-EPS_VALIDATOR_CACHE_HOME=/private/writable/eps-validator/cache
-```
-
-The application verifies the official HL7 validator7.0.2 JAR SHA256
-`e3e50f06b806437821b7aef8189a1b790415cb96c5036e0812ed62981452b377`.
-The validator loads `hl7.fhir.eu.eps#1.0.0-ballot`, FHIR R4 4.0.1, and its pinned
-published dependency graph. Its initial package download requires outbound network
-access; the private cache must be writable. Clinical input/output uses temporary
-private files, is bounded, and is removed after validation. Do not share this cache
-or directory through a web server. Validator stdout and arbitrary provider bodies
-are never returned in API/audit evidence.
-
-Preview runs the actual HL7 structural, profile, reference, and invariant checks,
-plus application semantic checks. Terminology-server access is disabled (`-tx n/a`)
-and that limitation is shown separately; this is not a claim of complete clinical
-or terminology acceptance. The public service performs its own checks on explicit
-submission. An absent/mismatched runtime, timeout, malformed validator output, or
-profile errors blocks Submit. This private validator never calls the hackathon
-publishing endpoint.
-
-Run the actual package regression locally with those environment values:
-
-```sh
-npm run build -w @open-triage/api
-node apps/api/tests/eps-output.test.mjs
-```
-
-Ordinary deterministic tests stub external boundaries and identify that evidence
-separately. The actual validator regression verifies a generated EPS and rejects a
-broken required patient reference.
+Older previews retain their original validation evidence. For a preview blocked by
+the former local validator, use **Build with current mapping** to prepare a new
+version. This does not resend an accepted or unknown publication.
 
 ## Persistence, outcomes, and amendments
 

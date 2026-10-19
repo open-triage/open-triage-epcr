@@ -4,6 +4,8 @@ import {EpsSubmissionService} from './eps-submission.service.js';
 @Controller('reports/:id/eps/submissions')
 export class EpsSubmissionController{
  constructor(private readonly service:EpsSubmissionService){}
+ @Get('availability') @Header('Cache-Control','no-store, private')
+ availability(@Param('id',new ParseUUIDPipe({version:'4'})) id:string,@Query('dataset') dataset:string,@Headers('authorization') auth?:string,@Headers('cookie') cookie?:string){return this.service.availability(bearerToken(auth,cookie),id,dataset);}
  @Get() @Header('Cache-Control','no-store, private')
  history(@Param('id',new ParseUUIDPipe({version:'4'})) id:string,@Query('dataset') dataset:string,@Headers('authorization') auth?:string,@Headers('cookie') cookie?:string){return this.service.history(bearerToken(auth,cookie),id,dataset);}
  @Post('preview') @Header('Cache-Control','no-store, private')

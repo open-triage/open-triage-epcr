@@ -57,6 +57,7 @@ export function validateSignReportCommand(value: unknown): SignReportCommand {
       if (acknowledgement !== true) validateAcknowledgement(acknowledgement, `warningAcknowledgements.${key}`, findings);
     }
   }
+  if(value.exportEps!==undefined&&typeof value.exportEps!=='boolean')findings.push('exportEps must be a boolean');
   optionalString(value.actorPersona, "actorPersona", findings);
   optionalString(value.sessionId, "sessionId", findings);
   optionalString(value.deviceId, "deviceId", findings);

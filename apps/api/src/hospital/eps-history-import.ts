@@ -33,7 +33,7 @@ export function historicalConcept(resource: Json): Json {
   if (resource.resourceType !== 'Patient') return object(resource.code);
   return { coding: list(resource.identifier).map(identifier => ({ system: identifier.system, code: 'identifier', display: identifier.value })) };
 }
-function hasUnknownSemantics(value: unknown): boolean {
+export function hasUnknownSemantics(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(hasUnknownSemantics);
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).some(([key, item]) =>

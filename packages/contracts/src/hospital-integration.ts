@@ -68,7 +68,7 @@ export type CosConnectionSettings = {
   retryScheduleMinutes?: number[];
 };
 
-/** Exact source coding; text preserves the source facts, coded never translates terminology. */
+/** Exact source selector with an optional explicit, attributable terminology crosswalk. */
 export type EpsClinicalMapping = {
   id: string;
   resourceType: 'AllergyIntolerance' | 'Condition' | 'MedicationStatement' | 'Observation' | 'Procedure' | 'Patient';
@@ -78,6 +78,7 @@ export type EpsClinicalMapping = {
   code: string;
   destination: HospitalField;
   representation: 'text' | 'coded';
+  crosswalk?: { system: string; code: string; display: string; relationship: 'equivalent' | 'broader'; reference: string };
 };
 export type EpsImportRow = {
   entryId: string; label: string; destination: string | null;
@@ -85,11 +86,13 @@ export type EpsImportRow = {
 };
 export type EpsImportPlan = {
   id: string; revision: number; destination: string; incoming: string;
+  projection?: 'medication-identity' | 'allergy-code' | 'condition-code';
   proposedValue?: string; existing: string[]; conflict: boolean; alreadyImported: boolean; canAppend?: boolean;
 };
 
-/** Explicit narrative projection; no inferred code translations or current-treatment assertions. */
-export type EpsOutputMapping = { id: string; source: HospitalField; section: 'problems' | 'allergies' | 'medications' | 'procedures' | 'devices' | 'patientStory' | 'patientHistory'; representation: 'signed-narrative' };
+/** Explicit output targets. Structured demographics remain separate from clinical narrative. */
+export const EPS_PATIENT_OUTPUT_FIELDS = {patientFamily:'ePatient.02',patientGiven:'ePatient.03',patientMiddle:'ePatient.04',patientSuffix:'ePatient.23',patientBirthDate:'ePatient.17',patientGender:'ePatient.25'} as const;
+export type EpsOutputMapping = { id: string; source: HospitalField; section: 'problems' | 'allergies' | 'medications' | 'procedures' | 'devices' | 'patientStory' | 'patientHistory' | keyof typeof EPS_PATIENT_OUTPUT_FIELDS; representation: 'signed-narrative' | 'structured-patient' };
 
 /** Redacted lifecycle projection, independent for EPS and COS. */
 export interface HospitalIntegrationLifecycleState {
