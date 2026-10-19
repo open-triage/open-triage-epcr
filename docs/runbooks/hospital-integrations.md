@@ -156,3 +156,25 @@ failures. The PostgreSQL hospital integration suite additionally covers both
 patients, changed identifier selection, late results, authorization/revocation,
 revision audit, multiple service instances, and English/Swedish desktop/mobile
 keyboard and layout behavior using the actual component and service.
+
+Opened EPS copies share the encounter's existing protected encrypted payload,
+report key, recovery deadline and session lock. Merely discovering a summary
+does not cache it. The viewer retains the original source and retrieval dates,
+labels the cached copy, and offers an explicit online refresh. Refresh replaces
+only the viewer copy; imported encounter provenance is not rewritten.
+
+The cache is scoped to the clinician, agency, report and resolved patient
+identifier using the canonical mapping and report's pinned form. Unrelated
+clinical edits preserve access; patient changes invalidate it. When connected,
+the viewer rechecks the server binding (including configuration revision) and
+clears cached access after a denial or changed binding. While disconnected it
+cannot discover a new server revocation or configuration change; the existing
+local session and protected-record deadlines remain the access boundary. Logout
+locks the same key, and reopening requires normal server-authorized recovery;
+there is no offline login. Synthetic copies expire with their protected report.
+Browsers without protected storage can view online without an offline guarantee.
+
+Under storage pressure the optional EPS copy can be evicted, alongside verified
+server media copies. Pending encounter edits and media remain protected. A failed
+cache write removes only that attempted EPS copy and never replaces newer work;
+the viewer then reports online-only availability.
