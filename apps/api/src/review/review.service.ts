@@ -1,4 +1,5 @@
 import {reconcileCosReview} from '../hospital/cos-reconcile.js';
+import {cosRetryStatus} from '../hospital/cos-automatic-retry.js';
 import { identifierCorrectionContext, correctReviewIdentifier } from "./review-identifier-correction.js";
 
 import { retryCosReview } from '../hospital/cos-retry.js';
@@ -1460,13 +1461,14 @@ export class ReviewService implements OnModuleDestroy {
       const evidence=transmissionHistory.at(-1)!.evidence;
       const [live]=await this.database.query<Array<{state:string;finding:string|null;state_revision:string;active_revision:string|null}>>(`select d.state,d.finding,s.state_revision,s.active_revision from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id where d.id=$1 and d.report_id=$2`,[evidence.deliveryId,row.report_id]);
       if(live){evidence.deliveryState=live.state;evidence.finding=live.finding;evidence.stateRevision=Number(live.state_revision);evidence.retryable=live.state==='failed'&&live.finding==='outage'&&Number(live.active_revision)===Number(evidence.configurationRevision);}
-      const commands=await this.database.query<Array<{id:string;actor_id:string;delivery_id:string;amendment_sequence:number;created_at:Date;state:string}>>(`select c.*,coalesce((select e.state from clinical.cos_attempt a join clinical.cos_delivery_event e on e.attempt_id=a.id where a.recovery_command_id=c.id order by e.created_at desc,e.id desc limit 1),d.state) state from clinical.cos_recovery_command c join clinical.cos_delivery d on d.id=c.delivery_id where c.item_id=$1 order by c.created_at,c.id`,[id]);
+      evidence.automaticRetry=await cosRetryStatus(this.database,evidence.deliveryId);
+      const commands=await this.database.query<Array<{id:string;actor_id:string|null;automatic_ordinal:number|null;delivery_id:string;amendment_sequence:number;created_at:Date;state:string}>>(`select c.*,coalesce((select e.state from clinical.cos_attempt a join clinical.cos_delivery_event e on e.attempt_id=a.id where a.recovery_command_id=c.id order by e.created_at desc,e.id desc limit 1),d.state) state from clinical.cos_recovery_command c join clinical.cos_delivery d on d.id=c.delivery_id where c.item_id=$1 order by c.created_at,c.id`,[id]);
+      evidence.recoveryCommands=commands.map(c=>({id:c.id,actorId:c.actor_id,automaticOrdinal:c.automatic_ordinal,deliveryId:c.delivery_id,amendmentSequence:c.amendment_sequence,requestedAt:c.created_at.toISOString(),outcome:c.state}));
       const [uncertain]=await this.database.query<Array<{id:string;amendment_sequence:number;configuration_revision:string}>>("select id,amendment_sequence,configuration_revision from clinical.cos_delivery where report_id=$1 and state='uncertain' order by amendment_sequence,created_at,id limit 1",[row.report_id]);
       if(uncertain)evidence.retryable=false;
       evidence.reconciliationTarget=uncertain?{deliveryId:uncertain.id,amendmentSequence:uncertain.amendment_sequence,configurationRevision:Number(uncertain.configuration_revision)}:undefined;
       const reconciliations=await this.database.query<Array<{id:string;actor_id:string;outcome:string;evidence:unknown;created_at:Date}>>('select id,actor_id,outcome,evidence,created_at from clinical.cos_reconciliation where item_id=$1 order by created_at,id',[id]);
       evidence.reconciliations=reconciliations.map(c=>({id:c.id,actorId:c.actor_id,outcome:c.outcome,evidence:c.evidence as Record<string,unknown>,recordedAt:c.created_at.toISOString()}));
-      evidence.recoveryCommands=commands.map(c=>({id:c.id,actorId:c.actor_id,deliveryId:c.delivery_id,amendmentSequence:c.amendment_sequence,requestedAt:c.created_at.toISOString(),outcome:c.state}));
     }
     const detailTargets = [...new Set([...(row.findings ?? []), ...decisions.flatMap((decision) => decision.findings)]
       .flatMap((finding) => [finding.primaryTarget.elementId, ...(finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)]))];

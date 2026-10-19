@@ -215,8 +215,9 @@ export interface RetryCosReviewCommand {
 export interface ReviewTransmissionEvidence {
  reconciliationTarget?: {deliveryId:string;amendmentSequence:number;configurationRevision:number};
  reconciliations?: Array<{id:string;actorId:string;outcome:string;evidence:Record<string,unknown>;recordedAt:string}>;
+ automaticRetry?: {scheduleMinutes:number[]; configurationRevision:number; reserved:number; attempts:number; nextDue:string|null; exhausted:boolean; paused:boolean};
  deliveryState?: string; finding?: string | null; stateRevision?: number; retryable?: boolean;
- recoveryCommands?: Array<{id:string; actorId:string; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
+ recoveryCommands?: Array<{id:string; actorId:string|null; automaticOrdinal?:number|null; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
   integration: "cos";
   deliveryId: string;
   amendmentSequence: number;

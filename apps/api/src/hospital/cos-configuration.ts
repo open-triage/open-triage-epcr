@@ -11,13 +11,14 @@ export function text(value:unknown, optional=false):string {
   if(typeof value!=='string'||(!optional&&!value.trim())||value.length>512||/[\u0000-\u001f\u007f]/.test(value))return invalid();return value;
 }
 export function connectionSettings(input:unknown):CosConnectionSettings {
-  const s=keys(input,['mode','authentication','template','encounterNamespace','organizationHsaId','defaultAmbulanceCareUnit','staff','careUnits']);
+  const s=keys(input,['mode','authentication','template','encounterNamespace','organizationHsaId','defaultAmbulanceCareUnit','staff','careUnits','retryScheduleMinutes']);
   if(!['simulator','live'].includes(String(s.mode))||!['api-key','bearer-token'].includes(String(s.authentication)))return invalid();
   namespace(s.encounterNamespace);text(s.template,true);if(s.template)namespace(s.template);text(s.organizationHsaId,true);text(s.defaultAmbulanceCareUnit,true);
   if(!Array.isArray(s.staff)||s.staff.length>2000||!Array.isArray(s.careUnits)||s.careUnits.length>2000)return invalid();
   const staff=s.staff.map(input=>{const row=keys(input,['userId','hsaId']);if(typeof row.userId!=='string'||!/^[-a-f0-9]{36}$/.test(row.userId))return invalid();text(row.hsaId);return row;});
   const careUnits=s.careUnits.map(input=>{const row=keys(input,['hospital','localCareUnit','hsaId']);text(row.hospital);text(row.localCareUnit);text(row.hsaId);return row;});
   if(new Set(staff.map(row=>row.userId)).size!==staff.length||new Set(careUnits.map(row=>`${row.hospital}\0${row.localCareUnit}`)).size!==careUnits.length)return invalid();
+  if(s.retryScheduleMinutes!==undefined&&(!Array.isArray(s.retryScheduleMinutes)||s.retryScheduleMinutes.length>5||s.retryScheduleMinutes.some(value=>!Number.isSafeInteger(value)||value<1||value>1440)))return invalid();
   return s as CosConnectionSettings;
 }
 export function cosEndpoint(input:unknown):string {

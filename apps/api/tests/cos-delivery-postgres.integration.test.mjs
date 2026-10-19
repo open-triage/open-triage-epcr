@@ -1,4 +1,5 @@
 import {reconcileCosReview} from '../dist/hospital/cos-reconcile.js';
+import {automaticRetryFixture} from './fixtures/cos-automatic-retry.mjs';
 import sharp from 'sharp';
 import {signedReportPdfSource} from '../dist/reports/signed-report-pdf.persistence.js';
 import {CatalogAuthoringService} from '../dist/admin/catalog-authoring.service.js';
@@ -264,6 +265,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.ok(manualAudit.every(e=>e.actorId===sample.documenting_user_id&&e.outcome==='queued'&&e.recovery.itemId===failureItem.id&&e.recovery.amendmentSequence===0));
   assert.ok(recoveryAudit.entries.some(e=>e.source==='clinical.cos_delivery_event'&&e.outcome==='confirmed'&&e.actorId===sample.documenting_user_id));
   assert.doesNotMatch(JSON.stringify(recoveryAudit.entries),/200207252388|Fictional documented assessment/);
+  await automaticRetryFixture({db,draft,sign,simulator,group,recoveryReview,recoverySessions,retryInput,config,next,settings});
   // A definite outage after contact acceptance can resume the same note without a second contact.
   const afterContact=await draft();await sign(afterContact);await processCosWork(db,100,{contact:simulator.contact.bind(simulator),note:async()=>{throw new CosRejected('outage');}});
   const [contactFailure]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[afterContact]);
