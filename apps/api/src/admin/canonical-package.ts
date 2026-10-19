@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { ConflictException, UnprocessableEntityException } from "@nestjs/common";
 
-export type DefinitionKind = "catalog" | "form" | "validation";
+export type DefinitionKind = "catalog" | "form" | "validation" | "hospital-mapping";
 export interface CanonicalPackage {
   format: "opentriage-definition";
   schemaVersion: 1 | 2;

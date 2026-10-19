@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {resolveHospitalIdentifier,hospitalIdentifiersMatch} from '@open-triage/contracts';
+import {mappingPackage,makePackage,compileMapping,identifier,identifierOptions} from '../dist/hospital/hospital-mapping.js';
+const field={kind:'nemsis',elementId:'ePatient.01'};
+const identity={field,namespace:'urn:patient:example',aliases:['https://example.org/patient']};
+const scalar={name:'Identifier',generation:{base:'string',definition:{valueSource:{kind:'scalar'}}}};
+const form={definition:{sections:[{fields:[{source:field},{source:{kind:'nemsis',elementId:'ePatient.02'}},{source:{kind:'custom',elementDefinitionId:'custom-id',groupDefinitionId:'group-id'}}]}]},catalogFields:{'ePatient.01':scalar,'ePatient.02':scalar},customFields:{'custom-id':{namespace:'test',slug:'identifier',datatype:'string'}}};
+const document=(id='ePatient.01',values=[{kind:'scalar',value:'00123',occurrenceId:'one'}])=>({groups:[{instances:[{elements:[{id,values}]}]}]});
+test('identifier selection uses only pinned compatible fields, preserves digits and reports ambiguity/missing values',()=>{
+ assert.deepEqual(resolveHospitalIdentifier(identity,document(),form),{identifier:{system:'urn:patient:example',value:'00123'},finding:null});
+ assert.equal(resolveHospitalIdentifier({...identity,field:{kind:'nemsis',elementId:'ePatient.02'}},document(),form).finding,'missing');
+ assert.equal(resolveHospitalIdentifier({...identity,field:{kind:'nemsis',elementId:'ePatient.03'}},document(),form).finding,'unavailable');
+ assert.equal(resolveHospitalIdentifier(identity,document('ePatient.01',[{kind:'scalar',value:'a'},{kind:'scalar',value:'a'}]),form).finding,'ambiguous');
+ assert.equal(resolveHospitalIdentifier(identity,document('ePatient.01',[{kind:'scalar',value:123}]),form).finding,'incompatible');
+ assert.equal(resolveHospitalIdentifier(identity,document('ePatient.01',[{kind:'scalar',value:'a',notValue:{code:'not recorded'}}]),form).finding,'missing');
+ assert.deepEqual(identifierOptions(form).find(option=>option.id==='custom-id').field,{kind:'custom',elementDefinitionId:'custom-id'});
+ const custom={...identity,field:{kind:'custom',elementDefinitionId:'custom-id'}};
+ assert.equal(resolveHospitalIdentifier(custom,document('test.identifier'),form).identifier.value,'00123');
+ const old=structuredClone(form);delete old.customFields['custom-id'];assert.equal(resolveHospitalIdentifier(custom,document('test.identifier'),old).finding,'unavailable');
+ assert.equal(hospitalIdentifiersMatch(identity,{system:identity.namespace,value:'00123'},{system:identity.aliases[0],value:'00123'}),true);
+ assert.equal(hospitalIdentifiersMatch(identity,{system:identity.namespace,value:'00123'},{system:identity.namespace,value:'123'}),false);
+});
+test('canonical mapping rejects unknown/secret properties, wrong schemas/profiles/hash and incompatible fields',()=>{
+ const p=makePackage({kind:'hospital-mapping',name:'EPS-test',version:'1',catalog:{sha256:'a'.repeat(64)},definition:{schemaVersion:1,id:'test',revision:1,authoredAt:new Date().toISOString(),author:'test',profile:{package:'hl7.fhir.eu.eps',version:'1.0.0-ballot',fhirVersion:'4.0.1'},patientIdentifier:identity}});
+ assert.deepEqual(compileMapping(p,form),identity);assert.equal(mappingPackage(JSON.parse(JSON.stringify(p))).sha256,p.sha256);
+ assert.throws(()=>mappingPackage({...p,secret:'private'}));assert.throws(()=>mappingPackage({...p,sha256:'0'.repeat(64)}));
+ assert.throws(()=>mappingPackage(makePackage({...p,definition:{...p.definition,clinicalContent:'private'}})));
+ assert.throws(()=>identifier({...identity,aliases:['urn:patient:example']}));
+ assert.throws(()=>identifier({...identity,namespace:'https://user:secret@example.org'}));
+ const incompatible=structuredClone(form);incompatible.catalogFields['ePatient.01'].generation.base='decimal';assert.throws(()=>compileMapping(p,incompatible));
+});

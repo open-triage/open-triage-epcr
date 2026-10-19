@@ -954,7 +954,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "auditing" | "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
+export type AdminPanelKey = "hospital" | "auditing" | "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -2111,3 +2111,5 @@ export interface SaveOperationalUnitCommand { name: string; callSign: string; ac
 
 export * from "./schedules.js";
 export * from "./audit.js";
+
+export * from "./hospital-integration.js";
