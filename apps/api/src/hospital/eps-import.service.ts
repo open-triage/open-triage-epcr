@@ -72,7 +72,7 @@ export class EpsImportService {
    if(scoped.binding!==body.binding)throw stale();
    const entry=entries[0]!, candidate=importCandidate(entry,clinicalMappings(scoped.mapping.definition.clinicalMappings),scoped.form,scoped.mapping.definition.patientIdentifier);
    if(candidate.finding||!candidate.target)throw new UnprocessableEntityException({code:'hospital.clinicalIncompatible'});
-   const sourceKey=contentDigest([lookup.documentId,lookup.summary?.documentVersion,entry.identity,entry.resource]);
+   const sourceKey=contentDigest([lookup.documentId,lookup.summary?.documentVersion,entry.identity,entry.resource,...(entry.medication?[entry.medication]:[])]);
    const [already]=await manager.query('select id from clinical.eps_import where report_id=$1 and source_key=$2',[reportId,sourceKey]);
    const [field]=await manager.query<Array<{id:string;group_id:string|null}>>(`select ff.id,e.group_path[cardinality(e.group_path)] as group_id from forms.form_field ff left join catalog.element_definition e on e.release_id=$2 and e.element_identity_id=ff.catalog_element_identity_id where ff.form_version_id=$1 and (e.element_id=$3 or ff.custom_element_definition_id::text=$4) limit 1`,[scoped.report.form_version_id,scoped.report.catalog_release_id,candidate.target.elementId,candidate.mapping?.destination.kind==='custom'?candidate.mapping.destination.elementDefinitionId:null]);
    if(!field)throw new UnprocessableEntityException({code:'hospital.clinicalIncompatible'});
@@ -107,7 +107,7 @@ export class EpsImportService {
    if(body.decision==='append'&&(!evidence.canAppend||!evidence.existing.length))throw stale();
    if(evidence.existing.length&&body.decision==='import'||!evidence.existing.length&&body.decision!=='import')throw stale();
    const id=randomUUID(),occurrenceId=body.decision==='keep'?null:randomUUID();
-   const provenance={importId:id,documentId:evidence.documentId,documentVersion:evidence.documentVersion,documentSha256:evidence.documentSha256,entryId:evidence.entry.identity,source:evidence.entry.resource,patient:evidence.patient,mappingId:evidence.mapping.definition.id,mappingRevision:evidence.mapping.definition.revision,mappingSha256:evidence.mapping.sha256,configurationRevision:evidence.configurationRevision,decision:body.decision};
+   const provenance={importId:id,documentId:evidence.documentId,documentVersion:evidence.documentVersion,documentSha256:evidence.documentSha256,entryId:evidence.entry.identity,source:evidence.entry.resource,...(evidence.entry.medication?{medication:evidence.entry.medication}:{}),patient:evidence.patient,mappingId:evidence.mapping.definition.id,mappingRevision:evidence.mapping.definition.revision,mappingSha256:evidence.mapping.sha256,configurationRevision:evidence.configurationRevision,decision:body.decision};
    if(occurrenceId) {
     const occurrences:DraftOccurrenceMutation[]=[...(body.decision==='replace'?evidence.existing.map(o=>({...o,tombstone:true})):[]),{id:occurrenceId,elementId:evidence.candidate.target!.elementId,groupInstanceId:evidence.groupInstanceId,formFieldId:evidence.formFieldId,value:evidence.candidate.value,ordinal:body.decision==='append'?Math.max(...evidence.existing.map(o=>o.ordinal??0))+1:0}];
     await this.drafts.applyImportedOccurrence(manager,reportId,{commandId:body.commandId as string,expectedRevision:Number(plan.revision),authorId:scoped.actor.user.id,occurrences},provenance);

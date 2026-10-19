@@ -1,4 +1,5 @@
 import {epsHistoryJourney} from './eps-history-journey.mjs';
+import {epsMedicationJourney} from './eps-medication-journey.mjs';
 import {epsImportJourney} from './eps-import-journey.mjs';
 import {epsBrowser} from './eps-browser.mjs';
 import assert from 'node:assert/strict';
@@ -40,7 +41,8 @@ export async function epsJourney({database,query,sessions,configuration,adminTok
   let result=await service.lookup(token,report.id,context.binding);assert.equal(result.status,'available');assert.match(JSON.stringify(result.summary),/Andrea/);assert.equal(result.context.mappingSha256,context.mappingSha256);
   await query('reset role');
   await epsHistoryJourney({database,query,sessions,configuration,adminToken,otherToken,body,token,actor,report,service,drafts,fixtures,historyFieldId});
-  await epsImportJourney({database,query,sessions,configuration,adminToken,otherToken,body,token,actor,report,service,drafts,patientGroup,fixtures});
+  await epsMedicationJourney({database,query,sessions,configuration,adminToken,body,token,actor,report,service,drafts,fixtures,historyFieldId});
+  await epsImportJourney({database,query,sessions,configuration,adminToken,otherToken,body,token,actor,report,service,drafts,patientGroup,fixtures,historyFieldId});
   await assert.rejects(service.context(otherToken,report.id));await assert.rejects(service.context(adminToken,report.id));
   await assert.rejects(service.lookup(token,report.id,'wrong'),error=>error.getStatus()===409);
   const change=async value=>{const current=(await drafts.get(token,report.id));return drafts.save(token,report.id,{commandId:randomUUID(),expectedRevision:current.revision,authorId:actor.user.id,occurrences:[{...occurrence,value:{kind:'text',value}}]},actor.csrfToken);};

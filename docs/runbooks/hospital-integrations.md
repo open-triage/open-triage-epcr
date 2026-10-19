@@ -262,3 +262,24 @@ Source semantics follow the pinned FHIR R4 definitions for
 [Procedure](https://hl7.org/fhir/R4/procedure.html), and
 [Patient](https://hl7.org/fhir/R4/patient.html). These limited projections are not
 claims that arbitrary FHIR historical content can become a current encounter fact.
+### Medication history imports
+
+For `MedicationStatement`, select an exact source product code and a custom text
+field, then explicitly designate its clinical meaning as medication history.
+This semantic role is part of the transferable canonical mapping. The text retains
+source status, effective dates, assertion date, dosage, route and units without
+translating their codes. Medication references resolve only inside the same EPS
+bundle; unresolved products and unknown extensions remain readable but cannot be
+imported. An absent list creates no negative-history statement.
+
+NEMSIS `eHistory.12`–`.15` describe current medication identity, dose, unit and route
+as grouped fields. This initial projection does not distribute an EPS regimen into
+those scalar fields or infer code conversions. It never writes `eMedications`
+encounter administrations. Use a custom text history field to preserve the whole
+regimen; coded-only medication imports are rejected.
+
+A custom history field with multiple occurrences offers **Add alongside existing
+history** in the conflict preview. Keep and replace remain explicit choices.
+Appending preserves the earlier occurrence and its provenance; replaying the same
+source does not append again. Signed provenance includes the original statement
+and its resolved Medication resource, with the applied mapping identity and revision.

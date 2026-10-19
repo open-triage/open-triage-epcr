@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {readFile,mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
-export async function epsImportBrowser({imports,configuration,query,token,adminToken,reportId,binding}) {
+export async function epsImportBrowser({imports,configuration,query,token,adminToken,reportId,binding,medication=false}) {
  const {build}=await import('esbuild'),{chromium}=await import('@playwright/test');
  const web=path.resolve(new URL('../../../web/',import.meta.url).pathname);
  const output=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:web,loader:'tsx',contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {EpsImports} from './components/eps-imports';import {HospitalIntegrationsPanel} from './components/hospital-integrations';const language=location.search.includes('sv')?'sv':'en';createRoot(document.getElementById('root')).render(location.search.includes('admin')?<HospitalIntegrationsPanel language={language} csrfToken="fixture" canWrite/>:<EpsImports reportId="${reportId}" binding="${binding}" language={language} ready/>);`}});
@@ -28,12 +28,26 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
     await preview.nth(1).click();await page.getByRole('button',{name:lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation'}).waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.equal(await page.locator('.eps-import-preview textarea').first().evaluate(el=>{const r=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();return r.width>=p.width-2&&r.top>=p.top+18;}),true,'preview fields stack their labels and use the available width');
-    await page.screenshot({path:`/tmp/eps005-import-${lang}-${width}.png`});
-    await page.getByRole('button',{name:lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation'}).click();
+    await page.screenshot({path:`/tmp/${medication?'eps006':'eps005'}-import-${lang}-${width}.png`});
+    await page.getByRole('button',{name:medication?(lang==='en'?'Add alongside existing history':'Lägg till bredvid befintlig anamnes'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation')}).click();
     await page.getByRole('status').getByText(lang==='en'?'Decision saved. The report will refresh.':'Beslutet är sparat. Journalen uppdateras.',{exact:true}).waitFor();
     await page.reload();await preview.first().click();await page.getByText(lang==='en'?'This source item has already been handled.':'Källuppgiften har redan hanterats.',{exact:true}).waitFor();
     assert.deepEqual(errors,[]);
    }catch(error){await page.screenshot({path:'/tmp/eps005-failure.png'});await import('node:fs/promises').then(async fs=>fs.writeFile('/tmp/eps005-failure.html',await page.content()));throw error;}finally{await context.close();await query('rollback to savepoint eps_import_browser');await query('release savepoint eps_import_browser');}
+  }
+  if(medication){
+   await query('savepoint medication_admin_browser');
+   const context=await browser.newContext({viewport:{width:390,height:844}});await context.addCookies([{name:'eps-import-session',value:'authorized',url:origin}]);const page=await context.newPage();
+   try {
+    await page.goto(`${origin}/?admin`);await page.getByLabel('Destination clinical meaning').selectOption('medication-history');
+    await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Compatible',{exact:false}).waitFor();
+    await page.getByLabel('Representation').selectOption('coded');await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Choose a custom text field explicitly designated for medication history.',{exact:false}).waitFor();
+    await page.getByLabel('Representation').selectOption('text');await page.getByLabel('Source code',{exact:true}).fill('C09AA02');
+    const exported=await configuration.export(adminToken,'2');const state=await configuration.get(adminToken);
+    await configuration.save(adminToken,{expectedRevision:2,endpoint:state.defaultEndpoint,authentication:'team-token',mapping:JSON.parse(JSON.stringify(exported))});assert.equal((await configuration.export(adminToken,'3')).sha256,exported.sha256);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:'/tmp/eps006-admin-mobile.png'});
+   }catch(error){await page.screenshot({path:'/tmp/eps006-admin-failure.png'});await import('node:fs/promises').then(async fs=>fs.writeFile('/tmp/eps006-admin-failure.html',await page.content()));throw error;}finally{await context.close();await query('rollback to savepoint medication_admin_browser');await query('release savepoint medication_admin_browser');}
+   return;
   }
   const oldRoot=process.env.OPENTRIAGE_DEFINITIONS_ROOT,folder=await mkdtemp('/tmp/eps-import-browser-');process.env.OPENTRIAGE_DEFINITIONS_ROOT=folder;
   await query('savepoint eps_mapping_browser');

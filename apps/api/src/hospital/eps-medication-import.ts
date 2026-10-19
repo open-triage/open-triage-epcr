@@ -19,8 +19,10 @@ export function medicationSource(entry:Entry) {
   });
   else if(value!==undefined)lines.push(`${path}: ${path.endsWith('.div')?narrativeText(String(value)):String(value)}`);
  };
- walk(resource,'MedicationStatement');
  if(entry.medication)walk(entry.medication,'Medication');
+ const preferred=['medicationCodeableConcept','status','statusReason','effectiveDateTime','effectivePeriod','dateAsserted','dosage','note'];
+ const ordered=Object.fromEntries([...preferred.filter(key=>key in resource).map(key=>[key,resource[key]]),...Object.entries(resource).filter(([key])=>!preferred.includes(key))]);
+ walk(ordered,'MedicationStatement');
  const unresolved=!!resource.medicationReference&&!entry.medication;
  const invalidChoice=!!resource.medicationReference&&!!resource.medicationCodeableConcept;
  const status=resource.status;
