@@ -1,7 +1,7 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 
-export type PatientAccessAction = "eps.read" | "eps.import" | "report.read" | "report.reopen" | "report.active"
+export type PatientAccessAction = "eps.read" | "eps.import" | "eps.export" | "eps.submit" | "report.read" | "report.reopen" | "report.active"
   | "report.list" | "assignment.open" | "review.report" | "review.overdue"
   | "photo.read" | "audio.read" | "audit.clinical-values";
 

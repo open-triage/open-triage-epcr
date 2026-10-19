@@ -293,3 +293,5 @@ even when the mapped concept is non-identifying. Review detail already suppresse
 unrestricted text without identifying access; custom string analytics also uses
 the published privacy flag. The import guard preserves both boundaries and does
 not change the semantics of existing authored fields.
+
+Explicit signed EPS publication, canonical outgoing mappings, private pinned-validator setup, unknown-outcome handling, and live acceptance are described in [EPS submission](eps-submission.md).

@@ -603,7 +603,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       {fullReportOpen && <article id="review-full-report" className="review-call-form" aria-label={t("review.workspace.report")}>
         {detailError && viewDetail && <><p role="alert">{t("review.detailUnavailable")} {t("list.refreshRetained")}</p>
           <button type="button" onClick={() => setRefresh((value) => value + 1)}>{t("list.retry")}</button></>}
-        {viewDetail ? <ReviewReport key={viewDetail.id} report={viewDetail} full language={language} dataset={dataset}
+        {viewDetail ? <ReviewReport key={viewDetail.id} report={viewDetail} csrfToken={session.csrfToken ?? session.accessToken ?? ""} full language={language} dataset={dataset}
           toolbarRef={reportToolbar} findingsOpen={fullFindingsOpen} onToggleFindings={() => setFullFindingsOpen(!fullFindingsOpen)}
           onClose={closeReport} /> : <>
           <header ref={reportToolbar} className="review-report-toolbar">
@@ -733,7 +733,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           <div {...panel("review-detail", "summary", detailTab)}>
             <button type="button" className="review-primary" disabled={fullReportOpen} onClick={() => { setFullReportOpen(true); setFullFindingsOpen(true); }}>{t("review.workspace.openReport")}</button>
             {!draftDetail && <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
-            {detailTab === "summary" && <ReviewReport key={viewDetail.id} report={viewDetail} language={language} dataset={dataset} />}
+            {detailTab === "summary" && <ReviewReport key={viewDetail.id} report={viewDetail} csrfToken={session.csrfToken ?? session.accessToken ?? ""} language={language} dataset={dataset} />}
           </div>
           <div {...panel("review-detail", "history", detailTab)}>
 {itemDetail ? <>

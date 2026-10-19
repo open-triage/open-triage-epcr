@@ -13,6 +13,7 @@ export type HospitalMappingDefinition = {
   profile: { package: 'hl7.fhir.eu.eps'; version: '1.0.0-ballot'; fhirVersion: '4.0.1' };
   patientIdentifier: HospitalIdentifier;
   clinicalMappings?: EpsClinicalMapping[];
+  outputMappings?: EpsOutputMapping[];
 };
 export type HospitalIdentifierFinding = 'unavailable' | 'incompatible' | 'missing' | 'ambiguous';
 export type HospitalIdentifierResult = { identifier: { system: string; value: string }; finding: null } |
@@ -85,3 +86,6 @@ export type EpsImportPlan = {
   id: string; revision: number; destination: string; incoming: string;
   proposedValue?: string; existing: string[]; conflict: boolean; alreadyImported: boolean; canAppend?: boolean;
 };
+
+/** Explicit narrative projection; no inferred code translations or current-treatment assertions. */
+export type EpsOutputMapping = { id: string; source: HospitalField; section: 'problems' | 'allergies' | 'medications' | 'procedures' | 'devices' | 'patientStory' | 'patientHistory'; representation: 'signed-narrative' };
