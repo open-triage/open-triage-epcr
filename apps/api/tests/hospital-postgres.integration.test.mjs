@@ -8,6 +8,7 @@ import pg from 'pg';
 import {ValidationAuthoringService} from '../dist/admin/validation-authoring.service.js';
 import {FormPublicationService} from '../dist/forms/form-publication.service.js';
 import {canonicalDefinitionSha256} from '../dist/forms/form-publication.validation.js';
+import {CosService} from '../dist/hospital/cos.service.js';
 import {HospitalService} from '../dist/hospital/hospital.service.js';
 import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
 import {AccountService} from '../dist/identity/account.service.js';
@@ -90,6 +91,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
    try{
     if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body style="--green:#315ba8"><div class="admin-panel agency-settings" id="root"></div><script src="/panel.js"></script></body></html>`);return;}
     if(req.url==='/panel.js'){res.setHeader('Content-Type','text/javascript');res.end(bundled.outputFiles[0].text);return;}
+    if(req.url==='/api/admin/hospital/cos'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await new CosService(database,sessions).get(token)));return;}
     if(!req.url.startsWith('/api/admin/hospital/eps')){res.writeHead(404);res.end();return;}
     assert.equal(req.headers.cookie,'eps-session=authorized');
     let input;for await(const part of req)input=(input??'')+part;const command=input?JSON.parse(input):undefined;
@@ -100,7 +102,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
    }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{code:'hospital.invalid'}));}
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const origin=`http://127.0.0.1:${server.address().port}`;browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844}});await context.addCookies([{name:'eps-session',value:'authorized',url:origin}]);const page=await context.newPage();
-  await page.goto(origin);await page.getByLabel('Patient identifier field').waitFor();assert.equal(await page.getByLabel('Patient identifier field').inputValue(),'ePatient.01');await page.getByLabel('Replacement team credential').fill('private-team-credential');await page.getByLabel('Patient identifier field').selectOption(alternative.id);await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();
+  await page.goto(origin);await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').waitFor();assert.equal(await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').inputValue(),'ePatient.01');await page.getByLabel('Replacement team credential').fill('private-team-credential');await page.getByRole('group',{name:'EPS configuration',exact:true}).getByLabel('Patient identifier field').selectOption(alternative.id);await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();
   await page.getByRole('status').waitFor();assert.equal((await service.get(token)).draft.revision,4);assert.equal((await service.get(token)).active.revision,1);
   await page.getByRole('button',{name:'Test read-only connection',exact:true}).click();await page.getByText('Connection verified',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Activate EPS',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Active revision: 4'));assert.equal((await service.get(token)).active.revision,4);
@@ -109,8 +111,8 @@ integration('EPS real database and browser setup preserves tested revisions, can
   assert.equal(await page.getByRole('button',{name:'Activate EPS',exact:true}).isDisabled(),true);
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();const artifact=await download;assert.ok(artifact.suggestedFilename().endsWith('.json'));
   assert.deepEqual(JSON.parse(await readFile(await artifact.path(),'utf8')),exported);
-  await page.getByRole('button',{name:'COS',exact:true}).click();await page.getByText('COS is unconfigured.',{exact:false}).waitFor();
-  await page.getByRole('button',{name:'EPS',exact:true}).click();await page.getByRole('button',{name:'Deactivate EPS',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Active revision: Inactive'));assert.equal((await service.get(token)).active,null);
+  await page.getByRole('button',{name:'COS',exact:true}).click();await page.getByText('Simulator tests run locally',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'EPS',exact:true}).click();await page.getByRole('button',{name:'Deactivate EPS',exact:true}).click();await page.getByRole('group',{name:'EPS configuration',exact:true}).locator('../..').getByText('Active revision: Inactive',{exact:false}).waitFor();assert.equal((await service.get(token)).active,null);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'mobile fields must fit');
   await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'History',exact:true}).click();assert.equal(await page.getByRole('table').isVisible(),true);
   const audits=await query("select details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%'",[group.id]);assert.ok(audits.length>8);assert.doesNotMatch(JSON.stringify(audits),/private-team|ciphertext|urn:patient|example.org/);

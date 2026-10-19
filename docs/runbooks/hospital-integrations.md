@@ -69,3 +69,54 @@ failed storage, default and alternative fields, mobile layout and revocation.
 The latter is part of `npm run test:integration -w @open-triage/api` and therefore
 `npm run check:ci`. It uses a temporary configuration root and rolls back its data.
 These deterministic tests do not claim live hackathon connectivity or COS acceptance.
+
+## COS configuration and simulator
+
+The COS section stores one immutable connection revision per agency group;
+child agencies inherit that connection under existing settings authority. Staff
+HSA assignments must belong to active accounts in that group. Hospital/care-unit
+pairs are exact mappings; an unknown destination never falls back to the ambulance
+care unit. The ambulance default applies only when there is no destination.
+
+Choose the patient field (default `ePatient.01`), namespace and explicit aliases
+separately from encounter, staff and organizational identifiers. Configure the
+endpoint, API-key or bearer credential, template, local identities and clinical
+source-to-template-link mappings in the panel. The pinned development dependency
+is `BundlePrehospitalNote/v2` / `QuestionnaireResponsePreHospitalNote/v2` (2.0.0).
+Source/answer types must be compatible. Receiver-specific template link IDs and
+terminology remain subject to the sandbox gate.
+
+Saving writes an authoritative `hospital-mapping` canonical JSON file through
+the existing organization-scoped definitions storage. Portable files include
+mapping identity/revision, catalog hash, profile dependency and clinical/patient
+mappings; they exclude endpoint, credentials, staff and local care-unit assignments.
+Export, saved-file discovery and import retain identity, revision and content hash.
+An import creates a new local draft requiring a new test; it never changes the
+active revision. Runtime projections are rebuilt from the file and pinned form.
+EPS files are rejected by COS and vice versa.
+
+**Simulator evidence is configuration/profile evidence only.** Tests validate
+required local mappings, supported patient namespace, pinned field/type
+compatibility and credential decryptability. They make no outbound request and
+transmit no document. Every result records its exact configuration hash and
+explicit simulator/no-transmission status. A simulator activation cannot verify
+connectivity, OAuth grants, receiver templates, storage or final acknowledgement.
+Live mode can be drafted, but its tests report the missing sandbox verification
+and activation is refused server-side. Slice 024 must establish the real target
+contract and verification path before live activation can become available.
+
+Published profile inspection (19 October 2026):
+[QuestionnaireResponsePreHospitalNote v2 JSON view](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.profile.json.html)
+identifies canonical version 2.0.0, open item slicing, and an `otherInformation`
+slice with one `valueString` and a SNOMED CT `linkId`. It does not enumerate the
+receiving installation's template codes. This configuration slice supports that
+flat text mapping and rejects nonnumeric link IDs, specialized medication IDs,
+and unsupported flat answer types. Numeric shape is not terminology validation.
+Medication requires a Coding answer and five mandatory nested answers; PDF uses
+a separate URI slice and observations/triage use references. Their structured
+mapping/composition belongs to slice 013; this simulator does not claim a complete
+clinical document validates against all required slices.
+
+The [Bundle prehospital note profile](https://fhir.openservices.cambio.se/site/StructureDefinition-BundlePrehospitalNote.html)
+and [questionnaire profile](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.html)
+are development inputs, not proof of target installation compatibility.

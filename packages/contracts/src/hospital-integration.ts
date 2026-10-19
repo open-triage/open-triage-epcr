@@ -48,3 +48,18 @@ export function hospitalIdentifiersMatch(configuration: HospitalIdentifier, loca
   const systems = new Set([configuration.namespace, ...configuration.aliases]);
   return systems.has(local.system) && systems.has(remote.system) && local.value === remote.value;
 }
+
+/** COS portable mappings exclude endpoints, credentials and local identity assignments. */
+export type CosMappingDefinition = Omit<HospitalMappingDefinition, 'profile'> & {
+  profile: { package: 'cambio.cos.prehospital'; version: '2.0.0'; fhirVersion: '4.0.1';
+    bundle: 'https://fhir.cambio.se/StructureDefinition/BundlePrehospitalNote/v2';
+    questionnaire: 'https://fhir.cambio.se/StructureDefinition/QuestionnaireResponsePreHospitalNote/v2' };
+  clinicalMappings: { id: string; source: HospitalField; linkId: string; answerType: 'string' | 'decimal' | 'boolean' | 'dateTime' }[];
+};
+export type CosConnectionSettings = {
+  mode: 'simulator' | 'live'; authentication: 'api-key' | 'bearer-token';
+  template: string; encounterNamespace: string; organizationHsaId: string;
+  defaultAmbulanceCareUnit: string;
+  staff: { userId: string; hsaId: string }[];
+  careUnits: { hospital: string; localCareUnit: string; hsaId: string }[];
+};

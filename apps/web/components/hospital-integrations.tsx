@@ -1,4 +1,5 @@
 "use client";
+import {CosIntegrationsPanel} from './cos-integrations';
 import React,{useEffect,useState} from 'react';
 import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
@@ -18,7 +19,7 @@ const empty={endpoint:'https://hackathon2026.vadimperetok.in/fhir',field:DEFAULT
 function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n')}:empty;}
 export function HospitalIntegrationsPanel({language,csrfToken,canWrite}:{language:string;csrfToken:string;canWrite:boolean}){
  const t=(key:string)=>resolveMessage(language,`hospital.${key}`);
- const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[tab,setTab]=useState('eps'),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
+ const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[tab,setTab]=useState('eps'),[cosOpened,setCosOpened]=useState(false),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
  const dirty=!!secret||JSON.stringify(draft)!==JSON.stringify(editable(value?.draft??null));
  const confirmLeave=useUnsavedChanges(dirty);
  const tested=value?.tests.find(test=>test.revision===value.draft?.revision);
@@ -42,11 +43,11 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite}:{languag
  const expected={expectedRevision:value?.draft?.revision??0,expectedStateRevision:value?.stateRevision??0};
  return <section className="admin-configuration agency-settings hospital-integrations" aria-label={t('title')}>
   <h3>{t('title')}</h3><div className="form-actions" role="group" aria-label={t('destination')}>
-   {['eps','cos','history'].map(item=><button type="button" key={item} aria-pressed={tab===item} onClick={()=>setTab(item)}>{t(item)}</button>)}
+   {['eps','cos','history'].map(item=><button type="button" key={item} aria-pressed={tab===item} onClick={()=>{setTab(item);if(item==='cos')setCosOpened(true);}}>{t(item)}</button>)}
   </div>
   {error&&<p className="admin-error" role="alert">{error}</p>}{status&&<p role="status">{status}</p>}
   {error&&<button type="button" onClick={()=>void refresh()} disabled={busy}>{t('reload')}</button>}
-  {tab==='cos'&&<p>{t('cosUnconfigured')}</p>}
+  <div hidden={tab!=='cos'}>{cosOpened&&<CosIntegrationsPanel language={language} csrfToken={csrfToken} canWrite={canWrite}/>}</div>
   {value&&<><p>{t('group')}: {value.groupName}</p>
    <div hidden={tab!=='eps'}>
     <p>{t('active')}: {value.active?.revision??t('inactive')} — {t('draft')}: {value.draft?.revision??t('unsaved')}</p>
