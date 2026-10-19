@@ -1330,3 +1330,13 @@ fieldset { min-inline-size: 0; }
 .audit-clinical-values pre, .audit-event-dump pre { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
 .audit-event-dump { display: grid; gap: 10px; }
 .audit-event-dump > button { justify-self: start; }
+
+.hospital-history { max-height: 60vh; overflow: auto; }
+.hospital-history table { width: 100%; border-collapse: collapse; }
+.hospital-history th, .hospital-history td { padding: .5rem; text-align: left; border-bottom: 1px solid var(--green); }
+.hospital-digest { overflow-wrap: anywhere; max-width: 24rem; }
+.hospital-integrations { min-width: 0; }
+.hospital-integrations fieldset { min-width: 0; display: grid; gap: 8px; }
+.hospital-integrations .form-actions { position: static; flex-wrap: wrap; }
+.hospital-integrations label { min-width: 0; }
+.hospital-integrations :is(input,select,textarea) { max-width: 100%; min-width: 0; }

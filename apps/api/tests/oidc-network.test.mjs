@@ -17,18 +17,20 @@ test('real pinned HTTPS discovery validates certificates and denies redirects, o
     await execute('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',path.join(directory,'key.pem'),'-out',path.join(directory,'cert.pem'),'-days','1','-subj','/CN=idp.test','-addext','subjectAltName=DNS:idp.test']);
     let requests=0;
     server=createServer({key:await readFile(path.join(directory,'key.pem')),cert:await readFile(path.join(directory,'cert.pem'))},(req,res)=>{
-      requests++;if(req.url==='/redirect'){res.writeHead(302,{location:'/valid'}).end();return;}
+      requests++;if(req.url==='/fhir'){res.writeHead(200,{'content-type':'application/fhir+json; charset=utf-8'}).end('{"resourceType":"Organization","id":"team"}');return;}if(req.url==='/redirect'){res.writeHead(302,{location:'/valid'}).end();return;}
       if(req.url==='/oversized'){res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({huge:'x'.repeat(300*1024)}));return;}
       if(req.url==='/slow'){res.writeHead(200,{'content-type':'application/json'});res.flushHeaders();return;}
       res.writeHead(200,{'content-type':'application/json'}).end('{"issuer":"https://idp.test"}');
     });server.listen(0,address);await once(server,'listening');
     const origin=`https://idp.test:${server.address().port}`;
     const moduleUrl=new URL('../dist/authentication/oidc-network.js',import.meta.url).href;
-    async function fetch(pathname,trust=true,hostname='idp.test'){
-      const script=`import {providerJson} from ${JSON.stringify(moduleUrl)};let lookups=0;try{const body=await providerJson(${JSON.stringify(origin.replace('idp.test',hostname)+pathname)},async()=>{lookups++;return [{address:${JSON.stringify(address)},family:4}]},${JSON.stringify([origin,origin.replace('idp.test',hostname)])});console.log(JSON.stringify({body,lookups}));}catch(error){console.error(error.message);process.exitCode=1;}`;
+    async function fetch(pathname,trust=true,hostname='idp.test',fhir=false){
+      const script=`import {providerJson,providerFetch} from ${JSON.stringify(moduleUrl)};let lookups=0;try{const resolve=async()=>{lookups++;return [{address:${JSON.stringify(address)},family:4}]};const url=${JSON.stringify(origin.replace('idp.test',hostname)+pathname)},origins=${JSON.stringify([origin,origin.replace('idp.test',hostname)])};const body=${fhir} ? await (await providerFetch(url,undefined,resolve,origins,'application/fhir+json')).json() : await providerJson(url,resolve,origins);console.log(JSON.stringify({body,lookups}));}catch(error){console.error(error.message);process.exitCode=1;}`;
       return execute(process.execPath,['--input-type=module','-e',script],{env:{...process.env,NODE_EXTRA_CA_CERTS:trust?path.join(directory,'cert.pem'):''},timeout:10000});
     }
     assert.deepEqual(JSON.parse((await fetch('/valid')).stdout),{body:{issuer:'https://idp.test'},lookups:1});
+    await assert.rejects(fetch('/fhir'),error=>/Invalid discovery/.test(error.stderr));
+    assert.deepEqual(JSON.parse((await fetch('/fhir',true,'idp.test',true)).stdout),{body:{resourceType:'Organization',id:'team'},lookups:1});
     await assert.rejects(fetch('/valid',false),error=>/self-signed|certificate/i.test(error.stderr));
     await assert.rejects(fetch('/valid',true,'wrong.test'),error=>/certificate|altname|hostname/i.test(error.stderr));
     const before=requests;await assert.rejects(fetch('/redirect'),error=>/Invalid discovery/.test(error.stderr));assert.equal(requests,before+1,'Redirect target must never be requested');

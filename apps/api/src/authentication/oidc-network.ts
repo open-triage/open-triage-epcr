@@ -39,7 +39,7 @@ export async function providerJson(value: string, resolveAddress = lookup, origi
 }
 
 /** The protocol library uses this for both token exchange and JWKS refresh. */
-export async function providerFetch(input: string | URL, init?: { method?: string; headers?: HeadersInit; body?: unknown }, resolveAddress = lookup, origins?:string[]): Promise<Response> {
+export async function providerFetch(input: string | URL, init?: { method?: string; headers?: HeadersInit; body?: unknown }, resolveAddress = lookup, origins?:string[], additionalMediaType?: "application/fhir+json"): Promise<Response> {
   const url=providerUrl(String(input)); const address=await checkedAddress(url,resolveAddress,origins);
   const method=init?.method ?? "GET";
   if (!["GET","POST"].includes(method) || init?.body && typeof init.body!=="string" && !(init.body instanceof URLSearchParams)) throw new Error("Unsupported provider request");
@@ -48,7 +48,7 @@ export async function providerFetch(input: string | URL, init?: { method?: strin
   const headers=Object.fromEntries(new Headers(init?.headers).entries());
   return new Promise((resolve,reject)=>{
     const req=request(url,{method,agent:false,headers,family:address.family,lookup:(_host,_options,callback)=>callback(null,address.address,address.family)},response=>{
-      if (response.statusCode!==200 || !/^application\/(?:json|jwk-set\+json)(?:;|$)/i.test(String(response.headers["content-type"]))) {response.resume();reject(new Error("Invalid discovery response"));return;}
+      if (response.statusCode!==200 || (!/^application\/(?:json|jwk-set\+json)(?:;|$)/i.test(String(response.headers["content-type"])) && !(additionalMediaType && String(response.headers["content-type"]).split(";",1)[0]?.toLowerCase()===additionalMediaType))) {response.resume();reject(new Error("Invalid discovery response"));return;}
       let size=0;const parts:Buffer[]=[];
       response.on("data",(part:Buffer)=>{size+=part.length;if(size>256*1024)req.destroy(new Error("Provider response too large"));else parts.push(part);});
       response.on("error",reject);response.on("end",()=>resolve(new Response(Buffer.concat(parts),{status:200,headers:{"content-type":String(response.headers["content-type"])}})));
