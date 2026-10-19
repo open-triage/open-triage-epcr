@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { hospitalFieldId, type CosConnectionSettings, type HospitalField } from '@open-triage/contracts';
 import { compileCosMapping, resolveCosCareUnit } from './cos-configuration.js';
 import { contentDigest, type CanonicalPackage } from '../admin/canonical-package.js';
-import type { SignedOccurrence, SignedReportPdfSource } from '../reports/signed-report-pdf.js';
+import { effectiveSignedPdfOccurrences, type SignedOccurrence, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
 export const bytesHash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export const COS_SIMULATOR_LIMITS=Object.freeze({sourceOccurrences:10000,items:2000,textBytes:1024*1024,bundleBytes:2*1024*1024});
 export class CosFinding extends Error { constructor(public readonly code:string,public readonly state:'waiting'|'failed'|'excluded'='waiting'){super(code);} }
@@ -24,6 +24,7 @@ export function cosEligibility(rows:SignedOccurrence[]):'transported'|'excluded'
  return unit==='4227001'&&care&&['4228001','4228003','4228005','4228007','4228009'].includes(care)&&transport&&['4230001','4230003','4230005','4230007'].includes(transport)?'transported':'waiting';
 }
 export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
+ source={...source,occurrences:effectiveSignedPdfOccurrences(source)};
  if(source.occurrences.length>COS_SIMULATOR_LIMITS.sourceOccurrences)throw new CosFinding('simulatorLimit','failed');
  let sourceBytes=0;for(const row of source.occurrences){sourceBytes+=typeof row.value_text==='string'?Buffer.byteLength(row.value_text):0;if(sourceBytes>COS_SIMULATOR_LIMITS.textBytes)throw new CosFinding('simulatorLimit','failed');}
  const eligibility=cosEligibility(source.occurrences);
@@ -32,7 +33,8 @@ export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,
  const mapping=compileCosMapping(p,source.configuration);
  const patient=scalar(source,mapping.patientIdentifier.field,'patientIdentifier');
  if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))throw new CosFinding('patientNamespace');
- const staff=settings.staff.find(row=>row.userId===source.signerId)?.hsaId;
+ const amendment=source.amendments.at(-1);
+ const staff=settings.staff.find(row=>row.userId===(amendment?.authorId??source.signerId))?.hsaId;
  if(!staff)throw new CosFinding('staff');
  const hospital=scalar(source,{kind:'nemsis',elementId:'eDisposition.01'},'destination');
  const localCareUnit=scalar(source,{kind:'nemsis',elementId:'eDisposition.02'},'destination');
@@ -61,10 +63,10 @@ export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,
  const bundle={resourceType:'Bundle',type:'collection',meta:{profile:[mapping.profile.bundle]},identifier:{system:'urn:opentriage:cos:delivery',value:deliveryId},
   entry:[{fullUrl:`urn:uuid:${deliveryId}`,resource:{resourceType:'QuestionnaireResponse',id:deliveryId,meta:{profile:[mapping.profile.questionnaire]},
    identifier:{system:'urn:opentriage:cos:report',value:source.reportId},questionnaire:settings.template,status:'completed',
-   subject:{type:'Patient',identifier:patientIdentifier},encounter:{identifier:encounter},authored:source.signedAt,
+   subject:{type:'Patient',identifier:patientIdentifier},encounter:{identifier:encounter},authored:amendment?.signedAt??source.signedAt,
    author:{type:'Practitioner',identifier:{system:'urn:oid:1.2.752.129.2.1.4.1',value:staff}},
    item:[...items,{linkId:mapping.pdfLinkId,answer:[{valueUri:`urn:opentriage:cos-simulator:pdf:${deliveryId}:${pdfSha256}`}]}]}}]};
  if(Buffer.byteLength(JSON.stringify(bundle))>COS_SIMULATOR_LIMITS.bundleBytes)throw new CosFinding('simulatorLimit','failed');
- return {bundle,pdf,pdfSha256,payloadSha256:contentDigest({bundle,pdfSha256}),contact,contactSha256:contentDigest(contact)};
+ return {amendmentSequence:source.amendmentSequence,bundle,pdf,pdfSha256,payloadSha256:contentDigest({bundle,pdfSha256}),contact,contactSha256:contentDigest(contact)};
 }
 export type CosPreparedPayload=ReturnType<typeof buildCosPayload>;

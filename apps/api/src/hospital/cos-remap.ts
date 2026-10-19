@@ -1,3 +1,5 @@
+import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
+import { effectiveSignedPdfOccurrences } from '../reports/signed-report-pdf.js';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { DataSource } from 'typeorm';
@@ -18,10 +20,9 @@ export async function remapWaitingCos(database:DataSource,sessions:ClinicianSess
   await sessions.lockPersonalAuthenticationContext(manager,null,token);
   const actor=await sessions.requireCapability(token,'settings:write',manager);
   const scope=await reviewTargetScope(manager,reviewScope(actor),input.reportId,'report');
-  const [report]=await manager.query<Array<{documenting_user_id:string;group_id:string;manifest:{occurrences:SignedOccurrence[]}}>>(`select r.documenting_user_id,app_identity.organization_group(r.organization_id) group_id,s.integrity_manifest manifest from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id where r.id=$1 and r.organization_id=$2 and r.status='signed' and r.synthetic=$5 and (r.expires_at is null or r.expires_at>clock_timestamp()) and ($3::boolean or r.documenting_user_id=$4)`,[input.reportId,scope.organizationId,scope.reports==='all',scope.userId,input.dataset==='synthetic']);
+  const [report]=await manager.query<Array<{documenting_user_id:string;group_id:string;manifest:{occurrences:SignedOccurrence[]}}>>(`select r.documenting_user_id,app_identity.organization_group(r.organization_id) group_id,s.integrity_manifest manifest from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id where r.id=$1 and r.organization_id=$2 and r.status='signed' and r.synthetic=$5 and (r.expires_at is null or r.expires_at>clock_timestamp()) and ($3::boolean or r.documenting_user_id=$4) for update of r`,[input.reportId,scope.organizationId,scope.reports==='all',scope.userId,input.dataset==='synthetic']);
   if(!report)throw new NotFoundException();
   if(!reviewIdentifying(scope,report.documenting_user_id))throw new ForbiddenException();
-  if(cosEligibility(report.manifest.occurrences)!=='transported')throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   await manager.query('select group_id from app_identity.group_authentication_policy where group_id=$1 for update',[report.group_id]);
   const [replay]=await manager.query<Array<{id:string;command_sha256:string}>>('select id,command_sha256 from clinical.cos_delivery where command_id=$1',[input.commandId]);
   if(replay){if(replay.command_sha256!==digest)throw new ConflictException();return replay.id;}
@@ -29,6 +30,10 @@ export async function remapWaitingCos(database:DataSource,sessions:ClinicianSess
   if(Number(state?.active_revision)!==input.configurationRevision||Number(state?.state_revision)!==input.stateRevision)throw new ConflictException({code:'hospital.stale'});
   const [parent]=await manager.query<Array<{id:string;snapshot_id:string;amendment_sequence:number;pdf_language:string;state:string}>>(`select d.* from clinical.cos_delivery d where d.id=$1 and d.report_id=$2 and d.organization_id=$3 and d.group_id=$4 for update`,[input.parentId,input.reportId,scope.organizationId,report.group_id]);
   if(!parent||parent.state!=='waiting')throw new ConflictException({code:'hospital.cos.remapUnsafe'});
+  const [newer]=await manager.query('select id from clinical.cos_delivery where report_id=$1 and amendment_sequence>$2 limit 1',[input.reportId,parent.amendment_sequence]);
+  if(newer)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
+  const source=await signedReportPdfSource(manager,input.reportId,parent.snapshot_id,parent.amendment_sequence);
+  if(cosEligibility(effectiveSignedPdfOccurrences(source))!=='transported')throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [effects]=await manager.query<Array<{present:boolean}>>(`select exists(select 1 from clinical.cos_attempt where delivery_id=$1) or exists(select 1 from clinical.cos_payload where delivery_id=$1) present`,[parent.id]);
   if(effects?.present)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [version]=await manager.query<Array<{canonical_mapping:CanonicalPackage}>>(`select canonical_mapping from app_identity.hospital_cos_version where group_id=$1 and revision=$2 and settings->>'mode'='simulator'`,[report.group_id,input.configurationRevision]);

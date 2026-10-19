@@ -20,7 +20,7 @@ async function event(manager:EntityManager,job:Job,worker:string,state:string,fi
 export async function processCosWork(database:DataSource,limit=10,receiver:CosReceiver=new PersistentCosSimulator(database)){
  if(!Number.isInteger(limit)||limit<1||limit>100)throw new RangeError('Invalid COS batch size');
  const worker=randomUUID();let processed=0;
- const candidates=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id join clinical.report r on r.id=d.report_id where (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and s.active_revision is not null order by d.created_at,d.id limit $1`,[limit]);
+ const candidates=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id join clinical.report r on r.id=d.report_id where (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and s.active_revision is not null and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and barrier.id<>d.id and barrier.state='uncertain') order by d.created_at,d.id limit $1`,[limit]);
  for(const candidate of candidates){
   const runner=database.createQueryRunner();await runner.connect();let held=false;
   try{
@@ -28,12 +28,22 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
    let job:Job|undefined,payload:CosPreparedPayload|undefined,attempt:string|undefined;
    await runner.startTransaction('REPEATABLE READ');
    try{
+    await runner.manager.query('select id from clinical.report where id=$1 for update',[candidate.report_id]);
     [job]=await runner.manager.query<Job[]>(`select d.*,v.settings,v.canonical_mapping from clinical.cos_delivery d
      join clinical.report r on r.id=d.report_id and r.organization_id=d.organization_id and r.status='signed'
      join app_identity.hospital_cos_version v on v.group_id=d.group_id and v.revision=d.configuration_revision
      join app_identity.hospital_cos_state s on s.group_id=d.group_id
      where d.id=$1 and (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and s.active_revision is not null
        and app_identity.organization_group(r.organization_id)=d.group_id for update of d for share of s`,[candidate.id]);
+    if(job){
+     const [ordering]=await runner.manager.query<Array<{blocked:boolean;obsolete:boolean;prepared:boolean}>>(`select
+      exists(select 1 from clinical.cos_delivery where report_id=$1 and id<>$2 and state='uncertain') blocked,
+      exists(select 1 from clinical.cos_delivery where report_id=$1 and amendment_sequence>$3) obsolete,
+      exists(select 1 from clinical.cos_attempt where delivery_id=$2) or exists(select 1 from clinical.cos_payload where delivery_id=$2) prepared`,[job.report_id,job.id,job.amendment_sequence]);
+     if(ordering?.prepared){await event(runner.manager,job,worker,'uncertain','outcomeUnknown');job=undefined;}
+     else if(ordering?.obsolete){await event(runner.manager,job,worker,'superseded');job=undefined;}
+     else if(ordering?.blocked)job=undefined;
+    }
     if(job){
      try{
       if(job.settings.mode!=='simulator'||job.canonical_mapping.sha256!==job.mapping_sha256)throw new CosFinding('configuration','failed');
