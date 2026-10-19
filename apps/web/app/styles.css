@@ -1342,6 +1342,28 @@ fieldset { min-inline-size: 0; }
 .hospital-integrations :is(input,select,textarea) { max-width: 100%; min-width: 0; }
 
 .hospital-mapping-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.75rem; align-items: end; margin-block: 0.75rem; }
+
+.eps-control { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.eps-control > span { font-size: var(--text-caption); }
+.eps-dialog { width: min(960px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; border: 1px solid var(--line); border-radius: 10px; color: var(--text-color); background: var(--paper); }
+.eps-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.eps-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-bottom: 1px solid var(--line); }
+.eps-dialog h2 { font-size: var(--text-heading); margin: 0; }
+.eps-content { max-height: calc(100dvh - 140px); overflow: auto; padding: 12px; overscroll-behavior: contain; }
+.eps-content dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; }
+.eps-content dd { margin: 0; overflow-wrap: anywhere; }
+.eps-content table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.eps-content th, .eps-content td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 6px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.eps-content th:first-child { width: 35%; }
+@media (max-width: 600px) { .eps-dialog h2 { font-size: 18px; } .eps-content dl { display: block; } .eps-content dd { margin-bottom: 8px; } }
+.eps-content details { border-bottom: 1px solid var(--line); }
+.eps-content summary { cursor: pointer; min-height: 44px; padding: 10px 6px; font-weight: 600; }
+.eps-content summary:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+@media (max-width: 600px) {
+  .eps-content thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .eps-content tr { display: block; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .eps-content th, .eps-content td, .eps-content th:first-child { display: block; width: 100%; border: 0; }
+}
 .signed-report-pdf-dialog { width: min(960px, calc(100vw - 24px)); height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); color: var(--text-color); padding: 16px; overflow: auto; }
 .signed-report-pdf-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
 .signed-report-pdf-dialog::backdrop { background: rgb(0 0 0 / 45%); }

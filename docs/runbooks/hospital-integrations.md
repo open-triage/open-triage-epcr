@@ -120,3 +120,39 @@ clinical document validates against all required slices.
 The [Bundle prehospital note profile](https://fhir.openservices.cambio.se/site/StructureDefinition-BundlePrehospitalNote.html)
 and [questionnaire profile](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.html)
 are development inputs, not proof of target installation compatibility.
+
+## Reading a patient's EPS
+
+After EPS activation, the active draft's call header checks the configured
+identifier field. Checking, available, missing identifier, no match, and lookup
+failure have distinct localized states. The EPS button opens a bounded clinical
+section table with inert narrative, source organization/authorship, summary date,
+and retrieval time. Complete source details preserve every resource and field,
+including unsupported content. Reference findings stay visible; embedded URLs,
+images and markup never execute or trigger additional requests. This slice is
+read-only; imports and protected offline caching follow separately.
+
+The hackathon adapter reads the public `$samples` and `$exchange` listings and
+reads the listed documents using strictly constructed same-service paths. It
+indexes each Composition subject's actual Patient identifiers, with explicit
+configured namespace aliases. It does not search generic FHIR Patient endpoints,
+match listing display numbers/names, or send patient identifiers to the service.
+The public reads need no token; the protected team token remains used for the
+configured connection test. Requests have bounded document count/concurrency and
+a shared time budget; a partial failure is never reported as no match.
+
+Both endpoints authorize the live clinician session and owned draft in the
+current agency. Stateless bindings detect report/patient/configuration changes
+across API replicas. The API rechecks after remote lookup; the UI also discards
+late responses, invalidates when local documentation changes, polls configuration,
+and checks again before opening. Successful reads append `eps.read` patient
+access evidence with canonical mapping/configuration revisions and hashes, without
+patient identifiers or clinical payloads. Summaries remain only in current-view
+memory and follow that view's report/user/agency lifetime.
+
+`eps.test.mjs` covers both pinned example documents, lossless source fallbacks,
+unsafe narratives, unsupported references, malformed documents and discovery
+failures. The PostgreSQL hospital integration suite additionally covers both
+patients, changed identifier selection, late results, authorization/revocation,
+revision audit, multiple service instances, and English/Swedish desktop/mobile
+keyboard and layout behavior using the actual component and service.
