@@ -1,3 +1,4 @@
+import { verifiedPdfPhotos, SIGNED_PDF_SIMULATOR_LIMITS } from "./signed-report-pdf-media.js";
 import PDFDocument from "pdfkit";
 import { openSync } from "fontkit";
 import { Readable } from "node:stream";
@@ -18,11 +19,13 @@ export type SignedReportPdfSource = {
   reportId: string; snapshotId: string; revision: number; amendmentSequence: number; synthetic: boolean;
   signerId: string; signerDisplayName?: string; signedAt: string; canonicalSha256: string; catalogReleaseId: string; formVersionId: string;
   groups: SignedGroup[]; occurrences: SignedOccurrence[]; notes: SignedNoteManifestEntry[];
+  photoBytes?: Record<string, Buffer>;
   amendments: SignedPdfAmendment[]; configuration: ClinicalFormConfiguration;
 };
 export class SignedPdfError extends Error {
   constructor(public readonly code: "pdf.invalid-version" | "pdf.definitions-unavailable" | "pdf.unsupported-text" |
-    "pdf.too-large" | "pdf.render-failed") { super(code); }
+    "pdf.too-large" | "pdf.render-failed" | "pdf.media-unavailable" | "pdf.media-decode-failed" |
+    "pdf.media-too-large" | "pdf.audio-metadata-unavailable", public readonly noteId?: string) { super(code); }
 }
 const assets = join(__dirname, "pdf-assets");
 const regular = join(assets, "DejaVuSans.ttf");
@@ -94,12 +97,20 @@ export function effectiveSignedPdfOccurrences(source: SignedReportPdfSource): Si
 export async function renderSignedReportPdf(source: SignedReportPdfSource, language: PdfLanguage): Promise<Buffer> {
   const t = language === "sv" ? sv : en;
   const effective = effectiveSignedPdfOccurrences(source);
+  const photos = await verifiedPdfPhotos(source);
   const doc = new PDFDocument({ size: "A4", margins: { top: 66, bottom: 58, left: 44, right: 44 },
     bufferPages: true, info: { Title: t.title, Author: "OpenTriage", CreationDate: new Date(source.signedAt),
       ModDate: new Date(source.amendments.at(-1)?.signedAt ?? source.signedAt) } });
   const chunks: Buffer[] = [];
   const completed = new Promise<Buffer>((resolve, reject) => {
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    doc.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > SIGNED_PDF_SIMULATOR_LIMITS.artifactBytes) {
+        reject(new SignedPdfError("pdf.too-large"));
+        (doc as unknown as Readable).destroy();
+      } else chunks.push(chunk);
+    });
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
@@ -141,7 +152,6 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     doc.font("heading").fontSize(21).text(checked(t.title), { width }).moveDown(.6);
     doc.font("body").fontSize(10);
     if (source.synthetic) paragraph(t.synthetic);
-    if (source.notes.some((note) => note.type !== "text")) paragraph(t.mediaNotice);
     row(t.report, source.reportId);
     row(t.revision, `${source.revision} · ${t.sequence}: ${source.amendmentSequence}`);
     row(t.signer, source.signerDisplayName ? `${source.signerDisplayName}\n${source.signerId}` : source.signerId);
@@ -192,8 +202,24 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     }
     const media = source.notes.filter((note) => note.type !== "text");
     if (media.length) {
-      heading(t.media); paragraph(t.mediaNotice);
-      for (const note of media) { row(t[note.type as "photo" | "audio"], `${note.id}\n${note.capturedAt}\n${note.author.displayName}`); if (note.normalizedCaption) paragraph(note.normalizedCaption); }
+      const firstPhoto = photos.get(media[0]!.id);
+      room(firstPhoto ? Math.min(380, width * firstPhoto.height / firstPhoto.width) + 190 : 190);
+      heading(t.media);
+      for (const note of media) {
+        const photo = photos.get(note.id);
+        room(photo ? Math.min(380, width * photo.height / photo.width) + 140 : 140);
+        row(t[note.type as "photo" | "audio"], `${note.id}\n${note.capturedAt}\n${note.author.displayName}`);
+        if (note.normalizedCaption) paragraph(note.normalizedCaption);
+        if (note.type === "audio") {
+          row(t.duration, `${note.media!.durationMilliseconds! / 1000} ${t.seconds}`);
+          paragraph(t.audioNotTransferred);
+        } else {
+          const height = Math.min(380, width * photo!.height / photo!.width);
+          room(height + 12);
+          doc.image(photo!.bytes, 44, doc.y, { fit: [width, height] });
+          doc.y += height + 12;
+        }
+      }
     }
     heading(t.amendments);
     if (!source.amendments.length) paragraph(t.none);

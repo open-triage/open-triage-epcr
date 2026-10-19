@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { signedPdfMediaFixture } from "./fixtures/signed-pdf-media.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -66,10 +68,51 @@ test("rendering fails explicitly for unsupported glyphs, missing pinned definiti
   await assert.rejects(renderSignedReportPdf(oversized, "en"), { code: "pdf.too-large" });
 });
 
-test("media-bearing preview visibly disclaims completeness instead of silently omitting media", async () => {
-  const { source } = signedPdfFixture();
-  source.notes.push({ ...source.notes[0], type: "photo", normalizedText: undefined, normalizedCaption: "Clinical image", media: { sha256: "a".repeat(64) } });
-  const pages = await inspect(await renderSignedReportPdf(source, "en"));
-  assert.match(pages.join(" "), /not a complete transfer artifact/);
-  assert.match(pages.join(" "), /Clinical image/);
+test("media completeness embeds every signed photo and explicit localized audio metadata", async () => {
+  const {source} = await signedPdfMediaFixture();
+  for (const language of ["en", "sv"]) {
+    const bytes = await renderSignedReportPdf(source, language);
+    const pages = await inspect(bytes);
+    const text = pages.join(" ");
+    assert.match(text, /12.345/);
+    assert.match(text, /2026-10-19T10:01/);
+    assert.ok(text.includes(language === "en" ? "recording was not transferred" : "Ljudinspelningen överfördes inte"));
+    assert.match(text, /demonstration photo 1/); assert.match(text, /demonstration photo 2/);
+    assert.equal((bytes.toString("latin1").match(/\/Subtype \/Image/g) ?? []).length, 2);
+    assert.ok(pages.every(page => page.includes(language === "en" ? "SYNTHETIC" : "SYNTETISK")));
+  }
+});
+
+test("missing, modified, undecodable, over-budget photos and missing signed duration fail closed", async () => {
+  const {source} = await signedPdfMediaFixture();
+  const bytes = source.photoBytes['photo-0'];
+  delete source.photoBytes['photo-0'];
+  await assert.rejects(renderSignedReportPdf(source, 'en'), {code:'pdf.media-unavailable'});
+  source.photoBytes['photo-0'] = Buffer.from('invalid JPEG');
+  await assert.rejects(renderSignedReportPdf(source, 'en'), {code:'pdf.media-unavailable'});
+  const note = source.notes.find(note => note.id === 'photo-0');
+  note.media.byteSize = source.photoBytes['photo-0'].length;
+  note.media.sha256 = createHash('sha256').update(source.photoBytes['photo-0']).digest('hex');
+  await assert.rejects(renderSignedReportPdf(source, 'en'), {code:'pdf.media-decode-failed'});
+  source.photoBytes['photo-0'] = Buffer.alloc(26*1024*1024);
+  note.media.byteSize = source.photoBytes['photo-0'].length;
+  note.media.sha256 = createHash('sha256').update(source.photoBytes['photo-0']).digest('hex');
+  await assert.rejects(renderSignedReportPdf(source, 'en'), {code:'pdf.media-too-large'});
+  source.photoBytes['photo-0'] = bytes;
+  note.media.byteSize = bytes.length; note.media.sha256 = createHash('sha256').update(bytes).digest('hex');
+  delete source.notes.at(-1).media.durationMilliseconds;
+  await assert.rejects(renderSignedReportPdf(source, 'en'), {code:'pdf.audio-metadata-unavailable'});
+});
+
+test("an oversized completed PDF fails instead of omitting its signed photo", async () => {
+  const { randomBytes } = await import('node:crypto');
+  const { default: sharp } = await import('sharp');
+  const {source} = await signedPdfMediaFixture();
+  const bytes = await sharp(randomBytes(2500*2500*3), {raw:{width:2500,height:2500,channels:3}})
+    .jpeg({quality:100,chromaSubsampling:'4:4:4'}).toBuffer();
+  assert.ok(bytes.length > 10*1024*1024 && bytes.length < 25*1024*1024);
+  const note = source.notes.find(n => n.id === 'photo-0');
+  source.photoBytes[note.id]=bytes;
+  note.media.byteSize=bytes.length; note.media.sha256=createHash('sha256').update(bytes).digest('hex');
+  await assert.rejects(renderSignedReportPdf(source,'en'),{code:'pdf.too-large'});
 });

@@ -7,8 +7,8 @@ import settings from "@open-triage/contracts/config/installation.production.json
 // Real renderer bytes keep the browser journey coupled to the clinical artifact tested by the API.
 const pdf = execFileSync(process.execPath, ["--input-type=module", "-e", `
   import { renderSignedReportPdf } from './apps/api/dist/reports/signed-report-pdf.js';
-  import { signedPdfFixture } from './apps/api/tests/fixtures/signed-pdf-source.mjs';
-  process.stdout.write(await renderSignedReportPdf(signedPdfFixture().source, 'en'));
+  import { signedPdfMediaFixture } from './apps/api/tests/fixtures/signed-pdf-media.mjs';
+  process.stdout.write(await renderSignedReportPdf((await signedPdfMediaFixture()).source, 'en'));
 `], { cwd: resolve(process.cwd(), "../..") });
 
 for (const width of [390, 1440]) test(`signed PDF inspection retains exact version and handles failure at ${width}px`, async ({ page }) => {
@@ -45,7 +45,7 @@ for (const width of [390, 1440]) test(`signed PDF inspection retains exact versi
       expect(url.searchParams.get("amendmentSequence")).toBe("1");
       expect(url.searchParams.get("dataset")).toBe("real");
       expect(route.request().headers()["x-organization-id"]).toBe("organization");
-      return fail ? route.fulfill({ status: 422, json: { code: width === 390 ? "pdf.amendment-evidence-unavailable" : "pdf.unsupported-text" } }) :
+      return fail ? route.fulfill({ status: 422, json: { code: width === 390 ? "pdf.media-unavailable" : "pdf.media-decode-failed" } }) :
         route.fulfill({ contentType: "application/pdf", body: pdf });
     }
     if (path === "/api/review/outcomes" || path === "/api/review/eligible-reviewers") return route.fulfill({ json: [] });
@@ -57,7 +57,8 @@ for (const width of [390, 1440]) test(`signed PDF inspection retains exact versi
   await expect(preview).toBeVisible();
   await preview.click();
   const dialog = page.getByRole("dialog", { name: "Inspect signed PDF" });
-  await expect(dialog.getByRole("alert")).toContainText(width === 390 ? "Ask your administrator to investigate the signed amendment history" : "cannot render faithfully");
+  await expect(dialog.getByRole("alert")).toContainText(width === 390 ? "restore the original media" : "cannot be decoded safely");
+  await expect(dialog.getByText(/Simulator limits: PDF 10 MiB/)).toBeVisible();
   fail = false;
   await dialog.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(dialog.locator("iframe")).toHaveAttribute("src", /^blob:/);
