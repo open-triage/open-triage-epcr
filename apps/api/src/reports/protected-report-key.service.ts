@@ -209,7 +209,6 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
     return this.dataSource.transaction(async (manager) => {
       await this.sessions.assertCsrf(accessToken, csrfToken, manager);
       const session = await this.sessions.get(accessToken, new Date(), false, manager);
-      await this.requireRecoveryProof(accessToken, manager);
       const rows = await manager.query<RecoveryGrantRow[]>(`
         select * from offline_recovery.create_report_recovery_grant($1, $2, $3, $4, $5, $6)
       `, [reportId, session.organization.id, session.user.id, sha256(accessToken), sha256(grant), command.envelopeVersion]);
@@ -242,7 +241,6 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
     return this.dataSource.transaction(async (manager) => {
       await this.sessions.assertCsrf(accessToken, csrfToken, manager);
       const session = await this.sessions.get(accessToken, new Date(), false, manager);
-      await this.requireRecoveryProof(accessToken, manager);
       const rows = await manager.query<ConsumedRecoveryGrantRow[]>(`
         select * from offline_recovery.consume_report_recovery_grant($1, $2, $3, $4, $5, $6)
       `, [reportId, session.organization.id, session.user.id, sha256(accessToken), sha256(command.grant), command.envelopeVersion]);
@@ -277,16 +275,6 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
         throw new NotFoundException("Protected report recovery is unavailable");
       }
     });
-  }
-
-  private async requireRecoveryProof(token: string, manager: import("typeorm").EntityManager): Promise<void> {
-    try { await this.sessions.requireRecentReauthentication(token, manager); }
-    catch (error) {
-      if (error instanceof HttpException && error.getStatus() === 403) {
-        throw new HttpException("Recent personal reauthentication is required", HttpStatus.PRECONDITION_REQUIRED);
-      }
-      throw error;
-    }
   }
 
   private validate(input: unknown): RegisterProtectedReportKeyCommand {

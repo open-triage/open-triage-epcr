@@ -141,7 +141,7 @@ test("recovery grants are opaque, expire after sixty seconds, and bind every aut
     { transaction: async (work) => work(manager) },
     {
       assertCsrf: async () => undefined,
-      requireRecentReauthentication: async () => undefined, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }),
+      requireRecentReauthentication: async () => { throw new Error("Reopening must not require reauthentication"); }, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }),
     },
   );
   const result = await service.createRecoveryGrant("session-secret", reportId,
@@ -184,7 +184,7 @@ test("recovery consumption unwraps one report key only after the atomic database
         result: "consumed", recovery_handle: recoveryHandle, wrapping_key_version: 7,
         wrapping_nonce: nonce, wrapped_data_key: wrapped,
       }] }) },
-      { assertCsrf: async () => undefined, requireRecentReauthentication: async () => undefined, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) },
+      { assertCsrf: async () => undefined, requireRecentReauthentication: async () => { throw new Error("Reopening must not require reauthentication"); }, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) },
     );
     const recovered = await service.consumeRecoveryGrant("session-secret", reportId, {
       schemaVersion: 1, envelopeVersion: 1, grant: Buffer.alloc(32, 0x61).toString("base64url"),
@@ -202,7 +202,7 @@ test("grant assurance failures are distinct while every recovery denial is gener
   const session = { organization: { id: randomUUID() }, user: { id: randomUUID() } };
   const serviceFor = (result) => new ProtectedReportKeyService(
     { transaction: async (work) => work({ query: async () => [result] }) },
-    { assertCsrf: async () => undefined, requireRecentReauthentication: async () => undefined, get: async () => session },
+    { assertCsrf: async () => undefined, requireRecentReauthentication: async () => { throw new Error("Reopening must not require reauthentication"); }, get: async () => session },
   );
   await assert.rejects(serviceFor({ result: "reauthentication_required" }).createRecoveryGrant(
     "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1 }, "csrf"),
@@ -214,17 +214,17 @@ test("grant assurance failures are distinct while every recovery denial is gener
   (error) => error instanceof NotFoundException && error.message === "Protected report recovery is unavailable");
 });
 
-test("shared proof failures block grant creation and consumption before any key SQL", async () => {
+test("invalid sessions block grant creation and consumption before any key SQL", async () => {
   let keyQueries = 0;
   const service = new ProtectedReportKeyService(
     { transaction: async (work) => work({ query: async () => { keyQueries++; return []; } }) },
-    { assertCsrf: async () => undefined, get: async () => ({ organization: { id: randomUUID() }, user: { id: randomUUID() } }),
+    { assertCsrf: async () => undefined, get: async () => { throw new ForbiddenException("Session invalid"); },
       requireRecentReauthentication: async () => { throw new ForbiddenException({ code: 'login.reauthenticationRequired' }); } },
   );
   for (const operation of ['createRecoveryGrant', 'consumeRecoveryGrant']) {
     await assert.rejects(service[operation]('session', randomUUID(), { schemaVersion: 1, envelopeVersion: 1,
       ...(operation === 'consumeRecoveryGrant' ? { grant: Buffer.alloc(32).toString('base64url') } : {}) }, 'csrf'),
-    error => error.getStatus?.() === 428 && /personal reauthentication/.test(error.message));
+    error => error.getStatus?.() === 403 && error.message === "Session invalid");
   }
   assert.equal(keyQueries, 0);
 });
