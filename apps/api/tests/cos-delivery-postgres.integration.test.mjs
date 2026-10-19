@@ -201,6 +201,20 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    if(!detail.assigneeId)await recoveryReview.claim('fixture',unsafe.id,{commandId:randomUUID(),expectedVersion:detail.version,dataset:'synthetic'});
    await assert.rejects(retryCosReview(db,recoverySessions,'fixture',unsafe.id,await retryInput(unsafe.id)));
   }
+  for(const crashStage of ['intent','contact','note']){
+   const crashed=await draft();await sign(crashed);let journalWrites=0;
+   const crash=new Error('process vanished before outcome journal commit');
+   const crashDatabase={query:db.query.bind(db),createQueryRunner:db.createQueryRunner.bind(db),transaction:async work=>{if(crashStage==='note'&&journalWrites++===0)return db.transaction(work);throw crash;}};
+   await assert.rejects(processCosWork(crashDatabase,100,{contact:async(...args)=>{if(crashStage==='intent')throw crash;const contact=await simulator.contact(...args);if(crashStage==='contact')throw crash;return contact;},note:async(...args)=>{await simulator.note(...args);throw crash;}}),error=>error===crash);
+   assert.equal((await db.query('select finding from clinical.cos_delivery where report_id=$1',[crashed]))[0].finding,crashStage==='note'?'contactStored':'inFlight');
+   assert.equal((await db.query("select id from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[crashed])).length,0);
+   await processCosWork(db);await processCosWork(db);
+   const [crashItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[crashed]);assert.ok(crashItem);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt where report_id=$1',[crashed]))[0].n,1,'restart classifies abandoned intent without resend');
+   const crashDetail=await recoveryReview.item('fixture',crashItem.id,'synthetic');assert.equal(crashDetail.transmission.finding,'outcomeUnknown');assert.equal(crashDetail.transmission.deliveryState,'uncertain');assert.equal(crashDetail.transmission.retryable,false);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[crashed]))[0].n,crashStage==='intent'?0:1);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_note where report_id=$1',[crashed]))[0].n,crashStage==='note'?1:0);
+  }
   const pinned=await draft();await sign(pinned);
   const {format,schemaVersion,sha256,...portable}=mapping;
   const newer=makePackage({...portable,version:'2',definition:{...mapping.definition,revision:2,patientIdentifier:{...mapping.definition.patientIdentifier,field:{kind:'nemsis',elementId:'ePatient.05'}}}});

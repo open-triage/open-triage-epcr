@@ -2501,5 +2501,8 @@
   "review.recovery.commands": "Historik för manuell återställning",
   "review.recovery.actor": "Aktör {actor}, signerat tillägg {sequence}",
   "review.recovery.simulator": "COS-simulator för utveckling. Detta bekräftar inte leverans till ett sjukhus i drift.",
-  "review.recovery.open": "Öppna leveransåterställning i granskning"
+  "review.recovery.open": "Öppna leveransåterställning i granskning",
+  "review.recovery.heading": "Återställning av COS-leverans",
+  "review.recovery.unconfirmed": "Leveransen är fortfarande obekräftad. Detta tekniska ärende kan inte stängas med ett granskningsutfall.",
+  "review.recovery.history": "Historik för leveransåterställning"
 }

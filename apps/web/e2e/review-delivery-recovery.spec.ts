@@ -30,7 +30,7 @@ for(const width of [390,1440])for(const state of ['failed','uncertain','confirme
  await expect(inspector.getByRole('option',{name:'Close review',exact:true})).toHaveCount(0);
  const retry=inspector.getByRole('option',{name:'Retry latest signed version',exact:true});
  if(state==='failed'){
-  await expect(retry).toHaveCount(1);await inspector.getByLabel('Action',{exact:true}).selectOption('retry-cos');
+  await expect(retry).toHaveCount(1);await inspector.getByRole('combobox',{name:'Action',exact:true}).selectOption('retry-cos');
   await inspector.getByRole('button',{name:'Retry latest signed version',exact:true}).click();
   await expect(inspector).toContainText('Delivery queued. This Review item stays open');expect(retries).toBe(1);
   await expect(inspector.getByRole('option',{name:'Retry latest signed version',exact:true})).toHaveCount(0);
@@ -41,5 +41,6 @@ for(const width of [390,1440])for(const state of ['failed','uncertain','confirme
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  await page.screenshot({path:test.info().outputPath('delivery-recovery.png'),fullPage:true});
  if(identifying){await inspector.getByText('Manual recovery history',{exact:true}).click();await expect(inspector).toContainText('signed amendment 1');}
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  expect(retries).toBe(state==='failed'?1:0);
 });

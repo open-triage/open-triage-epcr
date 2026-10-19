@@ -11,7 +11,7 @@ import { bytesHash, buildCosPayload, cosIdentifierRequirements, cosEligibility, 
 import { PersistentCosSimulator, CosRejected, type CosReceiver } from './cos-simulator.js';
 type Job={id:string;report_id:string;snapshot_id:string;organization_id:string;group_id:string;configuration_revision:string;
  mapping_id:string;mapping_revision:number;mapping_sha256:string;amendment_sequence:number;pdf_language:'en'|'sv';settings:CosConnectionSettings;canonical_mapping:CanonicalPackage};
-async function event(manager:EntityManager,job:Job,worker:string,state:string,finding:string|null=null,attempt:string|null=null,evidence:unknown={}){
+async function event(manager:EntityManager,job:Pick<Job,'id'|'report_id'>,worker:string,state:string,finding:string|null=null,attempt:string|null=null,evidence:unknown={}){
  await manager.query('select id from clinical.report where id=$1 for update',[job.report_id]);
  await manager.query('update clinical.cos_delivery set state=$2,finding=$3,updated_at=clock_timestamp() where id=$1',[job.id,state,finding]);
  await manager.query(`insert into clinical.cos_delivery_event(delivery_id,report_id,attempt_id,worker_id,state,finding,evidence) values($1,$2,$3,$4,$5,$6,$7::jsonb)`,[job.id,job.report_id,attempt,worker,state,finding,JSON.stringify(evidence)]);
@@ -25,6 +25,19 @@ async function event(manager:EntityManager,job:Job,worker:string,state:string,fi
 export async function processCosWork(database:DataSource,limit=10,receiver:CosReceiver=new PersistentCosSimulator(database)){
  if(!Number.isInteger(limit)||limit<1||limit>100)throw new RangeError('Invalid COS batch size');
  const worker=randomUUID();let processed=0;
+ // A vanished process can leave durable intent without recording its unknown outcome.
+ // Owning the same lock proves no live worker is still awaiting the receiver. Reconcile,
+ // never resend; a process crash must still leave an operational recovery home.
+ const interrupted=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join clinical.report r on r.id=d.report_id where d.state='uncertain' and d.finding in ('inFlight','contactStored') and (r.expires_at is null or r.expires_at>clock_timestamp()) order by d.updated_at,d.id limit $1`,[limit]);
+ for(const prior of interrupted)await database.transaction(async manager=>{
+  const [lock]=await manager.query<Array<{locked:boolean}>>('select pg_try_advisory_xact_lock(731013,hashtext($1)) locked',[prior.report_id]);
+  if(!lock?.locked)return;
+  await manager.query('select id from clinical.report where id=$1 for update',[prior.report_id]);
+  const [still]=await manager.query(`select id from clinical.cos_delivery where id=$1 and state='uncertain' and finding in ('inFlight','contactStored') for update`,[prior.id]);
+  if(!still)return;
+  const [attempt]=await manager.query<Array<{id:string}>>('select id from clinical.cos_attempt where delivery_id=$1 order by created_at desc,id desc limit 1',[prior.id]);
+  await event(manager,prior,worker,'uncertain','outcomeUnknown',attempt?.id??null);
+ });
  const candidates=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id join clinical.report r on r.id=d.report_id where (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and s.active_revision is not null and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and barrier.id<>d.id and barrier.state='uncertain') order by d.created_at,d.id limit $1`,[limit]);
  for(const candidate of candidates){
   const runner=database.createQueryRunner();await runner.connect();let held=false;

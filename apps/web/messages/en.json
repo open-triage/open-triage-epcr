@@ -2503,5 +2503,8 @@
   "review.recovery.commands": "Manual recovery history",
   "review.recovery.actor": "Actor {actor}, signed amendment {sequence}",
   "review.recovery.simulator": "Development COS simulator. This does not confirm delivery to a live hospital.",
-  "review.recovery.open": "Open delivery recovery in Review"
+  "review.recovery.open": "Open delivery recovery in Review",
+  "review.recovery.heading": "COS delivery recovery",
+  "review.recovery.unconfirmed": "Delivery remains unconfirmed. This technical concern cannot be closed with a Review outcome.",
+  "review.recovery.history": "Delivery recovery history"
 }

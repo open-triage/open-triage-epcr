@@ -659,10 +659,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           {draftDetail && <><h3>{t("review.overdueDraft")}</h3><p>{t("review.overdueDeadline")}: {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p></>}
           <div {...panel("review-detail", "findings", detailTab)}>
           {itemDetail?.findings.map((finding, index) => <MetricEvidence key={index} evidence={finding.metricEvidence} language={language} />)}
-            {itemDetail && ["missing-transmission-identifiers","cos-delivery-failed"].includes(itemDetail.kind ?? "") && <section aria-label={t("review.transmission.heading")}>
-              <h4>{t("review.transmission.heading")}</h4>
+            {itemDetail && ["missing-transmission-identifiers","cos-delivery-failed"].includes(itemDetail.kind ?? "") && <section aria-label={t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}>
+              <h4>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}</h4>
               {itemDetail.transmissionRestricted ? <p>{t("review.transmission.restricted")}</p> : itemDetail.transmission && <>
-                <p>{t(itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
+                <p>{t(itemDetail.kind==='cos-delivery-failed'?(itemDetail.activeMatch?'review.recovery.unconfirmed':'review.recovery.confirmed'):itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
                 {itemDetail.kind==='cos-delivery-failed' && <>
                   <p>{t('review.recovery.simulator')}</p>
                   <p>{t(`cosDelivery.state.${itemDetail.transmission.deliveryState}`)}</p>
@@ -677,7 +677,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                 {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}
                 {onOpenHospitalSettings && session.capabilities?.includes("settings:write") && itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <button type="button" onClick={()=>{if(confirmDiscardChanges(findingsDirty))onOpenHospitalSettings();}}>{t("review.transmission.openAdmin")}</button>}
                 <p>{t("review.transmission.version", {sequence:itemDetail.transmission.amendmentSequence, revision:itemDetail.transmission.mappingRevision})}</p>
-                {!!itemDetail.transmissionHistory?.length && <details><summary>{t("review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
+                {!!itemDetail.transmissionHistory?.length && <details><summary>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.history':"review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
                   {t(event.active ? "review.transmission.unresolved" : "review.transmission.resolved")} · {new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(new Date(event.recordedAt))}
                 </li>)}</ol></details>}
               </>}
