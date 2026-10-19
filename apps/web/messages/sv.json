@@ -2761,5 +2761,7 @@
   "hospitalHistory.proof.not-stored": "Bekräftat inte lagrad",
   "hospitalHistory.proof.unresolved": "Olöst",
   "hospitalHistory.proof.unsupported": "Mottagaravtal saknas",
-  "hospitalHistory.verification": "Verifiering"
+  "hospitalHistory.verification": "Verifiering",
+  "hospitalHistory.snapshotId": "Signerad ögonblicksbild",
+  "hospitalHistory.amendmentSequence": "Signerat tillägg"
 }

@@ -47,6 +47,7 @@ export async function hospitalHistoryJourney({db,sample,reviewer,run,expiring}){
  }finally{await connection.rollbackTransaction();await connection.release();}
  // Ordinary retention removes artifacts/source while metadata remains, with no live Review link.
  assert.ok((await db.query('select delivery_id from clinical.cos_payload where report_id=$1',[expiring])).length,'failed transport retains a prepared clinical artifact before ordinary expiry');
+ const [retainedVersion]=await db.query('select d.snapshot_id,d.amendment_sequence,p.payload_sha256 from clinical.cos_delivery d join clinical.cos_payload p on p.delivery_id=d.id where d.report_id=$1 order by d.created_at desc limit 1',[expiring]);
  const retained=await db.query('select id from clinical_audit.hospital_operational_event where report_id=$1',[expiring]);assert.ok(retained.length);
  const [expiry]=await db.query('select expires_at from clinical.report where id=$1',[expiring]);
  const marker={};await assert.rejects(db.transaction(async manager=>{
@@ -55,6 +56,14 @@ export async function hospitalHistoryJourney({db,sample,reviewer,run,expiring}){
   for(const table of ['cos_payload','cos_delivery','eps_submission','eps_import','signed_snapshot'])assert.equal((await manager.query(`select 1 from clinical.${table} where report_id=$1`,[expiring])).length,0);
   assert.equal((await manager.query('select id from clinical_audit.hospital_operational_event where report_id=$1',[expiring])).length,retained.length);
   assert.equal(await service.reviewLink(manager,session,expiring,'synthetic'),undefined);
+  await manager.query('set local role open_triage_api_runtime');
+  const auditDatabase={manager,transaction:async(first,second)=>(typeof first==='function'?first:second)(manager)};
+  const expiredAudit=await new AuditService(auditDatabase,sessions).list('fixture',{category:'clinical',uuid:expiring,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
+  const expiredEvents=expiredAudit.entries.filter(e=>e.source==='clinical_audit.hospital_operational_event');assert.equal(expiredEvents.length,retained.length);
+  assert.ok(expiredEvents.every(e=>e.integration.snapshotId===retainedVersion.snapshot_id&&e.integration.amendmentSequence===retainedVersion.amendment_sequence&&!e.recovery));
+  assert.ok(expiredEvents.some(e=>e.integration.payloadSha256===retainedVersion.payload_sha256));assert.ok(expiredEvents.some(e=>e.integration.payloadSha256===null),'unprepared queued evidence has an explicitly nullable hash');
+  assert.doesNotMatch(JSON.stringify(expiredAudit),/resourceType|QuestionnaireResponse|Fictional documented assessment|200207252388|canonical_bytes|encrypted_credential/);
+
   throw marker;
  }),error=>error===marker);
  // Re-run the exact migration over existing journals inside a rollback transaction:

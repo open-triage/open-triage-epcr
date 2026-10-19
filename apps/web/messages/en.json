@@ -2763,5 +2763,7 @@
   "hospitalHistory.proof.not-stored": "Confirmed not stored",
   "hospitalHistory.proof.unresolved": "Unresolved",
   "hospitalHistory.proof.unsupported": "Receiver contract unsupported",
-  "hospitalHistory.verification": "Verification"
+  "hospitalHistory.verification": "Verification",
+  "hospitalHistory.snapshotId": "Signed snapshot",
+  "hospitalHistory.amendmentSequence": "Signed amendment"
 }
