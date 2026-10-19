@@ -15,6 +15,13 @@
 > management do not describe the current workspace. Workload and legacy saved-analysis
 > backend contracts remain distinct from what that workspace exposes.
 
+> **Planned extension (2026-10-19):** [Hospital integration](hospital-integration.md)
+> adds built-in COS delivery recovery and a valid-identifier outcome action. It
+> also supersedes this document's own-report identifying restriction: clinicians
+> will see identifying information on their own reports within their permitted
+> scope; other reviewers still need report access plus `review:identifying`.
+> This extension is agreed design and is not yet implemented.
+
 # Problem Statement
 
 Clinicians and reviewers need to find reports requiring attention, document their conclusions, and understand patterns across the calls they are authorized to review. Administrators can already author validation rules with a server-side review execution target, but there is no operational review queue, assignment workflow, or Review workspace. Overdue unsigned drafts also need follow-up without entering the signed clinical analytics population.
