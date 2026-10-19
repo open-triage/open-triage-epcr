@@ -9,6 +9,10 @@ export class CosController {
  get(@Req() req:Request,@Headers('authorization') auth?:string){return this.service.get(sessionToken(req,auth));}
  @Put() @Header('Cache-Control','no-store, private')
  save(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.save(sessionToken(req,auth),body);}
+ @Post('rotate-credential') @Header('Cache-Control','no-store, private')
+ rotateCredential(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.rotateCredential(sessionToken(req,auth),body);}
+ @Post('resume') @Header('Cache-Control','no-store, private')
+ resume(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.resume(sessionToken(req,auth),body);}
  @Post('test') @Header('Cache-Control','no-store, private')
  test(@Body() body:unknown,@Req() req:Request,@Headers('authorization') auth?:string){return this.service.test(sessionToken(req,auth),body);}
  @Post('activate') @Header('Cache-Control','no-store, private')

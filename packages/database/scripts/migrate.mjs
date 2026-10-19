@@ -15,6 +15,8 @@ const renamedAnalyticsMigrations = [
   { oldVersion: "30000000000002", version: "20261001173917", checksum: "7349db72932ec20be3e436386534c435075347c0d9acad4bec8c550dfeb75fd4" },
 ];
 const compatibleMigrationChecksums = new Map([
+  // Preserve catalog deletion audit records when hospital configuration extends the action set.
+  ["20261019104900", new Map([["7bf3f21028e955d7b4e3fbccbba7bdea10ae9f727b0ecf2d5ae63408559b9e27", "9b4bb77252e7b4c841e1e7d17deebdc21c37df4c11d60a11340ca22ead3d7608"]])],
   // Optional Supabase role revokes preserve the same privileges on existing databases.
   ["20261016163831", new Map([["2edf729792be12364e5029b9b092250b25217f0544c3017e2c865dd6db99944d", "ada5ebc6b989541720166a9e24f252ffe1a9dbc8aeb8639e20cee8848f928fff"]])],
   ["20261016170929", new Map([["213f9090b134641a2fbd71056dd9d73957c2a5b638fe10a6c786420663f60d3b", "e37a5e6b1baffc93ed0c03f85a9d618c80350ba6f640ac1954d2c82c5b21735b"]])],

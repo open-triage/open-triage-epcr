@@ -90,3 +90,14 @@ export type EpsImportPlan = {
 
 /** Explicit narrative projection; no inferred code translations or current-treatment assertions. */
 export type EpsOutputMapping = { id: string; source: HospitalField; section: 'problems' | 'allergies' | 'medications' | 'procedures' | 'devices' | 'patientStory' | 'patientHistory'; representation: 'signed-narrative' };
+
+/** Redacted lifecycle projection, independent for EPS and COS. */
+export interface HospitalIntegrationLifecycleState {
+  pausedRevision: number | null;
+  credentialReplacement: boolean;
+  activeHealth: 'healthy' | 'failed' | 'untested';
+  pausedHealth: 'healthy' | 'failed' | 'untested';
+  draftHealth: 'healthy' | 'failed' | 'untested';
+  verification: 'read-only-live-connectivity' | 'simulator-only';
+  keyManagement: 'agency-envelope';
+}

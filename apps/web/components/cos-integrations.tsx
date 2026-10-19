@@ -1,6 +1,6 @@
 "use client";
 import React,{useEffect,useState} from 'react';
-import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type HospitalField,type CosMappingDefinition,type CosConnectionSettings} from '@open-triage/contracts';
+import {type HospitalIntegrationLifecycleState,DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type HospitalField,type CosMappingDefinition,type CosConnectionSettings} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
 import {resolveMessage} from '../app/localization';
 import {platformRequestError,PlatformRequestError} from '../app/platform-errors';
@@ -8,7 +8,7 @@ import {resolveCatalogElementText} from '../app/catalog-localization';
 import {useUnsavedChanges} from './unsaved-changes';
 type Mapping={sha256:string;definition:CosMappingDefinition};
 type Version={settings:CosConnectionSettings;revision:number;endpoint:string;credentialConfigured:boolean;mapping:Mapping};
-type View={staffOptions:{id:string;name:string}[];clinicalOptions:{id:string;field:HospitalField;name:string;localization?:{schemaVersion:1;sv?:{label:string}}}[];groupName:string;stateRevision:number;draft:Version|null;active:Version|null;defaultEndpoint:string;
+type View=HospitalIntegrationLifecycleState & {staffOptions:{id:string;name:string}[];clinicalOptions:{id:string;field:HospitalField;name:string;localization?:{schemaVersion:1;sv?:{label:string}}}[];groupName:string;stateRevision:number;draft:Version|null;active:Version|null;defaultEndpoint:string;
  options:{id:string;field:HospitalField;name:string;localization?:{schemaVersion:1;sv?:{label:string}}}[];
  tests:{id:string;revision:number;result:string;createdAt:string;evidence?:{findings:string[]}}[];
  history:{revision:number;sha256:string;status:string;createdAt:string}[];
@@ -51,7 +51,7 @@ export function CosIntegrationsPanel({language,csrfToken,canWrite}:{language:str
   {value&&<><p>{t('group')}: {value.groupName}</p>
    <div>
     <p>{t('active')}: {value.active?.revision??t('inactive')} — {t('draft')}: {value.draft?.revision??t('unsaved')}</p>
-    <p>{t('connectivityHelp')}</p>
+    <p>{t('connectivityHelp')}</p>{value.pausedRevision&&<p>{t('paused')}: {value.pausedRevision} — {t(`health.${value.pausedHealth}`)}</p>}<p>{t('health')}: {t('active')} {t(`health.${value.activeHealth}`)} — {t('draft')} {t(`health.${value.draftHealth}`)}</p><p>{t(value.credentialReplacement?'replacementPending':'replacementNone')}</p><p>{t('keyManagementHelp')}</p><p>{t('pauseHelp')}</p>
     {tested?.evidence?.findings.map(finding=><p key={finding} role="status">{t(`finding.${finding}`)}</p>)}
     {tested&&<p>{t('testRevision')}: {tested.revision} — {t(tested.result)} — {new Date(tested.createdAt).toLocaleString(language)}</p>}
     <form onSubmit={event=>{event.preventDefault();void action('',{expectedRevision:expected.expectedRevision,endpoint:draft.endpoint,authentication:draft.settings.authentication,settings:{...draft.settings,retryScheduleMinutes:draft.retryScheduleText.trim()?draft.retryScheduleText.split(',').map(Number):[]},clinicalMappings:draft.clinicalMappings,...(draft.pdfLinkId?{pdfLinkId:draft.pdfLinkId}:{}),patientIdentifier:{field:draft.field,namespace:draft.namespace,aliases:draft.aliases.split(/\s+/).filter(Boolean)},...(secret?{replacementSecret:secret}:{})},'PUT');}}>
@@ -84,10 +84,10 @@ export function CosIntegrationsPanel({language,csrfToken,canWrite}:{language:str
       </div>)}<button type="button" onClick={()=>setDraft({...draft,clinicalMappings:[...draft.clinicalMappings,{id:crypto.randomUUID(),source:value.clinicalOptions[0]?.field??DEFAULT_HOSPITAL_PATIENT_FIELD,linkId:'',answerType:'string'}]})}>{t('addMapping')}</button></fieldset>
       <p>{t(value.draft?.credentialConfigured?'credentialConfigured':'credentialMissing')}</p>
       <label>{t('credential')}<input type="password" autoComplete="off" maxLength={4096} value={secret} onChange={event=>setSecret(event.target.value)}/></label>
-      <div className="form-actions"><button type="submit" disabled={!dirty&&!!value.draft}>{t('save')}</button>
+      <div className="form-actions"><button type="button" disabled={!secret||JSON.stringify(draft)!==JSON.stringify(editable(value.draft))} onClick={()=>void action('/rotate-credential',{expectedRevision:expected.expectedRevision,replacementSecret:secret})}>{t('rotateCredential')}</button><button type="submit" disabled={!dirty&&!!value.draft}>{t('save')}</button>
        <button type="button" disabled={dirty||!value.draft?.credentialConfigured} onClick={()=>void action('/test',{expectedRevision:expected.expectedRevision})}>{t('test')}</button>
        <button type="button" disabled={dirty||tested?.result!=='healthy'||value.active?.revision===value.draft?.revision} onClick={()=>void action('/activate',{...expected,testId:tested?.id})}>{t('activate')}</button>
-       <button type="button" disabled={dirty||!value.active} onClick={()=>void action('/deactivate',expected)}>{t('deactivate')}</button></div>
+       <button type="button" disabled={dirty||!value.active} onClick={()=>void action('/deactivate',expected)}>{t('deactivate')}</button><button type="button" disabled={dirty||!!value.active||!value.pausedRevision} onClick={()=>void action('/resume',{...expected,expectedPausedRevision:value.pausedRevision})}>{t('resume')}</button></div>
      </fieldset>
     </form>
     <fieldset disabled={busy}><legend>{t('canonical')}</legend><p>{t('canonicalHelp')}</p>

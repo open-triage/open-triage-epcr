@@ -1,7 +1,7 @@
 "use client";
 import {CosIntegrationsPanel} from './cos-integrations';
 import React,{useEffect,useState} from 'react';
-import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type EpsOutputMapping,type EpsClinicalMapping,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
+import {type HospitalIntegrationLifecycleState,DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type EpsOutputMapping,type EpsClinicalMapping,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
 import {resolveMessage} from '../app/localization';
 import {platformRequestError,PlatformRequestError} from '../app/platform-errors';
@@ -9,7 +9,7 @@ import {resolveCatalogElementText} from '../app/catalog-localization';
 import {useUnsavedChanges} from './unsaved-changes';
 type Mapping={sha256:string;definition:HospitalMappingDefinition};
 type Version={revision:number;endpoint:string;credentialConfigured:boolean;mapping:Mapping};
-type View={groupName:string;stateRevision:number;draft:Version|null;active:Version|null;defaultEndpoint:string;
+type View=HospitalIntegrationLifecycleState & {groupName:string;stateRevision:number;draft:Version|null;active:Version|null;defaultEndpoint:string;
  clinicalOptions?:{id:string;field:HospitalField;name?:string}[];
  options:{id:string;field:HospitalField;name:string;localization?:{schemaVersion:1;sv?:{label:string}}}[];
  tests:{id:string;revision:number;result:string;createdAt:string}[];
@@ -53,7 +53,7 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
   {value&&<><p>{t('group')}: {value.groupName}</p>
    <div hidden={tab!=='eps'}>
     <p>{t('active')}: {value.active?.revision??t('inactive')} — {t('draft')}: {value.draft?.revision??t('unsaved')}</p>
-    <p>{t('connectivityHelp')}</p>
+    <p>{t('connectivityHelp')}</p>{value.pausedRevision&&<p>{t('paused')}: {value.pausedRevision} — {t(`health.${value.pausedHealth}`)}</p>}<p>{t('health')}: {t('active')} {t(`health.${value.activeHealth}`)} — {t('draft')} {t(`health.${value.draftHealth}`)}</p><p>{t(value.credentialReplacement?'replacementPending':'replacementNone')}</p><p>{t('keyManagementHelp')}</p><p>{t('pauseHelp')}</p>
     {tested&&<p>{t('testRevision')}: {tested.revision} — {t(tested.result)} — {new Date(tested.createdAt).toLocaleString(language)}</p>}
     <form onSubmit={event=>{event.preventDefault();void action('',{expectedRevision:expected.expectedRevision,endpoint:draft.endpoint,authentication:'team-token',clinicalMappings:draft.clinicalMappings,outputMappings:draft.outputMappings,patientIdentifier:{field:draft.field,namespace:draft.namespace,aliases:draft.aliases.split(/\s+/).filter(Boolean)},...(secret?{replacementSecret:secret}:{})},'PUT');}}>
      <fieldset disabled={busy||!canWrite}><legend>{t('configuration')}</legend>
@@ -91,10 +91,10 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
       </fieldset>
       <p>{t(value.draft?.credentialConfigured?'credentialConfigured':'credentialMissing')}</p>
       <label>{t('credential')}<input type="password" autoComplete="off" maxLength={4096} value={secret} onChange={event=>setSecret(event.target.value)}/></label>
-      <div className="form-actions"><button type="submit" disabled={!dirty&&!!value.draft}>{t('save')}</button>
+      <div className="form-actions"><button type="button" disabled={!secret||JSON.stringify(draft)!==JSON.stringify(editable(value.draft))} onClick={()=>void action('/rotate-credential',{expectedRevision:expected.expectedRevision,replacementSecret:secret})}>{t('rotateCredential')}</button><button type="submit" disabled={!dirty&&!!value.draft}>{t('save')}</button>
        <button type="button" disabled={dirty||!value.draft?.credentialConfigured} onClick={()=>void action('/test',{expectedRevision:expected.expectedRevision})}>{t('test')}</button>
        <button type="button" disabled={dirty||tested?.result!=='healthy'||value.active?.revision===value.draft?.revision} onClick={()=>void action('/activate',{...expected,testId:tested?.id})}>{t('activate')}</button>
-       <button type="button" disabled={dirty||!value.active} onClick={()=>void action('/deactivate',expected)}>{t('deactivate')}</button></div>
+       <button type="button" disabled={dirty||!value.active} onClick={()=>void action('/deactivate',expected)}>{t('deactivate')}</button><button type="button" disabled={dirty||!!value.active||!value.pausedRevision} onClick={()=>void action('/resume',{...expected,expectedPausedRevision:value.pausedRevision})}>{t('resume')}</button></div>
      </fieldset>
     </form>
     <fieldset disabled={busy}><legend>{t('canonical')}</legend><p>{t('canonicalHelp')}</p>

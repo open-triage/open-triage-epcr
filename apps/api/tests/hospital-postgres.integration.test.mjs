@@ -1,3 +1,5 @@
+import {catalogAuditCompatibility} from './fixtures/catalog-audit-compatibility.mjs';
+import {credentialLifecycle} from './fixtures/hospital-credential-lifecycle.mjs';
 import {epsSubmissionJourney} from './fixtures/eps-submission-journey.mjs';
 import {epsHistoryConfiguration} from './fixtures/eps-history-configuration.mjs';
 import {savepointDataSource} from "./fixtures/savepoint-data-source.mjs";
@@ -52,6 +54,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
 
   const {historyFieldId}=await epsHistoryConfiguration({database,query,sessions,token,organizationId:group.id,authorId:admin.userId,definition});
 
+  await catalogAuditCompatibility({database,query,sessions,token,releaseId:baseline.catalog_release_id});
   const foreignId=randomUUID();await query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Other EPS group',$2,'UTC')",[foreignId,`eps-${foreignId}.example.org`]);
   const other=await accounts.provision({organizationId:foreignId,username:`other-${username}`,displayName:'Other admin',role:'administrator',temporaryPassword:password});
   await query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[other.userId]);
@@ -105,7 +108,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
     let input;for await(const part of req)input=(input??'')+part;const command=input?JSON.parse(input):undefined;
     if(command)assert.equal(req.headers['x-csrf-token'],'browser-csrf');
     const route=req.url.replace('/api/admin/hospital/eps','');
-    const result=route==='/inspect-mappings'?await service.inspectClinical(token,command):route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
+    const result=route==='/rotate-credential'?await service.rotateCredential(token,command):route==='/resume'?await service.resume(token,command):route==='/inspect-mappings'?await service.inspectClinical(token,command):route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
    }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{code:'hospital.invalid'}));}
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -125,6 +128,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await page.getByRole('button',{name:'EPS',exact:true}).click();await page.getByRole('button',{name:'Deactivate EPS',exact:true}).click();await page.getByRole('group',{name:'EPS configuration',exact:true}).locator('../..').getByText('Active revision: Inactive',{exact:false}).waitFor();assert.equal((await service.get(token)).active,null);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'mobile fields must fit');
   await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'History',exact:true}).click();assert.equal(await page.getByRole('table').isVisible(),true);
+  await credentialLifecycle({kind:'eps',service,token,page,query,otherToken:otherSession.sessionToken,medicToken:medicSession.sessionToken,assets:bundled.outputFiles[0].text});
   const audits=await query("select details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%'",[group.id]);assert.ok(audits.length>8);assert.doesNotMatch(JSON.stringify(audits),/private-team|ciphertext|urn:patient|example.org/);
   // Recheck live authority after a successful configuration journey.
   await query('update app_identity.app_user set active=false where id=$1',[admin.userId]);await assert.rejects(service.save(token,{...body,expectedRevision:5}));
