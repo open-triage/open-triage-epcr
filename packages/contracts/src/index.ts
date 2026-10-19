@@ -213,6 +213,8 @@ export interface RetryCosReviewCommand {
  deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
 }
 export interface ReviewTransmissionEvidence {
+ reconciliationTarget?: {deliveryId:string;amendmentSequence:number;configurationRevision:number};
+ reconciliations?: Array<{id:string;actorId:string;outcome:string;evidence:Record<string,unknown>;recordedAt:string}>;
  deliveryState?: string; finding?: string | null; stateRevision?: number; retryable?: boolean;
  recoveryCommands?: Array<{id:string; actorId:string; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
   integration: "cos";

@@ -1,3 +1,4 @@
+import {reconcileCosReview} from '../dist/hospital/cos-reconcile.js';
 import sharp from 'sharp';
 import {signedReportPdfSource} from '../dist/reports/signed-report-pdf.persistence.js';
 import {CatalogAuthoringService} from '../dist/admin/catalog-authoring.service.js';
@@ -272,10 +273,37 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.equal((await recoveryReview.item('fixture',contactFailure.id,'synthetic')).status,'completed');
   const partial=await draft();await sign(partial);await processCosWork(db,10,{contact:simulator.contact.bind(simulator),note:async()=>{throw new CosRejected('noteRejected');}});
   assert.equal((await db.query('select report_id from clinical.cos_simulator_contact where report_id=$1',[partial])).length,1);assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[partial]))[0].state,'failed');
+  async function reconcileInput(reportId){
+   const [row]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[reportId]);
+   if(!row.assignee_id)await recoveryReview.claim('fixture',row.id,{commandId:randomUUID(),expectedVersion:Number(row.version),dataset:'synthetic'});
+   const detail=await recoveryReview.item('fixture',row.id,'synthetic');
+   return {itemId:row.id,command:{commandId:randomUUID(),expectedVersion:detail.version,dataset:'synthetic',...detail.transmission.reconciliationTarget,stateRevision:detail.transmission.stateRevision}};
+  }
   for(const stage of ['contact','note']){
    const id=await draft();await sign(id);await processCosWork(db,10,{contact:async(...args)=>{const r=await simulator.contact(...args);if(stage==='contact')throw new Error('lost contact acknowledgment');return r;},note:async(...args)=>{await simulator.note(...args);throw new Error('lost note acknowledgment');}});
    assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[id]))[0].state,'uncertain');
    await processCosWork(db);assert.equal((await db.query('select count(*)::int count from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1',[id]))[0].count,1,'restart never blind resends');
+   const {itemId,command}=await reconcileInput(id);
+   await assert.rejects(reconcileCosReview(db,recoverySessions,'fixture',itemId,{...command,dataset:'real'}));
+   const originalActor=recoveryActor;
+   recoveryActor={...recoveryActor,capabilities:['review:all'],user:{id:randomUUID()}};await assert.rejects(reconcileCosReview(db,recoverySessions,'fixture',itemId,command));
+   recoveryActor={...originalActor,user:{id:randomUUID()}};await assert.rejects(reconcileCosReview(db,recoverySessions,'fixture',itemId,command));recoveryActor=originalActor;
+   await assert.rejects(reconcileCosReview(db,{...recoverySessions,assertCsrf:async()=>{throw new Error('Invalid CSRF');}},'fixture',itemId,command),/Invalid CSRF/);
+   await reconcileCosReview(db,recoverySessions,'fixture',itemId,command);
+   await reconcileCosReview(db,recoverySessions,'fixture',itemId,command);
+   await assert.rejects(reconcileCosReview(db,recoverySessions,'fixture',itemId,{...command,amendmentSequence:999}));
+   const [proof]=await db.query('select * from clinical.cos_reconciliation where report_id=$1',[id]);
+   assert.equal(proof.actor_id,sample.documenting_user_id);assert.equal(proof.outcome,stage==='note'?'stored':'not-stored');
+   assert.equal(proof.evidence.contact,'known');assert.equal(proof.evidence.storage,stage==='note'?'known':'rejected');
+   assert.doesNotMatch(JSON.stringify(proof.evidence),/200207252388|Fictional documented assessment|token|credential/);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_reconciliation where report_id=$1',[id]))[0].n,1);
+   if(stage==='contact'){
+    assert.equal((await recoveryReview.item('fixture',itemId,'synthetic')).transmission.retryable,true);
+    await retryCosReview(db,recoverySessions,'fixture',itemId,await retryInput(itemId));await processCosWork(db);
+    assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[id]))[0].n,1);
+   }
+   assert.equal((await recoveryReview.item('fixture',itemId,'synthetic')).status,'completed');
+
   }
   for(const unsafe of await db.query("select i.id from clinical.review_item i join clinical.cos_delivery d on d.report_id=i.report_id where i.kind='cos-delivery-failed' and d.state in ('uncertain','failed') and d.finding<>'outage' and i.organization_id=$1",[sample.organization_id])){
    const detail=await recoveryReview.item('fixture',unsafe.id,'synthetic');assert.equal(detail.transmission.retryable,false);
@@ -295,6 +323,9 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    const crashDetail=await recoveryReview.item('fixture',crashItem.id,'synthetic');assert.equal(crashDetail.transmission.finding,'outcomeUnknown');assert.equal(crashDetail.transmission.deliveryState,'uncertain');assert.equal(crashDetail.transmission.retryable,false);
    assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[crashed]))[0].n,crashStage==='intent'?0:1);
    assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_note where report_id=$1',[crashed]))[0].n,crashStage==='note'?1:0);
+   const reconciliation=await reconcileInput(crashed);await reconcileCosReview(db,recoverySessions,'fixture',reconciliation.itemId,reconciliation.command);
+   assert.equal((await db.query('select outcome from clinical.cos_reconciliation where report_id=$1',[crashed]))[0].outcome,crashStage==='note'?'stored':'not-stored');
+
   }
   const pinned=await draft();await sign(pinned);
   const {format,schemaVersion,sha256,...portable}=mapping;
@@ -420,6 +451,36 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const overtakenDetail=await recoveryReview.item('fixture',overtakenItem.id,'synthetic');assert.equal(overtakenDetail.transmission.recoveryCommands[0].outcome,'superseded');
   assert.equal(overtakenDetail.status,'completed');
   assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1 and d.amendment_sequence=0',[overtaken]))[0].n,1);
+  // A remote request can finish after its caller timed out. The fence must stop
+  // every write from that exact operation before allowing a competing version.
+  for(const delayedStage of ['contact','note']){
+   const delayed=await draft();await sign(delayed);let late;
+   await processCosWork(db,100,{
+    contact:async(...args)=>{if(args[0]!==delayed)return simulator.contact(...args);if(delayedStage==='contact'){late=()=>simulator.contact(...args);throw new Error('contact timeout before delayed effect');}return simulator.contact(...args);},
+    note:async(...args)=>{if(args[0]!==delayed)return simulator.note(...args);late=()=>simulator.note(...args);throw new Error('note timeout before delayed effect');}
+   });
+   await amend(delayed,1,'Newer signed note waits for proof');await processCosWork(db);
+   assert.equal((await db.query("select count(*)::int n from clinical.cos_attempt where report_id=$1",[delayed]))[0].n,1);
+   let {itemId,command}=await reconcileInput(delayed);
+   const lane=db.createQueryRunner();await lane.connect();await lane.startTransaction();
+   await lane.query('select pg_advisory_xact_lock(731021,hashtext($1))',[delayed]);
+   try{await reconcileCosReview(db,recoverySessions,'fixture',itemId,command);}finally{await lane.rollbackTransaction();await lane.release();}
+   assert.equal((await db.query('select outcome from clinical.cos_reconciliation where id=$1',[command.commandId]))[0].outcome,'unresolved');
+   assert.equal((await db.query('select attempt_id from clinical.cos_simulator_fence where report_id=$1',[delayed])).length,0);
+   ({itemId,command}=await reconcileInput(delayed));
+
+   const results=await Promise.allSettled([reconcileCosReview(db,recoverySessions,'fixture',itemId,command),reconcileCosReview(db,recoverySessions,'fixture',itemId,command)]);
+   assert.ok(results.some(r=>r.status==='fulfilled'));
+   await reconcileCosReview(db,recoverySessions,'fixture',itemId,command);
+   await assert.rejects(late(),CosRejected);
+   await processCosWork(db);
+   assert.equal((await db.query('select amendment_sequence from clinical.cos_simulator_current where report_id=$1',[delayed]))[0].amendment_sequence,1);
+   await assert.rejects(late(),CosRejected);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[delayed]))[0].n,1);
+   assert.equal((await db.query('select count(*)::int n from clinical.cos_reconciliation where report_id=$1',[delayed]))[0].n,2);
+   const [prepared]=await db.query('select * from clinical.cos_payload where report_id=$1 order by created_at limit 1',[delayed]);
+   await assert.rejects(simulator.contact(delayed,{contact:prepared.contact,contactSha256:prepared.contact_sha256}),CosRejected);
+  }
   const queued=await draft();await sign(queued);await amend(queued,1,'First correction');await amend(queued,2,'Newest correction');
   assert.deepEqual((await db.query('select state from clinical.cos_delivery where report_id=$1 order by amendment_sequence',[queued])).map(x=>x.state),['superseded','superseded','pending']);
   await Promise.all([processCosWork(db),processCosWork(db)]);
@@ -537,6 +598,27 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.equal((await db.query("select active_match from clinical.review_item where report_id=$1 and transmission_reason='integration-mapping'",[customReport]))[0].active_match,true);
   const [originalPatient]=await db.query("select value_text from clinical.element_occurrence where report_id=$1 and element_id='ePatient.01'",[customReport]);assert.equal(originalPatient.value_text,'200207252388');
   const [customChange]=await db.query('select corrected_value from clinical.amendment_change where amendment_id=$1',[customOutcome.amendmentId]);assert.equal(customChange.corrected_value.element_identity_id,customIdentity.id);
+  // Committed ordinary report expiry removes the operation and fence together;
+  // an original delayed request cannot recreate receiver state after retention.
+  await config(next+12);
+  const retained=await draft({},true);await sign(retained);let retainedLate;
+  await processCosWork(db,100,{contact:simulator.contact.bind(simulator),note:async(...args)=>{if(args[0]!==retained)return simulator.note(...args);retainedLate=()=>simulator.note(...args);throw new Error('Delayed until after retention');}});
+  const retentionCommand=await reconcileInput(retained);await reconcileCosReview(db,recoverySessions,'fixture',retentionCommand.itemId,retentionCommand.command);
+  assert.equal((await db.query('select attempt_id from clinical.cos_simulator_fence where report_id=$1',[retained])).length,1);
+  const [retainedExpiry]=await db.query('select expires_at from clinical.report where id=$1',[retained]);
+  let writerEntered,writerRelease;const writerArrived=new Promise(resolve=>writerEntered=resolve),writerGate=new Promise(resolve=>writerRelease=resolve);
+  const pausedReceiver=new PersistentCosSimulator({transaction:work=>db.transaction(manager=>work(new Proxy(manager,{get(target,key){if(key==='query')return async(sql,args)=>{const result=await target.query(sql,args);if(sql.includes('for key share')&&args?.[0]===retained){writerEntered();await writerGate;}return result;};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}})))});
+  const [retainedPayload]=await db.query('select p.*,a.id attempt_id from clinical.cos_payload p join clinical.cos_attempt a on a.delivery_id=p.delivery_id where p.report_id=$1',[retained]);
+  const pendingWriter=pausedReceiver.note(retained,retainedPayload.delivery_id,{contact:retainedPayload.contact,contactSha256:retainedPayload.contact_sha256,bundle:retainedPayload.bundle,pdf:retainedPayload.pdf,payloadSha256:retainedPayload.payload_sha256,pdfSha256:retainedPayload.pdf_sha256,amendmentSequence:0},retainedPayload.attempt_id);
+  const writerOutcome=assert.rejects(pendingWriter,CosRejected);await writerArrived;
+  try{
+   await db.query("select retention.purge_expired_synthetic_records($1::timestamptz+interval '1 minute')",[retainedExpiry.expires_at]);
+   assert.equal((await db.query('select id from clinical.report where id=$1',[retained])).length,1,'retention skips an existing receiver operation holding report key-share');
+   assert.equal((await db.query('select attempt_id from clinical.cos_simulator_fence where report_id=$1',[retained])).length,1,'fence remains until the old writer finishes');
+  }finally{writerRelease();await writerOutcome;}
+  await db.query("select retention.purge_expired_synthetic_records($1::timestamptz+interval '1 minute')",[retainedExpiry.expires_at]);
+  for(const table of ['cos_reconciliation','cos_simulator_fence','cos_simulator_contact','cos_simulator_note'])assert.equal((await db.query(`select 1 from clinical.${table} where report_id=$1`,[retained])).length,0);
+  await assert.rejects(retainedLate(),CosRejected);
   // A later configuration without a default leaves a mapping concern; stale hospital fields cannot rescue it.
   settings.defaultAmbulanceCareUnit='';await config(next+100);
   const noDefault=await draft({'eDisposition.30':'4230013'});await sign(noDefault);await processCosWork(db);

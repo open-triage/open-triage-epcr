@@ -109,16 +109,18 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
    if(!job)continue;
    processed++;
    if(!payload||!attempt)continue;
+   let contactKnown=false;
    try{
-    const contact=await receiver.contact(job.report_id,payload);
+    const contact=await receiver.contact(job.report_id,payload,{deliveryId:job.id,attemptId:attempt});
     const expectedContact=`${payload.contact.encounter.system}|${payload.contact.encounter.value}`;
     if(contact.kind!=='simulator-stored'||contact.contactKey!==expectedContact)throw new Error('Unproven contact');
-    await database.transaction(manager=>event(manager,job!,worker,'uncertain','contactStored',attempt,{kind:contact.kind,contactKeySha256:payload!.contactSha256}));
-    const note=await receiver.note(job.report_id,job.id,payload);
+    contactKnown=true;
+    await database.transaction(manager=>event(manager,job!,worker,'uncertain','contactStored',attempt,{kind:contact.kind,contactKeySha256:payload!.contactSha256,contact:'known',note:'uncertain',storage:'uncertain'}));
+    const note=await receiver.note(job.report_id,job.id,payload,attempt);
     if(note.kind!=='simulator-stored'||note.contactKey!==expectedContact||!note.receiptId||note.payloadSha256!==payload.payloadSha256||note.pdfSha256!==payload.pdfSha256)throw new Error('Unproven final storage');
-    await database.transaction(manager=>event(manager,job!,worker,'confirmed',null,attempt,{kind:note.kind,receiptId:note.receiptId,payloadSha256:note.payloadSha256,pdfSha256:note.pdfSha256}));
+    await database.transaction(manager=>event(manager,job!,worker,'confirmed',null,attempt,{kind:note.kind,receiptId:note.receiptId,payloadSha256:note.payloadSha256,pdfSha256:note.pdfSha256,contact:'known',note:'known',storage:'known'}));
    }catch(error){
-    await database.transaction(manager=>event(manager,job!,worker,error instanceof CosRejected?'failed':'uncertain',error instanceof CosRejected?error.code:'outcomeUnknown',attempt));
+    await database.transaction(manager=>event(manager,job!,worker,error instanceof CosRejected?'failed':'uncertain',error instanceof CosRejected?error.code:'outcomeUnknown',attempt,{contact:contactKnown?'known':error instanceof CosRejected?'rejected':'uncertain',note:error instanceof CosRejected?'rejected':'uncertain',storage:error instanceof CosRejected?'rejected':'uncertain'}));
    }
   }finally{
    try{if(held)await runner.query('select pg_advisory_unlock(731013,hashtext($1))',[candidate.report_id]);}finally{await runner.release();}

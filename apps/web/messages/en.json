@@ -2574,5 +2574,19 @@
   "review.identifier.stale": "The report, assignment or mapping changed. Refresh requirements and review your correction.",
   "review.identifier.invalid": "The correction could not be accepted. Check the identifier and current requirements.",
   "review.identifier.unavailable": "Requirements could not be loaded or the correction could not be confirmed. Retry when connected.",
-  "review.identifier.saved": "Signed identifier correction saved. Delivery remains pending confirmation."
+  "review.identifier.saved": "Signed identifier correction saved. Delivery remains pending confirmation.",
+  "review.reconciliation.action": "Reconcile uncertain delivery",
+  "review.reconciliation.saved": "Reconciliation recorded. No contact or note was resent.",
+  "review.reconciliation.help": "Check the receiving simulator for signed amendment {sequence}. A retry requires confirmed non-delivery and a durable fence against late writes. Real COS reconciliation remains blocked until its contract is verified.",
+  "review.reconciliation.history": "Reconciliation evidence",
+  "review.reconciliation.outcome.stored": "Final storage confirmed",
+  "review.reconciliation.outcome.not-stored": "No note stored; original attempt fenced",
+  "review.reconciliation.outcome.unresolved": "Evidence unresolved; resend blocked",
+  "review.reconciliation.outcome.unsupported": "Real reconciliation unsupported; resend blocked",
+  "review.reconciliation.steps": "Contact: {contact}. Note: {note}. Final storage: {storage}.",
+  "review.reconciliation.step.known": "confirmed",
+  "review.reconciliation.step.rejected": "rejected or fenced",
+  "review.reconciliation.step.uncertain": "uncertain",
+  "cosDelivery.finding.reconciliationUnsupported": "The real receiver has no verified reconciliation contract.",
+  "cosDelivery.finding.reconciliationUnresolved": "Stored evidence could not be verified. Resend remains blocked."
 }

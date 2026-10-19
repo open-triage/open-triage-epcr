@@ -2572,5 +2572,19 @@
   "review.identifier.stale": "Rapporten, tilldelningen eller mappningen har ändrats. Uppdatera kraven och granska rättelsen.",
   "review.identifier.invalid": "Rättelsen kunde inte godtas. Kontrollera identifieraren och aktuella krav.",
   "review.identifier.unavailable": "Kraven kunde inte hämtas eller rättelsen bekräftas. Försök igen när anslutningen fungerar.",
-  "review.identifier.saved": "Signerad identifierarrättelse sparad. Leveransen väntar på bekräftelse."
+  "review.identifier.saved": "Signerad identifierarrättelse sparad. Leveransen väntar på bekräftelse.",
+  "review.reconciliation.action": "Utred osäker leverans",
+  "review.reconciliation.saved": "Avstämning registrerad. Ingen kontakt eller anteckning skickades igen.",
+  "review.reconciliation.help": "Kontrollera mottagarsimulatorn för signerat tillägg {sequence}. Ett nytt försök kräver bekräftad utebliven leverans och ett beständigt skydd mot sena skrivningar. Verklig COS-avstämning är blockerad tills kontraktet är verifierat.",
+  "review.reconciliation.history": "Avstämningsunderlag",
+  "review.reconciliation.outcome.stored": "Slutlig lagring bekräftad",
+  "review.reconciliation.outcome.not-stored": "Ingen anteckning lagrad; ursprungligt försök spärrat",
+  "review.reconciliation.outcome.unresolved": "Underlag oklart; omsändning blockerad",
+  "review.reconciliation.outcome.unsupported": "Verklig avstämning saknar stöd; omsändning blockerad",
+  "review.reconciliation.steps": "Kontakt: {contact}. Anteckning: {note}. Slutlig lagring: {storage}.",
+  "review.reconciliation.step.known": "bekräftad",
+  "review.reconciliation.step.rejected": "avvisad eller spärrad",
+  "review.reconciliation.step.uncertain": "osäker",
+  "cosDelivery.finding.reconciliationUnsupported": "Den verkliga mottagaren saknar ett verifierat avstämningskontrakt.",
+  "cosDelivery.finding.reconciliationUnresolved": "Lagringsunderlaget kunde inte verifieras. Omsändning är fortsatt blockerad."
 }

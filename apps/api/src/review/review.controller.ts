@@ -48,6 +48,13 @@ export class ReviewController {
     return this.review.correctIdentifier(bearerToken(authorization,cookie),itemId,command,csrfToken);
   }
 
+  @Post("items/:id/reconcile-cos")
+  @Header("Cache-Control", "no-store, private")
+  reconcileCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string){
+    return this.review.reconcileCos(bearerToken(authorization,cookie),id,command,csrfToken);
+  }
+
   @Post("items/:id/retry-cos")
   @Header("Cache-Control", "no-store, private")
   retryCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
