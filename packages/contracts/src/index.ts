@@ -367,6 +367,7 @@ export interface ReviewSignedReport {
   reportingDate: string;
   signedAt: string;
   amendmentSequence: number;
+  /** Effective identifying visibility for this report, including documenting-clinician access. */
   identifying: boolean;
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
@@ -383,6 +384,7 @@ export interface ReviewOverdueDraft {
   createdAt: string;
   deadlineAt: string;
   deadlineSource: "call-completed" | "report-created";
+  /** Effective identifying visibility for this draft; never reuse for another report. */
   identifying: boolean;
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
