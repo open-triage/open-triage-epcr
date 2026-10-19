@@ -33,13 +33,13 @@ export async function epsImportWorkspace({database,query,sessions,drafts,imports
   server=createServer(async(req,res)=>{try {
    if(req.url==='/bundle.js'){res.setHeader('Content-Type','text/javascript');res.end(bundle.outputFiles[0].text);return;}
    if(!req.url.startsWith('/api/')){res.setHeader('Content-Type','text/html');res.end('<div id="root"></div><script src="/bundle.js"></script>');return;}
-   let raw='';for await(const part of req)raw+=part;const body=raw?JSON.parse(raw):undefined;let result;
-   if(req.url.endsWith('/active')){const active=await drafts.active(token,report.id,req.headers['if-none-match']);res.setHeader('ETag',active.etag);if(!active.resource){res.writeHead(304);res.end();return;}result=active.resource;if(importedRevision===result.reportRevision)polledImport=true;}
-   else if(req.url.endsWith('/draft-changes')){savedCommand=body;result=await drafts.save(token,report.id,body,actor.csrfToken);}
-   else if(req.url.endsWith('/imports/plan'))result=await imports.plan(token,report.id,body);
-   else if(req.url.endsWith('/imports/apply')){result=await imports.apply(token,report.id,body);importedRevision=(await drafts.get(token,report.id)).revision;}
-   else if(req.url.endsWith('/imports'))result=await imports.rows(token,report.id,binding);
-   else if(req.url==='/api/sign'){result=await new SignReportService(database,sessions).sign(token,report.id,body);signedSnapshotId=result.signedSnapshotId;}
+   let raw='';for await(const part of req)raw+=part;const body=raw?JSON.parse(raw):undefined,route=new URL(req.url,'http://fixture').pathname;let result;
+   if(route.endsWith('/active')){const active=await drafts.active(token,report.id,req.headers['if-none-match']);res.setHeader('ETag',active.etag);if(!active.resource){res.writeHead(304);res.end();return;}result=active.resource;if(importedRevision===result.reportRevision)polledImport=true;}
+   else if(route.endsWith('/draft-changes')){savedCommand=body;result=await drafts.save(token,report.id,body,actor.csrfToken);}
+   else if(route.endsWith('/imports/plan'))result=await imports.plan(token,report.id,body);
+   else if(route.endsWith('/imports/apply')){result=await imports.apply(token,report.id,body);importedRevision=(await drafts.get(token,report.id)).revision;}
+   else if(route.endsWith('/imports'))result=await imports.rows(token,report.id,binding);
+   else if(route==='/api/sign'){result=await new SignReportService(database,sessions).sign(token,report.id,body);signedSnapshotId=result.signedSnapshotId;}
    else throw new Error(`Unexpected route ${req.url}`);
    res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
   }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{message:error.message}));}});
