@@ -289,6 +289,22 @@ export class ReviewController {
     return sendCsv(response, "review-analysis-records.csv", csv);
   }
 
+  @Get("reports/:id/snapshots/:snapshotId/pdf")
+  async signedPdf(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Param("snapshotId", new ParseUUIDPipe({ version: "4" })) snapshotId: string,
+    @Query("amendmentSequence") sequence: string, @Query("language") language: string,
+    @Query("dataset") dataset: string | undefined, @Headers("authorization") authorization: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res() response: { setHeader(name: string, value: string): void; send(value: Buffer): unknown }) {
+    const pdf = await this.review.signedPdf(bearerToken(authorization, cookie), id, snapshotId, sequence, language, dataset);
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Content-Disposition", `inline; filename="signed-report-${id}-${sequence}.pdf"`);
+    response.setHeader("Cache-Control", "no-store, private");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    return response.send(pdf);
+  }
+
   @Get("reports/:id")
   @Header("Cache-Control", "no-store, private")
   report(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
