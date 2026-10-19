@@ -2450,5 +2450,6 @@
   "cosDelivery.finding.contactRejected": "Simulatorn avvisade kontakten.",
   "cosDelivery.finding.noteRejected": "Simulatorn avvisade anteckningen eller PDF-filen.",
   "cosDelivery.finding.identityConflict": "Lagrad simulatoridentitet eller innehåll står i konflikt med begäran.",
-  "cosDelivery.state.superseded": "Ersatt genom uttrycklig ommappning"
+  "cosDelivery.state.superseded": "Ersatt genom uttrycklig ommappning",
+  "epsImport.identifyingDestination": "Endast visning: importerad källtext kräver ett eget fält markerat som identifierande."
 }

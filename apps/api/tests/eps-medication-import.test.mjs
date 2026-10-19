@@ -4,7 +4,7 @@ import {clinicalMappings,importCandidate,importDestination} from '../dist/hospit
 import {mappingPackage,makePackage} from '../dist/hospital/hospital-mapping.js';
 const destination={kind:'custom',elementDefinitionId:'med-history'};
 const mapping={id:'medication',resourceType:'MedicationStatement',semanticRole:'medication-history',system:'http://www.whocc.no/atc',code:'C09AA02',destination,representation:'text'};
-const form={definition:{sections:[{fields:[{source:destination}]}]},catalogFields:{},customFields:{'med-history':{id:'med-history',namespace:'org.example',slug:'medication-history',title:'Medication history',datatype:'string',constraints:{},recurrence:'multiple'}}};
+const form={definition:{sections:[{fields:[{source:destination}]}]},catalogFields:{},customFields:{'med-history':{id:'med-history',namespace:'org.example',slug:'medication-history',title:'Medication history',datatype:'string',identifying:true,constraints:{},recurrence:'multiple'}}};
 const entry={identity:'urn:uuid:medication-one',patientMatches:true,resource:{resourceType:'MedicationStatement',id:'one',status:'active',medicationCodeableConcept:{coding:[{system:mapping.system,code:mapping.code,display:'Enalapril'}]},effectivePeriod:{start:'2020-01-01'},dateAsserted:'2021-03-01',dosage:[{route:{coding:[{system:'http://snomed.info/sct',code:'26643006',display:'Oral'}]},doseAndRate:[{doseQuantity:{value:10,unit:'mg',system:'http://unitsofmeasure.org',code:'mg'}}],timing:{repeat:{frequency:1,period:1,periodUnit:'d'}}}]}};
 test('medication history preserves dose, units, route, status and original dates without recording administration',()=>{
  const projected=importCandidate(entry,[mapping],form);assert.equal(projected.finding,null);assert.equal(projected.value.kind,'text');
@@ -40,4 +40,9 @@ test('summary parsing resolves products only in the current bundle and never inv
  const e=structuredClone(entry);e.resource.subject={reference:'urn:patient'};delete e.resource.medicationCodeableConcept;e.resource.medicationReference={reference:'https://elsewhere.invalid/Medication/one'};
  bundle.entry.push({fullUrl:e.identity,resource:e.resource});let projected=parsePatientSummary(bundle).summary.importEntries[0];assert.equal(projected.medication,undefined);assert.equal(importCandidate(projected,[mapping],form).finding,'medicationReference');
  bundle.entry.push({fullUrl:'https://elsewhere.invalid/Medication/one',resource:{resourceType:'Medication',id:'product',code:entry.resource.medicationCodeableConcept}});projected=parsePatientSummary(bundle).summary.importEntries[0];assert.equal(projected.medication.id,'product');assert.equal(importCandidate(projected,[mapping],form).finding,null);
+});
+
+test('medication source text cannot be imported into non-identifying custom analytics fields',()=>{
+ const publicForm=structuredClone(form);publicForm.customFields['med-history'].identifying=false;
+ assert.equal(importCandidate(entry,[mapping],publicForm).finding,'identifyingDestination');
 });

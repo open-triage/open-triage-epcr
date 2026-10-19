@@ -2452,5 +2452,6 @@
   "cosDelivery.finding.contactRejected": "The simulator rejected the contact.",
   "cosDelivery.finding.noteRejected": "The simulator rejected the note or PDF.",
   "cosDelivery.finding.identityConflict": "Stored simulator identity or content conflicts with this request.",
-  "cosDelivery.state.superseded": "Superseded by explicit remapping"
+  "cosDelivery.state.superseded": "Superseded by explicit remapping",
+  "epsImport.identifyingDestination": "View only: imported source text requires a custom field marked identifying."
 }

@@ -17,7 +17,7 @@ test('EPS exact-code imports preserve status/time without translating unsupporte
  assert.throws(()=>clinicalMappings([mapping,{...mapping,id:'other'}]));
 });
 test('EPS unknown, negative and unavailable source codes remain distinct in text and canonical round trips',()=>{
- const textForm=structuredClone(form);textForm.customFields.allergy.datatype='string';textForm.customFields.allergy.constraints={};
+ const textForm=structuredClone(form);textForm.customFields.allergy.datatype='string';textForm.customFields.allergy.identifying=true;textForm.customFields.allergy.constraints={};
  for(const code of ['no-known-allergies','no-allergy-info','not-asked','unavailable']) {
   const m={...mapping,system:'http://hl7.org/fhir/uv/ips/CodeSystem/absent-unknown-uv-ips',code,representation:'text'};
   const e=structuredClone(entry);e.resource.code.coding=[{system:m.system,code}];
@@ -39,7 +39,7 @@ test('coded EPS imports never turn uncertain, resolved, refuted or erroneous sou
   for(const [field,statuses] of [['clinicalStatus',['inactive','resolved','unknown',null]],['verificationStatus',['refuted','entered-in-error','unconfirmed','provisional','differential','unknown',null]]]) {
    for(const code of statuses){const changed=structuredClone(e);if(code===null)delete changed.resource[field];else changed.resource[field].coding[0].code=code;
     assert.equal(importCandidate(changed,[m],form).finding,'status',`${resourceType}/${field}/${code}`);
-    const textForm=structuredClone(form);textForm.customFields.allergy.datatype='string';textForm.customFields.allergy.constraints={};
+    const textForm=structuredClone(form);textForm.customFields.allergy.datatype='string';textForm.customFields.allergy.identifying=true;textForm.customFields.allergy.constraints={};
     const result=importCandidate(changed,[{...m,representation:'text'}],textForm);assert.equal(result.finding,null);if(code)assert.match(result.value.value,new RegExp(code));
    }
   }
@@ -50,5 +50,14 @@ test('coded EPS imports never turn uncertain, resolved, refuted or erroneous sou
    assert.equal(importCandidate(changed,[negativeMapping],form).finding,'code','no substitution of a negative source with the available affirmative destination code');
   }
   const contradictory=structuredClone(e);contradictory.resource.abatementDateTime='2020-01-01';assert.equal(importCandidate(contradictory,[m],form).finding,'status');
+ }
+});
+
+test('allergy and condition source narratives require identifying custom destinations',()=>{
+ for(const resourceType of ['AllergyIntolerance','Condition']){
+  const textForm=structuredClone(form);textForm.customFields.allergy.datatype='string';textForm.customFields.allergy.identifying=false;
+  const m={...mapping,resourceType,representation:'text'};
+  assert.equal(importDestination(m,textForm).finding,'identifyingDestination');
+  textForm.customFields.allergy.identifying=true;assert.equal(importDestination(m,textForm).finding,null);
  }
 });
