@@ -40,7 +40,8 @@ export async function epsImportJourney({database,query,sessions,configuration,ad
   const [stored]=await query('select evidence from clinical.eps_import where id=$1',[result.id]);assert.equal(stored.evidence.mapping.sha256,canonical.sha256);
   assert.equal((await query("select count(*)::integer n from clinical.element_occurrence where report_id=$1 and provenance_detail ? 'epsImport'",[report.id]))[0].n,1);
   const duplicate=await imports.plan(token,report.id,{binding:context.binding,entryId:entryId('AllergyIntolerance')});assert.equal(duplicate.alreadyImported,true);
-  const second=await imports.plan(token,report.id,{binding:context.binding,entryId:entryId('Condition')});assert.equal(second.conflict,true);assert.ok(second.existing.length);
+  const second=await imports.plan(token,report.id,{binding:context.binding,entryId:entryId('Condition')});assert.equal(second.conflict,true);assert.equal(second.canAppend,false);assert.ok(second.existing.length);
+  await assert.rejects(imports.apply(token,report.id,{planId:second.id,commandId:randomUUID(),decision:'append'}),e=>e.getStatus()===409);
   await assert.rejects(imports.apply(token,report.id,{planId:second.id,commandId:randomUUID(),decision:'import'}),e=>e.getStatus()===409);
   await query('savepoint keep_decision');
   await imports.apply(token,report.id,{planId:second.id,commandId:randomUUID(),decision:'keep'});

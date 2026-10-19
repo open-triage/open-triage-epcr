@@ -32,3 +32,12 @@ test('canonical medication semantic role transfers and custom field constraints 
  const limited=structuredClone(form);limited.customFields['med-history'].constraints.maxLength=10;assert.equal(importCandidate(entry,[mapping],limited).finding,'constraints');
  const correlated=structuredClone(form);correlated.customFields['med-history'].correlatesTo='eMedications.MedicationGroup';assert.equal(importDestination(mapping,correlated).finding,'medicationHistory');
 });
+
+test('summary parsing resolves products only in the current bundle and never invents negative medication history',async()=>{
+ const {parsePatientSummary}=await import('@open-triage/contracts');
+ const bundle={resourceType:'Bundle',type:'document',id:'test',entry:[{fullUrl:'urn:composition',resource:{resourceType:'Composition',type:{text:'EPS'},status:'final',date:'2026-10-19T00:00:00Z',subject:{reference:'urn:patient'},section:[]}},{fullUrl:'urn:patient',resource:{resourceType:'Patient',id:'patient',identifier:[{system:'urn:patient',value:'fictional'}]}}]};
+ assert.deepEqual(parsePatientSummary(bundle).summary.importEntries,[]);
+ const e=structuredClone(entry);e.resource.subject={reference:'urn:patient'};delete e.resource.medicationCodeableConcept;e.resource.medicationReference={reference:'https://elsewhere.invalid/Medication/one'};
+ bundle.entry.push({fullUrl:e.identity,resource:e.resource});let projected=parsePatientSummary(bundle).summary.importEntries[0];assert.equal(projected.medication,undefined);assert.equal(importCandidate(projected,[mapping],form).finding,'medicationReference');
+ bundle.entry.push({fullUrl:'https://elsewhere.invalid/Medication/one',resource:{resourceType:'Medication',id:'product',code:entry.resource.medicationCodeableConcept}});projected=parsePatientSummary(bundle).summary.importEntries[0];assert.equal(projected.medication.id,'product');assert.equal(importCandidate(projected,[mapping],form).finding,null);
+});
