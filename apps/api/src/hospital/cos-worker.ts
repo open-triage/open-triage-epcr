@@ -1,10 +1,11 @@
+import { reconcileTransmissionReview } from '../review/review-transmission.js';
 import { randomUUID } from 'node:crypto';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { CosConnectionSettings } from '@open-triage/contracts';
 import type { CanonicalPackage } from '../admin/canonical-package.js';
 import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
 import { renderSignedReportPdf, SignedPdfError } from '../reports/signed-report-pdf.js';
-import { buildCosPayload, CosFinding, type CosPreparedPayload } from './cos-payload.js';
+import { buildCosPayload, cosIdentifierRequirements, cosEligibility, CosFinding, type CosPreparedPayload } from './cos-payload.js';
 import { PersistentCosSimulator, CosRejected, type CosReceiver } from './cos-simulator.js';
 type Job={id:string;report_id:string;snapshot_id:string;organization_id:string;group_id:string;configuration_revision:string;
  mapping_id:string;mapping_revision:number;mapping_sha256:string;amendment_sequence:number;pdf_language:'en'|'sv';settings:CosConnectionSettings;canonical_mapping:CanonicalPackage};
@@ -28,6 +29,7 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
    let job:Job|undefined,payload:CosPreparedPayload|undefined,attempt:string|undefined;
    await runner.startTransaction('REPEATABLE READ');
    try{
+    await runner.manager.query('select id from clinical.report where id=$1 for update',[candidate.report_id]);
     [job]=await runner.manager.query<Job[]>(`select d.*,v.settings,v.canonical_mapping from clinical.cos_delivery d
      join clinical.report r on r.id=d.report_id and r.organization_id=d.organization_id and r.status='signed'
      join app_identity.hospital_cos_version v on v.group_id=d.group_id and v.revision=d.configuration_revision
@@ -38,6 +40,13 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
      try{
       if(job.settings.mode!=='simulator'||job.canonical_mapping.sha256!==job.mapping_sha256)throw new CosFinding('configuration','failed');
       const source=await signedReportPdfSource(runner.manager,job.report_id,job.snapshot_id,job.amendment_sequence);
+      if(cosEligibility(source.occurrences)==='transported'){
+       const requirements=cosIdentifierRequirements(source,job.canonical_mapping,job.settings);
+       await reconcileTransmissionReview(runner.manager,job.report_id,{integration:'cos',deliveryId:job.id,
+        amendmentSequence:job.amendment_sequence,configurationRevision:job.configuration_revision,
+        mappingId:job.mapping_id,mappingRevision:job.mapping_revision,mappingSha256:job.mapping_sha256,...requirements});
+       if(requirements.missing.length)throw new CosFinding(requirements.missing[0]!);
+      }
       const pdf=await renderSignedReportPdf(source,job.pdf_language);
       payload=buildCosPayload(source,job.canonical_mapping,job.settings,pdf,job.id);
       await runner.manager.query(`insert into clinical.cos_payload(delivery_id,report_id,bundle,pdf,payload_sha256,pdf_sha256,contact,contact_sha256) values($1,$2,$3::jsonb,$4,$5,$6,$7::jsonb,$8)`,[job.id,job.report_id,JSON.stringify(payload.bundle),pdf,payload.payloadSha256,payload.pdfSha256,JSON.stringify(payload.contact),payload.contactSha256]);

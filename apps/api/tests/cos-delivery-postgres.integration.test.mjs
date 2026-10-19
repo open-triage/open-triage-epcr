@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {reconcileTransmissionReview} from '../dist/review/review-transmission.js';
 import {AccountService} from '../dist/identity/account.service.js';
 import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
 import {ValidationAuthoringService} from '../dist/admin/validation-authoring.service.js';
@@ -85,6 +86,41 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.equal((await db.query('select a.id from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1',[good])).length,1);
   assert.equal((await db.query('select id from clinical.cos_delivery where report_id=$1',[old])).length,0,'activation never backfills');
   const missing=await draft({'ePatient.01':null});await sign(missing);await processCosWork(db);assert.equal((await db.query('select finding from clinical.cos_delivery where report_id=$1',[missing]))[0].finding,'patientIdentifier');
+  const [patientItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='missing-transmission-identifiers'",[missing]);
+  assert.equal(patientItem.transmission_reason,'patient-identity');assert.equal(patientItem.assignee_id,sample.documenting_user_id);
+  assert.equal((await db.query('select status from clinical.report where id=$1',[missing]))[0].status,'signed');
+  const [originalEvidence]=await db.query('select evidence from clinical.review_transmission_history where item_id=$1',[patientItem.id]);
+  const reconcile=evidence=>db.transaction(async manager=>{await manager.query('select id from clinical.report where id=$1 for update',[missing]);await reconcileTransmissionReview(manager,missing,evidence);});
+  await Promise.all([reconcile(originalEvidence.evidence),reconcile(originalEvidence.evidence)]);
+  assert.equal((await db.query('select count(*)::int n from clinical.review_transmission_history where item_id=$1',[patientItem.id]))[0].n,1);
+  let operationalSession={capabilities:['review:self'],organization:{id:sample.organization_id},user:{id:sample.documenting_user_id}};
+  const operationalReview=new ReviewService(db,{get:async()=>operationalSession,assertCsrf:async()=>{}});
+  const patientDetail=await operationalReview.item('fixture',patientItem.id,'synthetic');
+  assert.deepEqual(patientDetail.transmission.missing,['patientIdentifier']);assert.equal(patientDetail.transmission.patientField.id,'ePatient.01');
+  await assert.rejects(operationalReview.progress('fixture',patientItem.id,{commandId:randomUUID(),expectedVersion:patientDetail.version,dataset:'synthetic',status:'completed',outcomeOptionId:randomUUID()}),/technical workflow/);
+  await assert.rejects(db.query("update clinical.review_item set status='completed' where id=$1",[patientItem.id]),/Unresolved transmission/);
+  operationalSession={...operationalSession,capabilities:['review:all'],user:{id:randomUUID()}};
+  assert.equal((await operationalReview.item('fixture',patientItem.id,'synthetic')).transmission,undefined);
+  operationalSession={...operationalSession,capabilities:['review:all','review:identifying']};
+  assert.deepEqual((await operationalReview.item('fixture',patientItem.id,'synthetic')).transmission.missing,['patientIdentifier']);
+  operationalSession={...operationalSession,capabilities:['review:self']};await assert.rejects(operationalReview.item('fixture',patientItem.id,'synthetic'));
+  operationalSession={...operationalSession,user:{id:sample.documenting_user_id}};await assert.rejects(operationalReview.item('fixture',patientItem.id,'real'));
+  operationalSession={...operationalSession,capabilities:[]};await assert.rejects(operationalReview.item('fixture',patientItem.id,'synthetic'));
+  // Both categories share all remaining requirements and independently configurable routing.
+  const allMissing={...originalEvidence.evidence,missing:['patientIdentifier','staff','careUnit','encounter']};
+  await reconcile(allMissing);
+  const [mappingItem]=await db.query("select * from clinical.review_item where report_id=$1 and transmission_reason='integration-mapping'",[missing]);
+  assert.equal(mappingItem.assignee_id,null);
+  operationalSession={...operationalSession,capabilities:['review:all','review:admin','review:identifying']};
+  const routes=await operationalReview.routes('fixture');const mappingRoute=routes.find(route=>route.transmissionReason==='integration-mapping');
+  assert.ok(mappingRoute);assert.equal(routes.find(route=>route.transmissionReason==='patient-identity').route,'author');
+  await operationalReview.configureRoute('fixture',mappingRoute.criterionId,{commandId:randomUUID(),expectedVersion:0,route:'named',namedUserId:sample.documenting_user_id,independentReview:false});
+  const namedReport=await draft({'eDisposition.02':null});await sign(namedReport);await processCosWork(db);
+  const [namedItem]=await db.query("select * from clinical.review_item where report_id=$1 and transmission_reason='integration-mapping'",[namedReport]);assert.equal(namedItem.assignee_id,sample.documenting_user_id);
+  await reconcile({...originalEvidence.evidence,missing:[]});assert.equal((await db.query('select status from clinical.review_item where id=$1',[patientItem.id]))[0].status,'completed');
+  await reconcile(originalEvidence.evidence);const [recurred]=await db.query('select status,reopened,outcome_option_id from clinical.review_item where id=$1',[patientItem.id]);assert.deepEqual(recurred,{status:'new',reopened:true,outcome_option_id:null});
+  assert.equal((await db.query('select count(*)::int n from clinical.review_item where report_id=$1 and transmission_reason is not null',[missing]))[0].n,2);
+
   const cancelled=await draft({'eDisposition.27':'4227005'});await sign(cancelled);await processCosWork(db);assert.equal((await db.query('select state from clinical.cos_delivery where report_id=$1',[cancelled]))[0].state,'excluded');
   const simulator=new PersistentCosSimulator(db);
   const outage=await draft();await sign(outage);await processCosWork(db,10,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
@@ -177,6 +213,13 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    await manager.query('delete from clinical.signed_snapshot where report_id=$1',[good]);
    assert.equal((await manager.query('select delivery_id from clinical.cos_payload where report_id=$1',[good])).length,0);
    assert.equal((await manager.query('select delivery_id from clinical.cos_simulator_note where report_id=$1',[good])).length,0);
+   throw rollback;
+  }),error=>error===rollback);
+  await assert.rejects(db.transaction(async manager=>{
+   await manager.query(`insert into clinical_audit.synthetic_purge_tombstone(record_type,record_id,organization_id,server_created_at,expired_at,purged_at) values('report',$1,$2,clock_timestamp()-interval '2 days',clock_timestamp()-interval '1 day',clock_timestamp())`,[missing,sample.organization_id]);
+   await manager.query("select set_config('open_triage.synthetic_purge_report',$1,true)",[missing]);
+   await manager.query('delete from clinical.signed_snapshot where report_id=$1',[missing]);
+   assert.equal((await manager.query('select id from clinical.review_transmission_history where report_id=$1',[missing])).length,0);
    throw rollback;
   }),error=>error===rollback);
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);

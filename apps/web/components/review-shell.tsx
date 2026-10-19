@@ -125,7 +125,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       if (["new", "in-review"].includes(itemDetail.status)) actionOptions.push({ value: "await", label: t("review.awaitClinician") });
       if (itemDetail.status === "awaiting-clinician") actionOptions.push({ value: "resume", label: t("review.resumeReview") });
     }
-    if (itemDetail.kind !== "overdue-unsigned" && (itemDetail.assigneeId === session.user.id || administrator))
+    if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "missing-transmission-identifiers" && (itemDetail.assigneeId === session.user.id || administrator))
       actionOptions.push({ value: "complete", label: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview"),
         submitLabel: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview") });
     if (itemDetail.kind === "overdue-unsigned" && itemDetail.status !== "completed" && administrator)
@@ -434,7 +434,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     const count = Math.max(0, Math.floor((Date.parse(queue?.asOf ?? "") - Date.parse(matchedAt)) / 86400000));
     return count === 0 ? t("review.workspace.today") : count === 1 ? t("review.workspace.oneDay") : t("review.ageDays", { count });
   };
-  const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName">>) => item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") :
+  const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName" | "transmissionReason">>) => item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : item.transmissionReason ? t(`review.transmission.${item.transmissionReason}`) :
     item.criterionName ?? routes?.find((route) => route.criterionId === item.criterionId)?.name ?? t("review.findings");
   const closeReport = () => {
     if (callWindow) window.close();
@@ -509,7 +509,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         <div id="review-advanced-filters" className="review-controls" hidden={!moreFilters}>
           <label>{t("review.criterion")} <select value={criterion} onChange={(event) => { setCriterion(event.target.value); setQueuePage(1); }}>
             <option value="">{t("review.all")}</option>
-            {((administrator ? routes : null) ?? [...new Map((queue?.items ?? []).filter((item) => item.kind !== "overdue-unsigned").map((item) => [item.criterionId, { criterionId: item.criterionId, name: criterionLabel(item) }])).values()]).map((route) => <option key={route.criterionId} value={route.criterionId}>{route.name}</option>)}
+            {((administrator ? routes : null) ?? [...new Map((queue?.items ?? []).filter((item) => item.kind !== "overdue-unsigned").map((item) => [item.criterionId, { criterionId: item.criterionId, name: criterionLabel(item) }])).values()]).map((route) => <option key={route.criterionId} value={route.criterionId}>{"transmissionReason" in route && route.transmissionReason ? t(`review.transmission.${route.transmissionReason}`) : route.name}</option>)}
           </select></label>
           <label>{t("review.from")} <input type="date" value={queueFrom} onChange={(event) => { setQueueFrom(event.target.value); setQueuePage(1); }} /></label>
           <label>{t("review.to")} <input type="date" value={queueTo} onChange={(event) => { setQueueTo(event.target.value); setQueuePage(1); }} /></label>
@@ -654,6 +654,20 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           {draftDetail && <><h3>{t("review.overdueDraft")}</h3><p>{t("review.overdueDeadline")}: {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p></>}
           <div {...panel("review-detail", "findings", detailTab)}>
           {itemDetail?.findings.map((finding, index) => <MetricEvidence key={index} evidence={finding.metricEvidence} language={language} />)}
+            {itemDetail?.kind === "missing-transmission-identifiers" && <section aria-label={t("review.transmission.heading")}>
+              <h4>{t("review.transmission.heading")}</h4>
+              {itemDetail.transmissionRestricted ? <p>{t("review.transmission.restricted")}</p> : itemDetail.transmission && <>
+                <p>{t(itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
+                {itemDetail.transmission.patientField && <p>{t("review.transmission.patientField")}: {language === "sv" ? itemDetail.transmission.patientField.localization?.sv?.label ?? itemDetail.transmission.patientField.localization?.sv?.name ?? itemDetail.transmission.patientField.localization?.sv?.title ?? itemDetail.transmission.patientField.name : itemDetail.transmission.patientField.name} <code>{itemDetail.transmission.patientField.id}</code></p>}
+                <ul>{itemDetail.transmission.missing.map(code=><li key={code}>{t(`review.transmission.requirement.${code}`)}</li>)}</ul>
+                {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}
+                <p>{t("review.transmission.version", {sequence:itemDetail.transmission.amendmentSequence, revision:itemDetail.transmission.mappingRevision})}</p>
+                {!!itemDetail.transmissionHistory?.length && <details><summary>{t("review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
+                  {t(event.active ? "review.transmission.unresolved" : "review.transmission.resolved")} · {new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(new Date(event.recordedAt))}
+                </li>)}</ol></details>}
+              </>}
+            </section>}
+
           {itemDetail && <form className="review-action-form" aria-label={t("review.actionForm")} aria-busy={actionBusy}
             onSubmit={(event) => { event.preventDefault(); void submitReviewAction(itemDetail); }}>
             <label>{t("review.action")} <select value={activeAction} disabled={actionBusy}

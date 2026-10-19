@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {signedPdfFixture} from './fixtures/signed-pdf-source.mjs';
-import {buildCosPayload,cosEligibility,COS_SIMULATOR_LIMITS} from '../dist/hospital/cos-payload.js';
+import {buildCosPayload,cosIdentifierRequirements,cosEligibility,COS_SIMULATOR_LIMITS} from '../dist/hospital/cos-payload.js';
 import {COS_PROFILE,cosMappingPackage} from '../dist/hospital/cos-configuration.js';
 import {makePackage} from '../dist/admin/canonical-package.js';
 export function deliveryFixture(){
@@ -47,4 +47,14 @@ test('simulator bounds reject source size, repeated item amplification and escap
  const escaped=deliveryFixture();escaped.source.occurrences.find(x=>x.element_id==='eNarrative.01').value_text='\u0001'.repeat(COS_SIMULATOR_LIMITS.textBytes/2);assert.throws(()=>run(escaped),{code:'simulatorLimit'});
  const amplified=deliveryFixture();amplified.source.occurrences.find(x=>x.element_id==='eNarrative.01').value_text='x'.repeat(10000);const {format,schemaVersion,sha256,...portable}=amplified.mapping;amplified.mapping=makePackage({...portable,definition:{...portable.definition,clinicalMappings:Array.from({length:110},(_,i)=>({id:`mapped-${i}`,source:{kind:'nemsis',elementId:'eNarrative.01'},linkId:String(400000+i),answerType:'string'}))}});assert.throws(()=>run(amplified),{code:'simulatorLimit'});
  const many=deliveryFixture();many.source.occurrences=Array.from({length:COS_SIMULATOR_LIMITS.sourceOccurrences+1},()=>({...row}));assert.throws(()=>run(many),{code:'simulatorLimit'});
+});
+
+test('all identifier requirements are collected without patient values, including ambiguous patient and encounter namespace',()=>{
+ const f=deliveryFixture();f.source.occurrences=f.source.occurrences.filter(row=>row.element_id!=='ePatient.01');
+ f.settings.staff=[];f.settings.careUnits=[];f.settings.organizationHsaId='';f.settings.encounterNamespace='';
+ const found=cosIdentifierRequirements(f.source,f.mapping,f.settings);
+ assert.deepEqual(found.missing,['patientIdentifier','staff','careUnit','organization','encounter']);
+ assert.equal(found.patientField.id,'ePatient.01');assert.doesNotMatch(JSON.stringify(found),/200207252388|Fictional hospital/);
+ const duplicate=deliveryFixture();duplicate.source.occurrences.push({...duplicate.source.occurrences.find(row=>row.element_id==='ePatient.01')});
+ assert.deepEqual(cosIdentifierRequirements(duplicate.source,duplicate.mapping,duplicate.settings).missing,['patientIdentifier']);
 });
