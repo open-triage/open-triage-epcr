@@ -1,4 +1,5 @@
 "use client";
+import { ReviewMappingRepair } from "./review-mapping-repair";
 import { ReviewIdentifierCorrection } from "./review-identifier-correction";
 import { MetricEvidence } from "./metric-evidence";
 
@@ -679,6 +680,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                 <ul>{itemDetail.transmission.missing.map(code=><li key={code}>{t(`review.transmission.requirement.${code}`)}</li>)}</ul>
                 {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}
                 {onOpenHospitalSettings && session.capabilities?.includes("settings:write") && itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <button type="button" onClick={()=>{if(confirmDiscardChanges(findingsDirty))onOpenHospitalSettings();}}>{t("review.transmission.openAdmin")}</button>}
+                {itemDetail.transmissionReason==='integration-mapping'&&session.capabilities?.includes('settings:write')&&<ReviewMappingRepair key={`${itemDetail.id}:${session.user.id}:${dataset}`} item={itemDetail} session={session} dataset={dataset} language={language} online={online} onSaved={next=>{setItemDetail(next);setSelectedItem(next);setRefresh(value=>value+1);setDetailRefresh(value=>value+1);}}/>}
                 <p>{t("review.transmission.version", {sequence:itemDetail.transmission.amendmentSequence, revision:itemDetail.transmission.mappingRevision})}</p>
                 {!!itemDetail.transmissionHistory?.length && <details><summary>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.history':"review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
                   {t(event.active ? "review.transmission.unresolved" : "review.transmission.resolved")} · {new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(new Date(event.recordedAt))}

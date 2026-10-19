@@ -208,6 +208,17 @@ export interface ReviewIdentifierCorrectionCommand {
 }
 
 
+export interface CosMappingRepairContext {
+ deliveryId: string; reportId: string; expectedVersion: number; configurationRevision: number; stateRevision: number;
+ previousConfigurationRevision: number; previousMappingRevision: number; mappingRevision: number;
+ previousPatient: {field:import("./hospital-integration.js").HospitalField;namespace:string;value:string|null}; patient: {field:import("./hospital-integration.js").HospitalField;namespace:string;value:string|null};
+ missing: string[]; conflicts: Array<"patientIdentifier" | "recipient">; safe: boolean;
+}
+export interface CosMappingRepairCommand {
+ commandId: string; dataset: "real" | "synthetic"; context: CosMappingRepairContext;
+ acceptRecipientChange: boolean; acceptPatientMappingChange: boolean;
+}
+
 export interface RetryCosReviewCommand {
  commandId: string; expectedVersion: number; dataset: "real" | "synthetic";
  deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
@@ -215,6 +226,7 @@ export interface RetryCosReviewCommand {
 export interface ReviewTransmissionEvidence {
  deliveryState?: string; finding?: string | null; stateRevision?: number; retryable?: boolean;
  recoveryCommands?: Array<{id:string; actorId:string; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
+  repair?: {previousConfigurationRevision:number; previousMappingId:string; previousMappingRevision:number; previousMappingSha256:string; satisfied:string[]; remaining:string[]; recipientChangeAccepted:boolean};
   integration: "cos";
   deliveryId: string;
   amendmentSequence: number;

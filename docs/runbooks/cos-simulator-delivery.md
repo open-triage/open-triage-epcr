@@ -201,3 +201,31 @@ restored patient contact can reopen them. This does not retract earlier receiver
 notes or clear an uncertain-delivery barrier. Every eligible delivery still
 hydrates and verifies all signed photos and requires the complete PDF; manual
 PDF inspection also fails when signed media is unavailable.
+
+### Repair missing mappings from Review
+
+An integration-mapping Review concern links to **Admin → Hospital integrations →
+COS**. An existing integration administrator repairs the local staff HSA mapping,
+exact destination care-unit mapping, default ambulance unit or encounter settings.
+Portable data-element changes use the canonical JSON editor or import/export and
+always pass the normal draft, test and activate lifecycle. Configuration authority
+and identifying access to the affected report are both required to revalidate;
+Review assignment grants neither configuration nor another person's identity-edit
+permission.
+
+Return to the concern, choose **Check active mappings**, inspect the remaining
+requirements and explicitly revalidate. Only satisfied requirements resolve. A
+new immutable delivery lineage pins the activated configuration and old/new
+canonical mapping identities, revisions and hashes; partial repairs stay waiting.
+Revalidating the same activation or replaying a command cannot duplicate delivery.
+Clinical documentation, signatures and amendments remain unchanged.
+
+A changed patient selector or namespace shows the exact old/new resolved identity
+only in the scoped identifying preview and requires confirmation that it identifies
+the same patient. Incorrect clinical values use **Document valid identifier**.
+Changing an established recipient or encounter route requires separate explicit
+authorization for the unprepared work. Prepared payloads, any prior attempt, newer
+signed amendments and any uncertain outcome on the report block remapping; an
+acknowledgement never overrides those barriers. Revalidation loads immutable
+metadata and does not depend on photo storage or PDF generation. The ordinary
+worker performs later preparation and receiver effects.

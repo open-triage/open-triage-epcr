@@ -151,3 +151,11 @@ test('raw signed recipient resolver projects removal/addition amendments exactly
  assert.equal(resolveSignedCosCareUnit(f.source,f.settings),'fixture-ed');
  assert.equal(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended-again').contact.careUnit,'fixture-ed');
 });
+
+test('legacy missing PDF link mapping is actionable in Review before payload preparation',()=>{
+ const f=deliveryFixture(),{format,schemaVersion,sha256,...portable}=f.mapping;
+ const {pdfLinkId,...definition}=portable.definition;
+ const mapping=makePackage({...portable,definition});
+ assert.deepEqual(cosIdentifierRequirements(f.source,mapping,f.settings).missing,['pdfMapping']);
+ assert.throws(()=>buildCosPayload(f.source,mapping,f.settings,f.pdf,'waiting-pdf-mapping'),{code:'pdfMapping',state:'waiting'});
+});

@@ -18,9 +18,9 @@ type View={groupName:string;stateRevision:number;draft:Version|null;active:Versi
 type FileEntry={file:string;compatible:boolean;mapping:Mapping|null};
 const empty={endpoint:'https://hackathon2026.vadimperetok.in/fhir',field:DEFAULT_HOSPITAL_PATIENT_FIELD,namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:'',clinicalMappings:[] as EpsClinicalMapping[]};
 function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n'),clinicalMappings:value.mapping.definition.clinicalMappings??[]}:empty;}
-export function HospitalIntegrationsPanel({language,csrfToken,canWrite}:{language:string;csrfToken:string;canWrite:boolean}){
+export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTab="eps"}:{initialTab?:"eps"|"cos";language:string;csrfToken:string;canWrite:boolean}){
  const t=(key:string)=>resolveMessage(language,`hospital.${key}`);
- const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[tab,setTab]=useState('eps'),[cosOpened,setCosOpened]=useState(false),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
+ const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[tab,setTab]=useState<string>(initialTab),[cosOpened,setCosOpened]=useState(initialTab==='cos'),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
  const [mappingFindings,setMappingFindings]=useState<{key:string;rows:{id:string;label:string;finding:string|null}[]}>({key:'',rows:[]});
  const dirty=!!secret||JSON.stringify(draft)!==JSON.stringify(editable(value?.draft??null));
  const confirmLeave=useUnsavedChanges(dirty);

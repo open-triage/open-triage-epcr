@@ -2522,5 +2522,22 @@
   "review.identifier.stale": "The report, assignment or mapping changed. Refresh requirements and review your correction.",
   "review.identifier.invalid": "The correction could not be accepted. Check the identifier and current requirements.",
   "review.identifier.unavailable": "Requirements could not be loaded or the correction could not be confirmed. Retry when connected.",
-  "review.identifier.saved": "Signed identifier correction saved. Delivery remains pending confirmation."
+  "review.identifier.saved": "Signed identifier correction saved. Delivery remains pending confirmation.",
+  "review.mappingRepair.help": "Repair mappings in COS administration, save and test the draft, then activate it. Return here to revalidate this report. This does not change patient documentation.",
+  "review.mappingRepair.preview": "Check active mappings",
+  "review.mappingRepair.unavailable": "Mapping repair is unavailable. Refresh and try again.",
+  "review.mappingRepair.stale": "The report or configuration changed. Check active mappings again.",
+  "review.mappingRepair.revisions": "Configuration {previous} → {current}",
+  "review.mappingRepair.remaining": "Requirements still needing attention:",
+  "review.mappingRepair.ready": "All identifiers are satisfied. Eligible delivery can be queued.",
+  "review.mappingRepair.patientConflict": "The configured patient field or namespace changed. Verify that the following selection identifies the same patient. Correct an incorrect clinical value using Document valid identifier.",
+  "review.mappingRepair.previousPatient": "Recorded selection",
+  "review.mappingRepair.patient": "Active selection",
+  "review.mappingRepair.absent": "No unambiguous value",
+  "review.mappingRepair.acceptPatient": "I verified that this configuration selection identifies the same patient.",
+  "review.mappingRepair.recipientConflict": "Established recipient or encounter routing changed. Review the activated COS configuration before continuing.",
+  "review.mappingRepair.acceptRecipient": "I authorize the activated recipient and encounter routing for this unprepared delivery.",
+  "review.mappingRepair.unsafe": "Prepared, attempted, or uncertain delivery cannot be retargeted. Preserve its history and resolve the outcome first.",
+  "review.mappingRepair.apply": "Revalidate and resume eligible delivery",
+  "review.transmission.requirement.pdfMapping": "PDF link identifier mapping is missing."
 }

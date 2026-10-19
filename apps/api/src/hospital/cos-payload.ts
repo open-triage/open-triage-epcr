@@ -51,6 +51,7 @@ export function cosIdentifierRequirements(source:SignedReportClinicalSource,p:Ca
  try{cosCareUnitFor(source,settings);}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
  if(!settings.organizationHsaId)missing.push('organization');
  if(!settings.encounterNamespace)missing.push('encounter');
+ if(!mapping.pdfLinkId)missing.push('pdfMapping');
  return {missing,patientField};
 }
 export function buildCosPayload(source:SignedReportClinicalSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
