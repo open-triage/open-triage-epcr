@@ -2,7 +2,8 @@
 
 These documents record product intent and the scope of successive delivery
 milestones. **Status reviewed against the repository on 8 October 2026;
-audit logging added and its related status notes updated on 19 October 2026.**
+audit logging and the planned hospital integration specification added, with
+related status notes updated on 19 October 2026.**
 An older PRD's problem statement or Out of Scope list describes that milestone,
 not necessarily today's product. Follow its delivery/supersession note before
 using it as a roadmap.
@@ -39,6 +40,7 @@ authority for delivered behavior.
 | [Localization](localization.md) | English/Swedish UI, agency regional settings, and versioned definition translations implemented | Additional languages need dictionaries and definition translations; absent translations fall back to English. |
 | [User feedback](user-feedback.md) | Online bug/feature submission and operator review tooling implemented | See [feedback review](../runbooks/feedback-review.md); feedback messages must not contain patient-identifying information. |
 | [Audit logging](audit-logging.md) | Retrospective: agency-scoped audit browsing, patient/analytics access evidence, and recorded value/payload inspection implemented | Documents PR #746 and existing tests. Coverage is incremental; offline viewing, audit-log export, formal review sign-off, and independent archival are outside this delivery. See [auditing](../runbooks/auditing.md) for operational boundaries. |
+| [Hospital integration](hospital-integration.md) | Planned; design and acceptance coverage agreed on 2026-10-19; COS sandbox access pending | Automatic COS signed-report/PDF delivery, hackathon EPS retrieval/selective import/explicit export, panel-only configuration with a patient-identifier dropdown defaulting to ePatient.01, and built-in Review recovery. Extends Review with identifying access to clinicians' own reports. |
 | [Review and basic analytics](review.md) | Scoped review, assignments, discussion, outcomes, and overdue follow-up implemented | Retrospective APIs and a standalone panel exist, but the panel is not connected to the current workspace. Unified Analytics and Metric Library supersede the original analytics presentation and metric selection. |
 | [Unified analytics workspace](unified-analytics-workspace.md) | Line/Bar/Table workspace, filters, CSV exports, and personal saved visualizations implemented | Metric selection now uses Records and review-enabled configured metrics/rules. Workload-analysis UI, sharing, and scheduled reports remain outside this workspace's scope. |
 | [Metric library](metric-library.md) | Numeric metrics and Boolean rules share the Validation lifecycle and feed Analytics | See [metric behavior and limits](../runbooks/metric-library.md). Trauma-destination and aspirin example rules remain disabled pending definition of unresolved mappings. |
