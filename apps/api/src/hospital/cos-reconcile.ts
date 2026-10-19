@@ -21,7 +21,7 @@ export async function reconcileCosReview(database:DataSource,sessions:ClinicianS
   // Same advisory namespace and lock order as the durable worker; never wait holding a report/item lock.
   const [lock]=await manager.query<Array<{locked:boolean}>>('select pg_try_advisory_xact_lock(731013,hashtext($1)) locked',[candidate.report_id]);
   if(!lock?.locked)throw new ConflictException('COS delivery is in progress');
-  const [report]=await manager.query<Array<{documenting_user_id:string;group_id:string}>>(`select documenting_user_id,app_identity.organization_group(organization_id) group_id from clinical.report where id=$1 and organization_id=$2 and synthetic=$3 and status='signed' and (expires_at is null or expires_at>clock_timestamp()) and ($4::boolean or documenting_user_id=$5) for update`,[candidate.report_id,scope.organizationId,input.dataset==='synthetic',scope.reports==='all',scope.userId]);
+  const [report]=await manager.query<Array<{documenting_user_id:string;group_id:string}>>(`select documenting_user_id,app_identity.organization_group(organization_id) group_id from clinical.report where id=$1 and organization_id=$2 and synthetic=$3 and status='signed' and (expires_at is null or expires_at>clock_timestamp()) and ($4::boolean or documenting_user_id=$5) for update nowait`,[candidate.report_id,scope.organizationId,input.dataset==='synthetic',scope.reports==='all',scope.userId]);
   if(!report)throw new NotFoundException();
   if(!reviewIdentifying(scope,report.documenting_user_id))throw new ForbiddenException('Identifying report access is required');
   await manager.query('select id from app_identity.organization where id=$1 for share',[scope.organizationId]);
@@ -45,5 +45,5 @@ export async function reconcileCosReview(database:DataSource,sessions:ClinicianS
   await manager.query('update clinical.cos_delivery set state=$2,finding=$3,updated_at=clock_timestamp() where id=$1',[delivery.id,next,finding]);
   await manager.query(`insert into clinical.cos_delivery_event(delivery_id,report_id,attempt_id,actor_id,state,finding,evidence) values($1,$2,$3,$4,$5,$6,$7::jsonb)`,[delivery.id,candidate.report_id,attempt.id,scope.userId,next,finding,JSON.stringify({action:'reconcile',commandId:input.commandId,...proof})]);
   await reconcileCosFailure(manager,candidate.report_id);
- });
+ }).catch(error=>{if(error?.code==='55P03')throw new ConflictException('COS receiver operation is still in progress');throw error;});
 }

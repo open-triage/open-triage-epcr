@@ -612,6 +612,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const pendingWriter=pausedReceiver.note(retained,retainedPayload.delivery_id,{contact:retainedPayload.contact,contactSha256:retainedPayload.contact_sha256,bundle:retainedPayload.bundle,pdf:retainedPayload.pdf,payloadSha256:retainedPayload.payload_sha256,pdfSha256:retainedPayload.pdf_sha256,amendmentSequence:0},retainedPayload.attempt_id);
   const writerOutcome=assert.rejects(pendingWriter,CosRejected);await writerArrived;
   try{
+   await assert.rejects(reconcileCosReview(db,recoverySessions,'fixture',retentionCommand.itemId,{...retentionCommand.command,commandId:randomUUID()}),/receiver operation is still in progress/);
    await db.query("select retention.purge_expired_synthetic_records($1::timestamptz+interval '1 minute')",[retainedExpiry.expires_at]);
    assert.equal((await db.query('select id from clinical.report where id=$1',[retained])).length,1,'retention skips an existing receiver operation holding report key-share');
    assert.equal((await db.query('select attempt_id from clinical.cos_simulator_fence where report_id=$1',[retained])).length,1,'fence remains until the old writer finishes');

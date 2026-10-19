@@ -14,8 +14,9 @@ fence and cannot provide verified stored proof.
 
 An authorized assigned identifying reviewer requests reconciliation, never a
 resend. The command uses the shared report worker lock and live session/CSRF,
-agency, dataset, item version and configuration-state checks. The simulator's
-status implementation tries the receiver lane without waiting. Busy lanes,
+agency, dataset, item version and configuration-state checks. The report row lock uses NOWAIT and the simulator's status implementation
+tries the receiver lane without waiting. An active writer returns a conflict
+without waiting for a remote acknowledgement. Busy lanes,
 missing prepared bytes, broken hashes, conflicting contact identities and
 missing/mismatched original-attempt bindings leave the outcome unresolved.
 A missing row or HTTP timeout alone is never non-delivery evidence.
