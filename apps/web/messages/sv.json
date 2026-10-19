@@ -2410,6 +2410,14 @@
   "eps.cachePolicy": "Tillgänglig inom uppdragets skyddade lagrings- och sessionsgränser. Återanslut för att kontrollera åtkomst och uppdatera. Ändrad patientidentitet kräver en ny kontroll online.",
   "eps.onlineOnly": "Endast online: en skyddad offlinekopia är inte tillgänglig.",
   "eps.refresh": "Uppdatera sammanfattning",
+  "hospital.medicationHistory": "Läkemedelsuppgift / anamnes",
+  "hospital.semanticRole": "Målfältets kliniska betydelse",
+  "hospital.chooseHistoryRole": "Välj målfältets betydelse",
+  "hospital.medicationHistoryRole": "Detta anpassade fält dokumenterar läkemedelsanamnes med ursprunglig dosering och status",
+  "epsImport.medicationHistory": "Välj ett anpassat textfält uttryckligen avsett för läkemedelsanamnes. Administreringar under vårdtillfället och enbart kodade värden är inte kompatibla.",
+  "epsImport.medicationReference": "Läkemedelsreferensen måste peka på ett Medication i detta EPS-dokument.",
+  "epsImport.append": "Lägg till bredvid befintlig anamnes",
+  "epsImport.decision.append": "Tillagt bredvid befintlig anamnes",
   "hospital.cos.pdfLinkId": "SNOMED-länkidentifierare för PDF",
   "hospital.cos.pdfLinkHelp": "Krävs för leverans. Använd koden som överenskommits för mottagarens mall; ingen kod härleds. Destinationsmappning matchar namn i eDisposition.01 och kod i eDisposition.02 exakt.",
   "cosDelivery.title": "Leverans till COS-simulator",
@@ -2442,5 +2450,6 @@
   "cosDelivery.finding.contactRejected": "Simulatorn avvisade kontakten.",
   "cosDelivery.finding.noteRejected": "Simulatorn avvisade anteckningen eller PDF-filen.",
   "cosDelivery.finding.identityConflict": "Lagrad simulatoridentitet eller innehåll står i konflikt med begäran.",
-  "cosDelivery.state.superseded": "Ersatt genom uttrycklig ommappning"
+  "cosDelivery.state.superseded": "Ersatt genom uttrycklig ommappning",
+  "epsImport.identifyingDestination": "Endast visning: importerad källtext kräver ett eget fält markerat som identifierande."
 }

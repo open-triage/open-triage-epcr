@@ -2412,6 +2412,14 @@
   "eps.cachePolicy": "Available under this encounter’s protected storage and session limits. Reconnect to check access and refresh. Changes to patient identity require a new online check.",
   "eps.onlineOnly": "Online only: a protected offline copy is unavailable.",
   "eps.refresh": "Refresh summary",
+  "hospital.medicationHistory": "Medication statement / history",
+  "hospital.semanticRole": "Destination clinical meaning",
+  "hospital.chooseHistoryRole": "Choose the destination meaning",
+  "hospital.medicationHistoryRole": "This custom field records medication history, including the original regimen and status",
+  "epsImport.medicationHistory": "Choose a custom text field explicitly designated for medication history. Encounter administrations and coded-only projections are incompatible.",
+  "epsImport.medicationReference": "The medication reference must resolve to one Medication in this EPS document.",
+  "epsImport.append": "Add alongside existing history",
+  "epsImport.decision.append": "Added alongside existing history",
   "hospital.cos.pdfLinkId": "PDF SNOMED link identifier",
   "hospital.cos.pdfLinkHelp": "Required for delivery. Use the code agreed with the receiving template; no code is inferred. Destination mapping matches eDisposition.01 name and eDisposition.02 code exactly.",
   "cosDelivery.title": "COS simulator delivery",
@@ -2444,5 +2452,6 @@
   "cosDelivery.finding.contactRejected": "The simulator rejected the contact.",
   "cosDelivery.finding.noteRejected": "The simulator rejected the note or PDF.",
   "cosDelivery.finding.identityConflict": "Stored simulator identity or content conflicts with this request.",
-  "cosDelivery.state.superseded": "Superseded by explicit remapping"
+  "cosDelivery.state.superseded": "Superseded by explicit remapping",
+  "epsImport.identifyingDestination": "View only: imported source text requires a custom field marked identifying."
 }

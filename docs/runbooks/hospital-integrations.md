@@ -219,3 +219,35 @@ expires after 15 minutes; new plans remove expired plans and replace that report
 previous preview. Ordinary signed snapshots include occurrence source provenance.
 The API never fetches arbitrary source references or accepts a client-supplied
 clinical value as authoritative EPS data.
+
+### Medication history imports
+
+For `MedicationStatement`, select an exact source product code and a custom text
+field, then explicitly designate its clinical meaning as medication history.
+This semantic role is part of the transferable canonical mapping. The text retains
+source status, effective dates, assertion date, dosage, route and units without
+translating their codes. Medication references resolve only inside the same EPS
+bundle; unresolved products and unknown extensions remain readable but cannot be
+imported. An absent list creates no negative-history statement.
+
+NEMSIS `eHistory.12`–`.15` describe current medication identity, dose, unit and route
+as grouped fields. This initial projection does not distribute an EPS regimen into
+those scalar fields or infer code conversions. It never writes `eMedications`
+encounter administrations. Use a custom text history field to preserve the whole
+regimen; coded-only medication imports are rejected.
+
+A custom history field with multiple occurrences offers **Add alongside existing
+history** in the conflict preview. Keep and replace remain explicit choices.
+Appending preserves the earlier occurrence and its provenance; replaying the same
+source does not append again. Signed provenance includes the original statement
+and its resolved Medication resource, with the applied mapping identity and revision.
+
+### Privacy of imported source text
+
+Every EPS text import into a custom field requires that published field to be
+marked identifying. This covers allergy/condition narrative, medication history
+and historical context: source text can contain names or other identifying facts
+even when the mapped concept is non-identifying. Review detail already suppresses
+unrestricted text without identifying access; custom string analytics also uses
+the published privacy flag. The import guard preserves both boundaries and does
+not change the semantics of existing authored fields.

@@ -69,7 +69,8 @@ export type CosConnectionSettings = {
 /** Exact source coding; text preserves the source facts, coded never translates terminology. */
 export type EpsClinicalMapping = {
   id: string;
-  resourceType: 'AllergyIntolerance' | 'Condition';
+  resourceType: 'AllergyIntolerance' | 'Condition' | 'MedicationStatement';
+  semanticRole?: 'medication-history';
   system: string;
   code: string;
   destination: HospitalField;
@@ -81,5 +82,5 @@ export type EpsImportRow = {
 };
 export type EpsImportPlan = {
   id: string; revision: number; destination: string; incoming: string;
-  existing: string[]; conflict: boolean; alreadyImported: boolean;
+  existing: string[]; conflict: boolean; alreadyImported: boolean; canAppend?: boolean;
 };
