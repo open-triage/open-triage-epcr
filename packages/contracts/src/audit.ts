@@ -14,6 +14,7 @@ export type AuditTargetKind = "user" | "role" | "roleVersion" | "rolePackage" | 
 export type AuditTarget = { kind: AuditTargetKind; label: string | null; version?: number | null; occurredAt?: string };
 export type AuditOrganization = { id: string; name: string | null };
 export type AuditEntry = {
+  integration?: {destination:"eps"|"cos";verification?:"simulator"|"unverified"|"eps";reportId?:string;snapshotId?:string;amendmentSequence?:number;payloadSha256?:string|null;dataset?:"real"|"synthetic";configurationRevision:number;mappingId:string;mappingRevision?:number;mappingSha256:string;attemptId?:string;commandId?:string;finding?:string;receiptId?:string;proofOutcome?:string;proofFenced?:boolean;remotePass?:boolean;remoteErrors?:number};
   recovery?: {reportId:string; itemId:string; dataset:"real"|"synthetic"; amendmentSequence:number};
   // Permanent UUID; source tables may retain separate internal numeric keys.
   id: string; category: AuditCategory; source: string; occurredAt: string; actorId: string | null; action: string;

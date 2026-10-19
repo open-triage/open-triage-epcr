@@ -1,3 +1,4 @@
+import {HospitalHistoryService} from '../../dist/hospital/hospital-history.service.js';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
@@ -52,6 +53,11 @@ export async function epsSubmissionJourney({database,query,sessions,configuratio
   await query('set local role open_triage_api_runtime');let result=await service.submit(token,report.id,submit);await query('reset role');assert.equal(result.state,'accepted');assert.equal(calls,1);assert.equal((await service.submit(token,report.id,submit)).state,'accepted');assert.equal((await service.submit(token,report.id,{...submit,commandId:randomUUID()})).state,'accepted');assert.equal(calls,1);
   const duplicate=await service.preview(token,report.id,input);await assert.rejects(service.submit(token,report.id,{...submit,submissionId:duplicate.id,commandId:randomUUID()}));assert.equal(calls,1);await assert.rejects(service.submit(token,report.id,{...submit,submissionId:duplicate.id}));
   const audit=await query('select integration_provenance from clinical_audit.patient_access_event where report_id=$1',[report.id]);assert.doesNotMatch(JSON.stringify(audit),/FICTIONAL-SUBMISSION|confirmed-only|never executes|private-team/);
+  const operational=await new HospitalHistoryService(database,sessions).list(adminToken,{dataset:'synthetic',reportId:report.id});
+  const acceptedOperational=operational.entries.find(row=>row.id===preview.id);assert.equal(acceptedOperational.state,'accepted');assert.equal(acceptedOperational.attemptCount,1);assert.equal(acceptedOperational.mapping.sha256,preview.mappingSha256);
+  assert.ok(acceptedOperational.events.some(e=>e.action==='eps.submit'&&e.state==='unknown'));assert.ok(acceptedOperational.events.some(e=>e.action==='eps.result'&&e.acknowledgement.pass===true&&e.acknowledgement.errors===0));
+  assert.doesNotMatch(JSON.stringify(operational),/FICTIONAL-SUBMISSION|confirmed-only|never executes|private-team|resourceType|Bundle.entry/);
+  const retainedOperational=await query('select * from clinical_audit.hospital_operational_event where source_id=$1',[preview.id]);assert.ok(retainedOperational.some(e=>e.remote_pass===true&&e.remote_errors===0));assert.doesNotMatch(JSON.stringify(retainedOperational),/FICTIONAL-SUBMISSION|confirmed-only|private-team/);
   const original=(await query('select * from clinical.element_occurrence where id=$1',[story.id]))[0];
   const amend=new AmendReportService(database);
   await amend.amend(report.id,{commandId:randomUUID(),expectedSequence:1,authorId:actor.user.id,reason:'Fictional correction',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:story.id,value:{kind:'text',value:'Fictional corrected history'}}]}).catch(error=>{throw new Error(JSON.stringify(error.getResponse?.()??error));});

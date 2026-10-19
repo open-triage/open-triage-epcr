@@ -1385,3 +1385,13 @@ fieldset { min-inline-size: 0; }
 .eps-submission-dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .eps-submission-dialog header { position: sticky; top: -16px; padding: 8px 0; background: var(--surface, #fff); z-index: 1; }
 .eps-submission-dialog h2 { margin: 0; }
+
+.hospital-history-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.hospital-history-workspace:has(.hospital-history-inspector) { grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.85fr); }
+.hospital-history-inspector { min-width: 0; max-height: 65vh; overflow: auto; padding: 0.5rem; border: 1px solid var(--green); }
+.hospital-history-inspector dl > div { display: grid; grid-template-columns: minmax(6rem, 0.5fr) minmax(0, 1fr); gap: 0.5rem; }
+.hospital-history-inspector dd { margin: 0; overflow-wrap: anywhere; }
+.hospital-history-inspector article { border-top: 1px solid var(--green); padding-block: 0.5rem; }
+.hospital-history-panel .audit-table tr { cursor: pointer; }
+.hospital-history-panel .audit-table tr:hover, .hospital-history-panel .audit-table tr.selected { background: color-mix(in srgb, var(--green) 12%, transparent); }
+@media (max-width: 900px) { .hospital-history-workspace:has(.hospital-history-inspector) { grid-template-columns: minmax(0, 1fr); } .hospital-history-inspector { max-height: none; } }

@@ -2182,3 +2182,4 @@ export * from "./hospital-integration.js";
 export * from "./patient-summary.js";
 
 export * from "./hospital-identifier-scheme.js";
+export * from "./hospital-history.js";

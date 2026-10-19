@@ -1,3 +1,5 @@
+import {HospitalHistoryController} from "../hospital/hospital-history.controller.js";
+import {HospitalHistoryService} from "../hospital/hospital-history.service.js";
 import { CosController } from "../hospital/cos.controller.js";
 import { CosService } from "../hospital/cos.service.js";
 import { HospitalController } from "../hospital/hospital.controller.js";
@@ -32,8 +34,8 @@ import { OrganizationsService } from "./organizations.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
-  controllers: [CosController, HospitalController, AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
-  providers: [CosService, HospitalService, AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
+  controllers: [HospitalHistoryController, CosController, HospitalController, AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
+  providers: [HospitalHistoryService, CosService, HospitalService, AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
     AgencySettingsService, OrganizationsService],

@@ -1,4 +1,5 @@
 "use client";
+import {HospitalHistoryPanel} from './hospital-history';
 import {CosIntegrationsPanel} from './cos-integrations';
 import React,{useEffect,useState} from 'react';
 import {type HospitalIntegrationLifecycleState,DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type EpsOutputMapping,type EpsClinicalMapping,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
@@ -105,9 +106,7 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
       {canWrite&&<button type="button" disabled={!selectedFile} onClick={()=>{if(confirmLeave())void action('/import-file',{expectedRevision:expected.expectedRevision,file:selectedFile});}}>{t('import')}</button>}</>}
     </fieldset>
    </div>
-   <div hidden={tab!=='history'} className="hospital-history"><table><thead><tr><th>{t('revision')}</th><th>{t('state')}</th><th>{t('date')}</th><th>{t('hash')}</th></tr></thead><tbody>{value.history.map(row=><tr key={row.revision}><td>{row.revision}</td><td>{t(row.status)}</td><td>{new Date(row.createdAt).toLocaleString(language)}</td><td className="hospital-digest">{row.sha256}</td></tr>)}</tbody></table>
-    <ul>{value.events.map((event,index)=><li key={index}>{t(event.action.replace('hospital.','event.'))} — {new Date(event.occurredAt).toLocaleString(language)} — {event.actorId}</li>)}</ul>
-   </div>
+   <div hidden={tab!=='history'}><HospitalHistoryPanel language={language} scopeKey={csrfToken} active={tab==='history'}/></div>
   </>}
  </section>;
 }

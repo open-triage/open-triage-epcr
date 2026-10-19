@@ -1,3 +1,4 @@
+import {HospitalHistoryService} from "../hospital/hospital-history.service.js";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { auditCategories, auditDumpSources, clinicalValueSources, patientAuditCategories, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTargetKind, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
@@ -15,7 +16,7 @@ function source(table: string, action: string, options: {
   outcome: string;
   time?: string; actor?: string; target?: string; targetKind?: string; organization?: string;
   join?: string; patient?: string; accessOrganization?: string; careProcess?: string; resource?: string; analytics?: string;
-  targetLabel?: string; inspection?: string; recovery?: string;
+  targetLabel?: string; inspection?: string; recovery?: string; integration?: string;
   // Additional metadata UUIDs only: never index identifiers from protected payloads.
   searchIds?: string;
 }): string {
@@ -30,6 +31,7 @@ function source(table: string, action: string, options: {
     ${options.resource ?? "null"}::uuid resource_id, ${options.analytics ?? "null"}::jsonb analytics,
     ${options.inspection ?? "null"}::jsonb inspection,
     ${options.recovery ?? "null"}::jsonb recovery,
+    ${options.integration ?? "null"}::jsonb integration,
     ${options.searchIds ?? "'{}'::uuid[]"}::uuid[] search_ids
     from ${table} e ${options.join ?? ""}
     where ${options.organization ?? "e.organization_id"} = $1`;
@@ -38,7 +40,7 @@ function source(table: string, action: string, options: {
 export const auditSources: Record<AuditCategory, string[]> = {
   patient: [source("clinical_audit.patient_access_event", "e.action", { target: "e.report_id",
     patient: "e.patient_id", accessOrganization: "e.access_organization_id", careProcess: "e.care_process",
-    resource: "e.resource_id", outcome: "'authorized'" })],
+    resource: "e.resource_id", outcome: "'authorized'", integration:"case when e.action like 'eps.%' then jsonb_build_object('destination','eps','reportId',e.report_id,'dataset',case when e.synthetic then 'synthetic' else 'real' end,'configurationRevision',e.integration_provenance->'configurationRevision','mappingId',e.integration_provenance->'mappingId','mappingRevision',e.integration_provenance->'mappingRevision','mappingSha256',e.integration_provenance->'mappingSha256') end" })],
   analytics: [source("clinical_audit.analytics_access_event", "e.surface || '.' || e.operation", { target: "e.id", outcome: "'prepared'",
     searchIds: "e.scoped_organization_ids",
     analytics: "jsonb_build_object('dataset',e.dataset,'from',e.from_date,'through',e.through_date,'reportCount',e.report_count,'reportScope',e.report_scope,'identifying',e.identifying,'organizationIds',e.scoped_organization_ids)" })],
@@ -48,12 +50,12 @@ export const auditSources: Record<AuditCategory, string[]> = {
     targetKind: "case e.target_type when 'role' then 'role' when 'role_version' then 'roleVersion' when 'role_package' then 'rolePackage' when 'capability' then 'capability' else 'record' end" }),
     source("app_identity.ownership_transfer_event", "e.action", { target: "e.transfer_id", outcome: "e.result" }),
     source("app_identity.organization_event", "e.action", { target: "e.organization_id", outcome: "'succeeded'" })],
-  configuration: [source("app_identity.configuration_event", "e.action", { target: "e.form_version_id", outcome: "e.result" }),
+  configuration: [source("app_identity.configuration_event", "e.action", { target: "e.form_version_id", outcome: "e.result", integration:"case when e.action like 'hospital.%' then jsonb_build_object('destination',e.details->>'integration','configurationRevision',e.details->'revision','mappingId',e.details->'mappingId','mappingSha256',e.content_sha256) end" }),
     source("catalog.publication_event", "'catalog.publish'", { target: "e.release_id", outcome: "e.result" }),
     source("validation.change_event", "e.action", { target: "e.destination_version_id", outcome: "'succeeded'" }),
     source("app_identity.agency_settings_change_event", "'settings.change'", { target: "e.organization_id", outcome: "'succeeded'" }),
     source("app_identity.agency_demographic_change_event", "'demographics.change'", { target: "e.version_id", outcome: "'succeeded'" })],
-  clinical: [source("clinical_audit.event", "e.action", { time: "e.server_time", target: "e.report_id",
+  clinical: [source("clinical_audit.hospital_operational_event", "e.action", {time:"e.occurred_at",target:"e.report_id",targetKind:"'record'",outcome:"e.state",integration:"jsonb_build_object('destination',e.integration,'verification',e.verification,'reportId',e.report_id,'snapshotId',e.snapshot_id,'amendmentSequence',e.amendment_sequence,'payloadSha256',e.payload_sha256,'dataset',case when e.synthetic then 'synthetic' else 'real' end,'configurationRevision',e.configuration_revision,'mappingId',e.mapping_id,'mappingRevision',e.mapping_revision,'mappingSha256',e.mapping_sha256,'attemptId',e.attempt_id,'commandId',e.command_id,'finding',e.finding,'receiptId',e.receipt_id,'proofOutcome',e.proof_outcome,'proofFenced',e.proof_fenced,'remotePass',e.remote_pass,'remoteErrors',e.remote_errors)",searchIds:"array[e.source_id,e.snapshot_id,e.attempt_id,e.command_id]"}),source("clinical.eps_submission_attempt", "'eps.submit'", {time:"e.created_at",target:"s.report_id",targetKind:"'record'",outcome:"coalesce(result.state,'unknown')",join:"join clinical.eps_submission s on s.id=e.submission_id join clinical.report r on r.id=s.report_id left join clinical.eps_submission_result result on result.attempt_id=e.id",organization:"s.organization_id",integration:"jsonb_build_object('destination','eps','reportId',s.report_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'configurationRevision',s.configuration_revision,'mappingId',s.mapping_id,'mappingRevision',s.mapping_revision,'mappingSha256',s.mapping_sha256)",searchIds:"array[s.id,s.snapshot_id]"}),source("clinical_audit.event", "e.action", { time: "e.server_time", target: "e.report_id",
     // This ledger has an open-ended action field. Only the two known writers
     // establish success; unfamiliar historical actions remain unspecified.
     outcome: "case when e.action in ('sign','amend') then 'succeeded' end",
@@ -76,11 +78,11 @@ export const auditSources: Record<AuditCategory, string[]> = {
       when 'key_expired' then 'expired' when 'policy_shortened' then 'applied' end` }),
     source("offline_recovery.key_lifecycle_event", "e.event_type", { actor: "e.actor_user_id", target: "e.report_id", outcome: "e.outcome" }),
     source("offline_recovery.report_recovery_event", "e.action", { actor: "e.user_id", target: "e.report_id", outcome: "e.outcome" })],
-  review: [source("clinical.cos_recovery_command", "'cos.manual-retry'", {time:"e.created_at",target:"e.item_id",outcome:"'queued'",
+  review: [source("clinical.cos_recovery_command", "case when e.automatic_ordinal is null then 'cos.manual-retry' else 'cos.automatic-retry' end", {time:"e.created_at",target:"e.item_id",outcome:"'queued'",
     join:"join clinical.report r on r.id=e.report_id",organization:"r.organization_id",
     recovery:"jsonb_build_object('reportId',e.report_id,'itemId',e.item_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'amendmentSequence',e.amendment_sequence)"}),
-    source("clinical.cos_delivery_event", "'cos.delivery'", {time:"e.created_at",actor:"coalesce(e.actor_id,c.actor_id)",target:"i.id",outcome:"e.state",
-      join:"join clinical.report r on r.id=e.report_id join clinical.cos_delivery d on d.id=e.delivery_id join clinical.review_item i on i.report_id=r.id and i.kind='cos-delivery-failed' left join clinical.cos_attempt a on a.id=e.attempt_id left join clinical.cos_recovery_command c on c.id=a.recovery_command_id",organization:"r.organization_id",
+    source("clinical.cos_delivery_event", "'cos.delivery'", {time:"e.created_at",actor:"coalesce(e.actor_id,c.actor_id)",target:"i.id",outcome:"e.state",integration:"jsonb_build_object('destination','cos','reportId',d.report_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'configurationRevision',d.configuration_revision,'mappingId',d.mapping_id,'mappingRevision',d.mapping_revision,'mappingSha256',d.mapping_sha256)",
+      searchIds:"array[d.id,d.snapshot_id,e.attempt_id]",join:"join clinical.report r on r.id=e.report_id join clinical.cos_delivery d on d.id=e.delivery_id join clinical.review_item i on i.report_id=r.id and i.kind='cos-delivery-failed' left join clinical.cos_attempt a on a.id=e.attempt_id left join clinical.cos_recovery_command c on c.id=a.recovery_command_id",organization:"r.organization_id",
       recovery:"jsonb_build_object('reportId',e.report_id,'itemId',i.id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'amendmentSequence',d.amendment_sequence)"}),source("clinical.review_assignment_history", "e.action", { time: "e.assigned_at", target: "e.item_id",
     outcome: "case when e.assignee_id is null then 'unassigned' else 'assigned' end" }),
     source("clinical.review_overdue_history", "e.action", { time: "e.recorded_at", target: "e.item_id",
@@ -195,7 +197,7 @@ export class AuditService {
       type Row = { category: AuditCategory; source: string; event_id: string; occurred_at: Date | string; cursor_time: string;
         actor_id: string | null; action: string; target_id: string | null; target_kind: AuditTargetKind; target_label: string | null; outcome: string | null;
         patient_id: string | null; access_organization_id: string | null; care_process: string | null;
-        resource_id: string | null; analytics: AuditEntry["analytics"]; inspection: AuditEntry["inspection"]; recovery: AuditEntry["recovery"] };
+        resource_id: string | null; analytics: AuditEntry["analytics"]; inspection: AuditEntry["inspection"]; recovery: AuditEntry["recovery"]; integration:AuditEntry["integration"] };
       // Counts and rows share every scope/filter predicate. Retain the first page's
       // upper time bound so subsequent inspection events do not move the page total.
       const snapshot = "least($3::timestamptz, coalesce($10::timestamptz, statement_timestamp()), statement_timestamp())";
@@ -266,11 +268,14 @@ export class AuditService {
         resourceId: row.resource_id,
         inspection: row.inspection,
         ...(row.recovery ? {recovery:row.recovery} : {}),
+        ...(row.integration ? {integration:row.integration} : {}),
         resource: row.resource_id ? targets.get(`${auditResourceKind(row.action)}:${row.resource_id}`) ?? {
           kind: auditResourceKind(row.action), label: null,
         } : null,
         analytics: row.analytics ? { ...row.analytics, organizations: row.analytics.organizationIds.map(id =>
           organizations.get(id) ?? { id, name: null }) } : null }));
+      const history=new HospitalHistoryService(this.database,this.sessions);
+      for(const entry of entries)if(entry.recovery&&!await history.reviewLink(manager,session,entry.recovery.reportId,entry.recovery.dataset))delete entry.recovery;
       return { entries, categories, pageNumber, totalPages, totalEntries,
         nextCursor: rows.length > 50 && last ? Buffer.from(JSON.stringify({
           time: last.cursor_time, source: last.source, id: last.event_id, snapshot: counts!.snapshot_time })).toString("base64url") : null };

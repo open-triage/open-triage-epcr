@@ -1,4 +1,5 @@
 "use client";
+import {HospitalHistoryPanel,HospitalReviewLink} from "./hospital-history";
 
 import { auditCategories, auditDumpSources, clinicalValueSources, patientAuditCategories, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTarget, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
@@ -103,6 +104,11 @@ export function AuditingPanel({ canReadPatients, active, online }: {
     catch { setError(true); }
   };
   const missing = t("auditUi.noValue");
+  const integrationLabel = (kind:string,value:string|null|undefined) => {if(!value)return missing;const translated=t(`hospitalHistory.${kind}.${value}`);return translated===`hospitalHistory.${kind}.${value}`?value:translated;};
+  const actionLabel = (entry:AuditEntry) => entry.integration ? integrationLabel('actions',entry.action) : entry.action;
+  const outcomeLabel = (entry:AuditEntry) => entry.integration ? integrationLabel('states',entry.outcome) : entry.outcome??missing;
+  const integrationValue = (key:string,value:unknown) => value==null ? missing : typeof value==='boolean' ? t(value?'auditUi.yes':'auditUi.no') : ['dataset','destination','verification'].includes(key) ? t(`hospitalHistory.${value}`) : key==='proofOutcome' ? integrationLabel('proof',String(value)) : key==='finding' ? integrationLabel('findings',String(value)) : String(value);
+
   const categoryLabel = (categories?: readonly AuditCategory[]) => categories?.length
     ? categories.map(category => t(`auditUi.category.${category}`)).join(", ") : t("auditUi.allLogs");
   const targetLabel = (entry: AuditEntry) => entry.inspection?.kind === "list"
@@ -154,7 +160,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
             {["eventId", "logType", "time", "actor", "action", "outcome", "target"].map((key) => <th scope="col" key={key}>{t(`auditUi.${key}`)}</th>)}
           </tr></thead><tbody>{loaded.page.entries.map((entry) => <tr key={`${entry.source}:${entry.id}`}
             className="admin-directory-row" aria-selected={selected?.source === entry.source && selected.id === entry.id}
-            tabIndex={0} aria-label={t("auditUi.inspectEvent", { action: entry.action })} aria-haspopup="dialog"
+            tabIndex={0} aria-label={t("auditUi.inspectEvent", { action: actionLabel(entry) })} aria-haspopup="dialog"
             onClick={(event) => activateListRow(event, () => { trigger.current = event.currentTarget; setSelected(entry); })}
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
@@ -163,7 +169,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
             <td>{entry.id}</td>
             <td>{t(`auditUi.category.${entry.category}`)}</td>
             <td><time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString(language, { timeZone: "UTC" })}</time></td>
-            <td>{actorLabel(entry) ?? missing}</td><td>{entry.action}</td><td>{entry.outcome ?? missing}</td><td>{targetLabel(entry)}</td>
+            <td>{actorLabel(entry) ?? (entry.integration ? t("admin.system") : missing)}</td><td>{actionLabel(entry)}</td><td>{outcomeLabel(entry)}</td><td>{targetLabel(entry)}</td>
           </tr>)}</tbody></table>
           {!loaded.page.entries.length && <p role="status">{t("auditUi.empty")}</p>}
         </div>
@@ -176,7 +182,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
           <div className="audit-dialog-content" tabIndex={0} role="region" aria-label={t("auditUi.details")}>
             <dl className="audit-event-summary">{([ ["eventId", selected.id], ["logType", t(`auditUi.category.${selected.category}`)],
               ["time", selected.occurredAt], ["source", selected.source],
-              ["actor", actorLabel(selected)], ["action", selected.action], ["outcome", selected.outcome],
+              ["actor", actorLabel(selected)], ["action", actionLabel(selected)], ["outcome", outcomeLabel(selected)],
               ["target", targetLabel(selected)],
               ...(selected.inspection?.kind === "list" ? [["logTypes", categoryLabel(selected.inspection.categories
                 ?? (selected.inspection.category === "combined" ? [] : [selected.inspection.category]))]] : []),
@@ -192,7 +198,8 @@ export function AuditingPanel({ canReadPatients, active, online }: {
                 ["organizations", selected.analytics.organizationIds.map(id => agencyLabel(id,
                   selected.analytics?.organizations?.find(organization => organization.id === id)?.name)).join(", ") || missing] ] : []) ] as const).map(([label, value]) => <div key={label}>
                 <dt>{t(`auditUi.${label}`)}</dt><dd>{value ?? missing}</dd></div>)}</dl>
-            {selected.recovery&&<p><a href={`/review-call?report=${selected.recovery.reportId}&item=${selected.recovery.itemId}&dataset=${selected.recovery.dataset}`}>{t('review.recovery.open')}</a> · {t('review.transmission.version',{sequence:selected.recovery.amendmentSequence,revision:'—'})}</p>}
+            {selected.recovery&&<p><HospitalReviewLink language={language} reportId={selected.recovery.reportId} dataset={selected.recovery.dataset}/> · {t('review.transmission.version',{sequence:selected.recovery.amendmentSequence,revision:'—'})}</p>}
+            {selected.integration&&<details><summary>{t('hospitalHistory.title')}</summary><dl>{Object.entries(selected.integration).map(([key,value])=><div key={key}><dt>{t(`hospitalHistory.${key}`)}</dt><dd className="hospital-digest">{integrationValue(key,value)}</dd></div>)}</dl><HospitalHistoryPanel key={selected.id} language={language} scopeKey={selected.id} initialReportId={selected.integration.reportId} initialDataset={selected.integration.dataset}/></details>}
             <details className="audit-identifiers">
               <summary>{t("auditUi.identifiers")}</summary>
               <dl>{([ ["actorId", selected.actorId], ["targetId", selected.targetId],

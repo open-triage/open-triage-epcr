@@ -120,7 +120,7 @@ export class CosService {
       await manager.query(`insert into app_identity.hospital_cos_version(group_id,revision,credential_id,endpoint,settings,canonical_mapping,catalog_release_id,form_version_id,encrypted_credential,created_by) values($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9::jsonb,$10)`,
         [groupId,expected+1,credentialId,endpoint,JSON.stringify(settings),JSON.stringify(mapping),dependencies.catalog_release_id,dependencies.form_version_id,credential?JSON.stringify(credential):null,actor.user.id]);
       await manager.query(`insert into app_identity.hospital_cos_state(group_id,draft_revision) values($1,$2) on conflict(group_id) do update set draft_revision=$2,state_revision=hospital_cos_state.state_revision+1`,[groupId,expected+1]);
-      await this.audit(manager,groupId,actor.user.id,await this.version(manager,groupId,expected+1),'draft_save');
+      await this.audit(manager,groupId,actor.user.id,await this.version(manager,groupId,expected+1),'draft_save','succeeded',incoming?'import':'edit');
     });
     return this.get(token);
   }
@@ -228,8 +228,8 @@ export class CosService {
     return this.save(token,{expectedRevision:body.expectedRevision,endpoint:view.draft.endpoint,authentication:view.draft.authentication,settings:view.draft.settings,mapping:file.package});
   }
   async export(token:string,rev:string){const {groupId}=await this.scope(token);return (await this.version(this.database.manager,groupId,revision(Number(rev),1))).canonical_mapping;}
-  private async audit(manager:EntityManager,groupId:string,actorId:string,row:Version,operation:string,result='succeeded') {
+  private async audit(manager:EntityManager,groupId:string,actorId:string,row:Version,operation:string,result='succeeded',mappingOperation?:'import'|'edit') {
     await manager.query(`insert into app_identity.configuration_event(organization_id,actor_id,action,result,form_version_id,catalog_release_id,change_note,content_sha256,details) values($1,$2,$3,$4,$5,$6,$3,$7,$8::jsonb)`,
-      [groupId,actorId,`hospital.${operation}`,result,row.form_version_id,row.catalog_release_id,row.canonical_mapping.sha256,JSON.stringify({integration:'cos',revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,publication:false})]);
+      [groupId,actorId,`hospital.${operation}`,result,row.form_version_id,row.catalog_release_id,row.canonical_mapping.sha256,JSON.stringify({integration:'cos',revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,publication:false,...(mappingOperation?{mappingOperation}:{})})]);
   }
 }

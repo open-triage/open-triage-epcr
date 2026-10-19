@@ -1,5 +1,6 @@
 import {reconcileCosReview} from '../dist/hospital/cos-reconcile.js';
 import {credentialWorkFixture} from './fixtures/cos-credential-work.mjs';
+import {hospitalHistoryJourney} from './fixtures/hospital-history.mjs';
 import {automaticRetryFixture} from './fixtures/cos-automatic-retry.mjs';
 import sharp from 'sharp';
 import {mappingRepairJourney} from './fixtures/cos-mapping-repair.mjs';
@@ -261,7 +262,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt where report_id=$1',[outage]))[0].n,3);
   assert.equal((await db.query("select count(*)::int n from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[outage]))[0].n,1);
   await assert.rejects(db.query('update clinical.cos_recovery_command set amendment_sequence=99 where id=$1',[retryCommand.commandId]));
-  const audit=new AuditService(db,{requireCapability:async()=>({...recoveryActor,capabilities:['audit:read','audit:identifying']})});
+  const audit=new AuditService(db,{requireCapability:async()=>({...recoveryActor,capabilities:['audit:read','audit:identifying','review:all','review:identifying']})});
   const recoveryAudit=await audit.list('fixture',{category:'review',targetId:failureItem.id,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
   const manualAudit=recoveryAudit.entries.filter(e=>e.source==='clinical.cos_recovery_command');assert.equal(manualAudit.length,2);
   assert.ok(manualAudit.every(e=>e.actorId===sample.documenting_user_id&&e.outcome==='queued'&&e.recovery.itemId===failureItem.id&&e.recovery.amendmentSequence===0));
@@ -646,6 +647,8 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.ok((await db.query('select finding from clinical.cos_delivery where report_id=$1',[noEncounter]))[0]);settings.encounterNamespace=oldEncounter;
   await mappingRepairJourney({db,sample,settings:{...settings,defaultAmbulanceCareUnit:'fictional-ambulance'},draft,sign,reviewer,run,noDefault,noEncounter,attachPhoto});
   await credentialWorkFixture({db,draft,sign,simulator,group,actorId:sample.documenting_user_id,recoveryReview,recoverySessions,retryInput});
+  const historyExpiring=await draft({},true);await sign(historyExpiring);await processCosWork(db,100,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
+  await hospitalHistoryJourney({db,sample,reviewer,run,expiring:historyExpiring});
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);
   assert.deepEqual(await db.query('select * from app_identity.active_configuration_bundle where organization_id=$1',[baseline.organization_id]),sharedBundle);
   if(previous)await db.query('update app_identity.hospital_cos_state set active_revision=$2 where group_id=$1',[group,previous.active_revision]);else await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);
