@@ -1,4 +1,5 @@
 "use client";
+import { EpsSubmissionPanel } from "./eps-submission";
 
 import type { ReportAudioNote, ReportNote, ReportPhotoNote, ReviewOverdueDraft, ReviewSignedReport } from "@open-triage/contracts";
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
@@ -16,12 +17,13 @@ import { StationaryRecord } from "./stationary-record";
 import { SignedReportPdfPreview } from "./signed-report-pdf-preview";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
-export function ReviewReport({ report, full = false, dataset, language, toolbarRef, findingsOpen, onToggleFindings, onClose }: {
+export function ReviewReport({ report, full = false, dataset, language, toolbarRef, csrfToken, findingsOpen, onToggleFindings, onClose }: {
   report: ReviewSignedReport | ReviewOverdueDraft;
   full?: boolean;
   dataset: "real" | "synthetic";
   language: AgencyLanguage;
   toolbarRef?: RefObject<HTMLElement | null>;
+  csrfToken?: string;
   findingsOpen?: boolean;
   onToggleFindings?: () => void;
   onClose?: () => void;
@@ -66,6 +68,8 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       <SignedReportPdfPreview key={`${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
         reportId={report.id} snapshotId={report.signedSnapshotId} amendmentSequence={report.amendmentSequence}
         dataset={dataset} language={language} />}
+    {"signedSnapshotId" in report && report.signedSnapshotId && report.identifying && csrfToken && <EpsSubmissionPanel key={`${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
+      reportId={report.id} snapshotId={report.signedSnapshotId} amendmentSequence={report.amendmentSequence} dataset={dataset} language={language} csrfToken={csrfToken}/>}
     {full && onToggleFindings && <button id="review-findings-toggle" type="button" aria-expanded={findingsOpen} aria-controls="review-inspector"
       onClick={onToggleFindings}>{t("review.workspace.findings")}</button>}
     {full && onClose && <button type="button" className="review-report-close" aria-label={t("review.workspace.closeReport")}

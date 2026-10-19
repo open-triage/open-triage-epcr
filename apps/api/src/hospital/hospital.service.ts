@@ -1,3 +1,4 @@
+import { outputMappings } from './eps-output-mapping.js';
 import {clinicalMappings,clinicalOptions,importDestination} from './eps-import-mapping.js';
 import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -72,7 +73,7 @@ export class HospitalService {
     return clinicalMappings(body.clinicalMappings).map(mapping=>({id:mapping.id,...importDestination(mapping,form.form)}));
   }
   async save(token:string,input:unknown) {
-    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping','clinicalMappings']);
+    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping','clinicalMappings','outputMappings']);
     const expected=revision(body.expectedRevision);
     if(body.endpoint!==EPS_ENDPOINT||body.authentication!=='team-token')return invalid();
     if(body.replacementSecret!==undefined&&(typeof body.replacementSecret!=='string'||body.replacementSecret.length<1||body.replacementSecret.length>4096||/[\u0000-\u001f\u007f]/.test(body.replacementSecret)))return invalid();
@@ -93,7 +94,7 @@ export class HospitalService {
       const mapping=incoming??makePackage({kind:'hospital-mapping',name:`EPS-${mappingId}`,version:String(mappingRevision),catalog:{sha256:dependencies.catalogHash},definition:{
         schemaVersion:1,id:mappingId,revision:mappingRevision,
         authoredAt:new Date().toISOString(),author:actor.user.id,
-        profile:{package:'hl7.fhir.eu.eps',version:'1.0.0-ballot',fhirVersion:'4.0.1'},patientIdentifier,clinicalMappings:clinicalMappings(body.clinicalMappings??priorDefinition?.clinicalMappings)
+        profile:{package:'hl7.fhir.eu.eps',version:'1.0.0-ballot',fhirVersion:'4.0.1'},patientIdentifier,clinicalMappings:clinicalMappings(body.clinicalMappings??priorDefinition?.clinicalMappings),outputMappings:outputMappings(body.outputMappings??priorDefinition?.outputMappings,dependencies.form)
       } satisfies HospitalMappingDefinition});
       compileMapping(mapping,dependencies.form);
       const credentialId=prior?.credential_id??randomUUID();

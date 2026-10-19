@@ -1376,3 +1376,12 @@ fieldset { min-inline-size: 0; }
 .eps-import-preview label { display: grid; gap: 6px; min-width: 0; }
 .eps-import-preview textarea { width: 100%; min-width: 0; box-sizing: border-box; }
 .eps-import-history pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.eps-submission-dialog { width: min(920px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 16px; color: var(--text-color); }
+.eps-submission-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.eps-submission-dialog label { display: grid; gap: 6px; margin: 12px 0; }
+.eps-submission-narrative { max-height: 40dvh; overflow: auto; border: 1px solid var(--green); padding: 12px; }
+.eps-submission-narrative p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.eps-submission-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.eps-submission-dialog header { position: sticky; top: -16px; padding: 8px 0; background: var(--surface, #fff); z-index: 1; }
+.eps-submission-dialog h2 { margin: 0; }
