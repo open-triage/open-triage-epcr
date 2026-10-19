@@ -36,9 +36,12 @@
   "remove": "Removed",
   "original": "Original value",
   "corrected": "Corrected value",
-  "mediaNotice": "Inspection preview: this report contains media. Photos and audio are not embedded in this preview; it is not a complete transfer artifact.",
-  "media": "Media references",
+  "media": "Photos and audio notes",
   "photo": "Photo",
   "audio": "Audio recording",
-  "checksum": "Signed content SHA-256"
+  "checksum": "Signed content SHA-256",
+  "duration": "Duration",
+  "seconds": "seconds",
+  "audioNotTransferred": "The audio recording was not transferred. No transcription was generated.",
+  "audioDurationMissing": "Audio duration is unavailable. Capture the recording again before signing."
 }

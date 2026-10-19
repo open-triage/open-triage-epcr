@@ -2,15 +2,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { renderSignedReportPdf } from "../dist/reports/signed-report-pdf.js";
-import { signedPdfFixture } from "../tests/fixtures/signed-pdf-source.mjs";
+import { signedPdfMediaFixture } from "../tests/fixtures/signed-pdf-media.mjs";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 const require = createRequire(import.meta.url);
 const { createCanvas } = require("@napi-rs/canvas");
 const directory = resolve(process.argv[2] ?? "../../preview");
 await mkdir(directory, { recursive: true });
 for (const language of ["en", "sv"]) {
-  const bytes = await renderSignedReportPdf(signedPdfFixture().source, language);
-  const name = `hospital-signed-report-preview-v3-${language}`;
+  const bytes = await renderSignedReportPdf((await signedPdfMediaFixture()).source, language);
+  const name = `hospital-signed-report-media-preview-${language}`;
   await writeFile(resolve(directory, `${name}.pdf`), bytes);
   const task = getDocument({ data: new Uint8Array(bytes) });
   const pdf = await task.promise;
