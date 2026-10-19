@@ -434,6 +434,7 @@ test("a second browser recovers its own offline copy without replacing the first
     await expect(second.getByRole("heading", { name: "Open reports" })).toBeVisible();
     await second.getByRole("button", { name: "Reopen report" }).click();
     await expect(second.getByText("Confirm your identity to recover protected work from this browser.")).toBeVisible();
+    await expect(second.getByLabel("Current password")).toBeFocused();
     await second.getByLabel("Current password").fill("current-password");
     await second.getByRole("button", { name: "Confirm and recover" }).click();
     await expect(second.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
@@ -485,6 +486,7 @@ for (const needsReauthentication of [false, true]) {
         await expect(second.getByLabel("Current password")).toBeFocused();
         await second.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
         await expect(second.getByLabel("Current password")).toBeVisible();
+        await expect(second.getByLabel("Current password")).toBeFocused();
         await second.screenshot({ path: test.info().outputPath("assigned-call-reauthentication.png"), fullPage: true });
         await second.getByLabel("Current password").fill("current-password");
         await second.getByRole("button", { name: "Confirm and recover" }).click();
@@ -700,6 +702,7 @@ test("one online-opened report remains editable through connection loss using on
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Confirm your identity to recover protected work from this browser.")).toBeVisible();
+  await expect(page.getByLabel("Current password")).toBeFocused();
   await page.getByLabel("Current password").fill("current-password");
   await page.getByRole("button", { name: "Confirm and recover" }).click();
   await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("ENCRYPTED-OFFLINE-RECOVERY");

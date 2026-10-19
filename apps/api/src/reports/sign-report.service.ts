@@ -253,7 +253,7 @@ export class SignReportService {
         const blockingFindings = blockingSigningFindings(findings, command.warningAcknowledgements);
         if (blockingFindings.length) return { findings: blockingFindings };
 
-        const payload = await this.canonicalPayload(manager, report, revision, noteIntegrity.notes);
+        const payload = await this.canonicalPayload(manager, report, revision, noteIntegrity.notes, session.user);
         const quality = await this.evaluateQuality(manager, report.id);
         const canonicalSha256 = commandSha256(payload);
         const snapshotId = randomUUID();
@@ -622,7 +622,7 @@ export class SignReportService {
   }
 
   private async canonicalPayload(manager: EntityManager, report: ReportRow, revision: number,
-    notes: ReadonlyArray<SignedNoteManifestEntry> = []): Promise<unknown> {
+    notes: ReadonlyArray<SignedNoteManifestEntry> = [], signer?: { id: string; displayName: string }): Promise<unknown> {
     const content = await manager.query<Array<{ groups: unknown; occurrences: unknown }>>(`select
       coalesce((select jsonb_agg(to_jsonb(g) order by g.group_id, g.ordinal, g.id) from (
         select id, parent_group_instance_id, group_id, source_kind, custom_group_definition_id,
@@ -634,13 +634,15 @@ export class SignReportService {
                value_kind, value_text, value_integer, value_numeric, value_boolean, value_date,
                value_datetime, value_time, value_duration, encode(value_binary, 'base64') as value_binary,
                value_lexical, value_utc_offset_minutes, value_precision, code, code_system, code_display,
-               terminology_version, absence_code, absence_display, source_attributes, correlation_id,
+               terminology_version, absence_code, absence_display, not_value_code, not_value_display,
+               pertinent_negative_code, pertinent_negative_display, source_attributes, correlation_id,
                provenance_kind, provenance_detail, documented_time, documented_utc_offset_minutes,
                documented_precision, author_id
         from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
       ) o), '[]'::jsonb) as occurrences`, [report.id]);
     return {
       schemaVersion: 1,
+      clinicalContentVersion: 2,
       report: {
         id: report.id,
         organizationId: report.organization_id,
@@ -650,6 +652,7 @@ export class SignReportService {
         formVersionId: report.form_version_id,
         catalogReleaseId: report.catalog_release_id,
         documentingUserId: report.documenting_user_id,
+        ...(signer ? { signer: { id: signer.id, displayName: signer.displayName } } : {}),
         revision
       },
       groups: content[0]!.groups,

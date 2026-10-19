@@ -1,5 +1,6 @@
 "use client";
 import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
+import { useRecoveryFormFocus } from "./use-recovery-form-focus";
 import { useReturnFocus } from "./use-return-focus";
 import { PersonalAuthenticationField } from "./personal-authentication";
 
@@ -84,6 +85,8 @@ export function OpenReports({
   const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [reauthenticating, setReauthenticating] = useState(false);
+  const recoveryForm = useRef<HTMLFormElement>(null);
+  useRecoveryFormFocus(recoveryForm, reauthenticationId !== null && !paused && !reauthenticating && reopeningId === null && !activeReportId);
   const [error, setError] = useState<string | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -351,7 +354,7 @@ export function OpenReports({
               <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>
                 {reopeningId === report.reportId ? t("reports.reopening") : t("reports.reopen")}
               </button>
-              {reauthenticationId === report.reportId && <form className="report-reauthentication"
+              {reauthenticationId === report.reportId && <form ref={recoveryForm} className="report-reauthentication"
                 onSubmit={(event) => void reauthenticateAndReopen(event, report)}>
                 <p>{t("reports.reauthHelp")}</p>
                 <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />

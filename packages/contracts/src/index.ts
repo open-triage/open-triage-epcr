@@ -361,6 +361,9 @@ export interface ReviewReportGroup {
 }
 
 export interface ReviewSignedReport {
+  /** Explicit immutable artifact identity; absent in static/demo-only projections. */
+  signedSnapshotId?: string;
+  signedRevision?: number;
   document?: EncounterDocument;
   clinicalForm?: ClinicalFormConfiguration;
   id: string;
