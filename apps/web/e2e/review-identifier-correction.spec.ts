@@ -49,6 +49,16 @@ for(const width of [390,1440])for(const identifying of [true,false])test(`Signed
   await dialog.getByLabel('Correct identifier',{exact:true}).fill('200207852385');await dialog.getByLabel('Reason for correction').fill('Verified identity against source record');
   await dialog.getByRole('checkbox').check();
   await expect(dialog.getByRole('button',{name:'Sign correction and queue delivery'})).toBeEnabled();
+  const navigationWarning=page.waitForEvent('dialog');
+  const attemptedReload=page.reload({timeout:3000}).catch(()=>undefined);
+  const warning=await navigationWarning;expect(warning.type()).toBe('beforeunload');await warning.dismiss();await attemptedReload;
+  await expect(dialog).toBeVisible();await expect(dialog.getByLabel('Correct identifier',{exact:true})).toHaveValue('200207852385');
+  await dialog.getByRole('button',{name:'Refresh requirements'}).click();
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked();
+  await expect(dialog.getByLabel('Correct identifier',{exact:true})).toHaveValue('200207852385');
+  await expect(dialog.getByLabel('Reason for correction')).toHaveValue('Verified identity against source record');
+  await dialog.getByRole('checkbox').check();
+
   await page.screenshot({path:test.info().outputPath('identifier-correction-dialog.png'),fullPage:true});
   await dialog.getByRole('button',{name:'Sign correction and queue delivery'}).click();await expect(dialog).not.toBeVisible();
   expect(savedCorrection).toMatchObject({context:correctionContext,namespace:correctionContext.namespace,value:'200207852385',attested:true});
