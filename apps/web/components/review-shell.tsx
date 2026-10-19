@@ -16,6 +16,7 @@ import { listAccessRemoved } from "../app/list-refresh";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { ReviewCriterionHelp } from "./review-criterion-help";
 import { ReviewTabs } from "./review-tabs";
+import {EpsSubmissionPanel} from "./eps-submission";
 import { ReviewReport } from "./review-report";
 import { ReviewStatusBadge } from "./review-status-badge";
 import { WorkspaceSidebar } from "./workspace-sidebar";
@@ -128,7 +129,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       if (["new", "in-review"].includes(itemDetail.status)) actionOptions.push({ value: "await", label: t("review.awaitClinician") });
       if (itemDetail.status === "awaiting-clinician") actionOptions.push({ value: "resume", label: t("review.resumeReview") });
     }
-    if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "missing-transmission-identifiers" && itemDetail.kind !== "cos-delivery-failed" && (itemDetail.assigneeId === session.user.id || administrator))
+    if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "missing-transmission-identifiers" && itemDetail.kind !== "cos-delivery-failed" && itemDetail.kind !== "eps-export" && (itemDetail.assigneeId === session.user.id || administrator))
       actionOptions.push({ value: "complete", label: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview"),
         submitLabel: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview") });
     if(itemDetail.kind==='cos-delivery-failed'&&itemDetail.assigneeId===session.user.id&&!itemDetail.transmissionRestricted&&itemDetail.transmission?.reconciliationTarget)
@@ -444,7 +445,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     const count = Math.max(0, Math.floor((Date.parse(queue?.asOf ?? "") - Date.parse(matchedAt)) / 86400000));
     return count === 0 ? t("review.workspace.today") : count === 1 ? t("review.workspace.oneDay") : t("review.ageDays", { count });
   };
-  const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName" | "transmissionReason">>) => item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : item.transmissionReason ? t(`review.transmission.${item.transmissionReason}`) :
+  const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName" | "transmissionReason">>) => item.kind === "eps-export" ? t("review.epsExport") : item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : item.transmissionReason ? t(`review.transmission.${item.transmissionReason}`) :
     item.criterionName ?? routes?.find((route) => route.criterionId === item.criterionId)?.name ?? t("review.findings");
   const closeReport = () => {
     if (callWindow) window.close();
@@ -664,6 +665,10 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           {draftDetail && <><h3>{t("review.overdueDraft")}</h3><p>{t("review.overdueDeadline")}: {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p></>}
           <div {...panel("review-detail", "findings", detailTab)}>
           {itemDetail?.findings.map((finding, index) => <MetricEvidence key={index} evidence={finding.metricEvidence} language={language} />)}
+            {itemDetail?.kind==="eps-export"&&<section aria-label={t("review.epsExport")}><h4>{t("review.epsExport")}</h4><p>{t(itemDetail.activeMatch?"review.epsExportPending":"review.epsExportAccepted")}</p>
+              {!fullReportOpen&&"signedSnapshotId" in viewDetail&&viewDetail.signedSnapshotId&&viewDetail.identifying&&
+                <EpsSubmissionPanel reportId={viewDetail.id} snapshotId={viewDetail.signedSnapshotId} amendmentSequence={viewDetail.amendmentSequence} dataset={dataset} language={language} csrfToken={session.csrfToken??session.accessToken??""}/>}
+            </section>}
             {itemDetail && ["missing-transmission-identifiers","cos-delivery-failed"].includes(itemDetail.kind ?? "") && <section aria-label={t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}>
               <h4>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}</h4>
               {itemDetail.transmissionRestricted ? <p>{t("review.transmission.restricted")}</p> : itemDetail.transmission && <>

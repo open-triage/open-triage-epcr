@@ -7,6 +7,8 @@ import { DialogCancelButton, DialogRemoveButton } from "../components/documentat
 import { enabledMobileOptions, mobileDisplayDefinition } from "./mobile-localization";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
+import {EpsOutgoingPreview} from '../components/eps-outgoing-preview';
+import {EpsSigningCheckbox,useEpsSigningActivation} from '../components/eps-sign-export';
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
@@ -110,13 +112,14 @@ function validationTimestampFor(document: unknown, clinicalForm: unknown): strin
   return new Date().toISOString();
 }
 
-function EncounterWorkspace({ session, report, presentationMode, language, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }: {
+function EncounterWorkspace({ session, report, presentationMode, language, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange, onExportSignedEps }:  {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
   readonly presentationMode: PresentationMode;
   readonly language: AgencyLanguage;
   readonly onSaveAndClose: () => void;
   readonly onReportCompleted: () => void;
+  readonly onExportSignedEps: (snapshotId:string) => void;
   readonly onSessionEnded: () => void;
   readonly onErrorStateChange: (hasErrors: boolean) => void;
 }) {
@@ -129,6 +132,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
   const [pinnedChecklistFinding, setPinnedChecklistFinding] = useState<StationaryValidationFinding | null>(null);
+  const epsBinding=useEpsSigningActivation(report?.id,sessionRequestToken(session));
+  const [exportBinding,setExportBinding]=useState<string|null>(null);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [populateError, setPopulateError] = useState<string | null>(null);
@@ -247,7 +252,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, [report]);
   const {
     restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, syncFailure, retryFailedSave, revision: revisionRef, dispatchConflicts, dispatchCancellation,
-    conflictError, editingBlocked, mediaPolicy, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
+    conflictError, editingBlocked, mediaPolicy, flushSave, refreshReport, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
     validationErrorCount: completeErrors.length, online,
@@ -698,11 +703,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       return;
     }
     try {
-      await signDraftReport(sessionRequestToken(session), report.id, revisionRef.current, session.user.id,
+      const signed=await signDraftReport(sessionRequestToken(session), report.id, revisionRef.current, session.user.id,
         reviewWarnings.filter(({ acknowledged }) => acknowledged).map((finding) => ({
           id: finding.id,
           acknowledgement: "acknowledgement" in finding ? finding.acknowledgement : undefined,
-        })), validationEvaluationTimestamp);
+        })), validationEvaluationTimestamp, !!epsBinding&&exportBinding===epsBinding);
+      if(epsBinding&&exportBinding===epsBinding&&signed?.signedSnapshotId)onExportSignedEps(signed.signedSnapshotId);
       completeWorkspaceReport();
     } catch (error) {
       setSignError(error instanceof Error ? error.message : t("mobile.signFailed"));
@@ -829,7 +835,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           </div></div>
         </>}
         {report && <div className="draft-actions">
-          <PatientSummaryButton reportId={report.id} organizationId={session.organization.id} userId={session.user.id} documentKey={JSON.stringify(encounter.document)} form={report.clinicalForm} ready={syncStatus === "Saved"} language={language} />
+          <PatientSummaryButton csrfToken={sessionRequestToken(session)} reportId={report.id} organizationId={session.organization.id} userId={session.user.id} onImported={refreshReport} documentKey={JSON.stringify(encounter.document)} form={report.clinicalForm} ready={syncStatus === "Saved"} language={language} />
           <span className={`sync-status sync-${syncStatus === "Pending sync" ? "pending-sync" : syncStatus === "Saving" ? "saving" : syncStatus === "Conflict" ? "conflict" : "saved"}`} role="status" aria-live="polite">{syncStatus === "Pending sync" ? t("mobile.pendingStatus") : syncStatus === "Saving" ? t("mobile.savingStatus") : syncStatus === "Conflict" ? t("mobile.saveNeedsAttention") : t("mobile.savedStatus")}</span>
           {syncStatus === "Conflict" && <button type="button" onClick={retryFailedSave}>{t("mobile.retrySave")}</button>}
           {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>{t("mobile.timeline")} <span aria-hidden="true">· {timelineEvents.length}</span></button>}
@@ -982,6 +988,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           inlineEditor={inlineChecklistEditor}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onNoteBlocker={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)}
+          epsExport={epsBinding?<EpsSigningCheckbox summary={report?<EpsOutgoingPreview key={JSON.stringify([report.id,epsBinding,syncStatus,report.revision])} reportId={report.id} binding={epsBinding} language={language} disabled={signing||!online||syncStatus!=="Saved"}/>:null} language={language} checked={exportBinding===epsBinding} disabled={signing} onChange={checked=>setExportBinding(checked?epsBinding:null)}/>:null}
           onSign={() => void signRecord()}
           blockedReason={!restored ? t("mobile.reportLoading")
             : !online ? t("mobile.signOffline")
@@ -1122,8 +1129,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded, reportErrorStateChanged, language }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} language={language} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, exportSignedEps, sessionEnded, reportErrorStateChanged, language }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} language={language} onSaveAndClose={closeReport} onReportCompleted={completeReport} onExportSignedEps={exportSignedEps} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
   )}</ClinicianSessionGate>;
 }
 
@@ -1166,7 +1173,7 @@ function DispatchConflictList({ language, conflicts, onDispose }: {
 }
 
 function ReviewPanel({ language, findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
-  blockedReason, onFinding, inlineEditor, onWarning, onNoteBlocker, onSign }: {
+  blockedReason, onFinding, inlineEditor, onWarning, onNoteBlocker, onSign, epsExport }: {
   readonly language: AgencyLanguage;
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly errors: ReadonlyArray<SigningFinding>;
@@ -1183,6 +1190,7 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
   readonly onWarning: (id: string, acknowledged: boolean) => void;
   readonly onNoteBlocker: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
   readonly onSign: () => void;
+  readonly epsExport?: ReactNode;
 }) {
   return (
     <section className="content-panel review-panel" aria-labelledby="review-heading">
@@ -1199,6 +1207,7 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
       {groups.map((group) => <FindingGroup language={language} key={group.severity} title={resolveMessage(language, group.severity === "error" ? "stationary.review.errors" : "stationary.review.warnings")} empty={resolveMessage(language, group.severity === "error" ? "stationary.review.errorsEmpty" : "stationary.review.warningsEmpty")} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} inlineEditor={inlineEditor} onWarning={onWarning} />)}
       <FindingGroup language={language} title={resolveMessage(language, "stationary.review.information")} empty={resolveMessage(language, "stationary.review.informationEmpty")} findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} inlineEditor={inlineEditor} onWarning={onWarning} />
 
+      {epsExport}
       <div className="review-actions">
         <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? resolveMessage(language, "mobile.signing") : resolveMessage(language, "mobile.sign")}</button>
       </div>

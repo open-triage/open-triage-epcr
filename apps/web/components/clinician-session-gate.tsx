@@ -1,4 +1,5 @@
 "use client";
+import {EpsSignedExport} from './eps-sign-export';
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
@@ -74,6 +75,7 @@ export function ClinicianSessionGate({ children }: {
     report: ActiveDraftReport | null;
     closeReport: () => void;
     completeReport: () => void;
+    exportSignedEps: (snapshotId:string) => void;
     reportErrorStateChanged: (hasErrors: boolean) => void;
     sessionEnded: () => void;
     presentationMode: PresentationMode;
@@ -103,6 +105,7 @@ export function ClinicianSessionGate({ children }: {
   },[]);
   const openingHeading = useRef<HTMLHeadingElement>(null);
   const [openingCall, setOpeningCall] = useState<AssignedCall | null>(null);
+  const [epsExport,setEpsExport]=useState<{reportId:string;snapshotId:string;session:ClinicianSession}|null>(null);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
   useEffect(() => { if (openingCall) openingHeading.current?.focus(); }, [openingCall]);
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
@@ -671,7 +674,7 @@ export function ClinicianSessionGate({ children }: {
         data-form-version-id={activeReport?.formVersionId}
       />
       {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, language,
-        reportErrorStateChanged, closeReport: () => {
+        reportErrorStateChanged, exportSignedEps: snapshotId=>setEpsExport({reportId:activeReport.id,snapshotId,session}), closeReport: () => {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       }, completeReport: () => {
@@ -680,6 +683,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
+      {epsExport?.session===session&&<EpsSignedExport key={epsExport.snapshotId} reportId={epsExport.reportId} snapshotId={epsExport.snapshotId} csrfToken={sessionRequestToken(session)} language={language} onClose={()=>setEpsExport(null)}/>}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online} onOpenAgency={changeAgency}
         reviewSettingsSection={adminReviewSettingsSection} hospitalSettings={adminHospitalSettings} />}
       {presentationMode === "review" && !activeReport && <ReviewShell key={`${session.user.id}:${session.organization.id}:${[...(session.capabilities ?? [])].sort().join(",")}`} session={session} language={language}

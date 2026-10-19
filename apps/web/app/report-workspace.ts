@@ -67,6 +67,7 @@ export interface ReportWorkspace {
   readonly editingBlocked: boolean;
   readonly mediaPolicy: ReportMediaPolicy | undefined;
   readonly flushSave: () => Promise<void>;
+  readonly refreshReport: () => void;
   readonly completeReport: () => void;
   readonly resolveConflict: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => Promise<void>;
 }
@@ -102,7 +103,8 @@ export function useReportWorkspace({
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [mediaPolicy, setMediaPolicy] = useState<ReportMediaPolicy | undefined>(report?.mediaPolicy);
-  const [conflictRecoveryRequest, setConflictRecoveryRequest] = useState(0);
+  const [reconciliationRequest, setReconciliationRequest] = useState(0);
+  const refreshReport = useCallback(() => setReconciliationRequest(value => value + 1), []);
   const protectedStatus = useSyncExternalStore(
     useCallback((changed) => subscribeProtectedStorageStatus((reportId) => {
       if (reportId === report?.id) changed();
@@ -263,7 +265,7 @@ export function useReportWorkspace({
       await attempt;
       activeSave.current = null;
       if (requestConflictRecovery) {
-        setConflictRecoveryRequest((request) => request + 1);
+        setReconciliationRequest((request) => request + 1);
         return;
       }
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
@@ -275,7 +277,7 @@ export function useReportWorkspace({
     recoverConflictingQueue.current = true;
     activeEtag.current = undefined;
     setSyncStatus("Saving");
-    setConflictRecoveryRequest((request) => request + 1);
+    setReconciliationRequest((request) => request + 1);
   }, [report]);
 
   useEffect(() => {
@@ -509,7 +511,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
+  }, [completeReport, reconciliationRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;
@@ -546,6 +548,7 @@ export function useReportWorkspace({
       (!online && !offlineEditingAvailable(protectedStatus.mode)),
     mediaPolicy,
     flushSave,
+    refreshReport,
     completeReport,
     resolveConflict,
   };

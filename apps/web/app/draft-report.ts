@@ -431,7 +431,8 @@ export async function signDraftReport(
     readonly inputFingerprint: string;
   } }>,
   evaluationTimestamp = new Date().toISOString(),
-): Promise<void> {
+  exportEps = false,
+): Promise<{signedSnapshotId?:string}|undefined> {
   const configuration = browserRequestConfiguration();
   if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) return;
   const path = `/api/reports/${reportId}/sign`;
@@ -445,6 +446,7 @@ export async function signDraftReport(
         expectedRevision,
         signerId,
         attestation: { meaning: "clinician approval" },
+        ...(exportEps?{exportEps:true}:{}),
         warningAcknowledgements: Object.fromEntries(warningAcknowledgements.map((item) => typeof item === "string"
           ? [item, true] : [item.id, item.acknowledgement ?? true])),
         deviceId: `web:${reportId}`,
@@ -455,4 +457,5 @@ export async function signDraftReport(
     throw new Error("The record could not be signed. Check your connection and try again.");
   }
   if (!response.ok) throw await platformRequestError(response);
+  return response.json();
 }

@@ -14,7 +14,7 @@ const form={definition:{sections:[{fields:[{source:{kind:'nemsis',elementId:'ePa
 const encounterDocument=(patient,other='')=>JSON.stringify({groups:[{instances:[{elements:[{id:'ePatient.01',values:[{kind:'scalar',value:patient}]},{id:'other',values:[{kind:'scalar',value:other}]}]}]}]});
 function Fixture(){const [scope,setScope]=useState({reportId:'report',organizationId:'agency',userId:'clinician',documentKey:encounterDocument('patient-A')});
 Object.assign(window,{prepare:()=>prepareProtectedReport('csrf','report'),prepareOther:()=>prepareProtectedReport('csrf','other-report'),lockReport:()=>applyProtectedAuthorityResponse('report',{status:403}),flush:()=>flushProtectedReport('report'),lock:lockProtectedClinicalStorage,shell:()=>protectedShellState('report'),pending:()=>{updateProtectedShellState('report',{marker:'pending'});updateProtectedReport('report',{report:{id:'report'},queuedChanges:[{command:{note:'pending'}}]});return flushProtectedReport('report');},recover:()=>recoverProtectedReport('csrf','report'),change:next=>setScope({...next,documentKey:encounterDocument(next.documentKey)}),edit:()=>setScope({...scope,documentKey:encounterDocument('patient-A','new unrelated vitals')}),cache:()=>protectedEps({...scope,documentKey:patientSummaryDocumentKey(scope.documentKey,protectedEpsPatientMapping(scope),form)})});
-return <PatientSummaryButton {...scope} form={form} ready language={document.documentElement.lang}/>;}
+return <PatientSummaryButton csrfToken="fixture-csrf" {...scope} form={form} ready language={document.documentElement.lang}/>;}
 createRoot(document.getElementById('root')).render(<Fixture/>);` } })).outputFiles[0]!.text;
 });
 const source = { title: 'Fictional patient summary', patient: 'PRIVATE ANDREA', source: 'Fictional source', authors: ['Fictional clinician'], date: '2026-01-02', findings: [], clinicalSections: [{ title: 'Allergies', content: 'PRIVATE ALLERGY' }], sections: [] };
@@ -62,7 +62,7 @@ for (const language of ['en', 'sv']) test(`protected EPS open, offline, refresh 
   await context.setOffline(true); await page.clock.runFor(121_000);
   await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
-  deny = true; await context.setOffline(false); await page.clock.runFor(400); await expect(button).toBeDisabled();
+  deny = true; await context.setOffline(false); await page.clock.runFor(400); await expect(button).toHaveCount(0);
 });
 
 for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'configuration', 'recovery', 'pending-lock', 'quota', 'quota-unavailable', 'binding-race', 'refresh-race', 'retention-race', 'close-race', 'report-switch']) test(`protected EPS hides data after ${transition}`, async ({ page, context }) => {
@@ -115,7 +115,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     return;
   }
   await expect(page.getByText('PRIVATE ANDREA')).toBeVisible();
-  await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(1);
+  await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(0);
   if (transition === 'report-switch') {
     await page.evaluate(() => (window as unknown as Fixture).prepareOther());
     await page.evaluate(() => (window as unknown as Fixture).lockReport());
@@ -150,7 +150,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     return;
   }
   if (transition.startsWith('quota')) {
-    await expect(page.getByText('Online only: a protected offline copy is unavailable.')).toBeVisible();
+    await expect(page.getByText('PRIVATE ANDREA')).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
     await page.evaluate(() => (window as unknown as Fixture).flush());
     expect(await page.evaluate(() => (window as unknown as Fixture).shell())).toEqual({ marker: 'pending' });
@@ -166,7 +166,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     await expect.poll(() => waiting).toBe(true);
     await page.evaluate(() => (window as unknown as Fixture).lock());
     release(); await page.clock.runFor(16000);
-    await expect(page.getByRole('button', { name: 'Patient summary (EPS)', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Patient summary (EPS)', exact: true })).toHaveCount(0);
     await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
     await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
@@ -202,7 +202,29 @@ test('first-time unavailable EPS is never fabricated or stored', async ({ page, 
   await page.route('**/__eps-script', route => route.fulfill({ contentType: 'text/javascript', body: script }));
   await context.setOffline(true);
   await page.goto('/__eps-offline');
-  await expect(page.getByRole('button', { name: 'Patient summary (EPS)' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Patient summary (EPS)' })).toHaveCount(0);
   await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
+});
+
+test('EPS controls and warnings appear only after activation and disappear on deactivation',async({page})=>{
+ await page.clock.install();
+ let active=false,historyReads=0;
+ await page.route('**/__eps-activation',route=>route.fulfill({contentType:'text/html',body:`<html lang="en"><style>${css}</style><div id="root"></div><script>${script}</script></html>`}));
+ await page.route('**/api/reports/report/eps**',route=>{
+  const url=new URL(route.request().url());
+  if(url.pathname.endsWith('/context'))return route.fulfill({json:active?binding:null});
+  if(url.pathname.endsWith('/imports/history')){historyReads++;return route.fulfill({json:{inconsistent:true,items:[]}});}
+  if(url.pathname.endsWith('/imports'))return route.fulfill({json:{rows:[],inconsistent:false}});
+  return route.fulfill({json:{context:binding,status:'available',summary:source}});
+ });
+ await page.goto('/__eps-activation');await page.clock.runFor(800);
+ await expect(page.locator('.eps-control')).toHaveCount(0);expect(historyReads).toBe(0);
+ active=true;await page.clock.runFor(16000);
+ const button=page.getByRole('button',{name:'Patient summary (EPS)',exact:true});
+ await expect(button).toBeEnabled();
+ await expect.poll(()=>historyReads).toBeGreaterThan(0);
+ await button.click();await expect(page.getByRole('dialog')).toBeVisible();
+ active=false;await page.clock.runFor(16000);
+ await expect(page.locator('.eps-control')).toHaveCount(0);
 });

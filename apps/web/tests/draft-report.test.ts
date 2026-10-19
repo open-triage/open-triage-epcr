@@ -340,10 +340,12 @@ test("signing sends the current revision, clinician attestation, and warning ack
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     request = { input: String(input), init };
-    return new Response(JSON.stringify({ id: reportId, status: "signed" }), { status: 201 });
+    return new Response(JSON.stringify({ id: reportId, status: "signed", signedSnapshotId: "signed-snapshot" }), { status: 201 });
   }) as typeof fetch;
   try {
-    await signDraftReport("token", reportId, 8, "32000000-0000-4000-8000-000000000003", ["missing-vitals"]);
+    const signed = await signDraftReport("token", reportId, 8, "32000000-0000-4000-8000-000000000003", ["missing-vitals"],new Date().toISOString(),true);
+    assert.equal(signed?.signedSnapshotId, "signed-snapshot");
+    assert.equal(JSON.parse(String(request?.init?.body)).exportEps,true);
     const body = JSON.parse(String(request?.init?.body));
     assert.equal(request?.input, expectedApiUrl(`/api/reports/${reportId}/sign`));
     assert.equal(request?.init?.method, "POST");
