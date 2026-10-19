@@ -1,7 +1,7 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 
-export type PatientAccessAction = "eps.read" | "report.read" | "report.reopen" | "report.active"
+export type PatientAccessAction = "eps.read" | "eps.import" | "report.read" | "report.reopen" | "report.active"
   | "report.list" | "assignment.open" | "review.report" | "review.overdue"
   | "photo.read" | "audio.read" | "audit.clinical-values";
 
@@ -16,7 +16,7 @@ export async function recordPatientAccess(
     action: PatientAccessAction;
     careProcess: "documentation" | "review" | "audit";
     resourceId?: string;
-    integrationProvenance?: { configurationRevision: number; mappingId: string; mappingRevision: number; mappingSha256: string };
+    integrationProvenance?: { configurationRevision: number; mappingId: string; mappingRevision: number; mappingSha256: string; decision?: string; importId?: string };
   },
 ): Promise<void> {
   const reportIds = [...new Set(input.reportIds)];

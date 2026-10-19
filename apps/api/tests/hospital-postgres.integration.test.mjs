@@ -35,7 +35,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
   await query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[admin.userId]);
   const session=await sessions.create({username,password});const token=session.sessionToken;
   const formId=randomUUID(),versionId=randomUUID();
-  const definition={schemaVersion:1,sections:[{key:'patient',fields:[{key:'identifier',source:{kind:'nemsis',elementId:'ePatient.01'}},{key:'alternative',source:{kind:'nemsis',elementId:'ePatient.05'}}]}]};
+  const definition={schemaVersion:1,sections:[{key:'patient',fields:[{key:'identifier',source:{kind:'nemsis',elementId:'ePatient.01'}},{key:'alternative',source:{kind:'nemsis',elementId:'ePatient.05'}},{key:'history',source:{kind:'nemsis',elementId:'eNarrative.01'}}]}]};
   const digest=canonicalDefinitionSha256(definition);
   await query("insert into forms.form(id,organization_id,slug,name) values($1,$2,$3,'EPS fixture')",[formId,group.id,`eps-${formId}`]);
   await query('insert into forms.form_version(id,form_id,catalog_release_id,version,canonical_definition,definition_sha256,created_by) values($1,$2,$3,1,$4::jsonb,$5,$6)',[versionId,formId,baseline.catalog_release_id,JSON.stringify(definition),digest,admin.userId]);
@@ -100,7 +100,7 @@ integration('EPS real database and browser setup preserves tested revisions, can
     let input;for await(const part of req)input=(input??'')+part;const command=input?JSON.parse(input):undefined;
     if(command)assert.equal(req.headers['x-csrf-token'],'browser-csrf');
     const route=req.url.replace('/api/admin/hospital/eps','');
-    const result=route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
+    const result=route==='/inspect-mappings'?await service.inspectClinical(token,command):route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
    }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{code:'hospital.invalid'}));}
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

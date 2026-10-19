@@ -28,6 +28,8 @@ for (const language of ['en', 'sv']) test(`protected EPS open, offline, refresh 
   await page.route('**/__eps-script', route => route.fulfill({ contentType: 'text/javascript', body: script }));
   await page.route('**/api/reports/*/**', async route => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/eps/imports/history')) return route.fulfill({ json: { items: [], inconsistent: false } });
+    if (url.pathname.endsWith('/eps/imports')) return route.fulfill({ json: { rows: [], inconsistent: false } });
     if (url.pathname.endsWith('/eps/context')) return route.fulfill(deny ? { status: 403 } : { json: binding });
     if (url.pathname.endsWith('/eps')) { if (unavailable) return route.fulfill({ status: 503 }); count++; return route.fulfill({ json: { context: binding, status: 'available', summary: source, retrievedAt: `2026-10-19T10:00:0${count}Z`, documentId: 'document' } }); }
     if (url.pathname.endsWith('/protected-key-envelope')) return route.fulfill({ json: { schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle, recoveryDeadline: deadline, wrappingKeyVersion: 1 } });
@@ -74,6 +76,8 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
   await page.route('**/__eps-script', route => route.fulfill({ contentType: 'text/javascript', body: script }));
   await page.route('**/api/reports/*/**', async route => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/eps/imports/history')) return route.fulfill({ json: { items: [{ id: 'import', decision: 'import', destination: 'eHistory.06', source: 'PRIVATE IMPORT LINEAGE', documentId: 'source-document', documentVersion: '1' }], inconsistent: false } });
+    if (url.pathname.endsWith('/eps/imports')) return route.fulfill({ json: { rows: [], inconsistent: false } });
     if (url.pathname.endsWith('/recovery-grants')) { recoveryRequests++; return route.fulfill({ json: { schemaVersion: 1, envelopeVersion: 1, recoveryHandle, grant: 'authorized', expiresAt: '2099-01-01', reportStatus: 'draft' } }); }
     if (url.pathname.endsWith('/recovery-grants/consume')) return route.fulfill({ json: { reportKeyBase64: recoveryKey, wrappingKeyVersion: 1 } });
     const selectedReport = url.pathname.split('/')[3]!;
@@ -111,10 +115,12 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     return;
   }
   await expect(page.getByText('PRIVATE ANDREA')).toBeVisible();
+  await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(1);
   if (transition === 'report-switch') {
     await page.evaluate(() => (window as unknown as Fixture).prepareOther());
     await page.evaluate(() => (window as unknown as Fixture).lockReport());
     await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
+    await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(0);
     await page.evaluate(() => (window as unknown as Fixture).change({ reportId: 'other-report', organizationId: 'agency', userId: 'clinician', documentKey: 'patient-A' }));
     await page.clock.runFor(800);
     await page.getByRole('button', { name: 'Patient summary (EPS)', exact: true }).click();
@@ -162,6 +168,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     release(); await page.clock.runFor(16000);
     await expect(page.getByRole('button', { name: 'Patient summary (EPS)', exact: true })).toBeDisabled();
     await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
+    await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
     return;
   }
@@ -185,6 +192,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     await page.clock.runFor(400);
   }
   await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
+    if (transition !== 'configuration') await expect(page.getByText('PRIVATE IMPORT LINEAGE')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
 });
 

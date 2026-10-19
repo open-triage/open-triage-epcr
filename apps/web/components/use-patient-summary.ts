@@ -18,6 +18,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [online, setOnline] = useState(true);
+  const [authorizedKey, setAuthorizedKey] = useState<string | null>(null);
   const active = useRef('');
   const locked = useRef(protectedStorageStatus(reportId).mode === 'locked');
   const lockedReport = useRef(reportId);
@@ -45,13 +46,13 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
   useEffect(() => {
     const enforce = () => {
       if (latest.current.key === key && latest.current.cached && latest.current.result?.context?.binding === binding.current && !protectedEps(JSON.parse(key) as ProtectedEpsScope)) {
-        invalidate(null);
+        invalidate(null); setAuthorizedKey(null);
         setState({ key, status: 'failed' }); setOpenKey(null);
       }
     };
     const remove = subscribeProtectedStorageStatus((id, status) => {
       if (id !== reportId) return;
-      if (status.mode === 'locked') { locked.current = true; invalidate(); setState({ key, status: 'failed' }); setOpenKey(null); }
+      if (status.mode === 'locked') { locked.current = true; setAuthorizedKey(null); invalidate(); setState({ key, status: 'failed' }); setOpenKey(null); }
       else if (locked.current && protectedStorageActive(reportId)) { locked.current = false; invalidate(); setRetry(value => value + 1); }
       else enforce();
     });
@@ -76,7 +77,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
       const response = await fetch(browserRouteUrl(`/api/reports/${reportId}/eps${path}`), browserRequestInit({ signal: controller.signal }));
       if (!response.ok) {
         if (response.status >= 500) throw new Error('EPS temporarily unavailable');
-        if (valid()) { generation = invalidate(null); discardProtectedEps(reportId); applyProtectedAuthorityResponse(reportId, response); }
+        if (valid()) { generation = invalidate(null); setAuthorizedKey(null); discardProtectedEps(reportId); applyProtectedAuthorityResponse(reportId, response); }
         throw new EpsDenied();
       }
       return response.json() as Promise<T>;
@@ -89,6 +90,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
         if (!ready) return;
         const context = await read<EpsContext | null>('/context');
         if (!valid()) return;
+        setAuthorizedKey(key);
         if (!context) { generation = invalidate(null); discardProtectedEps(reportId); setState({ key, status: 'disabled' }); setOpenKey(null); return; }
         if (context.organizationId !== organizationId || context.reportId !== reportId) throw new EpsDenied();
         if (binding.current !== context.binding) generation = invalidate(context.binding);
@@ -103,7 +105,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
         setState({ key, status: result.status, result });
       } catch (error) {
         if (!valid()) return;
-        if (error instanceof EpsDenied) { generation = invalidate(null); discardProtectedEps(reportId); setState({ key, status: 'failed' }); setOpenKey(null); }
+        if (error instanceof EpsDenied) { setAuthorizedKey(null); generation = invalidate(null); discardProtectedEps(reportId); setState({ key, status: 'failed' }); setOpenKey(null); }
         else fallback();
       } finally { if (!stopped && !locked.current && active.current === key) timer = setTimeout(() => void check(), 15000); }
     }
@@ -125,7 +127,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
       if (!valid()) return;
       if (!response.ok) {
         if (response.status >= 500) throw new Error('EPS temporarily unavailable');
-        invalidate(null); discardProtectedEps(reportId); applyProtectedAuthorityResponse(reportId, response);
+        invalidate(null); setAuthorizedKey(null); discardProtectedEps(reportId); applyProtectedAuthorityResponse(reportId, response);
         setState({ key, status: 'failed' }); setOpenKey(null); return;
       }
       const context = await response.json() as EpsContext | null;
@@ -154,5 +156,5 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
     latest.current = { key, status: 'checking' };
     setState({ key, status: 'checking' }); setOpenKey(null); setRetry(value => value + 1);
   }
-  return { current, online, open: openKey === key && current.status === 'available', openSummary, close: () => { invalidate(); setOpenKey(null); }, dismissed: () => setOpenKey(null), refresh };
+  return { current, online, accessBlocked: authorizedKey !== key, open: openKey === key && current.status === 'available', openSummary, close: () => { invalidate(); setOpenKey(null); }, dismissed: () => setOpenKey(null), refresh };
 }

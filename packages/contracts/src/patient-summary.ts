@@ -3,6 +3,8 @@ export type SummaryRow = { path: string; value: string };
 export type SummarySection = { title: string; rows: SummaryRow[] };
 export type PatientSummary = {
   title: string; patient: string; date: string | null; source: string; authors: string[];
+  importEntries?: {identity:string; patientMatches:boolean; resource:Record<string,unknown>}[];
+  documentVersion?: string;
   sections: SummarySection[]; clinicalSections: {title:string; content:string}[]; findings: string[];
 };
 type Resource = Record<string, unknown>;
@@ -92,7 +94,7 @@ export function parsePatientSummary(input: unknown): { summary: PatientSummary; 
   }));
   sections.push({title:'Bundle',rows:rows(Object.fromEntries(Object.entries(bundle).filter(([key])=>key!=='entry')))});
   return { identifiers, summary: {title: text(composition.title), patient:label(composition.subject), date: text(composition.date) || null,
-    source: label(composition.custodian), authors: list(composition.author).map(reference=>label(reference)), sections, clinicalSections, findings: [...findings]} };
+    documentVersion: text(object(bundle.meta)?.versionId)||text(object(composition.meta)?.versionId)||text(bundle.id), importEntries: entries.filter(e=>['AllergyIntolerance','Condition'].includes(String(e.resource.resourceType))).map(e=>({identity:e.fullUrl||`${e.resource.resourceType}/${e.resource.id}`,patientMatches:index.get(text(object(e.resource.patient??e.resource.subject)?.reference))===subject,resource:e.resource})), source: label(composition.custodian), authors: list(composition.author).map(reference=>label(reference)), sections, clinicalSections, findings: [...findings]} };
 }
 export type EpsContext = { reportId: string; organizationId: string; binding: string; configurationRevision: number; mappingId: string; mappingRevision: number; mappingSha256: string; patientIdentifier: import('./hospital-integration.js').HospitalIdentifier };
-export type EpsLookup = { context: EpsContext | null; status: 'disabled' | 'missing' | 'available' | 'no-match'; summary?: PatientSummary; retrievedAt?: string; documentId?: string };
+export type EpsLookup = { context: EpsContext | null; status: 'disabled' | 'missing' | 'available' | 'no-match'; summary?: PatientSummary; retrievedAt?: string; documentId?: string; documentSha256?: string };
