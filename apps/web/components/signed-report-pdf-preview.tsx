@@ -28,7 +28,7 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
         const response = await fetch(url, browserRequestInit({ signal: controller.signal }));
         if (!response.ok) {
           const failure = await response.json().catch(() => ({})) as { code?: string };
-          throw new Error(["pdf.amendment-evidence-unavailable", "pdf.invalid-version", "pdf.definitions-unavailable", "pdf.unsupported-text", "pdf.too-large"].includes(failure.code ?? "")
+          throw new Error(["pdf.media-unavailable", "pdf.media-decode-failed", "pdf.media-too-large", "pdf.audio-metadata-unavailable", "pdf.amendment-evidence-unavailable", "pdf.invalid-version", "pdf.definitions-unavailable", "pdf.unsupported-text", "pdf.too-large"].includes(failure.code ?? "")
             ? failure.code : "pdf.unavailable");
         }
         if (!response.headers.get("content-type")?.startsWith("application/pdf")) throw new Error("pdf.unavailable");
@@ -49,6 +49,7 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
       <header><h2 id={`pdf-title-${reportId}`}>{t("pdf.preview")}</h2>
         <button type="button" onClick={close}>{t("noteUi.close")}</button></header>
       <p>{resolveMessage(language, "pdf.version", { sequence: amendmentSequence })}</p>
+      <p>{t("pdf.limits")}</p>
       {error ? <div role="alert"><p>{t(error)}</p><button type="button" onClick={() => { setError(null); setSource(null); setAttempt(attempt + 1); }}>{t("pdf.retry")}</button></div> :
         source ? <><p>{t("pdf.viewerHelp")}</p><iframe src={source} title={t("pdf.preview")} /><a href={source} download={`signed-report-${reportId}-${amendmentSequence}.pdf`}>{t("pdf.download")}</a></> :
           <p role="status">{t("pdf.loading")}</p>}

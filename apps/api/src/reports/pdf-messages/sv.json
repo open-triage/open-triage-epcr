@@ -36,9 +36,12 @@
   "remove": "Borttaget",
   "original": "Ursprungligt värde",
   "corrected": "Korrigerat värde",
-  "mediaNotice": "Granskningsförhandsvisning: journalen innehåller media. Foton och ljud ingår inte i denna förhandsvisning; den är inte ett komplett överföringsdokument.",
-  "media": "Mediareferenser",
+  "media": "Foton och ljudanteckningar",
   "photo": "Foto",
   "audio": "Ljudinspelning",
-  "checksum": "Signerad innehållskontrollsumma SHA-256"
+  "checksum": "Signerad innehållskontrollsumma SHA-256",
+  "duration": "Längd",
+  "seconds": "sekunder",
+  "audioNotTransferred": "Ljudinspelningen överfördes inte. Ingen transkription skapades.",
+  "audioDurationMissing": "Ljudlängden saknas. Spela in ljudet på nytt före signering."
 }

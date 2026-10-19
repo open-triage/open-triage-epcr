@@ -1,3 +1,5 @@
+import en from "./pdf-messages/en.json";
+import sv from "./pdf-messages/sv.json";
 import type { EntityManager } from "typeorm";
 import type { SigningFinding } from "./sign-report.types.js";
 
@@ -12,6 +14,7 @@ type MediaRow = {
   id: string; caption: string | null; captured_at: Date | string; captured_utc_offset_minutes: string | number;
   created_by: string; author_display_name: string | null; author_active: boolean | null;
   content_type: string; byte_size: string | number; sha256: string; processing_state: string;
+  duration_milliseconds?: string | number;
   blob_size: string | number | null; blob_sha256: string | null;
 };
 
@@ -23,7 +26,7 @@ export type SignedNoteManifestEntry = {
   author: { id: string; displayName: string };
   normalizedText?: string;
   normalizedCaption?: string | null;
-  media?: { mimeType: "image/jpeg" | "audio/mp4"; byteSize: number; sha256: string };
+  media?: { mimeType: "image/jpeg" | "audio/mp4"; byteSize: number; sha256: string; durationMilliseconds?: number };
 };
 
 export type SignedNoteIntegrity = {
@@ -39,7 +42,7 @@ function finding(code: string, type: string, id: string, message: string): Signi
 
 /** Locks every persisted note and media blob, then validates the exact rows used in the signed manifest. */
 export async function lockAndValidateReportNotes(manager: Queryable, report: {
-  id: string; report_media_allowance_bytes: string | number; image_media_limit_bytes: string | number;
+  id: string; organization_id?: string; report_media_allowance_bytes: string | number; image_media_limit_bytes: string | number;
 }): Promise<SignedNoteIntegrity> {
   const text = await manager.query<TextRow[]>(`
     select note.id, note.content, note.captured_at, note.captured_utc_offset_minutes,
@@ -69,7 +72,7 @@ export async function lockAndValidateReportNotes(manager: Queryable, report: {
   const audio = await manager.query<MediaRow[]>(`
     select note.id, note.caption, note.captured_at, note.captured_utc_offset_minutes,
            note.created_by, author.display_name as author_display_name, author.active as author_active,
-           note.content_type, note.byte_size, note.sha256, note.processing_state,
+           note.content_type, note.byte_size, note.sha256, note.processing_state, note.duration_milliseconds,
            octet_length(blob.canonical_bytes) as blob_size,
            encode(digest(blob.canonical_bytes, 'sha256'), 'hex') as blob_sha256
     from clinical.report_audio_note note
@@ -134,7 +137,8 @@ export async function lockAndValidateReportNotes(manager: Queryable, report: {
       notes.push({ id: row.id, type, capturedAt: new Date(row.captured_at).toISOString(),
         capturedUtcOffsetMinutes: Number(row.captured_utc_offset_minutes),
         author: { id: row.created_by, displayName: row.author_display_name }, normalizedCaption: row.caption,
-        media: { mimeType, byteSize, sha256: row.sha256 } });
+        media: { mimeType, byteSize, sha256: row.sha256,
+          ...(type === "audio" ? { durationMilliseconds: Number(row.duration_milliseconds) } : {}) } });
     }
   };
   const imageLimit = Number(report.image_media_limit_bytes);
@@ -145,7 +149,15 @@ export async function lockAndValidateReportNotes(manager: Queryable, report: {
         `The photo uses ${Number(row.byte_size)} bytes, exceeding its valid ${imageLimit} byte per-image limit. Delete it before signing.`));
     }
   }
-  audio.forEach((row) => addMedia(row, "audio", "audio/mp4"));
+  const missingDuration = audio.some((row) => !Number.isSafeInteger(Number(row.duration_milliseconds)) || Number(row.duration_milliseconds) < 1);
+  const settings = missingDuration && report.organization_id ? await manager.query<Array<{ language: string }>>(
+    "select language from app_identity.agency_settings where organization_id=$1", [report.organization_id]) : [];
+  const messages = settings[0]?.language === "sv" ? sv : en;
+  audio.forEach((row) => {
+    if (!Number.isSafeInteger(Number(row.duration_milliseconds)) || Number(row.duration_milliseconds) < 1)
+      findings.push(finding("note.duration", "audio", row.id, messages.audioDurationMissing));
+    addMedia(row, "audio", "audio/mp4");
+  });
   const allowance = Number(report.report_media_allowance_bytes);
   if (!Number.isSafeInteger(allowance) || usedBytes > allowance) {
     findings.push(finding("note.quota", "media", report.id,

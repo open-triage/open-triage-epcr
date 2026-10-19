@@ -1,3 +1,4 @@
+import { signedPdfMediaFixture } from "./fixtures/signed-pdf-media.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ReviewService } from "../dist/review/review.service.js";
@@ -6,8 +7,9 @@ import { commandSha256 } from "../dist/reports/draft-report.validation.js";
 import { signedPdfFixture } from "./fixtures/signed-pdf-source.mjs";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
 
-function fixture() {
-  const { source, manifest } = signedPdfFixture();
+function fixture(input = signedPdfFixture()) {
+  const { source, manifest } = input;
+  manifest.notes = source.notes; source.canonicalSha256 = commandSha256(manifest);
   const state = { capabilities: ["review:self"], organizationId: "org-a", userId: source.signerId, synthetic: true,
     revoked: false, visible: true, manifest, customAvailable: true, evidenceMode: "valid", audit: [], queries: [] };
   const manager = { async query(sql, params) {
@@ -50,6 +52,10 @@ function fixture() {
       element_id, name: field.name, localization: field.localization, min_occurs: 0, max_occurs: null, nillable: true,
     }));
     if (sql.includes("select group_id, name")) return [{ group_id: "eVitals.VitalGroup", name: "Vital signs" }];
+    if (sql.includes("from clinical.report_photo_blob b")) {
+      const bytes = source.photoBytes?.[params[1]]; return bytes?.length === params[2] ? [{canonical_bytes:bytes}] : [];
+    }
+    if (sql.includes("insert into clinical_audit.report_media_access_event")) return [];
     if (sql.includes("with recorded_access")) { state.audit.push(params); return [{ recorded: 1 }]; }
     if (sql.includes("from catalog.") || sql.includes("from forms.")) return [];
     throw new Error(`Unexpected query: ${sql}`);
@@ -167,4 +173,19 @@ test("amendment verification uses signing audit order instead of random change r
     original: structuredClone(original), corrected: { ...original, value_integer: 81 } });
   const verified = await signedReportPdfSource(manager, source.reportId, source.snapshotId, 1);
   assert.deepEqual(verified.amendments[0].changes.map((change) => change.targetId), ["pulse-0", "pulse-1"]);
+});
+
+
+test("media PDF uses signed photo references only, rejects missing bytes, and denies other users/agencies before media reads", async () => {
+  const {source,state,call} = fixture(await signedPdfMediaFixture());
+  assert.equal((await call()).subarray(0,5).toString(), "%PDF-");
+  assert.equal(state.queries.filter(q => q.sql.includes("from clinical.report_photo_blob b")).length,2);
+  assert.ok(!state.queries.some(q => q.sql.includes("report_audio_blob")), "audio bytes must never be loaded");
+  state.queries.length = 0; state.userId = 'other';
+  await assert.rejects(call(), {status:404});
+  state.userId=source.signerId; state.organizationId='other-agency';
+  await assert.rejects(call(), {status:404});
+  assert.ok(!state.queries.some(q => q.sql.includes("from clinical.report_photo_blob b")));
+  state.organizationId='org-a'; delete source.photoBytes['photo-0'];
+  await assert.rejects(call(), error => error.status === 422 && error.response.code === 'pdf.media-unavailable' && error.response.noteId === 'photo-0');
 });
