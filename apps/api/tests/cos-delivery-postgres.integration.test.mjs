@@ -1,6 +1,7 @@
 import {reconcileCosReview} from '../dist/hospital/cos-reconcile.js';
 import {automaticRetryFixture} from './fixtures/cos-automatic-retry.mjs';
 import sharp from 'sharp';
+import {mappingRepairJourney} from './fixtures/cos-mapping-repair.mjs';
 import {signedReportPdfSource} from '../dist/reports/signed-report-pdf.persistence.js';
 import {CatalogAuthoringService} from '../dist/admin/catalog-authoring.service.js';
 import {identifierCorrectionContext,correctReviewIdentifier} from '../dist/review/review-identifier-correction.js';
@@ -341,11 +342,12 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const [remapState]=await db.query('select state_revision from app_identity.hospital_cos_state where group_id=$1',[group]);
   let remapActor={capabilities:['settings:write','review:self'],organization:{id:sample.organization_id},user:{id:sample.documenting_user_id}};
   const remapSessions={lockPersonalAuthenticationContext:async()=>{},requireCapability:async(_token,capability)=>{assert.equal(capability,'settings:write');if(!remapActor.capabilities.includes(capability))throw new Error('denied');return remapActor;}};
-  const remapInput={dataset:'synthetic',reportId:missing,parentId:waiting.id,commandId:randomUUID(),configurationRevision:next+1,stateRevision:Number(remapState.state_revision)};
+  const remapInput={dataset:'synthetic',reportId:missing,parentId:waiting.id,commandId:randomUUID(),configurationRevision:next+1,stateRevision:Number(remapState.state_revision),acceptPatientMappingChange:true};
   await assert.rejects(remapWaitingCos(db,remapSessions,'fixture',{...remapInput,dataset:'real'}));
   remapActor={...remapActor,capabilities:['review:self']};await assert.rejects(remapWaitingCos(db,remapSessions,'fixture',remapInput));
   remapActor={...remapActor,capabilities:['settings:write','review:self'],user:{id:randomUUID()}};await assert.rejects(remapWaitingCos(db,remapSessions,'fixture',remapInput));
   remapActor={...remapActor,user:{id:sample.documenting_user_id}};
+  await assert.rejects(remapWaitingCos(db,remapSessions,'fixture',{...remapInput,acceptPatientMappingChange:false}));
   const child=await remapWaitingCos(db,remapSessions,'fixture',remapInput);assert.equal(await remapWaitingCos(db,remapSessions,'fixture',remapInput),child);
   assert.equal((await db.query('select state from clinical.cos_delivery where id=$1',[waiting.id]))[0].state,'superseded');
   const [lineage]=await db.query('select lineage_parent_id,mapping_sha256 from clinical.cos_delivery where id=$1',[child]);assert.equal(lineage.lineage_parent_id,waiting.id);assert.equal(lineage.mapping_sha256,newer.sha256);
@@ -633,6 +635,10 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.equal(defaultReview.transmission_reason,'integration-mapping');
   assert.deepEqual((await db.query('select evidence from clinical.review_transmission_history where report_id=$1 order by item_version desc limit 1',[noDefault]))[0].evidence.missing,['ambulanceCareUnit']);
   assert.equal((await db.query('select report_id from clinical.cos_simulator_contact where report_id=$1',[noDefault])).length,0);
+  const oldEncounter=settings.encounterNamespace;settings.encounterNamespace='';await config(next+101);
+  const noEncounter=await draft({'eDisposition.30':'4230013'});await sign(noEncounter);await processCosWork(db);
+  assert.ok((await db.query('select finding from clinical.cos_delivery where report_id=$1',[noEncounter]))[0]);settings.encounterNamespace=oldEncounter;
+  await mappingRepairJourney({db,sample,settings:{...settings,defaultAmbulanceCareUnit:'fictional-ambulance'},draft,sign,reviewer,run,noDefault,noEncounter,attachPhoto});
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);
   assert.deepEqual(await db.query('select * from app_identity.active_configuration_bundle where organization_id=$1',[baseline.organization_id]),sharedBundle);
   if(previous)await db.query('update app_identity.hospital_cos_state set active_revision=$2 where group_id=$1',[group,previous.active_revision]);else await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);

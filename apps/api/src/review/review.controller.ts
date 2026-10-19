@@ -35,6 +35,19 @@ function sendCsv(response: CsvResponse, filename: string, value: string) {
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
 
+  @Get("items/:itemId/mapping-repair")
+  @Header("Cache-Control", "no-store, private")
+  mappingRepairContext(@Param("itemId",ParseUUIDPipe) itemId:string,@Query("dataset") dataset:string,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string) {
+    return this.review.mappingRepairContext(bearerToken(authorization,cookie),itemId,dataset);
+  }
+  @Post("items/:itemId/mapping-repair")
+  @Header("Cache-Control", "no-store, private")
+  repairMapping(@Param("itemId",ParseUUIDPipe) itemId:string,@Body() command:import("@open-triage/contracts").CosMappingRepairCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string) {
+    return this.review.repairCosMapping(bearerToken(authorization,cookie),itemId,command,csrfToken);
+  }
+
   @Get("items/:itemId/identifier-correction")
   @Header("Cache-Control", "no-store, private")
   identifierCorrectionContext(@Param("itemId",ParseUUIDPipe) itemId:string,@Query("dataset") dataset:string,

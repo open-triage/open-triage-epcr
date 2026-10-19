@@ -208,7 +208,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section></div>}
 
-    {context && mounted("Hospital integrations") && <div hidden={activePanel !== "Hospital integrations"}><HospitalIntegrationsPanel language={language} csrfToken={session.csrfToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
+    {context && mounted("Hospital integrations") && <div hidden={activePanel !== "Hospital integrations"}><HospitalIntegrationsPanel initialTab={hospitalSettings ? "cos" : "eps"} language={language} csrfToken={session.csrfToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
     {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
 
     {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}

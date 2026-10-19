@@ -1,5 +1,6 @@
 import {cosRetryable} from '../hospital/cos-recovery-review.js';
 import {reconcileCosReview} from '../hospital/cos-reconcile.js';
+import { cosMappingRepairContext, remapWaitingCos } from '../hospital/cos-remap.js';
 import {cosRetryStatus} from '../hospital/cos-automatic-retry.js';
 import { identifierCorrectionContext, correctReviewIdentifier } from "./review-identifier-correction.js";
 
@@ -1369,6 +1370,15 @@ export class ReviewService implements OnModuleDestroy {
       })) };
   }
 
+  async mappingRepairContext(token:string,itemId:string,dataset:string) {
+    return cosMappingRepairContext(this.database,this.sessions,token,itemId,dataset);
+  }
+  async repairCosMapping(token:string,itemId:string,command:import('@open-triage/contracts').CosMappingRepairCommand,csrfToken?:string):Promise<ReviewItemDetail> {
+    const uuid=(value:unknown)=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    if(!command||!uuid(command.commandId)||!uuid(command.context?.deliveryId)||!uuid(command.context?.reportId)||!['real','synthetic'].includes(command.dataset)||typeof command.acceptRecipientChange!=='boolean'||typeof command.acceptPatientMappingChange!=='boolean'||![command.context.expectedVersion,command.context.configurationRevision,command.context.stateRevision].every(n=>Number.isSafeInteger(n)&&n>=0))throw new BadRequestException('Invalid mapping repair command');
+    await remapWaitingCos(this.database,this.sessions,token,{dataset:command.dataset,reportId:command.context.reportId,parentId:command.context.deliveryId,commandId:command.commandId,configurationRevision:command.context.configurationRevision,stateRevision:command.context.stateRevision,itemId,expectedVersion:command.context.expectedVersion,acceptRecipientChange:command.acceptRecipientChange,acceptPatientMappingChange:command.acceptPatientMappingChange,csrfToken});
+    return this.item(token,itemId,command.dataset);
+  }
   async identifierCorrectionContext(token:string,itemId:string,dataset:string) {
     return identifierCorrectionContext(this.database,this.sessions,token,itemId,dataset);
   }

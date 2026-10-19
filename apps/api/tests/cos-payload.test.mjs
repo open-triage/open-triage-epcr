@@ -2,7 +2,7 @@ import {PersistentCosSimulator} from '../dist/hospital/cos-simulator.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {signedPdfFixture} from './fixtures/signed-pdf-source.mjs';
-import {buildCosPayload,cosIdentifierRequirements,cosEligibility,COS_SIMULATOR_LIMITS} from '../dist/hospital/cos-payload.js';
+import {buildCosPayload,cosIdentifierRequirements,cosEligibility,COS_SIMULATOR_LIMITS,resolveSignedCosCareUnit} from '../dist/hospital/cos-payload.js';
 import {COS_PROFILE,cosMappingPackage} from '../dist/hospital/cos-configuration.js';
 import {makePackage} from '../dist/admin/canonical-package.js';
 export function deliveryFixture(){
@@ -131,4 +131,31 @@ test('collector and payload share exact PNR, coordination and Carelink reserve s
   assert.ok(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing.includes('patientIdentifier'));
   assert.throws(()=>buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'delivery'),{code:'patientIdentifier'});
  }
+});
+
+
+test('raw signed recipient resolver projects removal/addition amendments exactly once',()=>{
+ const f=deliveryFixture(),transport=f.source.occurrences.find(row=>row.element_id==='eDisposition.30');
+ assert.equal(resolveSignedCosCareUnit(f.source,f.settings),'fixture-ed');
+ const corrected={...transport,id:'amended-transport',code:'4230013'};
+ const amendment={id:'amendment',sequence:1,authorId:f.source.signerId,signedAt:f.source.signedAt,reason:'Correction',canonicalSha256:'a'.repeat(64),changes:[
+  {action:'remove',targetId:transport.id,original:transport,corrected:null},
+  {action:'add',targetId:null,original:null,corrected}]};
+ f.source.amendments=[amendment];f.source.amendmentSequence=1;
+ assert.equal(resolveSignedCosCareUnit(f.source,f.settings),'fixture-ambulance');
+ assert.equal(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended').contact.careUnit,'fixture-ambulance','internal projected source must not apply removals twice');
+ assert.equal(transport.code,'4230001','base signed facts remain immutable');
+ f.source.amendments.push({...amendment,id:'amendment-2',sequence:2,changes:[
+  {action:'remove',targetId:corrected.id,original:corrected,corrected:null},
+  {action:'add',targetId:null,original:null,corrected:{...transport,id:'transport-again'}}]});f.source.amendmentSequence=2;
+ assert.equal(resolveSignedCosCareUnit(f.source,f.settings),'fixture-ed');
+ assert.equal(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended-again').contact.careUnit,'fixture-ed');
+});
+
+test('legacy missing PDF link mapping is actionable in Review before payload preparation',()=>{
+ const f=deliveryFixture(),{format,schemaVersion,sha256,...portable}=f.mapping;
+ const {pdfLinkId,...definition}=portable.definition;
+ const mapping=makePackage({...portable,definition});
+ assert.deepEqual(cosIdentifierRequirements(f.source,mapping,f.settings).missing,['pdfMapping']);
+ assert.throws(()=>buildCosPayload(f.source,mapping,f.settings,f.pdf,'waiting-pdf-mapping'),{code:'pdfMapping',state:'waiting'});
 });
