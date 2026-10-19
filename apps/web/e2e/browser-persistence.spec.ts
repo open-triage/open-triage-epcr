@@ -408,6 +408,52 @@ test("denied persistence falls back to encrypted best-effort IndexedDB", async (
   await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(before);
 });
 
+for (const persistentStorage of [true, false]) {
+  test(`an acknowledged online save preserves newly queued offline edits with persistent storage=${persistentStorage}`, async ({ page, context }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    await installRoutes(page, persistentStorage);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open call", exact: true }).click();
+    await page.getByRole("button", { name: "Stationary", exact: true }).click();
+    await expect(page.locator(".sync-status")).toHaveText("Saved");
+    await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+    let acknowledge!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>(resolve => { acknowledge = resolve; });
+    const requested = new Promise<void>(resolve => { started = resolve; });
+    let saves = 0;
+    await page.route(`**/api/reports/${reportId}/draft-changes`, async route => {
+      saves += 1;
+      const command = route.request().postDataJSON() as { expectedRevision: number };
+      started();
+      await held;
+      await route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+    });
+    const name = page.getByRole("textbox", { name: "First Name", exact: true });
+    await name.fill("ONLINE-AWAITING-ACK");
+    await name.press("Tab");
+    await requested;
+    await context.setOffline(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+    const before = Number((await encryptedRecords(page))[0]?.ciphertextRevision);
+    await name.fill("OFFLINE-AFTER-REQUEST");
+    await name.press("Tab");
+    await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+    await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(before);
+    const response = page.waitForResponse(`**/api/reports/${reportId}/draft-changes`);
+    acknowledge();
+    await (await response).finished();
+    await expect(name).toHaveValue("OFFLINE-AFTER-REQUEST");
+    await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+    expect(saves).toBe(1);
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.locator(".sync-status")).toHaveText("Saved");
+    expect(saves).toBe(2);
+    await expect(name).toHaveValue("OFFLINE-AFTER-REQUEST");
+  });
+}
+
 test("a second browser recovers its own offline copy without replacing the first", async ({ page, browser }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   const first = await installRoutes(page);
