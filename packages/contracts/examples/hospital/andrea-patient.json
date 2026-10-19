@@ -1,0 +1,78 @@
+{
+  "resourceType": "Patient",
+  "meta": {
+    "profile": [
+      "http://hl7.eu/fhir/eps/StructureDefinition/patient-eu-eps",
+      "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePatient"
+    ]
+  },
+  "identifier": [
+    {
+      "system": "http://electronichealth.se/identifier/personnummer",
+      "value": "200207252388"
+    }
+  ],
+  "name": [
+    {
+      "text": "Andrea Lindqvist",
+      "family": "Lindqvist",
+      "given": [
+        "Andrea"
+      ]
+    }
+  ],
+  "telecom": [
+    {
+      "system": "phone",
+      "value": "+46 70 000 00 01",
+      "use": "mobile"
+    },
+    {
+      "system": "email",
+      "value": "andrea.lindqvist@example.org"
+    }
+  ],
+  "gender": "female",
+  "birthDate": "2002-07-25",
+  "address": [
+    {
+      "use": "home",
+      "type": "physical",
+      "line": [
+        "Lärkstigen 12"
+      ],
+      "city": "Uppsala",
+      "postalCode": "753 11",
+      "country": "SE"
+    },
+    {
+      "use": "temp",
+      "type": "physical",
+      "line": [
+        "Résidence Les Tilleuls, 8 rue Camille Vasseur"
+      ],
+      "city": "Paris",
+      "postalCode": "75014",
+      "country": "FR",
+      "period": {
+        "start": "2026-02-01"
+      }
+    }
+  ],
+  "communication": [
+    {
+      "language": {
+        "coding": [
+          {
+            "system": "urn:ietf:bcp:47",
+            "code": "sv",
+            "display": "Swedish"
+          }
+        ],
+        "text": "Swedish"
+      },
+      "preferred": true
+    }
+  ],
+  "id": "0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+}

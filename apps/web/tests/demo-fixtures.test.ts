@@ -83,7 +83,7 @@ test("changing the JSON sample changes both rendered assignment and encounter co
 
 test("browser source does not duplicate fixture values from the dispatch sample", async () => {
   const { sample } = await source();
-  const protectedElementIds = ["eResponse.03", "eResponse.04", "eResponse.13", "eResponse.14", "eTimes.02", "eTimes.03", "ePatient.01", "ePatient.17", "ePatient.18", "eScene.15", "eScene.16", "eScene.19"];
+  const protectedElementIds = ["eResponse.03", "eResponse.04", "eResponse.13", "eResponse.14", "eTimes.02", "eTimes.03", "ePatient.01", "ePatient.05", "ePatient.09", "ePatient.17", "ePatient.18", "ePatient.19", "eScene.15", "eScene.16", "eScene.19"];
   const protectedValues = protectedElementIds.flatMap((id) => element(sample, id).values)
     .map((value) => String(value.value ?? value.code ?? "")).filter((value) => value.length >= 5);
   const files = await sourceFiles(webRoot);
