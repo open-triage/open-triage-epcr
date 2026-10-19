@@ -1364,3 +1364,10 @@ fieldset { min-inline-size: 0; }
   .eps-content tr { display: block; padding: 6px 0; border-bottom: 1px solid var(--line); }
   .eps-content th, .eps-content td, .eps-content th:first-child { display: block; width: 100%; border: 0; }
 }
+.signed-report-pdf-dialog { width: min(960px, calc(100vw - 24px)); height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); color: var(--text-color); padding: 16px; overflow: auto; }
+.signed-report-pdf-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+.signed-report-pdf-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.signed-report-pdf-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.signed-report-pdf-dialog h2, .signed-report-pdf-dialog p { margin: 0; }
+.signed-report-pdf-dialog iframe { flex: 1; min-height: 200px; width: 100%; border: 1px solid var(--inactive-button); }
+.signed-report-pdf-dialog a { color: var(--green-dark); min-height: 44px; display: inline-flex; align-items: center; }

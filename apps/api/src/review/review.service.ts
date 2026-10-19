@@ -1,6 +1,8 @@
+import { renderSignedReportPdf, SignedPdfError, type PdfLanguage } from "../reports/signed-report-pdf.js";
+import { signedReportPdfSource } from "../reports/signed-report-pdf.persistence.js";
 import { recordPatientAccess } from "../reports/patient-access-audit.js";
 import { recordAnalyticsAccess, type AnalyticsAuditInput } from "./analytics-access-audit.js";
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException, OnModuleDestroy, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { EncounterValue, AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueExceptionCode, ConfigureReviewRouteCommand, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewOverdueDraft, ReviewSignedReport, ReviewReportValue, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
@@ -994,8 +996,9 @@ export class ReviewService implements OnModuleDestroy {
 
   private async scopedReport(manager: EntityManager, scope: ReviewScope, id: string, dataset: "real" | "synthetic") {
     const rows = await manager.query<Array<{ id: string; reporting_date: string; signed_at: Date | string;
-      catalog_release_id: string; form_version_id: string; documenting_user_id: string }>>(`
-      select r.id, r.reporting_date, s.signed_at, r.catalog_release_id,r.form_version_id,r.documenting_user_id
+      catalog_release_id: string; form_version_id: string; documenting_user_id: string; signed_snapshot_id: string; signed_revision: number }>>(`
+      select r.id, r.reporting_date, s.signed_at, r.catalog_release_id,r.form_version_id,r.documenting_user_id,
+        s.id signed_snapshot_id,s.signed_revision
       from clinical.report r join clinical.signed_snapshot s on s.report_id = r.id
       where r.id = $1 and r.organization_id = $2 and r.synthetic = $3
         and r.status = 'signed' and ($4::boolean or r.documenting_user_id = $5)`,
@@ -1027,6 +1030,31 @@ export class ReviewService implements OnModuleDestroy {
             return { ...common, kind: "scalar", value: presented.value ?? "" } as EncounterValue;
           }) })) })) })) };
     return { document, clinicalForm };
+  }
+
+  async signedPdf(token: string, id: string, snapshotId: string, sequenceText: string,
+    languageText: string, requestedDataset?: string): Promise<Buffer> {
+    if (!uuid(snapshotId) || !/^(0|[1-9][0-9]*)$/.test(sequenceText ?? "") ||
+        !Number.isSafeInteger(Number(sequenceText)) || !["en", "sv"].includes(languageText))
+      throw new BadRequestException({ code: "pdf.invalid-version" });
+    return this.database.transaction("REPEATABLE READ", async (manager) => {
+      const session = await this.sessions.get(token, new Date(), false, manager);
+      const scope = await reviewTargetScope(manager, reviewScope(session), id, "report");
+      const report = await this.scopedReport(manager, scope, id, this.dataset(requestedDataset, scope));
+      if (!reviewIdentifying(scope, report.documenting_user_id))
+        throw new ForbiddenException("Identifying report access is required for PDF inspection");
+      try {
+        const source = await signedReportPdfSource(manager, id, snapshotId, Number(sequenceText));
+        const pdf = await renderSignedReportPdf(source, languageText as PdfLanguage);
+        await recordPatientAccess(manager, { organizationId: scope.organizationId, actorId: scope.userId,
+          accessOrganizationId: session.organization.id, reportIds: [id], action: "review.report",
+          careProcess: "review", resourceId: snapshotId });
+        return pdf;
+      } catch (error) {
+        if (error instanceof SignedPdfError) throw new UnprocessableEntityException({ code: error.code });
+        throw error;
+      }
+    });
   }
 
   async report(token: string, id: string, requestedDataset?: string): Promise<ReviewSignedReport> {
@@ -1102,7 +1130,8 @@ export class ReviewService implements OnModuleDestroy {
         where item.report_id=$1 and item.organization_id=$2 order by item.first_matched_at,item.id`,
       [id, scope.organizationId]);
       return { ...await this.formView(manager, id, report.form_version_id, report.catalog_release_id, values, identifying, true),
-        id, reportingDate: report.reporting_date, signedAt: new Date(report.signed_at).toISOString(),
+        id, signedSnapshotId: report.signed_snapshot_id, signedRevision: Number(report.signed_revision),
+        reportingDate: report.reporting_date, signedAt: new Date(report.signed_at).toISOString(),
         amendmentSequence: changes.at(-1)?.sequence ?? 0, identifying,
         groups: groups.map((group) => ({ id: group.id, parentGroupInstanceId: group.parent_group_instance_id,
           groupId: group.group_id, label: group.label, ordinal: Number(group.ordinal) })), values, notes,

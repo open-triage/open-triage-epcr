@@ -13,6 +13,7 @@ import { AuthorizedAudioButton } from "./audio-note";
 import { EncounterTimeline } from "./encounter-timeline";
 import { AuthorizedPhotoImage } from "./photo-note";
 import { StationaryRecord } from "./stationary-record";
+import { SignedReportPdfPreview } from "./signed-report-pdf-preview";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
 export function ReviewReport({ report, full = false, dataset, language, toolbarRef, findingsOpen, onToggleFindings, onClose }: {
@@ -61,6 +62,10 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
     <button ref={timelineToggle} type="button" aria-expanded={timelineOpen} aria-controls={timelineId} onClick={() => setTimelineOpen(!timelineOpen)}>
       {t("mobile.timeline")} <span aria-hidden="true">· {timeline.length}</span>
     </button>
+    {"signedSnapshotId" in report && report.signedSnapshotId && report.identifying &&
+      <SignedReportPdfPreview key={`${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
+        reportId={report.id} snapshotId={report.signedSnapshotId} amendmentSequence={report.amendmentSequence}
+        dataset={dataset} language={language} />}
     {full && onToggleFindings && <button id="review-findings-toggle" type="button" aria-expanded={findingsOpen} aria-controls="review-inspector"
       onClick={onToggleFindings}>{t("review.workspace.findings")}</button>}
     {full && onClose && <button type="button" className="review-report-close" aria-label={t("review.workspace.closeReport")}

@@ -2,6 +2,7 @@
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse, ProductionJobAccess } from "@open-triage/contracts";
 import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
+import { useRecoveryFormFocus } from "./use-recovery-form-focus";
 import { useReturnFocus } from "./use-return-focus";
 import { PlatformRequestError } from "../app/platform-errors";
 import { InstallationContextChangedError } from "../app/installation-transition-generation";
@@ -56,6 +57,8 @@ export function AssignedCalls({
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [shiftReauthentication, setShiftReauthentication] = useState(false);
   const [reauthenticating, setReauthenticating] = useState(false);
+  const recoveryForm = useRef<HTMLFormElement>(null);
+  useRecoveryFormFocus(recoveryForm, reauthenticationId !== null && !paused && !reauthenticating && openingId === null);
   useReturnFocus(openingId!==null,reauthenticating,()=>returningFocus?openingTrigger.current:null);
   const openingRef = useRef(false);
   const refreshEpoch = useRef(0);
@@ -116,10 +119,6 @@ export function AssignedCalls({
       if (openError instanceof RecoveryReauthenticationRequiredError || openError instanceof PlatformRequestError && openError.code === "calls.shiftReauthenticationRequired") {
         setShiftReauthentication(openError instanceof PlatformRequestError);
         setReauthenticationId(call.id);
-        window.requestAnimationFrame(() => {
-          const form = document.querySelector<HTMLFormElement>(`[data-assignment-id="${CSS.escape(call.id)}"] .report-reauthentication`);
-          (form?.querySelector<HTMLInputElement>('input[type="password"]') ?? form?.querySelector<HTMLButtonElement>('button[type="submit"]'))?.focus();
-        });
         return;
       }
       if (openError instanceof InstallationContextChangedError || openError instanceof PlatformRequestError && [401, 403].includes(openError.status)) {
@@ -217,7 +216,7 @@ export function AssignedCalls({
               <button type="button" onClick={event => { openingTrigger.current=event.currentTarget;void open(call); }} disabled={openingId !== null || reauthenticating}>
                 {openingId === call.id ? t("calls.opening") : t("calls.open")}
               </button>
-              {reauthenticationId === call.id && <form className="report-reauthentication"
+              {reauthenticationId === call.id && <form ref={recoveryForm} className="report-reauthentication"
                 onSubmit={(event) => void reauthenticateAndOpen(event, call)} aria-describedby={`assigned-recovery-help-${call.id}`}>
                 <p id={`assigned-recovery-help-${call.id}`}>{t(shiftReauthentication ? "calls.shiftReauthHelp" : "reports.reauthHelp")}</p>
                 <PersonalAuthenticationField language={language} value={recoveryPassword} onChange={setRecoveryPassword} label={t("reports.currentPassword")} />
