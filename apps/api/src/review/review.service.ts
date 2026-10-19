@@ -1132,7 +1132,9 @@ export class ReviewService implements OnModuleDestroy {
           on outcome.option_id=item.outcome_option_id and outcome.revision=item.outcome_revision
         where item.report_id=$1 and item.organization_id=$2 order by item.first_matched_at,item.id`,
       [id, scope.organizationId]);
+      const [cos] = await manager.query<Array<{state:string;finding:string|null;paused:boolean;updated_at:Date;configuration_revision:string;mapping_revision:number}>>(`select d.state,d.finding,s.active_revision is null paused,d.updated_at,d.configuration_revision,d.mapping_revision from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id where d.report_id=$1 and d.organization_id=$2 order by d.created_at desc,d.id desc limit 1`,[id,scope.organizationId]);
       return { ...await this.formView(manager, id, report.form_version_id, report.catalog_release_id, values, identifying, true),
+        cosDelivery:cos?{simulated:true,state:cos.state,finding:cos.finding,paused:cos.paused,updatedAt:cos.updated_at.toISOString(),configurationRevision:Number(cos.configuration_revision),mappingRevision:cos.mapping_revision}:null,
         id, signedSnapshotId: report.signed_snapshot_id, signedRevision: Number(report.signed_revision),
         reportingDate: report.reporting_date, signedAt: new Date(report.signed_at).toISOString(),
         amendmentSequence: changes.at(-1)?.sequence ?? 0, identifying,

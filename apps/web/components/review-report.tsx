@@ -75,6 +75,12 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       anchor={toolbar} onEscape={closeTimeline}>{timelinePanel}</WorkspaceSidebar> :
       <div id={timelineId} className="review-report-timeline">{timelinePanel}</div>)}
     <div className="review-report-body">
+    {"cosDelivery" in report && report.cosDelivery && <section className="review-report-amendments" aria-label={t("cosDelivery.title")}>
+      <strong>{t("cosDelivery.title")}: {t(`cosDelivery.state.${report.cosDelivery.state}`)}</strong>
+      {report.cosDelivery.paused && <p>{t("cosDelivery.paused")}</p>}
+      {report.cosDelivery.finding && <p>{t(`cosDelivery.finding.${report.cosDelivery.finding}`)}</p>}
+      <p>{t("cosDelivery.refresh")}</p>
+    </section>}
     {full && "amendmentSequence" in report && report.amendmentSequence > 0 && <p className="review-report-amendments">{resolveMessage(language, "review.amendments", { count: report.amendmentSequence })}</p>}
     {full && report.document ? <StationaryRecord readOnly
       document={report.document} formDefinition={report.clinicalForm?.definition}
