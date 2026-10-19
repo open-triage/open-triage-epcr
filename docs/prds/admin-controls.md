@@ -11,8 +11,8 @@
 > Later role revisions give Administrator full registered access and Demo access
 > without publication capabilities; the older Administrator/Clinician separation
 > below is superseded by the current [Users and Roles status](users-roles.md).
-> Dedicated unit/vehicle administration, general history/audit browsing, and
-> integration-management panels remain broader scope. Original problem statements
+> Dedicated unit/vehicle administration and integration-management panels remain
+> broader scope, with later delivery notes below. Original problem statements
 > and unresolved-risk notes below are design history, not a current gap inventory.
 
 > **Planned extension (2026-10-13).** [Authentication, units and shifts](authentication-units-and-shifts.md)
@@ -20,6 +20,12 @@
 > administration. It brings those selected administration areas into planned
 > scope; physical fleet management and general integration/history browsers
 > remain outside that release.
+
+> **Audit delivery recorded retrospectively (2026-10-19).** [Audit Logging](audit-logging.md)
+> supersedes the deferred audit-browser scope with agency-scoped browsing,
+> patient/analytics access evidence, and recorded clinical-value and payload
+> inspections. It documents incremental coverage and separate operational
+> acceptance requirements; it does not provide a generic history database viewer.
 
 > Offline clinical persistence and grant behavior is specified by the
 > [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md).
