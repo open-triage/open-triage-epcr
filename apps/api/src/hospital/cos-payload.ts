@@ -4,7 +4,7 @@ import { identifierOptions } from './hospital-mapping.js';
 import { compileCosMapping, cosMappingPackage, resolveCosCareUnit } from './cos-configuration.js';
 import { cosDispositionCode, cosEligibility, cosEligible } from './cos-eligibility.js';
 import { contentDigest, type CanonicalPackage } from '../admin/canonical-package.js';
-import { effectiveSignedPdfOccurrences, type SignedOccurrence, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
+import { effectiveSignedPdfOccurrences, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
 export const bytesHash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export const COS_SIMULATOR_LIMITS=Object.freeze({sourceOccurrences:10000,items:2000,textBytes:1024*1024,bundleBytes:2*1024*1024});
 export class CosFinding extends Error { constructor(public readonly code:string,public readonly state:'waiting'|'failed'|'excluded'='waiting'){super(code);} }
