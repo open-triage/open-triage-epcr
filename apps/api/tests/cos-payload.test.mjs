@@ -1,3 +1,4 @@
+import {PersistentCosSimulator} from '../dist/hospital/cos-simulator.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {signedPdfFixture} from './fixtures/signed-pdf-source.mjs';
@@ -43,10 +44,30 @@ test('legacy mapping retains hash and optional PDF mapping absence becomes deliv
 test('simulator bounds reject source size, repeated item amplification and escaped serialized bytes without truncation',()=>{
  const run=f=>buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'id');
  const source=deliveryFixture();source.source.occurrences.find(x=>x.element_id==='eNarrative.01').value_text='x'.repeat(COS_SIMULATOR_LIMITS.textBytes+1);assert.throws(()=>run(source),{code:'simulatorLimit',state:'failed'});
- const repeated=deliveryFixture(),row=repeated.source.occurrences.find(x=>x.element_id==='eNarrative.01');repeated.source.occurrences.push(...Array.from({length:COS_SIMULATOR_LIMITS.items},()=>({...row})));assert.throws(()=>run(repeated),{code:'simulatorLimit'});
+ const repeated=deliveryFixture(),row=repeated.source.occurrences.find(x=>x.element_id==='eNarrative.01');repeated.source.occurrences.push(...Array.from({length:COS_SIMULATOR_LIMITS.items},(_,i)=>({...row,id:`row-${i}`})));assert.throws(()=>run(repeated),{code:'simulatorLimit'});
  const escaped=deliveryFixture();escaped.source.occurrences.find(x=>x.element_id==='eNarrative.01').value_text='\u0001'.repeat(COS_SIMULATOR_LIMITS.textBytes/2);assert.throws(()=>run(escaped),{code:'simulatorLimit'});
  const amplified=deliveryFixture();amplified.source.occurrences.find(x=>x.element_id==='eNarrative.01').value_text='x'.repeat(10000);const {format,schemaVersion,sha256,...portable}=amplified.mapping;amplified.mapping=makePackage({...portable,definition:{...portable.definition,clinicalMappings:Array.from({length:110},(_,i)=>({id:`mapped-${i}`,source:{kind:'nemsis',elementId:'eNarrative.01'},linkId:String(400000+i),answerType:'string'}))}});assert.throws(()=>run(amplified),{code:'simulatorLimit'});
- const many=deliveryFixture();many.source.occurrences=Array.from({length:COS_SIMULATOR_LIMITS.sourceOccurrences+1},()=>({...row}));assert.throws(()=>run(many),{code:'simulatorLimit'});
+ const many=deliveryFixture();many.source.occurrences=Array.from({length:COS_SIMULATOR_LIMITS.sourceOccurrences+1},(_,i)=>({...row,id:`row-${i}`}));assert.throws(()=>run(many),{code:'simulatorLimit'});
+});
+
+test('amendment projections use effective identifiers, narrative, signer and timestamp while retaining base source',()=>{
+ const f=deliveryFixture(),original=f.source.occurrences.find(x=>x.element_id==='eNarrative.01'),patient=f.source.occurrences.find(x=>x.element_id==='ePatient.01');
+ const author='amending-clinician',signedAt='2026-10-19T15:00:00Z';
+ f.settings.staff.push({userId:author,hsaId:'amendment-staff'});
+ f.source.amendmentSequence=1;f.source.amendments=[{id:'amendment',sequence:1,authorId:author,signedAt,reason:'Correction',canonicalSha256:'a'.repeat(64),changes:[{action:'replace',targetId:original.id,original,corrected:{...original,value_text:'Corrected clinical account'}},{action:'replace',targetId:patient.id,original:patient,corrected:{...patient,value_text:'corrected-patient'}}]}];
+ const payload=buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended');const qr=payload.bundle.entry[0].resource;
+ assert.equal(payload.amendmentSequence,1);assert.equal(qr.subject.identifier.value,'corrected-patient');assert.equal(qr.item[0].answer[0].valueString,'Corrected clinical account');assert.equal(qr.author.identifier.value,'amendment-staff');assert.equal(qr.authored,signedAt);
+ assert.equal(patient.value_text,'200207252388');assert.equal(original.value_text,'Fictional clinical assessment.');
+ f.settings.staff=f.settings.staff.filter(x=>x.userId!==author);assert.throws(()=>buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended'),{code:'staff'});
+});
+
+
+test('simulator rejects changed contact identity without its recorded digest before storage',async()=>{
+ const f=deliveryFixture(),payload=buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'delivery');
+ payload.contact.patient.value='tampered';
+ const receiver=new PersistentCosSimulator({transaction:()=>{throw new Error('must not reach storage');}});
+ await assert.rejects(receiver.contact('report',payload),{code:'identityConflict'});
+ await assert.rejects(receiver.note('report','delivery',payload),{code:'identityConflict'});
 });
 
 test('all identifier requirements are collected without patient values, including ambiguous patient and encounter namespace',()=>{

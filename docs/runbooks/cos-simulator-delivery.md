@@ -35,8 +35,11 @@ information, pending work and confirmed storage remain distinct.
 This is the explicit `opentriage-cos-simulator-v1` development contract. It performs
 no external network calls and does not prove live Cambio operation. Its contact and
 note storage commit independently from the worker. Contact identity uses the
-configured encounter namespace plus stable report UUID. Contact content must match
-on repeated commands. The note command uses the durable delivery UUID and content
+configured encounter namespace plus stable report UUID. The encounter identity must match on repeated commands. Signed patient corrections
+are explicitly supported by this simulator contract: the immutable initial contact and
+prepared payloads retain identity history, while the current contact/note pointer
+changes atomically when the replacement note is stored. This does not establish live
+Cambio support for patient reassignment. The note command uses the durable delivery UUID and content
 hash. Success requires the receiver's stored note receipt plus matching structured
 payload and PDF hashes, not merely acceptance of a contact or request.
 
@@ -77,3 +80,25 @@ No audio bytes are delivered. Actual OAuth, contact lifecycle, template codes,
 attachment retrieval/limits and final acknowledgement remain ticket 024 acceptance.
 
 Structured simulator payloads are bounded before item allocation: at most 10,000 signed occurrences, 2,000 mapped clinical items, and 1 MiB of source text and projected text each. The serialized Bundle is capped at 2 MiB, including JSON escaping. Exceeding any bound records `simulatorLimit` with no truncation and no receiver effect. These are explicit simulator limits, not verified live COS limits.
+
+## Signed amendments and replacement ordering
+
+Every new signed amendment under active configuration queues its exact snapshot and
+amendment sequence, with the active canonical mapping identity/revision/hash. It uses
+the effective signed clinical values and amendment author/time, while its PDF retains
+original signer and complete amendment provenance. No package activation rewrites
+an existing version. Missing configured amendment staff identity waits explicitly.
+
+Signing supersedes older pending/waiting work only when it has no prepared payload
+or attempt. The worker locks the report before activation/delivery rows during
+preparation, then releases that transaction before receiver I/O. The session report
+lock serializes sends across workers. Any uncertain attempt remains a durable barrier
+to newer work after crash or lock loss; a timeout never establishes rejection.
+Authorized reconciliation is a later Review workflow, not an automatic retry here.
+
+The simulator stores immutable note receipts and exact PDF bytes for each delivered
+version, and one `cos_simulator_current` pointer per report/contact. A conditional
+monotonic replacement rejects an older version even when called directly after a
+newer version was stored. Identical delivery replay is idempotent; another delivery
+at the same sequence cannot silently replace it. Receipt history and current pointer
+share report retention. Actual remote late-processing guarantees remain ticket 024.

@@ -1,3 +1,5 @@
+import {getDocument} from 'pdfjs-dist/legacy/build/pdf.mjs';
+import {AmendReportService} from '../dist/reports/amend-report.service.js';
 import test from 'node:test';
 import {reconcileTransmissionReview} from '../dist/review/review-transmission.js';
 import {AccountService} from '../dist/identity/account.service.js';
@@ -202,6 +204,56 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   await processCosWork(db);
   const [language]=await db.query("select coalesce((select language from app_identity.agency_settings where organization_id=$1),'en') language",[sample.organization_id]);
   assert.equal((await db.query('select pdf_language from clinical.cos_delivery where report_id=$1',[good]))[0].pdf_language,language.language);
+  // Actual signed amendments, independent receiver commits, and one-note replacement.
+  const amendService=new AmendReportService(db);
+  async function amend(id,sequence,text,field='eNarrative.01'){
+   const [target]=await db.query('select id from clinical.element_occurrence where report_id=$1 and element_id=$2',[id,field]);
+   return amendService.amend(id,{commandId:randomUUID(),expectedSequence:sequence,authorId:sample.documenting_user_id,reason:'Fictional signed correction',attestation:{meaning:'author approval'},changes:[{action:'replace',targetElementOccurrenceId:target.id,value:{kind:'text',value:text}}]});
+  }
+  const queued=await draft();await sign(queued);await amend(queued,1,'First correction');await amend(queued,2,'Newest correction');
+  assert.deepEqual((await db.query('select state from clinical.cos_delivery where report_id=$1 order by amendment_sequence',[queued])).map(x=>x.state),['superseded','superseded','pending']);
+  await Promise.all([processCosWork(db),processCosWork(db)]);
+  const current=async id=>(await db.query('select c.*,n.bundle,n.pdf,n.pdf_sha256 from clinical.cos_simulator_current c join clinical.cos_simulator_note n on n.delivery_id=c.delivery_id where c.report_id=$1',[id]))[0];
+  const latest=await current(queued);assert.equal(latest.amendment_sequence,2);assert.equal(latest.bundle.entry[0].resource.item[0].answer[0].valueString,'Newest correction');assert.equal(bytesHash(latest.pdf),latest.pdf_sha256);
+  const pdfDocument=await getDocument({data:new Uint8Array(latest.pdf),useSystemFonts:false}).promise;
+  let pdfText='';try{for(let page=1;page<=pdfDocument.numPages;page++)pdfText+=(await (await pdfDocument.getPage(page)).getTextContent()).items.map(x=>x.str).join(' ');}finally{await pdfDocument.destroy();}
+  assert.match(pdfText,/Newest correction/);assert.match(pdfText,/First correction/);assert.match(pdfText,/Fictional clinician/);
+  const corrected=await amend(queued,3,'corrected-identity','ePatient.05');await processCosWork(db);
+  const correctedNote=await current(queued);assert.equal(correctedNote.amendment_sequence,3);assert.equal(correctedNote.contact.patient.value,'corrected-identity');assert.equal(correctedNote.bundle.entry[0].resource.authored,corrected.signedAt);
+  assert.equal((await db.query('select count(*)::int count from clinical.cos_simulator_contact where report_id=$1',[queued]))[0].count,1);
+  // Hold the first remote note call after its durable intent. New signatures remain possible.
+  let entered,release;const arrived=new Promise(r=>entered=r),barrier=new Promise(r=>release=r);
+  const racing=await draft();await sign(racing);
+  const delayed=processCosWork(db,100,{contact:simulator.contact.bind(simulator),note:async(...args)=>{entered();await barrier;return simulator.note(...args);}});
+  await arrived;await amend(racing,1,'Intermediate correction');
+  const third=makePackage({...portable,version:'3',definition:{...newer.definition,revision:3,clinicalMappings:[{...newer.definition.clinicalMappings[0],linkId:'123456789'}]}});
+  await config(next+2,third);await amend(racing,2,'Latest mapped correction');
+  await processCosWork(db);assert.equal(await current(racing),undefined,'newer worker cannot pass live report lock');
+  release();await delayed;await processCosWork(db);
+  const raced=await current(racing);assert.equal(raced.amendment_sequence,2);assert.equal(raced.bundle.entry[0].resource.item[0].linkId,'123456789');
+  const prepared=await db.query('select d.amendment_sequence,d.mapping_sha256,p.* from clinical.cos_delivery d join clinical.cos_payload p on p.delivery_id=d.id where d.report_id=$1 order by d.amendment_sequence',[racing]);
+  assert.deepEqual(prepared.map(x=>[x.amendment_sequence,x.mapping_sha256]),[[0,newer.sha256],[2,third.sha256]]);
+  const earlier=prepared[0];await assert.rejects(simulator.note(racing,earlier.delivery_id,{...earlier,payloadSha256:earlier.payload_sha256,pdfSha256:earlier.pdf_sha256,contactSha256:earlier.contact_sha256,amendmentSequence:0}),{code:'identityConflict'});
+  assert.equal((await current(racing)).delivery_id,raced.delivery_id,'late receiver replay cannot replace newest note');
+  // Lost acknowledgment must remain a durable barrier, including after session lock release/restart.
+  for(const stage of ['contact','note']){
+   const unknown=await draft();await sign(unknown);
+   await processCosWork(db,100,{contact:async(...args)=>{const evidence=await simulator.contact(...args);if(stage==='contact')throw new Error('lost acknowledgement');return evidence;},note:async(...args)=>{await simulator.note(...args);throw new Error('lost acknowledgement');}});
+   await amend(unknown,1,'Blocked correction');await amend(unknown,2,'Newest blocked correction');
+   await Promise.all([processCosWork(db),processCosWork(db)]);
+   const versions=await db.query('select state,amendment_sequence from clinical.cos_delivery where report_id=$1 order by amendment_sequence',[unknown]);assert.deepEqual(versions.map(x=>x.state),['uncertain','superseded','pending']);
+   assert.equal((await db.query('select count(*)::int count from clinical.cos_attempt where report_id=$1',[unknown]))[0].count,1);
+   assert.equal((await current(unknown))?.amendment_sequence,stage==='note'?0:undefined);
+  }
+  // Remote processing can continue AFTER the local call fails and releases its lock.
+  const remoteLate=await draft();await sign(remoteLate);let completeRemote;
+  await processCosWork(db,100,{contact:simulator.contact.bind(simulator),note:async(...args)=>{completeRemote=()=>simulator.note(...args);throw new Error('transport ended before remote processing');}});
+  await amend(remoteLate,1,'Must wait for reconciliation');await processCosWork(db);
+  assert.equal(await current(remoteLate),undefined);await completeRemote();await processCosWork(db);
+  assert.equal((await current(remoteLate)).amendment_sequence,0);
+  assert.equal((await db.query('select count(*)::int count from clinical.cos_attempt where report_id=$1',[remoteLate]))[0].count,1,'lease/session release is not remote completion');
+  const independent=await draft();await sign(independent);await processCosWork(db,1);
+  assert.equal((await current(independent)).amendment_sequence,0,'uncertain reports must not starve independent work in bounded batches');
   // Immutable payload/evidence and runtime privilege boundaries.
   await assert.rejects(db.query('update clinical.cos_payload set pdf=$2 where delivery_id=$1',[stored.delivery_id,Buffer.from('tampered')]));
   await assert.rejects(db.query("update clinical.cos_attempt set mapping_revision=999 where delivery_id=$1",[stored.delivery_id]));
