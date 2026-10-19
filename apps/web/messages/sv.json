@@ -2404,5 +2404,10 @@
   "pdf.media-decode-failed": "Ett signerat foto kan inte avkodas säkert. Be en administratör undersöka originalet. Dokumentet är ofullständigt.",
   "pdf.media-too-large": "Foton överskrider simulatorns renderingsgränser (totalt 25 MiB, 20 miljoner pixlar per bild, totalt 80 miljoner pixlar). Inga foton utelämnades. Fastställ stödda gränser före leverans.",
   "pdf.audio-metadata-unavailable": "Den signerade versionen saknar verifierad ljudlängd. Be en administratör utreda det signerade underlaget; aktuella ljuduppgifter kan inte ersätta det.",
-  "pdf.limits": "Simulatorgränser: PDF 10 MiB; foton totalt 25 MiB, 20 miljoner pixlar per bild och totalt 80 miljoner pixlar. COS-mottagning är ännu inte verifierad. Ljud visas endast som metadata."
+  "pdf.limits": "Simulatorgränser: PDF 10 MiB; foton totalt 25 MiB, 20 miljoner pixlar per bild och totalt 80 miljoner pixlar. COS-mottagning är ännu inte verifierad. Ljud visas endast som metadata.",
+  "eps.cached": "Skyddad cachelagrad kopia",
+  "eps.offlineCached": "Offline — skyddad cachelagrad kopia",
+  "eps.cachePolicy": "Tillgänglig inom uppdragets skyddade lagrings- och sessionsgränser. Återanslut för att kontrollera åtkomst och uppdatera. Ändrad patientidentitet kräver en ny kontroll online.",
+  "eps.onlineOnly": "Endast online: en skyddad offlinekopia är inte tillgänglig.",
+  "eps.refresh": "Uppdatera sammanfattning"
 }

@@ -1,4 +1,4 @@
-import type { CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
+import type { EpsLookup, CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 import { sameJsonValue } from "./json-values";
 
@@ -59,10 +59,79 @@ export interface ProtectedAudioPreview {
   readonly complete: boolean;
 }
 
+export interface ProtectedEpsScope {
+  readonly reportId: string;
+  readonly organizationId: string;
+  readonly userId: string;
+  /** Resolved identifier fingerprint from the pinned form and canonical patient mapping. */
+  readonly documentKey: string;
+}
+export interface ProtectedEpsEntry {
+  readonly scope: ProtectedEpsScope;
+  readonly lookup: EpsLookup;
+}
+
+export function matchingProtectedEps(entry: ProtectedEpsEntry | undefined, scope: ProtectedEpsScope): EpsLookup | null {
+  if (!entry || !sameJsonValue(entry.scope, scope) || entry.lookup.status !== "available" || !entry.lookup.summary ||
+      entry.lookup.context?.reportId !== scope.reportId || entry.lookup.context.organizationId !== scope.organizationId) return null;
+  return structuredClone(entry.lookup);
+}
+
+/** EPS shares the report key, deadline, lock and recovery grant; it has no independent store. */
+export function protectedEps(scope: ProtectedEpsScope): EpsLookup | null {
+  const context = contexts.get(scope.reportId);
+  if (!context || context.locking || protectedRecordExpired(context.envelope) || protectedStorageStatus(scope.reportId).mode === "locked") return null;
+  return matchingProtectedEps(context.payload.eps, scope);
+}
+
+export function protectedEpsPatientMapping(scope: Omit<ProtectedEpsScope, "documentKey">) {
+  const context = contexts.get(scope.reportId);
+  if (!context || context.locking || protectedRecordExpired(context.envelope) || protectedStorageStatus(scope.reportId).mode === "locked") return undefined;
+  const entry = context.payload.eps;
+  if (!entry || entry.scope.userId !== scope.userId || entry.scope.organizationId !== scope.organizationId || entry.scope.reportId !== scope.reportId) return undefined;
+  return entry.lookup.context?.patientIdentifier;
+}
+
+export async function retainProtectedEps(scope: ProtectedEpsScope, lookup: EpsLookup, isCurrent: () => boolean = () => true): Promise<boolean> {
+  const context = contexts.get(scope.reportId);
+  if (!isCurrent() || !context || context.locking || protectedRecordExpired(context.envelope) || !protectedStorageActive(scope.reportId)) return false;
+  if (!matchingProtectedEps({ scope, lookup }, scope)) return false;
+  const attempted = structuredClone({ scope, lookup });
+  context.payload = { ...context.payload, eps: attempted };
+  queuePersist(scope.reportId);
+  try { await flushProtectedReport(scope.reportId); }
+  catch (error) {
+    // Optional server content must never keep subsequent encounter edits over quota.
+    // Preserve concurrent report/media changes and a newer EPS request verbatim.
+    if (contexts.get(scope.reportId) === context && !context.locking && context.payload.eps === attempted) {
+      context.payload = { ...context.payload, eps: undefined };
+      queuePersist(scope.reportId);
+      try { await flushProtectedReport(scope.reportId); } catch { /* Shared status retains the real storage failure. */ }
+    }
+    throw error;
+  }
+  if (!isCurrent()) {
+    if (contexts.get(scope.reportId) === context && !context.locking && context.payload.eps === attempted) {
+      context.payload = { ...context.payload, eps: undefined };
+      queuePersist(scope.reportId);
+    }
+    return false;
+  }
+  return contexts.get(scope.reportId) === context && !context.locking && protectedEps(scope) !== null;
+}
+
+export function discardProtectedEps(reportId: string): void {
+  const context = contexts.get(reportId);
+  if (!context?.payload.eps) return;
+  context.payload = { ...context.payload, eps: undefined };
+  queuePersist(reportId);
+}
+
 type ProtectedClinicalPayload = {
   readonly schemaVersion: 1;
   readonly report?: unknown;
   readonly shellState?: unknown;
+  readonly eps?: ProtectedEpsEntry;
   readonly photoQueue?: ReadonlyArray<ProtectedPhotoQueueEntry>;
   readonly photoPreview?: ProtectedPhotoPreview;
   readonly audioQueue?: ReadonlyArray<ProtectedAudioQueueEntry>;
@@ -200,6 +269,7 @@ export type RecoveredProtectedPayload = {
   readonly schemaVersion: 1;
   readonly report?: unknown;
   readonly shellState?: unknown;
+  readonly eps?: ProtectedEpsEntry;
   readonly photoQueue?: ReadonlyArray<ProtectedPhotoQueueEntry>;
   readonly photoPreview?: ProtectedPhotoPreview;
   readonly audioQueue?: ReadonlyArray<ProtectedAudioQueueEntry>;
@@ -597,8 +667,9 @@ export async function lockProtectedClinicalStorage(now = new Date()): Promise<vo
     for (const request of protectedAuthorityRequests) request.abort();
     protectedAuthorityRequests.clear();
     const active = [...contexts.entries()];
-    for (const [, context] of active) {
+    for (const [reportId, context] of active) {
       context.locking = true;
+      publishStatus(reportId, { mode: "locked", explanation: null });
       context.receiptRequest?.abort();
     }
     await Promise.allSettled(active.map(([, context]) => context.writer.flush()));
@@ -731,17 +802,23 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   try {
     await storeWithPressureRecovery(record);
   } catch (error) {
-    if (!quotaError(error) || (!persistedPayload.photoQueue?.some(({ note }) => note.persistenceState === "ready") &&
+    if (!quotaError(error) || (!persistedPayload.eps && !persistedPayload.photoQueue?.some(({ note }) => note.persistenceState === "ready") &&
         !persistedPayload.audioQueue?.some(({ note }) => note.persistenceState === "ready"))) throw error;
-    // Verified server copies are the only media that may be sacrificed under
+    // Verified media and read-only EPS server copies may be sacrificed under
     // pressure. Pending commands and previews remain byte-for-byte intact.
-    persistedPayload = { ...persistedPayload,
+    persistedPayload = { ...persistedPayload, eps: undefined,
       photoQueue: persistedPayload.photoQueue?.filter(({ note }) => note.persistenceState !== "ready"),
       audioQueue: persistedPayload.audioQueue?.filter(({ note }) => note.persistenceState !== "ready") };
     encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, persistedPayload);
     record = { ...record, ...encrypted };
     await storeWithPressureRecovery(record);
-    context.payload = persistedPayload;
+    // The encrypted snapshot may predate concurrent draft/media writes. Evict
+    // only disposable copies from the live payload, never replace newer work.
+    context.payload = { ...context.payload,
+      ...(sameJsonValue(context.payload.eps, payload.eps) ? { eps: undefined } : {}),
+      photoQueue: context.payload.photoQueue?.filter(({ note }) => note.persistenceState !== "ready"),
+      audioQueue: context.payload.audioQueue?.filter(({ note }) => note.persistenceState !== "ready") };
+    queuePersist(reportId);
     publishPhotos(reportId);
     publishAudio(reportId);
   }
@@ -867,7 +944,8 @@ async function acquireEditLock(reportId: string): Promise<(() => void) | null> {
 }
 
 export function protectedStorageActive(reportId: string): boolean {
-  return contexts.has(reportId) && offlineEditingAvailable(protectedStorageStatus(reportId).mode);
+  const context = contexts.get(reportId);
+  return Boolean(context && !context.locking && !protectedRecordExpired(context.envelope) && offlineEditingAvailable(protectedStorageStatus(reportId).mode));
 }
 
 /**

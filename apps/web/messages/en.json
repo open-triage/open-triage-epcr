@@ -2406,5 +2406,10 @@
   "pdf.media-decode-failed": "A signed photo cannot be decoded safely. Ask an administrator to investigate the original media. This artifact is incomplete.",
   "pdf.media-too-large": "Photos exceed simulator rendering limits (25 MiB total, 20 million pixels per image, 80 million pixels total). No photos were omitted. Resolve supported limits before delivery.",
   "pdf.audio-metadata-unavailable": "The signed version does not contain a verified audio duration. Ask an administrator to resolve the signed evidence; current audio metadata cannot replace it.",
-  "pdf.limits": "Simulator limits: PDF 10 MiB; photos 25 MiB total, 20 million pixels per image and 80 million pixels total. COS acceptance remains unverified. Audio is represented by metadata only."
+  "pdf.limits": "Simulator limits: PDF 10 MiB; photos 25 MiB total, 20 million pixels per image and 80 million pixels total. COS acceptance remains unverified. Audio is represented by metadata only.",
+  "eps.cached": "Protected cached copy",
+  "eps.offlineCached": "Offline — protected cached copy",
+  "eps.cachePolicy": "Available under this encounter’s protected storage and session limits. Reconnect to check access and refresh. Changes to patient identity require a new online check.",
+  "eps.onlineOnly": "Online only: a protected offline copy is unavailable.",
+  "eps.refresh": "Refresh summary"
 }
