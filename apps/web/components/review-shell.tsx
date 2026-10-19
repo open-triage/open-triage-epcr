@@ -1,4 +1,5 @@
 "use client";
+import { ReviewIdentifierCorrection } from "./review-identifier-correction";
 import { MetricEvidence } from "./metric-evidence";
 
 import type { ClinicianSession, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueDraft, ReviewSignedReport,
@@ -659,6 +660,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
               <h4>{t("review.transmission.heading")}</h4>
               {itemDetail.transmissionRestricted ? <p>{t("review.transmission.restricted")}</p> : itemDetail.transmission && <>
                 <p>{t(itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
+                {itemDetail.transmissionReason === "patient-identity" && itemDetail.status !== "completed" && itemDetail.assigneeId === session.user.id && <ReviewIdentifierCorrection key={`${itemDetail.id}:${session.user.id}:${dataset}`} item={itemDetail} session={session} dataset={dataset} language={language} online={online} onSaved={next=>{setItemDetail(next);setSelectedItem(next);setRefresh(value=>value+1);setDetailRefresh(value=>value+1);setActionNotice(t("review.identifier.saved"));}}/>}
                 {itemDetail.transmission.patientField && <p>{t("review.transmission.patientField")}: {language === "sv" ? itemDetail.transmission.patientField.localization?.sv?.label ?? itemDetail.transmission.patientField.localization?.sv?.name ?? itemDetail.transmission.patientField.localization?.sv?.title ?? itemDetail.transmission.patientField.name : itemDetail.transmission.patientField.name} <code>{itemDetail.transmission.patientField.id}</code></p>}
                 <ul>{itemDetail.transmission.missing.map(code=><li key={code}>{t(`review.transmission.requirement.${code}`)}</li>)}</ul>
                 {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}

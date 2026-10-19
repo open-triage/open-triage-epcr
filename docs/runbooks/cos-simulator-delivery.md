@@ -127,3 +127,27 @@ Documenting a corrected identifier and explicitly revalidating configuration
 are subsequent workflow slices; this condition does not mutate signed values or
 resend an uncertain delivery. Evidence contains no patient identifier value and
 expires with its report under the ordinary synthetic retention workflow.
+
+The assigned Review action **Document valid identifier** loads the active canonical
+mapping and records a reviewer-signed amendment, durable delivery intent and resolved
+identifier outcome in one serializable transaction. It requires the current assignee,
+identifying report access, dataset/agency scope, expected report/item/amendment revisions,
+and the exact configuration state and canonical hash shown in the dialog. The original
+signed snapshot and earlier mapping provenance remain unchanged. Other missing mappings
+remain visible; a queued correction does not establish confirmed remote delivery or
+close transmission-failure work. Replaying the same command reauthorizes the current
+assignee and returns the saved outcome without another amendment. An uncertain predecessor
+continues to prevent automatic contact attempts.
+
+The simulator and correction action share exact scheme validation. [Inera's identity
+format registry](https://inera.atlassian.net/wiki/spaces/PU/pages/3353215438/Identitetsformat)
+assigns `.3.1` to Swedish personal numbers and `.3.3` to coordination numbers
+(`urn:oid:1.2.752.129.2.1.3.1` and `.3.3`). Both use 12 digits, a valid encoded calendar
+date and a Luhn check digit; coordination numbers add 60 to the day. Inera documents
+month `00` as unknown and evaluates it as January. The [Carelink reserve format](https://inera.atlassian.net/wiki/spaces/PU/pages/3413475352/4.10+Lokala+Reservidformat)
+uses `.3.2`, a 1700–2099 year, month 01–12, representative day 32–59 and a Luhn check
+digit over the final ten digits. The software preserves the supplied value exactly,
+never creates an identifier and never aliases these different schemes automatically.
+Unsupported schemes remain explicit blockers. Format validation establishes neither
+allocation nor patient ownership; the acting reviewer must attest to verification.
+These are simulator rules. Live Cambio compatibility remains gated by ticket 024.

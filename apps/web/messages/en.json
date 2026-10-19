@@ -2492,5 +2492,19 @@
   "review.transmission.requirement.organization": "Organization HSA identifier is missing.",
   "review.transmission.requirement.encounter": "Encounter identifier namespace is missing.",
   "review.transmission.requirement.configuration": "The configured identifier destination or integration mapping is unavailable for this signed report.",
-  "review.transmission.openAdmin": "Open Hospital integrations administration"
+  "review.transmission.openAdmin": "Open Hospital integrations administration",
+  "review.identifier.action": "Document valid identifier",
+  "review.identifier.explanation": "Sign an attributable amendment to the configured patient field. Other missing requirements remain open. Delivery is queued and requires separate confirmation.",
+  "review.identifier.mapping": "Mapping revision",
+  "review.identifier.namespace": "Identifier namespace",
+  "review.identifier.value": "Correct identifier",
+  "review.identifier.reason": "Reason for correction",
+  "review.identifier.attestation": "I attest that I have verified this patient identifier and sign this correction.",
+  "review.identifier.cancel": "Cancel",
+  "review.identifier.refresh": "Refresh requirements",
+  "review.identifier.submit": "Sign correction and queue delivery",
+  "review.identifier.stale": "The report, assignment or mapping changed. Refresh requirements and review your correction.",
+  "review.identifier.invalid": "The correction could not be accepted. Check the identifier and current requirements.",
+  "review.identifier.unavailable": "Requirements could not be loaded or the correction could not be confirmed. Retry when connected.",
+  "review.identifier.saved": "Signed identifier correction saved. Delivery remains pending confirmation."
 }
