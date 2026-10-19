@@ -300,6 +300,8 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    assert.doesNotMatch(JSON.stringify(proof.evidence),/200207252388|Fictional documented assessment|token|credential/);
    assert.equal((await db.query('select count(*)::int n from clinical.cos_reconciliation where report_id=$1',[id]))[0].n,1);
    if(stage==='contact'){
+    assert.equal((await db.query('select finding from clinical.cos_delivery where report_id=$1',[id]))[0].finding,'reconciledNotStored');
+    assert.equal((await db.query('select next_due from clinical.cos_retry_state where delivery_id=$1',[command.deliveryId]))[0].next_due,null,'fenced non-delivery never creates an automatic retry schedule');
     assert.equal((await recoveryReview.item('fixture',itemId,'synthetic')).transmission.retryable,true);
     await retryCosReview(db,recoverySessions,'fixture',itemId,await retryInput(itemId));await processCosWork(db);
     assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[id]))[0].n,1);
@@ -325,6 +327,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    const crashDetail=await recoveryReview.item('fixture',crashItem.id,'synthetic');assert.equal(crashDetail.transmission.finding,'outcomeUnknown');assert.equal(crashDetail.transmission.deliveryState,'uncertain');assert.equal(crashDetail.transmission.retryable,false);
    assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_contact where report_id=$1',[crashed]))[0].n,crashStage==='intent'?0:1);
    assert.equal((await db.query('select count(*)::int n from clinical.cos_simulator_note where report_id=$1',[crashed]))[0].n,crashStage==='note'?1:0);
+   const [stepEvidence]=await db.query('select evidence from clinical.cos_delivery_event where report_id=$1 order by created_at desc,id desc limit 1',[crashed]);assert.deepEqual(stepEvidence.evidence,{contact:crashStage==='note'?'known':'uncertain',note:'uncertain',storage:'uncertain'});
    const reconciliation=await reconcileInput(crashed);await reconcileCosReview(db,recoverySessions,'fixture',reconciliation.itemId,reconciliation.command);
    assert.equal((await db.query('select outcome from clinical.cos_reconciliation where report_id=$1',[crashed]))[0].outcome,crashStage==='note'?'stored':'not-stored');
 

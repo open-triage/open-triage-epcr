@@ -41,7 +41,7 @@ export async function reconcileCosReview(database:DataSource,sessions:ClinicianS
   await manager.query(`insert into clinical.cos_reconciliation(id,command_sha256,report_id,item_id,delivery_id,attempt_id,actor_id,evidence,outcome) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,[input.commandId,digest,candidate.report_id,itemId,delivery.id,attempt.id,scope.userId,JSON.stringify(proof),proof.outcome]);
   const [newer]=await manager.query<Array<{newer:boolean}>>('select exists(select 1 from clinical.amendment where report_id=$1 and sequence>$2) or exists(select 1 from clinical.cos_delivery where report_id=$1 and amendment_sequence>$2) newer',[candidate.report_id,delivery.amendment_sequence]);
   const next=proof.outcome==='stored'?'confirmed':proof.outcome==='not-stored'?(newer?.newer?'superseded':'failed'):'uncertain';
-  const finding=next==='failed'?'outage':next==='uncertain'?(proof.outcome==='unsupported'?'reconciliationUnsupported':'reconciliationUnresolved'):null;
+  const finding=next==='failed'?'reconciledNotStored':next==='uncertain'?(proof.outcome==='unsupported'?'reconciliationUnsupported':'reconciliationUnresolved'):null;
   await manager.query('update clinical.cos_delivery set state=$2,finding=$3,updated_at=clock_timestamp() where id=$1',[delivery.id,next,finding]);
   await manager.query(`insert into clinical.cos_delivery_event(delivery_id,report_id,attempt_id,actor_id,state,finding,evidence) values($1,$2,$3,$4,$5,$6,$7::jsonb)`,[delivery.id,candidate.report_id,attempt.id,scope.userId,next,finding,JSON.stringify({action:'reconcile',commandId:input.commandId,...proof})]);
   await reconcileCosFailure(manager,candidate.report_id);

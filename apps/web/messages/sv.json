@@ -2497,7 +2497,7 @@
   "review.recovery.retry": "Försök skicka senaste signerade version igen",
   "review.recovery.queued": "Överföringen har köats. Granskningsärendet förblir öppet tills leveransen har bekräftats.",
   "review.recovery.uncertain": "Leveransens utfall är osäkert. Nytt försök blockeras tills mottagarens utfall har fastställts.",
-  "review.recovery.ready": "Ett fastställt transportavbrott kan återförsökas med samma förberedda kliniska innehåll. Ta ärendet för att försöka igen.",
+  "review.recovery.ready": "Ett bekräftat tillfälligt transportfel kan hanteras med ett nytt försök med samma förberedda kliniska innehåll.",
   "review.recovery.confirmed": "Leveransen är bekräftad. Det operativa ärendet är löst.",
   "review.recovery.correct": "Korrigera angivet innehåll, autentiseringsuppgifter, identifierare eller konfiguration före återställning. Kontakta administratör vid behov.",
   "review.recovery.commands": "Historik för återställningskommandon",
@@ -2595,5 +2595,7 @@
   "review.reconciliation.step.rejected": "avvisad eller spärrad",
   "review.reconciliation.step.uncertain": "osäker",
   "cosDelivery.finding.reconciliationUnsupported": "Den verkliga mottagaren saknar ett verifierat avstämningskontrakt.",
-  "cosDelivery.finding.reconciliationUnresolved": "Lagringsunderlaget kunde inte verifieras. Omsändning är fortsatt blockerad."
+  "cosDelivery.finding.reconciliationUnresolved": "Lagringsunderlaget kunde inte verifieras. Omsändning är fortsatt blockerad.",
+  "cosDelivery.finding.reconciledNotStored": "Verifierad utebliven leverans: ingen anteckning lagrades och det ursprungliga försöket är spärrat mot sena skrivningar.",
+  "review.reconciliation.retryReady": "Ett avsiktligt nytt försök kan återanvända samma förberedda kliniska innehåll efter verifierad utebliven leverans. Budgeten för automatiska försök är oförändrad."
 }

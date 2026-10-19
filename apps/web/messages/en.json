@@ -2499,7 +2499,7 @@
   "review.recovery.retry": "Retry latest signed version",
   "review.recovery.queued": "Delivery queued. This Review item stays open until delivery is confirmed.",
   "review.recovery.uncertain": "Delivery outcome is uncertain. Retry is blocked until the remote outcome is established.",
-  "review.recovery.ready": "A definite transport outage can be retried using the same prepared clinical content. Claim this item to retry.",
+  "review.recovery.ready": "A definite transport outage can be retried using the same prepared clinical content.",
   "review.recovery.confirmed": "Delivery confirmed. The operational concern is resolved.",
   "review.recovery.correct": "Correct the indicated payload, credentials, identifiers or configuration before recovery. Request an administrator where needed.",
   "review.recovery.commands": "Recovery command history",
@@ -2597,5 +2597,7 @@
   "review.reconciliation.step.rejected": "rejected or fenced",
   "review.reconciliation.step.uncertain": "uncertain",
   "cosDelivery.finding.reconciliationUnsupported": "The real receiver has no verified reconciliation contract.",
-  "cosDelivery.finding.reconciliationUnresolved": "Stored evidence could not be verified. Resend remains blocked."
+  "cosDelivery.finding.reconciliationUnresolved": "Stored evidence could not be verified. Resend remains blocked.",
+  "cosDelivery.finding.reconciledNotStored": "Verified non-delivery: no note was stored and the original attempt is fenced against late writes.",
+  "review.reconciliation.retryReady": "A deliberate retry can reuse the same prepared clinical content after verified non-delivery. The automatic retry budget is unchanged."
 }

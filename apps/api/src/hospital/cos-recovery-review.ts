@@ -1,7 +1,7 @@
 import type { EntityManager } from 'typeorm';
 import { reconcileTransmissionReason } from '../review/review-transmission.js';
-/** Definite transport failure only. Payload/credential/identity findings require correction. */
-export const cosRetryable = (state:string,finding:string|null) => state==='failed'&&finding==='outage';
+/** Definite outage or verified fenced non-delivery. Other findings need correction. */
+export const cosRetryable = (state:string,finding:string|null) => state==='failed'&&(finding==='outage'||finding==='reconciledNotStored');
 /** Caller serializes the report. A queued retry remains unresolved until final remote proof. */
 export async function reconcileCosFailure(manager:EntityManager,reportId:string){
  const [latest]=await manager.query<Array<{id:string;amendment_sequence:number;configuration_revision:string;mapping_id:string;mapping_revision:number;mapping_sha256:string;state:string;finding:string|null;state_revision:string;active_revision:string|null;failed:boolean;uncertain:boolean}>>(`

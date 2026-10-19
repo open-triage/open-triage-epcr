@@ -37,10 +37,10 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
   const [lock]=await manager.query<Array<{locked:boolean}>>('select pg_try_advisory_xact_lock(731013,hashtext($1)) locked',[prior.report_id]);
   if(!lock?.locked)return;
   await manager.query('select id from clinical.report where id=$1 for update',[prior.report_id]);
-  const [still]=await manager.query(`select id from clinical.cos_delivery where id=$1 and state='uncertain' and finding in ('inFlight','contactStored') for update`,[prior.id]);
+  const [still]=await manager.query(`select id,finding from clinical.cos_delivery where id=$1 and state='uncertain' and finding in ('inFlight','contactStored') for update`,[prior.id]);
   if(!still)return;
   const [attempt]=await manager.query<Array<{id:string}>>('select id from clinical.cos_attempt where delivery_id=$1 order by created_at desc,id desc limit 1',[prior.id]);
-  await event(manager,prior,worker,'uncertain','outcomeUnknown',attempt?.id??null);
+  await event(manager,prior,worker,'uncertain','outcomeUnknown',attempt?.id??null,{contact:still.finding==='contactStored'?'known':'uncertain',note:'uncertain',storage:'uncertain'});
  });
  const candidates=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id join clinical.report r on r.id=d.report_id where (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and s.active_revision is not null and (s.active_revision=d.configuration_revision or not exists(select 1 from clinical.cos_attempt a where a.delivery_id=d.id)) and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and barrier.id<>d.id and barrier.state='uncertain') order by d.created_at,d.id limit $1`,[limit]);
  for(const candidate of candidates){
@@ -102,7 +102,7 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
       }
       attempt=randomUUID();
       await runner.manager.query(`insert into clinical.cos_attempt(id,delivery_id,report_id,configuration_revision,mapping_id,mapping_revision,mapping_sha256,payload_sha256,pdf_sha256,worker_id,recovery_command_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[attempt,job.id,job.report_id,job.configuration_revision,job.mapping_id,job.mapping_revision,job.mapping_sha256,payload.payloadSha256,payload.pdfSha256,worker,recovery??null]);
-      await event(runner.manager,job,worker,'uncertain','inFlight',attempt);
+      await event(runner.manager,job,worker,'uncertain','inFlight',attempt,{contact:'uncertain',note:'uncertain',storage:'uncertain'});
      }catch(error){
       if(error instanceof CosFinding||error instanceof SignedPdfError||error instanceof Error&&'getResponse' in error){
        await event(runner.manager,job,worker,error instanceof CosFinding?error.state:'failed',error instanceof CosFinding?error.code:error instanceof SignedPdfError?'pdfUnavailable':'versionUnavailable');payload=undefined;
