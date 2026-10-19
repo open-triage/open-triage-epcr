@@ -2330,7 +2330,7 @@
   "pdf.invalid-version": "Den signerade versionen kan inte verifieras. Ingen PDF skapades.",
   "pdf.definitions-unavailable": "De låsta kliniska definitionerna är inte tillgängliga. Ingen PDF skapades.",
   "pdf.unsupported-text": "Journalen innehåller tecken som PDF-teckensnittet inte kan återge korrekt. Ingen PDF skapades.",
-  "pdf.too-large": "Hela journalen överskrider gränsen för PDF-generering. Ingen PDF skapades.",
+  "pdf.too-large": "Hela PDF-filen överskrider simulatorgränserna (10 MiB, 500 sidor eller två miljoner tecken). Inget innehåll utelämnades. Fastställ stödda gränser före leverans.",
   "pdf.viewerHelp": "Om webbläsaren inte kan visa förhandsvisningen kan du hämta PDF-filen för granskning.",
   "eps.button": "Patientöversikt (EPS)",
   "eps.checking": "Kontrollerar EPS",
@@ -2399,5 +2399,10 @@
   "epsImport.decision.keep": "Befintlig dokumentation behölls",
   "epsImport.decision.import": "Importerad",
   "epsImport.decision.replace": "Ersatt med vald källa",
-  "epsImport.sourceDocument": "Källdokument"
+  "epsImport.sourceDocument": "Källdokument",
+  "pdf.media-unavailable": "Ett signerat foto saknas eller klarar inte integritetskontrollen. Be en administratör återställa originalet och försök igen. Dokumentet är ofullständigt.",
+  "pdf.media-decode-failed": "Ett signerat foto kan inte avkodas säkert. Be en administratör undersöka originalet. Dokumentet är ofullständigt.",
+  "pdf.media-too-large": "Foton överskrider simulatorns renderingsgränser (totalt 25 MiB, 20 miljoner pixlar per bild, totalt 80 miljoner pixlar). Inga foton utelämnades. Fastställ stödda gränser före leverans.",
+  "pdf.audio-metadata-unavailable": "Den signerade versionen saknar verifierad ljudlängd. Be en administratör utreda det signerade underlaget; aktuella ljuduppgifter kan inte ersätta det.",
+  "pdf.limits": "Simulatorgränser: PDF 10 MiB; foton totalt 25 MiB, 20 miljoner pixlar per bild och totalt 80 miljoner pixlar. COS-mottagning är ännu inte verifierad. Ljud visas endast som metadata."
 }

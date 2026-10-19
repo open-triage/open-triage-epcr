@@ -1046,12 +1046,15 @@ export class ReviewService implements OnModuleDestroy {
       try {
         const source = await signedReportPdfSource(manager, id, snapshotId, Number(sequenceText));
         const pdf = await renderSignedReportPdf(source, languageText as PdfLanguage);
+        for (const note of source.notes.filter((item) => item.type === "photo"))
+          await recordMediaAccess(manager, { organizationId: scope.organizationId, reportId: id, noteId: note.id,
+            mediaType: "photo", actorId: scope.userId, careProcess: "review", accessOrganizationId: session.organization.id });
         await recordPatientAccess(manager, { organizationId: scope.organizationId, actorId: scope.userId,
           accessOrganizationId: session.organization.id, reportIds: [id], action: "review.report",
           careProcess: "review", resourceId: snapshotId });
         return pdf;
       } catch (error) {
-        if (error instanceof SignedPdfError) throw new UnprocessableEntityException({ code: error.code });
+        if (error instanceof SignedPdfError) throw new UnprocessableEntityException({ code: error.code, ...(error.noteId ? { noteId: error.noteId } : {}) });
         throw error;
       }
     });

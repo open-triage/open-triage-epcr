@@ -1,3 +1,5 @@
+import { SIGNED_PDF_SIMULATOR_LIMITS } from "./signed-report-pdf-media.js";
+import { SignedPdfError } from "./signed-report-pdf.js";
 import { NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import type { CatalogDraftCustomElement } from "@open-triage/contracts";
@@ -102,6 +104,23 @@ export async function signedReportPdfSource(manager: EntityManager, reportId: st
     const pinned = customById.get(String(value.element_identity_id));
     if (!pinned) throw new UnprocessableEntityException({ code: "pdf.definitions-unavailable" });
     configuration.customFields[pinned.id] = pinned as CatalogDraftCustomElement;
+  }
+  // Caller has authorized the report and identifying media access in this transaction.
+  // Fetch only signed photo IDs from this report; never current captions or unsigned notes.
+  source.photoBytes = {};
+  let total = 0;
+  for (const note of source.notes.filter((item) => item.type === "photo")) {
+    if (!note.media || !Number.isSafeInteger(note.media.byteSize) || note.media.byteSize < 1)
+      throw new SignedPdfError("pdf.media-unavailable", note.id);
+    total += note.media.byteSize;
+    if (total > SIGNED_PDF_SIMULATOR_LIMITS.photoBytes) throw new SignedPdfError("pdf.media-too-large", note.id);
+    const [blob] = await manager.query<Array<{ canonical_bytes: Buffer }>>(`
+      select b.canonical_bytes from clinical.report_photo_blob b
+      join clinical.report r on r.id=b.report_id and r.organization_id=b.organization_id
+      where b.report_id=$1 and b.note_id=$2 and octet_length(b.canonical_bytes)=$3`,
+    [reportId, note.id, note.media.byteSize]);
+    if (!blob) throw new SignedPdfError("pdf.media-unavailable", note.id);
+    source.photoBytes[note.id] = blob.canonical_bytes;
   }
   return source;
 }
