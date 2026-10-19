@@ -299,6 +299,16 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   await retryCosReview(db,recoverySessions,'fixture',failureItem.id,await retryInput());await processCosWork(db);
   assert.equal((await recoveryReview.item('fixture',failureItem.id,'synthetic')).status,'completed');
   assert.equal((await db.query("select count(*)::int n from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[outage]))[0].n,1);
+  // An unconsumed retry overtaken by a new signed amendment is recorded as superseded,
+  // never shown forever as pending and never sends the older prepared payload.
+  const overtaken=await draft();await sign(overtaken);await processCosWork(db,100,{contact:async()=>{throw new CosRejected('outage');},note:simulator.note.bind(simulator)});
+  const [overtakenItem]=await db.query("select * from clinical.review_item where report_id=$1 and kind='cos-delivery-failed'",[overtaken]);
+  await recoveryReview.claim('fixture',overtakenItem.id,{commandId:randomUUID(),expectedVersion:Number(overtakenItem.version),dataset:'synthetic'});
+  await retryCosReview(db,recoverySessions,'fixture',overtakenItem.id,await retryInput(overtakenItem.id));
+  await amend(overtaken,1,'New version before retry starts');await processCosWork(db);
+  const overtakenDetail=await recoveryReview.item('fixture',overtakenItem.id,'synthetic');assert.equal(overtakenDetail.transmission.recoveryCommands[0].outcome,'superseded');
+  assert.equal(overtakenDetail.status,'completed');
+  assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1 and d.amendment_sequence=0',[overtaken]))[0].n,1);
   const queued=await draft();await sign(queued);await amend(queued,1,'First correction');await amend(queued,2,'Newest correction');
   assert.deepEqual((await db.query('select state from clinical.cos_delivery where report_id=$1 order by amendment_sequence',[queued])).map(x=>x.state),['superseded','superseded','pending']);
   await Promise.all([processCosWork(db),processCosWork(db)]);
