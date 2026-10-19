@@ -1,3 +1,4 @@
+import { queueSignedCos } from '../hospital/cos-queue.js';
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
@@ -277,6 +278,7 @@ export class SignReportService {
           JSON.stringify(quality.derivedValues), JSON.stringify(payload)]);
 
         await this.appendAudit(manager, report, command, snapshotId, canonicalSha256, signedAt);
+        await queueSignedCos(manager, report.id, snapshotId, command.signerId);
         const result: SignedReportResult = {
           id: report.id,
           status: "signed",

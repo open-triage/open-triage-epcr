@@ -46,6 +46,11 @@ test("signed inspection applies amendments and withholds unrestricted content", 
       corrected_value: { id: "old", value_integer: 4 }, sequence: 1 }];
     if (sql.includes("from clinical.report_note note") || sql.includes("from clinical.report_photo_note note") ||
         sql.includes("from clinical.report_audio_note note")) return [];
+    if (sql.includes("from clinical.cos_delivery d")) {
+      assert.equal(reportVisible, true);
+      assert.deepEqual(params, ["report-a", "org-a"]);
+      return [{ state: "uncertain", finding: "outcomeUnknown", paused: false, updated_at: new Date("2026-10-19T12:00:00Z"), configuration_revision: "3", mapping_revision: 2 }];
+    }
     if (sql.includes("from clinical.review_item item")) return [];
     if (sql.includes("from catalog.") || sql.includes("from forms.")) return [];
     throw new Error(`unexpected query ${sql}`);
@@ -55,6 +60,8 @@ test("signed inspection applies amendments and withholds unrestricted content", 
     { get: async () => session(capabilities) });
   const report = await service.report("token", "report-a");
   assert.equal(report.amendmentSequence, 1);
+  assert.deepEqual(report.cosDelivery, { simulated: true, state: "uncertain", finding: "outcomeUnknown", paused: false,
+    updatedAt: "2026-10-19T12:00:00.000Z", configurationRevision: 3, mappingRevision: 2 });
   assert.deepEqual(report.groups.map(({ id, label }) => [id, label]), [["group-a", "Assessment entry"]]);
   assert.deepEqual(report.values.map(({ id, value, groupInstanceId }) => [id, value, groupInstanceId]),
     [["old", 4, "group-a"]]);

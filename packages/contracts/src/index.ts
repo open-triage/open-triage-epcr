@@ -361,6 +361,7 @@ export interface ReviewReportGroup {
 }
 
 export interface ReviewSignedReport {
+  cosDelivery?: { simulated: true; state: string; finding: string | null; paused: boolean; updatedAt: string; configurationRevision: number; mappingRevision: number } | null;
   /** Explicit immutable artifact identity; absent in static/demo-only projections. */
   signedSnapshotId?: string;
   signedRevision?: number;
