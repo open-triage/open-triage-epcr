@@ -238,7 +238,7 @@ test("generation context returns every eligible active unit and only counts unop
   assert.doesNotMatch(queries[1].sql, /from clinical\.report/);
 });
 
-test("opening and retrying one assignment creates one draft without an automatic replacement", async () => {
+test("failed response audit rolls back opening; retry creates one draft without an automatic replacement", async () => {
   const assignment = {
     id: "32000000-0000-4000-8000-000000000011",
     organization_id: session.organization.id,
@@ -331,7 +331,26 @@ test("opening and retrying one assignment creates one draft without an automatic
     if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
-  const dataSource = { ...transactional(manager, isolations), query: manager.query };
+  let failAudit = true;
+  const dataSource = { query: manager.query, transaction: async (isolation, work) => {
+    isolations.push(isolation);
+    const before = structuredClone({ assignment, reports, writes });
+    try {
+      return await work({ query: async (sql, parameters) => {
+        if (sql.includes("with recorded_access")) {
+          if (failAudit) throw new Error("Audit storage unavailable");
+          return [{ recorded: parameters[3].length }];
+        }
+        return manager.query(sql, parameters);
+      } });
+    } catch (error) {
+      Object.assign(assignment, before.assignment);
+      reports.clear();
+      for (const [id, report] of before.reports) reports.set(id, report);
+      writes.splice(0, writes.length, ...before.writes);
+      throw error;
+    }
+  } };
   const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
     assert.equal(capability, "clinical:document");
@@ -339,6 +358,13 @@ test("opening and retrying one assignment creates one draft without an automatic
   } };
   const controller = new AssignedCallsController(new AssignedCallsService(dataSource, sessions));
 
+  await assert.rejects(controller.open(assignment.id, `Bearer ${session.accessToken}`), /Audit storage unavailable/);
+  assert.equal(assignment.status, "assigned", "failed preparation must leave the call available");
+  assert.equal(assignment.report_id, null);
+  assert.equal(reports.size, 0);
+  assert.deepEqual(writes, []);
+  failAudit = false;
+  patientInsertParameters = null;
   const opened = await controller.open(assignment.id, `Bearer ${session.accessToken}`);
   const retried = await controller.open(assignment.id, `Bearer ${session.accessToken}`);
 
@@ -370,7 +396,7 @@ test("opening and retrying one assignment creates one draft without an automatic
   assert.equal(pseudonymousKey, derivePatientKey(patientKeyConfig, organizationId, patientId));
   assert.match(pseudonymousKey, /^[a-f0-9]{64}$/);
   assert.notEqual(pseudonymousKey, createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex"));
-  assert.deepEqual(isolations, ["REPEATABLE READ", "REPEATABLE READ"]);
+  assert.deepEqual(isolations, ["REPEATABLE READ", "REPEATABLE READ", "REPEATABLE READ"]);
 });
 
 for (const expiresAt of ["2026-09-09T12:00:00.000Z", null]) {

@@ -263,7 +263,9 @@ export class AssignedCallsService {
         select ou.id, ou.call_sign, ou.name, organization.deployment_timezone as agency_time_zone
         from app_identity.operational_unit ou
         join app_identity.organization organization on organization.id = ou.organization_id
+        left join app_identity.agency_settings settings on settings.organization_id = ou.organization_id
         where ou.organization_id = $1 and ou.active
+          and (settings.demo_unit_id is null or ou.id = settings.demo_unit_id)
         order by ou.call_sign, ou.id
       `, [session.organization.id]),
       this.dataSource.query<Array<{ exists: boolean }>>(`select exists (
@@ -378,7 +380,7 @@ export class AssignedCallsService {
   async open(accessToken: string, assignmentId: string, confirmationToken?: string): Promise<OpenAssignmentResponse> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     try {
-      const opened = await this.dataSource.transaction(async (manager) => {
+      return await withReportSnapshot(this.dataSource, async (manager) => {
         const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken });
         const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         const assignments = await manager.query<OpenableAssignmentRow[]>(`
@@ -400,7 +402,7 @@ export class AssignedCallsService {
         if (assignment.status === "canceled") throw new ConflictException("The assignment was canceled before it could be opened");
         if (assignment.status === "opened") {
           if (!assignment.report_id) throw new ConflictException("The opened assignment has no report");
-          return { assignment, reportId: assignment.report_id, replacement: null };
+          return this.openResult(manager, assignment, assignment.report_id, current.user.id, null);
         }
 
         // Synthetic is dispatch provenance, not a receiving-role requirement.
@@ -482,9 +484,10 @@ export class AssignedCallsService {
           where id = $1
         `, [assignment.id, reportId]);
 
-        return { assignment, reportId, replacement: null };
+        // Response preparation and its access audit must succeed before consuming
+        // the assignment. Otherwise a failed open leaves no call to retry.
+        return this.openResult(manager, assignment, reportId, current.user.id, null);
       });
-      return await this.openResult(opened.assignment, opened.reportId, session.user.id, opened.replacement);
     } catch (error) {
       this.rethrowDatabaseConflict(error);
     }
@@ -581,12 +584,12 @@ export class AssignedCallsService {
   }
 
   private async openResult(
+    manager: EntityManager,
     assignment: OpenableAssignmentRow,
     reportId: string,
     documentingUserId: string,
     replacementAssignment: AssignedCall | null
   ): Promise<OpenAssignmentResponse> {
-    return withReportSnapshot(this.dataSource, async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
         select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id,
                form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256, revision, status, synthetic, synthetic_generated_by,
@@ -634,6 +637,5 @@ export class AssignedCallsService {
         },
         replacementAssignment
       };
-    });
   }
 }

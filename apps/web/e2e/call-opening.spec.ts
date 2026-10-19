@@ -35,7 +35,7 @@ async function setup(page: Page, failFirst = false) {
     if (url.endsWith("/calls/assigned")) {
       polls++;
       if (polls > 1) { await stalePoll.promise; return route.fulfill({ json: { ...assigned, assignedCalls: [] } }); }
-      return route.fulfill({ json: assigned });
+      return route.fulfill({ json: { ...assigned, productionAccess: { state: "preparation" } } });
     }
     if (url.endsWith("/reports/open")) return route.fulfill({ json: { openCalls: [], completedReportIds: [] } });
     if (url.includes("/calls/") && url.endsWith("/open")) {
@@ -57,6 +57,8 @@ async function setup(page: Page, failFirst = false) {
   });
   await page.goto("/__opening");
   await expect(page.getByRole("button", { name: "Open call", exact: true })).toBeVisible();
+  await expect(page.getByText("Production workflow setup is in progress. Available calls and existing reports can still be opened.")).toBeVisible();
+  await expect(page.getByText("calls.production.preparation", { exact: true })).toHaveCount(0);
   return { open, envelope, receipt, stalePoll, counts: () => ({ opens, polls, keyRequests, receipts }) };
 }
 
