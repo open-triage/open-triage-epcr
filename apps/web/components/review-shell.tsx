@@ -23,7 +23,8 @@ import { AnalyticsWorkspace } from "./analytics-workspace";
 
 type ReviewAction = "comment" | "assign" | "complete" | "await" | "resume" | "exception";
 
-export function ReviewShell({ session, language, online, attention, onAttentionRefresh, callWindow, onOpenSettings }: {
+export function ReviewShell({ session, language, online, attention, onAttentionRefresh, callWindow, onOpenSettings, onOpenHospitalSettings }: {
+  onOpenHospitalSettings?: () => void;
   onOpenSettings?: (section: "routing" | "backlog") => void;
   callWindow?: { reportId: string; itemId?: string; dataset: "real" | "synthetic" };
   session: ClinicianSession;
@@ -661,6 +662,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                 {itemDetail.transmission.patientField && <p>{t("review.transmission.patientField")}: {language === "sv" ? itemDetail.transmission.patientField.localization?.sv?.label ?? itemDetail.transmission.patientField.localization?.sv?.name ?? itemDetail.transmission.patientField.localization?.sv?.title ?? itemDetail.transmission.patientField.name : itemDetail.transmission.patientField.name} <code>{itemDetail.transmission.patientField.id}</code></p>}
                 <ul>{itemDetail.transmission.missing.map(code=><li key={code}>{t(`review.transmission.requirement.${code}`)}</li>)}</ul>
                 {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}
+                {onOpenHospitalSettings && session.capabilities?.includes("settings:write") && itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <button type="button" onClick={()=>{if(confirmDiscardChanges(findingsDirty))onOpenHospitalSettings();}}>{t("review.transmission.openAdmin")}</button>}
                 <p>{t("review.transmission.version", {sequence:itemDetail.transmission.amendmentSequence, revision:itemDetail.transmission.mappingRevision})}</p>
                 {!!itemDetail.transmissionHistory?.length && <details><summary>{t("review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
                   {t(event.active ? "review.transmission.unresolved" : "review.transmission.resolved")} · {new Intl.DateTimeFormat(language,{dateStyle:"medium",timeStyle:"short"}).format(new Date(event.recordedAt))}

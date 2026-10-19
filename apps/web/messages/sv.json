@@ -2470,5 +2470,6 @@
   "review.transmission.requirement.careUnit": "Mappning för mottagande vårdenhet saknas.",
   "review.transmission.requirement.organization": "Organisationens HSA-id saknas.",
   "review.transmission.requirement.encounter": "Namnrymd för vårdkontaktens identifierare saknas.",
-  "review.transmission.requirement.configuration": "Det konfigurerade identifierarfältet eller integrationsmappningen är inte tillgängligt för denna signerade journal."
+  "review.transmission.requirement.configuration": "Det konfigurerade identifierarfältet eller integrationsmappningen är inte tillgängligt för denna signerade journal.",
+  "review.transmission.openAdmin": "Öppna administration för sjukhusintegration"
 }

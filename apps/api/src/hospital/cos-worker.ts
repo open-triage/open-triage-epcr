@@ -4,7 +4,7 @@ import type { DataSource, EntityManager } from 'typeorm';
 import type { CosConnectionSettings } from '@open-triage/contracts';
 import type { CanonicalPackage } from '../admin/canonical-package.js';
 import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
-import { renderSignedReportPdf, SignedPdfError } from '../reports/signed-report-pdf.js';
+import { renderSignedReportPdf, effectiveSignedPdfOccurrences, SignedPdfError } from '../reports/signed-report-pdf.js';
 import { buildCosPayload, cosIdentifierRequirements, cosEligibility, CosFinding, type CosPreparedPayload } from './cos-payload.js';
 import { PersistentCosSimulator, CosRejected, type CosReceiver } from './cos-simulator.js';
 type Job={id:string;report_id:string;snapshot_id:string;organization_id:string;group_id:string;configuration_revision:string;
@@ -49,7 +49,7 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
      try{
       if(job.settings.mode!=='simulator'||job.canonical_mapping.sha256!==job.mapping_sha256)throw new CosFinding('configuration','failed');
       const source=await signedReportPdfSource(runner.manager,job.report_id,job.snapshot_id,job.amendment_sequence);
-      if(cosEligibility(source.occurrences)==='transported'){
+      if(cosEligibility(effectiveSignedPdfOccurrences(source))==='transported'){
        const requirements=cosIdentifierRequirements(source,job.canonical_mapping,job.settings);
        await reconcileTransmissionReview(runner.manager,job.report_id,{integration:'cos',deliveryId:job.id,
         amendmentSequence:job.amendment_sequence,configurationRevision:job.configuration_revision,

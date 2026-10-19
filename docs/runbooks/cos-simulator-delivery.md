@@ -102,3 +102,28 @@ monotonic replacement rejects an older version even when called directly after a
 newer version was stored. Identical delivery replay is idempotent; another delivery
 at the same sequence cannot silently replace it. Receipt history and current pointer
 share report retention. Actual remote late-processing guarantees remain ticket 024.
+
+### Missing transmission identifiers in Review
+
+An eligible signed report with missing identifiers creates built-in operational
+Review work; no authored validation rule is needed and signing remains successful.
+Two stable conditions distinguish patient identity (documenting clinician by
+default) from integration mapping (shared queue by default). Review settings can
+route either condition to the clinician, an eligible named reviewer or the shared
+queue. Ineligible routing targets recover through the existing Review mechanism.
+
+Each condition shows all remaining requirements, the pinned patient-field
+identity/label and mapping/version evidence to viewers with report-relative
+identifying access. The queue and commands retain their ordinary agency, dataset,
+assignment and current-session restrictions. Configuration editing remains a
+separate permission; authorized users can open Hospital integrations from the
+condition. Others receive administrator guidance.
+
+Repeated identical evaluations do not duplicate work. Changed evidence and later
+recurrence keep the same item and its prior history. A generic Review outcome
+cannot close an unresolved technical condition, enforced in the API and database.
+Only reconciliation of the selected signed/configuration version clears it.
+Documenting a corrected identifier and explicitly revalidating configuration
+are subsequent workflow slices; this condition does not mutate signed values or
+resend an uncertain delivery. Evidence contains no patient identifier value and
+expires with its report under the ordinary synthetic retention workflow.

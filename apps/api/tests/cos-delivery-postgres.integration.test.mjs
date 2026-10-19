@@ -61,12 +61,12 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);
   assert.deepEqual(await db.query('select * from app_identity.active_configuration_bundle where organization_id=$1',[baseline.organization_id]),sharedBundle);
   if(previous)await db.query('update app_identity.hospital_cos_state set active_revision=null where group_id=$1',[group]);
-  async function draft(overrides={}){
+  async function draft(overrides={},generated=false){
    const id=randomUUID();reports.push(id);
    const incident=randomUUID(),patient=randomUUID();
    await db.query('insert into clinical.incident(id,organization_id,synthetic) values($1,$2,true)',[incident,sample.organization_id]);
    await db.query("insert into clinical.patient(id,organization_id,identity_state,pseudonymous_key,pseudonymous_key_version) values($1,$2,'unknown',$3,1)",[patient,sample.organization_id,patient.replaceAll('-','').repeat(2)]);
-   await db.query(`insert into clinical.report(id,organization_id,incident_id,patient_id,agency_demographic_version_id,form_version_id,catalog_release_id,documenting_user_id,synthetic,validation_version_id,form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256) values($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12)`,[id,sample.organization_id,incident,patient,demographic.id,version,sample.catalog_release_id,sample.documenting_user_id,pins.validation_version_id,pins.form_definition_sha256,pins.catalog_artifact_sha256,pins.validation_compiled_sha256]);
+   await db.query(`insert into clinical.report(id,organization_id,incident_id,patient_id,agency_demographic_version_id,form_version_id,catalog_release_id,documenting_user_id,synthetic,validation_version_id,form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,synthetic_generated_by) values($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13)`,[id,sample.organization_id,incident,patient,demographic.id,version,sample.catalog_release_id,sample.documenting_user_id,pins.validation_version_id,pins.form_definition_sha256,pins.catalog_artifact_sha256,pins.validation_compiled_sha256,generated?sample.documenting_user_id:null]);
    const entries={'ePatient.01':'200207252388','ePatient.05':'alternate-identity','eNarrative.01':'Fictional documented assessment.','eDisposition.01':'Fictional hospital','eDisposition.02':'ED','eDisposition.27':'4227001','eDisposition.28':'4228001','eDisposition.30':'4230001',...overrides};
    for(const [element,value] of Object.entries(entries)){if(value===null)continue;const [identity]=await db.query('select e.element_identity_id,m.identifying from catalog.element_definition e join catalog.analytics_element_mapping m using(release_id,element_id) where e.release_id=$1 and e.element_id=$2',[sample.catalog_release_id,element]);
     const coded=['eDisposition.27','eDisposition.28','eDisposition.30'].includes(element);
@@ -272,6 +272,15 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
    await manager.query("select set_config('open_triage.synthetic_purge_report',$1,true)",[missing]);
    await manager.query('delete from clinical.signed_snapshot where report_id=$1',[missing]);
    assert.equal((await manager.query('select id from clinical.review_transmission_history where report_id=$1',[missing])).length,0);
+   throw rollback;
+  }),error=>error===rollback);
+  const expiring=await draft({'ePatient.01':null,'ePatient.05':null},true);await sign(expiring);await processCosWork(db);
+  assert.ok((await db.query('select id from clinical.review_transmission_history where report_id=$1',[expiring])).length);
+  const [expiry]=await db.query('select expires_at from clinical.report where id=$1',[expiring]);assert.ok(expiry.expires_at);
+  await assert.rejects(db.transaction(async manager=>{
+   await manager.query("select retention.purge_expired_synthetic_records($1::timestamptz+interval '1 minute')",[expiry.expires_at]);
+   assert.equal((await manager.query('select id from clinical.report where id=$1',[expiring])).length,0);
+   assert.equal((await manager.query('select id from clinical.review_transmission_history where report_id=$1',[expiring])).length,0);
    throw rollback;
   }),error=>error===rollback);
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);

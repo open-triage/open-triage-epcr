@@ -76,6 +76,16 @@ test('all identifier requirements are collected without patient values, includin
  const found=cosIdentifierRequirements(f.source,f.mapping,f.settings);
  assert.deepEqual(found.missing,['patientIdentifier','staff','careUnit','organization','encounter']);
  assert.equal(found.patientField.id,'ePatient.01');assert.doesNotMatch(JSON.stringify(found),/200207252388|Fictional hospital/);
- const duplicate=deliveryFixture();duplicate.source.occurrences.push({...duplicate.source.occurrences.find(row=>row.element_id==='ePatient.01')});
+ const duplicate=deliveryFixture();duplicate.source.occurrences.push({...duplicate.source.occurrences.find(row=>row.element_id==='ePatient.01'),id:'duplicate-patient'});
  assert.deepEqual(cosIdentifierRequirements(duplicate.source,duplicate.mapping,duplicate.settings).missing,['patientIdentifier']);
+});
+
+test('Review and payload evaluate amendment additions and removals exactly once',()=>{
+ const f=deliveryFixture(),patient=f.source.occurrences.find(row=>row.element_id==='ePatient.01');
+ f.source.amendmentSequence=1;f.source.amendments=[{id:'amendment',sequence:1,authorId:f.source.signerId,signedAt:f.source.signedAt,reason:'Correction',canonicalSha256:'a'.repeat(64),changes:[
+  {action:'remove',targetId:patient.id,original:patient},
+  {action:'add',corrected:{...patient,id:'new-patient-occurrence',value_text:'corrected-identity'}}]}];
+ assert.deepEqual(cosIdentifierRequirements(f.source,f.mapping,f.settings).missing,[]);
+ assert.equal(buildCosPayload(f.source,f.mapping,f.settings,f.pdf,'amended').contact.patient.value,'corrected-identity');
+ assert.equal(patient.value_text,'200207252388');
 });

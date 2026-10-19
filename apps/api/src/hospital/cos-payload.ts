@@ -26,6 +26,7 @@ export function cosEligibility(rows:SignedOccurrence[]):'transported'|'excluded'
 }
 /** Collect all missing requirements together; no patient values enter Review evidence. */
 export function cosIdentifierRequirements(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings){
+ source={...source,occurrences:effectiveSignedPdfOccurrences(source),signerId:source.amendments.at(-1)?.authorId??source.signerId};
  let mapping:ReturnType<typeof compileCosMapping>;
  try{mapping=compileCosMapping(p,source.configuration);}catch(error){
   if(error instanceof Error&&'getStatus' in error&&typeof error.getStatus==='function'&&error.getStatus()===422)return {missing:['configuration'],patientField:null};
@@ -45,6 +46,7 @@ export function cosIdentifierRequirements(source:SignedReportPdfSource,p:Canonic
  return {missing,patientField};
 }
 export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
+ const identifierSource=source;
  source={...source,occurrences:effectiveSignedPdfOccurrences(source)};
  if(source.occurrences.length>COS_SIMULATOR_LIMITS.sourceOccurrences)throw new CosFinding('simulatorLimit','failed');
  let sourceBytes=0;for(const row of source.occurrences){sourceBytes+=typeof row.value_text==='string'?Buffer.byteLength(row.value_text):0;if(sourceBytes>COS_SIMULATOR_LIMITS.textBytes)throw new CosFinding('simulatorLimit','failed');}
@@ -52,7 +54,7 @@ export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,
  if(eligibility!=='transported')throw new CosFinding(eligibility==='excluded'?'noContact':'eligibility',eligibility==='excluded'?'excluded':'waiting');
  if(settings.mode!=='simulator')throw new CosFinding('liveUnverified','failed');
  const mapping=compileCosMapping(p,source.configuration);
- const requirements=cosIdentifierRequirements(source,p,settings);
+ const requirements=cosIdentifierRequirements(identifierSource,p,settings);
  if(requirements.missing.length)throw new CosFinding(requirements.missing[0]!);
  const patient=scalar(source,mapping.patientIdentifier.field,'patientIdentifier');
  if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))throw new CosFinding('patientNamespace');

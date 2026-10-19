@@ -40,20 +40,22 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session, language = "en", online = true, reviewSettingsSection, onOpenAgency }: {
+export function AdminShell({ session, language = "en", online = true, reviewSettingsSection, hospitalSettings, onOpenAgency }: {
   readonly session: ClinicianSession;
   readonly language?: AgencyLanguage;
   readonly online?: boolean;
+  readonly hospitalSettings?: boolean;
   readonly reviewSettingsSection?: ReviewSettingsSection;
   readonly onOpenAgency?: (id: string) => Promise<void>;
 }) {
-  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} onOpenAgency={onOpenAgency} /></AdminLanguageContext.Provider>;
+  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} hospitalSettings={hospitalSettings} onOpenAgency={onOpenAgency} /></AdminLanguageContext.Provider>;
 }
 
-function AuthorizedAdminShell({ session, language, online, reviewSettingsSection, onOpenAgency }: {
+function AuthorizedAdminShell({ session, language, online, reviewSettingsSection, hospitalSettings, onOpenAgency }: {
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly online: boolean;
+  readonly hospitalSettings?: boolean;
   readonly reviewSettingsSection?: ReviewSettingsSection;
   readonly onOpenAgency?: (id: string) => Promise<void>;
 }) {
@@ -66,7 +68,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
   const [error, setError] = useState<string | null>(null);
   const [contextRefresh, setContextRefresh] = useState(0);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
-  const [activePanel, setActivePanel] = useState<AdminPanel | null>(reviewSettingsSection ? "Review settings" : null);
+  const [activePanel, setActivePanel] = useState<AdminPanel | null>(hospitalSettings ? "Hospital integrations" : reviewSettingsSection ? "Review settings" : null);
   const [visitedPanels, setVisitedPanels] = useState<readonly AdminPanel[]>([]);
 
   useEffect(() => {

@@ -2472,5 +2472,6 @@
   "review.transmission.requirement.careUnit": "Destination care-unit mapping is missing.",
   "review.transmission.requirement.organization": "Organization HSA identifier is missing.",
   "review.transmission.requirement.encounter": "Encounter identifier namespace is missing.",
-  "review.transmission.requirement.configuration": "The configured identifier destination or integration mapping is unavailable for this signed report."
+  "review.transmission.requirement.configuration": "The configured identifier destination or integration mapping is unavailable for this signed report.",
+  "review.transmission.openAdmin": "Open Hospital integrations administration"
 }
