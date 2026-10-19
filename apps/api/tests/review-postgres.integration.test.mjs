@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import pg from "pg";
 import { createAgencyReviewer } from "./fixtures/review-user.mjs";
 import { ReviewService } from "../dist/review/review.service.js";
+import { catalogValues, userElement } from "../dist/review/analytics-catalog.js";
 import { reconcileReviewAssignments } from "../dist/review/review-assignment.js";
 
 const integrationTest = process.env.DATABASE_URL ? test : test.skip;
@@ -334,6 +335,9 @@ integrationTest("Review signed detail is server-redacted and directly scoped in 
   const service = new ReviewService({ transaction: async (level, work) =>
     (typeof level === "function" ? level : work)(manager) }, { get: async () => session });
   const dataset = candidate.synthetic ? "synthetic" : "real";
+  const own = await service.report("unused", candidate.id, dataset);
+  assert.equal(own.identifying, true);
+  session = { ...session, user: { id: randomUUID() }, capabilities: ["review:all"] };
   const limited = await service.report("unused", candidate.id, dataset);
   assert.equal(limited.id, candidate.id);
   assert.equal(limited.identifying, false);
@@ -341,7 +345,7 @@ integrationTest("Review signed detail is server-redacted and directly scoped in 
   assert.ok(limited.values.every(({ valueKind }) => !["text", "uri", "binary"].includes(valueKind)));
   await assert.rejects(service.media("unused", candidate.id, "00000000-0000-4000-8000-000000000000", "photo", dataset),
     { status: 403 });
-  session = { ...session, user: { id: "00000000-0000-4000-8000-000000000000" } };
+  session = { ...session, capabilities: ["review:self", "review:identifying"], user: { id: "00000000-0000-4000-8000-000000000000" } };
   await assert.rejects(service.report("unused", candidate.id, dataset), { status: 404 });
   session = { ...session, user: { id: candidate.documenting_user_id }, capabilities: [] };
   await assert.rejects(service.report("unused", candidate.id, dataset), { status: 403 });
@@ -468,4 +472,103 @@ integrationTest("Review basic analysis uses the scoped effective projection, pre
   session = { ...session, organization: { id: otherOrganizationId } };
   assert.equal((await service.analysis("unused", { fieldId: "eExam.01", operation: "maximum", filters }))
     .groups[0].summary, 100);
+});
+
+integrationTest("Review identifying access follows each report through mixed queues, notes and media", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  const sample = (await client.query(`select r.* from clinical.report r
+    join clinical.signed_snapshot s on s.report_id=r.id where r.status='signed' limit 1`)).rows[0];
+  assert.ok(sample, "API integration setup must provide a signed report");
+  const author = sample.documenting_user_id;
+  const other = await createAgencyReviewer(client, sample.organization_id, author);
+  const criterion = randomUUID(), reports = [], items = [], photos = [];
+  for (const [index, documentingUser] of [author, other].entries()) {
+    const report = randomUUID(), item = randomUUID(), photo = randomUUID();
+    reports.push(report); items.push(item); photos.push(photo);
+    await client.query(`insert into clinical.report select
+      (jsonb_populate_record(null::clinical.report,to_jsonb(source) || $1::jsonb)).*
+      from clinical.report source where source.id=$2`,
+    [{ id: report, status: "draft", documenting_user_id: documentingUser, expires_at: null }, sample.id]);
+    const identity = (await client.query(`select definition.element_identity_id,mapping.identifying
+      from catalog.element_definition definition join catalog.analytics_element_mapping mapping
+        on mapping.release_id=definition.release_id and mapping.element_id=definition.element_id
+      where definition.release_id=$1 and definition.element_id='eRecord.01' limit 1`, [sample.catalog_release_id])).rows[0];
+    assert.ok(identity, "Pinned catalog contains the report number field");
+    await client.query(`insert into clinical.element_occurrence
+      (id,report_id,catalog_release_id,element_identity_id,element_id,analytical_repeatable,
+       identifying,value_kind,value_text,author_id)
+      values($1,$2,$3,$4,'eRecord.01',false,$7,'text',$5,$6)`,
+    [randomUUID(), report, sample.catalog_release_id, identity.element_identity_id, `PRIVATE-${report}`, documentingUser, identity.identifying]);
+    await client.query(`insert into clinical.report_note(id,organization_id,report_id,captured_at,
+      captured_utc_offset_minutes,content,created_by,updated_by)
+      values($1,$2,$3,now(),0,$4,$5,$5)`,
+    [randomUUID(), sample.organization_id, report, `Private narrative ${index}`, documentingUser]);
+    await client.query(`insert into clinical.report_photo_note(id,organization_id,report_id,captured_at,
+      captured_utc_offset_minutes,caption,content_type,byte_size,sha256,width,height,created_by,updated_by)
+      values($1,$2,$3,now(),0,$4,'image/jpeg',3,repeat('a',64),1,1,$5,$5)`,
+    [photo, sample.organization_id, report, `Private photo ${index}`, documentingUser]);
+    await client.query(`insert into clinical.report_photo_blob(organization_id,report_id,note_id,canonical_bytes)
+      values($1,$2,$3,$4)`, [sample.organization_id, report, photo, Buffer.from([1, 2, 3])]);
+    await client.query("update clinical.report set status='signed' where id=$1", [report]);
+    await client.query(`insert into clinical.signed_snapshot select
+      (jsonb_populate_record(null::clinical.signed_snapshot,to_jsonb(source) || $1::jsonb)).*
+      from clinical.signed_snapshot source where source.report_id=$2`,
+    [{ id: randomUUID(), report_id: report, signer_id: documentingUser }, sample.id]);
+    await client.query(`insert into clinical.review_item(id,organization_id,report_id,criterion_id,
+      priority,assignee_id,first_matched_at,version) values($1,$2,$3,$4,'high',$5,now(),1)`,
+    [item, sample.organization_id, report, criterion, author]);
+    await client.query(`insert into clinical.review_comment(organization_id,item_id,command_id,actor_id,
+      item_version,body) values($1,$2,$3,$4,1,$5)`,
+    [sample.organization_id, item, randomUUID(), documentingUser, `Private discussion ${index}`]);
+  }
+  await client.query("set local role open_triage_api_runtime");
+  let session = { user: { id: author }, organization: { id: sample.organization_id }, capabilities: ["review:all"] };
+  const query = async (sql, params) => (await client.query(sql, params)).rows;
+  const manager = { query };
+  const database = { manager, query, transaction: async (level, work) =>
+    (typeof level === "function" ? level : work)(manager) };
+  const service = new ReviewService(database, { get: async () => session });
+  const dataset = sample.synthetic ? "synthetic" : "real";
+  for (const grant of [false, true]) {
+    session.capabilities = ["review:all", ...(grant ? ["review:identifying"] : [])];
+    const queue = await service.queue("token", { dataset, criterion });
+    assert.equal(queue.items.length, 2);
+    const users = await catalogValues(manager, { organizationId: sample.organization_id, userId: author,
+      reports: "all", defaultDataset: dataset, identifying: grant }, userElement, "", 1);
+    const ownName = users.items.find(entry => entry.identity.value === author);
+    const otherName = users.items.find(entry => entry.identity.value === other);
+    assert.ok(ownName && otherName);
+    assert.notEqual(ownName.label, author);
+    assert.equal(otherName.label, grant ? "Fictional agency reviewer" : other);
+    for (const [index, reportId] of reports.entries()) {
+      const permitted = index === 0 || grant;
+      const queueItem = queue.items.find(item => item.reportId === reportId);
+      assert.equal(!!queueItem.assigneeName, permitted, "Each queue row uses its own author");
+      assert.equal(queueItem.reportNumber, permitted ? `PRIVATE-${reportId}` : undefined);
+      assert.equal((await service.queue("token", { dataset, criterion, search: `PRIVATE-${reportId}` })).total,
+        permitted ? 1 : 0, "Search cannot reveal another clinician's identifying report number");
+      const report = await service.report("token", reportId, dataset);
+      assert.equal(report.identifying, permitted);
+      assert.equal(report.notes.length, permitted ? 2 : 0);
+      const detail = await service.item("token", items[index], dataset);
+      assert.equal(detail.commentsRestricted, !permitted);
+      assert.equal(detail.comments.length, permitted ? 1 : 0);
+      if (permitted) assert.deepEqual((await service.media("token", reportId, photos[index], "photo", dataset)).bytes,
+        Buffer.from([1, 2, 3]));
+      else await assert.rejects(service.media("token", reportId, photos[index], "photo", dataset), { status: 403 });
+    }
+  }
+  session.capabilities = ["review:self", "review:identifying"];
+  assert.equal((await service.queue("token", { dataset, criterion })).items.length, 1);
+  await assert.rejects(service.report("token", reports[1], dataset), { status: 404 });
+  await assert.rejects(service.report("token", reports[0], dataset === "real" ? "synthetic" : "real"), { status: 404 });
+  session.organization = { id: randomUUID() };
+  await assert.rejects(service.report("token", reports[0], dataset), { status: 404 });
+  session.organization = { id: sample.organization_id };
+  session.capabilities = ["review:identifying"];
+  await assert.rejects(service.report("token", reports[0], dataset), { status: 403 });
+  await assert.rejects(service.media("token", reports[0], photos[0], "photo", dataset), { status: 403 });
 });
