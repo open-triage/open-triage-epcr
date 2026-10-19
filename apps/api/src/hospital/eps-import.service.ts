@@ -53,7 +53,7 @@ export class EpsImportService {
    if(scoped.binding!==binding||scoped.mapping.sha256!==lookup.context?.mappingSha256)throw stale();
    const imports=await manager.query<Array<{evidence:Evidence}>>('select evidence from clinical.eps_import where report_id=$1',[reportId]);
    return {rows:(lookup.summary?.importEntries??[]).map(entry=>{
-    const candidate=importCandidate(entry,clinicalMappings(scoped.mapping.definition.clinicalMappings),scoped.form);
+    const candidate=importCandidate(entry,clinicalMappings(scoped.mapping.definition.clinicalMappings),scoped.form,scoped.mapping.definition.patientIdentifier);
     const {entryId,label,destination,mappingId}=candidate;
     const groupId=candidate.mapping?.destination.kind==='custom'?'PatientCareReportGroup':scoped.form.catalogFields[candidate.target?.elementId??'']?.generation?.path.at(-1);
     const groups=scoped.document.groups.find(group=>group.id===groupId)?.instances??[];
@@ -70,7 +70,7 @@ export class EpsImportService {
    const scoped=await this.scope(manager,token,reportId,true);
    if(scoped.mapping.sha256!==lookup.context!.mappingSha256||scoped.configurationRevision!==lookup.context!.configurationRevision)throw stale();
    if(scoped.binding!==body.binding)throw stale();
-   const entry=entries[0]!, candidate=importCandidate(entry,clinicalMappings(scoped.mapping.definition.clinicalMappings),scoped.form);
+   const entry=entries[0]!, candidate=importCandidate(entry,clinicalMappings(scoped.mapping.definition.clinicalMappings),scoped.form,scoped.mapping.definition.patientIdentifier);
    if(candidate.finding||!candidate.target)throw new UnprocessableEntityException({code:'hospital.clinicalIncompatible'});
    const sourceKey=contentDigest([lookup.documentId,lookup.summary?.documentVersion,entry.identity,entry.resource]);
    const [already]=await manager.query('select id from clinical.eps_import where report_id=$1 and source_key=$2',[reportId,sourceKey]);
@@ -87,7 +87,7 @@ export class EpsImportService {
    await manager.query('delete from clinical.eps_import_plan where expires_at<clock_timestamp() or report_id=$1',[reportId]);
    await manager.query('insert into clinical.eps_import_plan(id,report_id,author_id,revision,binding,source_key,evidence) values($1,$2,$3,$4,$5,$6,$7::jsonb)',[id,reportId,scoped.actor.user.id,scoped.report.revision,body.binding,sourceKey,JSON.stringify(evidence)]);
    const existingValues=scoped.document.groups.flatMap(g=>g.instances.filter(i=>i.instanceId===groupInstanceId).flatMap(i=>i.elements)).filter(e=>e.id===candidate.target!.elementId).flatMap(e=>e.values).map(v=>v.kind==='coded'?v.display??v.code:v.kind==='scalar'?String(v.value):v.kind==='pertinent-negative'?v.display??v.code:v.notValue?.display??v.notValue?.code??v.kind);
-   return {id,revision:Number(scoped.report.revision),destination:candidate.target.label,incoming:candidate.incoming,existing:existingValues,conflict:existing.length>0,alreadyImported:!!already,canAppend};
+   return {id,revision:Number(scoped.report.revision),destination:candidate.target.label,incoming:candidate.incoming,...(candidate.mapping?.resourceType==='Patient'&&candidate.value.kind==='text'?{proposedValue:candidate.value.value}:{}),existing:existingValues,conflict:existing.length>0,alreadyImported:!!already,canAppend};
   });
  }
  async apply(token:string,reportId:string,input:unknown) {

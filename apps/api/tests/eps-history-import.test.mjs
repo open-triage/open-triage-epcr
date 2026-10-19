@@ -23,7 +23,7 @@ test('historical measurements preserve dates, status, code, units, comparisons a
 });
 test('historical uncertainty, absence and unsupported values remain explicit',()=>{
  for(const status of ['preliminary','unknown','cancelled','entered-in-error',undefined])assert.equal(historicalSource({...observation,status},mapping).finding,'status');
- for(const effectiveDateTime of [undefined,'2020-02-31','yesterday'])assert.equal(historicalSource({...observation,effectiveDateTime},mapping).finding,'historicalDate');
+ for(const effectiveDateTime of [undefined,'2020-02-31','2020-02-30T12:00:00Z','yesterday'])assert.equal(historicalSource({...observation,effectiveDateTime},mapping).finding,'historicalDate');
  const absent={...observation,dataAbsentReason:{coding:[{system:'http://terminology.hl7.org/CodeSystem/data-absent-reason',code:'not-asked'}]}};delete absent.valueQuantity;
  assert.equal(historicalSource(absent,mapping).finding,null);assert.match(historicalSource(absent,mapping).value,/not-asked/);
  assert.equal(historicalSource({...absent,valueQuantity:observation.valueQuantity},mapping).finding,'semantics');
@@ -46,4 +46,21 @@ test('patient context identifier imports require exact unique current namespace 
  assert.equal(historicalSource({...resource,identifier:[{system:'urn:new',value:'000123',use:'old'}]},m).finding,'identifierAmbiguous');
  assert.equal(historicalSource(resource,{...m,system:'urn:unknown'}).finding,'identifierAmbiguous');
  assert.equal(historicalDestination({...m,destination:{kind:'nemsis',elementId:'ePatient.05'}},form),'historicalDestination');
+});
+
+test('canonical historical configuration round trips exact roles and units and rejects incompatible schemas',async()=>{
+ const {clinicalMappings,importCandidate}=await import('../dist/hospital/eps-import-mapping.js');
+ const {makePackage,mappingPackage}=await import('../dist/hospital/hospital-mapping.js');
+ const p=makePackage({kind:'hospital-mapping',name:'EPS historical mappings',version:'1',catalog:{sha256:'a'.repeat(64)},definition:{schemaVersion:1,id:'history',revision:1,authoredAt:'2026-10-19T00:00:00Z',author:'fixture',profile:{package:'hl7.fhir.eu.eps',version:'1.0.0-ballot',fhirVersion:'4.0.1'},patientIdentifier:{field:{kind:'nemsis',elementId:'ePatient.01'},namespace:'urn:patient',aliases:[]},clinicalMappings:[mapping]}});
+ assert.deepEqual(mappingPackage(JSON.parse(JSON.stringify(p))),p);
+ for(const m of [{...mapping,semanticRole:undefined},{...mapping,expectedUnit:{system:'bad system',code:'kg'}},{...mapping,resourceType:'Procedure',semanticRole:'historical-procedure'},{...mapping,sourceSecret:'hidden'}])assert.throws(()=>clinicalMappings([m]));
+ const completeForm={...form,definition:{sections:[{fields:[{source:field}]}]},customFields:{history:{...form.customFields.history,namespace:'org.fixture',slug:'history',title:'Explicit historical observation context',constraints:{}}}};
+ assert.equal(importCandidate({identity:'Observation/weight-2020',patientMatches:true,resource:observation},[mapping],completeForm).finding,null);
+ const patient={resourceType:'Patient',id:'p',identifier:[{system:'urn:other',value:'0001'}]};
+ const m={...mapping,resourceType:'Patient',system:'urn:other',code:'identifier',semanticRole:'patient-identifier',expectedUnit:undefined,destination:field};
+ const singleForm=structuredClone(completeForm);singleForm.customFields.history.recurrence='single';
+ const entry={identity:'Patient/p',patientMatches:true,resource:patient};
+ assert.equal(importCandidate(entry,[m],singleForm,{field,namespace:'urn:primary',aliases:[]}).finding,'identifierNamespace');
+ assert.equal(importCandidate(entry,[m],singleForm,{field,namespace:'urn:primary',aliases:['urn:other']}).finding,null);
+ assert.equal(importCandidate({...entry,patientMatches:false},[m],singleForm).finding,'patient');
 });

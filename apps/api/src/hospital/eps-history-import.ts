@@ -43,7 +43,8 @@ function hasUnknownSemantics(value: unknown): boolean {
 function dated(value: unknown): boolean {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value)) return false;
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || date.toISOString().slice(0, 10) === value);
+  const calendarDate = value.slice(0, 10);
+  return Number.isFinite(date.getTime()) && new Date(`${calendarDate}T00:00:00Z`).toISOString().slice(0, 10) === calendarDate;
 }
 function hasDate(resource: Json, prefix: string): boolean {
   const choices = Object.keys(resource).filter(key => key.startsWith(prefix) && !key.startsWith('_'));
@@ -88,7 +89,7 @@ export function historicalSource(resource: Json, mapping: HistoricalMapping) {
       if (choices.length > 1 || (choices.length && value.dataAbsentReason)) return fail('semantics');
       if (!choices.length) {
         const absent = object(value.dataAbsentReason);
-        if (!list(absent.coding).length) return fail('historicalValue');
+        if (!list(absent.coding).length || !list(absent.coding).every(coding => nonempty(coding.system) && nonempty(coding.code))) return fail('historicalValue');
       } else if (choices[0] === 'valueQuantity') {
         const quantity = object(value.valueQuantity);
         if (typeof quantity.value !== 'number' || !Number.isFinite(quantity.value)) return fail('historicalValue');
@@ -97,7 +98,7 @@ export function historicalSource(resource: Json, mapping: HistoricalMapping) {
       } else {
         if (mapping.expectedUnit) return fail('historicalUnit');
         if (!['valueString', 'valueBoolean', 'valueInteger', 'valueCodeableConcept'].includes(choices[0]!)) return fail('historicalValue');
-        if (choices[0] === 'valueString' && !nonempty(value.valueString) || choices[0] === 'valueBoolean' && typeof value.valueBoolean !== 'boolean' || choices[0] === 'valueInteger' && !Number.isInteger(value.valueInteger) || choices[0] === 'valueCodeableConcept' && !list(object(value.valueCodeableConcept).coding).every(coding => nonempty(coding.system) && nonempty(coding.code))) return fail('historicalValue');
+        if (choices[0] === 'valueString' && !nonempty(value.valueString) || choices[0] === 'valueBoolean' && typeof value.valueBoolean !== 'boolean' || choices[0] === 'valueInteger' && !Number.isInteger(value.valueInteger) || choices[0] === 'valueCodeableConcept' && (!list(object(value.valueCodeableConcept).coding).length || !list(object(value.valueCodeableConcept).coding).every(coding => nonempty(coding.system) && nonempty(coding.code)))) return fail('historicalValue');
       }
     }
   }

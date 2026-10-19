@@ -1,3 +1,4 @@
+import {epsHistoryJourney} from './eps-history-journey.mjs';
 import {epsImportJourney} from './eps-import-journey.mjs';
 import {epsBrowser} from './eps-browser.mjs';
 import assert from 'node:assert/strict';
@@ -6,7 +7,7 @@ import {readFile,mkdtemp,rm} from 'node:fs/promises';
 import {EpsService} from '../../dist/hospital/eps.service.js';
 import {DraftReportService} from '../../dist/reports/draft-report.service.js';
 import {SYNTHETIC_DEMO_FIXTURE} from '@open-triage/contracts';
-export async function epsJourney({database,query,sessions,configuration,adminToken,otherToken,body}){
+export async function epsJourney({database,query,sessions,configuration,adminToken,otherToken,body,historyFieldId}){
  const originalRoot=process.env.OPENTRIAGE_DEFINITIONS_ROOT,folder=await mkdtemp('/tmp/eps-journey-');process.env.OPENTRIAGE_DEFINITIONS_ROOT=folder;
  await query('savepoint eps_journey');
  try{
@@ -38,6 +39,7 @@ export async function epsJourney({database,query,sessions,configuration,adminTok
   assert.deepEqual(await new EpsService(database,sessions).context(token,report.id),context,'replicas issue the same stale detector');
   let result=await service.lookup(token,report.id,context.binding);assert.equal(result.status,'available');assert.match(JSON.stringify(result.summary),/Andrea/);assert.equal(result.context.mappingSha256,context.mappingSha256);
   await query('reset role');
+  await epsHistoryJourney({database,query,sessions,configuration,adminToken,otherToken,body,token,actor,report,service,drafts,fixtures,historyFieldId});
   await epsImportJourney({database,query,sessions,configuration,adminToken,otherToken,body,token,actor,report,service,drafts,patientGroup,fixtures});
   await assert.rejects(service.context(otherToken,report.id));await assert.rejects(service.context(adminToken,report.id));
   await assert.rejects(service.lookup(token,report.id,'wrong'),error=>error.getStatus()===409);

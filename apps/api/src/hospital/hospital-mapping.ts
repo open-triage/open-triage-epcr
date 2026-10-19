@@ -46,7 +46,7 @@ export function compileMapping(p:CanonicalPackage, form:ClinicalFormConfiguratio
   const selected=mapping.patientIdentifier.field,id=hospitalFieldId(selected);
   const options=identifierOptions(form);
   if(!options.some(option=>option.field.kind===selected.kind&&hospitalFieldId(option.field)===id))throw new UnprocessableEntityException({code:'hospital.fieldUnavailable'});
-  for(const item of clinicalMappings(mapping.clinicalMappings)) { if(importDestination(item,form).finding)throw new UnprocessableEntityException({code:"hospital.clinicalIncompatible"}); }
+  for(const item of clinicalMappings(mapping.clinicalMappings)) { if(importDestination(item,form,mapping.patientIdentifier).finding)throw new UnprocessableEntityException({code:"hospital.clinicalIncompatible"}); }
   return structuredClone(mapping.patientIdentifier);
 }
 export function identifierOptions(form:ClinicalFormConfiguration) {
