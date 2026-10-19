@@ -283,3 +283,13 @@ history** in the conflict preview. Keep and replace remain explicit choices.
 Appending preserves the earlier occurrence and its provenance; replaying the same
 source does not append again. Signed provenance includes the original statement
 and its resolved Medication resource, with the applied mapping identity and revision.
+
+### Privacy of imported source text
+
+Every EPS text import into a custom field requires that published field to be
+marked identifying. This covers allergy/condition narrative, medication history
+and historical context: source text can contain names or other identifying facts
+even when the mapped concept is non-identifying. Review detail already suppresses
+unrestricted text without identifying access; custom string analytics also uses
+the published privacy flag. The import guard preserves both boundaries and does
+not change the semantics of existing authored fields.

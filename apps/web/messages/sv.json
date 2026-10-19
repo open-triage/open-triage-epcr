@@ -2436,5 +2436,6 @@
   "epsImport.historicalValue": "Endast visning: källvärdet eller frånvarotillståndet kan inte bevaras.",
   "epsImport.identifierAmbiguous": "Endast visning: en enda aktuell identifierare i den konfigurerade källans namnrymd krävs.",
   "epsImport.identifierNamespace": "Endast visning: källans namnrymd är inte tillåten för den konfigurerade patientidentiteten.",
-  "epsImport.proposedValue": "Exakt värde att spara"
+  "epsImport.proposedValue": "Exakt värde att spara",
+  "epsImport.identifyingDestination": "Endast visning: importerad källtext kräver ett eget fält markerat som identifierande."
 }

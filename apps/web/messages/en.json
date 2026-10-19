@@ -2438,5 +2438,6 @@
   "epsImport.historicalValue": "View only: this source value or absence state cannot be preserved.",
   "epsImport.identifierAmbiguous": "View only: a single current identifier in the configured source namespace is required.",
   "epsImport.identifierNamespace": "View only: the source namespace is not allowed for the configured patient identity.",
-  "epsImport.proposedValue": "Exact value to save"
+  "epsImport.proposedValue": "Exact value to save",
+  "epsImport.identifyingDestination": "View only: imported source text requires a custom field marked identifying."
 }

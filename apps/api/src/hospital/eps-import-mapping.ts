@@ -35,6 +35,9 @@ export function importDestination(mapping:EpsClinicalMapping,form:ClinicalFormCo
   if(id==='eRecord.01'||fields.length!==1||!custom&&!standard||custom?.retired)return fail('fieldUnavailable');
   if(custom?.correlatesTo||custom?.groupDefinitionId)return fail('cardinality');
   if(mapping.representation==='text') {
+    // Source narrative can contain identifying facts even when its concept code
+    // is non-identifying. Custom string analytics follows this catalog flag.
+    if(custom&&custom.identifying!==true)return fail('identifyingDestination');
     if(custom?custom.datatype!=='string':standard?.generation?.base!=='string'||standard.generation.definition.valueSource?.kind!=='scalar')return fail('datatype');
   } else {
     const choices=custom?.datatype==='coded'?custom.choices.map(c=>({code:c.code,codeSystem:custom.codeSystem})):standard?.codeChoices??[];
