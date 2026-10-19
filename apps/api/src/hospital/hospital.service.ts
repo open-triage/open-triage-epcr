@@ -55,10 +55,10 @@ export class HospitalService {
     const rows=await this.database.query<Version[]>('select * from app_identity.hospital_eps_version where group_id=$1 order by revision desc limit 20',[groupId]);
     const active=state?.active_revision?await this.version(this.database.manager,groupId,Number(state.active_revision)):undefined;
     const tests=await this.database.query<Array<{id:string;revision:string;result:string;created_at:Date}>>('select id,revision,result,created_at from app_identity.hospital_eps_test where group_id=$1 order by created_at desc,id desc limit 20',[groupId]);
-    const events=await this.database.query<Array<{action:string;occurred_at:Date;actor_id:string;details:unknown}>>(`select action,occurred_at,actor_id,details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%' order by occurred_at desc,id desc limit 30`,[groupId]);
+    const events=await this.database.query<Array<{action:string;occurred_at:Date;actor_id:string;details:unknown}>>(`select action,occurred_at,actor_id,details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%' and details->>'integration'='eps' order by occurred_at desc,id desc limit 30`,[groupId]);
     let options:ReturnType<typeof identifierOptions>=[];
     try {options=identifierOptions((await this.currentForm(this.database.manager,groupId)).form);}catch(error){if(!(error instanceof ServiceUnavailableException))throw error;}
-    return {groupId,groupName,stateRevision:Number(state?.state_revision??0),cos:'unconfigured',draft:this.view(rows[0]),active:this.view(active),options,
+    return {groupId,groupName,stateRevision:Number(state?.state_revision??0),draft:this.view(rows[0]),active:this.view(active),options,
       defaultPatientField:DEFAULT_HOSPITAL_PATIENT_FIELD,defaultEndpoint:EPS_ENDPOINT,
       tests:tests.map(t=>({id:t.id,revision:Number(t.revision),result:t.result,createdAt:t.created_at.toISOString(),kind:'read-only-connectivity',publication:false})),
       history:rows.map(row=>({revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,sha256:row.canonical_mapping.sha256,createdAt:row.created_at.toISOString(),actorId:row.created_by,status:Number(row.revision)===Number(state?.active_revision)?'active':Number(row.revision)===Number(state?.draft_revision)?'draft':'superseded'})),
