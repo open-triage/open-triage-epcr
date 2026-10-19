@@ -192,3 +192,12 @@ non-transport report. A missing/blank default produces the localized
 agencies inherit the same group configuration. Later signed disposition
 amendments re-evaluate only that report version and preserve prior immutable
 payloads; configuration activation never scans historical reports.
+
+Eligibility and missing-identifier checks use integrity-verified signed clinical
+metadata before loading protected photo bytes. No-contact versions are excluded
+and undocumented/ambiguous eligibility waits even when media is unavailable.
+An explicit no-contact amendment clears obsolete missing-identifier concerns;
+restored patient contact can reopen them. This does not retract earlier receiver
+notes or clear an uncertain-delivery barrier. Every eligible delivery still
+hydrates and verifies all signed photos and requires the complete PDF; manual
+PDF inspection also fails when signed media is unavailable.

@@ -4,12 +4,12 @@ import { identifierOptions } from './hospital-mapping.js';
 import { compileCosMapping, cosMappingPackage, resolveCosCareUnit } from './cos-configuration.js';
 import { cosDispositionCode, cosEligibility, cosEligible } from './cos-eligibility.js';
 import { contentDigest, type CanonicalPackage } from '../admin/canonical-package.js';
-import { effectiveSignedPdfOccurrences, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
+import { effectiveSignedPdfOccurrences, type SignedReportClinicalSource } from '../reports/signed-report-pdf.js';
 export const bytesHash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export const COS_SIMULATOR_LIMITS=Object.freeze({sourceOccurrences:10000,items:2000,textBytes:1024*1024,bundleBytes:2*1024*1024});
 export class CosFinding extends Error { constructor(public readonly code:string,public readonly state:'waiting'|'failed'|'excluded'='waiting'){super(code);} }
-function values(source:SignedReportPdfSource,field:HospitalField){return source.occurrences.filter(row=>field.kind==='custom'?row.element_identity_id===hospitalFieldId(field):row.element_id===hospitalFieldId(field));}
-function scalar(source:SignedReportPdfSource,field:HospitalField,code:string):string {
+function values(source:SignedReportClinicalSource,field:HospitalField){return source.occurrences.filter(row=>field.kind==='custom'?row.element_identity_id===hospitalFieldId(field):row.element_id===hospitalFieldId(field));}
+function scalar(source:SignedReportClinicalSource,field:HospitalField,code:string):string {
  const rows=values(source,field);if(rows.length!==1)throw new CosFinding(code);
  const row=rows[0]!;
  if(row.value_kind!=='text'||typeof row.value_text!=='string'||!row.value_text.trim()||row.not_value_code||row.pertinent_negative_code)throw new CosFinding(code);
@@ -17,12 +17,13 @@ function scalar(source:SignedReportPdfSource,field:HospitalField,code:string):st
 }
 export { cosEligibility } from './cos-eligibility.js';
 /** The route follows signed disposition facts, never residual destination fields. */
-function careUnitFor(source:SignedReportPdfSource,settings:CosConnectionSettings):string {
+export function cosCareUnitFor(source:SignedReportClinicalSource,settings:CosConnectionSettings):string {
  if(cosEligibility(source.occurrences)==='nonTransport'){
   const unit=resolveCosCareUnit(settings,null);
   if(!unit?.trim())throw new CosFinding('ambulanceCareUnit');
   return unit;
  }
+ if(cosEligibility(source.occurrences)!=='transported')throw new CosFinding('eligibility');
  const hospital=scalar(source,{kind:'nemsis',elementId:'eDisposition.01'},'destination');
  const localCareUnit=scalar(source,{kind:'nemsis',elementId:'eDisposition.02'},'destination');
  const unit=resolveCosCareUnit(settings,{hospital,localCareUnit});
@@ -30,7 +31,7 @@ function careUnitFor(source:SignedReportPdfSource,settings:CosConnectionSettings
  return unit;
 }
 /** Collect all missing requirements together; no patient values enter Review evidence. */
-export function cosIdentifierRequirements(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings){
+export function cosIdentifierRequirements(source:SignedReportClinicalSource,p:CanonicalPackage,settings:CosConnectionSettings){
  source={...source,occurrences:effectiveSignedPdfOccurrences(source),signerId:source.amendments.at(-1)?.authorId??source.signerId};
  const configuredField=cosMappingPackage(p).definition.patientIdentifier.field;
  const patientField=identifierOptions(source.configuration).find(option=>option.field.kind===configuredField.kind&&option.id===hospitalFieldId(configuredField))??{field:configuredField,id:hospitalFieldId(configuredField),name:hospitalFieldId(configuredField),localization:null};
@@ -43,12 +44,12 @@ export function cosIdentifierRequirements(source:SignedReportPdfSource,p:Canonic
  try{const patient=scalar(source,mapping.patientIdentifier.field,'patientIdentifier');if(hospitalIdentifierSchemeFinding(mapping.patientIdentifier.namespace,patient)==='invalid')missing.push('patientIdentifier');}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
  if(!isSupportedHospitalIdentifierNamespace(mapping.patientIdentifier.namespace))missing.push('patientNamespace');
  if(!settings.staff.find(row=>row.userId===source.signerId)?.hsaId)missing.push('staff');
- try{careUnitFor(source,settings);}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
+ try{cosCareUnitFor(source,settings);}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
  if(!settings.organizationHsaId)missing.push('organization');
  if(!settings.encounterNamespace)missing.push('encounter');
  return {missing,patientField};
 }
-export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
+export function buildCosPayload(source:SignedReportClinicalSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
  const identifierSource=source;
  source={...source,occurrences:effectiveSignedPdfOccurrences(source)};
  if(source.occurrences.length>COS_SIMULATOR_LIMITS.sourceOccurrences)throw new CosFinding('simulatorLimit','failed');
@@ -64,7 +65,7 @@ export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,
  const amendment=source.amendments.at(-1);
  const staff=settings.staff.find(row=>row.userId===(amendment?.authorId??source.signerId))?.hsaId;
  if(!staff)throw new CosFinding('staff');
- const careUnit=careUnitFor(source,settings);
+ const careUnit=cosCareUnitFor(source,settings);
  if(!settings.template||!settings.organizationHsaId||!settings.encounterNamespace)throw new CosFinding('configuration');
  if(!mapping.pdfLinkId)throw new CosFinding('pdfMapping');
  const patientIdentifier={system:mapping.patientIdentifier.namespace,value:patient};

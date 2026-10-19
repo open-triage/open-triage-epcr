@@ -1,4 +1,4 @@
-import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
+import { signedReportSource } from '../reports/signed-report-pdf.persistence.js';
 import { effectiveSignedPdfOccurrences } from '../reports/signed-report-pdf.js';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -32,7 +32,7 @@ export async function remapWaitingCos(database:DataSource,sessions:ClinicianSess
   if(!parent||parent.state!=='waiting')throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [newer]=await manager.query('select id from clinical.cos_delivery where report_id=$1 and amendment_sequence>$2 limit 1',[input.reportId,parent.amendment_sequence]);
   if(newer)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
-  const source=await signedReportPdfSource(manager,input.reportId,parent.snapshot_id,parent.amendment_sequence);
+  const source=await signedReportSource(manager,input.reportId,parent.snapshot_id,parent.amendment_sequence);
   if(!cosEligible(effectiveSignedPdfOccurrences(source)))throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [effects]=await manager.query<Array<{present:boolean}>>(`select exists(select 1 from clinical.cos_attempt where delivery_id=$1) or exists(select 1 from clinical.cos_payload where delivery_id=$1) present`,[parent.id]);
   if(effects?.present)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
