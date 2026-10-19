@@ -99,8 +99,13 @@ and click **Import selected file**. Imports create published agency versions;
 activation remains a separate action. Publish or discard your draft before
 importing. Files must match a published catalog available to the agency.
 
-Files are read from the corresponding folder under `defines/` (including its
-`local/` exports), or `OPENTRIAGE_DEFINITIONS_ROOT` when configured. The explicit
+Files are read from the shared type folder under `defines/` and the selected
+organization's `<type>/local/<organization-id>/` subdirectory, or the same layout
+under `OPENTRIAGE_DEFINITIONS_ROOT` when configured. Hospital mappings use the
+agency group's organization UUID. Legacy files directly under `local/` are not
+discovered; see [definition storage and migration](../../defines/README.md).
+Integration-test exports use temporary roots and never the application's local
+definitions folders. The explicit
 synthetic fixture setup commands above still seed their demonstration data.
 
 ## Daily startup

@@ -1,16 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { catalogFingerprint, contentDigest, makePackage, parsePackage, writePackage, discoverPackages } from "../dist/admin/canonical-package.js";
 import { CanonicalPackageService } from "../dist/admin/canonical-package.service.js";
+import { temporaryDefinitions } from "./fixtures/temporary-definitions.mjs";
 
 const snapshot = { schemaVersion: 1, sourceReleaseId: "local-id", elements: [{ elementId: "ePatient.01", constraints: { minOccurs: 0 } }], codeLists: [] };
 function artifact(kind = "form") {
   return makePackage({ kind, name: "Portable", version: "7", catalog: { sha256: catalogFingerprint(snapshot) },
     definition: kind === "validation" ? [{ id: "rule", source: 'require minimum("ePatient.01", 1)' }] : { schemaVersion: 1, sections: [] } });
 }
+
+test("every runtime package requires a scope and keeps other organizations and legacy exports hidden", async () => {
+  const isolated = await temporaryDefinitions();
+  try {
+    for (const kind of ["form", "catalog", "validation", "hospital-mapping"]) {
+      const p = artifact(kind);
+      for (const scope of [undefined, null, "", "../other", "agency/other"]) {
+        await assert.rejects(writePackage(p, scope), /Invalid agency directory/);
+        await assert.rejects(discoverPackages(kind, scope), /Invalid agency directory/);
+      }
+      const folder = path.join(isolated.root, kind === "form" ? "forms" : kind);
+      await writePackage(p, "agency-a");
+      await writeFile(path.join(folder, "local", "legacy.json"), JSON.stringify(p));
+      const own = await discoverPackages(kind, "agency-a");
+      assert.deepEqual(own.map(entry => entry.package), [p]);
+      assert.deepEqual(await discoverPackages(kind, "agency-b"), []);
+      // Bundled templates remain available independently of local exports.
+      await writeFile(path.join(folder, "shared.json"), JSON.stringify(p));
+      assert.deepEqual((await discoverPackages(kind, "agency-b")).map(entry => entry.package), [p]);
+      assert.deepEqual((await readdir(path.join(folder, "local"))).sort(), ["agency-a", "legacy.json"]);
+    }
+  } finally { await isolated.dispose(); }
+});
 
 test("fingerprints ignore local release UUIDs and key ordering, but pin clinical content", () => {
   assert.equal(catalogFingerprint(snapshot), catalogFingerprint({ codeLists: [], elements: snapshot.elements, sourceReleaseId: "foreign-id", schemaVersion: 1 }));
@@ -33,21 +57,21 @@ test("writes only per-type local folders, discovers parent and local, and preser
   process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
   try {
     const p = artifact();
-    await Promise.all([writePackage(p), writePackage(p)]);
+    await Promise.all([writePackage(p, "org"), writePackage(p, "org")]);
     const parent = path.join(root, "forms");
-    const destination = path.join(parent, "local", "portable-v7.json");
+    const destination = path.join(parent, "local", "org", "portable-v7.json");
     assert.deepEqual(JSON.parse(await readFile(destination, "utf8")), p);
     await writeFile(path.join(parent, "shared.json"), JSON.stringify(p));
     await writeFile(path.join(parent, "broken.json"), "not JSON");
-    const files = await discoverPackages("form");
-    assert.deepEqual(files.map(({ file }) => file), ["forms/broken.json", "forms/shared.json", "forms/local/portable-v7.json"]);
+    const files = await discoverPackages("form", "org");
+    assert.deepEqual(files.map(({ file }) => file), ["forms/broken.json", "forms/shared.json", "forms/local/org/portable-v7.json"]);
     assert.ok(files[0].error);
     assert.equal(files.filter((file) => file.package).length, 2);
     await writeFile(destination, '{"changed":true}');
-    await assert.rejects(writePackage(p), /different canonical file/);
+    await assert.rejects(writePackage(p, "org"), /different canonical file/);
     assert.equal(await readFile(destination, "utf8"), '{"changed":true}');
     assert.equal((await readdir(path.join(parent, "local"))).length, 1);
-    assert.deepEqual(await discoverPackages("validation"), []);
+    assert.deepEqual(await discoverPackages("validation", "org"), []);
   } finally {
     if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
     else process.env.OPENTRIAGE_DEFINITIONS_ROOT = previous;
@@ -63,20 +87,20 @@ test("export names use safe interface names and versions while retaining interna
     for (const kind of ["form", "catalog", "validation"]) {
       const { sha256: _digest, ...content } = artifact(kind);
       const p = makePackage({ ...content, name: "../Åland / Emergency Form", version: "2" });
-      await writePackage(p);
-      await writePackage(makePackage({ ...content, name: p.name, version: "3" }));
-      const folder = path.join(root, kind === "form" ? "forms" : kind, "local");
+      await writePackage(p, "org");
+      await writePackage(makePackage({ ...content, name: p.name, version: "3" }), "org");
+      const folder = path.join(root, kind === "form" ? "forms" : kind, "local", "org");
       assert.deepEqual((await readdir(folder)).sort(), ["aland-emergency-form-v2.json", "aland-emergency-form-v3.json"]);
       const saved = JSON.parse(await readFile(path.join(folder, "aland-emergency-form-v2.json"), "utf8"));
       assert.equal(saved.name, p.name);
       assert.equal(saved.sha256, p.sha256);
       assert.deepEqual(parsePackage(saved, kind), p);
       const collision = makePackage({ ...content, name: "Aland Emergency Form", version: "2" });
-      await assert.rejects(writePackage(collision), /already uses this name and version/);
+      await assert.rejects(writePackage(collision, "org"), /already uses this name and version/);
       assert.deepEqual(JSON.parse(await readFile(path.join(folder, "aland-emergency-form-v2.json"), "utf8")), p);
       // Legacy exports remain discoverable; the digest is never inferred from the filename.
       await writeFile(path.join(folder, `${p.sha256}.json`), JSON.stringify(p));
-      assert.equal((await discoverPackages(kind)).filter(({ package: entry }) => entry?.sha256 === p.sha256).length, 2);
+      assert.equal((await discoverPackages(kind, "org")).filter(({ package: entry }) => entry?.sha256 === p.sha256).length, 2);
     }
   } finally {
     if (previous === undefined) delete process.env.OPENTRIAGE_DEFINITIONS_ROOT;
@@ -241,7 +265,8 @@ test("agency publications are isolated from other agencies and unscoped legacy e
   process.env.OPENTRIAGE_DEFINITIONS_ROOT = root;
   try {
     await writePackage(artifact(), "agency-a");
-    await writePackage(artifact("validation"));
+    await mkdir(path.join(root, "validation", "local"), { recursive: true });
+    await writeFile(path.join(root, "validation", "local", "legacy.json"), JSON.stringify(artifact("validation")));
     assert.equal((await discoverPackages("form", "agency-a")).length, 1);
     assert.deepEqual(await discoverPackages("form", "agency-b"), []);
     assert.deepEqual(await discoverPackages("validation", "agency-b"), []);

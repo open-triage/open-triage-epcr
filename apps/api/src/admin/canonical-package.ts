@@ -57,12 +57,11 @@ function filenamePart(value: string, fallback: string): string {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "") || fallback;
 }
-function localFolder(organizationId?: string): string[] {
-  if (organizationId === undefined) return ["local"];
-  if (!/^[a-zA-Z0-9-]+$/.test(organizationId)) throw new Error("Invalid agency directory");
+function localFolder(organizationId: string): string[] {
+  if (typeof organizationId !== "string" || !/^[a-zA-Z0-9-]+$/.test(organizationId)) throw new Error("Invalid agency directory");
   return ["local", organizationId];
 }
-export async function writePackage(p: CanonicalPackage, organizationId?: string): Promise<void> {
+export async function writePackage(p: CanonicalPackage, organizationId: string): Promise<void> {
   const directory = path.join(localDefinitionsRoot(), p.kind === "form" ? "forms" : p.kind, ...localFolder(organizationId));
   await mkdir(directory, { recursive: true });
   const destination = path.join(directory, `${filenamePart(p.name, p.kind)}-v${filenamePart(p.version, "unknown")}.json`);
@@ -77,7 +76,7 @@ export async function writePackage(p: CanonicalPackage, organizationId?: string)
       throw new ConflictException("A different canonical file already uses this name and version");
   } finally { await unlink(temporary); }
 }
-export async function discoverPackages(kind: DefinitionKind, organizationId?: string): Promise<Array<{ file: string; package?: CanonicalPackage; raw?: Record<string, unknown>; error?: string }>> {
+export async function discoverPackages(kind: DefinitionKind, organizationId: string): Promise<Array<{ file: string; package?: CanonicalPackage; raw?: Record<string, unknown>; error?: string }>> {
   const root = localDefinitionsRoot();
   const folder = kind === "form" ? "forms" : kind;
   // Bundled definitions are shared templates. Publications belong only to the

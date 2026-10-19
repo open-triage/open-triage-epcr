@@ -4,7 +4,8 @@ import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import test, { before, after } from "node:test";
+import { temporaryDefinitions } from "./fixtures/temporary-definitions.mjs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
@@ -54,6 +55,9 @@ if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
 }
 
 const integrationTest = databaseUrl ? test : test.skip;
+let definitions;
+before(async () => { if (databaseUrl) definitions = await temporaryDefinitions(); });
+after(async () => { await definitions?.dispose(); });
 
 const migratedDatabases = new Set();
 // Installation-wide identity scenarios require independent installations, not
@@ -1313,6 +1317,10 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       definitionSha256: draft.digest
     });
     assert.equal(response.status, 201, JSON.stringify(payload));
+    const canonical = JSON.parse(await readFile(path.join(definitions.root, "forms", "local",
+      organizationId, "publication-test-v1.json"), "utf8"));
+    assert.deepEqual(canonical.definition, validDefinition,
+      "HTTP publication must export into the isolated test directory");
     assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1 });
     const event = await client.query(`select action,actor_id,form_version_id,catalog_release_id,change_note,content_sha256
       from app_identity.configuration_event where form_version_id=$1`, [draft.versionId]);
