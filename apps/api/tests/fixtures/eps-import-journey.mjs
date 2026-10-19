@@ -1,3 +1,4 @@
+import {epsImportWorkspace} from './eps-import-workspace.mjs';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {epsImportBrowser} from './eps-import-browser.mjs';
 import {SignReportService} from '../../dist/reports/sign-report.service.js';
@@ -28,6 +29,7 @@ export async function epsImportJourney({database,query,sessions,configuration,ad
   let rows=await imports.rows(token,report.id,context.binding);assert.equal(rows.rows.filter(r=>!r.finding).length,2);
   await assert.rejects(imports.plan(otherToken,report.id,{binding:context.binding,entryId:entryId('AllergyIntolerance')}));
   await epsImportBrowser({imports,configuration,query,token,adminToken,reportId:report.id,binding:context.binding});
+  await epsImportWorkspace({database,query,sessions,drafts,imports,token,actor,report,binding:context.binding});
   await query('set local role open_triage_api_runtime');
   const first=await imports.plan(token,report.id,{binding:context.binding,entryId:entryId('AllergyIntolerance')});assert.equal(first.conflict,false);
   const command={planId:first.id,commandId:randomUUID(),decision:'import'};
