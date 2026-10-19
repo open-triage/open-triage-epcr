@@ -2500,7 +2500,7 @@
   "review.recovery.ready": "Ett fastställt transportavbrott kan återförsökas med samma förberedda kliniska innehåll. Ta ärendet för att försöka igen.",
   "review.recovery.confirmed": "Leveransen är bekräftad. Det operativa ärendet är löst.",
   "review.recovery.correct": "Korrigera angivet innehåll, autentiseringsuppgifter, identifierare eller konfiguration före återställning. Kontakta administratör vid behov.",
-  "review.recovery.commands": "Historik för manuell återställning",
+  "review.recovery.commands": "Historik för återställningskommandon",
   "review.recovery.actor": "Aktör {actor}, signerat tillägg {sequence}",
   "review.recovery.simulator": "COS-simulator för utveckling. Detta bekräftar inte leverans till ett sjukhus i drift.",
   "review.recovery.open": "Öppna leveransåterställning i granskning",
@@ -2520,5 +2520,14 @@
   "review.identifier.stale": "Rapporten, tilldelningen eller mappningen har ändrats. Uppdatera kraven och granska rättelsen.",
   "review.identifier.invalid": "Rättelsen kunde inte godtas. Kontrollera identifieraren och aktuella krav.",
   "review.identifier.unavailable": "Kraven kunde inte hämtas eller rättelsen bekräftas. Försök igen när anslutningen fungerar.",
-  "review.identifier.saved": "Signerad identifierarrättelse sparad. Leveransen väntar på bekräftelse."
+  "review.identifier.saved": "Signerad identifierarrättelse sparad. Leveransen väntar på bekräftelse.",
+  "hospital.cos.retrySchedule": "Fördröjningar för återförsök (minuter, kommaseparerade)",
+  "hospital.cos.retryHelp": "Efter varje säkert tillfälligt fel görs ett nytt försök efter nästa fördröjning med högst 10 % variation. Högst fem fördröjningar på 1–1440 minuter; lämna tomt för att stänga av. Standard: 1, 5, 15, 30, 60 minuter (cirka 111 minuter totalt). Befintliga leveranser behåller sin ursprungliga versionsbundna policy.",
+  "review.recovery.retryBudget": "Automatiska återförsök: {reserved} av {total} reserverade; {attempts} mottagarförsök. Policyrevision {revision}.",
+  "review.recovery.retrySchedule": "Ursprungliga fördröjningar i minuter (±10 %)",
+  "review.recovery.retryPaused": "Automatiska återförsök pausade: COS är inaktivt eller den aktiva konfigurationen skiljer sig från leveransens låsta konfiguration.",
+  "review.recovery.nextRetry": "Nästa planerade återförsök",
+  "review.recovery.retryExhausted": "Budgeten för automatiska återförsök är förbrukad. Ett avsiktligt återställningsförsök i Granskning krävs.",
+  "review.recovery.automaticAttempt": "Automatiskt återförsök {ordinal}",
+  "hospital.cos.retryEffect": "För nya leveranser: ett första försök och {retries} automatiska återförsök, cirka {minutes} minuters sammanlagd fördröjning utöver anropstiden."
 }

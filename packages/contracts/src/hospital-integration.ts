@@ -64,6 +64,7 @@ export type CosConnectionSettings = {
   defaultAmbulanceCareUnit: string;
   staff: { userId: string; hsaId: string }[];
   careUnits: { hospital: string; localCareUnit: string; hsaId: string }[];
+  retryScheduleMinutes?: number[];
 };
 
 /** Exact source coding; text preserves the source facts, coded never translates terminology. */
