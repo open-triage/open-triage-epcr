@@ -15,13 +15,14 @@ export type SignedGroup = { id: string; group_id: string; ordinal: number;
 export type SignedPdfAmendment = { id: string; sequence: number; authorId: string; signedAt: string; reason: string;
   canonicalSha256: string; changes: Array<{ action: "add" | "replace" | "remove";
     targetId: string | null; original: SignedOccurrence | null; corrected: SignedOccurrence | null }> };
-export type SignedReportPdfSource = {
+export type SignedReportClinicalSource = {
   reportId: string; snapshotId: string; revision: number; amendmentSequence: number; synthetic: boolean;
   signerId: string; signerDisplayName?: string; signedAt: string; canonicalSha256: string; catalogReleaseId: string; formVersionId: string;
   groups: SignedGroup[]; occurrences: SignedOccurrence[]; notes: SignedNoteManifestEntry[];
-  photoBytes?: Record<string, Buffer>;
   amendments: SignedPdfAmendment[]; configuration: ClinicalFormConfiguration;
 };
+/** A PDF renderer requires explicit media hydration; clinical metadata alone is insufficient. */
+export type SignedReportPdfSource = SignedReportClinicalSource & { photoBytes: Record<string, Buffer> };
 export class SignedPdfError extends Error {
   constructor(public readonly code: "pdf.invalid-version" | "pdf.definitions-unavailable" | "pdf.unsupported-text" |
     "pdf.too-large" | "pdf.render-failed" | "pdf.media-unavailable" | "pdf.media-decode-failed" |
@@ -37,14 +38,14 @@ const MAX_PAGES = 500;
 function localized(label: string, localization: { sv?: { label?: string; name?: string } } | undefined, language: PdfLanguage) {
   return language === "sv" ? localization?.sv?.label ?? localization?.sv?.name ?? label : label;
 }
-function definition(source: SignedReportPdfSource, value: SignedOccurrence, language: PdfLanguage) {
+function definition(source: SignedReportClinicalSource, value: SignedOccurrence, language: PdfLanguage) {
   const custom = source.configuration.customFields?.[String(value.element_identity_id)];
   const standard = source.configuration.catalogFields[value.element_id];
   if (!custom && !standard) throw new SignedPdfError("pdf.definitions-unavailable");
   return { custom, standard, label: custom ? localized(custom.title, custom.localization, language) :
     localized(standard!.name ?? value.element_id, standard!.localization, language) };
 }
-export function signedPdfValue(value: SignedOccurrence, source: SignedReportPdfSource, language: PdfLanguage): string {
+export function signedPdfValue(value: SignedOccurrence, source: SignedReportClinicalSource, language: PdfLanguage): string {
   const t = language === "sv" ? sv : en;
   const { custom, standard } = definition(source, value, language);
   let result: string;
@@ -71,7 +72,7 @@ export function signedPdfValue(value: SignedOccurrence, source: SignedReportPdfS
 }
 
 /** Pure clinical projection: reads only the supplied signed manifest and bounded signed amendments. */
-export function effectiveSignedPdfOccurrences(source: SignedReportPdfSource): SignedOccurrence[] {
+export function effectiveSignedPdfOccurrences(source: SignedReportClinicalSource): SignedOccurrence[] {
   const effective = new Map(source.occurrences.map((value) => [value.id, structuredClone(value)]));
   if (effective.size !== source.occurrences.length || source.amendments.length !== source.amendmentSequence)
     throw new SignedPdfError("pdf.invalid-version");

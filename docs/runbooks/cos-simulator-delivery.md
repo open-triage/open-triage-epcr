@@ -128,6 +128,30 @@ are subsequent workflow slices; this condition does not mutate signed values or
 resend an uncertain delivery. Evidence contains no patient identifier value and
 expires with its report under the ordinary synthetic retention workflow.
 
+The assigned Review action **Document valid identifier** loads the active canonical
+mapping and records a reviewer-signed amendment, durable delivery intent and resolved
+identifier outcome in one serializable transaction. It requires the current assignee,
+identifying report access, dataset/agency scope, expected report/item/amendment revisions,
+and the exact configuration state and canonical hash shown in the dialog. The original
+signed snapshot and earlier mapping provenance remain unchanged. Other missing mappings
+remain visible; a queued correction does not establish confirmed remote delivery or
+close transmission-failure work. Replaying the same command reauthorizes the current
+assignee and returns the saved outcome without another amendment. An uncertain predecessor
+continues to prevent automatic contact attempts.
+
+The simulator and correction action share exact scheme validation. [Inera's identity
+format registry](https://inera.atlassian.net/wiki/spaces/PU/pages/3353215438/Identitetsformat)
+assigns `.3.1` to Swedish personal numbers and `.3.3` to coordination numbers
+(`urn:oid:1.2.752.129.2.1.3.1` and `.3.3`). Both use 12 digits, a valid encoded calendar
+date and a Luhn check digit; coordination numbers add 60 to the day. Inera documents
+month `00` as unknown and evaluates it as January. The [Carelink reserve format](https://inera.atlassian.net/wiki/spaces/PU/pages/3413475352/4.10+Lokala+Reservidformat)
+uses `.3.2`, a 1700–2099 year, month 01–12, representative day 32–59 and a Luhn check
+digit over the final ten digits. The software preserves the supplied value exactly,
+never creates an identifier and never aliases these different schemes automatically.
+Unsupported schemes remain explicit blockers. Format validation establishes neither
+allocation nor patient ownership; the acting reviewer must attest to verification.
+These are simulator rules. Live Cambio compatibility remains gated by ticket 024.
+
 ### Deliberate recovery from Review
 
 The first failed or uncertain delivery opens one stable **COS transmission failed**
@@ -153,3 +177,27 @@ Audit event details and report status link to the authorized Review concern. The
 have no Retry control. Recovery evidence and commands expire with the report.
 This remains the explicit development simulator; actual Cambio acceptance is the
 separate ticket 024 gate.
+
+Signed non-transport care follows the same prospective queue and amendment path.
+NEMSIS 3.5.1 patient contact (`eDisposition.27=4227001`), a documented evaluation/
+care disposition (`eDisposition.28=4228001/3/5/7/9`), and refusal of transport
+(`eDisposition.30=4230009`) or no transport (`4230013`) route to the group's
+explicit default ambulance care unit. This includes evaluation without required
+care and refusal of evaluation/care. The receiver contact preserves the exact
+three recorded disposition codes. Cancellation/no-contact unit dispositions
+remain excluded; missing, ambiguous, unknown, and non-patient transport facts
+wait for correction. Residual hospital destination fields never route a
+non-transport report. A missing/blank default produces the localized
+`ambulanceCareUnit` mapping concern in Review and no receiver contact. Child
+agencies inherit the same group configuration. Later signed disposition
+amendments re-evaluate only that report version and preserve prior immutable
+payloads; configuration activation never scans historical reports.
+
+Eligibility and missing-identifier checks use integrity-verified signed clinical
+metadata before loading protected photo bytes. No-contact versions are excluded
+and undocumented/ambiguous eligibility waits even when media is unavailable.
+An explicit no-contact amendment clears obsolete missing-identifier concerns;
+restored patient contact can reopen them. This does not retract earlier receiver
+notes or clear an uncertain-delivery barrier. Every eligible delivery still
+hydrates and verifies all signed photos and requires the complete PDF; manual
+PDF inspection also fails when signed media is unavailable.

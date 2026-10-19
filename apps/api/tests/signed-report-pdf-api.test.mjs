@@ -2,7 +2,7 @@ import { signedPdfMediaFixture } from "./fixtures/signed-pdf-media.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ReviewService } from "../dist/review/review.service.js";
-import { signedReportPdfSource } from "../dist/reports/signed-report-pdf.persistence.js";
+import { signedReportSource, loadSignedReportPdfPhotos, signedReportPdfSource } from "../dist/reports/signed-report-pdf.persistence.js";
 import { commandSha256 } from "../dist/reports/draft-report.validation.js";
 import { signedPdfFixture } from "./fixtures/signed-pdf-source.mjs";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
@@ -188,4 +188,21 @@ test("media PDF uses signed photo references only, rejects missing bytes, and de
   assert.ok(!state.queries.some(q => q.sql.includes("from clinical.report_photo_blob b")));
   state.organizationId='org-a'; delete source.photoBytes['photo-0'];
   await assert.rejects(call(), error => error.status === 422 && error.response.code === 'pdf.media-unavailable' && error.response.noteId === 'photo-0');
+});
+
+
+test("immutable clinical metadata does not fetch signed photos while PDF hydration remains complete and strict", async () => {
+  const media = await signedPdfMediaFixture();
+  const { source, state, manager } = fixture(media);
+  const clinical = await signedReportSource(manager, source.reportId, source.snapshotId, 1);
+  assert.equal(Object.hasOwn(clinical, "photoBytes"), false);
+  assert.ok(clinical.notes.some(note => note.type === "photo"));
+  assert.equal(state.queries.some(row => row.sql.includes("from clinical.report_photo_blob")), false);
+  const hydrated = await loadSignedReportPdfPhotos(manager, clinical);
+  assert.deepEqual(hydrated.photoBytes, source.photoBytes);
+  assert.equal(Object.hasOwn(clinical, "photoBytes"), false, "hydration cannot mutate clinical metadata");
+  const photo = source.notes.find(note => note.type === "photo");
+  delete source.photoBytes[photo.id];
+  await assert.rejects(loadSignedReportPdfPhotos(manager, clinical), { code: "pdf.media-unavailable" });
+  await assert.rejects(signedReportPdfSource(manager, source.reportId, source.snapshotId, 1), { code: "pdf.media-unavailable" });
 });

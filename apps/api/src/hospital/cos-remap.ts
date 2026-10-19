@@ -1,4 +1,4 @@
-import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
+import { signedReportSource } from '../reports/signed-report-pdf.persistence.js';
 import { effectiveSignedPdfOccurrences } from '../reports/signed-report-pdf.js';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -7,7 +7,7 @@ import type { ClinicianSessionService } from '../sessions/clinician-session.serv
 import { reviewScope, reviewTargetScope, reviewIdentifying } from '../review/review-scope.js';
 import { commandSha256 } from '../reports/draft-report.validation.js';
 import { cosMappingPackage } from './cos-configuration.js';
-import { cosEligibility } from './cos-payload.js';
+import { cosEligible } from './cos-eligibility.js';
 import type { SignedOccurrence } from '../reports/signed-report-pdf.js';
 import type { CanonicalPackage } from '../admin/canonical-package.js';
 /** Internal building block for the later Review recovery command. No endpoint/retry UI.
@@ -32,8 +32,8 @@ export async function remapWaitingCos(database:DataSource,sessions:ClinicianSess
   if(!parent||parent.state!=='waiting')throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [newer]=await manager.query('select id from clinical.cos_delivery where report_id=$1 and amendment_sequence>$2 limit 1',[input.reportId,parent.amendment_sequence]);
   if(newer)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
-  const source=await signedReportPdfSource(manager,input.reportId,parent.snapshot_id,parent.amendment_sequence);
-  if(cosEligibility(effectiveSignedPdfOccurrences(source))!=='transported')throw new ConflictException({code:'hospital.cos.remapUnsafe'});
+  const source=await signedReportSource(manager,input.reportId,parent.snapshot_id,parent.amendment_sequence);
+  if(!cosEligible(effectiveSignedPdfOccurrences(source)))throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [effects]=await manager.query<Array<{present:boolean}>>(`select exists(select 1 from clinical.cos_attempt where delivery_id=$1) or exists(select 1 from clinical.cos_payload where delivery_id=$1) present`,[parent.id]);
   if(effects?.present)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [version]=await manager.query<Array<{canonical_mapping:CanonicalPackage}>>(`select canonical_mapping from app_identity.hospital_cos_version where group_id=$1 and revision=$2 and settings->>'mode'='simulator'`,[report.group_id,input.configurationRevision]);
