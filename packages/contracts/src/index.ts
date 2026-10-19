@@ -224,8 +224,9 @@ export interface RetryCosReviewCommand {
  deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
 }
 export interface ReviewTransmissionEvidence {
+ automaticRetry?: {scheduleMinutes:number[]; configurationRevision:number; reserved:number; attempts:number; nextDue:string|null; exhausted:boolean; paused:boolean};
  deliveryState?: string; finding?: string | null; stateRevision?: number; retryable?: boolean;
- recoveryCommands?: Array<{id:string; actorId:string; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
+ recoveryCommands?: Array<{id:string; actorId:string|null; automaticOrdinal?:number|null; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
   repair?: {previousConfigurationRevision:number; previousMappingId:string; previousMappingRevision:number; previousMappingSha256:string; satisfied:string[]; remaining:string[]; recipientChangeAccepted:boolean};
   integration: "cos";
   deliveryId: string;

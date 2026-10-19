@@ -2502,7 +2502,7 @@
   "review.recovery.ready": "A definite transport outage can be retried using the same prepared clinical content. Claim this item to retry.",
   "review.recovery.confirmed": "Delivery confirmed. The operational concern is resolved.",
   "review.recovery.correct": "Correct the indicated payload, credentials, identifiers or configuration before recovery. Request an administrator where needed.",
-  "review.recovery.commands": "Manual recovery history",
+  "review.recovery.commands": "Recovery command history",
   "review.recovery.actor": "Actor {actor}, signed amendment {sequence}",
   "review.recovery.simulator": "Development COS simulator. This does not confirm delivery to a live hospital.",
   "review.recovery.open": "Open delivery recovery in Review",
@@ -2591,5 +2591,14 @@
   "review.mappingRepair.acceptRecipient": "I authorize the activated recipient and encounter routing for this unprepared delivery.",
   "review.mappingRepair.unsafe": "Prepared, attempted, or uncertain delivery cannot be retargeted. Preserve its history and resolve the outcome first.",
   "review.mappingRepair.apply": "Revalidate and resume eligible delivery",
-  "review.transmission.requirement.pdfMapping": "PDF link identifier mapping is missing."
+  "review.transmission.requirement.pdfMapping": "PDF link identifier mapping is missing.",
+  "hospital.cos.retrySchedule": "Retry delays (minutes, comma separated)",
+  "hospital.cos.retryHelp": "After each definite temporary failure, retry after the next delay with up to 10% jitter. Up to five delays, each 1–1440 minutes; leave empty to disable. Defaults: 1, 5, 15, 30, 60 minutes (about 111 minutes total). Existing deliveries keep their original versioned policy.",
+  "review.recovery.retryBudget": "Automatic retries: {reserved} of {total} reserved; {attempts} receiver attempts. Policy revision {revision}.",
+  "review.recovery.retrySchedule": "Original delays in minutes (±10%)",
+  "review.recovery.retryPaused": "Automatic retries paused: COS is inactive or its active configuration differs from this delivery’s pinned configuration.",
+  "review.recovery.nextRetry": "Next planned retry",
+  "review.recovery.retryExhausted": "Automatic retry budget exhausted. Deliberate Review recovery is required.",
+  "review.recovery.automaticAttempt": "Automatic retry {ordinal}",
+  "hospital.cos.retryEffect": "For new deliveries: one initial attempt plus {retries} automatic retries, about {minutes} minutes cumulative delay excluding request duration."
 }
