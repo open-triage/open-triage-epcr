@@ -2555,5 +2555,6 @@
   "epsSubmission.fictionalOnly": "Endast uttryckligen fiktiva rapporter får skickas till hackathontjänsten.",
   "epsSubmission.commandConflict": "Kommandot hör till en annan förhandsvisning. Uppdatera inskickningshistoriken.",
   "epsSubmission.patientIdentifier": "Patientidentitet i förhandsvisningen",
-  "epsSubmission.finding.incompatibleMapping": "En utgående mappning är oförenlig med den signerade versionens låsta formulär eller kliniska betydelse. Skapa en ny härledning med kompatibel mappning."
+  "epsSubmission.finding.incompatibleMapping": "En utgående mappning är oförenlig med den signerade versionens låsta formulär eller kliniska betydelse. Skapa en ny härledning med kompatibel mappning.",
+  "epsSubmission.accessDenied": "Åtkomst till rapporten är inte längre tillgänglig. Identifierande förhandsvisningar och historik har rensats."
 }

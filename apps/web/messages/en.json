@@ -2557,5 +2557,6 @@
   "epsSubmission.fictionalOnly": "Only explicitly fictional reports may be sent to the public hackathon service.",
   "epsSubmission.commandConflict": "This command belongs to another preview. Refresh submission history.",
   "epsSubmission.patientIdentifier": "Patient identifier in this preview",
-  "epsSubmission.finding.incompatibleMapping": "An outgoing mapping is incompatible with this signed version’s pinned form or clinical semantics. Build a new lineage with a compatible mapping."
+  "epsSubmission.finding.incompatibleMapping": "An outgoing mapping is incompatible with this signed version’s pinned form or clinical semantics. Build a new lineage with a compatible mapping.",
+  "epsSubmission.accessDenied": "Report access is no longer available. Identifying previews and history were cleared."
 }
