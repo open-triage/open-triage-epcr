@@ -511,6 +511,7 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   assert.deepEqual((await db.query('select state,finding from clinical.cos_delivery where report_id=$1',[noDefault]))[0],{state:'waiting',finding:'ambulanceCareUnit'});
   const [defaultReview]=await db.query("select transmission_reason,assignee_id from clinical.review_item where report_id=$1 and active_match",[noDefault]);
   assert.equal(defaultReview.transmission_reason,'integration-mapping');
+  assert.deepEqual((await db.query('select evidence from clinical.review_transmission_history where report_id=$1 order by item_version desc limit 1',[noDefault]))[0].evidence.missing,['ambulanceCareUnit']);
   assert.equal((await db.query('select report_id from clinical.cos_simulator_contact where report_id=$1',[noDefault])).length,0);
   assert.deepEqual(await db.query('select * from app_identity.hospital_cos_state where group_id=app_identity.organization_group($1)',[baseline.organization_id]),sharedState);
   assert.deepEqual(await db.query('select * from app_identity.active_configuration_bundle where organization_id=$1',[baseline.organization_id]),sharedBundle);
