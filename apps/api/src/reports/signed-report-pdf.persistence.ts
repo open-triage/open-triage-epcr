@@ -8,7 +8,7 @@ import { releaseCustomDefinitions } from "../admin/custom-definition-version.js"
 import { commandSha256 } from "./draft-report.validation.js";
 import type { SignedNoteManifestEntry } from "./sign-report-notes.js";
 import { effectiveSignedPdfOccurrences, type SignedGroup, type SignedOccurrence, type SignedPdfAmendment,
-  type SignedReportPdfSource } from "./signed-report-pdf.js";
+  type SignedReportClinicalSource, type SignedReportPdfSource } from "./signed-report-pdf.js";
 
 type Manifest = { schemaVersion: number; clinicalContentVersion?: number; report: { id: string; revision: number; formVersionId: string; catalogReleaseId: string; signer?: { id: string; displayName: string } };
   groups: SignedGroup[]; occurrences: SignedOccurrence[]; notes?: SignedNoteManifestEntry[] };
@@ -44,10 +44,10 @@ function verifiedAmendment(reportId: string, item: AmendmentRow): SignedPdfAmend
 
 /** Caller MUST authorize full identifying access first, in the same repeatable-read transaction.
  * No live draft, note, occurrence or mutable custom-definition data supplies clinical content.
- * On-demand bytes have no separate retention or guessed-artifact download route.
+ * Photo bytes are deliberately loaded separately after eligibility and requirement checks.
  */
-export async function signedReportPdfSource(manager: EntityManager, reportId: string, snapshotId: string,
-  sequence: number): Promise<SignedReportPdfSource> {
+export async function signedReportSource(manager: EntityManager, reportId: string, snapshotId: string,
+  sequence: number): Promise<SignedReportClinicalSource> {
   const [snapshot] = await manager.query<Array<{ id: string; signed_revision: number; signer_id: string;
     signed_at: Date | string; canonical_sha256: string; integrity_manifest: Manifest;
     catalog_release_id: string; form_version_id: string; synthetic: boolean }>>(`
@@ -82,7 +82,7 @@ export async function signedReportPdfSource(manager: EntityManager, reportId: st
     group by a.id order by a.sequence`, [reportId, sequence]);
   if (amendments.length !== sequence) throw new NotFoundException("Signed amendment sequence was not found");
   const configuration = await clinicalFormConfiguration(manager, snapshot.form_version_id, snapshot.catalog_release_id);
-  const source: SignedReportPdfSource = { reportId, snapshotId, revision: Number(snapshot.signed_revision),
+  const source: SignedReportClinicalSource = { reportId, snapshotId, revision: Number(snapshot.signed_revision),
     amendmentSequence: sequence, synthetic: snapshot.synthetic, signerId: snapshot.signer_id,
     ...(manifest.report.signer?.id === snapshot.signer_id ? { signerDisplayName: manifest.report.signer.displayName } : {}),
     signedAt: new Date(snapshot.signed_at).toISOString(), canonicalSha256: snapshot.canonical_sha256,
@@ -108,9 +108,20 @@ export async function signedReportPdfSource(manager: EntityManager, reportId: st
     if (!pinned) throw new UnprocessableEntityException({ code: "pdf.definitions-unavailable" });
     configuration.customFields[pinned.id] = pinned as CatalogDraftCustomElement;
   }
+  return source;
+}
+
+/** Strict PDF source: validate immutable clinical metadata and hydrate every signed photo. */
+export async function signedReportPdfSource(manager: EntityManager, reportId: string, snapshotId: string,
+  sequence: number): Promise<SignedReportPdfSource> {
+  return loadSignedReportPdfPhotos(manager, await signedReportSource(manager, reportId, snapshotId, sequence));
+}
+
+export async function loadSignedReportPdfPhotos(manager: EntityManager,
+  source: SignedReportClinicalSource): Promise<SignedReportPdfSource> {
   // Caller has authorized the report and identifying media access in this transaction.
   // Fetch only signed photo IDs from this report; never current captions or unsigned notes.
-  source.photoBytes = {};
+  const photoBytes: Record<string, Buffer> = {};
   let total = 0;
   for (const note of source.notes.filter((item) => item.type === "photo")) {
     if (!note.media || !Number.isSafeInteger(note.media.byteSize) || note.media.byteSize < 1)
@@ -121,9 +132,9 @@ export async function signedReportPdfSource(manager: EntityManager, reportId: st
       select b.canonical_bytes from clinical.report_photo_blob b
       join clinical.report r on r.id=b.report_id and r.organization_id=b.organization_id
       where b.report_id=$1 and b.note_id=$2 and octet_length(b.canonical_bytes)=$3`,
-    [reportId, note.id, note.media.byteSize]);
+    [source.reportId, note.id, note.media.byteSize]);
     if (!blob) throw new SignedPdfError("pdf.media-unavailable", note.id);
-    source.photoBytes[note.id] = blob.canonical_bytes;
+    photoBytes[note.id] = blob.canonical_bytes;
   }
-  return source;
+  return { ...source, photoBytes };
 }

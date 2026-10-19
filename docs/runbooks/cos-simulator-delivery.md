@@ -177,3 +177,27 @@ Audit event details and report status link to the authorized Review concern. The
 have no Retry control. Recovery evidence and commands expire with the report.
 This remains the explicit development simulator; actual Cambio acceptance is the
 separate ticket 024 gate.
+
+Signed non-transport care follows the same prospective queue and amendment path.
+NEMSIS 3.5.1 patient contact (`eDisposition.27=4227001`), a documented evaluation/
+care disposition (`eDisposition.28=4228001/3/5/7/9`), and refusal of transport
+(`eDisposition.30=4230009`) or no transport (`4230013`) route to the group's
+explicit default ambulance care unit. This includes evaluation without required
+care and refusal of evaluation/care. The receiver contact preserves the exact
+three recorded disposition codes. Cancellation/no-contact unit dispositions
+remain excluded; missing, ambiguous, unknown, and non-patient transport facts
+wait for correction. Residual hospital destination fields never route a
+non-transport report. A missing/blank default produces the localized
+`ambulanceCareUnit` mapping concern in Review and no receiver contact. Child
+agencies inherit the same group configuration. Later signed disposition
+amendments re-evaluate only that report version and preserve prior immutable
+payloads; configuration activation never scans historical reports.
+
+Eligibility and missing-identifier checks use integrity-verified signed clinical
+metadata before loading protected photo bytes. No-contact versions are excluded
+and undocumented/ambiguous eligibility waits even when media is unavailable.
+An explicit no-contact amendment clears obsolete missing-identifier concerns;
+restored patient contact can reopen them. This does not retract earlier receiver
+notes or clear an uncertain-delivery barrier. Every eligible delivery still
+hydrates and verifies all signed photos and requires the complete PDF; manual
+PDF inspection also fails when signed media is unavailable.

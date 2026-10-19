@@ -5,9 +5,10 @@ import { randomUUID } from 'node:crypto';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { CosConnectionSettings } from '@open-triage/contracts';
 import type { CanonicalPackage } from '../admin/canonical-package.js';
-import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
+import { signedReportSource, loadSignedReportPdfPhotos } from '../reports/signed-report-pdf.persistence.js';
 import { renderSignedReportPdf, effectiveSignedPdfOccurrences, SignedPdfError } from '../reports/signed-report-pdf.js';
-import { bytesHash, buildCosPayload, cosIdentifierRequirements, cosEligibility, CosFinding, type CosPreparedPayload } from './cos-payload.js';
+import { cosEligible, cosEligibility } from './cos-eligibility.js';
+import { bytesHash, buildCosPayload, cosIdentifierRequirements, CosFinding, type CosPreparedPayload } from './cos-payload.js';
 import { PersistentCosSimulator, CosRejected, type CosReceiver } from './cos-simulator.js';
 type Job={id:string;report_id:string;snapshot_id:string;organization_id:string;group_id:string;configuration_revision:string;
  mapping_id:string;mapping_revision:number;mapping_sha256:string;amendment_sequence:number;pdf_language:'en'|'sv';settings:CosConnectionSettings;canonical_mapping:CanonicalPackage};
@@ -73,15 +74,24 @@ export async function processCosWork(database:DataSource,limit=10,receiver:CosRe
        if(!stored||bytesHash(stored.pdf)!==stored.pdf_sha256||contentDigest(stored.contact)!==stored.contact_sha256||contentDigest({bundle:stored.bundle,pdfSha256:stored.pdf_sha256})!==stored.payload_sha256)throw new CosFinding('configuration','failed');
        payload={amendmentSequence:job.amendment_sequence,bundle:stored.bundle,pdf:stored.pdf,payloadSha256:stored.payload_sha256,pdfSha256:stored.pdf_sha256,contact:stored.contact,contactSha256:stored.contact_sha256};
       }else{
-      const source=await signedReportPdfSource(runner.manager,job.report_id,job.snapshot_id,job.amendment_sequence);
-      if(cosEligibility(effectiveSignedPdfOccurrences(source))==='transported'){
+      const source=await signedReportSource(runner.manager,job.report_id,job.snapshot_id,job.amendment_sequence);
+      const eligibility=cosEligibility(effectiveSignedPdfOccurrences(source));
+      if(eligibility==='excluded'){
+       // A signed no-contact correction removes this version's transmission requirements.
+       await reconcileTransmissionReview(runner.manager,job.report_id,{integration:'cos',deliveryId:job.id,
+        amendmentSequence:job.amendment_sequence,configurationRevision:job.configuration_revision,
+        mappingId:job.mapping_id,mappingRevision:job.mapping_revision,mappingSha256:job.mapping_sha256,missing:[],patientField:null});
+       throw new CosFinding('noContact','excluded');
+      }
+      if(eligibility==='waiting')throw new CosFinding('eligibility');
+      if(cosEligible(effectiveSignedPdfOccurrences(source))){
        const requirements=cosIdentifierRequirements(source,job.canonical_mapping,job.settings);
        await reconcileTransmissionReview(runner.manager,job.report_id,{integration:'cos',deliveryId:job.id,
         amendmentSequence:job.amendment_sequence,configurationRevision:job.configuration_revision,
         mappingId:job.mapping_id,mappingRevision:job.mapping_revision,mappingSha256:job.mapping_sha256,...requirements});
        if(requirements.missing.length)throw new CosFinding(requirements.missing[0]!);
       }
-      const pdf=await renderSignedReportPdf(source,job.pdf_language);
+      const pdf=await renderSignedReportPdf(await loadSignedReportPdfPhotos(runner.manager,source),job.pdf_language);
       payload=buildCosPayload(source,job.canonical_mapping,job.settings,pdf,job.id);
       await runner.manager.query(`insert into clinical.cos_payload(delivery_id,report_id,bundle,pdf,payload_sha256,pdf_sha256,contact,contact_sha256) values($1,$2,$3::jsonb,$4,$5,$6,$7::jsonb,$8)`,[job.id,job.report_id,JSON.stringify(payload.bundle),pdf,payload.payloadSha256,payload.pdfSha256,JSON.stringify(payload.contact),payload.contactSha256]);
       }

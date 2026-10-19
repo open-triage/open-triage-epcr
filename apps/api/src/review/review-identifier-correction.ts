@@ -6,7 +6,7 @@ import type { ClinicianSessionService } from '../sessions/clinician-session.serv
 import { reviewScope, reviewTargetScope, reviewIdentifying } from './review-scope.js';
 import { cosMappingPackage, compileCosMapping } from '../hospital/cos-configuration.js';
 import type { CanonicalPackage } from '../admin/canonical-package.js';
-import { signedReportPdfSource } from '../reports/signed-report-pdf.persistence.js';
+import { signedReportSource } from '../reports/signed-report-pdf.persistence.js';
 import { effectiveSignedPdfOccurrences } from '../reports/signed-report-pdf.js';
 import { encounterDocument } from '../reports/encounter-document.persistence.js';
 import { AmendReportService } from '../reports/amend-report.service.js';
@@ -45,7 +45,7 @@ async function configuration(manager:EntityManager,auth:Awaited<ReturnType<typeo
  const [version]=await manager.query<Array<{canonical_mapping:CanonicalPackage;settings:CosConnectionSettings}>>(`select canonical_mapping,settings from app_identity.hospital_cos_version where group_id=$1 and revision=$2 and settings->>'mode'='simulator'`,[report.group_id,state.active_revision]);
  if(!version)throw new ConflictException({code:'hospital.stale'});
  const [sequence]=await manager.query<Array<{sequence:number}>>('select coalesce(max(sequence),0)::integer sequence from clinical.amendment where report_id=$1',[report.id]);
- const source=await signedReportPdfSource(manager,report.id,report.snapshot_id,sequence!.sequence);
+ const source=await signedReportSource(manager,report.id,report.snapshot_id,sequence!.sequence);
  const mapping=cosMappingPackage(version.canonical_mapping).definition;
  const patient=compileCosMapping(version.canonical_mapping,source.configuration).patientIdentifier;
  const id=hospitalFieldId(patient.field);
@@ -102,7 +102,7 @@ export async function correctReviewIdentifier(database:DataSource,sessions:Clini
   const document=await encounterDocument(manager,auth.report.id,true,amendment.amendmentSequence);
   const resolved=resolveHospitalIdentifier(patient,document,source.configuration);
   if(!resolved.identifier||resolved.identifier.system!==command.namespace||resolved.identifier.value!==command.value)throw new UnprocessableEntityException({code:'review.identifier.ambiguous'});
-  const updated=await signedReportPdfSource(manager,auth.report.id,auth.report.snapshot_id,amendment.amendmentSequence);
+  const updated=await signedReportSource(manager,auth.report.id,auth.report.snapshot_id,amendment.amendmentSequence);
   const [delivery]=await manager.query<Array<{id:string}>>('select id from clinical.cos_delivery where snapshot_id=$1 and amendment_sequence=$2 and lineage_parent_id is null',[auth.report.snapshot_id,amendment.amendmentSequence]);
   if(!delivery)throw new ConflictException({code:'hospital.stale'});
   const requirements=cosIdentifierRequirements(updated,version.canonical_mapping,version.settings);
