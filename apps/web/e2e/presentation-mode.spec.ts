@@ -95,8 +95,8 @@ test("stationary pickers use through-border labels, multi-value controls, and la
     await expect(picker).toHaveCount(1);
     await expect(picker.locator(":scope > legend.stationary-picker-label")).toHaveCount(1);
   }
-  await expect(page.locator('fieldset[data-element-id="ePatient.18"] input[type="tel"]')).toHaveCount(3);
-  await expect(page.locator('fieldset[data-element-id="ePatient.19"] input[type="email"]')).toHaveCount(1);
+  await expect(page.locator('fieldset[data-element-id="ePatient.18"] input[type="tel"]')).toHaveCount(2);
+  await expect(page.locator('fieldset[data-element-id="ePatient.19"] input[type="email"]')).toHaveCount(2);
 
   const phonePicker = page.locator('fieldset[data-element-id="ePatient.18"]');
   const tooltip = phonePicker.locator(".stationary-element-tooltip");

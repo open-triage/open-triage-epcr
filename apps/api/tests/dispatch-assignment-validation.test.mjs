@@ -8,6 +8,7 @@ import { validateDispatchAssignment } from "../dist/dispatch/dispatch-assignment
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const catalog = JSON.parse(await readFile(resolve(root, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"));
 const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
+const sourceWithPhones = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-03.json"), "utf8"));
 const cancellation = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-cancellation.json"), "utf8"));
 
 function copy(value = source) {
@@ -114,7 +115,7 @@ test("optional hierarchy and cardinality errors omit only the unsafe content", (
 });
 
 test("attribute and identity dependency failures omit invalid optional occurrences without damaging siblings", () => {
-  const message = copy();
+  const message = copy(sourceWithPhones);
   const phones = element(message, "ePatient.18").values;
   phones[0].attributes.PhoneNumberType = "invalid";
   phones[1].occurrenceId = element(message, "ePatient.17").values[0].occurrenceId;
