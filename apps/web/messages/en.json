@@ -2502,7 +2502,7 @@
   "review.recovery.ready": "A definite transport outage can be retried using the same prepared clinical content. Claim this item to retry.",
   "review.recovery.confirmed": "Delivery confirmed. The operational concern is resolved.",
   "review.recovery.correct": "Correct the indicated payload, credentials, identifiers or configuration before recovery. Request an administrator where needed.",
-  "review.recovery.commands": "Manual recovery history",
+  "review.recovery.commands": "Recovery command history",
   "review.recovery.actor": "Actor {actor}, signed amendment {sequence}",
   "review.recovery.simulator": "Development COS simulator. This does not confirm delivery to a live hospital.",
   "review.recovery.open": "Open delivery recovery in Review",

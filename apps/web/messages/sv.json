@@ -2500,7 +2500,7 @@
   "review.recovery.ready": "Ett fastställt transportavbrott kan återförsökas med samma förberedda kliniska innehåll. Ta ärendet för att försöka igen.",
   "review.recovery.confirmed": "Leveransen är bekräftad. Det operativa ärendet är löst.",
   "review.recovery.correct": "Korrigera angivet innehåll, autentiseringsuppgifter, identifierare eller konfiguration före återställning. Kontakta administratör vid behov.",
-  "review.recovery.commands": "Historik för manuell återställning",
+  "review.recovery.commands": "Historik för återställningskommandon",
   "review.recovery.actor": "Aktör {actor}, signerat tillägg {sequence}",
   "review.recovery.simulator": "COS-simulator för utveckling. Detta bekräftar inte leverans till ett sjukhus i drift.",
   "review.recovery.open": "Öppna leveransåterställning i granskning",
