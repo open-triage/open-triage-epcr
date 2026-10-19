@@ -2504,5 +2504,19 @@
   "review.recovery.open": "Öppna leveransåterställning i granskning",
   "review.recovery.heading": "Återställning av COS-leverans",
   "review.recovery.unconfirmed": "Leveransen är fortfarande obekräftad. Detta tekniska ärende kan inte stängas med ett granskningsutfall.",
-  "review.recovery.history": "Historik för leveransåterställning"
+  "review.recovery.history": "Historik för leveransåterställning",
+  "review.identifier.action": "Dokumentera giltig identifierare",
+  "review.identifier.explanation": "Signera ett spårbart tillägg i det konfigurerade patientfältet. Andra saknade krav förblir öppna. Leverans köas och måste bekräftas separat.",
+  "review.identifier.mapping": "Mappningsrevision",
+  "review.identifier.namespace": "Identifierarens namnrymd",
+  "review.identifier.value": "Korrekt identifierare",
+  "review.identifier.reason": "Orsak till rättelsen",
+  "review.identifier.attestation": "Jag intygar att jag har verifierat patientidentifieraren och signerar denna rättelse.",
+  "review.identifier.cancel": "Avbryt",
+  "review.identifier.refresh": "Uppdatera krav",
+  "review.identifier.submit": "Signera rättelse och köa leverans",
+  "review.identifier.stale": "Rapporten, tilldelningen eller mappningen har ändrats. Uppdatera kraven och granska rättelsen.",
+  "review.identifier.invalid": "Rättelsen kunde inte godtas. Kontrollera identifieraren och aktuella krav.",
+  "review.identifier.unavailable": "Kraven kunde inte hämtas eller rättelsen bekräftas. Försök igen när anslutningen fungerar.",
+  "review.identifier.saved": "Signerad identifierarrättelse sparad. Leveransen väntar på bekräftelse."
 }

@@ -98,7 +98,10 @@ export async function signedReportPdfSource(manager: EntityManager, reportId: st
     ...await catalogFieldsConfiguration(manager, snapshot.catalog_release_id, standardIds, true) };
   const custom = await releaseCustomDefinitions(manager, snapshot.catalog_release_id);
   const customById = new Map((custom ?? []).map((item) => [item.id, item]));
-  configuration.customFields = {};
+  // Keep empty configured custom destinations available using sealed release evidence only.
+  configuration.customFields = Object.fromEntries(configuration.definition.sections.flatMap(section=>section.fields)
+    .flatMap(field=>field.source.kind === "custom" && customById.has(field.source.elementDefinitionId)
+      ? [[field.source.elementDefinitionId,customById.get(field.source.elementDefinitionId)!]] : []));
   for (const value of allValues) {
     if (configuration.catalogFields[value.element_id]) continue;
     const pinned = customById.get(String(value.element_identity_id));

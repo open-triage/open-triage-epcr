@@ -2,7 +2,7 @@ import { ConflictException, Injectable, ServiceUnavailableException } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, type EntityManager } from 'typeorm';
-import { DEFAULT_HOSPITAL_PATIENT_FIELD, hospitalFieldId, type CosMappingDefinition } from '@open-triage/contracts';
+import { DEFAULT_HOSPITAL_PATIENT_FIELD, hospitalFieldId, isSupportedHospitalIdentifierNamespace, type CosMappingDefinition } from '@open-triage/contracts';
 import { ClinicianSessionService } from '../sessions/clinician-session.service.js';
 import { clinicalFormConfiguration } from '../forms/clinical-form-configuration.js';
 import { generateAgencyKey, encryptAgencyCredential, decryptAgencyCredential } from '../authentication/agency-oidc-keys.js';
@@ -123,7 +123,7 @@ export class CosService {
       const row=await this.version(manager,groupId,expected);
       const mapping=compileMapping(row.canonical_mapping,await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id));
       const findings=cosFindings(row.settings,mapping);
-      if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))findings.push('patientNamespace');
+      if(!isSupportedHospitalIdentifierNamespace(mapping.patientIdentifier.namespace))findings.push('patientNamespace');
       if(row.settings.mode==='live')findings.push('sandboxVerification');
       if(!row.encrypted_credential)findings.push('credential');
       else try{await decryptAgencyCredential(manager,row.encrypted_credential,groupId,`hospital-cos:${row.credential_id}`);}catch{findings.push('credential');}

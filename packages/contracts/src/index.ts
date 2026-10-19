@@ -185,6 +185,29 @@ export interface ReviewAssignmentEvent {
   assignedAt: string;
 }
 
+export interface ReviewIdentifierCorrectionContext {
+  expectedVersion: number;
+  expectedReportRevision: number;
+  expectedAmendmentSequence: number;
+  configurationRevision: number;
+  stateRevision: number;
+  mappingRevision: number;
+  mappingSha256: string;
+  field: import("./hospital-integration.js").HospitalField;
+  namespace: string;
+  label: string;
+}
+export interface ReviewIdentifierCorrectionCommand {
+  commandId: string;
+  dataset: "real" | "synthetic";
+  context: ReviewIdentifierCorrectionContext;
+  namespace: string;
+  value: string;
+  reason: string;
+  attested: boolean;
+}
+
+
 export interface RetryCosReviewCommand {
  commandId: string; expectedVersion: number; dataset: "real" | "synthetic";
  deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
@@ -2142,3 +2165,5 @@ export * from "./audit.js";
 export * from "./hospital-integration.js";
 
 export * from "./patient-summary.js";
+
+export * from "./hospital-identifier-scheme.js";

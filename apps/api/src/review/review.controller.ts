@@ -35,6 +35,19 @@ function sendCsv(response: CsvResponse, filename: string, value: string) {
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
 
+  @Get("items/:itemId/identifier-correction")
+  @Header("Cache-Control", "no-store, private")
+  identifierCorrectionContext(@Param("itemId",ParseUUIDPipe) itemId:string,@Query("dataset") dataset:string,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string) {
+    return this.review.identifierCorrectionContext(bearerToken(authorization,cookie),itemId,dataset);
+  }
+  @Post("items/:itemId/identifier-correction")
+  @Header("Cache-Control", "no-store, private")
+  correctIdentifier(@Param("itemId",ParseUUIDPipe) itemId:string,@Body() command:import("@open-triage/contracts").ReviewIdentifierCorrectionCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string) {
+    return this.review.correctIdentifier(bearerToken(authorization,cookie),itemId,command,csrfToken);
+  }
+
   @Post("items/:id/retry-cos")
   @Header("Cache-Control", "no-store, private")
   retryCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
