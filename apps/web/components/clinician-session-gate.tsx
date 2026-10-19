@@ -107,6 +107,7 @@ export function ClinicianSessionGate({ children }: {
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
+  const [adminHospitalSettings, setAdminHospitalSettings] = useState(false);
   const [adminReviewSettingsSection, setAdminReviewSettingsSection] = useState<"routing" | "backlog">();
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
@@ -688,11 +689,13 @@ export function ClinicianSessionGate({ children }: {
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online} onOpenAgency={changeAgency}
-        reviewSettingsSection={adminReviewSettingsSection} />}
+        reviewSettingsSection={adminReviewSettingsSection} hospitalSettings={adminHospitalSettings} />}
       {presentationMode === "review" && !activeReport && <ReviewShell key={`${session.user.id}:${session.organization.id}:${[...(session.capabilities ?? [])].sort().join(",")}`} session={session} language={language}
         online={online} attention={reviewAttention?.dataset === reviewAttentionDataset ? reviewAttention : null}
-        onAttentionRefresh={refreshReviewAttention} onOpenSettings={(section) => {
-          if (selectPresentationMode("admin")) setAdminReviewSettingsSection(section);
+        onAttentionRefresh={refreshReviewAttention} onOpenHospitalSettings={() => {
+          if (session.capabilities?.includes("settings:write") && selectPresentationMode("admin")) {setAdminHospitalSettings(true);setAdminReviewSettingsSection(undefined);}
+        }} onOpenSettings={(section) => {
+          if (selectPresentationMode("admin")) {setAdminHospitalSettings(false);setAdminReviewSettingsSection(section);}
         }} />}
     </div>
     </RegionalFormatContext.Provider>

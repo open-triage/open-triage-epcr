@@ -272,7 +272,7 @@ export function ReviewSettingsPanel({ session, language, online, section, active
             const draft = routeDrafts[route.criterionId] ?? { route: route.route, namedUserId: route.namedUserId,
               independentReview: route.independentReview };
             return <tr key={route.criterionId}>
-              <th scope="row"><FieldHelp className="review-routing-criterion" label={route.name}
+              <th scope="row"><FieldHelp className="review-routing-criterion" label={route.transmissionReason ? t(`review.transmission.${route.transmissionReason}`) : route.name}
                 text={route.recoveryReason ? t("review.routeRecovered") : ""} />
                 {route.recoveryReason && <span className="review-sr-only" role="alert">{t("review.routeRecovered")}</span>}
               </th>
