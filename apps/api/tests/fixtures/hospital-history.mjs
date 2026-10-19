@@ -33,7 +33,7 @@ export async function hospitalHistoryJourney({db,sample,reviewer,run,expiring}){
  await assert.rejects(service.link('fixture',report,'real'));
  session={...session,organization:{id:'00000000-0000-4000-8000-000000000099'}};assert.equal((await service.list('fixture',{dataset:'synthetic',reportId:report})).entries.length,0);await assert.rejects(service.link('fixture',report,'synthetic'));
  session={user:{id:sample.documenting_user_id},organization:{id:organization},capabilities:['settings:read','audit:read','audit:identifying','review:all','review:identifying']};
- const auditPage=await audit.list('fixture',{category:'clinical',from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString(),uuid:report});
+ const auditPage=await audit.list('fixture',{category:'integrations',from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString(),uuid:report});
  assert.ok(auditPage.entries.some(e=>e.source==='clinical_audit.hospital_operational_event'&&e.integration?.mappingSha256));
  // The actual runtime role sees only a scoped audit ledger, with no mutable access.
  const connection=db.createQueryRunner();await connection.connect();await connection.startTransaction();try{
@@ -58,7 +58,7 @@ export async function hospitalHistoryJourney({db,sample,reviewer,run,expiring}){
   assert.equal(await service.reviewLink(manager,session,expiring,'synthetic'),undefined);
   await manager.query('set local role open_triage_api_runtime');
   const auditDatabase={manager,transaction:async(first,second)=>(typeof first==='function'?first:second)(manager)};
-  const expiredAudit=await new AuditService(auditDatabase,sessions).list('fixture',{category:'clinical',uuid:expiring,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
+  const expiredAudit=await new AuditService(auditDatabase,sessions).list('fixture',{category:'integrations',uuid:expiring,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
   const expiredEvents=expiredAudit.entries.filter(e=>e.source==='clinical_audit.hospital_operational_event');assert.equal(expiredEvents.length,retained.length);
   assert.ok(expiredEvents.every(e=>e.integration.snapshotId===retainedVersion.snapshot_id&&e.integration.amendmentSequence===retainedVersion.amendment_sequence&&!e.recovery));
   assert.ok(expiredEvents.some(e=>e.integration.payloadSha256===retainedVersion.payload_sha256));assert.ok(expiredEvents.some(e=>e.integration.payloadSha256===null),'unprepared queued evidence has an explicitly nullable hash');

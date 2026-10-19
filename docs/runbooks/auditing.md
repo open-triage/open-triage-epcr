@@ -14,16 +14,19 @@ the capabilities through the protected-role registry.
 The endpoint is `GET /api/admin/audit`. It resolves a live session and requires
 `audit:read` on every request. The organization comes from that session; it is
 not a request parameter. Parent-agency membership does not aggregate child logs.
-Switch to the relevant agency using the existing agency workflow.
+Switch to the relevant agency using the existing agency workflow. Shared hospital
+configuration events from that agency’s parent group are included in Configuration.
+Apply `20261019205938_complete_audit_event_sources.sql` for the Integrations category
+and the additional retained-event identifiers.
 
-Patient-related sections additionally require `audit:identifying` and reject
-installation owner/super-admin sessions even if those sessions carry broad
-capabilities. Audit inspection history is also protected because its target
-filter may identify a patient. A role with only `audit:read` can use the other
-sections without gaining clinical-record access. `audit:identifying` has a
-database-enforced `audit:read` prerequisite. `review:identifying` alone does not
-grant identifying audit access. Custom roles receive neither new permission
-automatically.
+Every section is available with `audit:read`, including patient access, integration,
+clinical and audit-inspection events. Metadata includes actors, timestamps, actions,
+outcomes, UUIDs, patient IDs and PCR/dispatch record numbers. These identifiers
+remain visible with `audit:read`. Clinical values and expanded
+analytics/feedback payloads require both capabilities. Installation owner/super-admin
+sessions can inspect metadata but cannot retrieve these protected details, even with
+broad capabilities. `review:identifying` alone does not grant identifying audit access.
+`audit:identifying` retains its database-enforced `audit:read` prerequisite.
 
 In **Clinical changes**, identifying auditors can explicitly load retained
 clinical values for a particular event. Signing/amendment events expose their
@@ -42,12 +45,13 @@ configuration logs.
 | Patient access | `clinical_audit.patient_access_event` |
 | Authentication | Sign-in/session/account events; agency-associated operator account events |
 | Permissions | Authorization, ownership-transfer and organization events |
-| Configuration | Form/configuration activation, catalog publication, validation changes, agency settings and demographic changes |
-| Clinical changes | Signing/amendment events, draft saves, conflict resolution, note mutations and post-signature attempts |
+| Configuration | Form/configuration activation, catalog publication, validation changes, agency settings, demographic changes and shared hospital configuration lifecycle events |
+| Clinical changes | Signing/amendment events, draft saves, conflict resolution, note mutations, post-signature attempts and deferred dispatch deliveries |
+| Integrations | Retained COS/EPS operational events, EPS previews and import decisions |
 | Media access | Existing photo/audio access events |
 | Recovery | Offline lifecycle, key lifecycle and report recovery metadata |
-| Review workflow | Assignment, overdue, progress, saved-analysis, routing and policy history |
-| Synthetic data | Generation and draft mutation events |
+| Review workflow | Assignment, overdue, progress, saved-analysis, routing, transmission findings and policy history |
+| Synthetic data | Generation, draft mutation and purge events |
 | Installations and units | Installation events and operational-unit changes |
 | Feedback | Accepted bug/feature submissions and review status history, excluding descriptions, diagnostics, summaries and review notes |
 | Audit inspections | Each successful audit-browser query, including empty results, and clinical-value inspections |
@@ -149,7 +153,7 @@ to open its source, patient ID and accessing agency/process in a modal dialog.
 Close the dialog with Escape or Close details to return to the same row.
 For analytics and feedback events, **Show JSON dump** expands the full retained
 payload. `GET /api/admin/audit/payload/:source/:id` rechecks `audit:read`, the source
-and the event's agency. Analytics additionally requires `audit:identifying` and
+and the event's agency. All payloads additionally require `audit:identifying` and
 rejects installation owner/super-admin sessions. It records the inspected source
 and event ID before returning any content; failed inspection logging returns no
 payload. The JSON stays in the open dialog's memory and is discarded on collapse,

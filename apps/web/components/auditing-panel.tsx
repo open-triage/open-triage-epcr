@@ -1,7 +1,7 @@
 "use client";
-import {HospitalHistoryPanel,HospitalReviewLink} from "./hospital-history";
+import {HospitalReviewLink} from "./hospital-history";
 
-import { auditCategories, auditDumpSources, clinicalValueSources, patientAuditCategories, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTarget, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
+import { auditCategories, auditDumpSources, clinicalValueSources, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTarget, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { loadAuditDump, loadAuditPage, loadAuditUsers, loadClinicalAuditValues } from "../app/admin-context";
 import { AdminLanguageContext, useAdminText } from "../app/admin-localization";
@@ -72,8 +72,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
     requestGeneration.current++;
     setLoaded(null); setSelected(null); setError(true); setBusy(false);
   }, []);
-  const categories = (loaded?.page.categories ?? auditCategories).filter((category) =>
-    canReadPatients || !patientAuditCategories.includes(category));
+  const categories = loaded?.page.categories ?? auditCategories;
 
   useEffect(() => {
     if (!active || !online) return;
@@ -199,7 +198,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
                   selected.analytics?.organizations?.find(organization => organization.id === id)?.name)).join(", ") || missing] ] : []) ] as const).map(([label, value]) => <div key={label}>
                 <dt>{t(`auditUi.${label}`)}</dt><dd>{value ?? missing}</dd></div>)}</dl>
             {selected.recovery&&<p><HospitalReviewLink language={language} reportId={selected.recovery.reportId} dataset={selected.recovery.dataset}/> · {t('review.transmission.version',{sequence:selected.recovery.amendmentSequence,revision:'—'})}</p>}
-            {selected.integration&&<details><summary>{t('hospitalHistory.title')}</summary><dl>{Object.entries(selected.integration).map(([key,value])=><div key={key}><dt>{t(`hospitalHistory.${key}`)}</dt><dd className="hospital-digest">{integrationValue(key,value)}</dd></div>)}</dl><HospitalHistoryPanel key={selected.id} language={language} scopeKey={selected.id} initialReportId={selected.integration.reportId} initialDataset={selected.integration.dataset}/></details>}
+            {selected.integration&&<details><summary>{t('hospitalHistory.title')}</summary><dl>{Object.entries(selected.integration).map(([key,value])=><div key={key}><dt>{t(`hospitalHistory.${key}`)}</dt><dd className="hospital-digest">{integrationValue(key,value)}</dd></div>)}</dl></details>}
             <details className="audit-identifiers">
               <summary>{t("auditUi.identifiers")}</summary>
               <dl>{([ ["actorId", selected.actorId], ["targetId", selected.targetId],
@@ -210,7 +209,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
             </details>
             {canReadPatients && clinicalValueSources.includes(selected.source as typeof clinicalValueSources[number]) &&
               <ClinicalValues key={`${selected.source}:${selected.id}`} entry={selected} active={active} online={online} onAccessRemoved={clearAccess} />}
-            {auditDumpSources.includes(selected.source as typeof auditDumpSources[number]) &&
+            {canReadPatients && auditDumpSources.includes(selected.source as typeof auditDumpSources[number]) &&
               <EventDump key={`${selected.source}:${selected.id}`} entry={selected} online={online} onAccessRemoved={clearAccess} />}
           </div>
         </dialog>}

@@ -271,6 +271,13 @@ integration("feedback audit includes accepted submissions and reviews without du
   assert.match(submitted.id, /^[0-9a-f-]{36}$/);
   assert.notEqual(submitted.targetId, submitted.id, "the feedback business key is separate from its public audit UUID");
   assert.deepEqual(submitted.target, { kind: "feedback", label: receipt.referenceCode, version: null });
+  await assert.rejects(audit.payload("unused",submitted.source,submitted.id), { status: 403 });
+  const metadataSession = session;
+  for (const authority of ["installationOwner", "installationSuperadmin"]) {
+    session = { ...metadataSession, capabilities: ["audit:read", "audit:identifying"], [authority]: true };
+    await assert.rejects(audit.payload("unused",submitted.source,submitted.id), { status: 403 });
+  }
+  session = { ...metadataSession, capabilities: ["audit:read", "audit:identifying"] };
   const submittedDump = await audit.payload("unused",submitted.source,submitted.id);
   assert.equal(submittedDump.payload.submission.id, submitted.id);
   assert.equal(submittedDump.payload.submission.description, command.description);
@@ -646,7 +653,7 @@ integration("patient-access evidence and every admin log section enforce the run
     values(now(),$1,$1,$2,$3,$4,'report.read','documentation',true)`, [organizationId,actorId,patientId,reportId])), { code: "42501" });
   await client.query("reset role");
   assert.equal((await client.query(`select count(*)::int n from clinical_audit.audit_read_event
-    where organization_id=$1 and actor_id=$2`, [organizationId, actorId])).rows[0].n, 16);
+    where organization_id=$1 and actor_id=$2`, [organizationId, actorId])).rows[0].n, auditCategories.length + 3);
   await client.query("savepoint clinical_value_fixture");
   const changeId = randomUUID();
   await client.query(`insert into clinical.report_change(id,report_id,revision,idempotency_key,author_id,changes)
@@ -684,19 +691,28 @@ integration("patient-access evidence and every admin log section enforce the run
   for (const capabilities of [["audit:read"], ["audit:read", "review:identifying"]]) {
     session = { ...authorizedSession, capabilities };
     await assert.rejects(audit.clinicalValues("unused", "clinical.report_change", changeId), { status: 403 });
-    await assert.rejects(audit.list("unused", { ...base, category: "clinical" }), { status: 403 });
+    const metadata = await audit.list("unused", { ...base, targetId: reportId, category: "clinical" });
+    assert.ok(metadata.entries.some(row => row.id === changeId));
+    assert.ok(metadata.entries.every(row => row.target?.label === "PCR-000012345"));
+    const access = await audit.list("unused", base);
+    assert.ok(access.entries.length);
+    assert.ok(access.entries.every(row => row.patientId === patientId && row.target?.label === "PCR-000012345"));
+    assert.doesNotMatch(JSON.stringify(access), /Fictional clinical detail/);
     await audit.list("unused", { ...base, category: "authentication" });
   }
   for (const authority of ["installationOwner", "installationSuperadmin"]) {
     session = { ...authorizedSession, [authority]: true };
     await assert.rejects(audit.clinicalValues("unused", "clinical.report_change", changeId), { status: 403 });
+    const access = await audit.list("unused", base);
+    assert.ok(access.entries.length);
+    assert.ok(access.entries.every(row => row.patientId === patientId && row.target?.label === "PCR-000012345"));
   }
   session = { ...authorizedSession, organization: { id: otherOrganizationId } };
   await assert.rejects(audit.clinicalValues("unused", "clinical.report_change", changeId), { status: 404 });
   session = authorizedSession;
   await client.query("reset role");
   assert.equal((await client.query(`select count(*)::int n from clinical_audit.audit_read_event
-    where organization_id=$1 and inspection_kind='clinical-values'`, [organizationId])).rows[0].n, 2);
+    where organization_id=$1 and inspection_kind='clinical-values' and target_filter=$2`, [organizationId,reportId])).rows[0].n, 2);
   await client.query("rollback to savepoint clinical_value_fixture");
   await client.query("set local role open_triage_api_runtime");
 
@@ -735,7 +751,7 @@ integration("patient-access evidence and every admin log section enforce the run
   assert.deepEqual(retained.entries[0].target, { kind: "report", label: null });
   await client.query("reset role");
   assert.equal((await client.query("select count(*)::int n from clinical_audit.patient_access_event where patient_id=$1", [patientId])).rows[0].n, 61);
-  assert.equal((await client.query("select count(*)::int n from clinical_audit.analytics_access_event where organization_id=$1", [organizationId])).rows[0].n, 5);
+  assert.equal((await client.query("select count(*)::int n from clinical_audit.analytics_access_event where organization_id=$1 and id=any($2::uuid[])", [organizationId,analyticsPage.entries.map(row => row.id)])).rows[0].n, 5);
   await assert.rejects(database.transaction(async () => manager.query("truncate clinical_audit.patient_access_event")), { code: "42501" });
 });
 
@@ -762,12 +778,14 @@ integration("audit target names are typed, agency-scoped metadata using runtime 
     returning id,call_sign,name`, [randomUUID(),organizationId,config.form_version_id])).rows[0];
   const user = (await client.query(`select id,display_name from app_identity.agency_user
     where organization_id=$1 limit 1`, [organizationId])).rows[0];
-  const criterionId = randomUUID();
+  const criterionId = randomUUID(), criterionAuthor = randomUUID();
+  await client.query(`insert into app_identity.app_user(id,organization_id,display_name)
+    values($1,app_identity.organization_group($2),'Audit criterion author')`, [criterionAuthor,organizationId]);
   await client.query(`insert into validation.rule_identity(id,organization_id,created_by) values($1,$2,$3)`,
     [criterionId,organizationId,user.id]);
   await client.query(`insert into validation.version(id,organization_id,catalog_release_id,rule_id,display_name,source_rule,created_by)
     select $1,organization_id,catalog_release_id,$2,'Audit routing criterion',source_rule,$3
-    from validation.version where id=$4`, [randomUUID(),criterionId,user.id,config.validation_version_id]);
+    from validation.version where id=$4`, [randomUUID(),criterionId,criterionAuthor,config.validation_version_id]);
   const otherOrganizationId = randomUUID(), outsideUserId = randomUUID(), missingId = randomUUID();
   await client.query(`insert into app_identity.organization(id,name,deployment_timezone) values($1,'Outside agency','UTC')`, [otherOrganizationId]);
   await client.query(`insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,'Outside user')`, [outsideUserId, otherOrganizationId]);
@@ -857,17 +875,17 @@ integration("combined audit pages merge types in one stable timeline, apply shar
   assert.equal(inspectionPage.entries.length, 2);
   assert.ok(inspectionPage.entries.every(row => row.category === "audit" && row.inspection.category === "combined"));
   assert.deepEqual(inspectionPage.entries[0].inspection.categories, ["authentication", "authorization"]);
-  // Blank includes every authorized source, while explicit types cannot bypass the patient ceiling.
+  // Category selection never requires identifying access; sensitive fields do.
   const all = await audit.list("fixture", { ...range, categories: "" });
   assert.deepEqual(all.categories, auditCategories);
   session = { ...session, capabilities: ["audit:read"] };
   const limited = await audit.list("fixture", range);
-  assert.deepEqual(limited.categories, ["authentication", "authorization", "configuration", "installations", "feedback"]);
+  assert.deepEqual(limited.categories, auditCategories);
   assert.ok(limited.entries.every(row => limited.categories.includes(row.category)));
   const lastInspection = (await client.query(`select queried_categories from clinical_audit.audit_read_event
     where organization_id=$1 order by id desc limit 1`, [agency])).rows[0];
   assert.deepEqual(lastInspection.queried_categories, limited.categories);
-  await assert.rejects(audit.list("fixture", { ...range, categories: "authentication,patient" }), { status: 403 });
+  assert.ok((await audit.list("fixture", { ...range, categories: "authentication,patient" })).entries.length);
   const empty = await audit.list("fixture", { ...range, categories: "feedback,installations" });
   assert.deepEqual(empty.entries, []); assert.equal(empty.nextCursor, null);
   // The runtime can append scope evidence, but cannot rewrite it afterward.
@@ -948,8 +966,11 @@ integration("any-UUID search matches audit metadata across sources without cross
   assert.equal(new Set([...first.entries,...next.entries].map(row=>row.id)).size,57);
   const original=session;
   session={ ...session,capabilities:["audit:read"] };
-  assert.deepEqual((await audit.list("fixture",{ ...range,uuid:event })).entries,[]);
-  await assert.rejects(audit.list("fixture",{ ...range,categories:"patient",uuid:event }),{ status:403 });
+  for (const categories of [undefined, "patient"]) {
+    const metadata = await audit.list("fixture", { ...range, categories, uuid:event });
+    assert.deepEqual(metadata.entries.filter(row => row.category === "patient").map(row => row.id), [event]);
+    assert.equal(metadata.entries.find(row => row.id === event).patientId, patient);
+  }
   session={ ...original,organization:{ id:outsideAgency } };
   assert.deepEqual((await audit.list("fixture",{ ...range,categories:"patient",uuid:event })).entries,[]);
   assert.deepEqual((await audit.list("fixture",{ ...range,categories:"patient",uuid:patient })).entries.map(row=>row.id),[outsideEvent]);
@@ -1009,4 +1030,54 @@ integration("audit pagination counts empty and exact page boundaries and exclude
   assert.equal(refreshed.pageNumber,1);
   const empty=await audit.list("fixture",{ ...range,categories:"authentication",uuid:randomUUID() });
   assert.deepEqual([empty.pageNumber,empty.totalPages,empty.totalEntries],[0,0,0]);
+});
+
+integration("audit catalog includes integration and omitted ledgers, scopes group configuration, and preserves identifying access", async (t) => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  t.after(async () => { await client.query("rollback"); await client.end(); });
+  await client.query("begin");
+  const group = randomUUID(), organization = randomUUID(), other = randomUUID(), actor = randomUUID();
+  await client.query(`insert into app_identity.organization(id,name,deployment_timezone) values
+    ($1,'Audit group','UTC'),($2,'Unrelated group','UTC')`, [group, other]);
+  await client.query(`insert into app_identity.organization(id,name,deployment_timezone,parent_organization_id)
+    values($1,'Audit child','UTC',$2)`, [organization, group]);
+  await client.query(`insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,'Auditor')`, [actor, group]);
+  const event = randomUUID(), report = randomUUID();
+  await client.query(`insert into clinical_audit.hospital_operational_event
+    (id,organization_id,report_id,integration,verification,source_id,snapshot_id,amendment_sequence,synthetic,
+     configuration_revision,mapping_id,mapping_revision,mapping_sha256,actor_id,action,state,occurred_at)
+    values($1,$2,$3,'cos','simulator',$4,$5,0,true,1,'fixture',1,$6,$7,'cos.delivery','confirmed',clock_timestamp())`,
+  [event, organization, report, randomUUID(), randomUUID(), 'a'.repeat(64), actor]);
+  for (const scope of [group, other]) await client.query(`insert into app_identity.configuration_event
+    (organization_id,actor_id,catalog_release_id,action,result,change_note,details) values($1,$2,(select id from catalog.release limit 1),'hospital.draft_save','succeeded','Fixture',
+     '{"integration":"cos","revision":1,"mappingId":"fixture","mappingOperation":"import"}')`, [scope, actor]);
+  await client.query(`insert into app_identity.configuration_event
+    (organization_id,actor_id,catalog_release_id,action,result,change_note) values($1,$2,(select id from catalog.release limit 1),'form.draft_save','succeeded','Root-only fixture')`, [group, actor]);
+  await client.query(`insert into clinical_audit.synthetic_purge_tombstone
+    (record_type,record_id,organization_id,server_created_at,expired_at,purged_at)
+    values('report',$1,$2,now()-interval '25 hours',now()-interval '1 hour',clock_timestamp())`, [randomUUID(), organization]);
+  let identifying = true;
+  const sessions = { requireCapability: async () => ({ user: { id: actor }, organization: { id: organization },
+    capabilities: identifying ? ['audit:read','audit:identifying'] : ['audit:read'] }) };
+  const manager = { query: async (sql, values) => (await client.query(sql, values)).rows };
+  const service = new AuditService({ transaction: async (_isolation, work) => work(manager) }, sessions);
+  const range = { from: new Date(Date.now()-86400000).toISOString(), to: new Date(Date.now()+86400000).toISOString() };
+  await client.query('set local role open_triage_api_runtime');
+  const all = await service.list('fixture', range);
+  assert.deepEqual(all.categories, auditCategories);
+  assert.equal(all.entries.filter(row => row.id === event).length, 1, 'one canonical event, not a second clinical/review projection');
+  assert.equal(all.entries.find(row => row.id === event).category, 'integrations');
+  assert.ok(all.entries.some(row => row.action === 'synthetic.purge.report' && row.outcome === 'purged'));
+  const configuration = await service.list('fixture', { ...range, category: 'configuration' });
+  assert.deepEqual(configuration.entries.map(row => row.action), ['hospital.mapping_import'],
+    'include shared hospital settings, excluding other groups and unrelated root settings');
+  assert.equal(configuration.entries[0].integration.destination, 'cos');
+  const integrations = await service.list('fixture', { ...range, category: 'integrations', uuid: report });
+  assert.deepEqual(integrations.entries.map(row => row.id), [event]);
+  identifying = false;
+  const administrative = await service.list('fixture', range);
+  assert.deepEqual(administrative.categories, auditCategories);
+  assert.ok(administrative.entries.some(row => row.action === 'hospital.mapping_import'));
+  assert.deepEqual((await service.list('fixture', { ...range, category: 'integrations' })).entries.map(row => row.id), [event]);
 });

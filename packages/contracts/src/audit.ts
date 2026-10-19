@@ -1,7 +1,6 @@
 export const auditCategories = ["patient", "authentication", "authorization", "configuration", "clinical",
-  "media", "recovery", "review", "synthetic", "installations", "feedback", "audit", "analytics"] as const;
+  "media", "recovery", "review", "synthetic", "installations", "feedback", "audit", "analytics", "integrations"] as const;
 export type AuditCategory = typeof auditCategories[number];
-export const patientAuditCategories: readonly AuditCategory[] = ["patient", "clinical", "media", "recovery", "review", "synthetic", "audit", "analytics"];
 // An empty selection means every category the viewer is permitted to read.
 // category remains accepted for older single-category clients.
 export type AuditQuery = { categories?: AuditCategory[]; category?: AuditCategory; from: string; to: string; actorId?: string;

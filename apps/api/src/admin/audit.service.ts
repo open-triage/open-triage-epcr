@@ -1,7 +1,7 @@
 import {HospitalHistoryService} from "../hospital/hospital-history.service.js";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { auditCategories, auditDumpSources, clinicalValueSources, patientAuditCategories, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTargetKind, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
+import { auditCategories, auditDumpSources, clinicalValueSources, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTargetKind, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { recordPatientAccess } from "../reports/patient-access-audit.js";
@@ -19,6 +19,8 @@ function source(table: string, action: string, options: {
   targetLabel?: string; inspection?: string; recovery?: string; integration?: string;
   // Additional metadata UUIDs only: never index identifiers from protected payloads.
   searchIds?: string;
+  // Override only for shared configuration; $1 remains the authorized agency.
+  scope?: string;
 }): string {
   return `select '${table}'::text source, e.${auditEventIdColumn(table)}::text event_id,
     ${options.time ?? "e.occurred_at"} occurred_at, ${options.actor ?? "e.actor_id"}::text actor_id,
@@ -34,7 +36,7 @@ function source(table: string, action: string, options: {
     ${options.integration ?? "null"}::jsonb integration,
     ${options.searchIds ?? "'{}'::uuid[]"}::uuid[] search_ids
     from ${table} e ${options.join ?? ""}
-    where ${options.organization ?? "e.organization_id"} = $1`;
+    where ${options.scope ?? `${options.organization ?? "e.organization_id"} = $1`}`;
 }
 
 export const auditSources: Record<AuditCategory, string[]> = {
@@ -50,12 +52,26 @@ export const auditSources: Record<AuditCategory, string[]> = {
     targetKind: "case e.target_type when 'role' then 'role' when 'role_version' then 'roleVersion' when 'role_package' then 'rolePackage' when 'capability' then 'capability' else 'record' end" }),
     source("app_identity.ownership_transfer_event", "e.action", { target: "e.transfer_id", outcome: "e.result" }),
     source("app_identity.organization_event", "e.action", { target: "e.organization_id", outcome: "'succeeded'" })],
-  configuration: [source("app_identity.configuration_event", "e.action", { target: "e.form_version_id", outcome: "e.result", integration:"case when e.action like 'hospital.%' then jsonb_build_object('destination',e.details->>'integration','configurationRevision',e.details->'revision','mappingId',e.details->'mappingId','mappingSha256',e.content_sha256) end" }),
+  configuration: [source("app_identity.configuration_event", "case when e.action like 'hospital.%' and e.details->>'mappingOperation'='import' then 'hospital.mapping_import' else e.action end", {
+    scope: "(e.organization_id=$1 or (e.organization_id=app_identity.organization_group($1) and e.action like 'hospital.%'))",
+    target: "e.form_version_id", outcome: "e.result", integration:"case when e.action like 'hospital.%' then jsonb_build_object('destination',e.details->>'integration','configurationRevision',e.details->'revision','mappingId',e.details->'mappingId','mappingSha256',e.content_sha256) end" }),
     source("catalog.publication_event", "'catalog.publish'", { target: "e.release_id", outcome: "e.result" }),
     source("validation.change_event", "e.action", { target: "e.destination_version_id", outcome: "'succeeded'" }),
     source("app_identity.agency_settings_change_event", "'settings.change'", { target: "e.organization_id", outcome: "'succeeded'" }),
     source("app_identity.agency_demographic_change_event", "'demographics.change'", { target: "e.version_id", outcome: "'succeeded'" })],
-  clinical: [source("clinical_audit.hospital_operational_event", "e.action", {time:"e.occurred_at",target:"e.report_id",targetKind:"'record'",outcome:"e.state",integration:"jsonb_build_object('destination',e.integration,'verification',e.verification,'reportId',e.report_id,'snapshotId',e.snapshot_id,'amendmentSequence',e.amendment_sequence,'payloadSha256',e.payload_sha256,'dataset',case when e.synthetic then 'synthetic' else 'real' end,'configurationRevision',e.configuration_revision,'mappingId',e.mapping_id,'mappingRevision',e.mapping_revision,'mappingSha256',e.mapping_sha256,'attemptId',e.attempt_id,'commandId',e.command_id,'finding',e.finding,'receiptId',e.receipt_id,'proofOutcome',e.proof_outcome,'proofFenced',e.proof_fenced,'remotePass',e.remote_pass,'remoteErrors',e.remote_errors)",searchIds:"array[e.source_id,e.snapshot_id,e.attempt_id,e.command_id]"}),source("clinical.eps_submission_attempt", "'eps.submit'", {time:"e.created_at",target:"s.report_id",targetKind:"'record'",outcome:"coalesce(result.state,'unknown')",join:"join clinical.eps_submission s on s.id=e.submission_id join clinical.report r on r.id=s.report_id left join clinical.eps_submission_result result on result.attempt_id=e.id",organization:"s.organization_id",integration:"jsonb_build_object('destination','eps','reportId',s.report_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'configurationRevision',s.configuration_revision,'mappingId',s.mapping_id,'mappingRevision',s.mapping_revision,'mappingSha256',s.mapping_sha256)",searchIds:"array[s.id,s.snapshot_id]"}),source("clinical_audit.event", "e.action", { time: "e.server_time", target: "e.report_id",
+  // The retained ledger already contains COS delivery and EPS attempt/result events.
+  // Reading their clinical source tables again would duplicate the same events.
+  integrations: [source("clinical_audit.hospital_operational_event", "e.action", {time:"e.occurred_at",target:"e.report_id",targetKind:"'record'",outcome:"e.state",integration:"jsonb_build_object('destination',e.integration,'verification',e.verification,'reportId',e.report_id,'snapshotId',e.snapshot_id,'amendmentSequence',e.amendment_sequence,'payloadSha256',e.payload_sha256,'dataset',case when e.synthetic then 'synthetic' else 'real' end,'configurationRevision',e.configuration_revision,'mappingId',e.mapping_id,'mappingRevision',e.mapping_revision,'mappingSha256',e.mapping_sha256,'attemptId',e.attempt_id,'commandId',e.command_id,'finding',e.finding,'receiptId',e.receipt_id,'proofOutcome',e.proof_outcome,'proofFenced',e.proof_fenced,'remotePass',e.remote_pass,'remoteErrors',e.remote_errors)",searchIds:"array[e.source_id,e.snapshot_id,e.attempt_id,e.command_id]"}),
+    source("clinical.eps_submission", "'eps.preview'", { time: "e.created_at", actor: "e.prepared_by", target: "e.report_id", targetKind: "'report'", outcome: "'prepared'",
+      searchIds: "array[e.snapshot_id,e.lineage_parent_id]",
+      integration: "jsonb_build_object('destination','eps','verification','eps','reportId',e.report_id,'snapshotId',e.snapshot_id,'amendmentSequence',e.amendment_sequence,'configurationRevision',e.configuration_revision,'mappingId',e.mapping_id,'mappingRevision',e.mapping_revision,'mappingSha256',e.mapping_sha256,'payloadSha256',e.payload_sha256)" }),
+    source("clinical.eps_import", "'eps.import'", { time: "e.created_at", actor: "e.author_id", target: "e.report_id", targetKind: "'report'", outcome: "e.decision",
+      join: "join clinical.report r on r.id=e.report_id", organization: "r.organization_id", searchIds: "array[e.command_id,e.occurrence_id]",
+      integration: "jsonb_build_object('destination','eps','verification','eps','reportId',e.report_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'configurationRevision',e.evidence->'configurationRevision','mappingId',e.evidence->'mapping'->'definition'->'id','mappingRevision',e.evidence->'mapping'->'definition'->'revision','mappingSha256',e.evidence->'mapping'->'sha256')" })],
+  clinical: [source("clinical_audit.post_signature_dispatch_delivery", "'dispatch.' || e.event_type", {
+    time: "e.created_at", actor: "null", target: "e.report_id", targetKind: "'report'", outcome: "'not-applied'",
+    join: "join clinical.report r on r.id=e.report_id", organization: "r.organization_id", searchIds: "array[e.dispatch_receipt_id]" }),
+    source("clinical_audit.event", "e.action", { time: "e.server_time", target: "e.report_id",
     // This ledger has an open-ended action field. Only the two known writers
     // establish success; unfamiliar historical actions remain unspecified.
     outcome: "case when e.action in ('sign','amend') then 'succeeded' end",
@@ -81,9 +97,9 @@ export const auditSources: Record<AuditCategory, string[]> = {
   review: [source("clinical.cos_recovery_command", "case when e.automatic_ordinal is null then 'cos.manual-retry' else 'cos.automatic-retry' end", {time:"e.created_at",target:"e.item_id",outcome:"'queued'",
     join:"join clinical.report r on r.id=e.report_id",organization:"r.organization_id",
     recovery:"jsonb_build_object('reportId',e.report_id,'itemId',e.item_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'amendmentSequence',e.amendment_sequence)"}),
-    source("clinical.cos_delivery_event", "'cos.delivery'", {time:"e.created_at",actor:"coalesce(e.actor_id,c.actor_id)",target:"i.id",outcome:"e.state",integration:"jsonb_build_object('destination','cos','reportId',d.report_id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'configurationRevision',d.configuration_revision,'mappingId',d.mapping_id,'mappingRevision',d.mapping_revision,'mappingSha256',d.mapping_sha256)",
-      searchIds:"array[d.id,d.snapshot_id,e.attempt_id]",join:"join clinical.report r on r.id=e.report_id join clinical.cos_delivery d on d.id=e.delivery_id join clinical.review_item i on i.report_id=r.id and i.kind='cos-delivery-failed' left join clinical.cos_attempt a on a.id=e.attempt_id left join clinical.cos_recovery_command c on c.id=a.recovery_command_id",organization:"r.organization_id",
-      recovery:"jsonb_build_object('reportId',e.report_id,'itemId',i.id,'dataset',case when r.synthetic then 'synthetic' else 'real' end,'amendmentSequence',d.amendment_sequence)"}),source("clinical.review_assignment_history", "e.action", { time: "e.assigned_at", target: "e.item_id",
+    source("clinical.review_transmission_history", "'review.transmission'", { time: "e.recorded_at", actor: "null", target: "e.item_id", targetKind: "'reviewItem'",
+      outcome: "case when e.active then 'opened' else 'resolved' end", searchIds: "array[e.report_id,e.delivery_id]" }),
+    source("clinical.review_assignment_history", "e.action", { time: "e.assigned_at", target: "e.item_id",
     outcome: "case when e.assignee_id is null then 'unassigned' else 'assigned' end" }),
     source("clinical.review_overdue_history", "e.action", { time: "e.recorded_at", target: "e.item_id",
       outcome: `case e.action when 'detected' then 'opened' when 'resolved-by-signing' then 'resolved'
@@ -94,7 +110,10 @@ export const auditSources: Record<AuditCategory, string[]> = {
       outcome: "case when e.reason='ineligible' then 'unassigned' else 'succeeded' end" }),
     source("clinical.review_amendment_policy_history", "'review.amendment_policy'", { time: "e.recorded_at", target: "e.organization_id", outcome: "'succeeded'" }),
     source("clinical.review_overdue_policy_history", "'review.overdue_policy'", { time: "e.recorded_at", target: "e.organization_id", outcome: "'succeeded'" })],
-  synthetic: [source("clinical_audit.synthetic_generation_event", "e.action", { target: "e.assignment_id", outcome: "'succeeded'" }),
+  synthetic: [source("clinical_audit.synthetic_purge_tombstone", "'synthetic.purge.' || e.record_type", {
+    time: "e.purged_at", actor: "null", target: "e.record_id", outcome: "'purged'",
+    targetKind: "case when e.record_type='report' then 'report' else 'call' end" }),
+    source("clinical_audit.synthetic_generation_event", "e.action", { target: "e.assignment_id", outcome: "'succeeded'" }),
     source("clinical_audit.synthetic_draft_mutation_event", "e.action", { target: "e.report_id", outcome: "'succeeded'" })],
   // These ledgers are written in the same transaction as successful changes.
   // Rejected attempts roll back without an event; historical rows therefore
@@ -188,10 +207,7 @@ export class AuditService {
     const query = validateAuditQuery(input);
     return this.database.transaction("REPEATABLE READ", async (manager) => {
       const session = await this.sessions.requireCapability(token, "audit:read", manager);
-      const patientAccess = !session.installationOwner && !session.installationSuperadmin &&
-        session.capabilities?.includes("audit:identifying");
-      const categories = auditCategories.filter((category) => patientAccess || !patientAuditCategories.includes(category));
-      if (query.categories.some(category => !categories.includes(category))) throw new ForbiddenException({ code: "audit.patientAccessRequired" });
+      const categories = [...auditCategories];
       const selectedCategories = query.categories.length ? query.categories : categories;
       await manager.query("select set_config('open_triage.audit_organization_id', $1, true)", [session.organization.id]);
       type Row = { category: AuditCategory; source: string; event_id: string; occurred_at: Date | string; cursor_time: string;
@@ -289,7 +305,8 @@ export class AuditService {
       throw new BadRequestException({ code: "audit.invalidQuery" });
     return this.database.transaction("REPEATABLE READ", async (manager) => {
       const session = await this.sessions.requireCapability(token, "audit:read", manager);
-      if (analytics && (session.installationOwner || session.installationSuperadmin || !session.capabilities?.includes("audit:identifying")))
+      // Free-text feedback and diagnostics can contain patient details too.
+      if (session.installationOwner || session.installationSuperadmin || !session.capabilities?.includes("audit:identifying"))
         throw new ForbiddenException({ code: "audit.patientAccessRequired" });
       await manager.query("select set_config('open_triage.audit_organization_id', $1, true)", [session.organization.id]);
       let result: AuditDump;

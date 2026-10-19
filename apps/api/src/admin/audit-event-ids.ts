@@ -1,6 +1,7 @@
 // Sources that already have UUID primary keys keep their existing public ID.
 // Numeric sources use the permanent, database-generated audit_id instead.
 const nativeUuidSources = new Set([
+  "clinical.eps_submission", "clinical.eps_import", "clinical.review_transmission_history",
   "clinical.eps_submission_attempt", "clinical_audit.hospital_operational_event",
   "clinical.cos_recovery_command", "clinical.cos_delivery_event",
   "catalog.publication_event", "clinical_audit.analytics_access_event", "clinical.report_change",

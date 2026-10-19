@@ -470,7 +470,10 @@ test("clinical values require a separate inspection and disappear when identifyi
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(panel.locator("pre")).toHaveCount(0);
   await expect(panel.getByRole("dialog")).toHaveCount(0);
-  await expect(panel.getByRole("checkbox", { name: "Clinical changes", exact: true })).toHaveCount(0);
+  await selectTypes(page, ["Clinical changes"]);
+  await panel.getByRole("row", { name: "Inspect report.draft_save", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "View clinical values", exact: true })).toHaveCount(0);
+  expect(inspections).toBe(1);
 });
 
 for (const language of ["en", "sv"]) {
@@ -612,3 +615,58 @@ for (const language of ["en", "sv"]) {
     await expect(first).toBeDisabled(); await expect(next).toBeDisabled();
   });
 }
+
+test("integration events and configuration changes use the audit timeline and localized details", async ({ page }) => {
+  const requests: URL[] = [];
+  await page.route("**/api/admin/audit?*", route => {
+    const url = new URL(route.request().url()); requests.push(url);
+    const category = url.searchParams.get('categories') === 'configuration' ? 'configuration' : 'integrations';
+    return route.fulfill({ json: auditPage({ categories: auditCategories, nextCursor: null,
+      entries: [{ ...entry, category, action: category === 'configuration' ? 'hospital.mapping_import' : 'cos.delivery',
+        outcome: category === 'configuration' ? 'succeeded' : 'confirmed',
+        integration: { destination: 'cos', configurationRevision: 3, mappingId: 'audit-fixture', mappingSha256: 'a'.repeat(64) } }] }) });
+  });
+  await page.goto('/__audit?language=en');
+  await selectTypes(page, ['Integrations']);
+  await expect(page.getByRole('cell', { name: 'Integrations', exact: true })).toBeVisible();
+  expect(requests.at(-1)?.searchParams.get('categories')).toBe('integrations');
+  await page.locator('.audit-table tbody tr').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('summary').filter({ hasText: 'Integration history' }).click();
+  await expect(dialog.getByText('audit-fixture', { exact: true })).toBeVisible();
+  await expect(dialog.locator('.hospital-history-panel')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close details', exact: true }).click();
+  await selectTypes(page, ['Configuration']);
+  await expect(page.getByRole('cell', { name: 'Canonical mapping imported', exact: true })).toBeVisible();
+});
+
+test("metadata auditors can select every log type without clinical-value or payload controls", async ({ page }) => {
+  await page.route('**/api/admin/context', route => route.fulfill({ json: {
+    organization: session.organization, panels: ['auditing'], capabilities: ['audit:read'],
+    dashboard: null, activeConfiguration: null,
+  } }));
+  const sources: Record<string, string> = { clinical: 'clinical.report_change',
+    analytics: 'clinical_audit.analytics_access_event', feedback: 'feedback.submission',
+    patient: 'clinical_audit.patient_access_event', integrations: 'clinical_audit.hospital_operational_event' };
+  await page.route('**/api/admin/audit?*', route => {
+    const category = new URL(route.request().url()).searchParams.get('categories') || 'patient';
+    return route.fulfill({ json: auditPage({ categories: auditCategories, entries: [{ ...entry, category,
+      source: sources[category], action: `${category}.metadata`, patientId: actor, target: { kind: 'report', label: 'PCR-123' } }], nextCursor: null }) });
+  });
+  await page.goto('/__audit?language=en');
+  const panel = page.locator('.audit-panel');
+  await panel.locator('.audit-type-filter summary').click();
+  await expect(panel.getByRole('checkbox')).toHaveCount(auditCategories.length);
+  for (const [category, name] of Object.entries({ patient: 'Patient access', clinical: 'Clinical changes',
+    analytics: 'Analytics and exports', feedback: 'Feedback', integrations: 'Integrations' })) {
+    await selectTypes(page, [name]);
+    await expect(panel.getByRole('cell', { name: `${category}.metadata`, exact: true })).toBeVisible();
+    await expect(panel.getByRole('cell', { name: 'PCR: PCR-123', exact: true })).toBeVisible();
+    await panel.locator('tbody tr').click();
+    const dialog = panel.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'View clinical values', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Show JSON dump', exact: true })).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Close details', exact: true }).click();
+  }
+});
