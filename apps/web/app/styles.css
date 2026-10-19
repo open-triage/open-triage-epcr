@@ -1371,3 +1371,8 @@ fieldset { min-inline-size: 0; }
 .signed-report-pdf-dialog h2, .signed-report-pdf-dialog p { margin: 0; }
 .signed-report-pdf-dialog iframe { flex: 1; min-height: 200px; width: 100%; border: 1px solid var(--inactive-button); }
 .signed-report-pdf-dialog a { color: var(--green-dark); min-height: 44px; display: inline-flex; align-items: center; }
+
+.eps-import-preview { display: grid; gap: 10px; min-width: 0; }
+.eps-import-preview label { display: grid; gap: 6px; min-width: 0; }
+.eps-import-preview textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.eps-import-history pre { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -18,7 +18,7 @@ Test read-only connection issues `GET /Organization/$me` with the protected
 credential. It does not call `$validate`, send a patient document or prove document
 conformance. Activate the exact successfully tested revision. Editing preserves
 the active revision. Deactivation clears the active pointer and preserves all
-versions and history. COS is explicitly unconfigured in this slice.
+versions and history. COS has its separate configuration and simulator below.
 
 Credentials use the existing installation-protected, group-owned credential key
 conventions. The panel never returns a saved credential. No EPS-specific deployment
@@ -45,9 +45,8 @@ time, the pinned EPS/FHIR profile dependency, and patient-field/namespace mappin
 The package contains the pinned catalog fingerprint and content hash. It contains
 no credential, clinical content or local destination/staff assignment. Unsupported
 schema/profile/dependency combinations and unknown properties fail closed.
-Version 1 establishes identifier mapping; clinical concept mapping is extended by
-subsequent hospital integration slices rather than silently executing unsupported
-mapping rules. Runtime identifier settings are rebuilt and validated from the
+Version 1 also supports optional `clinicalMappings` for selected EPS allergies and
+conditions. Packages without that member remain valid identifier-only packages. Runtime identifier settings are rebuilt and validated from the
 canonical package, never independently editable database projections.
 
 ## Identifier contract
@@ -156,3 +155,44 @@ failures. The PostgreSQL hospital integration suite additionally covers both
 patients, changed identifier selection, late results, authorization/revocation,
 revision audit, multiple service instances, and English/Swedish desktop/mobile
 keyboard and layout behavior using the actual component and service.
+
+
+## Selective EPS allergy and condition imports
+
+In EPS administration, add an exact source resource type, code system and code,
+then select a standard or custom destination from the pinned published form.
+**Check mappings** reports unavailable fields, incompatible types, unsupported
+cardinality and codes absent from the destination. A coded destination must permit
+the identical source code and system, plus unambiguous active/confirmed source
+statuses in their published status code systems. Missing, uncertain, refuted,
+entered-in-error, inactive/resolved or contradictory statuses cannot become a bare
+affirmative destination code. There is no inferred translation. Text
+mapping retains readable source narrative, exact coding, status and clinical dates.
+The original resource remains attached as protected provenance. Correlated custom
+groups and ambiguous destination instances are unavailable in this first journey.
+
+Save, export/import, test and activate use the same canonical package workflow as
+identifier mappings. Every selected import retains its canonical identity, revision,
+hash and configuration revision. Changing activation cannot rewrite that evidence.
+
+The EPS dialog offers a per-entry preview with its EPR destination. Unmapped and
+incompatible source entries stay visible. Preview compares the report's pinned
+form and exact current draft revision. Existing values require an explicit keep or
+replace decision. Replacement is limited to that destination group, and both the
+previous value and source remain attributable through existing clinical history.
+Duplicate source entries and replayed commands cannot create duplicate imports.
+Refresh the summary and preview again after a stale-revision/configuration error.
+
+Imports require a current online documenting-clinician session. They cannot edit
+signed reports. Imported source history remains inspectable from the encounter,
+including a warning when its pinned patient identifier no longer matches—even if
+the new identifier is missing or has no matching EPS. Keep/replace/import decisions
+write `eps.import` audit evidence with actor, report and mapping metadata; payloads
+and patient identifiers are excluded from routine audit metadata.
+
+`clinical.eps_import` and short-lived `clinical.eps_import_plan` are report-owned
+protected records and cascade with report deletion and synthetic expiry. A plan
+expires after 15 minutes; new plans remove expired plans and replace that report's
+previous preview. Ordinary signed snapshots include occurrence source provenance.
+The API never fetches arbitrary source references or accepts a client-supplied
+clinical value as authoritative EPS data.

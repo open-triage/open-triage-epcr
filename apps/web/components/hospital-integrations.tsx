@@ -1,7 +1,7 @@
 "use client";
 import {CosIntegrationsPanel} from './cos-integrations';
 import React,{useEffect,useState} from 'react';
-import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
+import {DEFAULT_HOSPITAL_PATIENT_FIELD,hospitalFieldId,type EpsClinicalMapping,type HospitalField,type HospitalMappingDefinition} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
 import {resolveMessage} from '../app/localization';
 import {platformRequestError,PlatformRequestError} from '../app/platform-errors';
@@ -10,16 +10,18 @@ import {useUnsavedChanges} from './unsaved-changes';
 type Mapping={sha256:string;definition:HospitalMappingDefinition};
 type Version={revision:number;endpoint:string;credentialConfigured:boolean;mapping:Mapping};
 type View={groupName:string;stateRevision:number;draft:Version|null;active:Version|null;defaultEndpoint:string;
+ clinicalOptions?:{id:string;field:HospitalField;name?:string}[];
  options:{id:string;field:HospitalField;name:string;localization?:{schemaVersion:1;sv?:{label:string}}}[];
  tests:{id:string;revision:number;result:string;createdAt:string}[];
  history:{revision:number;sha256:string;status:string;createdAt:string}[];
  events:{action:string;occurredAt:string;actorId:string}[]};
 type FileEntry={file:string;compatible:boolean;mapping:Mapping|null};
-const empty={endpoint:'https://hackathon2026.vadimperetok.in/fhir',field:DEFAULT_HOSPITAL_PATIENT_FIELD,namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:''};
-function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n')}:empty;}
+const empty={endpoint:'https://hackathon2026.vadimperetok.in/fhir',field:DEFAULT_HOSPITAL_PATIENT_FIELD,namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:'',clinicalMappings:[] as EpsClinicalMapping[]};
+function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n'),clinicalMappings:value.mapping.definition.clinicalMappings??[]}:empty;}
 export function HospitalIntegrationsPanel({language,csrfToken,canWrite}:{language:string;csrfToken:string;canWrite:boolean}){
  const t=(key:string)=>resolveMessage(language,`hospital.${key}`);
  const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[tab,setTab]=useState('eps'),[cosOpened,setCosOpened]=useState(false),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
+ const [mappingFindings,setMappingFindings]=useState<{key:string;rows:{id:string;label:string;finding:string|null}[]}>({key:'',rows:[]});
  const dirty=!!secret||JSON.stringify(draft)!==JSON.stringify(editable(value?.draft??null));
  const confirmLeave=useUnsavedChanges(dirty);
  const tested=value?.tests.find(test=>test.revision===value.draft?.revision);
@@ -53,7 +55,7 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite}:{languag
     <p>{t('active')}: {value.active?.revision??t('inactive')} — {t('draft')}: {value.draft?.revision??t('unsaved')}</p>
     <p>{t('connectivityHelp')}</p>
     {tested&&<p>{t('testRevision')}: {tested.revision} — {t(tested.result)} — {new Date(tested.createdAt).toLocaleString(language)}</p>}
-    <form onSubmit={event=>{event.preventDefault();void action('',{expectedRevision:expected.expectedRevision,endpoint:draft.endpoint,authentication:'team-token',patientIdentifier:{field:draft.field,namespace:draft.namespace,aliases:draft.aliases.split(/\s+/).filter(Boolean)},...(secret?{replacementSecret:secret}:{})},'PUT');}}>
+    <form onSubmit={event=>{event.preventDefault();void action('',{expectedRevision:expected.expectedRevision,endpoint:draft.endpoint,authentication:'team-token',clinicalMappings:draft.clinicalMappings,patientIdentifier:{field:draft.field,namespace:draft.namespace,aliases:draft.aliases.split(/\s+/).filter(Boolean)},...(secret?{replacementSecret:secret}:{})},'PUT');}}>
      <fieldset disabled={busy||!canWrite}><legend>{t('configuration')}</legend>
       <label>{t('endpoint')}<input type="url" required value={draft.endpoint} onChange={event=>setDraft({...draft,endpoint:event.target.value})}/></label>
       <label>{t('authentication')}<select value="team-token" onChange={()=>{}}><option value="team-token">{t('teamToken')}</option></select></label>
@@ -63,6 +65,19 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite}:{languag
       </select></label>
       <label>{t('namespace')}<input required value={draft.namespace} onChange={event=>setDraft({...draft,namespace:event.target.value})}/></label>
       <label>{t('aliases')}<textarea rows={2} value={draft.aliases} onChange={event=>setDraft({...draft,aliases:event.target.value})}/></label>
+      <fieldset><legend>{t('clinicalMappings')}</legend><p>{t('clinicalHelp')}</p>
+       {draft.clinicalMappings.map((m,index)=><fieldset key={m.id}><legend>{index+1}</legend>
+        <label>{t('resource')}<select value={m.resourceType} onChange={e=>setDraft({...draft,clinicalMappings:draft.clinicalMappings.map((v,i)=>i===index?{...v,resourceType:e.target.value as EpsClinicalMapping['resourceType']}:v)})}><option value="AllergyIntolerance">{t('allergy')}</option><option value="Condition">{t('condition')}</option></select></label>
+        <label>{t('sourceSystem')}<input required value={m.system} onChange={e=>setDraft({...draft,clinicalMappings:draft.clinicalMappings.map((v,i)=>i===index?{...v,system:e.target.value}:v)})}/></label>
+        <label>{t('sourceCode')}<input required value={m.code} onChange={e=>setDraft({...draft,clinicalMappings:draft.clinicalMappings.map((v,i)=>i===index?{...v,code:e.target.value}:v)})}/></label>
+        <label>{t('clinicalDestination')}<select value={hospitalFieldId(m.destination)} onChange={e=>{const field=value.clinicalOptions?.find(o=>o.id===e.target.value)?.field;if(field)setDraft({...draft,clinicalMappings:draft.clinicalMappings.map((v,i)=>i===index?{...v,destination:field}:v)});}}>{value.clinicalOptions?.map(o=><option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}</select></label>
+        <label>{t('representation')}<select value={m.representation} onChange={e=>setDraft({...draft,clinicalMappings:draft.clinicalMappings.map((v,i)=>i===index?{...v,representation:e.target.value as 'text'|'coded'}:v)})}><option value="text">{t('sourceText')}</option><option value="coded">{t('sameCode')}</option></select></label>
+        <button type="button" onClick={()=>setDraft({...draft,clinicalMappings:draft.clinicalMappings.filter((_,i)=>i!==index)})}>{t('removeMapping')}</button>
+       </fieldset>)}
+       <button type="button" onClick={()=>{setBusy(true);void request('/inspect-mappings',{clinicalMappings:draft.clinicalMappings}).then(rows=>setMappingFindings({key:JSON.stringify(draft.clinicalMappings),rows})).catch(failed).finally(()=>setBusy(false));}}>{t('inspectMappings')}</button>
+       {(mappingFindings.key===JSON.stringify(draft.clinicalMappings)?mappingFindings.rows:[]).map(f=><p key={f.id} role="status">{f.label}: {resolveMessage(language,`epsImport.${f.finding??'compatible'}`)}</p>)}
+       <button type="button" onClick={()=>setDraft({...draft,clinicalMappings:[...draft.clinicalMappings,{id:crypto.randomUUID(),resourceType:'AllergyIntolerance',system:'http://snomed.info/sct',code:'',destination:value.clinicalOptions?.[0]?.field??DEFAULT_HOSPITAL_PATIENT_FIELD,representation:'coded'}]})}>{t('addMapping')}</button>
+      </fieldset>
       <p>{t(value.draft?.credentialConfigured?'credentialConfigured':'credentialMissing')}</p>
       <label>{t('credential')}<input type="password" autoComplete="off" maxLength={4096} value={secret} onChange={event=>setSecret(event.target.value)}/></label>
       <div className="form-actions"><button type="submit" disabled={!dirty&&!!value.draft}>{t('save')}</button>

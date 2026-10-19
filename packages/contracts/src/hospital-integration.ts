@@ -12,6 +12,7 @@ export type HospitalMappingDefinition = {
   author: string;
   profile: { package: 'hl7.fhir.eu.eps'; version: '1.0.0-ballot'; fhirVersion: '4.0.1' };
   patientIdentifier: HospitalIdentifier;
+  clinicalMappings?: EpsClinicalMapping[];
 };
 export type HospitalIdentifierFinding = 'unavailable' | 'incompatible' | 'missing' | 'ambiguous';
 export type HospitalIdentifierResult = { identifier: { system: string; value: string }; finding: null } |
@@ -50,7 +51,7 @@ export function hospitalIdentifiersMatch(configuration: HospitalIdentifier, loca
 }
 
 /** COS portable mappings exclude endpoints, credentials and local identity assignments. */
-export type CosMappingDefinition = Omit<HospitalMappingDefinition, 'profile'> & {
+export type CosMappingDefinition = Omit<HospitalMappingDefinition, 'profile' | 'clinicalMappings'> & {
   profile: { package: 'cambio.cos.prehospital'; version: '2.0.0'; fhirVersion: '4.0.1';
     bundle: 'https://fhir.cambio.se/StructureDefinition/BundlePrehospitalNote/v2';
     questionnaire: 'https://fhir.cambio.se/StructureDefinition/QuestionnaireResponsePreHospitalNote/v2' };
@@ -62,4 +63,22 @@ export type CosConnectionSettings = {
   defaultAmbulanceCareUnit: string;
   staff: { userId: string; hsaId: string }[];
   careUnits: { hospital: string; localCareUnit: string; hsaId: string }[];
+};
+
+/** Exact source coding; text preserves the source facts, coded never translates terminology. */
+export type EpsClinicalMapping = {
+  id: string;
+  resourceType: 'AllergyIntolerance' | 'Condition';
+  system: string;
+  code: string;
+  destination: HospitalField;
+  representation: 'text' | 'coded';
+};
+export type EpsImportRow = {
+  entryId: string; label: string; destination: string | null;
+  finding: string | null; mappingId: string | null;
+};
+export type EpsImportPlan = {
+  id: string; revision: number; destination: string; incoming: string;
+  existing: string[]; conflict: boolean; alreadyImported: boolean;
 };

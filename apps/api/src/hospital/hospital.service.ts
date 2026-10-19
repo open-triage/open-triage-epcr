@@ -1,3 +1,4 @@
+import {clinicalMappings,clinicalOptions,importDestination} from './eps-import-mapping.js';
 import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
@@ -58,14 +59,20 @@ export class HospitalService {
     const events=await this.database.query<Array<{action:string;occurred_at:Date;actor_id:string;details:unknown}>>(`select action,occurred_at,actor_id,details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%' and details->>'integration'='eps' order by occurred_at desc,id desc limit 30`,[groupId]);
     let options:ReturnType<typeof identifierOptions>=[];
     try {options=identifierOptions((await this.currentForm(this.database.manager,groupId)).form);}catch(error){if(!(error instanceof ServiceUnavailableException))throw error;}
-    return {groupId,groupName,stateRevision:Number(state?.state_revision??0),draft:this.view(rows[0]),active:this.view(active),options,
+    const form=await this.currentForm(this.database.manager,groupId).catch(()=>null);
+    return {clinicalOptions:form?clinicalOptions(form.form):[],clinicalFindings:form&&rows[0]?clinicalMappings(mappingPackage(rows[0].canonical_mapping).definition.clinicalMappings).map(m=>({id:m.id,...importDestination(m,form.form)})):[],groupId,groupName,stateRevision:Number(state?.state_revision??0),draft:this.view(rows[0]),active:this.view(active),options,
       defaultPatientField:DEFAULT_HOSPITAL_PATIENT_FIELD,defaultEndpoint:EPS_ENDPOINT,
       tests:tests.map(t=>({id:t.id,revision:Number(t.revision),result:t.result,createdAt:t.created_at.toISOString(),kind:'read-only-connectivity',publication:false})),
       history:rows.map(row=>({revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,sha256:row.canonical_mapping.sha256,createdAt:row.created_at.toISOString(),actorId:row.created_by,status:Number(row.revision)===Number(state?.active_revision)?'active':Number(row.revision)===Number(state?.draft_revision)?'draft':'superseded'})),
       events:events.map(event=>({action:event.action,occurredAt:event.occurred_at.toISOString(),actorId:event.actor_id,details:event.details}))};
   }
+  async inspectClinical(token:string,input:unknown) {
+    const {groupId}=await this.scope(token);const body=keys(input,['clinicalMappings']);
+    const form=await this.currentForm(this.database.manager,groupId);
+    return clinicalMappings(body.clinicalMappings).map(mapping=>({id:mapping.id,...importDestination(mapping,form.form)}));
+  }
   async save(token:string,input:unknown) {
-    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping']);
+    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping','clinicalMappings']);
     const expected=revision(body.expectedRevision);
     if(body.endpoint!==EPS_ENDPOINT||body.authentication!=='team-token')return invalid();
     if(body.replacementSecret!==undefined&&(typeof body.replacementSecret!=='string'||body.replacementSecret.length<1||body.replacementSecret.length>4096||/[\u0000-\u001f\u007f]/.test(body.replacementSecret)))return invalid();
@@ -86,7 +93,7 @@ export class HospitalService {
       const mapping=incoming??makePackage({kind:'hospital-mapping',name:`EPS-${mappingId}`,version:String(mappingRevision),catalog:{sha256:dependencies.catalogHash},definition:{
         schemaVersion:1,id:mappingId,revision:mappingRevision,
         authoredAt:new Date().toISOString(),author:actor.user.id,
-        profile:{package:'hl7.fhir.eu.eps',version:'1.0.0-ballot',fhirVersion:'4.0.1'},patientIdentifier
+        profile:{package:'hl7.fhir.eu.eps',version:'1.0.0-ballot',fhirVersion:'4.0.1'},patientIdentifier,clinicalMappings:clinicalMappings(body.clinicalMappings??priorDefinition?.clinicalMappings)
       } satisfies HospitalMappingDefinition});
       compileMapping(mapping,dependencies.form);
       const credentialId=prior?.credential_id??randomUUID();
