@@ -22,3 +22,8 @@ test('COS required settings and destination resolver never guess receiving units
  assert.throws(()=>connectionSettings({...settings,staff:[settings.staff[0],settings.staff[0]]}));
  assert.deepEqual(cosFindings({...settings,template:'',staff:[]},definition),['template','staff']);
 });
+
+test('COS retry schedules are finite, explicit, and validate every delay',()=>{
+ for(const retryScheduleMinutes of [[],[1,5,15,30,60],[1440]])assert.deepEqual(connectionSettings({...settings,retryScheduleMinutes}).retryScheduleMinutes,retryScheduleMinutes);
+ for(const retryScheduleMinutes of [[0],[-1],[1.5],[1441],Array(6).fill(1),'1,5',[null],[NaN]])assert.throws(()=>connectionSettings({...settings,retryScheduleMinutes}));
+});

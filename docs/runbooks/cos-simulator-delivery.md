@@ -201,3 +201,21 @@ restored patient contact can reopen them. This does not retract earlier receiver
 notes or clear an uncertain-delivery barrier. Every eligible delivery still
 hydrates and verifies all signed photos and requires the complete PDF; manual
 PDF inspection also fails when signed media is unavailable.
+
+Automatic recovery pins the COS configuration revision and finite delay schedule
+before the first attempt. The default is 1, 5, 15, 30 and 60 minutes after each
+previous definite outage, with reproducible jitter bounded to ±10%. Administrators
+can save and activate up to five delays of 1–1440 minutes, or an empty schedule.
+Existing deliveries retain their original policy; changing or deactivating the
+active configuration pauses their automatic recovery. Review shows the original
+policy, next planned retry, exhausted budget and configuration pause.
+
+Only a definite `outage` is replayable. Unknown results require reconciliation;
+credentials, identifiers, payload and completeness failures require correction.
+Automatic reservations append to the same durable recovery-command journal as
+manual Review recovery and the worker uses the exact stored payload/PDF bytes.
+The report advisory lock coordinates workers and manual commands. Reserved retries
+and actual receiver attempts are shown separately, so superseded work cannot look
+like a remote attempt. Manual recovery clears a pending due time and never resets
+the finite automatic budget. The failure item stays open until confirmed storage.
+This simulator evidence does not establish live COS acceptance.

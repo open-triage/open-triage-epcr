@@ -1,3 +1,4 @@
+import {cosRetryStatus} from '../hospital/cos-automatic-retry.js';
 import { identifierCorrectionContext, correctReviewIdentifier } from "./review-identifier-correction.js";
 
 import { retryCosReview } from '../hospital/cos-retry.js';
@@ -1459,8 +1460,9 @@ export class ReviewService implements OnModuleDestroy {
       const evidence=transmissionHistory.at(-1)!.evidence;
       const [live]=await this.database.query<Array<{state:string;finding:string|null;state_revision:string;active_revision:string|null}>>(`select d.state,d.finding,s.state_revision,s.active_revision from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id where d.id=$1 and d.report_id=$2`,[evidence.deliveryId,row.report_id]);
       if(live){evidence.deliveryState=live.state;evidence.finding=live.finding;evidence.stateRevision=Number(live.state_revision);evidence.retryable=live.state==='failed'&&live.finding==='outage'&&Number(live.active_revision)===Number(evidence.configurationRevision);}
-      const commands=await this.database.query<Array<{id:string;actor_id:string;delivery_id:string;amendment_sequence:number;created_at:Date;state:string}>>(`select c.*,coalesce((select e.state from clinical.cos_attempt a join clinical.cos_delivery_event e on e.attempt_id=a.id where a.recovery_command_id=c.id order by e.created_at desc,e.id desc limit 1),d.state) state from clinical.cos_recovery_command c join clinical.cos_delivery d on d.id=c.delivery_id where c.item_id=$1 order by c.created_at,c.id`,[id]);
-      evidence.recoveryCommands=commands.map(c=>({id:c.id,actorId:c.actor_id,deliveryId:c.delivery_id,amendmentSequence:c.amendment_sequence,requestedAt:c.created_at.toISOString(),outcome:c.state}));
+      evidence.automaticRetry=await cosRetryStatus(this.database,evidence.deliveryId);
+      const commands=await this.database.query<Array<{id:string;actor_id:string|null;automatic_ordinal:number|null;delivery_id:string;amendment_sequence:number;created_at:Date;state:string}>>(`select c.*,coalesce((select e.state from clinical.cos_attempt a join clinical.cos_delivery_event e on e.attempt_id=a.id where a.recovery_command_id=c.id order by e.created_at desc,e.id desc limit 1),d.state) state from clinical.cos_recovery_command c join clinical.cos_delivery d on d.id=c.delivery_id where c.item_id=$1 order by c.created_at,c.id`,[id]);
+      evidence.recoveryCommands=commands.map(c=>({id:c.id,actorId:c.actor_id,automaticOrdinal:c.automatic_ordinal,deliveryId:c.delivery_id,amendmentSequence:c.amendment_sequence,requestedAt:c.created_at.toISOString(),outcome:c.state}));
     }
     const detailTargets = [...new Set([...(row.findings ?? []), ...decisions.flatMap((decision) => decision.findings)]
       .flatMap((finding) => [finding.primaryTarget.elementId, ...(finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)]))];
