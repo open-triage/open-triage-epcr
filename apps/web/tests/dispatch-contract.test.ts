@@ -201,7 +201,7 @@ test("synthetic dispatch lifecycle validates against the strict envelope and pin
     }
   }
 
-  const phones = findElement(await json(examplePaths[2]!) as DispatchMessage, "ePatient.18")!.values;
+  const phones = findElement(await json(resolve(root, "tests/fixtures/repeated-phone-dispatch.json")) as DispatchMessage, "ePatient.18")!.values;
   assert.equal(phones.length, 2, "assignment demonstrates repeated telephone values");
   assert.deepEqual(phones.map(({ attributes }) => attributes?.PhoneNumberType), ["9913003", "9913005"]);
 });

@@ -42,7 +42,7 @@ function installedFixture(patientIndex = 0) {
   };
   const source = read('../apps/web/app/data/synthetic-encounter-document.json');
   if (patientIndex) {
-    const dispatch = read('../packages/contracts/examples/dispatch/synthetic-assignment-02.json');
+    const dispatch = read(`../packages/contracts/examples/dispatch/synthetic-assignment-${String(patientIndex + 1).padStart(2, '0')}.json`);
     source.groups = source.groups.filter(group => !group.id.startsWith('ePatient'))
       .concat(dispatch.groups.filter(group => group.id.startsWith('ePatient')));
   }
@@ -79,12 +79,19 @@ for (const preserveExisting of [true, false]) {
 
 const patientValue = (document, id) => document.groups.flatMap(group => group.instances.flatMap(instance => instance.elements))
   .find(element => element.id === id)?.values[0];
-for (const [index, name] of ['andrea', 'arne'].entries()) {
+const patients = ['andrea', 'arne', 'ville'].map(name => read(`../packages/contracts/examples/hospital/${name}-patient.json`));
+const usedPatients = new Set();
+for (let index = 0; index < 10; index++) {
+  const fixture = read(`../packages/contracts/examples/dispatch/synthetic-assignment-${String(index + 1).padStart(2, '0')}.json`);
+  const identifier = patientValue(fixture, 'ePatient.01').value;
+  const patient = patients.find(patient => patient.identifier[0].value === identifier);
+  assert.ok(patient, `Dispatch ${index + 1} must use a hackathon patient`);
+  usedPatients.add(identifier);
+  const name = patient.name[0].given[0];
   for (const preserveExisting of [false, true]) {
-    test(`${name}: ${preserveExisting ? 'Populate' : 'CLI'} retains the service identity and derives coherent age`, () => {
-      const patient = read(`../packages/contracts/examples/hospital/${name}-patient.json`);
+    test(`${index + 1} ${name}: ${preserveExisting ? 'Populate' : 'CLI'} retains the service identity and derives coherent age`, () => {
       const input = installedFixture(index);
-      for (const seed of [1, 17, 49]) {
+      for (const seed of (index < 2 ? [1, 17, 49] : [1])) {
         const { document } = generateDocument({ ...input, preserveExisting, random: randomFromSeed(seed) });
         assert.equal(patientValue(document, 'ePatient.01').value, patient.identifier[0].value);
         assert.equal(patientValue(document, 'ePatient.02').value, patient.name[0].family);
@@ -99,7 +106,7 @@ for (const [index, name] of ['andrea', 'arne'].entries()) {
           assert.ok(!patientValue(document, id) || patientValue(document, id).kind === 'null', `${id} must not invent a US locality`);
         }
         assert.equal(patientValue(document, 'ePatient.25').code, patient.gender === 'female' ? '9919001' : '9919003');
-        assert.equal(patientValue(document, 'ePatient.15').value, index ? 83 : 24);
+        assert.equal(patientValue(document, 'ePatient.15').value, { '200207252388': 24, '194302096997': 83, '201304822172': 13 }[identifier]);
         assert.equal(patientValue(document, 'ePatient.16').code, '2516009');
         assert.deepEqual(validationProblems(input.bundle, document, input.now.toISOString()), []);
         assert.equal(document.encounter.synthetic, true);
@@ -107,6 +114,10 @@ for (const [index, name] of ['andrea', 'arne'].entries()) {
     });
   }
 }
+
+test('all three hackathon identities occur in dispatch samples', () => {
+  assert.equal(usedPatients.size, 3);
+});
 
 test('a documented care disposition incompatible with absent locality fails without inventing demographics or changing care', () => {
   const input = installedFixture();

@@ -8,7 +8,7 @@ import { validateDispatchAssignment } from "../dist/dispatch/dispatch-assignment
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const catalog = JSON.parse(await readFile(resolve(root, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"));
 const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
-const sourceWithPhones = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-03.json"), "utf8"));
+const sourceWithPhones = JSON.parse(await readFile(resolve(root, "tests/fixtures/repeated-phone-dispatch.json"), "utf8"));
 const cancellation = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-cancellation.json"), "utf8"));
 
 function copy(value = source) {
