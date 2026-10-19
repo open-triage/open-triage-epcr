@@ -1,3 +1,4 @@
+import { queueSignedCos } from '../hospital/cos-queue.js';
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
@@ -131,6 +132,8 @@ export class AmendReportService {
         await this.appendAudit(manager, reportId, command, amendmentId, nextSequence,
           canonicalSha256, signedAt, storedChanges);
 
+        const [snapshot] = await manager.query<Array<{id:string}>>('select id from clinical.signed_snapshot where report_id=$1',[reportId]);
+        if(snapshot)await queueSignedCos(manager,reportId,snapshot.id,command.authorId,nextSequence);
         const result: AmendedReportResult = {
           id: reportId,
           status: "signed",
