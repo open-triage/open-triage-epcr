@@ -220,6 +220,48 @@ previous preview. Ordinary signed snapshots include occurrence source provenance
 The API never fetches arbitrary source references or accepts a client-supplied
 clinical value as authoritative EPS data.
 
+## Selective historical observations, procedures and patient context
+
+Historical Observation and Procedure mappings require an explicit destination
+meaning in the EPS panel. Only uncorrelated custom text fields declared as dated
+observation history or dated procedure history are supported. Encounter vitals,
+encounter treatments and generic narrative fields are incompatible, even when
+their primitive datatype or terminology matches. This does not add a longitudinal
+record model. Source facts that cannot fit faithfully remain readable and view-only.
+
+Observation mappings select an exact terminology system/code and, for quantities,
+an exact expected unit system/code. No numeric or terminology conversion occurs.
+Final/amended/corrected observations with a date or period retain source status,
+values, units, qualifiers, notes and original context. Completed procedures retain
+their performed date or period. Unsupported modifiers, uncertain statuses, missing
+dates, multi-component measurements and richer unsupported values have specific
+view-only findings. Explicit observation absence codes are retained as absence,
+never converted to a numeric measurement. Multiple independent dated source entries
+can be appended to a repeatable custom history field through an explicit decision.
+
+Patient context initially supports a current identifier: select Patient, source
+code `identifier`, the exact source identifier namespace, text representation and
+the patient-identifier destination meaning. The destination must be `ePatient.01`
+or an explicitly designated single custom string field marked identifying. Ambiguous, old, temporary
+or period-limited identifiers remain view-only. If this is the configured lookup
+field, the source namespace must be that configuration's namespace or an explicit
+equivalent alias. Leading zeroes and separators remain unchanged. Preview retains
+the source namespace and complete source context; the destination receives only
+the exact scalar identifier. Replacing identity invalidates EPS availability and
+exposes inconsistencies with previously imported sources after the ordinary draft
+poll. Existing source history is never relabelled as belonging to the new identity.
+
+These mapping roles and expected units are part of the authoritative canonical
+JSON package and its immutable revision/hash. Importing a transferred package
+validates its schema, dependencies and destination semantics before activation.
+Existing occurrence constraints, conflict resolution, deduplication, authorization,
+protected retention and signed provenance also apply to these imports.
+
+Source semantics follow the pinned FHIR R4 definitions for
+[Observation](https://hl7.org/fhir/R4/observation.html),
+[Procedure](https://hl7.org/fhir/R4/procedure.html), and
+[Patient](https://hl7.org/fhir/R4/patient.html). These limited projections are not
+claims that arbitrary FHIR historical content can become a current encounter fact.
 ### Medication history imports
 
 For `MedicationStatement`, select an exact source product code and a custom text
