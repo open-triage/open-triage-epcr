@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
+import {catalogElements} from '../../dist/review/analytics-catalog.js';
 import {ReviewService} from '../../dist/review/review.service.js';
 import {SignReportService} from '../../dist/reports/sign-report.service.js';
 import {EpsImportService} from '../../dist/hospital/eps-import.service.js';
@@ -51,6 +52,9 @@ export async function epsHistoryJourney({database,query,sessions,configuration,a
   const reviewingActor=await sessions.get(adminToken);
   const restrictedReview=new ReviewService(database,{get:async()=>({user:reviewingActor.user,organization:actor.organization,capabilities:['review:all','clinical:demo']})});
   const redacted=await restrictedReview.report('fixture',report.id,'synthetic');assert.equal(redacted.identifying,false);assert.doesNotMatch(JSON.stringify(redacted),/Historical Privacy Sentinel|eps007-weight-old|200207252388/);assert.ok(redacted.values.every(v=>v.valueKind!=='text'));
+  const analyticsScope={organizationId:actor.organization.id,userId:reviewingActor.user.id,reports:'all',identifying:false,defaultDataset:'synthetic'};
+  assert.ok(!(await catalogElements({query},analyticsScope,undefined,false)).some(e=>e.id.startsWith(`custom:${historyFieldId}:`)),'non-identifying analytics cannot discover imported custom history');
+  assert.ok((await catalogElements({query},{...analyticsScope,userId:actor.user.id},undefined,false)).some(e=>e.id.startsWith(`custom:${historyFieldId}:`)),'documenting clinician retains own historical field');
   await query('rollback to savepoint signed_historical_context');await query('release savepoint signed_historical_context');
   const patientPlan=await imports.plan(token,report.id,{binding:context.binding,entryId:entryId(patient.resource.id)});assert.equal(patientPlan.proposedValue,'different-current-identity');assert.equal(patientPlan.conflict,true);assert.equal(patientPlan.canAppend,false);
   await imports.apply(token,report.id,{planId:patientPlan.id,commandId:randomUUID(),decision:'replace'});

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { historicalDestination, historicalSource, historicalConcept } from '../dist/hospital/eps-history-import.js';
 const field={kind:'custom',elementDefinitionId:'history'};
 const mapping={id:'weight',resourceType:'Observation',system:'http://loinc.org',code:'29463-7',destination:field,representation:'text',semanticRole:'historical-observation',expectedUnit:{system:'http://unitsofmeasure.org',code:'kg'}};
-const form={customFields:{history:{datatype:'string',recurrence:'multiple'}},catalogFields:{}};
+const form={customFields:{history:{datatype:'string',identifying:true,recurrence:'multiple'}},catalogFields:{}};
 const observation={resourceType:'Observation',id:'weight-2020',status:'final',code:{coding:[{system:mapping.system,code:mapping.code,display:'Body weight'}]},effectiveDateTime:'2020-05-12',valueQuantity:{value:78.5,system:'http://unitsofmeasure.org',code:'kg',unit:'kg'},subject:{reference:'Patient/patient'},note:[{text:'Historical outpatient measurement'}]};
 
 test('historical destinations require explicit semantics and never use current encounter values',()=>{
@@ -64,4 +64,10 @@ test('canonical historical configuration round trips exact roles and units and r
  assert.equal(importCandidate(entry,[m],singleForm,{field,namespace:'urn:primary',aliases:[]}).finding,'identifierNamespace');
  assert.equal(importCandidate(entry,[m],singleForm,{field,namespace:'urn:primary',aliases:['urn:other']}).finding,null);
  assert.equal(importCandidate({...entry,patientMatches:false},[m],singleForm).finding,'patient');
+});
+
+test('historical source text requires identifying custom destinations even when the concept is non-identifying',async()=>{
+ const {importCandidate}=await import('../dist/hospital/eps-import-mapping.js');
+ const f={...form,definition:{sections:[{fields:[{source:field}]}]},customFields:{history:{...form.customFields.history,identifying:false,namespace:'org.fixture',slug:'history',constraints:{}}}};
+ assert.equal(importCandidate({identity:'Observation/old',patientMatches:true,resource:observation},[mapping],f).finding,'identifyingDestination');
 });
