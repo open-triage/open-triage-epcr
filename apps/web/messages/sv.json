@@ -2559,8 +2559,6 @@
   "epsSubmission.patientIdentifier": "Patientidentitet i förhandsvisningen",
   "epsSubmission.finding.incompatibleMapping": "En utgående mappning är oförenlig med den signerade versionens låsta formulär eller kliniska betydelse. Skapa en ny härledning med kompatibel mappning.",
   "epsSubmission.accessDenied": "Åtkomst till rapporten är inte längre tillgänglig. Identifierande förhandsvisningar och historik har rensats.",
-  "cosDelivery.finding.ambulanceCareUnit": "Konfigurera ambulansens standardvårdenhet för rapporter utan transport. Ingen sjukhusdestination antas.",
-  "review.transmission.requirement.ambulanceCareUnit": "Ambulansens standardvårdenhet saknas för en rapport utan transport.",
   "review.identifier.action": "Dokumentera giltig identifierare",
   "review.identifier.explanation": "Signera ett spårbart tillägg i det konfigurerade patientfältet. Andra saknade krav förblir öppna. Leverans köas och måste bekräftas separat.",
   "review.identifier.mapping": "Mappningsrevision",

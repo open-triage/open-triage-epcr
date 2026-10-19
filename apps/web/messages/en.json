@@ -2561,8 +2561,6 @@
   "epsSubmission.patientIdentifier": "Patient identifier in this preview",
   "epsSubmission.finding.incompatibleMapping": "An outgoing mapping is incompatible with this signed version’s pinned form or clinical semantics. Build a new lineage with a compatible mapping.",
   "epsSubmission.accessDenied": "Report access is no longer available. Identifying previews and history were cleared.",
-  "cosDelivery.finding.ambulanceCareUnit": "Configure the default ambulance care unit for reports without transport. No hospital destination is inferred.",
-  "review.transmission.requirement.ambulanceCareUnit": "Default ambulance care unit is missing for a report without transport.",
   "review.identifier.action": "Document valid identifier",
   "review.identifier.explanation": "Sign an attributable amendment to the configured patient field. Other missing requirements remain open. Delivery is queued and requires separate confirmation.",
   "review.identifier.mapping": "Mapping revision",
