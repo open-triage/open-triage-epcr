@@ -1,3 +1,4 @@
+import type { RetryCosReviewCommand } from '@open-triage/contracts';
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
 import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
@@ -33,6 +34,13 @@ function sendCsv(response: CsvResponse, filename: string, value: string) {
 @Controller("review")
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
+
+  @Post("items/:id/retry-cos")
+  @Header("Cache-Control", "no-store, private")
+  retryCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string){
+    return this.review.retryCos(bearerToken(authorization,cookie),id,command,csrfToken);
+  }
 
   @Get("overdue-policy")
   @Header("Cache-Control", "no-store, private")

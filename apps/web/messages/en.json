@@ -2473,5 +2473,16 @@
   "review.transmission.requirement.organization": "Organization HSA identifier is missing.",
   "review.transmission.requirement.encounter": "Encounter identifier namespace is missing.",
   "review.transmission.requirement.configuration": "The configured identifier destination or integration mapping is unavailable for this signed report.",
-  "review.transmission.openAdmin": "Open Hospital integrations administration"
+  "review.transmission.openAdmin": "Open Hospital integrations administration",
+  "review.transmission.delivery-failure": "COS transmission failed",
+  "review.recovery.retry": "Retry latest signed version",
+  "review.recovery.queued": "Delivery queued. This Review item stays open until delivery is confirmed.",
+  "review.recovery.uncertain": "Delivery outcome is uncertain. Retry is blocked until the remote outcome is established.",
+  "review.recovery.ready": "A definite transport outage can be retried using the same prepared clinical content. Claim this item to retry.",
+  "review.recovery.confirmed": "Delivery confirmed. The operational concern is resolved.",
+  "review.recovery.correct": "Correct the indicated payload, credentials, identifiers or configuration before recovery. Request an administrator where needed.",
+  "review.recovery.commands": "Manual recovery history",
+  "review.recovery.actor": "Actor {actor}, signed amendment {sequence}",
+  "review.recovery.simulator": "Development COS simulator. This does not confirm delivery to a live hospital.",
+  "review.recovery.open": "Open delivery recovery in Review"
 }

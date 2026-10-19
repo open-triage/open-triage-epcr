@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { hospitalFieldId, type CosConnectionSettings, type HospitalField } from '@open-triage/contracts';
 import { identifierOptions } from './hospital-mapping.js';
-import { compileCosMapping, resolveCosCareUnit } from './cos-configuration.js';
+import { compileCosMapping, cosMappingPackage, resolveCosCareUnit } from './cos-configuration.js';
 import { contentDigest, type CanonicalPackage } from '../admin/canonical-package.js';
 import { effectiveSignedPdfOccurrences, type SignedOccurrence, type SignedReportPdfSource } from '../reports/signed-report-pdf.js';
 export const bytesHash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -27,9 +27,11 @@ export function cosEligibility(rows:SignedOccurrence[]):'transported'|'excluded'
 /** Collect all missing requirements together; no patient values enter Review evidence. */
 export function cosIdentifierRequirements(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings){
  source={...source,occurrences:effectiveSignedPdfOccurrences(source),signerId:source.amendments.at(-1)?.authorId??source.signerId};
+ const configuredField=cosMappingPackage(p).definition.patientIdentifier.field;
+ const patientField=identifierOptions(source.configuration).find(option=>option.field.kind===configuredField.kind&&option.id===hospitalFieldId(configuredField))??{field:configuredField,id:hospitalFieldId(configuredField),name:hospitalFieldId(configuredField),localization:null};
  let mapping:ReturnType<typeof compileCosMapping>;
  try{mapping=compileCosMapping(p,source.configuration);}catch(error){
-  if(error instanceof Error&&'getStatus' in error&&typeof error.getStatus==='function'&&error.getStatus()===422)return {missing:['configuration'],patientField:null};
+  if(error instanceof Error&&'getStatus' in error&&typeof error.getStatus==='function'&&error.getStatus()===422)return {missing:['configuration'],patientField};
   throw error;
  }
  const missing:string[]=[];
@@ -42,7 +44,6 @@ export function cosIdentifierRequirements(source:SignedReportPdfSource,p:Canonic
  if(destination&&!resolveCosCareUnit(settings,destination))missing.push('careUnit');
  if(!settings.organizationHsaId)missing.push('organization');
  if(!settings.encounterNamespace)missing.push('encounter');
- const patientField=identifierOptions(source.configuration).find(option=>option.field.kind===mapping.patientIdentifier.field.kind&&option.id===hospitalFieldId(mapping.patientIdentifier.field))??null;
  return {missing,patientField};
 }
 export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,settings:CosConnectionSettings,pdf:Buffer,deliveryId:string){
