@@ -195,6 +195,12 @@ export function useReportWorkspace({
         setSyncStatus("Saved");
         return;
       }
+      // Connectivity can change while an earlier command is awaiting acknowledgement.
+      // Preserve newly queued work until the online retry resumes this drain.
+      if (!navigator.onLine) {
+        setSyncStatus("Pending sync");
+        return;
+      }
       setSyncStatus("Saving");
       markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
       let requestConflictRecovery = false;
