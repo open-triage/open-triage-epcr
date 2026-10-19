@@ -640,6 +640,31 @@ test("integration events and configuration changes use the audit timeline and lo
   await expect(page.getByRole('cell', { name: 'Canonical mapping imported', exact: true })).toBeVisible();
 });
 
+test("EPS and COS settings omit history even when the API supplies historical records", async ({ page }) => {
+  const result = await build({ bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser',
+    define: { 'process.env': JSON.stringify({ NEXT_PUBLIC_API_URL: 'same-origin' }) },
+    stdin: { resolveDir: path.resolve(__dirname, '..'), loader: 'tsx', contents: `
+      import React from 'react'; import {createRoot} from 'react-dom/client';
+      import {HospitalIntegrationsPanel} from './components/hospital-integrations';
+      createRoot(document.getElementById('root')).render(<HospitalIntegrationsPanel language="en" csrfToken="fixture" canWrite={true}/>);
+    ` } });
+  await page.route('**/__audit-script', route => route.fulfill({ contentType: 'text/javascript', body: result.outputFiles[0]!.text }));
+  await page.route('**/api/admin/hospital/*', route => route.fulfill({ json: {
+    groupName: 'Fixture group', stateRevision: 0, draft: null, active: null, pausedRevision: null,
+    activeHealth: 'unknown', draftHealth: 'unknown', credentialReplacement: false,
+    options: [], clinicalOptions: [], staffOptions: [], tests: [],
+    history: [{ revision: 1, sha256: 'a'.repeat(64), status: 'retired', createdAt: '2026-10-19T10:00:00Z' }],
+    events: [{ action: 'hospital.draft_save', actorId: actor, occurredAt: '2026-10-19T10:00:00Z' }],
+  } }));
+  await page.goto('/__audit?language=en');
+  await expect(page.getByRole('group', { name: 'EPS configuration', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'History', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'COS', exact: true }).click();
+  await expect(page.getByText('Simulator tests run locally', { exact: false })).toBeVisible();
+  await expect(page.locator('.hospital-history, .hospital-history-panel')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'History', exact: true })).toHaveCount(0);
+});
+
 test("metadata auditors can select every log type without clinical-value or payload controls", async ({ page }) => {
   await page.route('**/api/admin/context', route => route.fulfill({ json: {
     organization: session.organization, panels: ['auditing'], capabilities: ['audit:read'],

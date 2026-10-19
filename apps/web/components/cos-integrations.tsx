@@ -13,14 +13,13 @@ type View=HospitalIntegrationLifecycleState & {staffOptions:{id:string;name:stri
  tests:{id:string;revision:number;result:string;createdAt:string;evidence?:{findings:string[]}}[];
  history:{revision:number;sha256:string;status:string;createdAt:string}[];
  events:{action:string;occurredAt:string;actorId:string}[]};
-type FileEntry={file:string;compatible:boolean;mapping:Mapping|null};
 const empty={endpoint:'https://cos.example.invalid',field:DEFAULT_HOSPITAL_PATIENT_FIELD,namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:'',
  settings:{mode:'simulator',authentication:'api-key',template:'',encounterNamespace:'urn:opentriage:encounter',organizationHsaId:'',defaultAmbulanceCareUnit:'',staff:[],careUnits:[]} as CosConnectionSettings,
  retryScheduleText:'1, 5, 15, 30, 60',pdfLinkId:'',clinicalMappings:[] as CosMappingDefinition['clinicalMappings']};
 function editable(value:Version|null){return value?{endpoint:value.endpoint,field:value.mapping.definition.patientIdentifier.field,namespace:value.mapping.definition.patientIdentifier.namespace,aliases:value.mapping.definition.patientIdentifier.aliases.join('\n'),settings:value.settings,retryScheduleText:(value.settings.retryScheduleMinutes??[1,5,15,30,60]).join(', '),pdfLinkId:value.mapping.definition.pdfLinkId??'',clinicalMappings:value.mapping.definition.clinicalMappings}:empty;}
 export function CosIntegrationsPanel({language,csrfToken,canWrite}:{language:string;csrfToken:string;canWrite:boolean}){
  const t=(key:string)=>resolveMessage(language,`hospital.cos.${key}`);
- const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[files,setFiles]=useState<FileEntry[]>([]),[selectedFile,setSelectedFile]=useState('');
+ const [value,setValue]=useState<View|null>(null),[draft,setDraft]=useState(empty),[secret,setSecret]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  const dirty=!!secret||JSON.stringify(draft)!==JSON.stringify(editable(value?.draft??null));
  const confirmLeave=useUnsavedChanges(dirty);
  const tested=value?.tests.find(test=>test.revision===value.draft?.revision);
@@ -30,7 +29,7 @@ export function CosIntegrationsPanel({language,csrfToken,canWrite}:{language:str
   if(!response.ok)throw await platformRequestError(response,language);return response.json();
  }
  function load(next:View){setValue(next);setDraft(editable(next.draft));setSecret('');}
- function failed(reason:unknown){if(reason instanceof PlatformRequestError&&[401,403].includes(reason.status)){setValue(null);setDraft(empty);setSecret('');setFiles([]);}setError(reason instanceof PlatformRequestError?reason.message:t('unavailable'));}
+ function failed(reason:unknown){if(reason instanceof PlatformRequestError&&[401,403].includes(reason.status)){setValue(null);setDraft(empty);setSecret('');}setError(reason instanceof PlatformRequestError?reason.message:t('unavailable'));}
  // Request helpers use this mount's session and language; Admin remounts on scope changes.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{let alive=true;request().then(next=>{if(alive)load(next);}).catch(reason=>{if(alive)failed(reason);});return()=>{alive=false;};},[csrfToken]); // Scope changes remount the Admin shell.
@@ -38,18 +37,15 @@ export function CosIntegrationsPanel({language,csrfToken,canWrite}:{language:str
   setBusy(true);setError('');setStatus('');try{load(await request(path,body,method));setStatus(t('saved'));}catch(reason){failed(reason);}finally{setBusy(false);setSecret('');}
  }
  async function refresh(){if(!confirmLeave())return;setBusy(true);try{load(await request());setError('');}catch(reason){failed(reason);}finally{setBusy(false);}}
- async function discover(){setBusy(true);try{setFiles(await request('/files'));setError('');}catch(reason){failed(reason);}finally{setBusy(false);}}
- async function download(){if(!value?.draft)return;setBusy(true);try{const mapping=await request(`/export/${value.draft.revision}`);const blob=URL.createObjectURL(new Blob([JSON.stringify(mapping,null,2)+'\n'],{type:'application/json'}));const link=document.createElement('a');link.href=blob;link.download=`cos-mapping-${mapping.definition.id}-v${mapping.version}.json`;link.click();URL.revokeObjectURL(blob);}catch(reason){failed(reason);}finally{setBusy(false);}}
- async function importUpload(file:File|undefined){if(!file||!confirmLeave())return;if(file.size>256*1024){setError(t('invalidFile'));return;}try{const mapping:unknown=JSON.parse(await file.text());await action('',{expectedRevision:value?.draft?.revision??0,endpoint:draft.endpoint,authentication:draft.settings.authentication,settings:draft.settings,mapping},'PUT');}catch{setError(t('invalidFile'));}}
  const retryDelays=draft.retryScheduleText.trim()?draft.retryScheduleText.split(',').map(Number):[];
  const retryScheduleValid=retryDelays.length<=5&&retryDelays.every(delay=>Number.isInteger(delay)&&delay>=1&&delay<=1440);
  const expected={expectedRevision:value?.draft?.revision??0,expectedStateRevision:value?.stateRevision??0};
- return <section className="admin-configuration agency-settings hospital-integrations" aria-label={t('title')}>
+ return <section className="admin-configuration agency-settings hospital-integrations cos-integrations" aria-label={t('title')}>
   <h3>{t('title')}</h3><p>{t('simulatorHelp')}</p>
   {error&&<p className="admin-error" role="alert">{error}</p>}{status&&<p role="status">{status}</p>}
   {error&&<button type="button" onClick={()=>void refresh()} disabled={busy}>{t('reload')}</button>}
   {value&&<><p>{t('group')}: {value.groupName}</p>
-   <div>
+   <div className="cos-integration-workspace">
     <p>{t('active')}: {value.active?.revision??t('inactive')} — {t('draft')}: {value.draft?.revision??t('unsaved')}</p>
     <p>{t('connectivityHelp')}</p>{value.pausedRevision&&<p>{t('paused')}: {value.pausedRevision} — {t(`health.${value.pausedHealth}`)}</p>}<p>{t('health')}: {t('active')} {t(`health.${value.activeHealth}`)} — {t('draft')} {t(`health.${value.draftHealth}`)}</p><p>{t(value.credentialReplacement?'replacementPending':'replacementNone')}</p><p>{t('keyManagementHelp')}</p><p>{t('pauseHelp')}</p>
     {tested?.evidence?.findings.map(finding=><p key={finding} role="status">{t(`finding.${finding}`)}</p>)}
@@ -90,17 +86,7 @@ export function CosIntegrationsPanel({language,csrfToken,canWrite}:{language:str
        <button type="button" disabled={dirty||!value.active} onClick={()=>void action('/deactivate',expected)}>{t('deactivate')}</button><button type="button" disabled={dirty||!!value.active||!value.pausedRevision} onClick={()=>void action('/resume',{...expected,expectedPausedRevision:value.pausedRevision})}>{t('resume')}</button></div>
      </fieldset>
     </form>
-    <fieldset disabled={busy}><legend>{t('canonical')}</legend><p>{t('canonicalHelp')}</p>
-     {value.draft&&<p className="hospital-digest">{t('hash')}: {value.draft.mapping.sha256}</p>}
-     <div className="form-actions"><button type="button" onClick={()=>void download()} disabled={!value.draft}>{t('export')}</button><button type="button" onClick={()=>void discover()}>{t('discover')}</button></div>
-     {canWrite&&<label>{t('upload')}<input type="file" accept="application/json,.json" onChange={event=>{void importUpload(event.target.files?.[0]);event.target.value='';}}/></label>}
-     {!!files.length&&<><label>{t('savedFiles')}<select value={selectedFile} onChange={event=>setSelectedFile(event.target.value)}><option value="">{t('chooseFile')}</option>{files.map(file=><option key={file.file} value={file.file} disabled={!file.compatible}>{file.file}</option>)}</select></label>
-      {canWrite&&<button type="button" disabled={!selectedFile} onClick={()=>{if(confirmLeave())void action('/import-file',{expectedRevision:expected.expectedRevision,file:selectedFile});}}>{t('import')}</button>}</>}
-    </fieldset>
    </div>
-   <details className="hospital-history"><summary>{t('history')}</summary><table><thead><tr><th>{t('revision')}</th><th>{t('state')}</th><th>{t('date')}</th><th>{t('hash')}</th></tr></thead><tbody>{value.history.map(row=><tr key={row.revision}><td>{row.revision}</td><td>{t(row.status)}</td><td>{new Date(row.createdAt).toLocaleString(language)}</td><td className="hospital-digest">{row.sha256}</td></tr>)}</tbody></table>
-    <ul>{value.events.map((event,index)=><li key={index}>{t(event.action.replace('hospital.','event.'))} — {new Date(event.occurredAt).toLocaleString(language)} — {event.actorId}</li>)}</ul>
-   </details>
   </>}
  </section>;
 }

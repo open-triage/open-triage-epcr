@@ -139,11 +139,16 @@ integration('COS real database and browser setup preserves tested revisions, can
   if(process.env.COS_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.COS_SCREENSHOT_DIR,'cos-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:900});
   if(process.env.COS_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.COS_SCREENSHOT_DIR,'cos-desktop.png'),fullPage:true});
-  await page.getByRole('button',{name:'Find saved mapping files',exact:true}).click();await page.getByLabel('Saved mapping files',{exact:false}).selectOption(files[0].file);
-  await page.getByRole('button',{name:'Import selected file as draft',exact:true}).click();await page.waitForFunction(()=>document.body.textContent.includes('Draft revision: 7'));assert.equal((await service.get(token)).active.revision,6);
+  assert.equal(await page.getByRole('group',{name:'Canonical mapping files',exact:true}).count(),0);
+  const activatedPackage=await service.export(token,'6');
+  const activatedFile=(await service.files(token)).find(file=>file.mapping?.sha256===activatedPackage.sha256);
+  assert.ok(activatedFile,'Activation automatically persists its canonical JSON file');
+  assert.deepEqual(JSON.parse(await readFile(path.join(folder,activatedFile.file),'utf8')),activatedPackage);
+  await service.importFile(token,{expectedRevision:6,file:files[0].file});
+  assert.equal((await service.get(token)).active.revision,6);
+  assert.deepEqual(await service.export(token,'7'),exported);
+  await page.reload();await page.getByRole('button',{name:'Activate COS simulator',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Activate COS simulator',exact:true}).isDisabled(),true);
-  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();const artifact=await download;
-  assert.deepEqual(JSON.parse(await readFile(await artifact.path(),'utf8')),exported);
   await credentialLifecycle({kind:'cos',service,token,page,query,otherToken:otherSession.sessionToken,medicToken:medicSession.sessionToken,assets:bundled.outputFiles[0].text});
   const audits=await query("select details from app_identity.configuration_event where organization_id=$1 and details->>'integration'='cos'",[group.id]);assert.doesNotMatch(JSON.stringify(audits),/private-team|ciphertext|fictional-staff/);
   // Normal Admin save/test/activate uses the same scheme registry as delivery and Review.

@@ -76,8 +76,8 @@ export async function mappingRepairJourney({db,sample,settings,draft,sign,review
   await page.getByLabel('Target template link ID').fill('418799008');await page.getByLabel('PDF SNOMED link identifier',{exact:true}).fill('371530004');
   const beforeSave=await config.get('fixture');await page.getByRole('button',{name:'Save COS draft',exact:true}).click();await page.waitForFunction(revision=>document.body.textContent.includes(`Draft revision: ${revision}`),beforeSave.draft.revision+1);
   const beforeImport=await config.get('fixture'),exported=await config.export('fixture',String(beforeImport.draft.revision));
-  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();assert.deepEqual(JSON.parse(await readFile(await (await download).path(),'utf8')),exported);
-  await page.getByLabel('Import mapping JSON file',{exact:false}).setInputFiles({name:'mapping-repair.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(exported))});
+  await config.save('fixture',{expectedRevision:beforeImport.draft.revision,endpoint:beforeImport.draft.endpoint,authentication:beforeImport.draft.settings.authentication,settings:beforeImport.draft.settings,mapping:exported});
+  await page.reload();
   await page.waitForFunction(revision=>document.body.textContent.includes(`Draft revision: ${revision}`),beforeImport.draft.revision+1);
   await page.getByRole('button',{name:'Test simulator configuration',exact:true}).click();await page.getByText('Simulator configuration passed',{exact:false}).waitFor();await page.getByRole('button',{name:'Activate COS simulator',exact:true}).click();
   await page.waitForFunction(revision=>document.body.textContent.includes(`Active revision: ${revision}`),beforeImport.draft.revision+1);

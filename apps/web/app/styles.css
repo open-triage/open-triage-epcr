@@ -1405,17 +1405,15 @@ fieldset { min-inline-size: 0; }
   .eps-clinical-section td[data-label]::before { content: attr(data-label); display: block; font-weight: 600; }
 }
 
-/* Inline EPS mappings retain native table semantics and usable controls at narrow widths. */
+/* Compact EPS mapping summaries and expandable crosswalk details. */
 .hospital-mappings-scroll { min-width: 0; max-width: 100%; max-height: 36rem; overflow: auto; padding: 0; border: 1px solid var(--line); }
-.hospital-mappings-table { width: 100%; min-width: 76rem; table-layout: fixed; border-collapse: collapse; }
-.hospital-mappings-table th, .hospital-mappings-table td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
-.hospital-mappings-table th { position: sticky; top: 0; z-index: 1; background: var(--surface, #fff); }
-.hospital-mappings-table th:nth-child(5) { width: 24%; }
-.hospital-mappings-table th:last-child { width: 8rem; }
-.hospital-mappings-table td > label + label, .hospital-crosswalk-fields > label + label { margin-top: 8px; }
+.hospital-mappings-table { width: 100%; min-width: 36rem; table-layout: fixed; border-collapse: collapse; }
+.hospital-mappings-table th, .hospital-mappings-table td { padding: 4px 8px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); }
+.hospital-mappings-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface, #fff); }
+.hospital-mappings-table thead th:last-child { width: 8rem; }
 .hospital-mappings-table :is(input, select) { width: 100%; }
 .hospital-mappings-table input[type="checkbox"] { width: auto; }
-.hospital-crosswalk-fields { display: grid; gap: 6px; }
+.hospital-crosswalk-fields { display: grid; gap: 8px; align-items: start; }
 .hospital-integrations form:has(.hospital-mappings-table) { max-width: none; }
 .hospital-crosswalk-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .hospital-crosswalk-fields > label:first-child { grid-column: 1 / -1; display: flex; align-items: center; min-height: 44px; gap: 8px; }
@@ -1431,3 +1429,43 @@ fieldset { min-inline-size: 0; }
 .eps-sign-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .eps-sign-actions .eps-sign-checkbox { flex: 1 1 280px; }
 .eps-outgoing-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.hospital-mappings-table small { display: block; overflow-wrap: anywhere; }
+.hospital-mapping-group th { background: color-mix(in srgb, var(--green) 12%, var(--paper)); padding-block: 6px; }
+.hospital-mapping-summary { cursor: pointer; }
+.hospital-mapping-summary:hover, .hospital-mapping-summary.selected { background: color-mix(in srgb, var(--green) 8%, transparent); }
+.hospital-mapping-summary:focus-within { outline: 2px solid var(--green); outline-offset: -2px; }
+.hospital-mapping-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-block: 8px; }
+.hospital-mapping-editor > div:last-child { grid-column: 1 / -1; }
+.hospital-mapping-editor > div { display: grid; align-content: start; gap: 8px; }
+.hospital-mappings-table td { overflow-wrap: anywhere; }
+.hospital-output-table select { margin: 0; }
+
+.hospital-mapping-check-summary:not(:empty) { display: block; margin-block: 4px; font-size: var(--text-body); }
+.hospital-mapping-finding { font-size: var(--text-body); }
+
+.hospital-integration-status { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-block: 12px; font-size: var(--text-body); }
+.hospital-integration-status p { margin: 0; }
+
+/* Keep the EPS header, status, and editor on the same outer inset. */
+:is(.eps-integrations, .cos-integrations) { padding: 16px; }
+:is(.eps-integrations, .cos-integrations) > h3 { margin: 0 0 12px; }
+:is(.eps-integrations, .cos-integrations) > p { margin: 12px 0; }
+.eps-integrations > .form-actions { padding: 0; margin: 0 0 12px; }
+.eps-integration-workspace > form { padding: 0; }
+.eps-integration-workspace fieldset { padding: 12px; }
+.eps-integration-workspace fieldset > p { margin: 0; }
+.eps-integration-workspace .form-actions { padding: 0; }
+.eps-integration-workspace .hospital-mapping-check-summary { margin: 0; }
+.eps-integration-workspace .hospital-mapping-check-summary:empty { display: none; }
+.hospital-mapping-finding .admin-error { display: inline-block; margin: 0; padding: 4px 8px; }
+
+/* COS uses the same insets and field spacing, including when nested in EPS/COS tabs. */
+.eps-integrations .cos-integrations { padding: 0; border: 0; box-shadow: none; background: transparent; }
+.cos-integration-workspace { display: grid; gap: 12px; }
+.cos-integration-workspace > p { margin: 0; }
+.cos-integration-workspace > form { padding: 0; max-width: none; }
+.cos-integration-workspace fieldset { padding: 12px; }
+.cos-integration-workspace fieldset > p { margin: 0; }
+.cos-integration-workspace .form-actions { padding: 0; }
+.cos-integration-workspace .hospital-mapping-row { gap: 8px; margin: 0; }
