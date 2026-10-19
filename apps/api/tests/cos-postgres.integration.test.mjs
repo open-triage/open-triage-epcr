@@ -140,6 +140,15 @@ integration('COS real database and browser setup preserves tested revisions, can
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export mapping JSON',exact:true}).click();const artifact=await download;
   assert.deepEqual(JSON.parse(await readFile(await artifact.path(),'utf8')),exported);
   const audits=await query("select details from app_identity.configuration_event where organization_id=$1 and details->>'integration'='cos'",[group.id]);assert.doesNotMatch(JSON.stringify(audits),/private-team|ciphertext|fictional-staff/);
+  // Normal Admin save/test/activate uses the same scheme registry as delivery and Review.
+  for(const namespace of ['urn:oid:1.2.752.129.2.1.3.2','urn:oid:1.2.752.129.2.1.3.3']){
+   const current=await service.get(token);
+   view=await service.save(token,{...body,expectedRevision:current.draft.revision,patientIdentifier:{...body.patientIdentifier,namespace}});
+   const revision=view.draft.revision;
+   view=await service.test(token,{expectedRevision:revision});assert.equal(view.tests[0].result,'healthy',namespace);
+   view=await service.activate(token,{expectedRevision:revision,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});
+   assert.equal(view.active.mapping.definition.patientIdentifier.namespace,namespace);
+  }
   await query('update app_identity.app_user set active=false where id=$1',[admin.userId]);await assert.rejects(service.save(token,{...body,expectedRevision:5}));
  }finally{
   await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));await client.query('rollback');await client.end();

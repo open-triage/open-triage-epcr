@@ -3,17 +3,18 @@ import { useEffect, useRef, useState } from "react";
 import type { ClinicianSession, ReviewItemDetail, ReviewIdentifierCorrectionContext, ReviewIdentifierCorrectionCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
-import { confirmDiscardChanges } from "./unsaved-changes";
+import { confirmDiscardChanges, useUnsavedChanges } from "./unsaved-changes";
 
 export function ReviewIdentifierCorrection({item,session,dataset,language,online,onSaved}:{item:ReviewItemDetail;session:ClinicianSession;dataset:"real"|"synthetic";language:AgencyLanguage;online:boolean;onSaved:(item:ReviewItemDetail)=>void}) {
  const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null);
  const [open,setOpen]=useState(false),[context,setContext]=useState<ReviewIdentifierCorrectionContext|null>(null);
  const [value,setValue]=useState(""),[reason,setReason]=useState(""),[attested,setAttested]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
  const pending=useRef<ReviewIdentifierCorrectionCommand|null>(null);
+ useUnsavedChanges(open && (!!value || !!reason || attested));
  const t=(key:string)=>resolveMessage(language,`review.identifier.${key}`);
  useEffect(()=>{if(open)dialog.current?.showModal();else dialog.current?.close();},[open]);
  async function load() {
-  setContext(null);setError(null);setBusy(true);
+  setContext(null);setAttested(false);setError(null);setBusy(true);
   try {const response=await fetch(apiRequestUrl(`/api/review/items/${item.id}/identifier-correction?dataset=${dataset}`)!,browserRequestInit());if(!response.ok)throw new Error();setContext(await response.json() as ReviewIdentifierCorrectionContext);pending.current=null;}
   catch{setError(t("unavailable"));}finally{setBusy(false);}
  }

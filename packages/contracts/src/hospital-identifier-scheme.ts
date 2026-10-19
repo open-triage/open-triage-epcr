@@ -7,9 +7,12 @@ export const SWEDISH_PATIENT_IDENTIFIER_NAMESPACES = {
  carelinkReserve: 'urn:oid:1.2.752.129.2.1.3.2',
  coordination: 'urn:oid:1.2.752.129.2.1.3.3',
 } as const;
+export function isSupportedHospitalIdentifierNamespace(namespace: string): boolean {
+ return Object.values(SWEDISH_PATIENT_IDENTIFIER_NAMESPACES).some(item => item === namespace);
+}
 export function hospitalIdentifierSchemeFinding(namespace: string, value: string): 'unsupported' | 'invalid' | null {
  const schemes = SWEDISH_PATIENT_IDENTIFIER_NAMESPACES;
- if (!Object.values(schemes).some(item => item === namespace)) return 'unsupported';
+ if (!isSupportedHospitalIdentifierNamespace(namespace)) return 'unsupported';
  if (!/^\d{12}$/.test(value)) return 'invalid';
  const year=Number(value.slice(0,4)),month=Number(value.slice(4,6)),encodedDay=Number(value.slice(6,8));
  if(namespace===schemes.carelinkReserve){
