@@ -1,3 +1,5 @@
+import { identifierCorrectionContext, correctReviewIdentifier } from "./review-identifier-correction.js";
+
 import { retryCosReview } from '../hospital/cos-retry.js';
 import type { RetryCosReviewCommand } from '@open-triage/contracts';
 import { renderSignedReportPdf, SignedPdfError, type PdfLanguage } from "../reports/signed-report-pdf.js";
@@ -1362,6 +1364,14 @@ export class ReviewService implements OnModuleDestroy {
             metric.inputElementIds.every((id) => visibleQueueTargets.has(`${row.catalog_release_id}:${id}`) &&
               !restrictedQueueMetrics.has(`${row.report_id}:${id}`))).map(normalizedMetricEvidence) })),
       })) };
+  }
+
+  async identifierCorrectionContext(token:string,itemId:string,dataset:string) {
+    return identifierCorrectionContext(this.database,this.sessions,token,itemId,dataset);
+  }
+  async correctIdentifier(token:string,itemId:string,command:import("@open-triage/contracts").ReviewIdentifierCorrectionCommand,csrfToken?:string) {
+    await correctReviewIdentifier(this.database,this.sessions,token,itemId,command,csrfToken);
+    return this.item(token,itemId,command.dataset);
   }
 
   async item(token: string, id: string, requestedDataset?: string): Promise<ReviewItemDetail> {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { hospitalFieldId, type CosConnectionSettings, type HospitalField } from '@open-triage/contracts';
+import { hospitalFieldId, hospitalIdentifierSchemeFinding, type CosConnectionSettings, type HospitalField } from '@open-triage/contracts';
 import { identifierOptions } from './hospital-mapping.js';
 import { compileCosMapping, cosMappingPackage, resolveCosCareUnit } from './cos-configuration.js';
 import { cosDispositionCode, cosEligibility, cosEligible } from './cos-eligibility.js';
@@ -40,8 +40,8 @@ export function cosIdentifierRequirements(source:SignedReportPdfSource,p:Canonic
   throw error;
  }
  const missing:string[]=[];
- try{scalar(source,mapping.patientIdentifier.field,'patientIdentifier');}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
- if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))missing.push('patientNamespace');
+ try{const patient=scalar(source,mapping.patientIdentifier.field,'patientIdentifier');if(hospitalIdentifierSchemeFinding(mapping.patientIdentifier.namespace,patient)==='invalid')missing.push('patientIdentifier');}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
+ if(hospitalIdentifierSchemeFinding(mapping.patientIdentifier.namespace,'')==='unsupported')missing.push('patientNamespace');
  if(!settings.staff.find(row=>row.userId===source.signerId)?.hsaId)missing.push('staff');
  try{careUnitFor(source,settings);}catch(error){if(error instanceof CosFinding)missing.push(error.code);else throw error;}
  if(!settings.organizationHsaId)missing.push('organization');
@@ -60,7 +60,7 @@ export function buildCosPayload(source:SignedReportPdfSource,p:CanonicalPackage,
  const requirements=cosIdentifierRequirements(identifierSource,p,settings);
  if(requirements.missing.length)throw new CosFinding(requirements.missing[0]!);
  const patient=scalar(source,mapping.patientIdentifier.field,'patientIdentifier');
- if(!['urn:oid:1.2.752.129.2.1.3.1','urn:oid:1.2.752.129.2.1.3.2'].includes(mapping.patientIdentifier.namespace))throw new CosFinding('patientNamespace');
+ if(hospitalIdentifierSchemeFinding(mapping.patientIdentifier.namespace,'')==='unsupported')throw new CosFinding('patientNamespace');
  const amendment=source.amendments.at(-1);
  const staff=settings.staff.find(row=>row.userId===(amendment?.authorId??source.signerId))?.hsaId;
  if(!staff)throw new CosFinding('staff');
