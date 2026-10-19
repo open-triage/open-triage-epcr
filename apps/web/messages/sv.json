@@ -2409,5 +2409,13 @@
   "eps.offlineCached": "Offline — skyddad cachelagrad kopia",
   "eps.cachePolicy": "Tillgänglig inom uppdragets skyddade lagrings- och sessionsgränser. Återanslut för att kontrollera åtkomst och uppdatera. Ändrad patientidentitet kräver en ny kontroll online.",
   "eps.onlineOnly": "Endast online: en skyddad offlinekopia är inte tillgänglig.",
-  "eps.refresh": "Uppdatera sammanfattning"
+  "eps.refresh": "Uppdatera sammanfattning",
+  "hospital.medicationHistory": "Läkemedelsuppgift / anamnes",
+  "hospital.semanticRole": "Målfältets kliniska betydelse",
+  "hospital.chooseHistoryRole": "Välj målfältets betydelse",
+  "hospital.medicationHistoryRole": "Detta anpassade fält dokumenterar läkemedelsanamnes med ursprunglig dosering och status",
+  "epsImport.medicationHistory": "Välj ett anpassat textfält uttryckligen avsett för läkemedelsanamnes. Administreringar under vårdtillfället och enbart kodade värden är inte kompatibla.",
+  "epsImport.medicationReference": "Läkemedelsreferensen måste peka på ett Medication i detta EPS-dokument.",
+  "epsImport.append": "Lägg till bredvid befintlig anamnes",
+  "epsImport.decision.append": "Tillagt bredvid befintlig anamnes"
 }

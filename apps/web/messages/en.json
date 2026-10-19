@@ -2411,5 +2411,13 @@
   "eps.offlineCached": "Offline — protected cached copy",
   "eps.cachePolicy": "Available under this encounter’s protected storage and session limits. Reconnect to check access and refresh. Changes to patient identity require a new online check.",
   "eps.onlineOnly": "Online only: a protected offline copy is unavailable.",
-  "eps.refresh": "Refresh summary"
+  "eps.refresh": "Refresh summary",
+  "hospital.medicationHistory": "Medication statement / history",
+  "hospital.semanticRole": "Destination clinical meaning",
+  "hospital.chooseHistoryRole": "Choose the destination meaning",
+  "hospital.medicationHistoryRole": "This custom field records medication history, including the original regimen and status",
+  "epsImport.medicationHistory": "Choose a custom text field explicitly designated for medication history. Encounter administrations and coded-only projections are incompatible.",
+  "epsImport.medicationReference": "The medication reference must resolve to one Medication in this EPS document.",
+  "epsImport.append": "Add alongside existing history",
+  "epsImport.decision.append": "Added alongside existing history"
 }

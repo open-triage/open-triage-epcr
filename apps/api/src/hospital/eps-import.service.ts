@@ -14,7 +14,7 @@ import { contentDigest, keys, mappingPackage } from './hospital-mapping.js';
 import { importCandidate, clinicalMappings } from './eps-import-mapping.js';
 const stale=()=>new ConflictException({code:'eps.stale'});
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-type Evidence={binding:string; patient:unknown; documentId:string; documentVersion:string; documentSha256:string; entry:NonNullable<PatientSummary['importEntries']>[number]; mapping:ReturnType<typeof mappingPackage>; configurationRevision:number; candidate:ReturnType<typeof importCandidate>; existing:DraftOccurrenceMutation[]; groupInstanceId:string|null; formFieldId:string|null};
+type Evidence={binding:string; patient:unknown; documentId:string; documentVersion:string; documentSha256:string; entry:NonNullable<PatientSummary['importEntries']>[number]; mapping:ReturnType<typeof mappingPackage>; configurationRevision:number; candidate:ReturnType<typeof importCandidate>; existing:DraftOccurrenceMutation[]; groupInstanceId:string|null; formFieldId:string|null; canAppend?:boolean};
 @Injectable()
 export class EpsImportService {
  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly eps:EpsService,private readonly drafts:DraftReportService){}
@@ -80,17 +80,19 @@ export class EpsImportService {
    let groupInstanceId:string|null=null;
    if(field.group_id){const groups=await manager.query<Array<{id:string}>>('select id from clinical.group_instance where report_id=$1 and group_id=$2 and tombstoned_at is null',[reportId,field.group_id]);if(groups.length!==1)throw new UnprocessableEntityException({code:'hospital.clinicalIncompatible'});groupInstanceId=groups[0]!.id;}
    const existing=await manager.query<Array<DraftOccurrenceMutation>>(`select id,element_id as "elementId",group_instance_id as "groupInstanceId",ordinal from clinical.element_occurrence where report_id=$1 and element_id=$2 and group_instance_id is not distinct from $3::uuid and tombstoned_at is null order by ordinal,id`,[reportId,candidate.target.elementId,groupInstanceId]);
-   const evidence:Evidence={binding:body.binding,patient:scoped.patient,documentId:lookup.documentId!,documentVersion:lookup.summary?.documentVersion??'',documentSha256:lookup.documentSha256!,entry,mapping:scoped.mapping,configurationRevision:scoped.configurationRevision,candidate,existing,groupInstanceId,formFieldId:field?.id??null};
+   const destination=candidate.mapping!.destination;
+   const canAppend=destination.kind==='custom'&&scoped.form.customFields?.[destination.elementDefinitionId]?.recurrence==='multiple';
+   const evidence:Evidence={canAppend,binding:body.binding,patient:scoped.patient,documentId:lookup.documentId!,documentVersion:lookup.summary?.documentVersion??'',documentSha256:lookup.documentSha256!,entry,mapping:scoped.mapping,configurationRevision:scoped.configurationRevision,candidate,existing,groupInstanceId,formFieldId:field?.id??null};
    const id=randomUUID();
    await manager.query('delete from clinical.eps_import_plan where expires_at<clock_timestamp() or report_id=$1',[reportId]);
    await manager.query('insert into clinical.eps_import_plan(id,report_id,author_id,revision,binding,source_key,evidence) values($1,$2,$3,$4,$5,$6,$7::jsonb)',[id,reportId,scoped.actor.user.id,scoped.report.revision,body.binding,sourceKey,JSON.stringify(evidence)]);
    const existingValues=scoped.document.groups.flatMap(g=>g.instances.filter(i=>i.instanceId===groupInstanceId).flatMap(i=>i.elements)).filter(e=>e.id===candidate.target!.elementId).flatMap(e=>e.values).map(v=>v.kind==='coded'?v.display??v.code:v.kind==='scalar'?String(v.value):v.kind==='pertinent-negative'?v.display??v.code:v.notValue?.display??v.notValue?.code??v.kind);
-   return {id,revision:Number(scoped.report.revision),destination:candidate.target.label,incoming:candidate.incoming,existing:existingValues,conflict:existing.length>0,alreadyImported:!!already};
+   return {id,revision:Number(scoped.report.revision),destination:candidate.target.label,incoming:candidate.incoming,existing:existingValues,conflict:existing.length>0,alreadyImported:!!already,canAppend};
   });
  }
  async apply(token:string,reportId:string,input:unknown) {
   const body=keys(input,['planId','commandId','decision']);
-  if(!uuid(body.planId)||!uuid(body.commandId)||!['import','keep','replace'].includes(String(body.decision)))throw stale();
+  if(!uuid(body.planId)||!uuid(body.commandId)||!['import','keep','replace','append'].includes(String(body.decision)))throw stale();
   const digest=contentDigest(body);
   return this.database.transaction(async manager=>{
    const scoped=await this.scope(manager,token,reportId,true);
@@ -102,11 +104,12 @@ export class EpsImportService {
    if(Number(plan.revision)!==Number(scoped.report.revision)||evidence.mapping.sha256!==scoped.mapping.sha256||evidence.configurationRevision!==scoped.configurationRevision||contentDigest(evidence.patient)!==contentDigest(scoped.patient))throw stale();
    const [already]=await manager.query<Array<{id:string}>>('select id from clinical.eps_import where report_id=$1 and source_key=$2',[reportId,plan.source_key]);
    if(already)return {id:already.id,duplicate:true};
+   if(body.decision==='append'&&(!evidence.canAppend||!evidence.existing.length))throw stale();
    if(evidence.existing.length&&body.decision==='import'||!evidence.existing.length&&body.decision!=='import')throw stale();
    const id=randomUUID(),occurrenceId=body.decision==='keep'?null:randomUUID();
    const provenance={importId:id,documentId:evidence.documentId,documentVersion:evidence.documentVersion,documentSha256:evidence.documentSha256,entryId:evidence.entry.identity,source:evidence.entry.resource,patient:evidence.patient,mappingId:evidence.mapping.definition.id,mappingRevision:evidence.mapping.definition.revision,mappingSha256:evidence.mapping.sha256,configurationRevision:evidence.configurationRevision,decision:body.decision};
    if(occurrenceId) {
-    const occurrences:DraftOccurrenceMutation[]=[...(body.decision==='replace'?evidence.existing.map(o=>({...o,tombstone:true})):[]),{id:occurrenceId,elementId:evidence.candidate.target!.elementId,groupInstanceId:evidence.groupInstanceId,formFieldId:evidence.formFieldId,value:evidence.candidate.value,ordinal:0}];
+    const occurrences:DraftOccurrenceMutation[]=[...(body.decision==='replace'?evidence.existing.map(o=>({...o,tombstone:true})):[]),{id:occurrenceId,elementId:evidence.candidate.target!.elementId,groupInstanceId:evidence.groupInstanceId,formFieldId:evidence.formFieldId,value:evidence.candidate.value,ordinal:body.decision==='append'?Math.max(...evidence.existing.map(o=>o.ordinal??0))+1:0}];
     await this.drafts.applyImportedOccurrence(manager,reportId,{commandId:body.commandId as string,expectedRevision:Number(plan.revision),authorId:scoped.actor.user.id,occurrences},provenance);
    }
    await manager.query('insert into clinical.eps_import(id,report_id,source_key,occurrence_id,decision,command_id,command_sha256,evidence,author_id) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)',[id,reportId,plan.source_key,occurrenceId,body.decision,body.commandId,digest,JSON.stringify(evidence),scoped.actor.user.id]);
