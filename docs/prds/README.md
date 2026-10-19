@@ -1,7 +1,8 @@
 # Product requirements documents
 
 These documents record product intent and the scope of successive delivery
-milestones. **Status reviewed against the repository on 8 October 2026.**
+milestones. **Status reviewed against the repository on 8 October 2026;
+audit logging added and its related status notes updated on 19 October 2026.**
 An older PRD's problem statement or Out of Scope list describes that milestone,
 not necessarily today's product. Follow its delivery/supersession note before
 using it as a roadmap.
@@ -16,9 +17,9 @@ authority for delivered behavior.
 
 | Document | Role | Current interpretation |
 | --- | --- | --- |
-| [OpenTriage demo](open-triage-demo.md) | Broad original product vision | Partly delivered and superseded by focused PRDs. Amendment authoring UI, general audit browsing, and dedicated print/PDF remain broader goals. |
+| [OpenTriage demo](open-triage-demo.md) | Broad original product vision | Partly delivered and superseded by focused PRDs. [Audit Logging](audit-logging.md) records delivered audit browsing; amendment authoring UI and dedicated print/PDF remain broader goals. |
 | [OpenTriage MVP](open-triage-mvp.md) | Historical first prototype | Delivered through issue #54; the static, single-scenario scope is superseded by the server-backed application. |
-| [Admin controls](admin-controls.md) | Broad administration direction | Users, roles, configuration, and selected agency settings are implemented. Dedicated unit/vehicle, general history/audit, and integration-management screens remain deferred. |
+| [Admin controls](admin-controls.md) | Broad administration direction | Users, roles, configuration, and selected agency settings are implemented. [Audit Logging](audit-logging.md) supersedes the deferred audit-browser scope. Unit/device administration is covered by its later specification; physical fleet and integration management remain broader scope. |
 | [Admin controls MVP](admin-controls-mvp.md) | Historical first administration slice | Catalog/form publication foundation implemented through #252; later features supersede its placeholder and exclusion lists. See the [representative validation runbook](../runbooks/admin-controls-mvp-representative-validation.md). |
 
 ## Feature specifications
@@ -37,6 +38,7 @@ authority for delivered behavior.
 | [Report media notes](report-media-notes.md) | Text, live photo/audio notes, Stationary viewing, and agency media settings implemented | Photo/audio capture validated on Android/Chrome and iOS/Safari by project-owner confirmation on 2026-10-08. See [recorded device coverage](../runbooks/media-device-browser-validation.md). |
 | [Localization](localization.md) | English/Swedish UI, agency regional settings, and versioned definition translations implemented | Additional languages need dictionaries and definition translations; absent translations fall back to English. |
 | [User feedback](user-feedback.md) | Online bug/feature submission and operator review tooling implemented | See [feedback review](../runbooks/feedback-review.md); feedback messages must not contain patient-identifying information. |
+| [Audit logging](audit-logging.md) | Retrospective: agency-scoped audit browsing, patient/analytics access evidence, and recorded value/payload inspection implemented | Documents PR #746 and existing tests. Coverage is incremental; offline viewing, audit-log export, formal review sign-off, and independent archival are outside this delivery. See [auditing](../runbooks/auditing.md) for operational boundaries. |
 | [Review and basic analytics](review.md) | Scoped review, assignments, discussion, outcomes, and overdue follow-up implemented | Retrospective APIs and a standalone panel exist, but the panel is not connected to the current workspace. Unified Analytics and Metric Library supersede the original analytics presentation and metric selection. |
 | [Unified analytics workspace](unified-analytics-workspace.md) | Line/Bar/Table workspace, filters, CSV exports, and personal saved visualizations implemented | Metric selection now uses Records and review-enabled configured metrics/rules. Workload-analysis UI, sharing, and scheduled reports remain outside this workspace's scope. |
 | [Metric library](metric-library.md) | Numeric metrics and Boolean rules share the Validation lifecycle and feed Analytics | See [metric behavior and limits](../runbooks/metric-library.md). Trauma-destination and aspirin example rules remain disabled pending definition of unresolved mappings. |

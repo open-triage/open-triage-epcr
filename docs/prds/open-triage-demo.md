@@ -9,8 +9,11 @@
 > agency's expiry policy rather than an installation-wide demo reset.
 > [Custom elements and form authoring](custom-elements-and-form-editor.md) also
 > supersedes earlier default-value assumptions. The amendment backend and signed
-> Review viewer exist; clinician amendment authoring, general audit browsing, and
-> dedicated print/PDF output remain unimplemented parts of this broader vision.
+> Review viewer exist; clinician amendment authoring and dedicated print/PDF
+> output remain unimplemented parts of this broader vision.
+> [Audit Logging](audit-logging.md), recorded retrospectively on 2026-10-19,
+> supersedes the audit-browser gap with delivered agency-scoped inspection and
+> patient/analytics access evidence, subject to its documented coverage limits.
 > See the [feature index](README.md) before treating a requirement here as delivered.
 
 ## Problem Statement
