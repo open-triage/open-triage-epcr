@@ -1,3 +1,4 @@
+import {reconcileCosReview} from '../../dist/hospital/cos-reconcile.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {processCosWork} from '../../dist/hospital/cos-worker.js';
@@ -35,7 +36,28 @@ export async function automaticRetryFixture({db,draft,sign,simulator,group,recov
  const detail=await recoveryReview.item('fixture',item.id,'synthetic');await recoveryReview.claim('fixture',item.id,{commandId:randomUUID(),expectedVersion:detail.version,dataset:'synthetic'});
  await retryCosReview(db,recoverySessions,'fixture',item.id,await retryInput(item.id));await processCosWork(db,100,failing,clock);
  status=await cosRetryStatus(db,delivery.id);assert.equal(status.reserved,5);assert.equal(status.nextDue,null);
+ // An exhausted manual attempt can itself time out after partial contact success.
+ // Reconciliation records evidence while paused; it never resets budget or sends.
+ await retryCosReview(db,recoverySessions,'fixture',item.id,await retryInput(item.id));
+ await processCosWork(db,100,{contact:simulator.contact.bind(simulator),note:async()=>{throw new Error('uncertain after exhausted manual retry');}},clock);
+ const [activeBeforeReconciliation]=await db.query('select active_revision from app_identity.hospital_cos_state where group_id=$1',[group]);
+ await db.query('update app_identity.hospital_cos_state set active_revision=null,state_revision=state_revision+1 where group_id=$1',[group]);
+ const uncertainDetail=await recoveryReview.item('fixture',item.id,'synthetic');
+ assert.equal(uncertainDetail.transmission.retryable,false);
+ const reconciliationCommand={commandId:randomUUID(),expectedVersion:uncertainDetail.version,dataset:'synthetic',...uncertainDetail.transmission.reconciliationTarget,stateRevision:uncertainDetail.transmission.stateRevision};
+ const exhaustedPolicy=await db.query('select * from clinical.cos_retry_policy where delivery_id=$1',[delivery.id]);
+ await reconcileCosReview(db,recoverySessions,'fixture',item.id,reconciliationCommand);
+ status=await cosRetryStatus(db,delivery.id);assert.equal(status.reserved,5);assert.equal(status.exhausted,true);assert.equal(status.paused,true);assert.equal(status.nextDue,null);
+ assert.deepEqual(await db.query('select * from clinical.cos_retry_policy where delivery_id=$1',[delivery.id]),exhaustedPolicy);
+ await assert.rejects(retryCosReview(db,recoverySessions,'fixture',item.id,await retryInput(item.id)));
+ const attemptsBeforeResume=(await db.query('select count(*)::int n from clinical.cos_attempt where delivery_id=$1',[delivery.id]))[0].n;
+ await processCosWork(db,100,simulator,clock);
+ assert.equal((await db.query('select count(*)::int n from clinical.cos_attempt where delivery_id=$1',[delivery.id]))[0].n,attemptsBeforeResume);
+ await db.query('update app_identity.hospital_cos_state set active_revision=$2,state_revision=state_revision+1 where group_id=$1',[group,activeBeforeReconciliation.active_revision]);
+ await scheduleDueCosRetries(db,100,now);assert.equal((await cosRetryStatus(db,delivery.id)).reserved,5);
  await retryCosReview(db,recoverySessions,'fixture',item.id,await retryInput(item.id));await processCosWork(db,100,simulator,clock);
+ assert.equal((await cosRetryStatus(db,delivery.id)).reserved,5);
+
  assert.equal((await recoveryReview.item('fixture',item.id,'synthetic')).activeMatch,false);
  // Permanent and uncertain outcomes never schedule; deactivation preserves the pinned due time.
  for(const code of ['credentials','payload','identityConflict']){

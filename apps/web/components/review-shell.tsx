@@ -23,7 +23,7 @@ import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AnalyticsWorkspace } from "./analytics-workspace";
 
-type ReviewAction = "retry-cos" | "comment" | "assign" | "complete" | "await" | "resume" | "exception";
+type ReviewAction = "reconcile-cos" | "retry-cos" | "comment" | "assign" | "complete" | "await" | "resume" | "exception";
 
 export function ReviewShell({ session, language, online, attention, onAttentionRefresh, callWindow, onOpenSettings, onOpenHospitalSettings }: {
   onOpenHospitalSettings?: () => void;
@@ -131,6 +131,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "missing-transmission-identifiers" && itemDetail.kind !== "cos-delivery-failed" && (itemDetail.assigneeId === session.user.id || administrator))
       actionOptions.push({ value: "complete", label: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview"),
         submitLabel: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview") });
+    if(itemDetail.kind==='cos-delivery-failed'&&itemDetail.assigneeId===session.user.id&&!itemDetail.transmissionRestricted&&itemDetail.transmission?.reconciliationTarget)
+      actionOptions.push({value:'reconcile-cos',label:t('review.reconciliation.action'),submitLabel:t('review.reconciliation.action')});
     if(itemDetail.kind==='cos-delivery-failed'&&itemDetail.assigneeId===session.user.id&&!itemDetail.transmissionRestricted&&itemDetail.transmission?.retryable)
       actionOptions.push({value:'retry-cos',label:t('review.recovery.retry'),submitLabel:t('review.recovery.retry')});
     if (itemDetail.kind === "overdue-unsigned" && itemDetail.status !== "completed" && administrator)
@@ -149,7 +151,8 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     (activeAction === "complete" && closingNeedsAssignment && !canAssignToSelf) ||
     (activeAction === "complete" && !outcomes.some((option) => option.active && option.id === completionOutcomeId)) ||
     (activeAction === "exception" && !exceptionCode) ||
-    (activeAction === "retry-cos" && !itemDetail.transmission?.retryable);
+    (activeAction === "retry-cos" && !itemDetail.transmission?.retryable) ||
+    (activeAction === "reconcile-cos" && !itemDetail.transmission?.reconciliationTarget);
   const findingsDirty = !!commentDraft.trim() || reviewAction !== "comment";
 
   function resetFindingsAction() {
@@ -334,13 +337,13 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         current = next; commentSaved = true;
       }
       if (activeAction !== "comment") {
-        const endpoint = activeAction === "retry-cos" ? "retry-cos" : activeAction === "assign" ? "assign" : activeAction === "exception" ? "close-exceptionally" : "progress";
+        const endpoint = activeAction === "reconcile-cos" ? "reconcile-cos" : activeAction === "retry-cos" ? "retry-cos" : activeAction === "assign" ? "assign" : activeAction === "exception" ? "close-exceptionally" : "progress";
         const url = apiRequestUrl(`/api/review/items/${current.id}/${endpoint}`);
         if (!url) throw new Error("Review API is unavailable");
         const response = await fetch(url, browserRequestInit({ method: "POST",
           headers: { "content-type": "application/json", "x-csrf-token": session.csrfToken ?? session.accessToken ?? "" },
           body: JSON.stringify({ commandId: crypto.randomUUID(), expectedVersion: current.version, dataset,
-            ...(activeAction === "retry-cos" ? {deliveryId:current.transmission!.deliveryId,amendmentSequence:current.transmission!.amendmentSequence,
+            ...(activeAction === "reconcile-cos" ? {...current.transmission!.reconciliationTarget,stateRevision:current.transmission!.stateRevision} : activeAction === "retry-cos" ? {deliveryId:current.transmission!.deliveryId,amendmentSequence:current.transmission!.amendmentSequence,
               configurationRevision:Number(current.transmission!.configurationRevision),stateRevision:current.transmission!.stateRevision} : activeAction === "assign" ? { assigneeId: handoffTarget } :
               activeAction === "exception" ? { reasonCode: exceptionCode } :
                 { status: activeAction === "complete" ? "completed" : activeAction === "await" ? "awaiting-clinician" : "in-review",
@@ -354,7 +357,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         const next = await response.json() as ReviewItemDetail;
         setItemDetail(next); setSelectedItem(next);
       }
-      resetFindingsAction(); setActionNotice(t(activeAction === "retry-cos" ? "review.recovery.queued" : "review.actionSaved"));
+      resetFindingsAction(); setActionNotice(t(activeAction === "reconcile-cos" ? "review.reconciliation.saved" : activeAction === "retry-cos" ? "review.recovery.queued" : "review.actionSaved"));
     } catch {
       setWorkflowError("unavailable");
       if (commentSaved) setActionNotice(t("review.commentSavedActionFailed"));
@@ -667,9 +670,15 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                 <p>{t(itemDetail.kind==='cos-delivery-failed'?(itemDetail.activeMatch?'review.recovery.unconfirmed':'review.recovery.confirmed'):itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
                 {itemDetail.kind==='cos-delivery-failed' && <>
                   <p>{t('review.recovery.simulator')}</p>
+                  {itemDetail.transmission.reconciliationTarget && <p>{t('review.reconciliation.help',{sequence:itemDetail.transmission.reconciliationTarget.amendmentSequence})}</p>}
+                  {!!itemDetail.transmission.reconciliations?.length && <details><summary>{t('review.reconciliation.history')}</summary><ol>{itemDetail.transmission.reconciliations.map(record=><li key={record.id}>
+                    {t(`review.reconciliation.outcome.${record.outcome}`)} · {new Intl.DateTimeFormat(language,{dateStyle:'medium',timeStyle:'short'}).format(new Date(record.recordedAt))}
+                    <p>{t('review.reconciliation.steps',{contact:t(`review.reconciliation.step.${record.evidence.contact}`),note:t(`review.reconciliation.step.${record.evidence.note}`),storage:t(`review.reconciliation.step.${record.evidence.storage}`)})}</p>
+                  </li>)}</ol></details>}
+
                   <p>{t(`cosDelivery.state.${itemDetail.transmission.deliveryState}`)}</p>
                   {itemDetail.transmission.finding&&<p>{t(`cosDelivery.finding.${itemDetail.transmission.finding}`)}</p>}
-                  <p>{t(itemDetail.transmission.deliveryState==='uncertain'?'review.recovery.uncertain':itemDetail.transmission.retryable?'review.recovery.ready':itemDetail.transmission.deliveryState==='confirmed'?'review.recovery.confirmed':itemDetail.transmission.deliveryState==='pending'?'review.recovery.queued':'review.recovery.correct')}</p>
+                  <p>{t(itemDetail.transmission.deliveryState==='uncertain'?'review.recovery.uncertain':itemDetail.transmission.retryable?(itemDetail.transmission.finding==='reconciledNotStored'?'review.reconciliation.retryReady':'review.recovery.ready'):itemDetail.transmission.deliveryState==='confirmed'?'review.recovery.confirmed':itemDetail.transmission.deliveryState==='pending'?'review.recovery.queued':'review.recovery.correct')}</p>
                   {itemDetail.transmission.automaticRetry&&<><p>{t('review.recovery.retryBudget',{reserved:itemDetail.transmission.automaticRetry.reserved,attempts:itemDetail.transmission.automaticRetry.attempts,total:itemDetail.transmission.automaticRetry.scheduleMinutes.length,revision:itemDetail.transmission.automaticRetry.configurationRevision})}</p><p>{t('review.recovery.retrySchedule')}: {itemDetail.transmission.automaticRetry.scheduleMinutes.join(', ')}</p>{itemDetail.transmission.automaticRetry.paused?<p>{t('review.recovery.retryPaused')}</p>:itemDetail.transmission.automaticRetry.nextDue?<p>{t('review.recovery.nextRetry')}: {new Date(itemDetail.transmission.automaticRetry.nextDue).toLocaleString(language)}</p>:itemDetail.transmission.automaticRetry.exhausted&&itemDetail.transmission.deliveryState==='failed'?<p>{t('review.recovery.retryExhausted')}</p>:null}</>}
                   {!!itemDetail.transmission.recoveryCommands?.length&&<details><summary>{t('review.recovery.commands')}</summary><ol>{itemDetail.transmission.recoveryCommands.map(command=><li key={command.id}>
                     {command.automaticOrdinal?t('review.recovery.automaticAttempt',{ordinal:command.automaticOrdinal}):t('review.recovery.actor',{actor:command.actorId??'',sequence:command.amendmentSequence})} · {new Intl.DateTimeFormat(language,{dateStyle:'medium',timeStyle:'short'}).format(new Date(command.requestedAt))} · {t(`cosDelivery.state.${command.outcome}`)}
