@@ -332,17 +332,23 @@ test("failed response audit rolls back opening; retry creates one draft without 
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   let failAudit = true;
+  let serializationFailures = 0;
   const dataSource = { query: manager.query, transaction: async (isolation, work) => {
     isolations.push(isolation);
     const before = structuredClone({ assignment, reports, writes });
     try {
-      return await work({ query: async (sql, parameters) => {
+      const result = await work({ query: async (sql, parameters) => {
         if (sql.includes("with recorded_access")) {
           if (failAudit) throw new Error("Audit storage unavailable");
           return [{ recorded: parameters[3].length }];
         }
         return manager.query(sql, parameters);
       } });
+      if (serializationFailures > 0) {
+        serializationFailures--;
+        throw Object.assign(new Error("snapshot invalidated at commit"), { code: "40001" });
+      }
+      return result;
     } catch (error) {
       Object.assign(assignment, before.assignment);
       reports.clear();
@@ -364,6 +370,7 @@ test("failed response audit rolls back opening; retry creates one draft without 
   assert.equal(reports.size, 0);
   assert.deepEqual(writes, []);
   failAudit = false;
+  serializationFailures = 2;
   patientInsertParameters = null;
   const opened = await controller.open(assignment.id, `Bearer ${session.accessToken}`);
   const retried = await controller.open(assignment.id, `Bearer ${session.accessToken}`);
@@ -396,7 +403,7 @@ test("failed response audit rolls back opening; retry creates one draft without 
   assert.equal(pseudonymousKey, derivePatientKey(patientKeyConfig, organizationId, patientId));
   assert.match(pseudonymousKey, /^[a-f0-9]{64}$/);
   assert.notEqual(pseudonymousKey, createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex"));
-  assert.deepEqual(isolations, ["REPEATABLE READ", "REPEATABLE READ", "REPEATABLE READ"]);
+  assert.deepEqual(isolations, Array(5).fill("REPEATABLE READ"));
 });
 
 for (const expiresAt of ["2026-09-09T12:00:00.000Z", null]) {

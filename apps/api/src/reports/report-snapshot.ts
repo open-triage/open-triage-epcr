@@ -1,4 +1,5 @@
 import type { DataSource, EntityManager } from "typeorm";
+import { retryTransaction } from "../database/retry-transaction.js";
 
 type TransactionHost = Pick<DataSource, "transaction">;
 
@@ -7,5 +8,7 @@ export function withReportSnapshot<T>(
   dataSource: TransactionHost,
   work: (manager: EntityManager) => Promise<T>,
 ): Promise<T> {
-  return dataSource.transaction("REPEATABLE READ", work);
+  // Row locks and audit writes can invalidate a snapshot during concurrent edits.
+  // Retry the whole rolled-back operation so its reads and writes stay consistent.
+  return retryTransaction(() => dataSource.transaction("REPEATABLE READ", work));
 }
