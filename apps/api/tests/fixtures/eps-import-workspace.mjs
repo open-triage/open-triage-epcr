@@ -46,7 +46,7 @@ export async function epsImportWorkspace({database,query,sessions,drafts,imports
   }catch(error){failures.push({route:req.url,message:error.message,response:error.getResponse?.()});res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{message:error.message}));}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));browser=await chromium.launch({headless:true});page=await browser.newPage();const errors=[];page.on('pageerror',e=>{errors.push(e.message);failures.push({browser:e.message});});
   await page.goto(`http://127.0.0.1:${server.address().port}`);await page.getByRole('button',{name:'Edit patient name'}).waitFor();
-  await page.getByRole('button',{name:/^Preview import/}).first().click();await page.getByRole('button',{name:'Import selected item',exact:true}).click();
+  await page.getByRole('button',{name:/^Preview import/}).first().click();await page.getByRole('button',{name:'Import',exact:true}).click();
   await page.getByLabel('Imported narrative').filter({hasText:'Penicillin'}).waitFor({timeout:15000});assert.equal(polledImport,true,'workspace consumed the imported server revision');
   await Promise.all([page.waitForResponse(response=>response.url().endsWith('/draft-changes')&&response.ok()),page.getByRole('button',{name:'Edit patient name'}).click()]);
   assert.equal(savedCommand.expectedRevision,importedRevision);assert.ok(savedCommand.occurrences.some(o=>o.elementId==='ePatient.05'));assert.ok(savedCommand.occurrences.every(o=>o.elementId!=='eNarrative.01'),'unrelated edits do not rewrite imported provenance');

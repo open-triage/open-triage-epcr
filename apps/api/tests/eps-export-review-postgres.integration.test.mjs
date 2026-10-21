@@ -1,22 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {hospitalFixtureBaseline} from './fixtures/hospital-baseline.mjs';
+import {AccountService} from '../dist/identity/account.service.js';
+import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
+import {DraftReportService} from '../dist/reports/draft-report.service.js';
+import {SignReportService} from '../dist/reports/sign-report.service.js';
+import {FormPublicationService} from '../dist/forms/form-publication.service.js';
+import {ValidationAuthoringService} from '../dist/admin/validation-authoring.service.js';
+import {canonicalDefinitionSha256} from '../dist/forms/form-publication.validation.js';
 import pg from 'pg';
 import {ReviewService} from '../dist/review/review.service.js';
 import {queueEpsExportReview,resolveEpsExportReview} from '../dist/hospital/eps-export-review.js';
 import {savepointDataSource} from './fixtures/savepoint-data-source.mjs';
 
+if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
+process.env.PATIENT_KEY_INSTALLATION_ID??='91000000-0000-4000-8000-000000000001';
+process.env.PATIENT_KEY_VERSION??='1';
+process.env.PATIENT_KEY_SECRET_BASE64??=Buffer.alloc(32,0x31).toString('base64');
+
 test('EPS export intent persists, is idempotent, and only confirmed acceptance clears Review',{skip:!process.env.DATABASE_URL},async()=>{
  const client=new pg.Client({connectionString:process.env.DATABASE_URL});await client.connect();
  try{
   await client.query('begin');
-  // Allows an additive migration to be verified against a developer DB without applying it.
-  const column=await client.query("select 1 from information_schema.columns where table_schema='clinical' and table_name='review_item' and column_name='eps_snapshot_id'");
-  if(!column.rows.length)await client.query(await readFile(new URL('../../../supabase/migrations/20261019193903_eps_export_review_queue.sql',import.meta.url),'utf8'));
   const database=savepointDataSource(client);
   const {manager,transaction,query}=database;
-  const [report]=await query("select r.id,r.organization_id,r.documenting_user_id,s.id snapshot from clinical.report r join clinical.signed_snapshot s on s.report_id=r.id where r.synthetic and r.status='signed' order by s.signed_at desc limit 1");
-  assert.ok(report,'A fictional signed report is required');
+  // Own the report fixture: other suites roll back their signed reports.
+  const baseline=await hospitalFixtureBaseline(query),sessions=new ClinicianSessionService(database);
+  const username=`eps-review-${randomUUID()}`,password='Fictional EPS review password 42!';
+  const admin=await new AccountService(database).provision({organizationId:baseline.organization_id,username,displayName:'EPS review fixture',role:'administrator',temporaryPassword:password});
+  await query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[admin.userId]);
+  const adminToken=(await sessions.create({username,password})).sessionToken;
+  const definition={schemaVersion:1,sections:[{key:'narrative',fields:[{key:'narrative',source:{kind:'nemsis',elementId:'eNarrative.01'}}]}]};
+  const formId=randomUUID(),versionId=randomUUID(),digest=canonicalDefinitionSha256(definition);
+  await query("insert into forms.form(id,organization_id,slug,name) values($1,$2,$3,'EPS review fixture')",[formId,baseline.organization_id,`eps-review-${formId}`]);
+  await query('insert into forms.form_version(id,form_id,catalog_release_id,version,canonical_definition,definition_sha256,created_by) values($1,$2,$3,1,$4::jsonb,$5,$6)',[versionId,formId,baseline.catalog_release_id,JSON.stringify(definition),digest,admin.userId]);
+  await new FormPublicationService(database).publish(versionId,{publishedBy:admin.userId,definitionSha256:digest,changeNote:'EPS review fixture'},baseline.organization_id);
+  const validations=new ValidationAuthoringService(database,sessions);
+  const policy=await validations.create(adminToken,{catalogReleaseId:baseline.catalog_release_id,displayName:'EPS review fixture'}, {importedRules:[{id:randomUUID(),name:'Fixture',enabled:false,severity:'error',executionTargets:['live','sign'],primaryTargetElementId:'eNarrative.01',message:'Fixture',source:'require present("eNarrative.01")'}]});
+  const published=await validations.publish(adminToken,policy.id,{expectedRevision:policy.revision,displayName:policy.displayName,changeNote:'EPS review fixture'});
+  await validations.activate(adminToken,published.id,{formVersionId:versionId,catalogReleaseId:baseline.catalog_release_id,changeNote:'EPS review fixture'});
+  const {session:actor,sessionToken:token}=await sessions.create({username:'demo',password:'opentriagedemo'});
+  const draft=await new DraftReportService(database,sessions).create(token,{commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID(),organizationId:actor.organization.id,documentingUserId:actor.user.id,patientIdentityState:'unknown'});
+  const signed=await new SignReportService(database,sessions).sign(token,draft.id,{commandId:randomUUID(),expectedRevision:draft.revision,signerId:actor.user.id,attestation:{accepted:true}});
+  const report={id:draft.id,organization_id:actor.organization.id,documenting_user_id:actor.user.id,snapshot:signed.signedSnapshotId};
   await query('set local role open_triage_api_runtime');
   await queueEpsExportReview(manager,report.id,report.snapshot);
   const [item]=await query("select * from clinical.review_item where report_id=$1 and kind='eps-export'",[report.id]);

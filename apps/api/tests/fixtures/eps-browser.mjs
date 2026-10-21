@@ -31,17 +31,23 @@ export async function epsBrowser({service,token,reportId,organizationId,userId,c
    const close=page.getByRole('button',{name:language==='en'?'Close':'Stäng',exact:true});assert.equal(await close.evaluate(el=>el===document.activeElement),true);
    await page.screenshot({path:`/tmp/eps004-${language}.png`});
    await page.keyboard.press('Escape');assert.equal(await button.evaluate(el=>el===document.activeElement),true);
-   await change('194302096997');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'arne'})));
-   assert.equal(await button.isDisabled(),true,'identity change invalidates the previous availability immediately');
+   let releaseIdentity,identitySeen;const identityStarted=new Promise(resolve=>identitySeen=resolve);
+   delayed={gate:new Promise(resolve=>releaseIdentity=resolve),seen:identitySeen};
+   try {
+    await change('194302096997');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'arne'})));
+    await identityStarted;
+    assert.equal(await button.isDisabled(),true,'identity change invalidates availability before the replacement response');
+   } finally {releaseIdentity();}
    await page.waitForFunction(()=>document.querySelector('.eps-control > button')?.disabled===false);await button.click();await page.getByRole('dialog').waitFor();assert.match(await page.getByRole('dialog').innerText(),/Arne/);await close.click();
-   setBroken(true);await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'failure'})));await page.getByText(language==='en'?'EPS lookup failed':'EPS-sökningen misslyckades',{exact:true}).waitFor();assert.equal(await button.isDisabled(),true);
+   setBroken(true);await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'failure'})));await page.getByRole('button',{name:language==='en'?'Retry':'Försök igen',exact:true}).waitFor();assert.equal(await button.isDisabled(),true);
    setBroken(false);await page.getByRole('button',{name:language==='en'?'Retry':'Försök igen',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.eps-control > button')?.disabled===false);
    // Deliver a previous patient's response after the new patient has completed.
    let release,seen;const started=new Promise(resolve=>seen=resolve);delayed={gate:new Promise(resolve=>release=resolve),seen};
    await change('200207252388');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'delayed-andrea'})));await started;
    await change('194302096997');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'current-arne'})));await page.waitForFunction(()=>document.querySelector('.eps-control > button')?.disabled===false);release();
    await button.click();await page.getByRole('dialog').waitFor();assert.match(await page.getByRole('dialog').innerText(),/Arne/);assert.doesNotMatch(await page.getByRole('dialog').innerText(),/Andrea/);await close.click();
-   await change('unknown');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'unknown'})));await page.getByText(language==='en'?'No matching EPS':'Ingen matchande EPS',{exact:true}).waitFor();assert.equal(await button.isDisabled(),true);
+   const noMatch=page.waitForResponse(async response=>new URL(response.url()).pathname.endsWith('/eps')&&response.ok()&&(await response.json()).status==='no-match');
+   await change('unknown');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'unknown'})));await noMatch;assert.equal(await button.isDisabled(),true);
    await context.close();
   }
  }finally{await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));}

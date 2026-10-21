@@ -149,6 +149,8 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
     await route.fulfill({ json: { id: reportId, status: "draft", revision } });
   });
   await page.route(`**/api/reports/${reportId}/active`, (route) => route.fulfill({ status: 304 }));
+  // This fixture has no active EPS integration; probing it must not reach the real API.
+  await page.route(`**/api/reports/${reportId}/eps/context`, (route) => route.fulfill({ json: null }));
   return {
     restart: () => { restarted = true; },
     recovery: () => ({ recoveryHandle, reportKeyBase64 }),

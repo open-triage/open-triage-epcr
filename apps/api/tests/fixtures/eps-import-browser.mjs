@@ -20,18 +20,19 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
   }catch(error){res.writeHead(error.getStatus?.()??500,{'Content-Type':'application/json'});res.end(JSON.stringify(error.getResponse?.()??{code:'eps.failed'}));}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin=`http://127.0.0.1:${server.address().port}`;browser=await chromium.launch({headless:true});
   for(const [lang,width,height] of [['en',1440,900],['en',390,844],['sv',1440,900],['sv',390,844]]){
+   const labels=JSON.parse(await readFile(path.join(web,`messages/${lang}.json`),'utf8'));
    await query('savepoint eps_import_browser');
    const context=await browser.newContext({viewport:{width,height}});await context.addCookies([{name:'eps-import-session',value:'authorized',url:origin}]);const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
    try {
     await page.goto(`${origin}/?${lang}`);const preview=page.getByRole('button',{name:lang==='en'?/^Preview import/:/^Förhandsgranska import/});await preview.first().waitFor();
     if(crosswalk)assert.equal(await preview.count(),2);
-    await preview.first().focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:lang==='en'?'Import selected item':'Importera vald uppgift',exact:true}).click();await page.getByRole('status').getByText(lang==='en'?'Decision saved. The report will refresh.':'Beslutet är sparat. Journalen uppdateras.',{exact:true}).waitFor();
-    await preview.nth(1).click();await page.getByRole('button',{name:crosswalk?(lang==='en'?'Import selected item':'Importera vald uppgift'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation'),exact:true}).waitFor();
+    await preview.first().focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:labels['epsImport.import'],exact:true}).click();await page.getByRole('status').getByText(lang==='en'?'Decision saved. The report will refresh.':'Beslutet är sparat. Journalen uppdateras.',{exact:true}).waitFor();
+    await preview.nth(1).click();await page.getByRole('button',{name:crosswalk?(labels['epsImport.import']):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation'),exact:true}).waitFor();
     if(crosswalk){await page.getByText(lang==='en'?'Imports the current medication identity only': 'Importerar endast det aktuella läkemedlets identitet',{exact:false}).waitFor();assert.match(await page.locator('.eps-import-preview input[readonly]').inputValue(),/RxNorm/);}
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.equal(await page.locator('.eps-import-preview textarea').first().evaluate(el=>{const r=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();return r.width>=p.width-2&&r.top>=p.top+18;}),true,'preview fields stack their labels and use the available width');
     await page.screenshot({path:`/tmp/${crosswalk?'eps-crosswalk':medication?'eps006':'eps005'}-import-${lang}-${width}.png`});
-    await page.getByRole('button',{name:crosswalk?(lang==='en'?'Import selected item':'Importera vald uppgift'):medication?(lang==='en'?'Add alongside existing history':'Lägg till bredvid befintlig anamnes'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation')}).click();
+    await page.getByRole('button',{name:crosswalk?(labels['epsImport.import']):medication?(lang==='en'?'Add alongside existing history':'Lägg till bredvid befintlig anamnes'):(lang==='en'?'Keep existing documentation':'Behåll befintlig dokumentation')}).click();
     await page.getByRole('status').getByText(lang==='en'?'Decision saved. The report will refresh.':'Beslutet är sparat. Journalen uppdateras.',{exact:true}).waitFor();
     await page.reload();await preview.first().click();await page.getByText(lang==='en'?'This source item has already been handled.':'Källuppgiften har redan hanterats.',{exact:true}).waitFor();
     assert.deepEqual(errors,[]);
@@ -40,10 +41,11 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
   if(crosswalk){
    const context=await browser.newContext({viewport:{width:390,height:844}});await context.addCookies([{name:'eps-import-session',value:'authorized',url:origin}]);const page=await context.newPage();
    try {
-    await page.goto(`${origin}/?admin`);await page.getByLabel('Destination code system',{exact:true}).first().waitFor();
-    assert.equal(await page.getByLabel('Destination code system',{exact:true}).first().inputValue(),'RxNorm');
-    assert.equal(await page.getByLabel('Destination code',{exact:true}).first().inputValue(),'1364430');
-    await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Compatible',{exact:false}).first().waitFor();
+    await page.goto(`${origin}/?admin`);await page.locator('.hospital-mapping-summary').filter({hasText:'B01AF02'}).getByRole('button',{name:'Edit',exact:true}).click();await page.locator('.hospital-mapping-editor:visible').getByLabel('Destination code system',{exact:true}).first().waitFor();
+    assert.equal(await page.locator('.hospital-mapping-editor:visible').getByLabel('Destination code system',{exact:true}).first().inputValue(),'RxNorm');
+    assert.equal(await page.locator('.hospital-mapping-editor:visible').getByLabel('Destination code',{exact:true}).first().inputValue(),'1364430');
+    await page.locator('.hospital-mapping-editor:visible').getByLabel('Supporting reference (HTTPS)',{exact:true}).fill('https://rxnav.nlm.nih.gov/REST/rxcui/1364430/properties.json#fixture');
+    await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByText('Compatible',{exact:false}).first().waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:'/tmp/eps-crosswalk-admin-mobile.png',fullPage:true});
    } finally {await context.close();}
    return;
@@ -52,12 +54,12 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
    await query('savepoint medication_admin_browser');
    const context=await browser.newContext({viewport:{width:390,height:844}});await context.addCookies([{name:'eps-import-session',value:'authorized',url:origin}]);const page=await context.newPage();
    try {
-    await page.goto(`${origin}/?admin`);await page.getByLabel('Destination clinical meaning').selectOption('medication-history');
-    await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Compatible',{exact:false}).waitFor();
-    await page.getByLabel('Representation').selectOption('coded');await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('Choose a custom text field explicitly designated for medication history,',{exact:false}).waitFor();
-    await page.getByLabel('Representation').selectOption('text');await page.getByLabel('Source code',{exact:true}).fill('C09AA02');
-    const exported=await configuration.export(adminToken,'2');const state=await configuration.get(adminToken);
-    await configuration.save(adminToken,{expectedRevision:2,endpoint:state.defaultEndpoint,authentication:'team-token',mapping:JSON.parse(JSON.stringify(exported))});assert.equal((await configuration.export(adminToken,'3')).sha256,exported.sha256);
+    await page.goto(`${origin}/?admin`);await page.getByRole('button',{name:'Edit',exact:true}).first().click();await page.locator('.hospital-mapping-editor:visible').getByLabel('Destination clinical meaning').selectOption('medication-history');await page.locator('.hospital-mapping-editor:visible').getByLabel('Source code',{exact:true}).fill('C09AA02-fixture');
+    await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByText('Compatible',{exact:false}).waitFor();
+    await page.getByRole('button',{name:'Edit',exact:true}).first().click();await page.locator('.hospital-mapping-editor:visible').getByLabel('Representation').selectOption('coded');await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByRole('alert').filter({hasText:'A clinical mapping is incompatible with the pinned form.'}).waitFor();
+    await page.locator('.hospital-mapping-editor:visible').getByLabel('Representation').selectOption('text');await page.locator('.hospital-mapping-editor:visible').getByLabel('Source code',{exact:true}).fill('C09AA02');await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByRole('status').filter({hasText:'1 compatible · 0 need attention'}).waitFor();
+    const state=await configuration.get(adminToken);const exported=await configuration.export(adminToken,String(state.draft.revision));
+    await configuration.save(adminToken,{expectedRevision:state.draft.revision,endpoint:state.defaultEndpoint,authentication:'team-token',mapping:JSON.parse(JSON.stringify(exported))});assert.equal((await configuration.export(adminToken,String(state.draft.revision+1))).sha256,exported.sha256);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:'/tmp/eps006-admin-mobile.png'});
    }catch(error){await page.screenshot({path:'/tmp/eps006-admin-failure.png'});await import('node:fs/promises').then(async fs=>fs.writeFile('/tmp/eps006-admin-failure.html',await page.content()));throw error;}finally{await context.close();await query('rollback to savepoint medication_admin_browser');await query('release savepoint medication_admin_browser');}
    return;
@@ -68,12 +70,12 @@ export async function epsImportBrowser({imports,configuration,query,token,adminT
   try{
    assert.ok((await configuration.get(adminToken)).clinicalOptions.some(o=>o.id==='eNarrative.01'));
    await page.goto(`${origin}/?admin`);await page.getByRole('button',{name:'Add clinical mapping',exact:true}).click();
-   await page.getByLabel('Source code system',{exact:true}).last().fill('http://example.org/clinical-codes');await page.getByLabel('Source code',{exact:true}).last().fill('explicit-unknown');await page.getByLabel('Destination field').last().selectOption('eNarrative.01');
-   await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('The exact source code is unavailable in this field',{exact:false}).waitFor();
-   await page.getByLabel('Representation').last().selectOption('text');await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.waitForFunction(()=>[...document.querySelectorAll('[role=status]')].filter(e=>e.textContent.includes('Compatible')).length===3);
-   await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByText('Active revision: 2 — Draft revision: 3',{exact:false}).waitFor();
-   const exported=await configuration.export(adminToken,'3');assert.equal(exported.definition.clinicalMappings.length,3);assert.equal(exported.definition.clinicalMappings[2].code,'explicit-unknown');
-   const state=await configuration.get(adminToken);await configuration.save(adminToken,{expectedRevision:3,endpoint:state.defaultEndpoint,authentication:'team-token',mapping:JSON.parse(JSON.stringify(exported))});assert.equal((await configuration.export(adminToken,'4')).sha256,exported.sha256);
+   await page.locator('.hospital-mapping-editor:visible').getByLabel('Source code system',{exact:true}).last().fill('http://example.org/clinical-codes');await page.locator('.hospital-mapping-editor:visible').getByLabel('Source code',{exact:true}).last().fill('explicit-unknown');await page.locator('.hospital-mapping-editor:visible').getByLabel('Destination field').last().selectOption('eNarrative.01');
+   await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByRole('alert').filter({hasText:'A clinical mapping is incompatible with the pinned form.'}).waitFor();
+   await page.locator('.hospital-mapping-editor:visible').getByLabel('Representation').last().selectOption('text');await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByRole('status').filter({hasText:'3 compatible · 0 need attention'}).waitFor();
+   await page.locator('.hospital-integration-status').getByText('Active revision: 2',{exact:true}).waitFor();
+   const state=await configuration.get(adminToken);const exported=await configuration.export(adminToken,String(state.draft.revision));assert.equal(exported.definition.clinicalMappings.length,3);assert.equal(exported.definition.clinicalMappings[2].code,'explicit-unknown');
+   await configuration.save(adminToken,{expectedRevision:state.draft.revision,endpoint:state.defaultEndpoint,authentication:'team-token',mapping:JSON.parse(JSON.stringify(exported))});assert.equal((await configuration.export(adminToken,String(state.draft.revision+1))).sha256,exported.sha256);
    await page.screenshot({path:'/tmp/eps005-admin.png'});
   }catch(error){await page.screenshot({path:'/tmp/eps005-failure.png'});await import('node:fs/promises').then(async fs=>fs.writeFile('/tmp/eps005-failure.html',await page.content()));throw error;}finally{await context.close();await query('rollback to savepoint eps_mapping_browser');await query('release savepoint eps_mapping_browser');process.env.OPENTRIAGE_DEFINITIONS_ROOT=oldRoot;await rm(folder,{recursive:true,force:true});}
  }finally{await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));}

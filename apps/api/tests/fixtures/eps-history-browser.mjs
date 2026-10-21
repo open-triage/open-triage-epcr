@@ -50,7 +50,7 @@ export async function epsHistoryBrowser({database,query,sessions,configuration,a
    await page.getByText(sv?'Endast visning: källans enhet matchar inte exakt det konfigurerade systemet och koden.':'View only: the source unit does not exactly match the configured system and code.',{exact:true}).waitFor();
    const row=page.getByRole('row').filter({hasText:'Historical body weight'}).first();await row.getByRole('button').click();
    await page.getByRole('textbox',{name:sv?/^Källinformation/:/^Source information/}).waitFor();assert.match(await page.getByRole('dialog').locator('textarea').first().inputValue(),/2020-05-12/);
-   await page.getByRole('button',{name:sv?'Importera vald uppgift':'Import selected item',exact:true}).click();
+   await page.getByRole('button',{name:sv?'Importera':'Import',exact:true}).click();
    await page.getByLabel('History',{exact:true}).filter({hasText:'2020-05-12'}).waitFor({timeout:15000});
    // Reopen if a normal workspace poll remounted the dialog contents.
    if(!await page.getByRole('dialog').isVisible()){await page.waitForFunction(()=>document.querySelector('.eps-control > button')?.disabled===false);await button.click();}
@@ -65,8 +65,10 @@ export async function epsHistoryBrowser({database,query,sessions,configuration,a
    await page.getByLabel('Identity',{exact:true}).filter({hasText:'different-current-identity'}).waitFor({timeout:15000});
    const warning=page.getByRole('alert').filter({hasText:sv?'Patientidentifieraren skiljer sig':'The patient identifier differs'});await warning.first().waitFor({timeout:15000});
    if(await page.getByRole('dialog').isVisible())await page.getByRole('button',{name:sv?'Stäng':'Close',exact:true}).click();
-   await page.getByRole('button',{name:'Use unknown identity',exact:true}).click();await page.getByText(sv?'Ingen matchande EPS':'No matching EPS',{exact:true}).waitFor({timeout:15000});assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
-   await page.getByRole('button',{name:'Clear identity',exact:true}).click();await page.getByText(sv?'Patientidentifierare saknas':'Patient identifier unavailable',{exact:true}).waitFor({timeout:15000});assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
+   const noMatch=page.waitForResponse(async response=>new URL(response.url()).pathname.endsWith('/eps')&&response.ok()&&(await response.json()).status==='no-match');
+   await page.getByRole('button',{name:'Use unknown identity',exact:true}).click();await noMatch;assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
+   const missing=page.waitForResponse(async response=>new URL(response.url()).pathname.endsWith('/eps')&&response.ok()&&(await response.json()).status==='missing');
+   await page.getByRole('button',{name:'Clear identity',exact:true}).click();await missing;assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
    const lineage=await imports.history(token,report.id);assert.equal(lineage.inconsistent,true);assert.ok(lineage.items.some(item=>item.source.includes('2020-05-12')));assert.deepEqual(errors,[]);
    await page.screenshot({path:`/tmp/eps007-identity-${language}.png`});
   }catch(error){await page.screenshot({path:'/tmp/eps007-failure.png'});await writeFile('/tmp/eps007-failure.html',await page.content());throw error;}finally{await context.close();await query('rollback to savepoint eps_history_browser');await query('release savepoint eps_history_browser');}
@@ -74,11 +76,14 @@ export async function epsHistoryBrowser({database,query,sessions,configuration,a
  // Exercise exact units and semantic destination through the actual admin panel.
  await query('savepoint eps_history_admin');const context=await browser.newContext({viewport:{width:1440,height:900}});page=await context.newPage();
  try {
-  await page.goto(`${origin}/?admin`);await page.getByLabel('Unit code',{exact:true}).first().waitFor();assert.equal(await page.getByLabel('Unit code',{exact:true}).first().inputValue(),'kg');
-  await page.getByRole('combobox',{name:/^Destination field/}).first().selectOption('eNarrative.01');await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.getByText('View only: this destination cannot preserve the configured historical or patient-identifier meaning.',{exact:false}).waitFor();
-  await page.getByRole('combobox',{name:/^Destination field/}).first().selectOption(historyFieldId);await page.getByRole('button',{name:'Check mappings',exact:true}).click();await page.waitForFunction(()=>[...document.querySelectorAll('[role=status]')].filter(e=>e.textContent.includes('Compatible')).length===3);
-  await page.getByLabel('Unit code',{exact:true}).first().fill('g');
-  await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByText('Active revision: 2 — Draft revision: 3',{exact:false}).waitFor();const exported=await configuration.export(adminToken,'3');assert.equal(exported.definition.clinicalMappings[0].expectedUnit.code,'g');assert.equal(exported.definition.clinicalMappings[1].semanticRole,'historical-procedure');await page.screenshot({path:'/tmp/eps007-admin.png'});
+  await page.goto(`${origin}/?admin`);await page.locator('.hospital-mapping-summary').filter({hasText:'29463-7'}).getByRole('button',{name:'Edit',exact:true}).click();await page.locator('.hospital-mapping-editor:visible').getByLabel('Unit code',{exact:true}).first().waitFor();assert.equal(await page.locator('.hospital-mapping-editor:visible').getByLabel('Unit code',{exact:true}).first().inputValue(),'kg');
+  await page.getByRole('combobox',{name:/^Destination field/}).first().selectOption('eNarrative.01');await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'A clinical mapping is incompatible with the pinned form.'}).waitFor();
+  assert.equal((await configuration.get(adminToken)).draft.revision,2,'an incompatible draft is not persisted');
+  await page.getByRole('combobox',{name:/^Destination field/}).first().selectOption(historyFieldId);
+  await page.locator('.hospital-mapping-editor:visible').getByLabel('Unit code',{exact:true}).first().fill('g');
+  await page.getByRole('button',{name:'Save EPS draft',exact:true}).click();await page.getByRole('status').filter({hasText:'3 compatible · 0 need attention'}).waitFor();
+  await page.locator('.hospital-integration-status').getByText('Draft revision: 3',{exact:true}).waitFor();const exported=await configuration.export(adminToken,'3');assert.equal(exported.definition.clinicalMappings[0].expectedUnit.code,'g');assert.equal(exported.definition.clinicalMappings[1].semanticRole,'historical-procedure');await page.screenshot({path:'/tmp/eps007-admin.png'});
  }catch(error){await page.screenshot({path:'/tmp/eps007-failure.png'});await writeFile('/tmp/eps007-failure.html',await page.content());throw error;}finally{await context.close();await query('rollback to savepoint eps_history_admin');await query('release savepoint eps_history_admin');}
  }catch(error){if(page&&!page.isClosed()){await page.screenshot({path:'/tmp/eps007-failure.png'});await writeFile('/tmp/eps007-failure.html',await page.content());}await writeFile('/tmp/eps007-failures.json',JSON.stringify(failures,null,2));throw error;}finally{await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));}
 }
