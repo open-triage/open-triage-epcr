@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
+import { auditCategories, auditDumpSources } from "@open-triage/contracts";
 import { recordPatientAccess } from "../dist/reports/patient-access-audit.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 import { AuditService, validateAuditQuery } from "../dist/admin/audit.service.js";
@@ -44,21 +45,13 @@ test("audit filters reject injected source names, invalid dates, unbounded range
   }
 });
 
-test("audit browsing requires audit authority and independently protects patient sections from installation authority", async () => {
+test("audit browsing and user lookup require audit authority before querying", async () => {
   const database = { transaction: async (_isolation, work) => work({ query: async () => assert.fail("unauthorized query") }) };
   const denied = new AuditService(database, { requireCapability: async (_token, capability) => {
     assert.equal(capability, "audit:read"); throw Object.assign(new Error("denied"), { status: 403 });
   } });
   await assert.rejects(denied.list("secret", query), { status: 403 });
   await assert.rejects(denied.users("secret", {}), { status: 403 });
-  for (const extra of [{ capabilities: ["audit:read"] }, { capabilities: ["audit:read", "audit:read-identifying"] },
-    { installationOwner: true }, { installationSuperadmin: true }]) {
-    const service = new AuditService(database, { requireCapability: async () => ({ user: { id: input.actorId },
-      organization: { id: input.organizationId }, capabilities: ["audit:read", "audit:identifying"], ...extra }) });
-    await assert.rejects(service.list("secret", { ...query, category: "patient" }), { status: 403 });
-    await assert.rejects(service.list("secret", { ...query, category: "audit" }), { status: 403 });
-    await assert.rejects(service.list("secret", { ...query, category: "analytics" }), { status: 403 });
-  }
 });
 
 test("audit user choices reject scope overrides and malformed paging before accessing the database", async () => {
@@ -74,6 +67,7 @@ test("payload inspections validate source IDs, require audit access, and fail be
   let authorized = true, capabilities = ["audit:read"], authority = {}, reads = 0, failWrite = false;
   const payload = { submission: { description: "Fixture full report" } };
   const service = new AuditService({ transaction: async (_level, work) => work({ query: async (sql) => {
+    if (sql.includes("select scoped_organization_ids")) { reads++; return [{ payload: { execution: {} }, captured: true, organization_ids: [] }]; }
     if (sql.includes("select jsonb_build_object")) { reads++; return [{ payload }]; }
     if (sql.includes("insert into clinical_audit.audit_read_event") && failWrite) throw new Error("audit unavailable");
     return [];
@@ -85,20 +79,31 @@ test("payload inspections validate source IDs, require audit access, and fail be
   for (const [source,id] of [["arbitrary.table",input.reportIds[0]],["feedback.submission","-1"],["feedback.submission","1"],
     ["feedback.review_event","9999999999999999999"],["clinical_audit.analytics_access_event","1"]])
     await assert.rejects(service.payload("secret",source,id), { status: 400 });
-  authorized = false;
-  await assert.rejects(service.payload("secret","feedback.submission",input.reportIds[0]), { status: 403 });
-  authorized = true;
-  await assert.rejects(service.payload("secret","clinical_audit.analytics_access_event",input.reportIds[0]), { status: 403 });
-  capabilities = ["audit:read","audit:identifying"];
-  for (const key of ["installationOwner","installationSuperadmin"]) {
-    authority = { [key]: true };
-    await assert.rejects(service.payload("secret","clinical_audit.analytics_access_event",input.reportIds[0]), { status: 403 });
+  for (const source of auditDumpSources) {
+    authorized = false;
+    await assert.rejects(service.payload("secret", source, input.reportIds[0]), { status: 403 });
+    authorized = true;
+    for (const grants of [["audit:read"], ["audit:read", "review:identifying"], ["audit:read", "audit:read-identifying"]]) {
+      capabilities = grants;
+      await assert.rejects(service.payload("secret", source, input.reportIds[0]), { status: 403 });
+    }
+    capabilities = ["audit:read", "audit:identifying"];
+    for (const key of ["installationOwner", "installationSuperadmin"]) {
+      authority = { [key]: true };
+      await assert.rejects(service.payload("secret", source, input.reportIds[0]), { status: 403 });
+    }
+    authority = {};
   }
-  assert.equal(reads,0);
-  authority = {}; capabilities = ["audit:read"];
-  assert.deepEqual(await service.payload("secret","feedback.submission",input.reportIds[0]), { kind: "feedback", payload });
-  failWrite = true;
-  await assert.rejects(service.payload("secret","feedback.submission",input.reportIds[0]), /audit unavailable/);
+  assert.equal(reads, 0);
+  for (const source of auditDumpSources) {
+    failWrite = false;
+    assert.deepEqual(await service.payload("secret", source, input.reportIds[0]),
+      source === "clinical_audit.analytics_access_event"
+        ? { kind: "analytics", payload: { execution: { organizations: [] } }, requestCaptured: true }
+        : { kind: "feedback", payload });
+    failWrite = true;
+    await assert.rejects(service.payload("secret", source, input.reportIds[0]), /audit unavailable/);
+  }
 });
 
 test("audit actor lookup is bounded to unique account IDs on the visible page", async () => {
@@ -227,7 +232,7 @@ test("audit type selections support blank/all and multiple allowlisted types wit
   assert.throws(() => validateAuditQuery({ ...query, categories: "feedback" }), { status: 400 });
 });
 
-test("blank audit selections read only permitted types and mixed forbidden selections fail before querying", async () => {
+test("metadata auditors can select all categories individually or together and every inspection records its scope", async () => {
   const { category, ...range } = query;
   for (const authority of [{}, { installationOwner: true }, { installationSuperadmin: true }]) {
     const calls = [];
@@ -237,21 +242,20 @@ test("blank audit selections read only permitted types and mixed forbidden selec
       return [];
     } }) }, { requireCapability: async () => ({ user: { id: input.actorId }, organization: { id: input.organizationId },
       capabilities: authority.installationOwner || authority.installationSuperadmin ? ["audit:read", "audit:identifying"] : ["audit:read"], ...authority }) });
-    for (const categories of [undefined, ""]) {
+    for (const categories of [undefined, "", "authentication,patient", ...auditCategories]) {
       calls.length = 0;
       const page = await service.list("fixture", { ...range, categories });
-      assert.deepEqual(page.categories, ["authentication", "authorization", "configuration", "installations", "feedback"]);
+      assert.deepEqual(page.categories, auditCategories);
+      const selected = categories ? auditCategories.filter(category => categories.split(",").includes(category)) : auditCategories;
       const read = calls.find(call => call.sql.includes("cursor_time"));
-      assert.match(read.sql, /app_identity.authentication_event/);
-      assert.match(read.sql, /feedback.submission/);
-      assert.doesNotMatch(read.sql, /clinical_audit|offline_recovery|clinical\./);
+      assert.equal(read.args[0], input.organizationId);
+      for (const category of auditCategories) {
+        assert.equal(read.sql.includes(`select '${category}'::text category`), selected.includes(category));
+      }
       const inspection = calls.find(call => call.sql.includes("insert into clinical_audit.audit_read_event"));
-      assert.equal(inspection.args[2], "combined");
-      assert.deepEqual(inspection.args[8], page.categories);
+      assert.equal(inspection.args[2], selected.length === 1 ? selected[0] : "combined");
+      assert.deepEqual(inspection.args[8], selected);
     }
-    calls.length = 0;
-    await assert.rejects(service.list("fixture", { ...range, categories: "authentication,patient" }), { status: 403 });
-    assert.equal(calls.length, 0);
   }
 });
 

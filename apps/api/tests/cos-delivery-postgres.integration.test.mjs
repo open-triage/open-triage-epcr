@@ -266,7 +266,10 @@ for(const run of [1,2])integration(`durable COS signature queue, separately comm
   const recoveryAudit=await audit.list('fixture',{category:'review',targetId:failureItem.id,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
   const manualAudit=recoveryAudit.entries.filter(e=>e.source==='clinical.cos_recovery_command');assert.equal(manualAudit.length,2);
   assert.ok(manualAudit.every(e=>e.actorId===sample.documenting_user_id&&e.outcome==='queued'&&e.recovery.itemId===failureItem.id&&e.recovery.amendmentSequence===0));
-  assert.ok(recoveryAudit.entries.some(e=>e.source==='clinical.cos_delivery_event'&&e.outcome==='confirmed'&&e.actorId===sample.documenting_user_id));
+  assert.ok(!recoveryAudit.entries.some(e=>e.source==='clinical.cos_delivery_event'),'delivery events have one canonical integration projection');
+  const deliveryAudit=await audit.list('fixture',{category:'integrations',targetId:outage,from:new Date(Date.now()-86400000).toISOString(),to:new Date(Date.now()+1000).toISOString()});
+  assert.ok(deliveryAudit.entries.some(e=>e.source==='clinical_audit.hospital_operational_event'&&e.action==='cos.manual-retry'&&e.outcome==='confirmed'&&e.actorId===null&&manualAudit.some(command=>command.id===e.integration.commandId)));
+  assert.doesNotMatch(JSON.stringify(deliveryAudit.entries),/200207252388|Fictional documented assessment/);
   assert.doesNotMatch(JSON.stringify(recoveryAudit.entries),/200207252388|Fictional documented assessment/);
   await automaticRetryFixture({db,draft,sign,simulator,group,recoveryReview,recoverySessions,retryInput,config,next,settings});
   // A definite outage after contact acceptance can resume the same note without a second contact.
