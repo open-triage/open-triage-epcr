@@ -9,8 +9,7 @@ Every real worker operation carries its immutable delivery and attempt IDs.
 Receiver mutations acquire a report key-share lock followed by a receiver lane
 lock before checking the exact attempt fence. Contact identity stays stable;
 note/receipt insertion and the monotonic current-note pointer are one transaction.
-Legacy in-process callers lacking attempt bindings fail conservatively after a
-fence and cannot provide verified stored proof.
+Every simulator call requires explicit attempt bindings to provide verified storage proof.
 
 An authorized assigned identifying reviewer requests reconciliation, never a
 resend. The command uses the shared report worker lock and live session/CSRF,

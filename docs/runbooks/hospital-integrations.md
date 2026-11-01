@@ -5,6 +5,15 @@ Saving, importing, testing, activating and deactivating require `settings:write`
 and the existing live personal-session authority. Configuration belongs to the
 selected agency's root group; it grants no patient or report access.
 
+## Migration baseline
+
+The undeployed feature migrations are consolidated into
+`20261019104900_hospital_integration.sql`. Migrations already on main remain
+unchanged. Apply the normal migration runner when upgrading from main or
+installing a fresh database. Development databases that applied the earlier
+feature migrations need to be recreated using the local development runbook;
+the runner deliberately does not accept the obsolete checksums or replay them.
+
 ## EPS setup
 
 Publish the root agency's form and catalog first. Select EPS, configure the
@@ -12,7 +21,7 @@ hackathon FHIR endpoint, identifier namespace and explicit equivalent namespace
 aliases, and choose a compatible standard or custom text field. The initial
 selection is `ePatient.01`. Enter the team credential and save a draft. The only
 initial transport is `https://hackathon2026.vadimperetok.in/fhir`, using the
-`X-Team-Token` header. The public hackathon service is for fictional patients.
+`Authorization: Bearer <company-token>` header. The public hackathon service is for fictional patients.
 
 For the fictional hackathon examples, Andrea (`200207252388`) and Arne
 (`194302096997`) use `http://electronichealth.se/identifier/personnummer`.
@@ -87,15 +96,14 @@ These deterministic tests do not claim live hackathon connectivity or COS accept
 ## COS configuration and simulator
 
 The COS section stores one immutable connection revision per agency group;
-child agencies inherit that connection under existing settings authority. Staff
-HSA assignments must belong to active accounts in that group. Hospital/care-unit
-pairs are exact mappings; an unknown destination never falls back to the ambulance
-care unit. The ambulance default applies only when there is no destination.
+child agencies inherit that connection under existing settings authority. Staff HSA identifiers are maintained on active user accounts in that group.
+Destinations resolve from signed directory selections. An unknown destination
+never falls back to the ambulance care unit; that default applies to nontransport.
 
 Choose the patient field (default `ePatient.01`), namespace and explicit aliases
 separately from encounter, staff and organizational identifiers. Configure the
-endpoint, API-key or bearer credential, template, local identities and clinical
-source-to-template-link mappings in the panel. The pinned development dependency
+endpoint, OAuth client credential, template and clinical source-to-template-link
+mappings in the panel. Maintain staff HSA in Users and destinations in the directory. The pinned development dependency
 is `BundlePrehospitalNote/v2` / `QuestionnaireResponsePreHospitalNote/v2` (2.0.0).
 Source/answer types must be compatible. Receiver-specific template link IDs and
 terminology remain subject to the sandbox gate.
@@ -115,9 +123,9 @@ compatibility and credential decryptability. They make no outbound request and
 transmit no document. Every result records its exact configuration hash and
 explicit simulator/no-transmission status. A simulator activation cannot verify
 connectivity, OAuth grants, receiver templates, storage or final acknowledgement.
-Live mode can be drafted, but its tests report the missing sandbox verification
-and activation is refused server-side. Slice 024 must establish the real target
-contract and verification path before live activation can become available.
+Live connection tests perform read-only OAuth and metadata checks. Activation also
+requires the installation acceptance fields described below; metadata alone does
+not establish clinical acceptance.
 
 Published profile inspection (19 October 2026):
 [QuestionnaireResponsePreHospitalNote v2 JSON view](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.profile.json.html)
@@ -127,9 +135,11 @@ receiving installation's template codes. This configuration slice supports that
 flat text mapping and rejects nonnumeric link IDs, specialized medication IDs,
 and unsupported flat answer types. Numeric shape is not terminology validation.
 Medication requires a Coding answer and five mandatory nested answers; PDF uses
-a separate URI slice and observations/triage use references. Their structured
-mapping/composition belongs to slice 013; this simulator does not claim a complete
-clinical document validates against all required slices.
+a separate URI slice and observations/triage use references. Optional canonical
+`vitalMappings` support heart rate, respiratory rate and temperature references;
+see [sandbox payload testing](cos-sandbox-testing.md). Medication, triage and the
+remaining vital structures are not implemented by those mappings. Local payload
+tests do not establish receiver acceptance.
 
 The [Bundle prehospital note profile](https://fhir.openservices.cambio.se/site/StructureDefinition-BundlePrehospitalNote.html)
 and [questionnaire profile](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.html)
@@ -354,3 +364,38 @@ The field must be present and enabled in the report's form. Preview identifies
 the history projection and retains the complete source condition in provenance.
 Only active, confirmed conditions without abatement are imported as codes;
 resolved, remission, uncertain and unsupported conditions remain view-only.
+
+## COS canonical clinical mappings
+
+The shared source of COS element/profile bindings is
+`packages/contracts/src/cos-element-mappings.json`. Both the API projection and
+COS administration consume this JSON. It contains clinical source identifiers,
+profile URLs, units, AVPU terminology, numeric pain-scale identity and nested
+medication child bindings. It must not contain local HSA/Rakel assignments,
+endpoints or credentials.
+
+Saved installation mappings continue to use the same canonical package writer,
+SHA-256 verification, catalog pinning, revision history and file import/export
+mechanisms as EPS. COS definitions require schema version 2 and support
+`vitalMappings[].companionSource` for BP and NRS and `medicationMappings` for
+administered medications. Other schema versions are rejected. Importing a package
+does not activate it.
+
+A v2 projection retains independently valid observations when another occurrence
+cannot be projected. Its findings identify the mapping and signed occurrence,
+with `partial` coverage for failed in-scope projection and `note-pdf-only` for
+non-NRS pain or qualified prior medication administration. Times come from the
+signed assessment ancestry and explicit clinical time fields; conflicting times
+are findings. No nearest-time or array-position pairing is performed.
+
+Live connection tests obtain a token and read the configured API's FHIR metadata;
+they do not submit patient data and do not prove clinical acceptance. Activation
+also requires an installation acceptance reference, PDF keyword and marker
+configuration, and explicit acceptance of every enabled Observation profile.
+These declarations must refer to installation acceptance evidence, including
+viewing the PDF in COSMIC. The current journal API cannot retrieve stored PDF
+bytes. The two replacement credential inputs are stored together as one encrypted
+credential envelope and are never returned to the browser.
+
+See [COS signed-record export](cos-signed-record-export.md) for identity setup,
+destination selection, artifact states and recovery procedures.

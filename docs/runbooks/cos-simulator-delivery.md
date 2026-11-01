@@ -46,22 +46,29 @@ payload and PDF hashes, not merely acceptance of a contact or request.
 The clinical adapter constructs a COS collection Bundle with a v2
 QuestionnaireResponse, never an EPS document Bundle. It supports explicitly mapped
 string fields under the published `otherInformation` slice; one occurrence becomes
-one item with one answer. Unsupported values or NOT/pertinent-negative qualifiers
+one item with one answer. Optional canonical `vitalMappings` now add heart rate,
+respiratory rate and temperature as same-Bundle Observation resources referenced
+by `QuestionnaireResponse.item.answer.valueReference`. See
+[sandbox payload testing](cos-sandbox-testing.md) for configuration and limitations.
+Unsupported values or NOT/pertinent-negative qualifiers
 fail instead of becoming asserted free text. PDF content still includes the full
 signed report. The admin panel's PDF SNOMED link identifier is part of canonical
-mapping JSON. No code is invented: legacy mappings preserve their original hash and
-remain importable, but require an explicit new revision with that field for delivery.
+schema version 2 mapping JSON. No code is invented: a missing PDF binding requires
+an explicit new mapping revision before delivery. Other schemas are rejected.
 The simulator binds its `valueUri` to exact PDF bytes out of band. This URI is not a
 public download route or a verified live COS attachment URL.
+The sandbox has now verified inline `data:application/pdf;base64,...` delivery
+using the shared PDF encoder and a typed journal document read-back. See the
+[PDF reproduction steps](cos-sandbox-testing.md#pdf-works-with-inline-delivery).
+The worker selects simulator or live delivery from the activated connection mode.
 
-Initial eligibility requires explicit NEMSIS patient contact (`eDisposition.27`),
-patient evaluation/care (`eDisposition.28`) and patient transport (`eDisposition.30`).
-Cancellation/no-contact dispositions are excluded. Other or ambiguous dispositions
-wait; non-transport eligibility is implemented by the next delivery slices. The
-configured destination pair matches `eDisposition.01` (destination name) and
-`eDisposition.02` (destination code) exactly. No free-text similarity or fallback
-hospital routing is used. Patient field, namespace, staff identity, template and
-care unit all come from the recorded canonical/local configuration.
+Every newly signed report and amendment enters the active COS workflow. Missing,
+ambiguous or cancellation dispositions do not exclude or hold delivery. A recorded
+destination requires a signed directory selection matching `eDisposition.01` and
+`.02`; without a destination, use the configured ambulance care unit. Never infer
+routing from the disposition codes or match a destination by free text.
+Staff HSA resolves from Users; mapping, template and identifier namespaces come
+from the recorded canonical/local configuration.
 
 Authorized Review report users see redacted delivery state and actionable findings.
 Reopening the report refreshes it. Report/agency/dataset/revocation authorization is
@@ -105,7 +112,7 @@ share report retention. Actual remote late-processing guarantees remain ticket 0
 
 ### Missing transmission identifiers in Review
 
-An eligible signed report with missing identifiers creates built-in operational
+A signed report with missing identifiers creates built-in operational
 Review work; no authored validation rule is needed and signing remains successful.
 Two stable conditions distinguish patient identity (documenting clinician by
 default) from integration mapping (shared queue by default). Review settings can
@@ -178,35 +185,27 @@ have no Retry control. Recovery evidence and commands expire with the report.
 This remains the explicit development simulator; actual Cambio acceptance is the
 separate ticket 024 gate.
 
-Signed non-transport care follows the same prospective queue and amendment path.
-NEMSIS 3.5.1 patient contact (`eDisposition.27=4227001`), a documented evaluation/
-care disposition (`eDisposition.28=4228001/3/5/7/9`), and refusal of transport
-(`eDisposition.30=4230009`) or no transport (`4230013`) route to the group's
-explicit default ambulance care unit. This includes evaluation without required
-care and refusal of evaluation/care. The receiver contact preserves the exact
-three recorded disposition codes. Cancellation/no-contact unit dispositions
-remain excluded; missing, ambiguous, unknown, and non-patient transport facts
-wait for correction. Residual hospital destination fields never route a
-non-transport report. A missing/blank default produces the localized
-`ambulanceCareUnit` mapping concern in Review and no receiver contact. Child
-agencies inherit the same group configuration. Later signed disposition
-amendments re-evaluate only that report version and preserve prior immutable
-payloads; configuration activation never scans historical reports.
+All signed disposition values follow the same prospective queue and amendment
+path. The receiver contact preserves recorded disposition codes as clinical data.
+An explicit destination determines routing independently of those codes; when no
+destination is documented, use the group's configured ambulance care unit. Missing
+or blank ambulance configuration produces an `ambulanceCareUnit` concern in Review.
+Child agencies inherit the same group configuration. Configuration activation
+never scans historical reports.
 
-Eligibility and missing-identifier checks use integrity-verified signed clinical
-metadata before loading protected photo bytes. No-contact versions are excluded
-and undocumented/ambiguous eligibility waits even when media is unavailable.
-An explicit no-contact amendment clears obsolete missing-identifier concerns;
-restored patient contact can reopen them. This does not retract earlier receiver
-notes or clear an uncertain-delivery barrier. Every eligible delivery still
-hydrates and verifies all signed photos and requires the complete PDF; manual
+Required patient and operational identifiers are checked from integrity-verified
+signed metadata before protected photo bytes are loaded. Cancellation amendments
+do not clear unresolved identifier concerns or uncertain-delivery barriers. Missing
+dispatch time does not block delivery. The COS ambulance-record start uses the
+report creation timestamp; it is not a dispatch or patient-contact timestamp.
+Delivery still verifies all signed photos and requires the complete PDF; manual
 PDF inspection also fails when signed media is unavailable.
 
 ### Repair missing mappings from Review
 
 An integration-mapping Review concern links to **Admin → Hospital integrations →
-COS**. An existing integration administrator repairs the local staff HSA mapping,
-exact destination care-unit mapping, default ambulance unit or encounter settings.
+COS**. An authorized administrator repairs staff HSA in Users, destination HSA
+in the directory, or ambulance unit and encounter settings in the COS panel.
 Portable data-element changes use the canonical JSON editor or import/export and
 always pass the normal draft, test and activate lifecycle. Configuration authority
 and identifying access to the affected report are both required to revalidate;

@@ -1,8 +1,20 @@
-# Explicit signed EPS submission
+# Signed EPS submission
 
-Only an identifying, authorized Review user can prepare or submit a signed report.
-Choose **Submit EPS**, build the signed-version preview, review the findings, then
-confirm the report is fictional before using **Submit to public hackathon service**.
+Selecting **Export EPS** when signing prepares an immutable signing request. The
+record stays unsigned until every selected export is resolved. COS verification
+runs first when selected; EPS then validates and publishes the exact prepared
+version. Only EPS acceptance allows the final signed snapshot to be created.
+
+EPS errors appear beneath its checklist checkbox with field or configuration
+correction actions. A deliberate Sign retry can rebuild a rejected EPS using the
+current mapping and credential. Changing draft content requires a new immutable
+signing request. Accepted and unknown attempts are never blindly resent. Unknown
+outcomes keep signing blocked until delivery can be established. Existing signed
+reports and their historical submission evidence remain unchanged.
+
+An identifying, authorized Review user can inspect a failed export, prepare a corrected
+preview, and explicitly submit it. Manual publication still requires confirming that
+the report is fictional. Automatic signing export also enforces synthetic records.
 The fixed public endpoint is `POST /fhir/Bundle/$validate`; it records attempts and
 can publish passing documents. Admin's GET connectivity check remains read-only.
 
@@ -56,7 +68,7 @@ Submit commits a durable intent before contacting the receiver. Each command and
 preview can have only one attempt. A replay returns the original result. Separate
 previews cannot bypass the same signed-version publication lock after acceptance
 or an unknown outcome. Lost acknowledgement, process crash, or ambiguous response
-remains **Outcome unknown**; there is no automatic retry. Rejection preserves the
+remains **Outcome unknown**; there is no automatic retry after a possibly delivered attempt. Rejection preserves the
 service's issue severities/codes/paths and result headers; a new deliberately
 remapped preview remains an explicit user action. A signed amendment becomes a
 new eligible version and never submits automatically.

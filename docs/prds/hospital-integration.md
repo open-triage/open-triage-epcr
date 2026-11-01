@@ -1,5 +1,11 @@
 # Problem Statement
 
+> **COS follow-up, 27 October 2026:** the [COS signed-record export PRD](cos-signed-record-export.md)
+> defines the focused live-delivery milestone and supersedes this document's
+> access-pending assumption. Its new clinical mappings are BP, SpO2, AVPU, numeric
+> pain and medication-note entries, with user/unit/destination identifiers and
+> verified artifact delivery. The broader EPS scope remains unchanged.
+
 > **Planned — agreed design, 19 October 2026.** This PRD captures the hospital
 > integration design agreed with the product owner. It covers Cambio COS final
 > report delivery and European Patient Summary (EPS) exchange with the Nordic
@@ -32,9 +38,9 @@ sections. Share the clinical mapping, identity-resolution, authorization, and
 audit behavior needed by both destinations, while keeping their external
 contracts separate.
 
-COS automatically receives newly signed reports and signed amendments for
-encounters involving patient assessment or care. This includes non-transport
-encounters, using an explicitly configured ambulance care unit. Send structured
+COS automatically receives newly signed reports and signed amendments regardless
+of disposition or cancellation classification. An explicit destination determines
+routing; otherwise use the configured ambulance care unit. Send structured
 prehospital-note data and a readable PDF of the signed report. Preserve delivery
 history and prevent an older retry from overwriting a newer delivered version.
 Signing remains available when the destination is unavailable.
@@ -66,7 +72,7 @@ existing configurable Review routing and retain their history.
 3. As a clinician, I want signed amendments delivered automatically, so that the hospital receives corrected documentation.
 4. As a receiving clinician, I want the newest delivered report to remain current, so that a delayed retry cannot restore an older version.
 5. As a clinician, I want reports from assessment, treatment without transport, and refusals included, so that care at the scene remains available in the hospital record.
-6. As an agency, I want cancellations without patient contact excluded, so that calls without patient care do not create inappropriate hospital notes.
+6. As an agency, I want every newly signed report exported regardless of cancellation or contact classification, so that COS receives the signed record consistently.
 7. As a receiving clinician, I want structured clinical information and a readable PDF, so that both mapped data and the fuller documented context are available.
 8. As a receiving clinician, I want custom fields and text notes represented in the PDF, so that information outside structured COS mappings is not silently lost.
 9. As a receiving clinician, I want report photos included subject to supported attachment limits, so that relevant visual documentation accompanies the report.
@@ -106,7 +112,7 @@ existing configurable Review routing and retain their history.
 43. As an administrator, I want to activate or deactivate COS and EPS independently, so that either service can be operated without requiring the other.
 44. As an agency-group administrator, I want one COS connection inherited by child agencies, so that a shared regional installation is configured consistently.
 45. As an administrator, I want explicit hospital and care-unit mappings, so that a report reaches its intended context within COS.
-46. As an administrator, I want a default ambulance care unit for non-transport encounters, so that an absent hospital destination does not prevent an otherwise eligible transfer.
+46. As an administrator, I want a default ambulance care unit when no destination is documented, so that an absent hospital destination does not prevent transfer.
 47. As an administrator, I want unmapped destinations exposed as actionable failures, so that the system does not guess a recipient.
 48. As an administrator, I want activation to start with new signatures and amendments, so that existing signed records are not unexpectedly transmitted.
 49. As an administrator, I want transmission history to show the report version, destination, attempts, status, timestamps, and useful error details, so that delivery can be investigated.
@@ -114,7 +120,7 @@ existing configurable Review routing and retain their history.
 51. As an administrator, I want a configurable bounded retry schedule, so that temporary outages can recover automatically without indefinite retries.
 52. As a reviewer, I want a built-in COS transmission failed item after the first failure, so that unsuccessful delivery is visible while automatic recovery is still running.
 53. As a reviewer, I want repeated failures attached to the existing item, so that retries do not flood the queue with duplicate work.
-54. As a reviewer, I want to retry the latest eligible signed version from Review, so that I can resume delivery after correcting a problem.
+54. As a reviewer, I want to retry the latest signed version from Review, so that I can resume delivery after correcting a problem.
 55. As a reviewer, I want a failure item to remain open until confirmed delivery, so that queuing or clicking Retry is not mistaken for success.
 56. As a reviewer, I want uncertain delivery outcomes distinguished from definite rejection, so that a timeout does not lead to an unsafe blind resend.
 57. As a reviewer, I want a built-in missing transmission identifiers item, so that absent patient, practitioner, care-unit, or encounter identifiers receive follow-up.
@@ -150,9 +156,9 @@ deployments. All are included in testing.
 | Integration configuration and identity resolution | Versioned connection settings, credentials, activation, shared patient-field selection, identifier schemes, and destination/staff mappings | Read effective configuration; save/test/activate/deactivate a revision; resolve a patient's configured identifier with explicit findings. |
 | Clinical exchange mapping and validation | Project source report versions into clinical concepts, preserve provenance and missing-data semantics, map codes/units, and construct or read destination-specific FHIR documents | Produce a versioned projection, parse a summary, plan/apply an import, or validate/build a target document with mapping findings. |
 | EPS connection and clinical workflow | Hackathon document discovery, patient matching, availability, complete presentation, selective imports, protected caching, and explicit submission results | Resolve availability; retrieve a particular summary; refresh; request an authorized import or submission. |
-| COS delivery coordination | Eligibility, contact/note delivery sequencing, immutable payload identity, attempts, acknowledgement interpretation, bounded retries, and amendment ordering | Queue an eligible signed version; process/reconcile an attempt; expose delivery state; request an authorized recovery attempt. |
+| COS delivery coordination | Contact/note delivery sequencing, immutable payload identity, attempts, acknowledgement interpretation, bounded retries, and amendment ordering | Queue a signed version; process/reconcile an attempt; expose delivery state; request an authorized recovery attempt. |
 | Signed-report rendering | Human-readable PDF from the exact signed report version and amendments, including photos and explicit audio omissions | Render a reproducible report artifact and return completeness/size findings. |
-| Review recovery | Built-in conditions, stable work-item identity, routing, identifier outcome actions, retries, and condition-driven completion | Reconcile operational items; document a valid identifier; retry the latest eligible delivery. |
+| Review recovery | Built-in conditions, stable work-item identity, routing, identifier outcome actions, retries, and condition-driven completion | Reconcile operational items; document a valid identifier; retry the latest delivery. |
 | Shared authorization and audit integration | Report-relative identifying access, mutation authority, protected payload access, and attributable integration events in existing audit browsing | Authorize the actual report/action; record and expose permitted evidence using the existing audit model. |
 
 Use the existing clinical draft and amendment mechanisms, Review assignment and
@@ -251,8 +257,8 @@ consistent and reviewable:
   authentication settings, protected credentials, the patient-field dropdown,
   identifier schemes, clinical mappings, and service-specific settings.
 - COS has one connection per agency group, inherited by child agencies, with
-  explicit hospital/care-unit mappings and a default ambulance care unit for
-  non-transport encounters. An unresolved destination creates visible recovery
+  explicit destination mappings and a default ambulance care unit when no
+  destination is documented. An unresolved destination creates visible recovery
   work, not a guessed route.
 - **Implementation inference:** use the same group ownership for EPS configuration
   to match the requested SSO-like administration and avoid a second configuration
@@ -358,13 +364,15 @@ consistent and reviewable:
 
 ## COS delivery, versions, and retries
 
-- Queue eligible new signatures and amendments durably without making clinical
-  signing depend on a remote request. Prevent a committed eligible signature from
+- Queue all new signatures and amendments durably without making clinical
+  signing depend on a remote request. Prevent a committed signature from
   being silently missed between signing and job creation; a transactional queue
   or equivalent recoverable event boundary is an implementation choice.
-- Eligibility includes assessment/care, non-transport, and refusal reports, and
-  excludes cancellation without patient contact. Evaluate actual disposition
-  and documented care using the report's versioned definitions, not display text.
+- Disposition, patient-contact classification, cancellation and transport status
+  do not gate delivery. Missing dispatch time does not block delivery. Use the
+  report creation timestamp for the COS ambulance-record start, distinct from
+  dispatch or patient-contact time. Required identifiers and
+  valid integration configuration remain enforced.
 - Produce payloads from immutable signed snapshots plus a specified amendment
   sequence. Record the mapping/profile configuration and artifact digest used.
   Retries of that version must be reproducible; a deliberate remapping or newer
@@ -373,8 +381,8 @@ consistent and reviewable:
   external identities. A partially completed workflow must be recoverable without
   duplicating contacts or delivering the note under a different patient.
 - Serialize or otherwise enforce monotonic delivery for each report/contact.
-  Supersede an older pending version when a newer eligible signed version must
-  be sent, preserve both histories, and recheck latest-version eligibility for
+  Supersede an older pending version when a newer signed version must
+  be sent, preserve both histories, and recheck latest-version identity and configuration for
   manual retry. An older in-flight or uncertain attempt must be reconciled before
   it can race a newer replacement.
 - Distinguish awaiting identifiers/configuration, queued, sending, retry scheduled,
@@ -405,7 +413,7 @@ The confirmed default is an initial attempt plus five automatic retries:
   requires reconciliation; do not classify it as a definite rejection and blindly
   resend. The supported reconciliation mechanism remains a sandbox dependency.
 - Manual retry performs an authorized, replay-safe attempt against the latest
-  eligible version and records its actor. Concurrent clicks or workers must not
+  signed version and records its actor. Concurrent clicks or workers must not
   create parallel duplicate attempts or duplicate Review items.
 
 ## Signed-report PDF
@@ -436,8 +444,8 @@ The confirmed default is an initial attempt plus five automatic retries:
 
 | Built-in item | Default routing | Actions and completion |
 | --- | --- | --- |
-| Missing transmission identifiers | Documenting clinician for missing patient identity; shared queue for missing integration mappings | Document valid identifier validates the required correction, records the outcome, and queues eligible delivery. Patient changes create an attributable signed amendment. Mapping changes use integration administration and are revalidated. |
-| COS transmission failed | Shared queue | Inspect failure and retry the latest eligible signed version. Complete automatically only after confirmed delivery; queuing an attempt is not completion. |
+| Missing transmission identifiers | Documenting clinician for missing patient identity; shared queue for missing integration mappings | Document valid identifier validates the required correction, records the outcome, and queues delivery. Patient changes create an attributable signed amendment. Mapping changes use integration administration and are revalidated. |
+| COS transmission failed | Shared queue | Inspect failure and retry the latest signed version. Complete automatically only after confirmed delivery; queuing an attempt is not completion. |
 
 - These are hardcoded operational conditions with stable identities, comparable
   to the existing built-in overdue workflow. They are not rules an administrator
@@ -541,7 +549,7 @@ design interview; the module table organizes that coverage.
    logout/user switching, agency switching, revoked access, patient changes, stale
    network responses, and refresh without rewriting imported provenance.
 5. **Delivery and retries:** verify new-signature and amendment triggers, no automatic
-   activation backfill, non-transport routing, no-contact exclusion, missing mappings,
+   activation backfill, explicit-destination/ambulance routing, cancellation delivery, missing mappings,
    and signing during an outage. Use a controlled clock for five delayed retries,
    exhaustion, jitter bounds, nonretryable errors, and manual retry. Simulate worker
    restarts, duplicate commands, partial contact/note success, unknown outcomes,
