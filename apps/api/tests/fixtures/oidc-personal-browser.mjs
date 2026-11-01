@@ -1,5 +1,6 @@
 // Controlled TLS plus actual API, application components and deployment proxy.
 import 'reflect-metadata';
+import {beginBrowserReauthentication} from './browser-reauthentication.mjs';
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createServer} from 'node:http';
@@ -70,7 +71,7 @@ try{
  await expect(page.getByText(/^Agency Settings saved\./)).toBeVisible();
  // Routine inherited policy edits retain the session; explicitly request fresh
  // personal proof to exercise the shared SSO reauthentication transition.
- await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));try{await fixture.reauthenticateClinicianSession('',s.csrfToken);}catch{}});
+ await beginBrowserReauthentication(page);
  await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();await finish();await expect(page.locator('.session-identity')).toBeVisible();
  const reauthenticated=await stored();assert.equal(await token(),alphaToken);assert.equal(reauthenticated.expiresAt,alphaSession.expiresAt);assert.equal(reauthenticated.personalAuthenticationPurpose,'reauthenticate');
  await page.getByRole('button',{name:'Admin',exact:true}).click();await page.getByRole('button',{name:'Agency Settings',exact:true}).click();await page.getByLabel('Maximum session duration (hours)').fill('7');await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByText(/^Agency Settings saved\./)).toBeVisible();assert.equal((await current()).body.expiresAt,alphaSession.expiresAt);
@@ -97,7 +98,7 @@ try{
  // Validated wrong-subject sensitive proof replaces the session. The outgoing
  // token cannot read common authority; its freshness cannot unlock the new user.
  await control({token:{sub:'fictional-beta'},expireRecent:alphaToken});
- await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));try{await fixture.reauthenticateClinicianSession('',s.csrfToken);}catch{}});await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();assert.equal(await otherTab.evaluate(alpha=>fixture.cachedOpenReports(localStorage,alpha).length,process.env.OIDC_ALPHA),0);await finish();await expect(page.locator('.session-identity')).toBeVisible();assert.equal((await stored()).user.id,process.env.OIDC_BETA);assert.notEqual(await token(),alphaToken);await assert.rejects(sessions.getAuthenticated(alphaToken));await assert.rejects(sessions.requireRecentReauthentication(await token()));
+ await beginBrowserReauthentication(page);await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();assert.equal(await otherTab.evaluate(alpha=>fixture.cachedOpenReports(localStorage,alpha).length,process.env.OIDC_ALPHA),0);await finish();await expect(page.locator('.session-identity')).toBeVisible();assert.equal((await stored()).user.id,process.env.OIDC_BETA);assert.notEqual(await token(),alphaToken);await assert.rejects(sessions.getAuthenticated(alphaToken));await assert.rejects(sessions.requireRecentReauthentication(await token()));
  assert.equal(await page.evaluate(id=>fixture.protectedStorageActive(id),reportId),false);
  assert.equal(await page.evaluate(alpha=>fixture.cachedOpenReports(localStorage,alpha).length,process.env.OIDC_ALPHA),0);
  const retained=await page.evaluate(()=>new Promise(resolve=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onsuccess=()=>{const db=request.result,query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{resolve(query.result.map(row=>({deadline:row.recoveryDeadline,revision:row.ciphertextRevision,keys:Object.keys(row)})));db.close();};};}));
@@ -107,7 +108,7 @@ try{
 
  // A different clinician, even with approved recent proof, gets no handle/key/label.
  const requestGrant=()=>page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));const response=await fetch(`/api/reports/${id}/recovery-grants`,{method:'POST',headers:{'content-type':'application/json','x-csrf-token':s.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})});return {status:response.status,body:await response.json()};},reportId);
- const prove=async()=>{await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));try{await fixture.reauthenticateClinicianSession('',s.csrfToken);}catch{}});await finish();await expect(page.locator('.session-identity')).toBeVisible();};
+ const prove=async()=>{await beginBrowserReauthentication(page);await finish();await expect(page.locator('.session-identity')).toBeVisible();};
  await prove();const wrong=await requestGrant();assert.equal(wrong.status,404);assert.doesNotMatch(JSON.stringify(wrong.body),/recoveryHandle|reportKey|PRIVATE OUTGOING/);
  await otherTab.close();await logout();await authenticate('fictional-alpha');alphaToken=await token();
  assert.equal((await requestGrant()).status,201,'ordinary authenticated sessions can reopen reports');
