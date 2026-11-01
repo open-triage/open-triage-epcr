@@ -1,0 +1,37 @@
+name: Demo node runtime health
+
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-node-runtime-health
+  cancel-in-progress: false
+
+jobs:
+  runtime-health:
+    name: Check / Host runtime bytes and inodes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: demo
+    env:
+      KUBECONFIG: ${{ runner.temp }}/open-triage-health-kubeconfig
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install doctl with scoped demo credentials
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Obtain an expiring DOKS kubeconfig
+        env:
+          DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
+        run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 600
+      - name: Check every worker's host runtime filesystem
+        run: node scripts/check-node-runtime.mjs

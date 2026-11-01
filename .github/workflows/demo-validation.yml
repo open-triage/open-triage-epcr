@@ -427,6 +427,10 @@ jobs:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
+      - name: Require host runtime storage headroom before deployment
+        env:
+          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
+        run: node scripts/check-node-runtime.mjs
       - name: Atomically deploy tested images
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig

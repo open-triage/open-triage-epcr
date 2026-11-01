@@ -390,7 +390,7 @@ Always keep `--context "$OT_CONTEXT" -n "$OT_NAMESPACE"` on investigation comman
 | Symptom | First checks |
 | --- | --- |
 | Login/kubeconfig expired; Forbidden | Repeat supported platform login; check workload context and namespace RBAC. TKG credentials can expire. |
-| Pending pods | `get events --sort-by=.metadata.creationTimestamp`, quotas, node capacity and admission policy; include rollout surge/job resources. |
+| Pending pods | `get events --sort-by=.metadata.creationTimestamp`, quotas, node capacity and admission policy; include rollout surge/job resources. Check host runtime bytes/inodes as well as the main disk; see the [demo runtime incident and monitoring](demo-node-runtime.md). |
 | ImagePullBackOff | Inspect pod events; tag/digest, robot permissions, pull Secret, node DNS/network and Harbor CA trust. |
 | Migration hook fails | `logs job/open-triage-migration`; database connectivity/role/extension authority, migration checksum and timeouts. Resolve the cause before retrying. Protect logs. |
 | Secret preparation/deployment stops | Check helper `--help`, private directory permissions, existing file names, required Secret key names and types. Do not overwrite installation keys. |
