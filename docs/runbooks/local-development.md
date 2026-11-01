@@ -276,3 +276,8 @@ offline recovery and PostgreSQL connection settings. This filtering applies even
 when an older `.env.local` does not list a newly exported server key. The API keeps
 those values; explicitly public `NEXT_PUBLIC_` settings and the derived local web
 upstream remain available to the web process.
+
+The API development command uses Nest to recompile API sources and Node watch mode
+to reload imported workspace libraries after they are rebuilt. Rebuild contracts
+with `npm run build -w @open-triage/contracts` after changing their source; the
+running API then reloads those exports instead of retaining a stale module cache.
