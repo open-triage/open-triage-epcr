@@ -1,3 +1,4 @@
+import { EpsWorkerService } from '../hospital/eps-worker.service.js';
 import { EpsSubmissionController } from '../hospital/eps-submission.controller.js';
 import { EpsSubmissionService } from '../hospital/eps-submission.service.js';
 import {EpsImportService} from '../hospital/eps-import.service.js';
@@ -21,7 +22,7 @@ import { ReportAudioNormalizer } from "./report-audio-normalizer.service.js";
 @Module({
   imports: [SessionsModule, SchedulesModule],
   controllers: [EpsSubmissionController, DraftReportController, EpsController],
-  providers: [EpsSubmissionService, CosWorkerService, EpsImportService, EpsService, DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
+  providers: [EpsWorkerService, EpsSubmissionService, CosWorkerService, EpsImportService, EpsService, DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
     ReviewValidationService, ReportNoteService, ReportPhotoService, ReportAudioService, ReportAudioNormalizer]
 })
 export class ReportsModule {}

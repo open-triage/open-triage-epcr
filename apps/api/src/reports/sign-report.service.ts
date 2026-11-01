@@ -1,5 +1,10 @@
-import {queueEpsExportReview} from '../hospital/eps-export-review.js';
-import { queueSignedCos } from '../hospital/cos-queue.js';
+import {epsDeliverySummary} from '../hospital/eps-delivery-summary.js';
+import {readCosPatientComparison} from '../hospital/cos-patient-comparison.js';
+import {completePdfDefinitions,loadSignedReportPdfPhotos} from './signed-report-pdf.persistence.js';
+import {renderSignedReportPdf,SignedPdfError,type SignedGroup,type SignedOccurrence} from './signed-report-pdf.js';
+import {clinicalFormConfiguration} from '../forms/clinical-form-configuration.js';
+import {recordPatientAccess} from './patient-access-audit.js';
+import { signingSubmissionStatus, prepareSigningSubmission, finalizeSigningSnapshot, skipCosSigning } from "./signing-submission.js";
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
@@ -8,7 +13,7 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, type CompiledValidationBundle } from "@open-triage/contracts";
+import { destinationDecision, compiledValidationBundleSha256, evaluateValidationBundleSafely, type CompiledValidationBundle } from "@open-triage/contracts";
 import {
   evaluateQualityAndNormalization,
   NORMALIZATION_RULE_VERSION,
@@ -22,6 +27,7 @@ import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { lockAndValidateReportNotes, type SignedNoteManifestEntry } from "./sign-report-notes.js";
 import type {
   SignedReportResult,
+  SignReportResult,
   SigningFinding,
   SignReportCommand,
   WarningAcknowledgement
@@ -101,7 +107,7 @@ type OccurrenceRow = {
   pertinent_negative_code: string | null;
 };
 
-type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
+type SigningAttempt = { result?: SignReportResult; findings?: SigningFinding[] };
 
 type CodedValidationRow = {
   id: string;
@@ -162,7 +168,45 @@ export class SignReportService {
     private readonly sessions: ClinicianSessionService
   ) {}
 
-  async sign(accessToken: string, reportId: string, input: unknown): Promise<SignedReportResult> {
+  async cosContext(accessToken:string,reportId:string) {
+    const session=await this.sessions.requireCapability(accessToken,'clinical:document');
+    const [row]=await this.dataSource.query(`select v.revision from clinical.report r
+      left join app_identity.hospital_cos_state cs on cs.group_id=app_identity.organization_group(r.organization_id)
+      left join app_identity.hospital_cos_version v on v.group_id=cs.group_id and v.revision=cs.active_revision
+        and v.settings->>'mode' in ('live','simulator')
+      where r.id=$1 and r.organization_id=$2 and r.documenting_user_id=$3 and r.status='draft'
+        and (r.expires_at is null or r.expires_at>clock_timestamp())`,[reportId,session.organization.id,session.user.id]);
+    if(!row)throw new NotFoundException();
+    return {binding:row.revision===null?null:String(row.revision)};
+  }
+
+  async cosPdfPreview(accessToken:string,reportId:string,revision:string|undefined,language:string|undefined) {
+    const session=await this.sessions.requireCapability(accessToken,'clinical:document');
+    if(!revision||!/^\d+$/.test(revision)||!Number.isSafeInteger(Number(revision)))throw new UnprocessableEntityException({code:'pdf.invalid-version'});
+    return this.dataSource.transaction('REPEATABLE READ',async manager=>{
+      const [report]=await manager.query<Array<ReportRow & {synthetic:boolean;time_zone:string}>>(`select r.*,coalesce(a.time_zone,o.deployment_timezone) time_zone
+        from clinical.report r join app_identity.organization o on o.id=r.organization_id
+        left join app_identity.agency_settings a on a.organization_id=r.organization_id
+        where r.id=$1 and r.organization_id=$2 and r.documenting_user_id=$3 and r.status='draft'
+          and (r.expires_at is null or r.expires_at>clock_timestamp()) for update of r`,[reportId,session.organization.id,session.user.id]);
+      if(!report)throw new NotFoundException();
+      if(Number(report.revision)!==Number(revision))throw new ConflictException({code:'pdf.invalid-version'});
+      const notes=await lockAndValidateReportNotes(manager,report);
+      if(notes.findings.length)throw new UnprocessableEntityException({code:'pdf.media-unavailable'});
+      const manifest=await this.canonicalPayload(manager,report,Number(revision),notes.notes) as {groups:SignedGroup[];occurrences:SignedOccurrence[]};
+      const source=await completePdfDefinitions(manager,{draftPreview:true,reportId,snapshotId:reportId,revision:Number(revision),amendmentSequence:0,
+        synthetic:report.synthetic,timeZone:report.time_zone,signerId:session.user.id,signedAt:new Date().toISOString(),canonicalSha256:commandSha256(manifest),
+        catalogReleaseId:report.catalog_release_id,formVersionId:report.form_version_id,groups:manifest.groups,occurrences:manifest.occurrences,
+        notes:notes.notes,amendments:[],configuration:await clinicalFormConfiguration(manager,report.form_version_id,report.catalog_release_id)});
+      try {
+        const pdf=await renderSignedReportPdf(await loadSignedReportPdfPhotos(manager,source),language==='sv'?'sv':'en');
+        await recordPatientAccess(manager,{organizationId:session.organization.id,actorId:session.user.id,reportIds:[reportId],action:'report.read',careProcess:'documentation'});
+        return pdf;
+      }catch(error){if(error instanceof SignedPdfError)throw new UnprocessableEntityException({code:error.code});throw error;}
+    });
+  }
+
+  async sign(accessToken: string, reportId: string, input: unknown): Promise<SignReportResult> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     let command: SignReportCommand;
     try {
@@ -177,6 +221,9 @@ export class SignReportService {
     const evaluationTimestamp = new Date().toISOString();
     const signTransaction = () => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [command.commandId]);
+        const [deliveryLock] = await manager.query<Array<{locked:boolean}>>(
+          'select pg_try_advisory_xact_lock(731013,hashtext($1)) locked', [reportId]);
+        if (deliveryLock && !deliveryLock.locked) throw new ConflictException({code:'cos.inProgress', message:'COS submission is in progress'});
         const rows = await manager.query<ReportRow[]>(`
           select * from clinical.report
           where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -189,7 +236,11 @@ export class SignReportService {
         }
         const replay = await this.replay(manager, command.commandId, digest, reportId);
         if (replay) return { result: replay };
-        if (report.status !== "draft") throw new ConflictException("Report is already signed");
+        if (report.status !== "draft") {
+          const completed = await signingSubmissionStatus(manager, report.id);
+          if (completed?.status === 'signed') return {result:completed};
+          throw new ConflictException("Report is already signed");
+        }
         const revision = Number(report.revision);
         if (revision !== command.expectedRevision) {
           throw new ConflictException({
@@ -262,25 +313,6 @@ export class SignReportService {
         const signedAt = new Date().toISOString();
         const reporting = await this.reportingDate(manager, report, signedAt);
 
-        await manager.query(`update clinical.report
-          set status = 'signed', reporting_date = $2, reporting_date_source = $3, updated_at = $4
-          where id = $1 and status = 'draft'`,
-        [report.id, reporting.date, reporting.source, signedAt]);
-        await manager.query(`insert into clinical.signed_snapshot
-          (id, report_id, signed_revision, form_version_id, catalog_release_id, validation_version_id, signer_id,
-           signed_at, canonical_sha256, attestation, warning_acknowledgements,
-           quality_rule_version, normalization_rule_version, quality_findings, derived_values, integrity_manifest)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb,
-                  $12, $13, $14::jsonb, $15::jsonb, $16::jsonb)`,
-        [snapshotId, report.id, revision, report.form_version_id, report.catalog_release_id,
-          report.validation_version_id, command.signerId, signedAt, canonicalSha256, JSON.stringify(command.attestation),
-          JSON.stringify(command.warningAcknowledgements ?? {}), QUALITY_RULE_VERSION,
-          NORMALIZATION_RULE_VERSION, JSON.stringify(quality.qualityFindings),
-          JSON.stringify(quality.derivedValues), JSON.stringify(payload)]);
-
-        await this.appendAudit(manager, report, command, snapshotId, canonicalSha256, signedAt);
-        await queueSignedCos(manager, report.id, snapshotId, command.signerId);
-        if(command.exportEps)await queueEpsExportReview(manager,report.id,snapshotId);
         const result: SignedReportResult = {
           id: report.id,
           status: "signed",
@@ -299,6 +331,11 @@ export class SignReportService {
           qualityFindings: quality.qualityFindings,
           derivedValues: quality.derivedValues
         };
+        const prepared = { result, command, manifest: payload, validationVersionId: report.validation_version_id ?? null };
+        const pending = await prepareSigningSubmission(manager, prepared);
+        if (pending) return { result: pending };
+        await finalizeSigningSnapshot(manager, prepared);
+        if (command.skipCosReason || command.exportCos === false) await skipCosSigning(manager, report.id, snapshotId, command);
         await manager.query(`insert into clinical.command_receipt
           (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)
           values ($1, $2, 'sign-report', $3, 201, $4::jsonb)`,
@@ -325,6 +362,20 @@ export class SignReportService {
     return attempt.result!;
   }
 
+  async patientComparison(accessToken:string,reportId:string,input:unknown){
+    return readCosPatientComparison(this.dataSource,this.sessions,accessToken,reportId,input);
+  }
+
+  async signingStatus(accessToken: string, reportId: string) {
+    const session = await this.sessions.requireCapability(accessToken, 'clinical:document');
+    return this.dataSource.transaction(async manager => {
+      const [report] = await manager.query(`select id from clinical.report where id=$1 and organization_id=$2 and documenting_user_id=$3 and (expires_at is null or expires_at>clock_timestamp())`,
+        [reportId, session.organization.id, session.user.id]);
+      if (!report) throw new NotFoundException();
+      return {...await signingSubmissionStatus(manager, reportId) ?? {status:'draft' as const},epsDelivery:await epsDeliverySummary(manager,reportId)};
+    });
+  }
+
   private async evaluateQuality(manager: EntityManager, reportId: string) {
     const rows = await manager.query<Array<{
       id: string;
@@ -345,11 +396,6 @@ export class SignReportService {
       valueNumeric: row.value_numeric,
       sourceAttributes: row.source_attributes
     })));
-  }
-
-  private async validateAuthoredRules(manager: EntityManager, report: ReportRow,
-    evaluationTimestamp = new Date().toISOString()): Promise<SigningFinding[]> {
-    return (await this.evaluateAuthoredRules(manager, report, evaluationTimestamp)).findings;
   }
 
   private async evaluateAuthoredRules(manager: EntityManager, report: ReportRow,
@@ -449,6 +495,29 @@ export class SignReportService {
       left join forms.form_field ff on ff.id=o.form_field_id
       where o.report_id = $1 and o.tombstoned_at is null order by o.element_id, o.ordinal, o.id`, [report.id]);
 
+    const hasDestinationField = fields.some(field => field.element_id === "eDisposition.01");
+    const [cos] = hasDestinationField ? await manager.query<Array<{ active: boolean }>>(
+      `select active_revision is not null as active from app_identity.hospital_cos_state
+        where group_id=app_identity.organization_group($1)`, [report.organization_id]) : [];
+    const destinationRows = occurrences.filter(row => ["eDisposition.01", "eDisposition.02"].includes(row.element_id));
+    const destinationGroups = [...new Set(destinationRows.map(row => row.group_instance_id))];
+    const explicitNoneGroups = new Set<string | null>();
+    if (cos?.active) {
+      for (const groupId of destinationGroups.length ? destinationGroups : [null]) {
+        const values = (elementId: string) => destinationRows.filter(row =>
+          row.group_instance_id === groupId && row.element_id === elementId).map(row => ({
+            text: row.value_kind === "text" ? String(row.scalar_value ?? "") : undefined,
+            notValueCode: row.not_value_code ?? (row.value_kind === "null" ? row.absence_code : null),
+          }));
+        const decision = destinationDecision(values("eDisposition.01"), values("eDisposition.02"));
+        if (decision === "none") explicitNoneGroups.add(groupId);
+        if (decision === "missing") findings.push({
+          ...this.finding("destination.required", "$.fields.eDisposition.01", "Choose a destination or None."),
+          targetElementId: "eDisposition.01", ...(groupId ? {targetGroupInstanceId: groupId} : {}),
+        });
+      }
+    }
+
     const choicePolicies = new Map(form[0].canonical_definition.sections.flatMap((section) => section.fields.flatMap((field) =>
       field.choicePolicy !== undefined
         ? [[field.source.kind === "nemsis" ? field.source.elementId : field.source.elementDefinitionId,
@@ -466,6 +535,8 @@ export class SignReportService {
         continue;
       }
       if (!policy) continue;
+      if (explicitNoneGroups.has(occurrence.group_instance_id)
+        && ["eDisposition.01", "eDisposition.02"].includes(occurrence.element_id)) continue;
       if (occurrence.value_kind === "coded" && !policy.some((choice) => choice.kind === "code" &&
         choice.code === occurrence.code && choice.codeSystem === (occurrence.code_system ?? ""))) {
         findings.push(this.finding("form.choice-disabled", `$.occurrences.${occurrence.id}.code`,
@@ -684,37 +755,6 @@ export class SignReportService {
     return { date: signedAt.slice(0, 10), source: "signing-time" };
   }
 
-  private async appendAudit(
-    manager: EntityManager,
-    report: ReportRow,
-    command: SignReportCommand,
-    snapshotId: string,
-    canonicalSha256: string,
-    signedAt: string
-  ): Promise<void> {
-    const prior = await manager.query<Array<{ report_sequence: string | number; event_hash: string }>>(`
-      select report_sequence, event_hash from clinical_audit.event
-      where report_id = $1 order by report_sequence desc limit 1`, [report.id]);
-    const sequence = prior[0] ? Number(prior[0].report_sequence) + 1 : 1;
-    const previousHash = prior[0]?.event_hash ?? null;
-    const nextValue = { snapshotId, signedRevision: Number(report.revision), canonicalSha256 };
-    const eventHash = commandSha256({
-      reportId: report.id, reportSequence: sequence, actorId: command.signerId,
-      actorPersona: command.actorPersona ?? null, sessionId: command.sessionId ?? null,
-      deviceId: command.deviceId ?? null, clientTime: command.clientTime ?? null,
-      serverTime: signedAt, action: "sign", targetType: "signed_snapshot", targetId: snapshotId,
-      priorValue: { status: "draft", revision: Number(report.revision) }, newValue: nextValue, previousHash
-    });
-    await manager.query(`insert into clinical_audit.event
-      (report_id, report_sequence, actor_id, actor_persona, session_id, device_id, client_time,
-       server_time, action, target_type, target_id, prior_value, new_value, previous_hash, event_hash)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, 'sign', 'signed_snapshot', $9,
-              $10::jsonb, $11::jsonb, $12, $13)`,
-    [report.id, sequence, command.signerId, command.actorPersona ?? null, command.sessionId ?? null,
-      command.deviceId ?? null, command.clientTime ?? null, signedAt, snapshotId,
-      JSON.stringify({ status: "draft", revision: Number(report.revision) }), JSON.stringify(nextValue),
-      previousHash, eventHash]);
-  }
 
   private finding(code: string, path: string, message: string,
     severity: SigningFinding["severity"] = "error"): SigningFinding {

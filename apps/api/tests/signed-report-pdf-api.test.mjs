@@ -66,16 +66,17 @@ function fixture(input = signedPdfFixture()) {
   } };
   const service = new ReviewService({ transaction: async (level, fn) => { assert.equal(level, "REPEATABLE READ"); return fn(manager); } }, sessions);
   const call = (overrides = {}) => service.signedPdf("token", overrides.reportId ?? source.reportId,
-    overrides.snapshotId ?? source.snapshotId, overrides.sequence ?? "1", overrides.language ?? "en", "synthetic");
+    overrides.snapshotId ?? source.snapshotId, overrides.sequence ?? "1", overrides.language ?? "en", "synthetic", overrides.timeZone);
   return { source, state, manager, call };
 }
 
 test("PDF inspection authorizes live report-relative identifying access and records patient access", async () => {
-  const { source, state, call } = fixture();
+  const { state, call } = fixture();
   const bytes = await call();
   assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
   assert.equal(state.audit.length, 1);
-  assert.equal(state.audit[0][6], source.snapshotId);
+  assert.equal(state.audit[0][4], "review.report");
+  assert.equal(state.audit[0][6], null);
   state.capabilities = ["review:all"]; state.userId = "other";
   await assert.rejects(call(), { status: 403 });
   state.capabilities.push("review:identifying");
@@ -205,4 +206,12 @@ test("immutable clinical metadata does not fetch signed photos while PDF hydrati
   delete source.photoBytes[photo.id];
   await assert.rejects(loadSignedReportPdfPhotos(manager, clinical), { code: "pdf.media-unavailable" });
   await assert.rejects(signedReportPdfSource(manager, source.reportId, source.snapshotId, 1), { code: "pdf.media-unavailable" });
+});
+
+
+test("PDF inspection accepts a local display timezone and rejects invalid zones", async () => {
+  const { call } = fixture();
+  assert.equal((await call({ timeZone: "Europe/Stockholm" })).subarray(0, 5).toString(), "%PDF-");
+  await assert.rejects(call({ timeZone: "not-a-zone" }), { status: 400 });
+  await assert.rejects(call({ timeZone: "Europe/Unknown" }), { status: 400 });
 });

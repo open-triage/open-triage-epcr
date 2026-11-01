@@ -1,14 +1,16 @@
 {
+  "draftTitle": "Draft preview — unsigned patient-care report",
+  "draftEnd": "End of unsigned draft preview",
   "title": "Signed patient-care report",
   "synthetic": "SYNTHETIC — fictional patient record",
   "report": "Report",
   "snapshot": "Signed snapshot",
   "revision": "Report version",
-  "sequence": "Signed amendment sequence",
+  "sequence": "Amendment",
   "signer": "Signed by",
   "signedAt": "Signed at (UTC)",
-  "definitions": "Pinned catalog / form",
-  "clinical": "Documented clinical information",
+  "definitions": "Catalog / form",
+  "clinical": "Clinical information",
   "ungrouped": "Report fields",
   "entry": "Entry",
   "field": "Field",
@@ -16,7 +18,7 @@
   "notes": "Text notes",
   "author": "Author",
   "capturedAt": "Captured at",
-  "amendments": "Signed amendment provenance",
+  "amendments": "Amendments",
   "reason": "Reason",
   "none": "None",
   "end": "End of signed clinical version",
@@ -43,5 +45,6 @@
   "duration": "Duration",
   "seconds": "seconds",
   "audioNotTransferred": "The audio recording was not transferred. No transcription was generated.",
-  "audioDurationMissing": "Audio duration is unavailable. Capture the recording again before signing."
+  "audioDurationMissing": "Audio duration is unavailable. Capture the recording again before signing.",
+  "unlabelled": "Unlabelled value"
 }

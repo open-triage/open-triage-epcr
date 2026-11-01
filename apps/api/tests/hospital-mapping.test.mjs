@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {resolveHospitalIdentifier,hospitalIdentifiersMatch} from '@open-triage/contracts';
+import {resolveHospitalIdentifier,hospitalIdentifiersMatch,SWEDISH_PATIENT_IDENTIFIER_NAMESPACES as schemes} from '@open-triage/contracts';
 import {mappingPackage,makePackage,compileMapping,identifier,identifierOptions} from '../dist/hospital/hospital-mapping.js';
 const field={kind:'nemsis',elementId:'ePatient.01'};
 const identity={field,namespace:'urn:patient:example',aliases:['https://example.org/patient']};
@@ -29,4 +29,16 @@ test('canonical mapping rejects unknown/secret properties, wrong schemas/profile
  assert.throws(()=>identifier({...identity,aliases:['urn:patient:example']}));
  assert.throws(()=>identifier({...identity,namespace:'https://user:secret@example.org'}));
  const incompatible=structuredClone(form);incompatible.catalogFields['ePatient.01'].generation.base='decimal';assert.throws(()=>compileMapping(p,incompatible));
+});
+
+test('draft identity resolves PNR and coordination separately and never treats their OIDs as aliases',()=>{
+ for(const [value,expected,other] of [['201304822172',schemes.coordination,schemes.personal],['200207252388',schemes.personal,schemes.coordination]]){
+  const configured={...identity,namespace:other,aliases:[expected,'urn:configured:alias']};
+  const result=resolveHospitalIdentifier(configured,document('ePatient.01',[{kind:'scalar',value}]),form);
+  assert.deepEqual(result.identifier,{system:expected,value});
+  assert.ok(hospitalIdentifiersMatch(configured,result.identifier,{system:expected,value}));
+  assert.equal(hospitalIdentifiersMatch(configured,result.identifier,{system:other,value}),false);
+  assert.equal(hospitalIdentifiersMatch(configured,result.identifier,{system:'urn:configured:alias',value}),false);
+  assert.equal(hospitalIdentifiersMatch({...configured,namespace:expected,aliases:[other]},result.identifier,{system:other,value}),false);
+ }
 });

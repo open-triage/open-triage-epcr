@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse,
   ProtectedCiphertextReceipt, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope,
   ProtectedReportRecoveryGrant, RecoveredProtectedReportKey, ReopenOpenCallResponse,
@@ -7,7 +7,7 @@ import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
-import type { SignedReportResult } from "./sign-report.types.js";
+import type { SignReportResult } from "./sign-report.types.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
 import { ReportNoteService } from "./report-note.service.js";
@@ -29,6 +29,25 @@ export class DraftReportController {
     private readonly reportPhotos: ReportPhotoService,
     private readonly reportAudio: ReportAudioService,
   ) {}
+
+  @Get(':id/cos/context')
+  @Header('Cache-Control','no-store, private')
+  cosContext(@Param('id',uuidV4) id:string,@Headers('authorization') authorization?:string,@Headers('cookie') cookie?:string){
+    return this.signing.cosContext(bearerToken(authorization,cookie),id);
+  }
+
+  @Get(':id/cos/pdf')
+  @Header('Cache-Control','no-store, private')
+  async cosPdf(@Param('id',uuidV4) id:string,@Query('revision') revision:string|undefined,@Query('language') language:string|undefined,
+    @Headers('authorization') authorization:string|undefined,@Headers('cookie') cookie:string|undefined,@Res() response:BinaryResponse){
+    const pdf=await this.signing.cosPdfPreview(bearerToken(authorization,cookie),id,revision,language);
+    response.setHeader('Content-Type','application/pdf');
+    response.setHeader('Content-Disposition',`inline; filename="draft-report-${id}.pdf"`);
+    response.setHeader('Cache-Control','no-store, private');
+    response.setHeader('Pragma','no-cache');
+    response.setHeader('X-Content-Type-Options','nosniff');
+    return response.send(pdf);
+  }
 
   @Post()
   @Header("Cache-Control", "no-store, private")
@@ -311,6 +330,21 @@ export class DraftReportController {
     return this.reports.resolveDispatchConflict(bearerToken(authorization, cookie), id, conflictId, body);
   }
 
+  @Post(":id/signing-patient-comparison")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  patientComparison(@Param("id", uuidV4) id:string, @Body() body:unknown,
+    @Headers("authorization") authorization?:string, @Headers("cookie") cookie?:string){
+    return this.signing.patientComparison(bearerToken(authorization,cookie),id,body);
+  }
+
+  @Get(":id/signing-status")
+  @Header("Cache-Control", "no-store, private")
+  signingStatus(@Param("id", uuidV4) id: string, @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string) {
+    return this.signing.signingStatus(bearerToken(authorization, cookie), id);
+  }
+
   @Post(":id/sign")
   @Header("Cache-Control", "no-store, private")
   sign(
@@ -318,7 +352,7 @@ export class DraftReportController {
     @Body() body: unknown,
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string
-  ): Promise<SignedReportResult> {
+  ): Promise<SignReportResult> {
     return this.signing.sign(bearerToken(authorization, cookie), id, body);
   }
 

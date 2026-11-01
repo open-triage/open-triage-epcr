@@ -16,10 +16,12 @@ test("encounter documents distinguish untouched dispatch groups from clinician, 
       ordinal: 0, documented_time: null, correlation_id: null };
     const occurrences = provenance.map((kind, ordinal) => ({ id: `value-${ordinal}`, group_instance_id: "scene",
       element_id: "eScene.09", value_kind: "coded", code: "Y92.03", code_system: "ICD-10-CM", code_display: "Apartment/condo",
-      ordinal, provenance_kind: kind, provenance_detail: null }));
+      ordinal, provenance_kind: kind, provenance_detail: null, source_attributes: { "x-open-triage-owner": "forged" } }));
     const document = assembleEncounterDocument(report, [group], occurrences);
     assert.equal(document.groups[0].instances[0].attributes?.["x-open-triage-owner"], expected, provenance.join(","));
     assert.equal(document.groups[0].instances[0].elements[0]?.values[0]?.code, provenance.length ? "Y92.03" : undefined);
+    assert.deepEqual(document.groups[0].instances[0].elements.flatMap(element => element.values)
+      .map(value => value.attributes["x-open-triage-owner"]), provenance);
   }
 });
 

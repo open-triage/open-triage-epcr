@@ -16,8 +16,9 @@ export type SignedPdfAmendment = { id: string; sequence: number; authorId: strin
   canonicalSha256: string; changes: Array<{ action: "add" | "replace" | "remove";
     targetId: string | null; original: SignedOccurrence | null; corrected: SignedOccurrence | null }> };
 export type SignedReportClinicalSource = {
+  draftPreview?: boolean;
   reportId: string; snapshotId: string; revision: number; amendmentSequence: number; synthetic: boolean;
-  signerId: string; signerDisplayName?: string; signedAt: string; canonicalSha256: string; catalogReleaseId: string; formVersionId: string;
+  timeZone?: string; signerId: string; signerDisplayName?: string; signedAt: string; canonicalSha256: string; catalogReleaseId: string; formVersionId: string;
   groups: SignedGroup[]; occurrences: SignedOccurrence[]; notes: SignedNoteManifestEntry[];
   amendments: SignedPdfAmendment[]; configuration: ClinicalFormConfiguration;
 };
@@ -45,28 +46,38 @@ function definition(source: Pick<SignedReportClinicalSource, "configuration">, v
   return { custom, standard, label: custom ? localized(custom.title, custom.localization, language) :
     localized(standard!.name ?? value.element_id, standard!.localization, language) };
 }
-export function signedPdfValue(value: SignedOccurrence, source: Pick<SignedReportClinicalSource, "configuration">, language: PdfLanguage): string {
+export function signedPdfDateTime(value: string, language: PdfLanguage, timeZone = "UTC"): string {
+  const instant = new Date(value);
+  if (!Number.isFinite(instant.getTime())) throw new SignedPdfError("pdf.invalid-version");
+  return new Intl.DateTimeFormat(language === "sv" ? "sv-SE" : "en-US", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    second: "2-digit", hourCycle: "h23", timeZoneName: "shortOffset",
+  }).format(instant);
+}
+
+export function signedPdfValue(value: SignedOccurrence, source: Pick<SignedReportClinicalSource, "configuration" | "timeZone">, language: PdfLanguage): string {
   const t = language === "sv" ? sv : en;
   const { custom, standard } = definition(source, value, language);
   let result: string;
   if (value.value_kind === "coded") {
     const choice = custom?.datatype === "coded" ? custom.choices.find((item) => item.code === value.code) :
-      standard?.codeChoices?.find((item) => item.code === value.code && item.codeSystem === value.code_system);
-    result = `${choice ? localized(choice.label, choice.localization, language) : String(value.code_display ?? value.code ?? "")} [${value.code ?? ""}]`;
+      standard?.codeChoices?.find((item) => item.code === value.code && (item.codeSystem ?? "") === (value.code_system ?? ""));
+    result = `${choice ? localized(choice.label, choice.localization, language) : String(value.code_display ?? t.unlabelled)}`;
   } else if (["null", "absent", "pertinent-negative"].includes(value.value_kind)) {
     const key = value.value_kind === "pertinent-negative" ? "pertinentNegative" : value.value_kind as "null" | "absent";
-    result = `${t[key]}${value.absence_code ? `: ${value.absence_display ?? ""} [${value.absence_code}]` : ""}`;
+    result = `${t[key]}${value.absence_code ? `: ${value.absence_display ?? t.unlabelled}` : ""}`;
   } else {
     const columns: Record<string, string> = { text: "value_text", uri: "value_text", integer: "value_integer", numeric: "value_numeric",
       boolean: "value_boolean", date: "value_date", datetime: "value_datetime", time: "value_time", duration: "value_duration", binary: "value_binary" };
     const column = columns[value.value_kind];
     if (!column || value[column] === null || value[column] === undefined) throw new SignedPdfError("pdf.invalid-version");
     result = value.value_kind === "boolean" ? (value[column] ? t.yes : t.no) : String(value.value_lexical ?? value[column]);
+    if (value.value_kind === "datetime") result = signedPdfDateTime(String(value[column]), language, source.timeZone);
     if (value.value_kind === "binary") result = `${t.binary}: ${result}`;
   }
   for (const [code, display, key] of [["not_value_code", "not_value_display", "notValue"],
     ["pertinent_negative_code", "pertinent_negative_display", "pertinentNegative"]] as const) {
-    if (value[code] && value[code] !== value.absence_code) result += `\n${t[key]}: ${value[display] ?? ""} [${value[code]}]`;
+    if (value[code] && value[code] !== value.absence_code) result += `\n${t[key]}: ${value[display] ?? t.unlabelled}`;
   }
   return result;
 }
@@ -100,7 +111,7 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
   const effective = effectiveSignedPdfOccurrences(source);
   const photos = await verifiedPdfPhotos(source);
   const doc = new PDFDocument({ size: "A4", margins: { top: 66, bottom: 58, left: 44, right: 44 },
-    bufferPages: true, info: { Title: t.title, Author: "OpenTriage", CreationDate: new Date(source.signedAt),
+    bufferPages: true, info: { Title: source.draftPreview ? t.draftTitle : t.title, Author: "OpenTriage", CreationDate: new Date(source.signedAt),
       ModDate: new Date(source.amendments.at(-1)?.signedAt ?? source.signedAt) } });
   const chunks: Buffer[] = [];
   const completed = new Promise<Buffer>((resolve, reject) => {
@@ -139,7 +150,7 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     const leftWidth = 174, gap = 16, rightWidth = width - leftWidth - gap;
     const labelHeight = doc.font("heading").heightOfString(label, { width: leftWidth });
     const valueHeight = doc.font("body").heightOfString(value, { width: rightWidth });
-    const height = Math.max(labelHeight, valueHeight) + 14;
+    const height = Math.max(labelHeight, valueHeight) + 8;
     // Long values flow normally across pages rather than being clipped inside a table cell.
     if (height > 520) { heading(label); paragraph(value); return; }
     room(height);
@@ -147,16 +158,18 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     doc.font("heading").text(label, 44, y + 5, { width: leftWidth });
     doc.font("body").text(value, 44 + leftWidth + gap, y + 5, { width: rightWidth });
     doc.moveTo(44, y + height).lineTo(44 + width, y + height).strokeColor("#d0d0d0").stroke();
-    doc.x = 44; doc.y = y + height + 3;
+    doc.x = 44; doc.y = y + height + 1;
   };
   try {
-    doc.font("heading").fontSize(21).text(checked(t.title), { width }).moveDown(.6);
+    doc.font("heading").fontSize(21).text(checked(source.draftPreview ? t.draftTitle : t.title), { width }).moveDown(.6);
     doc.font("body").fontSize(10);
     if (source.synthetic) paragraph(t.synthetic);
     row(t.report, source.reportId);
     row(t.revision, `${source.revision} · ${t.sequence}: ${source.amendmentSequence}`);
-    row(t.signer, source.signerDisplayName ? `${source.signerDisplayName}\n${source.signerId}` : source.signerId);
-    row(t.signedAt, source.signedAt);
+    if (!source.draftPreview) {
+    row(t.signer, source.signerDisplayName ? source.signerDisplayName : source.signerId);
+    row(t.signedAt, signedPdfDateTime(source.signedAt, language, source.timeZone));
+    }
     heading(t.clinical);
     const grouped = new Map<string | null, SignedOccurrence[]>();
     for (const value of effective) {
@@ -166,38 +179,156 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     }
     const renderValues = (values: SignedOccurrence[]) => values.forEach((value) => {
       const label = definition(source, value, language).label;
-      row(`${label}\n${value.element_id}`, signedPdfValue(value, source, language));
+      row(label, signedPdfValue(value, source, language));
     });
-    if (grouped.has(null)) { heading(t.ungrouped); renderValues(grouped.get(null)!); }
     const groupById = new Map(source.groups.map((group) => [group.id, group]));
-    const groupLabel = (group: SignedGroup): string => {
-      const custom = source.configuration.customGroups?.[group.custom_group_definition_id ?? group.group_id];
-      const standard = source.configuration.catalogGroups?.[group.group_id];
-      if (!custom && !standard) throw new SignedPdfError("pdf.definitions-unavailable");
-      return custom ? localized(custom.title, custom.localization, language) : localized(standard!.name, standard!.localization, language);
+    // Flatten structural groups while giving repeated values their own columns.
+    const renderGroups = (grouped: Map<string | null, SignedOccurrence[]>) => {
+      const siblings = source.groups.filter(group => !group.parent_group_instance_id);
+      const families = new Map<string, SignedGroup[]>();
+      for (const group of siblings) {
+        const key = group.custom_group_definition_id ?? group.group_id;
+        families.set(key, [...(families.get(key) ?? []), group]);
+      }
+      for (const family of families.values()) {
+        const populated = family.filter(group => grouped.has(group.id)).flatMap(group => {
+          const fields = new Map<string, SignedOccurrence[]>();
+          for (const value of grouped.get(group.id)!) {
+            const key = String(value.element_identity_id ?? value.element_id);
+            fields.set(key, [...(fields.get(key) ?? []), value]);
+          }
+          const count = Math.max(...[...fields.values()].map(values => values.length));
+          return Array.from({ length: count }, (_, index) => ({
+            group, entry: `${group.ordinal + 1}${count > 1 ? `.${index + 1}` : ""}`,
+            values: [...fields.values()].flatMap(values => values[index] ? [values[index]!] : []),
+          }));
+        });
+        if (populated.length) {
+          for (let offset = 0; offset < populated.length; offset += 3) {
+            const batch = populated.slice(offset, offset + 3);
+            const keys = [...new Set(batch.flatMap(column => column.values.map(value =>
+              String(value.element_identity_id ?? value.element_id))))];
+            const labels = batch.map(({ group, entry }) => `${t.entry} ${entry}${group.documented_time ? `\n${signedPdfDateTime(group.documented_time, language, source.timeZone)}` : ""}`);
+            const widths = [174, ...batch.map(() => (width - 174) / batch.length)];
+            const tableRow = (cells: string[], header = false): void => {
+              cells.forEach(checked);
+              doc.fontSize(9);
+              const lines = cells.map((cell, index) => {
+                doc.font(header || index === 0 ? "heading" : "body");
+                // Split long cells at word boundaries so every table row can flow
+                // across pages without truncating clinical text.
+                const result: string[] = [];
+                for (const paragraph of cell.split("\n")) {
+                  let line = "";
+                  for (const word of paragraph.split(/\s+/)) {
+                    const candidate = line ? `${line} ${word}` : word;
+                    if (doc.widthOfString(candidate) <= widths[index]! - 12) { line = candidate; continue; }
+                    if (line) { result.push(line); line = ""; }
+                    for (const character of word) {
+                      if (line && doc.widthOfString(line + character) > widths[index]! - 12) {
+                        result.push(line); line = "";
+                      }
+                      line += character;
+                    }
+                  }
+                  result.push(line);
+                }
+                return result;
+              });
+              const count = Math.max(...lines.map(cell => cell.length));
+              for (let start = 0; start < count;) {
+                if (doc.y + 22 > doc.page.height - 58) {
+                  doc.addPage();
+                  if (!header) tableRow([t.field, ...labels], true);
+                }
+                doc.fontSize(9);
+                const capacity = Math.max(1, Math.floor((doc.page.height - 58 - doc.y - 8) / 13));
+                const take = Math.min(count - start, capacity);
+                const y = doc.y, height = take * 13 + 8;
+                let x = 44;
+                for (let index = 0; index < cells.length; index++) {
+                  if (header) doc.rect(x, y, widths[index]!, height).fill("#eeeeee");
+                  doc.fillColor("#000000").font(header || index === 0 ? "heading" : "body");
+                  for (let line = 0; line < take; line++) {
+                    doc.text(lines[index]![start + line] ?? "", x + 6, y + 4 + line * 13,
+                      { width: widths[index]! - 12, lineBreak: false });
+                  }
+                  doc.rect(x, y, widths[index]!, height).strokeColor("#d0d0d0").stroke();
+                  x += widths[index]!;
+                }
+                doc.x = 44; doc.y = y + height; start += take;
+                if (start < count) {
+                  doc.addPage();
+                  if (!header) tableRow([t.field, ...labels], true);
+                  doc.fontSize(9);
+                }
+              }
+              doc.font("body").fontSize(10);
+            };
+            tableRow([t.field, ...labels], true);
+            for (const key of keys) {
+              const values = batch.map(column => column.values.find(value => String(value.element_identity_id ?? value.element_id) === key));
+              const first = values.find(value => value !== undefined)!;
+              tableRow([definition(source, first, language).label,
+                ...values.map(value => value ? signedPdfValue(value, source, language) : "")]);
+            }
+          }
+        }
+      }
     };
+    // Validate even disconnected or empty groups before traversing the tree.
     for (const group of source.groups) {
-      if (!grouped.has(group.id)) continue;
-      const ancestors: string[] = [];
-      let parent = group.parent_group_instance_id;
       const seen = new Set([group.id]);
+      let parent = group.parent_group_instance_id;
       while (parent) {
         if (seen.has(parent) || !groupById.has(parent)) throw new SignedPdfError("pdf.invalid-version");
-        seen.add(parent);
-        const item = groupById.get(parent)!;
-        ancestors.unshift(`${groupLabel(item)} ${Number(item.ordinal) + 1}`);
-        parent = item.parent_group_instance_id;
+        seen.add(parent); parent = groupById.get(parent)!.parent_group_instance_id;
       }
-      heading([...ancestors, `${groupLabel(group)} · ${t.entry} ${Number(group.ordinal) + 1}`].join(" / "));
-      if (group.documented_time) paragraph(group.documented_time);
-      renderValues(grouped.get(group.id)!);
     }
+    for (const group of source.groups) {
+      if (!group.parent_group_instance_id || !grouped.has(group.id)) continue;
+      let root = group;
+      while (root.parent_group_instance_id) root = groupById.get(root.parent_group_instance_id)!;
+      grouped.set(root.id, [...(grouped.get(root.id) ?? []), ...(grouped.get(group.id) ?? [])]);
+    }
+    // Section membership comes from the pinned form, independently of observation
+    // groups. A table may contain fields from more than one clinical section.
+    const remaining = new Set(effective.map(value => value.id));
+    const renderSection = (label: string, matches: (value: SignedOccurrence) => boolean) => {
+      const sectionValues = new Map<string | null, SignedOccurrence[]>();
+      for (const [key, values] of grouped) {
+        if (key && groupById.get(key)?.parent_group_instance_id) continue;
+        const selected = values.filter(value => remaining.has(value.id) && matches(value));
+        if (selected.length) sectionValues.set(key, selected);
+      }
+      if (!sectionValues.size) return;
+      heading(label);
+      if (sectionValues.has(null)) renderValues(sectionValues.get(null)!);
+      renderGroups(sectionValues);
+      for (const values of sectionValues.values()) for (const value of values) remaining.delete(value.id);
+    };
+    for (const section of source.configuration.definition.sections) {
+      const catalog = source.configuration.catalogGroups?.[section.key];
+      const label = section.name ?? (catalog ? localized(catalog.name, catalog.localization, language) : section.key);
+      renderSection(label, value => section.fields.some(({ source: field }) => field.kind === "nemsis"
+        ? field.elementId === value.element_id : field.elementDefinitionId === value.element_identity_id));
+    }
+    // Older forms may not list every signed field. Keep those values, using the
+    // catalog's top-level section wording when it is available.
+    for (const value of effective) {
+      if (!remaining.has(value.id)) continue;
+      if (!/^e[A-Z][A-Za-z]+\.\d+$/.test(value.element_id)) continue;
+      const key = value.element_id.split(".")[0]!;
+      const catalog = source.configuration.catalogGroups?.[key];
+      if (catalog) renderSection(localized(catalog.name, catalog.localization, language), item => item.element_id.split(".")[0] === key);
+    }
+    renderSection(t.ungrouped, () => true);
     heading(t.notes);
     const textNotes = source.notes.filter((note) => note.type === "text");
     if (!textNotes.length) paragraph(t.none);
     for (const note of textNotes) {
-      row(t.author, `${note.author.displayName} (${note.author.id})`);
-      row(t.capturedAt, `${note.capturedAt} · UTC${note.capturedUtcOffsetMinutes >= 0 ? "+" : ""}${note.capturedUtcOffsetMinutes / 60}`);
+      row(t.author, note.author.displayName);
+      row(t.capturedAt, signedPdfDateTime(note.capturedAt, language, source.timeZone));
       if (typeof note.normalizedText !== "string") throw new SignedPdfError("pdf.invalid-version");
       paragraph(note.normalizedText);
     }
@@ -226,7 +357,7 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     if (!source.amendments.length) paragraph(t.none);
     for (const amendment of source.amendments) {
       heading(`${t.sequence} ${amendment.sequence}`);
-      row(t.signer, amendment.authorId); row(t.signedAt, amendment.signedAt); row(t.reason, amendment.reason);
+      row(t.signer, amendment.authorId); row(t.signedAt, signedPdfDateTime(amendment.signedAt, language, source.timeZone)); row(t.reason, amendment.reason);
       for (const change of amendment.changes) {
         const value = change.corrected ?? change.original;
         if (!value) throw new SignedPdfError("pdf.invalid-version");
@@ -239,14 +370,14 @@ export async function renderSignedReportPdf(source: SignedReportPdfSource, langu
     heading(t.source);
     row(t.snapshot, source.snapshotId); row(t.checksum, source.canonicalSha256);
     row(t.definitions, `${source.catalogReleaseId}\n${source.formVersionId}`);
-    paragraph(t.end);
+    paragraph(source.draftPreview ? t.draftEnd : t.end);
     const range = doc.bufferedPageRange();
     for (let index = 0; index < range.count; index++) {
       doc.switchToPage(index);
       doc.save();
       doc.page.margins.bottom = 0;
       doc.font("body").fontSize(8).fillColor("#444444");
-      doc.text(source.synthetic ? t.synthetic : t.title, 44, 26, { width, lineBreak: false });
+      doc.text(source.draftPreview ? t.draftTitle : source.synthetic ? t.synthetic : t.title, 44, 26, { width, lineBreak: false });
       doc.text(`${source.reportId} · v${source.revision}/${source.amendmentSequence}`, 44, doc.page.height - 38, { width, lineBreak: false });
       doc.text(`${t.page} ${index + 1} ${t.of} ${range.count}`, 44, doc.page.height - 24, { width, align: "right", lineBreak: false });
       doc.restore();

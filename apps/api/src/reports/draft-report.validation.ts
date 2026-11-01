@@ -166,6 +166,14 @@ function validateOccurrence(value: unknown, path: string, findings: string[]): v
   optionalString(value.documentedPrecision, `${path}.documentedPrecision`, findings);
   optionalString(value.provenanceKind, `${path}.provenanceKind`, findings);
   if (value.provenanceDetail !== undefined && value.provenanceDetail !== null && !isRecord(value.provenanceDetail)) findings.push(`${path}.provenanceDetail must be an object or null`);
+  if (isRecord(value.provenanceDetail) && value.provenanceDetail.destinationSelection != null) {
+    const selected=value.provenanceDetail.destinationSelection;
+    if(!isRecord(selected)||!['eDisposition.01','eDisposition.02'].includes(String(value.elementId))) findings.push(`${path}.destinationSelection is invalid`);
+    else {
+      requireUuid(selected.directoryId,`${path}.destinationSelection.directoryId`,findings);
+      if(!Number.isSafeInteger(selected.revision)||Number(selected.revision)<1||typeof selected.displayName!=='string'||selected.displayName.length<2||selected.displayName.length>100||typeof selected.localCode!=='string'||selected.localCode.length<2||selected.localCode.length>50||Object.keys(selected).some(key=>!['directoryId','revision','displayName','localCode'].includes(key))) findings.push(`${path}.destinationSelection is invalid`);
+    }
+  }
   if (value.sourceAttributes !== undefined && value.sourceAttributes !== null && (!isRecord(value.sourceAttributes) || Object.keys(value.sourceAttributes).length === 0)) findings.push(`${path}.sourceAttributes must be a non-empty object or null`);
   if (value.tombstone !== undefined && typeof value.tombstone !== "boolean") findings.push(`${path}.tombstone must be a boolean`);
   if (value.tombstone) {

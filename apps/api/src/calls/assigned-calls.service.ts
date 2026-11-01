@@ -14,7 +14,7 @@ import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
-import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
+import { clinicalDocumentConfiguration } from "../forms/clinical-form-configuration.js";
 import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
@@ -603,7 +603,7 @@ export class AssignedCallsService {
       const document = await encounterDocument(manager, report.id);
       const notes = await reportTextNotes(manager, report.id);
       const conflicts = await dispatchConflicts(manager, report.id);
-      const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id,
+      const clinicalForm = await clinicalDocumentConfiguration(manager, assignment.organization_id, report.form_version_id, report.catalog_release_id,
         report.validation_version_id, report.validation_compiled_sha256);
       await recordPatientAccess(manager, { organizationId: assignment.organization_id, actorId: documentingUserId,
         reportIds: [report.id], action: "assignment.open", careProcess: "documentation" });

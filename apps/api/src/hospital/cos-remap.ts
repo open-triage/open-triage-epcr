@@ -1,6 +1,8 @@
+import { hospitalIdentifierNamespace } from '@open-triage/contracts';
+import { resolveCosExportContext } from './cos-export-context.js';
 import { recordPatientAccess } from '../reports/patient-access-audit.js';
 import { signedReportSource } from '../reports/signed-report-pdf.persistence.js';
-import type { CosConnectionSettings, CosMappingRepairContext } from '@open-triage/contracts';
+import type { CosConnectionSettings, CosPayloadSettings, CosMappingRepairContext } from '@open-triage/contracts';
 import { contentDigest } from '../admin/canonical-package.js';
 import { reconcileTransmissionReview } from '../review/review-transmission.js';
 import { effectiveSignedPdfOccurrences } from '../reports/signed-report-pdf.js';
@@ -11,7 +13,6 @@ import type { ClinicianSessionService } from '../sessions/clinician-session.serv
 import { reviewScope, reviewTargetScope, reviewIdentifying } from '../review/review-scope.js';
 import { commandSha256 } from '../reports/draft-report.validation.js';
 import { cosMappingPackage } from './cos-configuration.js';
-import { cosEligible } from './cos-eligibility.js';
 import { resolveSignedCosCareUnit, cosIdentifierRequirements } from './cos-payload.js';
 import type { SignedOccurrence } from '../reports/signed-report-pdf.js';
 import type { CanonicalPackage } from '../admin/canonical-package.js';
@@ -46,21 +47,34 @@ export async function remapWaitingCos(database:DataSource,sessions:ClinicianSess
   const [newer]=await manager.query("select id from clinical.cos_delivery where report_id=$1 and (amendment_sequence>$2 or state='uncertain' or exists(select 1 from clinical.amendment where report_id=$1 and sequence>$2)) limit 1",[input.reportId,parent.amendment_sequence]);
   if(newer)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const source=await signedReportSource(manager,input.reportId,parent.snapshot_id,parent.amendment_sequence);
-  if(!cosEligible(effectiveSignedPdfOccurrences(source)))throw new ConflictException({code:'hospital.cos.remapUnsafe'});
   const [effects]=await manager.query<Array<{present:boolean}>>(`select exists(select 1 from clinical.cos_attempt a join clinical.cos_delivery d on d.id=a.delivery_id where d.report_id=$1 and d.amendment_sequence=$2) or exists(select 1 from clinical.cos_payload p join clinical.cos_delivery d on d.id=p.delivery_id where d.report_id=$1 and d.amendment_sequence=$2) present`,[input.reportId,parent.amendment_sequence]);
   if(effects?.present)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
-  const [version]=await manager.query<Array<{canonical_mapping:CanonicalPackage;settings:CosConnectionSettings;endpoint:string}>>(`select canonical_mapping,settings,endpoint from app_identity.hospital_cos_version where group_id=$1 and revision=$2 and settings->>'mode'='simulator'`,[report.group_id,input.configurationRevision]);
+  const [version]=await manager.query<Array<{canonical_mapping:CanonicalPackage;settings:CosConnectionSettings;endpoint:string}>>(`select canonical_mapping,settings,endpoint from app_identity.hospital_cos_version where group_id=$1 and revision=$2 and settings->>'mode' in ('simulator','live')`,[report.group_id,input.configurationRevision]);
   if(!version)throw new ConflictException({code:'hospital.stale'});
   const [oldVersion]=await manager.query<Array<{canonical_mapping:CanonicalPackage;settings:CosConnectionSettings;endpoint:string}>>(`select v.canonical_mapping,v.settings,v.endpoint from clinical.cos_delivery d join app_identity.hospital_cos_version v on v.group_id=d.group_id and v.revision=d.configuration_revision where d.id=$1`,[parent.id]);
   if(!oldVersion)throw new ConflictException({code:'hospital.cos.remapUnsafe'});
-  const conflicts=mappingRepairConflicts(source,oldVersion,version);
+  const originalResolution=await resolveCosExportContext(manager,source,version.settings);
+  const destinationRevisionChanged=originalResolution.missing.includes('destinationStale');
+  const resolved=destinationRevisionChanged&&input.acceptRecipientChange?await resolveCosExportContext(manager,source,version.settings,{acceptDestinationRevision:true}):originalResolution;
+  const effectiveVersion={...version,settings:resolved.settings};
+  const previousResolution=await resolveCosExportContext(manager,source,oldVersion.settings);
+  const conflicts=mappingRepairConflicts(source,{...oldVersion,settings:previousResolution.settings},effectiveVersion);
+  if(destinationRevisionChanged&&!conflicts.includes('recipient'))conflicts.push('recipient');
   if(conflicts.includes('patientIdentifier')&&!input.acceptPatientMappingChange)throw new ConflictException({code:'hospital.cos.patientMappingConflict'});
   if(conflicts.includes('recipient')&&!input.acceptRecipientChange)throw new ConflictException({code:'hospital.cos.recipientConflict'});
-  if(Number((parent as unknown as {configuration_revision:string}).configuration_revision)===input.configurationRevision)return parent.id;
-  const priorRequirements=cosIdentifierRequirements(source,oldVersion.canonical_mapping,oldVersion.settings);
-  const requirements=cosIdentifierRequirements(source,version.canonical_mapping,version.settings);
+  const priorRequirements=cosIdentifierRequirements(source,oldVersion.canonical_mapping,previousResolution.settings);
+  priorRequirements.missing=[...new Set([...priorRequirements.missing,...previousResolution.missing])];
+  const [priorEvidence]=await manager.query<Array<{missing:string[]}>>(`select evidence->'missing' missing from clinical.review_transmission_history where delivery_id=$1 order by recorded_at desc limit 1`,[parent.id]);
+  const priorMissing=priorEvidence?.missing??priorRequirements.missing;
+  const requirements=cosIdentifierRequirements(source,version.canonical_mapping,effectiveVersion.settings);
+  requirements.missing=[...new Set([...requirements.missing,...resolved.missing])];
   const [oldDelivery]=await manager.query<Array<{configuration_revision:string;mapping_id:string;mapping_revision:number;mapping_sha256:string}>>('select configuration_revision,mapping_id,mapping_revision,mapping_sha256 from clinical.cos_delivery where id=$1',[parent.id]);
-  const repair={previousConfigurationRevision:Number(oldDelivery!.configuration_revision),previousMappingId:oldDelivery!.mapping_id,previousMappingRevision:oldDelivery!.mapping_revision,previousMappingSha256:oldDelivery!.mapping_sha256,satisfied:priorRequirements.missing.filter(code=>!requirements.missing.includes(code)),remaining:requirements.missing,recipientChangeAccepted:conflicts.includes('recipient')&&!!input.acceptRecipientChange,patientMappingChangeAccepted:conflicts.includes('patientIdentifier')&&!!input.acceptPatientMappingChange,previousPatientSelector:cosMappingPackage(oldVersion.canonical_mapping).definition.patientIdentifier,patientSelector:cosMappingPackage(version.canonical_mapping).definition.patientIdentifier};
+  // An unchanged revalidation must not grow lineage. Bind the comparison to the
+  // authoritative identity/directory revisions, not merely the configuration revision.
+  const contextSha256=contentDigest({configurationRevision:input.configurationRevision,settings:resolved.settings,context:resolved.context,missing:[...requirements.missing].sort()});
+  const [priorRepair]=await manager.query<Array<{context_sha256:string|null}>>(`select evidence->'repair'->>'contextSha256' context_sha256 from clinical.cos_delivery_event where delivery_id=$1 and evidence ? 'repair' order by created_at desc limit 1`,[parent.id]);
+  if(priorRepair?.context_sha256===contextSha256)return parent.id;
+  const repair={contextSha256,destinationRevisionAccepted:destinationRevisionChanged&&!!input.acceptRecipientChange,acceptedDestinationRevision:resolved.context?.destination?.revision??null,previousConfigurationRevision:Number(oldDelivery!.configuration_revision),previousMappingId:oldDelivery!.mapping_id,previousMappingRevision:oldDelivery!.mapping_revision,previousMappingSha256:oldDelivery!.mapping_sha256,satisfied:priorMissing.filter(code=>!requirements.missing.includes(code)),remaining:requirements.missing,recipientChangeAccepted:conflicts.includes('recipient')&&!!input.acceptRecipientChange,patientMappingChangeAccepted:conflicts.includes('patientIdentifier')&&!!input.acceptPatientMappingChange,previousPatientSelector:cosMappingPackage(oldVersion.canonical_mapping).definition.patientIdentifier,patientSelector:cosMappingPackage(version.canonical_mapping).definition.patientIdentifier};
   const mapping=cosMappingPackage(version.canonical_mapping).definition,id=randomUUID();
   await manager.query(`insert into clinical.cos_delivery(id,report_id,snapshot_id,organization_id,group_id,configuration_revision,mapping_id,mapping_revision,mapping_sha256,amendment_sequence,lineage_parent_id,queued_by,pdf_language,command_id,command_sha256) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,[id,input.reportId,parent.snapshot_id,scope.organizationId,report.group_id,input.configurationRevision,mapping.id,mapping.revision,version.canonical_mapping.sha256,parent.amendment_sequence,parent.id,actor.user.id,parent.pdf_language,input.commandId,digest]);
   if(requirements.missing.length)await manager.query("update clinical.cos_delivery set state='waiting',finding=$2 where id=$1",[id,requirements.missing[0]]);
@@ -72,14 +86,15 @@ export async function remapWaitingCos(database:DataSource,sessions:ClinicianSess
 }
 
 type RepairVersion={canonical_mapping:CanonicalPackage;settings:CosConnectionSettings;endpoint:string};
+type ResolvedRepairVersion=Omit<RepairVersion,'settings'>&{settings:CosPayloadSettings};
 /** Changing an established patient selector requires explicit same-patient verification.
  * Recipient/encounter changes require a deliberate administrator acknowledgement before preparation. */
-export function mappingRepairConflicts(source:Parameters<typeof cosIdentifierRequirements>[0],previous:RepairVersion,next:RepairVersion):CosMappingRepairContext['conflicts'] {
+export function mappingRepairConflicts(source:Parameters<typeof cosIdentifierRequirements>[0],previous:ResolvedRepairVersion,next:ResolvedRepairVersion):CosMappingRepairContext['conflicts'] {
  const old=cosMappingPackage(previous.canonical_mapping).definition.patientIdentifier;
  const current=cosMappingPackage(next.canonical_mapping).definition.patientIdentifier;
  const conflicts:CosMappingRepairContext['conflicts']=[];
  if(contentDigest({field:old.field,namespace:old.namespace})!==contentDigest({field:current.field,namespace:current.namespace}))conflicts.push('patientIdentifier');
- const recipient=(version:RepairVersion)=>{let careUnit:string|null=null;try{careUnit=resolveSignedCosCareUnit(source,version.settings);}catch{/* An absent old target is a blocker being repaired, never a guessed recipient. */}return {endpoint:version.endpoint,mode:version.settings.mode,organization:version.settings.organizationHsaId,encounter:version.settings.encounterNamespace,template:version.settings.template,careUnit};};
+ const recipient=(version:ResolvedRepairVersion)=>{let careUnit:string|null=null;try{careUnit=resolveSignedCosCareUnit(source,version.settings);}catch{/* An absent old target is a blocker being repaired, never a guessed recipient. */}return {endpoint:version.endpoint,mode:version.settings.mode,organization:version.settings.organizationHsaId,encounter:version.settings.encounterNamespace,template:version.settings.template,careUnit};};
  // Filling an absent mapping is a repair. Changing any established routing semantics requires acknowledgement.
  const oldRecipient=recipient(previous),newRecipient=recipient(next);
  const changed=Object.keys(oldRecipient).some(key=>{const field=key as keyof typeof oldRecipient;const value=oldRecipient[field];return value!==''&&value!==undefined&&value!==null&&!(Array.isArray(value)&&!value.length)&&contentDigest(value)!==contentDigest(newRecipient[field]);});
@@ -91,7 +106,8 @@ export function patientBinding(source:Parameters<typeof cosIdentifierRequirement
  const identifier=cosMappingPackage(version.canonical_mapping).definition.patientIdentifier;
  const rows=effectiveSignedPdfOccurrences(source).filter(row=>identifier.field.kind==='custom'?row.element_identity_id===identifier.field.elementDefinitionId:row.element_id===identifier.field.elementId);
  const row=rows.length===1?rows[0]:undefined;
- return {field:identifier.field,namespace:identifier.namespace,value:row?.value_kind==='text'&&typeof row.value_text==='string'&&!row.not_value_code&&!row.pertinent_negative_code?row.value_text:null};
+ const value=row?.value_kind==='text'&&typeof row.value_text==='string'&&!row.not_value_code&&!row.pertinent_negative_code?row.value_text:null;
+ return {field:identifier.field,namespace:value===null?identifier.namespace:hospitalIdentifierNamespace(identifier.namespace,value),value};
 }
 /** Read-only preview uses exactly the same immutable source and authority as the command. */
 export async function cosMappingRepairContext(database:DataSource,sessions:ClinicianSessionService,token:string,itemId:string,dataset:string):Promise<CosMappingRepairContext>{
@@ -112,6 +128,10 @@ export async function cosMappingRepairContext(database:DataSource,sessions:Clini
   if(!previous||!active)throw new ConflictException({code:'hospital.stale'});
   const source=await signedReportSource(manager,item.report_id,delivery.snapshot_id,delivery.amendment_sequence);
   await recordPatientAccess(manager,{organizationId:scope.organizationId,actorId:scope.userId,accessOrganizationId:actor.organization.id,reportIds:[item.report_id],action:'review.report',careProcess:'review'});
-  return {deliveryId:delivery.id,reportId:item.report_id,expectedVersion:Number(item.version),configurationRevision:Number(state.active_revision),stateRevision:Number(state.state_revision),previousConfigurationRevision:Number(delivery.configuration_revision),previousMappingRevision:delivery.mapping_revision,mappingRevision:cosMappingPackage(active.canonical_mapping).definition.revision,missing:cosIdentifierRequirements(source,active.canonical_mapping,active.settings).missing,conflicts:mappingRepairConflicts(source,previous,active),safe:delivery.state==='waiting'&&!delivery.prepared&&!delivery.barrier,previousPatient:patientBinding(source,previous),patient:patientBinding(source,active)};
+  const resolved=await resolveCosExportContext(manager,source,active.settings);
+  const previousResolution=await resolveCosExportContext(manager,source,previous.settings);
+  const conflicts=mappingRepairConflicts(source,{...previous,settings:previousResolution.settings},{...active,settings:resolved.settings});
+  if(resolved.missing.includes('destinationStale')&&!conflicts.includes('recipient'))conflicts.push('recipient');
+  return {deliveryId:delivery.id,reportId:item.report_id,expectedVersion:Number(item.version),configurationRevision:Number(state.active_revision),stateRevision:Number(state.state_revision),previousConfigurationRevision:Number(delivery.configuration_revision),previousMappingRevision:delivery.mapping_revision,mappingRevision:cosMappingPackage(active.canonical_mapping).definition.revision,missing:[...new Set([...cosIdentifierRequirements(source,active.canonical_mapping,resolved.settings).missing,...resolved.missing])],conflicts,safe:delivery.state==='waiting'&&!delivery.prepared&&!delivery.barrier,previousPatient:patientBinding(source,previous),patient:patientBinding(source,active)};
  });
 }

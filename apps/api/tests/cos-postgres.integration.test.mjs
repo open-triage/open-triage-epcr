@@ -11,6 +11,7 @@ import pg from 'pg';
 import {ValidationAuthoringService} from '../dist/admin/validation-authoring.service.js';
 import {FormPublicationService} from '../dist/forms/form-publication.service.js';
 import {canonicalDefinitionSha256} from '../dist/forms/form-publication.validation.js';
+import {CosLiveAdapter} from '../dist/hospital/cos-live-adapter.js';
 import {CosService} from '../dist/hospital/cos.service.js';
 import {ClinicianSessionService} from '../dist/sessions/clinician-session.service.js';
 import {AccountService} from '../dist/identity/account.service.js';
@@ -56,9 +57,12 @@ integration('COS real database and browser setup preserves tested revisions, can
   await query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[medic.userId]);
   const medicSession=await sessions.create({username:`medic-${username}`,password});
   await assert.rejects(service.get(medicSession.sessionToken));
-  const initial=await service.get(token);assert.ok(initial.options.some(option=>option.id==='ePatient.01'));
+  const initial=await service.get(token);
+  const [expectedReadiness]=await query(`select count(*)::integer count from app_identity.app_user where app_identity.organization_group(organization_id)=$1 and active and nullif(btrim(hsa_id),'') is null`,[group.id]);
+  assert.equal(initial.readiness.usersMissingHsa,expectedReadiness.count);assert.equal(typeof initial.readiness.unitsMissingRakel,'number');assert.equal(typeof initial.readiness.destinationsMissingHsa,'number');
+  assert.ok(initial.options.some(option=>option.id==='ePatient.01'));
   const alternative=initial.options.find(option=>option.id!=='ePatient.01');assert.ok(alternative);
-  const body={expectedRevision:0,endpoint:initial.defaultEndpoint,authentication:'api-key',settings:{mode:'simulator',authentication:'api-key',template:'urn:template:fictional',encounterNamespace:'urn:encounter:fictional',organizationHsaId:'fictional-org',defaultAmbulanceCareUnit:'fictional-ambulance',staff:[{userId:admin.userId,hsaId:'fictional-staff'}],careUnits:[{hospital:'fictional-hospital',localCareUnit:'fictional-unit',hsaId:'fictional-care-unit'}]},clinicalMappings:[{id:'clinical-text',source:{kind:'nemsis',elementId:'ePatient.05'},linkId:'404684003',answerType:'string'}],patientIdentifier:{field:{kind:'nemsis',elementId:'ePatient.01'},namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:['https://example.org/person']},replacementSecret:'private-team-credential'};
+  const body={expectedRevision:0,endpoint:initial.defaultEndpoint,authentication:'api-key',settings:{mode:'simulator',authentication:'api-key',template:'urn:template:fictional',encounterNamespace:'urn:encounter:fictional',organizationHsaId:'fictional-org',defaultAmbulanceCareUnit:'fictional-ambulance'},clinicalMappings:[{id:'clinical-text',source:{kind:'nemsis',elementId:'ePatient.05'},linkId:'404684003',answerType:'string'}],patientIdentifier:{field:{kind:'nemsis',elementId:'ePatient.01'},namespace:'urn:oid:1.2.752.129.2.1.3.1',aliases:['https://example.org/person']},replacementSecret:'private-team-credential'};
 
   await assert.rejects(service.save(token,{...body,groupId:foreignId}));
   let view=await service.save(token,body);assert.equal(view.draft.revision,1);assert.equal(view.active,null);assert.doesNotMatch(JSON.stringify(view),/private-team|encrypted_credential|ciphertext/);
@@ -91,8 +95,9 @@ integration('COS real database and browser setup preserves tested revisions, can
   // Other integration activation state is independent.
   assert.equal((await query('select * from app_identity.hospital_eps_state where group_id=$1',[group.id])).length,0);
   // A live mode revision cannot be activated with simulator evidence.
-  view=await service.save(token,{...body,expectedRevision:3,settings:{...body.settings,mode:'live'}});
-  view=await service.test(token,{expectedRevision:4});assert.equal(view.tests[0].result,'failed');assert.ok(view.tests[0].evidence.findings.includes('sandboxVerification'));
+  await assert.rejects(service.save(token,{...body,expectedRevision:3,settings:{...body.settings,mode:'live'}}));
+  view=await service.save(token,{...body,expectedRevision:3,authentication:'oauth-client-credentials',replacementSecret:JSON.stringify({clientSecret:'fixture-client',subscriptionKey:'fixture-key'}),settings:{...body.settings,mode:'live',authentication:'oauth-client-credentials',live:{baseUrl:'https://cos.example.invalid/api/',tokenUrl:'https://cos.example.invalid/token',clientId:'fixture',acceptedProfiles:[],pdfKeyword:'document',versionMarkerLinkId:'123456789'}}});
+  const previousRead=CosLiveAdapter.prototype.read;try{CosLiveAdapter.prototype.read=async()=>({resourceType:'CapabilityStatement'});view=await service.test(token,{expectedRevision:4});}finally{CosLiveAdapter.prototype.read=previousRead;}assert.equal(view.tests[0].result,'failed');assert.ok(view.tests[0].evidence.findings.includes('installationAcceptance'));
   await assert.rejects(service.activate(token,{expectedRevision:4,expectedStateRevision:view.stateRevision,testId:view.tests[0].id}));assert.equal(view.active.revision,1);
   view=await service.save(token,{...body,expectedRevision:4,patientIdentifier:{...body.patientIdentifier,namespace:'urn:unrecognized:patient'}});
   view=await service.test(token,{expectedRevision:5});assert.ok(view.tests[0].evidence.findings.includes('patientNamespace'));
@@ -111,6 +116,7 @@ integration('COS real database and browser setup preserves tested revisions, can
     assert.equal(req.headers.cookie,'cos-session=authorized');
     let input;for await(const part of req)input=(input??'')+part;const command=input?JSON.parse(input):undefined;
     if(command)assert.equal(req.headers['x-csrf-token'],'browser-csrf');
+    if(req.url.startsWith('/api/admin/destinations')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({items:[],nextCursor:null}));return;}
     const route=req.url.replace('/api/admin/hospital/cos','');
     const result=route==='/rotate-credential'?await service.rotateCredential(token,command):route==='/resume'?await service.resume(token,command):route==='/files'?await service.files(token):route==='/import-file'?await service.importFile(token,command):route.startsWith('/export/')?await service.export(token,route.split('/').at(-1)):route==='/test'?await service.test(token,command):route==='/activate'?await service.activate(token,command):route==='/deactivate'?await service.activate(token,command,true):req.method==='PUT'?await service.save(token,command):await service.get(token);
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
@@ -160,6 +166,27 @@ integration('COS real database and browser setup preserves tested revisions, can
    view=await service.activate(token,{expectedRevision:revision,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});
    assert.equal(view.active.mapping.definition.patientIdentifier.namespace,namespace);
   }
+  // Live lifecycle uses the same immutable canonical packages and encrypted envelope.
+  // Stub the bounded adapter boundary: this test must never contact a real receiver.
+  const originalRead=CosLiveAdapter.prototype.read,originalWrite=CosLiveAdapter.prototype.write,reads=[];
+  try{
+   CosLiveAdapter.prototype.read=async function(path){reads.push(path);return {resourceType:'CapabilityStatement'};};
+   CosLiveAdapter.prototype.write=async()=>{throw new Error('Connectivity test must not write clinical data');};
+   const current=await service.get(token),secret=JSON.stringify({clientSecret:'fictional-oauth-secret',subscriptionKey:'fictional-subscription-key'});
+   const live={baseUrl:'https://cos.example.invalid/api/',tokenUrl:'https://cos.example.invalid/token',clientId:'fixture',acceptedProfiles:[],pdfKeyword:'document',versionMarkerLinkId:'123456789',acceptanceRevision:'fixture-installation-acceptance'};
+   const liveBody={...body,expectedRevision:current.draft.revision,authentication:'oauth-client-credentials',settings:{...body.settings,mode:'live',authentication:'oauth-client-credentials',live},pdfLinkId:'371530004',medicationMappings:[{id:'meds',groupId:'eMedications.MedicationGroup'}],replacementSecret:secret};
+   view=await service.save(token,liveBody);const liveRevision=view.draft.revision;
+   assert.equal(view.draft.mapping.definition.schemaVersion,2);assert.deepEqual(view.draft.mapping.definition.medicationMappings,liveBody.medicationMappings);
+   assert.doesNotMatch(JSON.stringify(view),/fictional-oauth-secret|fictional-subscription-key|ciphertext/);
+   const [encrypted]=await query('select credential_id,encrypted_credential from app_identity.hospital_cos_version where group_id=$1 and revision=$2',[group.id,liveRevision]);
+   assert.equal(await decryptAgencyCredential(manager,encrypted.encrypted_credential,group.id,`hospital-cos:${encrypted.credential_id}`),secret);
+   await assert.rejects(service.activate(token,{expectedRevision:liveRevision,expectedStateRevision:view.stateRevision,testId:randomUUID()}));
+   view=await service.test(token,{expectedRevision:liveRevision});assert.equal(view.tests[0].result,'healthy');assert.equal(view.tests[0].evidence.kind,'live-connectivity');assert.equal(view.tests[0].evidence.liveDeliveryVerified,false);assert.deepEqual(reads,['fhir/metadata']);
+   view=await service.activate(token,{expectedRevision:liveRevision,expectedStateRevision:view.stateRevision,testId:view.tests[0].id});assert.equal(view.active.revision,liveRevision);
+   view=await service.save(token,{...liveBody,expectedRevision:liveRevision,settings:{...liveBody.settings,live:{...live,acceptanceRevision:undefined}}});
+   view=await service.test(token,{expectedRevision:view.draft.revision});assert.equal(view.tests[0].result,'failed');assert.ok(view.tests[0].evidence.findings.includes('installationAcceptance'));assert.equal(view.active.revision,liveRevision);
+   await assert.rejects(service.activate(token,{expectedRevision:view.draft.revision,expectedStateRevision:view.stateRevision,testId:view.tests[0].id}));
+  }finally{CosLiveAdapter.prototype.read=originalRead;CosLiveAdapter.prototype.write=originalWrite;}
   await query('update app_identity.app_user set active=false where id=$1',[admin.userId]);await assert.rejects(service.save(token,{...body,expectedRevision:5}));
  }finally{
   await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));await client.query('rollback');await client.end();

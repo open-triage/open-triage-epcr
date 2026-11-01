@@ -1,0 +1,3501 @@
+{
+  "resourceType": "Bundle",
+  "id": "74b894e0-8d09-553c-a1e5-280f35e1afd0",
+  "meta": {
+    "profile": [
+      "http://hl7.eu/fhir/eps/StructureDefinition/bundle-eu-eps"
+    ],
+    "tag": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+        "code": "HTEST",
+        "display": "test health data"
+      }
+    ]
+  },
+  "language": "sv",
+  "identifier": {
+    "system": "urn:ietf:rfc:3986",
+    "value": "urn:uuid:978c68e5-a885-54a3-86c1-bc9a0357e837"
+  },
+  "type": "document",
+  "timestamp": "2026-10-13T09:00:00+02:00",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:6f855847-f7e7-51c3-847f-c10353fb5fec",
+      "resource": {
+        "resourceType": "Composition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/composition-eu-eps"
+          ]
+        },
+        "language": "sv",
+        "identifier": {
+          "system": "urn:ietf:rfc:3986",
+          "value": "urn:uuid:7e4d82a4-d91c-5d24-8e56-bf2a04bdcc4b"
+        },
+        "status": "final",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "60591-5",
+              "display": "Patient summary Document"
+            }
+          ],
+          "text": "Patient summary Document"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "date": "2026-10-13T09:00:00+02:00",
+        "author": [
+          {
+            "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4"
+          }
+        ],
+        "title": "Patientöversikt (European Patient Summary)",
+        "confidentiality": "N",
+        "custodian": {
+          "reference": "urn:uuid:24452d42-0a19-565a-9abd-59535b5f2f85"
+        },
+        "section": [
+          {
+            "title": "Uppmärksamhetsinformation",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "104605-1",
+                  "display": "Alert"
+                }
+              ],
+              "text": "Alert"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Varning</th><th>Prioritet</th><th>Sedan</th><th>Att göra</th></tr></thead><tbody><tr><td>Svår luftväg - förväntat svår intubation och svår maskventilation</td><td>Hög</td><td>2016-03-15</td><td>Ring barnanestesijouren Karolinska +46 8 000 00 11 innan all sedering. Fiberoptisk nasal intubation har fungerat; direktlaryngoskopi har misslyckats.</td></tr><tr><td>Immunsupprimerad - adalimumab och metotrexat</td><td>Hög</td><td>2022-05-20</td><td>Senaste dos adalimumab 2026-10-06, metotrexat 2026-10-09. Pausa vid infektion. Inga levande vacciner.</td></tr><tr><td>Rikliga sega luftvägssekret vid infektion</td><td>Medel</td><td>2017-11-03</td><td>Tidig slemmobilisering och NaCl-inhalation; låg tröskel för inläggning.</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:6a8454a4-a5f9-526a-ae3a-1bea9d9d034f"
+              },
+              {
+                "reference": "urn:uuid:892827bc-bee7-5c24-b89d-a161e9b4905c"
+              },
+              {
+                "reference": "urn:uuid:633eb09d-5cec-5a85-b3e3-ecdd608b4dd9"
+              }
+            ]
+          },
+          {
+            "title": "Problemlista",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "11450-4",
+                  "display": "Problem list - Reported"
+                }
+              ],
+              "text": "Problem list - Reported"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Tillstånd</th><th>Debut</th><th>Svårighetsgrad</th><th>Kommentar</th></tr></thead><tbody><tr><td>Freeman-Sheldons syndrom</td><td>2013-04-22</td><td></td><td>Diagnos vid Astrid Lindgrens barnsjukhus 2013, bekräftad med MYH3-variant. Distal artrogrypos typ 2A.</td></tr><tr><td>Mikrognati (liten haka)</td><td>2013-04-22</td><td></td><td></td></tr><tr><td>Mikrostomi (liten mun)</td><td>2013-04-22</td><td></td><td></td></tr><tr><td>Nedsatt gapförmåga</td><td>2013-04-22</td><td>Svår</td><td>Interincisalt avstånd cirka 20 mm (mätt 2024-10-14). Begränsar laryngoskopi och larynxmask.</td></tr><tr><td>Svår intubation</td><td>2016-03-15</td><td>Svår</td><td>Misslyckad direktlaryngoskopi 2016 (Cormack-Lehane 4). Fiberoptisk intubation har lyckats vid båda narkoserna.</td></tr><tr><td>Svår maskventilation</td><td>2016-03-15</td><td>Svår</td><td>Tvåhandsgrepp, svalgtub och två personer krävdes 2016 och 2024.</td></tr><tr><td>Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)</td><td>2022-02-08</td><td></td><td>HLA-B27-positiv. Sakroiliit på MR 2024-10-14. Behandlas med adalimumab och metotrexat; i remission sedan 2025-03.</td></tr><tr><td>Immunsupprimerad (adalimumab och metotrexat)</td><td>2022-05-20</td><td></td><td>Ökad infektionskänslighet. Pausa behandlingen vid feber - se infektionsplanen under Vårdplan.</td></tr><tr><td>Återkommande nedre luftvägsinfektioner</td><td>2017-11-03</td><td></td><td>Rikliga, sega sekret i luftvägarna och andningssvårigheter vid luftvägsinfektioner. Inlagd 2019-01 och 2023-02; slemmobilisering och NaCl-inhalation hjälpte.</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:f0982205-18fd-5861-b34b-485c3977780e"
+              },
+              {
+                "reference": "urn:uuid:23a641bf-fd97-58fd-9ff6-1a40a6bfb585"
+              },
+              {
+                "reference": "urn:uuid:dbe118f8-2f85-5a8a-839e-0b5d229b0b02"
+              },
+              {
+                "reference": "urn:uuid:ef40e0b3-9517-5dfd-a060-cf31f410918f"
+              },
+              {
+                "reference": "urn:uuid:a134bab5-63dd-509f-bbf4-afe64cab5dcd"
+              },
+              {
+                "reference": "urn:uuid:b6ed52c0-75a0-56c9-b2c8-d41610c9255d"
+              },
+              {
+                "reference": "urn:uuid:7c8f8e62-81c8-51c9-81dc-ca553e2469d9"
+              },
+              {
+                "reference": "urn:uuid:8c8f9420-68d9-5095-8b02-ce743a22fbba"
+              },
+              {
+                "reference": "urn:uuid:6bd2a50d-6c65-5331-899d-f13915c3f0ce"
+              }
+            ]
+          },
+          {
+            "title": "Läkemedelslista",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "10160-0",
+                  "display": "History of Medication use Narrative"
+                }
+              ],
+              "text": "History of Medication use Narrative"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Läkemedel</th><th>Dosering</th><th>Insatt</th><th>Senaste dos</th><th>Indikation</th></tr></thead><tbody><tr><td>Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna</td><td>40 mg subkutant varannan vecka</td><td>2023-01-17</td><td>2026-10-06</td><td>Juvenil idiopatisk artrit</td></tr><tr><td>Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna</td><td>15 mg subkutant 1 gång per vecka</td><td>2022-05-20</td><td>2026-10-09</td><td>Juvenil idiopatisk artrit</td></tr><tr><td>Folsyra 5 mg tablett</td><td>5 mg 1 gång per vecka, dagen efter metotrexat</td><td>2022-05-20</td><td></td><td>Metotrexatbehandling</td></tr><tr><td>Natriumklorid 9 mg/ml inhalationsvätska</td><td>2-4 ml via nebulisator 2-4 gånger dagligen vid behov</td><td>2022-01-10</td><td></td><td>Segt slem vid luftvägsinfektion</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:29e72dbd-5176-5c86-9047-666249ab87c3"
+              },
+              {
+                "reference": "urn:uuid:41a694b1-52f7-5925-ba17-158ecb4f4d23"
+              },
+              {
+                "reference": "urn:uuid:b9ffd679-5dba-5a69-b578-3e0e43062939"
+              },
+              {
+                "reference": "urn:uuid:e627ecbb-ca1f-5eeb-9a32-d9ea201884c0"
+              },
+              {
+                "reference": "urn:uuid:cb8da508-2365-584c-8113-165c1ca690e3"
+              },
+              {
+                "reference": "urn:uuid:d856930c-f519-5702-9158-9ad936bdc116"
+              }
+            ]
+          },
+          {
+            "title": "Allergier och intoleranser",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "48765-2",
+                  "display": "Allergies and adverse reactions Document"
+                }
+              ],
+              "text": "Allergies and adverse reactions Document"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><p>Inga kända allergier eller intoleranser.</p></div>"
+            },
+            "emptyReason": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/list-empty-reason",
+                  "code": "nilknown",
+                  "display": "Nil Known"
+                }
+              ],
+              "text": "Nil Known"
+            }
+          },
+          {
+            "title": "Genomgångna åtgärder",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "47519-4",
+                  "display": "History of Procedures Document"
+                }
+              ],
+              "text": "History of Procedures Document"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Åtgärd</th><th>Datum</th><th>Komplikation</th><th>Kommentar</th></tr></thead><tbody><tr><td>Tonsillektomi och adenoidektomi</td><td>2016-03-15</td><td></td><td>Karolinska. Indikation: obstruktiv sömnapné.</td></tr><tr><td>Narkos</td><td>2016-03-15</td><td>Svår intubation, Svår maskventilation</td><td>Oväntat svår luftväg (3 år). Misslyckad direktlaryngoskopi, svår maskventilation med desaturation till 78 %. Intuberad fiberoptiskt oralt av ÖNH-läkare efter flera försök. Sedan dess planeras all anestesi enligt luftvägsplanen.</td></tr><tr><td>MR sakroiliakaleder</td><td>2024-10-14</td><td></td><td>I narkos. Bilateral sakroiliit.</td></tr><tr><td>Narkos</td><td>2024-10-14</td><td>Svår maskventilation</td><td>Planerad svår luftväg. Sevofluraninduktion med bibehållen spontanandning, ingen muskelrelaxation före säkrad luftväg. Maskventilation svår (tvåhandsgrepp, svalgtub). Nasal fiberoptisk intubation, tub 5,0 kuffad, lyckades vid första försöket. ÖNH-läkare närvarande med beredskap för kirurgisk luftväg. Extuberad vaken, okomplicerat.</td></tr><tr><td>Nasal fiberoptisk intubation</td><td>2024-10-14</td><td></td><td>Tekniken som fungerade: se narkosen samma dag.</td></tr><tr><td>Anestesijournal 2024-10-14 (länk)</td><td>2024-10-14</td><td></td><td>https://journal.karolinska.example/anestesi/2024-10-14/ville.pdf</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:2c687027-3bc6-5607-b93c-0203ac803a35"
+              },
+              {
+                "reference": "urn:uuid:ecb832f1-baea-560e-bf1d-c364441f8957"
+              },
+              {
+                "reference": "urn:uuid:10b91f7d-2b63-5edc-91fd-a10ab87b7b8a"
+              },
+              {
+                "reference": "urn:uuid:9289fb59-af65-5f61-baa1-0d87ed609baf"
+              },
+              {
+                "reference": "urn:uuid:52383bd4-1ab8-552d-8a3f-fbbf6fd74ad5"
+              },
+              {
+                "reference": "urn:uuid:ec4ed2b1-bf1a-5929-b7c0-32ce87a37a11"
+              }
+            ]
+          },
+          {
+            "title": "Vaccinationer",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "11369-6",
+                  "display": "History of Immunization note"
+                }
+              ],
+              "text": "History of Immunization note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Vaccin</th><th>Datum</th></tr></thead><tbody><tr><td>Difteri-stelkramp-kikhosta-polio (booster, 5 år)</td><td>2018-05-15</td></tr><tr><td>Mässling-påssjuka-röda hund (dos 2, årskurs 1)</td><td>2020-10-07</td></tr><tr><td>Pneumokockvaccin (konjugat, inför immunsuppression)</td><td>2022-05-03</td></tr><tr><td>HPV-vaccin (årskurs 5)</td><td>2024-09-10</td></tr><tr><td>Influensavaccin</td><td>2025-10-21</td></tr><tr><td>Covid-19-vaccin</td><td>2025-10-21</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:42f564dc-9e40-5f6f-ac93-7cdf67d03e57"
+              },
+              {
+                "reference": "urn:uuid:2728ab7c-fbb0-5f95-bc05-83d77f06bd92"
+              },
+              {
+                "reference": "urn:uuid:3c7458dc-e7b6-5244-99da-c03d03d4e14c"
+              },
+              {
+                "reference": "urn:uuid:0e383c25-96e3-5744-a462-f64d458b34cf"
+              },
+              {
+                "reference": "urn:uuid:9cc256dd-cf77-5c68-98e6-e1f165912ddb"
+              },
+              {
+                "reference": "urn:uuid:9d025ec2-12d2-59d9-8500-819ccc0b785b"
+              }
+            ]
+          },
+          {
+            "title": "Laboratorieresultat",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "30954-2",
+                  "display": "Relevant diagnostic tests/laboratory data note"
+                }
+              ],
+              "text": "Relevant diagnostic tests/laboratory data note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Analys</th><th>Datum</th><th>Resultat</th><th>Tolkning</th></tr></thead><tbody><tr><td>Hemoglobin [Mass/volume] in Blood</td><td>2026-09-29</td><td>131 g/L</td><td>Inom referens</td></tr><tr><td>Leukocytes [#/volume] in Blood by Automated count</td><td>2026-09-29</td><td>5.4 10*9/L</td><td>Inom referens</td></tr><tr><td>Neutrophils [#/volume] in Blood by Automated count</td><td>2026-09-29</td><td>2.6 10*9/L</td><td>Inom referens</td></tr><tr><td>Platelets [#/volume] in Blood by Automated count</td><td>2026-09-29</td><td>262 10*9/L</td><td>Inom referens</td></tr><tr><td>Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma</td><td>2026-09-29</td><td>0.48 ukat/L</td><td>Inom referens</td></tr><tr><td>Creatinine [Moles/volume] in Serum or Plasma</td><td>2026-09-29</td><td>49 umol/L</td><td>Inom referens</td></tr><tr><td>C reactive protein [Mass/volume] in Serum or Plasma</td><td>2026-09-29</td><td>1.2 mg/L</td><td>Inom referens</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:f5973060-8f30-5ef6-8e51-b5578a1e7b19"
+              },
+              {
+                "reference": "urn:uuid:ec303214-c269-5b9b-b007-c9a31e113740"
+              },
+              {
+                "reference": "urn:uuid:87bd1b90-4f76-5f23-b422-e57c60c3f396"
+              },
+              {
+                "reference": "urn:uuid:f2096dab-8b46-5e8d-b0c5-0dc97afbf37c"
+              },
+              {
+                "reference": "urn:uuid:f875cffe-e630-5ffa-9885-413c36417add"
+              },
+              {
+                "reference": "urn:uuid:01dbb9ed-62f6-5d77-b85c-0f0c12dbd076"
+              },
+              {
+                "reference": "urn:uuid:9cc12054-bb46-5247-bec4-97facc3c9579"
+              }
+            ]
+          },
+          {
+            "title": "Medicintekniska produkter",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "46264-8",
+                  "display": "History of medical device use"
+                }
+              ],
+              "text": "History of medical device use"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Produkt</th><th>I bruk sedan</th><th>Status</th></tr></thead><tbody><tr><td>Nebulisator för hemmabruk</td><td>2022-01-10</td><td>I bruk vid behov</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:82c7e53b-0665-5f35-bc0a-2bfc46f4b5f8"
+              }
+            ]
+          },
+          {
+            "title": "Vårdplan",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "18776-5",
+                  "display": "Plan of care note"
+                }
+              ],
+              "text": "Plan of care note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Plan</th><th>Sedan</th><th>Status</th><th>Innehåll</th></tr></thead><tbody><tr><td>Luftvägsplan inför sedering, narkos och intubation</td><td>2016-03-16</td><td>Aktiv</td><td>Kontakta barnanestesiolog och ÖNH-läkare innan all sedering, narkos eller intubation - även akut. Karolinska barnanestesijour +46 8 000 00 11 kan konsulteras dygnet runt. Induktion med bibehållen spontanandning (sevofluran). Ingen muskelrelaxation före säkrad luftväg. Förstahandsval: nasal fiberoptisk intubation, kuffad tub 5,0-5,5. Videolaryngoskop med hyperangulerat blad som reserv. Larynxmask storlek 2-2,5 får sällan plats (munöppning cirka 20 mm). Maskventilation är svår: tvåhandsgrepp, svalgtub och två personer från start. ÖNH-läkare närvarande med beredskap för kirurgisk luftväg (koniotomi-set framtaget). Extubation vaken, med ÖNH-beredskap. Postoperativ övervakning på barnintensiven eller motsvarande.</td></tr><tr><td>Infektionsplan under immunsuppression</td><td>2022-05-20</td><td>Aktiv</td><td>Vid feber över 38,5 °C eller infektion som kräver antibiotika: pausa adalimumab och metotrexat. Återuppta efter kontakt med barnreumatolog. Låg tröskel för inläggning, odlingar och antibiotika vid nedre luftvägsinfektion. Tidig slemmobilisering med fysioterapeut och natriumklorid-inhalation. Inga levande vacciner under pågående behandling. Årlig influensa- och covid-19-vaccination.</td></tr><tr><td>Återbesök barnreumatologmottagningen, Karolinska - kontroll var 3:e månad med blodstatus, ALAT och kreatinin</td><td>2022-02-08</td><td>Bokad 2026-12-15</td><td></td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:0a173f3c-2636-56f3-b825-59e72cc6143e"
+              },
+              {
+                "reference": "urn:uuid:e8bc816c-a39d-5a0b-8c7a-72fb2ea8fa4e"
+              },
+              {
+                "reference": "urn:uuid:c36a547e-b31e-59f0-969f-36340d9b537f"
+              }
+            ]
+          },
+          {
+            "title": "Patientberättelse och önskemål",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "81338-6",
+                  "display": "Patient Goals, preferences, and priorities for care experience"
+                },
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "408676007",
+                  "display": "Patient preferred name"
+                }
+              ],
+              "text": "Patientberättelse och önskemål"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><p>Ville vill kallas Ville, inte Vilhelm.</p><p>Han vill att man berättar vad som ska hända innan det händer, särskilt om det gäller munnen eller ansiktet. Han har varit med om tre narkoser och vet att hans luftväg är svår; en mask som sätts på utan förvarning gör honom rädd.</p><p>Mamma Anna Söderberg är hans närmaste anhörig och vårdnadshavare, känner till luftvägshistoriken i detalj och vill vara med vid undersökningar och vid insomning. Hon ger adalimumab- och metotrexatinjektionerna hemma.</p><p>Ville går i sjunde klass, spelar e-sport och vill helst slippa ligga inne längre än nödvändigt.</p></div>"
+            }
+          }
+        ],
+        "id": "6f855847-f7e7-51c3-847f-c10353fb5fec",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"sv\" lang=\"sv\"><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Document</td><td>Patientöversikt (European Patient Summary)</td></tr><tr><td>Patient</td><td>Vilhelm Erik Söderberg</td></tr><tr><td>Document date</td><td>2026-10-13</td></tr><tr><td>Sections</td><td>Uppmärksamhetsinformation, Problemlista, Läkemedelslista, Allergier och intoleranser, Genomgångna åtgärder, Vaccinationer, Laboratorieresultat, Medicintekniska produkter, Vårdplan, Patientberättelse och önskemål</td></tr><tr><td>Note</td><td>Synthetic example generated for the Nordic Hackathon 2026 - not a real patient.</td></tr></tbody></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+      "resource": {
+        "resourceType": "Patient",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/patient-eu-eps",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePatient"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "http://electronichealth.se/identifier/samordningsnummer",
+            "value": "201304822172"
+          }
+        ],
+        "name": [
+          {
+            "use": "official",
+            "text": "Vilhelm Erik Söderberg",
+            "family": "Söderberg",
+            "given": [
+              "Vilhelm",
+              "Erik"
+            ]
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 70 000 00 04",
+            "use": "mobile"
+          }
+        ],
+        "gender": "male",
+        "birthDate": "2013-04-22",
+        "address": [
+          {
+            "use": "home",
+            "type": "physical",
+            "line": [
+              "Klubbacken 14"
+            ],
+            "city": "Hägersten",
+            "postalCode": "129 39",
+            "country": "SE"
+          }
+        ],
+        "communication": [
+          {
+            "language": {
+              "coding": [
+                {
+                  "system": "urn:ietf:bcp:47",
+                  "code": "sv",
+                  "display": "Swedish"
+                }
+              ],
+              "text": "Swedish"
+            },
+            "preferred": true
+          }
+        ],
+        "contact": [
+          {
+            "relationship": [
+              {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
+                    "code": "N",
+                    "display": "Next-of-Kin"
+                  },
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-RoleCode",
+                    "code": "MTH",
+                    "display": "mother"
+                  }
+                ],
+                "text": "Mor (vårdnadshavare)"
+              },
+              {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v2-0131",
+                    "code": "C",
+                    "display": "Emergency Contact"
+                  }
+                ],
+                "text": "Emergency Contact"
+              }
+            ],
+            "name": {
+              "text": "Anna Söderberg",
+              "family": "Söderberg",
+              "given": [
+                "Anna"
+              ]
+            },
+            "telecom": [
+              {
+                "system": "phone",
+                "value": "+46 70 000 00 05",
+                "use": "mobile"
+              }
+            ]
+          }
+        ],
+        "id": "ab0b9fad-199a-5994-9978-888c8704ee58",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Vilhelm Erik Söderberg</td></tr><tr><th>Gender</th><td>male</td></tr><tr><th>Date of birth</th><td>2013-04-22</td></tr><tr><th>Identifier</th><td>201304822172</td></tr><tr><th>Preferred language</th><td>Swedish</td></tr><tr><th>Address</th><td>Klubbacken 14, Hägersten, SE</td></tr><tr><th>Contact</th><td>Anna Söderberg (Mor (vårdnadshavare)), +46 70 000 00 05</td></tr><tr><th>Prefers to be called</th><td>Ville (not Vilhelm)</td></tr></table></div>"
+        },
+        "generalPractitioner": [
+          {
+            "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4",
+            "display": "Dr Hanna Ekholm"
+          },
+          {
+            "reference": "urn:uuid:24452d42-0a19-565a-9abd-59535b5f2f85"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:24452d42-0a19-565a-9abd-59535b5f2f85",
+      "resource": {
+        "resourceType": "Organization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/organization-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBaseOrganization"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000016-1003"
+          },
+          {
+            "system": "urn:oid:2.5.4.97",
+            "value": "2321000016"
+          }
+        ],
+        "name": "Karolinska Universitetssjukhuset, Astrid Lindgrens barnsjukhus",
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 8 000 00 00",
+            "use": "work"
+          }
+        ],
+        "address": [
+          {
+            "city": "Solna",
+            "postalCode": "171 76",
+            "country": "SE"
+          }
+        ],
+        "id": "24452d42-0a19-565a-9abd-59535b5f2f85",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Organisation</th><td>Karolinska Universitetssjukhuset, Astrid Lindgrens barnsjukhus</td></tr><tr><th>Address</th><td>Solna, SE</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:51405186-72f6-5a7e-a60a-73424eae6890",
+      "resource": {
+        "resourceType": "Practitioner",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitioner-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitioner"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000016-2003"
+          }
+        ],
+        "name": [
+          {
+            "family": "Ekholm",
+            "given": [
+              "Hanna"
+            ],
+            "prefix": [
+              "Dr"
+            ]
+          }
+        ],
+        "id": "51405186-72f6-5a7e-a60a-73424eae6890",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Dr Hanna Ekholm</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4",
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitionerRole-eu"
+          ]
+        },
+        "practitioner": {
+          "reference": "urn:uuid:51405186-72f6-5a7e-a60a-73424eae6890"
+        },
+        "organization": {
+          "reference": "urn:uuid:24452d42-0a19-565a-9abd-59535b5f2f85"
+        },
+        "id": "ed2211a8-d9db-54db-a5f7-57d8cf68c1f4",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Specialty</th><td>Barnreumatologi</td></tr><tr><th>Phone</th><td>+46 8 000 00 10</td></tr></table></div>"
+        },
+        "specialty": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "419472004",
+                "display": "Pediatric rheumatology"
+              }
+            ],
+            "text": "Barnreumatologi"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 8 000 00 10",
+            "use": "work"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:26a48224-cfc5-5aed-b17f-ce33395efe18",
+      "resource": {
+        "resourceType": "Practitioner",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitioner-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitioner"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000016-2004"
+          }
+        ],
+        "name": [
+          {
+            "family": "Lindberg",
+            "given": [
+              "Johan"
+            ],
+            "prefix": [
+              "Dr"
+            ]
+          }
+        ],
+        "id": "26a48224-cfc5-5aed-b17f-ce33395efe18",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Dr Johan Lindberg</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9",
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitionerRole-eu"
+          ]
+        },
+        "practitioner": {
+          "reference": "urn:uuid:26a48224-cfc5-5aed-b17f-ce33395efe18",
+          "display": "Dr Johan Lindberg"
+        },
+        "organization": {
+          "reference": "urn:uuid:24452d42-0a19-565a-9abd-59535b5f2f85"
+        },
+        "specialty": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "394577000",
+                "display": "Anesthetics"
+              }
+            ],
+            "text": "Barnanestesi"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 8 000 00 11",
+            "use": "work"
+          }
+        ],
+        "id": "215e77d3-868c-5611-86fd-6c2f8a7de2f9",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Specialty</th><td>Barnanestesi</td></tr><tr><th>Practitioner</th><td>Dr Johan Lindberg</td></tr><tr><th>Phone</th><td>+46 8 000 00 11</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:4531852f-7298-5573-879a-f2e3f7ca263c",
+      "resource": {
+        "resourceType": "Practitioner",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitioner-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitioner"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000016-2005"
+          }
+        ],
+        "name": [
+          {
+            "family": "Nyström",
+            "given": [
+              "Sara"
+            ],
+            "prefix": [
+              "Dr"
+            ]
+          }
+        ],
+        "id": "4531852f-7298-5573-879a-f2e3f7ca263c",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Dr Sara Nyström</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:688036e5-73ce-58ef-be7d-2eed4349208c",
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitionerRole-eu"
+          ]
+        },
+        "practitioner": {
+          "reference": "urn:uuid:4531852f-7298-5573-879a-f2e3f7ca263c",
+          "display": "Dr Sara Nyström"
+        },
+        "organization": {
+          "reference": "urn:uuid:24452d42-0a19-565a-9abd-59535b5f2f85"
+        },
+        "specialty": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "418960008",
+                "display": "Otolaryngology"
+              }
+            ],
+            "text": "Öron-näsa-hals"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 8 000 00 12",
+            "use": "work"
+          }
+        ],
+        "id": "688036e5-73ce-58ef-be7d-2eed4349208c",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Specialty</th><td>Öron-näsa-hals</td></tr><tr><th>Practitioner</th><td>Dr Sara Nyström</td></tr><tr><th>Phone</th><td>+46 8 000 00 12</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a1127a6e-8646-509e-9491-cc239100ed7b",
+      "resource": {
+        "resourceType": "CareTeam",
+        "status": "active",
+        "name": "Villes vårdteam på Karolinska",
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "participant": [
+          {
+            "role": [
+              {
+                "coding": [
+                  {
+                    "system": "http://snomed.info/sct",
+                    "code": "419472004",
+                    "display": "Pediatric rheumatology"
+                  }
+                ],
+                "text": "Barnreumatolog, patientansvarig läkare"
+              }
+            ],
+            "member": {
+              "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4",
+              "display": "Dr Hanna Ekholm"
+            }
+          },
+          {
+            "role": [
+              {
+                "coding": [
+                  {
+                    "system": "http://snomed.info/sct",
+                    "code": "394577000",
+                    "display": "Anesthetics"
+                  }
+                ],
+                "text": "Barnanestesiolog, ansvarig för luftvägsplanen"
+              }
+            ],
+            "member": {
+              "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9",
+              "display": "Dr Johan Lindberg"
+            }
+          },
+          {
+            "role": [
+              {
+                "coding": [
+                  {
+                    "system": "http://snomed.info/sct",
+                    "code": "418960008",
+                    "display": "Otolaryngology"
+                  }
+                ],
+                "text": "ÖNH-läkare"
+              }
+            ],
+            "member": {
+              "reference": "urn:uuid:688036e5-73ce-58ef-be7d-2eed4349208c",
+              "display": "Dr Sara Nyström"
+            }
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 8 000 00 10",
+            "use": "work"
+          }
+        ],
+        "note": [
+          {
+            "text": "Barnreumatologmottagningen vardagar 08-16 på +46 8 000 00 10. Vid akut behov av sövning eller luftvägshjälp: barnanestesijouren +46 8 000 00 11, dygnet runt. Villes mor Anna Söderberg (+46 70 000 00 05) känner till luftvägshistoriken i detalj."
+          }
+        ],
+        "id": "a1127a6e-8646-509e-9491-cc239100ed7b",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Team</th><td>Villes vårdteam på Karolinska</td></tr><tr><th>Members</th><td>Dr Hanna Ekholm - Barnreumatolog, patientansvarig läkare; Dr Johan Lindberg - Barnanestesiolog, ansvarig för luftvägsplanen; Dr Sara Nyström - ÖNH-läkare</td></tr><tr><th>Phone</th><td>+46 8 000 00 10</td></tr><tr><th>Note</th><td>Barnreumatologmottagningen vardagar 08-16 på +46 8 000 00 10. Vid akut behov av sövning eller luftvägshjälp: barnanestesijouren +46 8 000 00 11, dygnet runt. Villes mor Anna Söderberg (+46 70 000 00 05) känner till luftvägshistoriken i detalj.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f0982205-18fd-5861-b34b-485c3977780e",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "52616002",
+              "display": "Freeman-Sheldon syndrome"
+            }
+          ],
+          "text": "Freeman-Sheldons syndrom"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2013-04-22",
+        "note": [
+          {
+            "text": "Diagnos vid Astrid Lindgrens barnsjukhus 2013, bekräftad med MYH3-variant. Distal artrogrypos typ 2A."
+          }
+        ],
+        "id": "f0982205-18fd-5861-b34b-485c3977780e",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Freeman-Sheldons syndrom</td></tr><tr><th>Onset</th><td>2013-04-22</td></tr><tr><th>Note</th><td>Diagnos vid Astrid Lindgrens barnsjukhus 2013, bekräftad med MYH3-variant. Distal artrogrypos typ 2A.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:23a641bf-fd97-58fd-9ff6-1a40a6bfb585",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "32958008",
+              "display": "Congenital micrognathism"
+            }
+          ],
+          "text": "Mikrognati (liten haka)"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2013-04-22",
+        "id": "23a641bf-fd97-58fd-9ff6-1a40a6bfb585",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Mikrognati (liten haka)</td></tr><tr><th>Onset</th><td>2013-04-22</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:dbe118f8-2f85-5a8a-839e-0b5d229b0b02",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "14582003",
+              "display": "Microstomia"
+            }
+          ],
+          "text": "Mikrostomi (liten mun)"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2013-04-22",
+        "id": "dbe118f8-2f85-5a8a-839e-0b5d229b0b02",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Mikrostomi (liten mun)</td></tr><tr><th>Onset</th><td>2013-04-22</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ef40e0b3-9517-5dfd-a060-cf31f410918f",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "87866006",
+              "display": "Trismus"
+            }
+          ],
+          "text": "Nedsatt gapförmåga"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2013-04-22",
+        "severity": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "24484000",
+              "display": "Severe"
+            }
+          ],
+          "text": "Severe"
+        },
+        "note": [
+          {
+            "text": "Interincisalt avstånd cirka 20 mm (mätt 2024-10-14). Begränsar laryngoskopi och larynxmask."
+          }
+        ],
+        "id": "ef40e0b3-9517-5dfd-a060-cf31f410918f",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Nedsatt gapförmåga</td></tr><tr><th>Onset</th><td>2013-04-22</td></tr><tr><th>Severity</th><td>Severe</td></tr><tr><th>Note</th><td>Interincisalt avstånd cirka 20 mm (mätt 2024-10-14). Begränsar laryngoskopi och larynxmask.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a134bab5-63dd-509f-bbf4-afe64cab5dcd",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "718447001",
+              "display": "Difficult tracheal intubation"
+            }
+          ],
+          "text": "Svår intubation"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2016-03-15",
+        "severity": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "24484000",
+              "display": "Severe"
+            }
+          ],
+          "text": "Severe"
+        },
+        "note": [
+          {
+            "text": "Misslyckad direktlaryngoskopi 2016 (Cormack-Lehane 4). Fiberoptisk intubation har lyckats vid båda narkoserna."
+          }
+        ],
+        "id": "a134bab5-63dd-509f-bbf4-afe64cab5dcd",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Svår intubation</td></tr><tr><th>Onset</th><td>2016-03-15</td></tr><tr><th>Severity</th><td>Severe</td></tr><tr><th>Note</th><td>Misslyckad direktlaryngoskopi 2016 (Cormack-Lehane 4). Fiberoptisk intubation har lyckats vid båda narkoserna.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:b6ed52c0-75a0-56c9-b2c8-d41610c9255d",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "763326004",
+              "display": "Difficult mask ventilation"
+            }
+          ],
+          "text": "Svår maskventilation"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2016-03-15",
+        "severity": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "24484000",
+              "display": "Severe"
+            }
+          ],
+          "text": "Severe"
+        },
+        "note": [
+          {
+            "text": "Tvåhandsgrepp, svalgtub och två personer krävdes 2016 och 2024."
+          }
+        ],
+        "id": "b6ed52c0-75a0-56c9-b2c8-d41610c9255d",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Svår maskventilation</td></tr><tr><th>Onset</th><td>2016-03-15</td></tr><tr><th>Severity</th><td>Severe</td></tr><tr><th>Note</th><td>Tvåhandsgrepp, svalgtub och två personer krävdes 2016 och 2024.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:7c8f8e62-81c8-51c9-81dc-ca553e2469d9",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "410801005",
+              "display": "Juvenile idiopathic arthritis, enthesitis related arthritis"
+            }
+          ],
+          "text": "Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2022-02-08",
+        "note": [
+          {
+            "text": "HLA-B27-positiv. Sakroiliit på MR 2024-10-14. Behandlas med adalimumab och metotrexat; i remission sedan 2025-03."
+          }
+        ],
+        "id": "7c8f8e62-81c8-51c9-81dc-ca553e2469d9",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)</td></tr><tr><th>Onset</th><td>2022-02-08</td></tr><tr><th>Note</th><td>HLA-B27-positiv. Sakroiliit på MR 2024-10-14. Behandlas med adalimumab och metotrexat; i remission sedan 2025-03.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:8c8f9420-68d9-5095-8b02-ce743a22fbba",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "370391006",
+              "display": "Patient immunosuppressed"
+            }
+          ],
+          "text": "IMMUNSUPPRIMERAD - adalimumab och metotrexat"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2022-05-20",
+        "note": [
+          {
+            "text": "Ökad infektionskänslighet. Pausa behandlingen vid feber - se infektionsplanen under Vårdplan."
+          }
+        ],
+        "id": "8c8f9420-68d9-5095-8b02-ce743a22fbba",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Immunsupprimerad (adalimumab och metotrexat)</td></tr><tr><th>Onset</th><td>2022-05-20</td></tr><tr><th>Note</th><td>Ökad infektionskänslighet. Pausa behandlingen vid feber - se infektionsplanen under Vårdplan.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:6bd2a50d-6c65-5331-899d-f13915c3f0ce",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "448739000",
+              "display": "Recurrent lower respiratory tract infection"
+            }
+          ],
+          "text": "Återkommande nedre luftvägsinfektioner"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "onsetDateTime": "2017-11-03",
+        "note": [
+          {
+            "text": "Rikliga, sega sekret i luftvägarna och andningssvårigheter vid luftvägsinfektioner. Inlagd 2019-01 och 2023-02; slemmobilisering och NaCl-inhalation hjälpte."
+          }
+        ],
+        "id": "6bd2a50d-6c65-5331-899d-f13915c3f0ce",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Återkommande nedre luftvägsinfektioner</td></tr><tr><th>Onset</th><td>2017-11-03</td></tr><tr><th>Note</th><td>Rikliga, sega sekret i luftvägarna och andningssvårigheter vid luftvägsinfektioner. Inlagd 2019-01 och 2023-02; slemmobilisering och NaCl-inhalation hjälpte.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:873deac4-5f50-52ce-9ced-7ec1cd8eef4f",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "L04AB04",
+              "display": "adalimumab"
+            },
+            {
+              "system": "http://snomed.info/sct",
+              "code": "890314002",
+              "display": "Adalimumab 100 mg/mL solution for injection"
+            }
+          ],
+          "text": "Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "385219001",
+              "display": "Solution for injection"
+            }
+          ],
+          "text": "Solution for injection"
+        },
+        "id": "873deac4-5f50-52ce-9ced-7ec1cd8eef4f",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna</td></tr><tr><th>Form</th><td>Solution for injection</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:29e72dbd-5176-5c86-9047-666249ab87c3",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:873deac4-5f50-52ce-9ced-7ec1cd8eef4f",
+          "display": "Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "effectivePeriod": {
+          "start": "2023-01-17"
+        },
+        "dosage": [
+          {
+            "text": "40 mg subkutant varannan vecka (tisdagar)",
+            "asNeededBoolean": false,
+            "route": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "34206005",
+                  "display": "Subcutaneous route"
+                }
+              ],
+              "text": "Subcutaneous route"
+            },
+            "timing": {
+              "repeat": {
+                "frequency": 1,
+                "period": 2,
+                "periodUnit": "wk"
+              }
+            }
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "410801005",
+                "display": "Juvenile idiopathic arthritis, enthesitis related arthritis"
+              }
+            ],
+            "text": "Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)"
+          }
+        ],
+        "note": [
+          {
+            "text": "Senaste dos 2026-10-06, nästa planerad 2026-10-20. Ges av föräldrarna hemma. Pausas vid feber eller infektion som kräver antibiotika."
+          }
+        ],
+        "id": "29e72dbd-5176-5c86-9047-666249ab87c3",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>40 mg subkutant varannan vecka (tisdagar)</td></tr><tr><th>Period</th><td>2023-01-17</td></tr><tr><th>Reason</th><td>Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)</td></tr><tr><th>Note</th><td>Senaste dos 2026-10-06, nästa planerad 2026-10-20. Ges av föräldrarna hemma. Pausas vid feber eller infektion som kräver antibiotika.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:747f6592-208a-5073-8aac-39d08ed2a479",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "L04AX03",
+              "display": "methotrexate"
+            }
+          ],
+          "text": "Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "385219001",
+              "display": "Solution for injection"
+            }
+          ],
+          "text": "Solution for injection"
+        },
+        "id": "747f6592-208a-5073-8aac-39d08ed2a479",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna</td></tr><tr><th>Form</th><td>Solution for injection</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:b9ffd679-5dba-5a69-b578-3e0e43062939",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:747f6592-208a-5073-8aac-39d08ed2a479",
+          "display": "Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "effectivePeriod": {
+          "start": "2022-05-20"
+        },
+        "dosage": [
+          {
+            "text": "15 mg subkutant 1 gång per vecka (fredagar)",
+            "asNeededBoolean": false,
+            "route": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "34206005",
+                  "display": "Subcutaneous route"
+                }
+              ],
+              "text": "Subcutaneous route"
+            },
+            "timing": {
+              "repeat": {
+                "frequency": 1,
+                "period": 1,
+                "periodUnit": "wk"
+              }
+            }
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "410801005",
+                "display": "Juvenile idiopathic arthritis, enthesitis related arthritis"
+              }
+            ],
+            "text": "Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)"
+          }
+        ],
+        "note": [
+          {
+            "text": "Senaste dos 2026-10-09. Ges av föräldrarna hemma. Pausas vid feber eller infektion som kräver antibiotika."
+          }
+        ],
+        "id": "b9ffd679-5dba-5a69-b578-3e0e43062939",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>15 mg subkutant 1 gång per vecka (fredagar)</td></tr><tr><th>Period</th><td>2022-05-20</td></tr><tr><th>Reason</th><td>Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)</td></tr><tr><th>Note</th><td>Senaste dos 2026-10-09. Ges av föräldrarna hemma. Pausas vid feber eller infektion som kräver antibiotika.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:5776ad21-6d4e-5816-9446-1cba789f8da3",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "B03BB01",
+              "display": "folic acid"
+            }
+          ],
+          "text": "Folsyra 5 mg tablett"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "5776ad21-6d4e-5816-9446-1cba789f8da3",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Folsyra 5 mg tablett</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:cb8da508-2365-584c-8113-165c1ca690e3",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:5776ad21-6d4e-5816-9446-1cba789f8da3",
+          "display": "Folsyra 5 mg tablett"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "effectivePeriod": {
+          "start": "2022-05-20"
+        },
+        "dosage": [
+          {
+            "text": "1 tablett (5 mg) 1 gång per vecka, dagen efter metotrexat (lördagar)",
+            "asNeededBoolean": false,
+            "route": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "26643006",
+                  "display": "Oral route"
+                }
+              ],
+              "text": "Oral route"
+            },
+            "timing": {
+              "repeat": {
+                "frequency": 1,
+                "period": 1,
+                "periodUnit": "wk"
+              }
+            }
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "410801005",
+                "display": "Juvenile idiopathic arthritis, enthesitis related arthritis"
+              }
+            ],
+            "text": "Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)"
+          }
+        ],
+        "id": "cb8da508-2365-584c-8113-165c1ca690e3",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Folsyra 5 mg tablett</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 tablett (5 mg) 1 gång per vecka, dagen efter metotrexat (lördagar)</td></tr><tr><th>Period</th><td>2022-05-20</td></tr><tr><th>Reason</th><td>Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:76e6cbf8-9c15-5f93-b967-b69dc2c20b79",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "387390002",
+              "display": "Sodium chloride"
+            }
+          ],
+          "text": "Natriumklorid 9 mg/ml inhalationsvätska"
+        },
+        "id": "76e6cbf8-9c15-5f93-b967-b69dc2c20b79",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Natriumklorid 9 mg/ml inhalationsvätska</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:d856930c-f519-5702-9158-9ad936bdc116",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:76e6cbf8-9c15-5f93-b967-b69dc2c20b79",
+          "display": "Natriumklorid 9 mg/ml inhalationsvätska"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "effectivePeriod": {
+          "start": "2022-01-10"
+        },
+        "dosage": [
+          {
+            "text": "2-4 ml inhaleras via nebulisator 2-4 gånger dagligen vid luftvägsinfektion med segt slem",
+            "asNeededBoolean": true,
+            "route": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "447694001",
+                  "display": "Respiratory tract route"
+                }
+              ],
+              "text": "Respiratory tract route"
+            }
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "448739000",
+                "display": "Recurrent lower respiratory tract infection"
+              }
+            ],
+            "text": "Återkommande nedre luftvägsinfektioner"
+          }
+        ],
+        "id": "d856930c-f519-5702-9158-9ad936bdc116",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Natriumklorid 9 mg/ml inhalationsvätska</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>2-4 ml inhaleras via nebulisator 2-4 gånger dagligen vid luftvägsinfektion med segt slem</td></tr><tr><th>Period</th><td>2022-01-10</td></tr><tr><th>Reason</th><td>Återkommande nedre luftvägsinfektioner</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:41a694b1-52f7-5925-ba17-158ecb4f4d23",
+      "resource": {
+        "resourceType": "MedicationAdministration",
+        "status": "completed",
+        "medicationReference": {
+          "reference": "urn:uuid:873deac4-5f50-52ce-9ced-7ec1cd8eef4f",
+          "display": "Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "effectiveDateTime": "2026-10-06",
+        "dosage": {
+          "text": "40 mg subkutant",
+          "dose": {
+            "value": 40,
+            "unit": "mg",
+            "system": "http://unitsofmeasure.org",
+            "code": "mg"
+          },
+          "route": {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "34206005",
+                "display": "Subcutaneous route"
+              }
+            ],
+            "text": "Subcutaneous route"
+          }
+        },
+        "performer": [
+          {
+            "actor": {
+              "display": "Förälder"
+            }
+          }
+        ],
+        "id": "41a694b1-52f7-5925-ba17-158ecb4f4d23",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Humira (adalimumab) 40 mg/0,4 ml injektionsvätska i förfylld penna</td></tr><tr><th>Given</th><td>2026-10-06</td></tr><tr><th>Dose</th><td>40 mg subkutant</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e627ecbb-ca1f-5eeb-9a32-d9ea201884c0",
+      "resource": {
+        "resourceType": "MedicationAdministration",
+        "status": "completed",
+        "medicationReference": {
+          "reference": "urn:uuid:747f6592-208a-5073-8aac-39d08ed2a479",
+          "display": "Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "effectiveDateTime": "2026-10-09",
+        "dosage": {
+          "text": "15 mg subkutant",
+          "dose": {
+            "value": 15,
+            "unit": "mg",
+            "system": "http://unitsofmeasure.org",
+            "code": "mg"
+          },
+          "route": {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "34206005",
+                "display": "Subcutaneous route"
+              }
+            ],
+            "text": "Subcutaneous route"
+          }
+        },
+        "performer": [
+          {
+            "actor": {
+              "display": "Förälder"
+            }
+          }
+        ],
+        "id": "e627ecbb-ca1f-5eeb-9a32-d9ea201884c0",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Metoject (metotrexat) 15 mg injektionsvätska i förfylld penna</td></tr><tr><th>Given</th><td>2026-10-09</td></tr><tr><th>Dose</th><td>15 mg subkutant</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:6a8454a4-a5f9-526a-ae3a-1bea9d9d034f",
+      "resource": {
+        "resourceType": "Flag",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/flag-alert-obl-eu-eps"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-priority",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/flag-priority-code",
+                  "code": "PH",
+                  "display": "High priority"
+                }
+              ],
+              "text": "High priority"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:a134bab5-63dd-509f-bbf4-afe64cab5dcd"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:b6ed52c0-75a0-56c9-b2c8-d41610c9255d"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:f0982205-18fd-5861-b34b-485c3977780e"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:ef40e0b3-9517-5dfd-a060-cf31f410918f"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/note",
+            "valueAnnotation": {
+              "text": "Freeman-Sheldons syndrom med mikrognati, mikrostomi och gapförmåga cirka 20 mm. Direktlaryngoskopi har misslyckats (Cormack-Lehane 4). Fungerat: induktion med bibehållen spontanandning, ingen muskelrelaxation före säkrad luftväg, nasal fiberoptisk intubation (tub 5,0) med ÖNH-läkare närvarande. Ring barnanestesijouren Karolinska +46 8 000 00 11 innan all sedering. Se luftvägsplanen."
+            }
+          }
+        ],
+        "status": "active",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/flag-category",
+                "code": "clinical",
+                "display": "Clinical"
+              }
+            ],
+            "text": "Clinical"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "718449003",
+              "display": "Expected difficult tracheal intubation"
+            }
+          ],
+          "text": "SVÅR LUFTVÄG - förväntat svår intubation och svår maskventilation"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "period": {
+          "start": "2016-03-15"
+        },
+        "author": {
+          "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9"
+        },
+        "id": "6a8454a4-a5f9-526a-ae3a-1bea9d9d034f",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Alert</th><td>SVÅR LUFTVÄG - förväntat svår intubation och svår maskventilation</td></tr><tr><th>Priority</th><td>High priority</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Since</th><td>2016-03-15</td></tr><tr><th>Note</th><td>Freeman-Sheldons syndrom med mikrognati, mikrostomi och gapförmåga cirka 20 mm. Direktlaryngoskopi har misslyckats (Cormack-Lehane 4). Fungerat: induktion med bibehållen spontanandning, ingen muskelrelaxation före säkrad luftväg, nasal fiberoptisk intubation (tub 5,0) med ÖNH-läkare närvarande. Ring barnanestesijouren Karolinska +46 8 000 00 11 innan all sedering. Se luftvägsplanen.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:892827bc-bee7-5c24-b89d-a161e9b4905c",
+      "resource": {
+        "resourceType": "Flag",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/flag-alert-obl-eu-eps"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-priority",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/flag-priority-code",
+                  "code": "PH",
+                  "display": "High priority"
+                }
+              ],
+              "text": "High priority"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:29e72dbd-5176-5c86-9047-666249ab87c3"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:b9ffd679-5dba-5a69-b578-3e0e43062939"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:8c8f9420-68d9-5095-8b02-ce743a22fbba"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/note",
+            "valueAnnotation": {
+              "text": "Feber kan vara allvarlig infektion med dämpade symtom. Senaste dos adalimumab 2026-10-06, metotrexat 2026-10-09. Pausa båda vid infektion. Inga levande vacciner. Se infektionsplanen."
+            }
+          }
+        ],
+        "status": "active",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/flag-category",
+                "code": "clinical",
+                "display": "Clinical"
+              }
+            ],
+            "text": "Clinical"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "370391006",
+              "display": "Patient immunosuppressed"
+            }
+          ],
+          "text": "IMMUNSUPPRIMERAD - adalimumab och metotrexat"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "period": {
+          "start": "2022-05-20"
+        },
+        "author": {
+          "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4"
+        },
+        "id": "892827bc-bee7-5c24-b89d-a161e9b4905c",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Alert</th><td>IMMUNSUPPRIMERAD - adalimumab och metotrexat</td></tr><tr><th>Priority</th><td>High priority</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Since</th><td>2022-05-20</td></tr><tr><th>Note</th><td>Feber kan vara allvarlig infektion med dämpade symtom. Senaste dos adalimumab 2026-10-06, metotrexat 2026-10-09. Pausa båda vid infektion. Inga levande vacciner. Se infektionsplanen.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:633eb09d-5cec-5a85-b3e3-ecdd608b4dd9",
+      "resource": {
+        "resourceType": "Flag",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/flag-alert-obl-eu-eps"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-priority",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/flag-priority-code",
+                  "code": "PM",
+                  "display": "Medium priority"
+                }
+              ],
+              "text": "Medium priority"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/flag-detail",
+            "valueReference": {
+              "reference": "urn:uuid:6bd2a50d-6c65-5331-899d-f13915c3f0ce"
+            }
+          },
+          {
+            "url": "http://hl7.org/fhir/StructureDefinition/note",
+            "valueAnnotation": {
+              "text": "Tidig slemmobilisering, NaCl-inhalation och låg tröskel för inläggning. Sugning kan behövas; munöppningen är liten."
+            }
+          }
+        ],
+        "status": "active",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/flag-category",
+                "code": "clinical",
+                "display": "Clinical"
+              }
+            ],
+            "text": "Clinical"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "102581000",
+              "display": "Excessive bronchial secretion"
+            }
+          ],
+          "text": "Rikliga sega luftvägssekret och andningssvårigheter vid infektion"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "period": {
+          "start": "2017-11-03"
+        },
+        "author": {
+          "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4"
+        },
+        "id": "633eb09d-5cec-5a85-b3e3-ecdd608b4dd9",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Alert</th><td>Rikliga sega luftvägssekret och andningssvårigheter vid infektion</td></tr><tr><th>Priority</th><td>Medium priority</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Since</th><td>2017-11-03</td></tr><tr><th>Note</th><td>Tidig slemmobilisering, NaCl-inhalation och låg tröskel för inläggning. Sugning kan behövas; munöppningen är liten.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:2c687027-3bc6-5607-b93c-0203ac803a35",
+      "resource": {
+        "resourceType": "Procedure",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/procedure-eu-core"
+          ]
+        },
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "28913000",
+              "display": "Tonsillectomy and adenoidectomy"
+            }
+          ],
+          "text": "Tonsillektomi och adenoidektomi"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "performedDateTime": "2016-03-15",
+        "performer": [
+          {
+            "actor": {
+              "reference": "urn:uuid:688036e5-73ce-58ef-be7d-2eed4349208c"
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Karolinska. Indikation: obstruktiv sömnapné."
+          }
+        ],
+        "id": "2c687027-3bc6-5607-b93c-0203ac803a35",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Procedure</th><td>Tonsillektomi och adenoidektomi</td></tr><tr><th>Date</th><td>2016-03-15</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Note</th><td>Karolinska. Indikation: obstruktiv sömnapné.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ecb832f1-baea-560e-bf1d-c364441f8957",
+      "resource": {
+        "resourceType": "Procedure",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/procedure-eu-core"
+          ]
+        },
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "50697003",
+              "display": "Administration of general anesthetic"
+            }
+          ],
+          "text": "Narkos"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "performedDateTime": "2016-03-15",
+        "complication": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "718447001",
+                "display": "Difficult tracheal intubation"
+              }
+            ],
+            "text": "Svår intubation"
+          },
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "763326004",
+                "display": "Difficult mask ventilation"
+              }
+            ],
+            "text": "Svår maskventilation"
+          }
+        ],
+        "performer": [
+          {
+            "actor": {
+              "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9"
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Oväntat svår luftväg (3 år). Misslyckad direktlaryngoskopi, svår maskventilation med desaturation till 78 %. Intuberad fiberoptiskt oralt av ÖNH-läkare efter flera försök. Sedan dess planeras all anestesi enligt luftvägsplanen."
+          }
+        ],
+        "id": "ecb832f1-baea-560e-bf1d-c364441f8957",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Procedure</th><td>Narkos</td></tr><tr><th>Date</th><td>2016-03-15</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Complications</th><td>Svår intubation, Svår maskventilation</td></tr><tr><th>Note</th><td>Oväntat svår luftväg (3 år). Misslyckad direktlaryngoskopi, svår maskventilation med desaturation till 78 %. Intuberad fiberoptiskt oralt av ÖNH-läkare efter flera försök. Sedan dess planeras all anestesi enligt luftvägsplanen.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:10b91f7d-2b63-5edc-91fd-a10ab87b7b8a",
+      "resource": {
+        "resourceType": "Procedure",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/procedure-eu-core"
+          ]
+        },
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1332284004",
+              "display": "MRI of bilateral sacroiliac joints"
+            }
+          ],
+          "text": "MR sakroiliakaleder"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "performedDateTime": "2024-10-14",
+        "note": [
+          {
+            "text": "I narkos. Bilateral sakroiliit."
+          }
+        ],
+        "id": "10b91f7d-2b63-5edc-91fd-a10ab87b7b8a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Procedure</th><td>MR sakroiliakaleder</td></tr><tr><th>Date</th><td>2024-10-14</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Note</th><td>I narkos. Bilateral sakroiliit.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:9289fb59-af65-5f61-baa1-0d87ed609baf",
+      "resource": {
+        "resourceType": "Procedure",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/procedure-eu-core"
+          ]
+        },
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "50697003",
+              "display": "Administration of general anesthetic"
+            }
+          ],
+          "text": "Narkos"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "performedDateTime": "2024-10-14",
+        "complication": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "763326004",
+                "display": "Difficult mask ventilation"
+              }
+            ],
+            "text": "Svår maskventilation"
+          }
+        ],
+        "performer": [
+          {
+            "actor": {
+              "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9"
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Planerad svår luftväg. Sevofluraninduktion med bibehållen spontanandning, ingen muskelrelaxation före säkrad luftväg. Maskventilation svår (tvåhandsgrepp, svalgtub). Nasal fiberoptisk intubation, tub 5,0 kuffad, lyckades vid första försöket. ÖNH-läkare närvarande med beredskap för kirurgisk luftväg. Extuberad vaken, okomplicerat."
+          }
+        ],
+        "id": "9289fb59-af65-5f61-baa1-0d87ed609baf",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Procedure</th><td>Narkos</td></tr><tr><th>Date</th><td>2024-10-14</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Complications</th><td>Svår maskventilation</td></tr><tr><th>Note</th><td>Planerad svår luftväg. Sevofluraninduktion med bibehållen spontanandning, ingen muskelrelaxation före säkrad luftväg. Maskventilation svår (tvåhandsgrepp, svalgtub). Nasal fiberoptisk intubation, tub 5,0 kuffad, lyckades vid första försöket. ÖNH-läkare närvarande med beredskap för kirurgisk luftväg. Extuberad vaken, okomplicerat.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:52383bd4-1ab8-552d-8a3f-fbbf6fd74ad5",
+      "resource": {
+        "resourceType": "Procedure",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/procedure-eu-core"
+          ]
+        },
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "232682004",
+              "display": "Nasotracheal fiberoptic intubation"
+            }
+          ],
+          "text": "Nasal fiberoptisk intubation"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "performedDateTime": "2024-10-14",
+        "performer": [
+          {
+            "actor": {
+              "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9"
+            }
+          }
+        ],
+        "reasonReference": [
+          {
+            "reference": "urn:uuid:a134bab5-63dd-509f-bbf4-afe64cab5dcd"
+          }
+        ],
+        "note": [
+          {
+            "text": "Tekniken som fungerade: se narkosen samma dag."
+          }
+        ],
+        "id": "52383bd4-1ab8-552d-8a3f-fbbf6fd74ad5",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Procedure</th><td>Nasal fiberoptisk intubation</td></tr><tr><th>Date</th><td>2024-10-14</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Note</th><td>Tekniken som fungerade: se narkosen samma dag.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ec4ed2b1-bf1a-5929-b7c0-32ce87a37a11",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "11485-0",
+              "display": "Anesthesia records"
+            }
+          ],
+          "text": "Anesthesia records"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "date": "2024-10-14T09:00:00+02:00",
+        "author": [
+          {
+            "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9"
+          }
+        ],
+        "description": "Anestesijournal 2024-10-14, Karolinska Universitetssjukhuset",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "application/pdf",
+              "url": "https://journal.karolinska.example/anestesi/2024-10-14/ville.pdf",
+              "title": "Anestesijournal 2024-10-14, Karolinska Universitetssjukhuset",
+              "creation": "2024-10-14"
+            }
+          }
+        ],
+        "id": "ec4ed2b1-bf1a-5929-b7c0-32ce87a37a11",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Document</th><td>Anestesijournal 2024-10-14, Karolinska Universitetssjukhuset</td></tr><tr><th>Type</th><td>Anesthesia records</td></tr><tr><th>Created</th><td>2024-10-14</td></tr><tr><th>Link</th><td>https://journal.karolinska.example/anestesi/2024-10-14/ville.pdf</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:42f564dc-9e40-5f6f-ac93-7cdf67d03e57",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1381704004",
+              "display": "Acellular Bordetella pertussis and Clostridium tetani and Corynebacterium diphtheriae and Human poliovirus antigens only vaccine product"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07CA02",
+              "display": "diphtheria-pertussis-poliomyelitis-tetanus"
+            }
+          ],
+          "text": "Difteri-stelkramp-kikhosta-polio (booster, 5 år)"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "occurrenceDateTime": "2018-05-15",
+        "id": "42f564dc-9e40-5f6f-ac93-7cdf67d03e57",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Difteri-stelkramp-kikhosta-polio (booster, 5 år)</td></tr><tr><th>Date</th><td>2018-05-15</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:2728ab7c-fbb0-5f95-bc05-83d77f06bd92",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "2241000221103",
+              "display": "Live attenuated Measles morbillivirus and Mumps orthorubulavirus and Rubella virus antigens only vaccine product"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BD52",
+              "display": "measles, combinations with mumps and rubella, live attenuated"
+            }
+          ],
+          "text": "Mässling-påssjuka-röda hund (dos 2, årskurs 1)"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "occurrenceDateTime": "2020-10-07",
+        "id": "2728ab7c-fbb0-5f95-bc05-83d77f06bd92",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Mässling-påssjuka-röda hund (dos 2, årskurs 1)</td></tr><tr><th>Date</th><td>2020-10-07</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3c7458dc-e7b6-5244-99da-c03d03d4e14c",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "981000221107",
+              "display": "Streptococcus pneumoniae antigen only vaccine product"
+            }
+          ],
+          "text": "Pneumokockvaccin (konjugat, inför immunsuppression)"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "occurrenceDateTime": "2022-05-03",
+        "id": "3c7458dc-e7b6-5244-99da-c03d03d4e14c",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Pneumokockvaccin (konjugat, inför immunsuppression)</td></tr><tr><th>Date</th><td>2022-05-03</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:0e383c25-96e3-5744-a462-f64d458b34cf",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "911000221103",
+              "display": "Human papillomavirus antigen only vaccine product"
+            }
+          ],
+          "text": "HPV-vaccin (årskurs 5)"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "occurrenceDateTime": "2024-09-10",
+        "id": "0e383c25-96e3-5744-a462-f64d458b34cf",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>HPV-vaccin (årskurs 5)</td></tr><tr><th>Date</th><td>2024-09-10</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:9cc256dd-cf77-5c68-98e6-e1f165912ddb",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1181000221105",
+              "display": "Vaccine product containing only Influenza virus antigen (medicinal product)"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BB02",
+              "display": "influenza, inactivated, split virus or surface antigen"
+            }
+          ],
+          "text": "Influensavaccin"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "occurrenceDateTime": "2025-10-21",
+        "id": "9cc256dd-cf77-5c68-98e6-e1f165912ddb",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Influensavaccin</td></tr><tr><th>Date</th><td>2025-10-21</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:9d025ec2-12d2-59d9-8500-819ccc0b785b",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1119305005",
+              "display": "SARS-CoV-2 antigen vaccine"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BN04",
+              "display": "covid-19, protein subunit"
+            }
+          ],
+          "text": "Covid-19-vaccin"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "occurrenceDateTime": "2025-10-21",
+        "id": "9d025ec2-12d2-59d9-8500-819ccc0b785b",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Covid-19-vaccin</td></tr><tr><th>Date</th><td>2025-10-21</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f5973060-8f30-5ef6-8e51-b5578a1e7b19",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "718-7",
+              "display": "Hemoglobin [Mass/volume] in Blood"
+            }
+          ],
+          "text": "Hemoglobin [Mass/volume] in Blood"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 131,
+          "unit": "g/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "g/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 115,
+              "unit": "g/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "g/L"
+            },
+            "high": {
+              "value": 150,
+              "unit": "g/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "g/L"
+            }
+          }
+        ],
+        "id": "f5973060-8f30-5ef6-8e51-b5578a1e7b19",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Hemoglobin [Mass/volume] in Blood</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>131 g/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:ec303214-c269-5b9b-b007-c9a31e113740",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "6690-2",
+              "display": "Leukocytes [#/volume] in Blood by Automated count"
+            }
+          ],
+          "text": "Leukocytes [#/volume] in Blood by Automated count"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 5.4,
+          "unit": "10*9/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "10*9/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 4.0,
+              "unit": "10*9/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "10*9/L"
+            },
+            "high": {
+              "value": 11.0,
+              "unit": "10*9/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "10*9/L"
+            }
+          }
+        ],
+        "id": "ec303214-c269-5b9b-b007-c9a31e113740",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Leukocytes [#/volume] in Blood by Automated count</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>5.4 10*9/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:87bd1b90-4f76-5f23-b422-e57c60c3f396",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "751-8",
+              "display": "Neutrophils [#/volume] in Blood by Automated count"
+            }
+          ],
+          "text": "Neutrophils [#/volume] in Blood by Automated count"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 2.6,
+          "unit": "10*9/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "10*9/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 1.6,
+              "unit": "10*9/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "10*9/L"
+            },
+            "high": {
+              "value": 7.0,
+              "unit": "10*9/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "10*9/L"
+            }
+          }
+        ],
+        "id": "87bd1b90-4f76-5f23-b422-e57c60c3f396",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Neutrophils [#/volume] in Blood by Automated count</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>2.6 10*9/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f2096dab-8b46-5e8d-b0c5-0dc97afbf37c",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "777-3",
+              "display": "Platelets [#/volume] in Blood by Automated count"
+            }
+          ],
+          "text": "Platelets [#/volume] in Blood by Automated count"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 262,
+          "unit": "10*9/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "10*9/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 150,
+              "unit": "10*9/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "10*9/L"
+            },
+            "high": {
+              "value": 400,
+              "unit": "10*9/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "10*9/L"
+            }
+          }
+        ],
+        "id": "f2096dab-8b46-5e8d-b0c5-0dc97afbf37c",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Platelets [#/volume] in Blood by Automated count</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>262 10*9/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f875cffe-e630-5ffa-9885-413c36417add",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "1742-6",
+              "display": "Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 0.48,
+          "unit": "ukat/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "ukat/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 0.75,
+              "unit": "ukat/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "ukat/L"
+            }
+          }
+        ],
+        "id": "f875cffe-e630-5ffa-9885-413c36417add",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>0.48 ukat/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:01dbb9ed-62f6-5d77-b85c-0f0c12dbd076",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "14682-9",
+              "display": "Creatinine [Moles/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Creatinine [Moles/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 49,
+          "unit": "umol/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "umol/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 30,
+              "unit": "umol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "umol/L"
+            },
+            "high": {
+              "value": 70,
+              "unit": "umol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "umol/L"
+            }
+          }
+        ],
+        "id": "01dbb9ed-62f6-5d77-b85c-0f0c12dbd076",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Creatinine [Moles/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>49 umol/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:9cc12054-bb46-5247-bec4-97facc3c9579",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "1988-5",
+              "display": "C reactive protein [Mass/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "C reactive protein [Mass/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "effectiveDateTime": "2026-09-29",
+        "valueQuantity": {
+          "value": 1.2,
+          "unit": "mg/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "mg/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Karolinska Universitetslaboratoriet"
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 5.0,
+              "unit": "mg/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "mg/L"
+            }
+          }
+        ],
+        "id": "9cc12054-bb46-5247-bec4-97facc3c9579",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>C reactive protein [Mass/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2026-09-29</td></tr><tr><th>Result</th><td>1.2 mg/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a67d7c44-86b7-5558-9259-429d21773fe3",
+      "resource": {
+        "resourceType": "Device",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/device-eu-eps"
+          ]
+        },
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "170615005",
+              "display": "Home nebulizer"
+            }
+          ],
+          "text": "Nebulisator för hemmabruk"
+        },
+        "patient": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58"
+        },
+        "id": "a67d7c44-86b7-5558-9259-429d21773fe3",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Device</th><td>Nebulisator för hemmabruk</td></tr><tr><th>Status</th><td>active</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:82c7e53b-0665-5f35-bc0a-2bfc46f4b5f8",
+      "resource": {
+        "resourceType": "DeviceUseStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/deviceUseStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "timingPeriod": {
+          "start": "2022-01-10"
+        },
+        "device": {
+          "reference": "urn:uuid:a67d7c44-86b7-5558-9259-429d21773fe3",
+          "display": "Nebulisator för hemmabruk"
+        },
+        "note": [
+          {
+            "text": "Utlånad av barnfysioterapin. Används med natriumklorid 9 mg/ml vid luftvägsinfektion, tillsammans med slemmobilisering (PEP-mask är svår att använda på grund av munöppningen)."
+          }
+        ],
+        "id": "82c7e53b-0665-5f35-bc0a-2bfc46f4b5f8",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Device</th><td>Nebulisator för hemmabruk</td></tr><tr><th>In use since</th><td>2022-01-10</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Note</th><td>Utlånad av barnfysioterapin. Används med natriumklorid 9 mg/ml vid luftvägsinfektion, tillsammans med slemmobilisering (PEP-mask är svår att använda på grund av munöppningen).</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:0a173f3c-2636-56f3-b825-59e72cc6143e",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Luftvägsplan inför sedering, narkos och intubation",
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "period": {
+          "start": "2016-03-16"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "CommunicationRequest",
+              "status": "not-started",
+              "description": "Kontakta barnanestesiolog och ÖNH-läkare innan all sedering, narkos eller intubation - även akut. Karolinska barnanestesijour +46 8 000 00 11 kan konsulteras dygnet runt."
+            }
+          },
+          {
+            "detail": {
+              "kind": "ServiceRequest",
+              "status": "not-started",
+              "description": "Induktion med bibehållen spontanandning (sevofluran). Ingen muskelrelaxation före säkrad luftväg."
+            }
+          },
+          {
+            "detail": {
+              "kind": "ServiceRequest",
+              "status": "not-started",
+              "description": "Förstahandsval: nasal fiberoptisk intubation, kuffad tub 5,0-5,5. Videolaryngoskop med hyperangulerat blad som reserv. Larynxmask storlek 2-2,5 får sällan plats (munöppning cirka 20 mm)."
+            }
+          },
+          {
+            "detail": {
+              "kind": "ServiceRequest",
+              "status": "not-started",
+              "description": "Maskventilation är svår: tvåhandsgrepp, svalgtub och två personer från start. ÖNH-läkare närvarande med beredskap för kirurgisk luftväg (koniotomi-set framtaget)."
+            }
+          },
+          {
+            "detail": {
+              "kind": "ServiceRequest",
+              "status": "not-started",
+              "description": "Extubation vaken, med ÖNH-beredskap. Postoperativ övervakning på barnintensiven eller motsvarande."
+            }
+          }
+        ],
+        "addresses": [
+          {
+            "reference": "urn:uuid:a134bab5-63dd-509f-bbf4-afe64cab5dcd"
+          },
+          {
+            "reference": "urn:uuid:b6ed52c0-75a0-56c9-b2c8-d41610c9255d"
+          },
+          {
+            "reference": "urn:uuid:f0982205-18fd-5861-b34b-485c3977780e"
+          }
+        ],
+        "author": {
+          "reference": "urn:uuid:215e77d3-868c-5611-86fd-6c2f8a7de2f9"
+        },
+        "careTeam": [
+          {
+            "reference": "urn:uuid:a1127a6e-8646-509e-9491-cc239100ed7b"
+          }
+        ],
+        "note": [
+          {
+            "text": "Uppdaterad av barnanestesiolog efter narkosen 2024-10-14, då planen följdes och fungerade. Fullständig anestesijournal länkad under Genomgångna åtgärder."
+          }
+        ],
+        "id": "0a173f3c-2636-56f3-b825-59e72cc6143e",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Luftvägsplan inför sedering, narkos och intubation</td></tr><tr><th>Status</th><td>not-started</td></tr><tr><th>Plan active since</th><td>2016-03-16</td></tr><tr><th>Step 1</th><td>Kontakta barnanestesiolog och ÖNH-läkare innan all sedering, narkos eller intubation - även akut. Karolinska barnanestesijour +46 8 000 00 11 kan konsulteras dygnet runt.</td></tr><tr><th>Step 2</th><td>Induktion med bibehållen spontanandning (sevofluran). Ingen muskelrelaxation före säkrad luftväg.</td></tr><tr><th>Step 3</th><td>Förstahandsval: nasal fiberoptisk intubation, kuffad tub 5,0-5,5. Videolaryngoskop med hyperangulerat blad som reserv. Larynxmask storlek 2-2,5 får sällan plats (munöppning cirka 20 mm).</td></tr><tr><th>Step 4</th><td>Maskventilation är svår: tvåhandsgrepp, svalgtub och två personer från start. ÖNH-läkare närvarande med beredskap för kirurgisk luftväg (koniotomi-set framtaget).</td></tr><tr><th>Step 5</th><td>Extubation vaken, med ÖNH-beredskap. Postoperativ övervakning på barnintensiven eller motsvarande.</td></tr><tr><th>Note</th><td>Uppdaterad av barnanestesiolog efter narkosen 2024-10-14, då planen följdes och fungerade. Fullständig anestesijournal länkad under Genomgångna åtgärder.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e8bc816c-a39d-5a0b-8c7a-72fb2ea8fa4e",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Infektionsplan under immunsuppression",
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "period": {
+          "start": "2022-05-20"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Task",
+              "status": "in-progress",
+              "description": "Vid feber över 38,5 °C eller infektion som kräver antibiotika: pausa adalimumab och metotrexat. Återuppta efter kontakt med barnreumatolog."
+            }
+          },
+          {
+            "detail": {
+              "kind": "ServiceRequest",
+              "status": "in-progress",
+              "description": "Låg tröskel för inläggning, odlingar och antibiotika vid nedre luftvägsinfektion. Tidig slemmobilisering med fysioterapeut och natriumklorid-inhalation."
+            }
+          },
+          {
+            "detail": {
+              "kind": "Task",
+              "status": "in-progress",
+              "description": "Inga levande vacciner under pågående behandling. Årlig influensa- och covid-19-vaccination."
+            }
+          }
+        ],
+        "addresses": [
+          {
+            "reference": "urn:uuid:8c8f9420-68d9-5095-8b02-ce743a22fbba"
+          },
+          {
+            "reference": "urn:uuid:6bd2a50d-6c65-5331-899d-f13915c3f0ce"
+          }
+        ],
+        "author": {
+          "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4"
+        },
+        "careTeam": [
+          {
+            "reference": "urn:uuid:a1127a6e-8646-509e-9491-cc239100ed7b"
+          }
+        ],
+        "id": "e8bc816c-a39d-5a0b-8c7a-72fb2ea8fa4e",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Infektionsplan under immunsuppression</td></tr><tr><th>Status</th><td>in-progress</td></tr><tr><th>Plan active since</th><td>2022-05-20</td></tr><tr><th>Step 1</th><td>Vid feber över 38,5 °C eller infektion som kräver antibiotika: pausa adalimumab och metotrexat. Återuppta efter kontakt med barnreumatolog.</td></tr><tr><th>Step 2</th><td>Låg tröskel för inläggning, odlingar och antibiotika vid nedre luftvägsinfektion. Tidig slemmobilisering med fysioterapeut och natriumklorid-inhalation.</td></tr><tr><th>Step 3</th><td>Inga levande vacciner under pågående behandling. Årlig influensa- och covid-19-vaccination.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:c36a547e-b31e-59f0-969f-36340d9b537f",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Återbesök barnreumatologmottagningen, Karolinska - kontroll var 3:e månad med blodstatus, ALAT och kreatinin",
+        "subject": {
+          "reference": "urn:uuid:ab0b9fad-199a-5994-9978-888c8704ee58",
+          "display": "Vilhelm Erik Söderberg"
+        },
+        "period": {
+          "start": "2022-02-08"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Appointment",
+              "status": "scheduled",
+              "description": "Återbesök barnreumatologmottagningen, Karolinska - kontroll var 3:e månad med blodstatus, ALAT och kreatinin",
+              "reasonCode": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://snomed.info/sct",
+                      "code": "410801005",
+                      "display": "Juvenile idiopathic arthritis, enthesitis related arthritis"
+                    }
+                  ],
+                  "text": "Juvenil idiopatisk artrit, entesitrelaterad (juvenil spondylartrit)"
+                }
+              ],
+              "scheduledPeriod": {
+                "start": "2026-12-15"
+              }
+            }
+          }
+        ],
+        "addresses": [
+          {
+            "reference": "urn:uuid:7c8f8e62-81c8-51c9-81dc-ca553e2469d9"
+          }
+        ],
+        "author": {
+          "reference": "urn:uuid:ed2211a8-d9db-54db-a5f7-57d8cf68c1f4"
+        },
+        "careTeam": [
+          {
+            "reference": "urn:uuid:a1127a6e-8646-509e-9491-cc239100ed7b"
+          }
+        ],
+        "id": "c36a547e-b31e-59f0-969f-36340d9b537f",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Återbesök barnreumatologmottagningen, Karolinska - kontroll var 3:e månad med blodstatus, ALAT och kreatinin</td></tr><tr><th>Status</th><td>scheduled</td></tr><tr><th>Scheduled</th><td>2026-12-15</td></tr><tr><th>Plan active since</th><td>2022-02-08</td></tr></table></div>"
+        }
+      }
+    }
+  ]
+}

@@ -1,3 +1,6 @@
+import {cosReceiverIssues} from '../hospital/cos-signing-issues.js';
+import {cosRebuildContext,rebuildCosReview} from '../hospital/cos-rebuild.js';
+import { bytesHash } from '../hospital/cos-payload.js';
 import {cosRetryable} from '../hospital/cos-recovery-review.js';
 import {reconcileCosReview} from '../hospital/cos-reconcile.js';
 import { cosMappingRepairContext, remapWaitingCos } from '../hospital/cos-remap.js';
@@ -1040,11 +1043,36 @@ export class ReviewService implements OnModuleDestroy {
     return { document, clinicalForm };
   }
 
+  async submittedCosPdf(token:string,id:string,deliveryId:string,requestedDataset?:string):Promise<Buffer>{
+    if(!uuid(deliveryId))throw new BadRequestException({code:'pdf.invalid-version'});
+    return this.database.transaction('REPEATABLE READ',async manager=>{
+      const session=await this.sessions.get(token,new Date(),false,manager);
+      const scope=await reviewTargetScope(manager,reviewScope(session),id,'report');
+      const report=await this.scopedReport(manager,scope,id,this.dataset(requestedDataset,scope));
+      if(!reviewIdentifying(scope,report.documenting_user_id))throw new ForbiddenException();
+      const [artifact]=await manager.query<Array<{pdf:Buffer;pdf_sha256:string}>>(`select p.pdf,p.pdf_sha256
+        from clinical.cos_payload p join clinical.cos_delivery d on d.id=p.delivery_id and d.report_id=p.report_id
+        where d.id=$1 and d.report_id=$2 and d.organization_id=$3
+        and (d.state='confirmed' or exists(select 1 from clinical.cos_artifact_event e where e.delivery_id=d.id and e.artifact_key='note' and e.state in ('sending','accepted','verified','uncertain')))`,[deliveryId,id,scope.organizationId]);
+      if(!artifact)throw new NotFoundException();
+      if(bytesHash(artifact.pdf)!==artifact.pdf_sha256)throw new UnprocessableEntityException({code:'pdf.invalid-version'});
+      await recordPatientAccess(manager,{organizationId:scope.organizationId,actorId:scope.userId,
+        accessOrganizationId:session.organization.id,reportIds:[id],action:'review.report',careProcess:'review'});
+      return artifact.pdf;
+    });
+  }
+
   async signedPdf(token: string, id: string, snapshotId: string, sequenceText: string,
-    languageText: string, requestedDataset?: string): Promise<Buffer> {
+    languageText: string, requestedDataset?: string, timeZone?: string): Promise<Buffer> {
     if (!uuid(snapshotId) || !/^(0|[1-9][0-9]*)$/.test(sequenceText ?? "") ||
         !Number.isSafeInteger(Number(sequenceText)) || !["en", "sv"].includes(languageText))
       throw new BadRequestException({ code: "pdf.invalid-version" });
+    if (timeZone !== undefined) {
+      try {
+        if (!/^(?:UTC|[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+)$/.test(timeZone)) throw new Error();
+        new Intl.DateTimeFormat("en-US", { timeZone });
+      } catch { throw new BadRequestException({ code: "pdf.invalid-version" }); }
+    }
     return this.database.transaction("REPEATABLE READ", async (manager) => {
       const session = await this.sessions.get(token, new Date(), false, manager);
       const scope = await reviewTargetScope(manager, reviewScope(session), id, "report");
@@ -1053,13 +1081,14 @@ export class ReviewService implements OnModuleDestroy {
         throw new ForbiddenException("Identifying report access is required for PDF inspection");
       try {
         const source = await signedReportPdfSource(manager, id, snapshotId, Number(sequenceText));
+        if (timeZone) source.timeZone = timeZone;
         const pdf = await renderSignedReportPdf(source, languageText as PdfLanguage);
         for (const note of source.notes.filter((item) => item.type === "photo"))
           await recordMediaAccess(manager, { organizationId: scope.organizationId, reportId: id, noteId: note.id,
             mediaType: "photo", actorId: scope.userId, careProcess: "review", accessOrganizationId: session.organization.id });
         await recordPatientAccess(manager, { organizationId: scope.organizationId, actorId: scope.userId,
           accessOrganizationId: session.organization.id, reportIds: [id], action: "review.report",
-          careProcess: "review", resourceId: snapshotId });
+          careProcess: "review" });
         return pdf;
       } catch (error) {
         if (error instanceof SignedPdfError) throw new UnprocessableEntityException({ code: error.code, ...(error.noteId ? { noteId: error.noteId } : {}) });
@@ -1140,9 +1169,20 @@ export class ReviewService implements OnModuleDestroy {
           on outcome.option_id=item.outcome_option_id and outcome.revision=item.outcome_revision
         where item.report_id=$1 and item.organization_id=$2 order by item.first_matched_at,item.id`,
       [id, scope.organizationId]);
-      const [cos] = await manager.query<Array<{state:string;finding:string|null;paused:boolean;updated_at:Date;configuration_revision:string;mapping_revision:number}>>(`select d.state,d.finding,not app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision) paused,d.updated_at,d.configuration_revision,d.mapping_revision from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id where d.report_id=$1 and d.organization_id=$2 order by d.created_at desc,d.id desc limit 1`,[id,scope.organizationId]);
+      const [cos] = await manager.query<Array<{id:string;amendment_sequence:number;simulated:boolean;submitted_pdf:boolean;state:string;finding:string|null;paused:boolean;updated_at:Date;configuration_revision:string;mapping_revision:number}>>(`select d.id,d.amendment_sequence,(v.settings->>'mode'='simulator') simulated,
+        exists(select 1 from clinical.cos_payload p where p.delivery_id=d.id) and (d.state='confirmed' or exists(select 1 from clinical.cos_artifact_event e where e.delivery_id=d.id and e.artifact_key='note' and e.state in ('sending','accepted','verified','uncertain'))) submitted_pdf,
+        d.state,d.finding,not app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision) paused,d.updated_at,d.configuration_revision,d.mapping_revision
+        from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id
+        join app_identity.hospital_cos_version v on v.group_id=d.group_id and v.revision=d.configuration_revision
+        where d.report_id=$1 and d.organization_id=$2 order by d.created_at desc,d.id desc limit 1`,[id,scope.organizationId]);
+      const artifactRows=cos?.simulated===false&&identifying?await manager.query<Array<{key:string;kind:string;state:string;remoteId:string|null;evidence:Record<string,any>;findings?:{mappingId:string;code:string;coverage:'partial'|'note-pdf-only'}[]}>>(`select a.artifact_key key,a.kind,coalesce(e.state,'prepared') state,e.remote_id "remoteId",coalesce(e.evidence,'{}'::jsonb) evidence,
+        coalesce((select jsonb_agg(jsonb_build_object('mappingId',f->>'mappingId','code',f->>'code','coverage',f->>'coverage'))
+          from jsonb_array_elements(case when a.kind='context' then coalesce(a.resource->'findings','[]'::jsonb) else coalesce(e.evidence->'findings','[]'::jsonb) end) f),'[]'::jsonb) findings
+        from clinical.cos_artifact a left join lateral (select state,remote_id,evidence from clinical.cos_artifact_event where delivery_id=a.delivery_id and artifact_key=a.artifact_key order by id desc limit 1) e on true
+        where a.delivery_id=$1 and a.report_id=$2 order by a.artifact_key`,[cos.id,id]):[];
+      const artifacts=artifactRows.map(({evidence,...artifact})=>({...artifact,issues:cosReceiverIssues({...artifact,evidence})}));
       return { ...await this.formView(manager, id, report.form_version_id, report.catalog_release_id, values, identifying, true),
-        cosDelivery:cos?{...(reviewItems.find(item=>item.kind==='cos-delivery-failed')?{reviewItemId:reviewItems.find(item=>item.kind==='cos-delivery-failed')!.id}:{}),simulated:true,state:cos.state,finding:cos.finding,paused:cos.paused,updatedAt:cos.updated_at.toISOString(),configurationRevision:Number(cos.configuration_revision),mappingRevision:cos.mapping_revision}:null,
+        cosDelivery:cos?{...(reviewItems.find(item=>item.kind==='cos-delivery-failed')?{reviewItemId:reviewItems.find(item=>item.kind==='cos-delivery-failed')!.id}:{}),simulated:cos.simulated??true,...(identifying?{deliveryId:cos.id,amendmentSequence:cos.amendment_sequence,submittedPdf:cos.submitted_pdf,artifacts}:{}),state:cos.state,finding:cos.finding,paused:cos.paused,updatedAt:cos.updated_at.toISOString(),configurationRevision:Number(cos.configuration_revision),mappingRevision:cos.mapping_revision}:null,
         id, signedSnapshotId: report.signed_snapshot_id, signedRevision: Number(report.signed_revision),
         reportingDate: report.reporting_date, signedAt: new Date(report.signed_at).toISOString(),
         amendmentSequence: changes.at(-1)?.sequence ?? 0, identifying,
@@ -2091,6 +2131,11 @@ export class ReviewService implements OnModuleDestroy {
     await reconcileCosReview(this.database,this.sessions,token,id,command,csrfToken);
     return this.item(token,id,command.dataset);
   }
+  async rebuildCosContext(token:string,id:string,dataset:string){return cosRebuildContext(this.database,this.sessions,token,id,dataset);}
+  async rebuildCos(token:string,id:string,command:RetryCosReviewCommand,csrfToken?:string):Promise<ReviewItemDetail>{
+    await rebuildCosReview(this.database,this.sessions,token,id,command,csrfToken);
+    return this.item(token,id,command.dataset);
+  }
   async retryCos(token:string,id:string,command:RetryCosReviewCommand,csrfToken?:string):Promise<ReviewItemDetail>{
     await retryCosReview(this.database,this.sessions,token,id,command,csrfToken);
     return this.item(token,id,command.dataset);
@@ -2128,7 +2173,7 @@ export class ReviewService implements OnModuleDestroy {
       if (!item) throw new NotFoundException("Review item was not found in scope");
       if (["missing-transmission-identifiers","cos-delivery-failed","eps-export"].includes(item.kind)) {
         if (!reviewIdentifying(scope,item.documenting_user_id)) throw new ForbiddenException("Identifying report access is required");
-        if (command.status === "completed") throw new ConflictException("Transmission requirements must be resolved through the technical workflow");
+        if (item.kind === "eps-export" && command.status === "completed") throw new ConflictException("Transmission requirements must be resolved through the technical workflow");
       }
       if (item.kind === "overdue-unsigned" && command.status === "completed")
         throw new ConflictException("Signing resolves overdue draft follow-up");

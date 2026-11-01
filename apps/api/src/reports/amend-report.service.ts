@@ -1,3 +1,4 @@
+import {validateDestinationProvenance} from "../hospital/destination-provenance.js";
 import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
 import { queueSignedCos } from '../hospital/cos-queue.js';
 import { randomUUID } from "node:crypto";
@@ -214,7 +215,9 @@ export class AmendReportService {
         formFieldId: original.form_field_id as string | null, value: change.value
       });
       await this.validateDatatype(manager, change.value, metadata, report, String(original.element_id));
-      const corrected = { ...original, ...this.valueColumns(change.value), author_id: command.authorId,
+      const destinationSelection=await validateDestinationProvenance(manager,report.organization_id,String(original.element_id),change.value,change.destinationSelection);
+      const corrected = { ...original, ...this.valueColumns(change.value),
+        ...(["eDisposition.01","eDisposition.02"].includes(String(original.element_id))?{provenance_detail:{...(original.provenance_detail as Record<string,unknown>??{}),destinationSelection}}:{}), author_id: command.authorId,
         provenance_kind: "amendment", updated_at: signedAt };
       return {
         action: "replace",
@@ -243,6 +246,7 @@ export class AmendReportService {
       if (group[0]?.group_id !== target) throw new UnprocessableEntityException(`Custom element requires ${target} target`);
     }
     await this.validateDatatype(manager, occurrence.value!, metadata, report, occurrence.elementId);
+    await validateDestinationProvenance(manager,report.organization_id,occurrence.elementId,occurrence.value,occurrence.provenanceDetail?.destinationSelection);
     const corrected: Record<string, unknown> = {
       id: occurrence.id,
       report_id: report.id,
@@ -331,20 +335,6 @@ export class AmendReportService {
       }
     }
     return metadata;
-  }
-
-  private async baseDatatype(manager: EntityManager, report: ReportRow, elementId: string, formFieldId: string | null): Promise<string> {
-    const metadata = await this.elementMetadata(manager, report, {
-      id: randomUUID(), elementId, formFieldId, value: { kind: "absent" }
-    });
-    return metadata.base_datatype;
-  }
-
-  private async allowedAbsenceStates(manager: EntityManager, report: ReportRow, elementId: string, formFieldId: string | null): Promise<string[]> {
-    const metadata = await this.elementMetadata(manager, report, {
-      id: randomUUID(), elementId, formFieldId, value: { kind: "absent" }
-    });
-    return metadata.allowed_absence_states;
   }
 
   private async validateDatatype(

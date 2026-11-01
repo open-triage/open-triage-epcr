@@ -26,7 +26,7 @@ export async function scheduleDueCosRetries(database:DataSource,limit:number,now
  where s.next_due<=$1 and s.retries_used<jsonb_array_length(p.schedule_minutes) and d.state='failed' and d.finding='outage' and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,c.active_revision)
  and (r.expires_at is null or r.expires_at>clock_timestamp())
  and exists(select 1 from clinical.review_item i where i.report_id=d.report_id and i.kind='cos-delivery-failed' and i.active_match)
- and not exists(select 1 from clinical.cos_delivery b where b.report_id=d.report_id and (b.state='uncertain' or b.amendment_sequence>d.amendment_sequence or (b.amendment_sequence=d.amendment_sequence and b.created_at>d.created_at)))
+ and not exists(select 1 from clinical.cos_delivery b where b.report_id=d.report_id and (b.state='uncertain' or b.lineage_parent_id=d.id or b.amendment_sequence>d.amendment_sequence or (b.amendment_sequence=d.amendment_sequence and b.created_at>d.created_at)))
  and not exists(select 1 from clinical.amendment a where a.report_id=d.report_id and a.sequence>d.amendment_sequence)
  order by s.next_due,s.delivery_id limit $2`,[now,limit]);
  for(const candidate of candidates)await database.transaction(async manager=>{
@@ -41,7 +41,7 @@ export async function scheduleDueCosRetries(database:DataSource,limit:number,now
    where d.id=$1 and s.next_due<=$2 and s.retries_used<jsonb_array_length(p.schedule_minutes)
     and d.state='failed' and d.finding='outage' and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,c.active_revision)
     and (r.expires_at is null or r.expires_at>clock_timestamp())
-    and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and (barrier.state='uncertain' or barrier.amendment_sequence>d.amendment_sequence or (barrier.amendment_sequence=d.amendment_sequence and barrier.created_at>d.created_at)))
+    and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and (barrier.state='uncertain' or barrier.lineage_parent_id=d.id or barrier.amendment_sequence>d.amendment_sequence or (barrier.amendment_sequence=d.amendment_sequence and barrier.created_at>d.created_at)))
     and not exists(select 1 from clinical.amendment a where a.report_id=d.report_id and a.sequence>d.amendment_sequence)
     for update of d,s for share of c`,[candidate.delivery_id,now]);
   if(!due)return;

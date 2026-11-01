@@ -131,7 +131,7 @@ test("review-only rules do not participate in authoritative signing", async () =
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const signing = new SignReportService({}, {});
-  const findings = await signing.validateAuthoredRules(manager, { id: reportId, organization_id: organizationId,
+  const {findings} = await signing.evaluateAuthoredRules(manager, { id: reportId, organization_id: organizationId,
     catalog_release_id: catalogReleaseId, validation_version_id: versionId,
     validation_compiled_sha256: compiledSha256 }, "2026-09-18T12:00:00Z");
   assert.deepEqual(findings, []);

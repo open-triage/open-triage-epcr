@@ -1,4 +1,5 @@
 import { outputMappings } from './eps-output-mapping.js';
+import {epsAuthenticationHeaders} from './eps-authentication.js';
 import {clinicalMappings,clinicalOptions,importDestination} from './eps-import-mapping.js';
 import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -123,7 +124,7 @@ export class HospitalService {
   }
   /** Replaced by deterministic transport in tests; production sends only GET. */
   async connectivity(endpoint:string,secret:string):Promise<boolean> {
-    const response=await providerFetch(`${endpoint}/Organization/$me`,{headers:{'X-Team-Token':secret}},undefined,undefined,'application/fhir+json');
+    const response=await providerFetch(`${endpoint}/Organization/$me`,{headers:epsAuthenticationHeaders(secret)},undefined,undefined,'application/fhir+json');
     const body=await response.json() as {resourceType?:string;id?:string};
     return body.resourceType==='Organization'&&typeof body.id==='string'&&!!body.id;
   }

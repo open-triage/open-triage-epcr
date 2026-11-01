@@ -1,14 +1,16 @@
 {
+  "draftTitle": "Förhandsgranskning — osignerad patientjournal",
+  "draftEnd": "Slut på osignerad förhandsgranskning",
   "title": "Signerad patientjournal",
   "synthetic": "SYNTETISK — fiktiv patientjournal",
   "report": "Journal",
   "snapshot": "Signerad ögonblicksbild",
   "revision": "Journalversion",
-  "sequence": "Signerad ändringssekvens",
+  "sequence": "Tillägg",
   "signer": "Signerad av",
   "signedAt": "Signerad (UTC)",
-  "definitions": "Låst katalog / formulär",
-  "clinical": "Dokumenterad klinisk information",
+  "definitions": "Katalog / formulär",
+  "clinical": "Kliniska uppgifter",
   "ungrouped": "Journaluppgifter",
   "entry": "Post",
   "field": "Fält",
@@ -16,7 +18,7 @@
   "notes": "Textanteckningar",
   "author": "Författare",
   "capturedAt": "Registrerad",
-  "amendments": "Signerade ändringar",
+  "amendments": "Tillägg",
   "reason": "Orsak",
   "none": "Inga",
   "end": "Slut på signerad klinisk version",
@@ -43,5 +45,6 @@
   "duration": "Längd",
   "seconds": "sekunder",
   "audioNotTransferred": "Ljudinspelningen överfördes inte. Ingen transkription skapades.",
-  "audioDurationMissing": "Ljudlängden saknas. Spela in ljudet på nytt före signering."
+  "audioDurationMissing": "Ljudlängden saknas. Spela in ljudet på nytt före signering.",
+  "unlabelled": "Värde utan benämning"
 }

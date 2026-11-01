@@ -1,6 +1,7 @@
+import { resolveCosExportContext } from '../hospital/cos-export-context.js';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { hospitalFieldId, resolveHospitalIdentifier, hospitalIdentifierSchemeFinding, type ReviewIdentifierCorrectionCommand, type ReviewIdentifierCorrectionContext, type CosConnectionSettings } from '@open-triage/contracts';
+import { hospitalFieldId, resolveHospitalIdentifier, hospitalIdentifierSchemeFinding, hospitalIdentifierNamespace, type ReviewIdentifierCorrectionCommand, type ReviewIdentifierCorrectionContext, type CosConnectionSettings } from '@open-triage/contracts';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { ClinicianSessionService } from '../sessions/clinician-session.service.js';
 import { reviewScope, reviewTargetScope, reviewIdentifying } from './review-scope.js';
@@ -78,7 +79,7 @@ export async function correctReviewIdentifier(database:DataSource,sessions:Clini
   if(auth.item.status==='completed')throw new ConflictException();
   const {context,source,patient,version,mapping}=await configuration(manager,auth);
   if(commandSha256(command.context)!==commandSha256(context)||command.namespace!==patient.namespace)throw new ConflictException({code:'hospital.stale'});
-  if(hospitalIdentifierSchemeFinding(command.namespace,command.value))throw new UnprocessableEntityException({code:'review.identifier.scheme'});
+  if(hospitalIdentifierSchemeFinding(hospitalIdentifierNamespace(command.namespace,command.value),command.value))throw new UnprocessableEntityException({code:'review.identifier.scheme'});
   const fieldId=hospitalFieldId(patient.field),rows=effectiveSignedPdfOccurrences(source).filter(row=>patient.field.kind==='custom'?row.element_identity_id===fieldId:row.element_id===fieldId);
   if(rows.length>1)throw new UnprocessableEntityException({code:'review.identifier.ambiguous'});
   let change:AmendmentChange;
@@ -105,7 +106,9 @@ export async function correctReviewIdentifier(database:DataSource,sessions:Clini
   const updated=await signedReportSource(manager,auth.report.id,auth.report.snapshot_id,amendment.amendmentSequence);
   const [delivery]=await manager.query<Array<{id:string}>>('select id from clinical.cos_delivery where snapshot_id=$1 and amendment_sequence=$2 and lineage_parent_id is null',[auth.report.snapshot_id,amendment.amendmentSequence]);
   if(!delivery)throw new ConflictException({code:'hospital.stale'});
-  const requirements=cosIdentifierRequirements(updated,version.canonical_mapping,version.settings);
+  const exportContext=await resolveCosExportContext(manager,updated,version.settings);
+  const requirements=cosIdentifierRequirements(updated,version.canonical_mapping,exportContext.settings);
+  requirements.missing=[...new Set([...requirements.missing,...exportContext.missing])];
   await reconcileTransmissionReview(manager,auth.report.id,{integration:'cos',deliveryId:delivery.id,amendmentSequence:amendment.amendmentSequence,configurationRevision:String(context.configurationRevision),mappingId:mapping.id,mappingRevision:mapping.revision,mappingSha256:context.mappingSha256,...requirements});
   const result={actorId:auth.scope.userId,amendmentId:amendment.amendmentId,amendmentSequence:amendment.amendmentSequence,deliveryId:delivery.id,remaining:requirements.missing,configurationRevision:context.configurationRevision,mappingSha256:context.mappingSha256};
   await manager.query(`insert into clinical.command_receipt(idempotency_key,report_id,command_type,request_sha256,response_status,response_body) values($1,$2,'review-correct-identifier',$3,201,$4::jsonb)`,[command.commandId,auth.report.id,digest,JSON.stringify(result)]);

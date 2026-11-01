@@ -46,7 +46,28 @@ export class PersistentCosSimulator implements CosReceiver {
    const changed=mutationRows(await manager.query(`insert into clinical.cos_simulator_current(report_id,delivery_id,amendment_sequence,contact,contact_sha256)
     values($1,$2,$3,$4::jsonb,$5) on conflict(report_id) do update set delivery_id=excluded.delivery_id,amendment_sequence=excluded.amendment_sequence,
      contact=excluded.contact,contact_sha256=excluded.contact_sha256,updated_at=clock_timestamp()
-    where cos_simulator_current.amendment_sequence<excluded.amendment_sequence or cos_simulator_current.delivery_id=excluded.delivery_id returning report_id`,[reportId,deliveryId,payload.amendmentSequence,JSON.stringify(payload.contact),payload.contactSha256]));
+    where cos_simulator_current.amendment_sequence<excluded.amendment_sequence or cos_simulator_current.delivery_id=excluded.delivery_id
+     or (cos_simulator_current.amendment_sequence=0 and excluded.amendment_sequence=0 and exists(
+      select 1 from clinical.cos_delivery incoming join clinical.signing_submission next on next.id=incoming.signing_submission_id
+      join clinical.cos_delivery prior on prior.id=cos_simulator_current.delivery_id and prior.report_id=incoming.report_id
+      join clinical.signing_submission previous on previous.id=prior.signing_submission_id
+      where incoming.id=$2 and incoming.report_id=$1 and next.revision>previous.revision and prior.state='confirmed'))
+     or (cos_simulator_current.amendment_sequence=excluded.amendment_sequence and exists (
+      with recursive ancestors as (
+       select parent.id,parent.lineage_parent_id from clinical.cos_delivery child
+       join clinical.cos_delivery parent on parent.id=child.lineage_parent_id
+       where child.id=$2 and child.report_id=$1 and parent.report_id=$1 and parent.amendment_sequence=$3
+        and parent.state in ('confirmed','superseded')
+        and exists(select 1 from clinical.cos_delivery_event e where e.delivery_id=child.id and e.actor_id is not null
+         and e.evidence->>'action'='rebuild' and e.evidence->>'parentDeliveryId'=parent.id::text)
+       union
+       select parent.id,parent.lineage_parent_id from ancestors child
+       join clinical.cos_delivery parent on parent.id=child.lineage_parent_id
+       where parent.report_id=$1 and parent.amendment_sequence=$3 and parent.state in ('confirmed','superseded')
+        and exists(select 1 from clinical.cos_delivery_event e where e.delivery_id=child.id and e.actor_id is not null
+         and e.evidence->>'action'='rebuild' and e.evidence->>'parentDeliveryId'=parent.id::text)
+      ) select 1 from ancestors where id=cos_simulator_current.delivery_id
+     )) returning report_id`,[reportId,deliveryId,payload.amendmentSequence,JSON.stringify(payload.contact),payload.contactSha256]));
    if(!changed.length)throw new CosRejected('identityConflict');
    return {kind:'simulator-stored',contactKey:contact.contact_key,receiptId:stored.receipt_id,payloadSha256:stored.payload_sha256,pdfSha256:stored.pdf_sha256};
   });

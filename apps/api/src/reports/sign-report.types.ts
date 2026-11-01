@@ -2,6 +2,8 @@ export interface SignReportCommand {
   commandId: string;
   expectedRevision: number;
   exportEps?: boolean;
+  exportCos?: boolean;
+  skipCosReason?: string;
   signerId: string;
   attestation: Record<string, unknown>;
   warningAcknowledgements?: Record<string, WarningAcknowledgement | true>;
@@ -77,3 +79,18 @@ export interface SignedReportResult {
   qualityFindings: QualityFinding[];
   derivedValues: DerivedValue[];
 }
+
+export interface PendingSignReportResult {
+  id: string;
+  status: 'awaiting-cos';
+  submissionId: string;
+  revision: number;
+  deliveryId: string;
+  deliveryState: string;
+  findings?: string[];
+  issues?: import('@open-triage/contracts').CosSigningIssue[];
+  context?: {unitName?:string;callSign?:string;authorName?:string;configurationRevision?:string;mappingId?:string;mappingRevision?:number};
+  finding: string | null;
+}
+export type PendingEpsSignReportResult = {id:string;status:'awaiting-eps';submissionId:string;revision:number;epsDelivery:NonNullable<Awaited<ReturnType<typeof import('../hospital/eps-delivery-summary.js').epsDeliverySummary>>>};
+export type SignReportResult = SignedReportResult | PendingSignReportResult | PendingEpsSignReportResult;

@@ -1,3 +1,4 @@
+import {validateDestinationProvenance} from "../hospital/destination-provenance.js";
 import { recordPatientAccess } from "./patient-access-audit.js";
 import {
   ConflictException,
@@ -16,7 +17,7 @@ import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
 import { assertProductionJobAccess, productionJobAccess } from "../calls/production-job-access.js";
-import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
+import { clinicalDocumentConfiguration } from "../forms/clinical-form-configuration.js";
 import type {
   CreateDraftReportCommand,
   DraftGroupMutation,
@@ -935,10 +936,12 @@ export class DraftReportService {
       const document = await encounterDocument(manager, reportId);
       const notes = await reportTextNotes(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
-      const clinicalForm = await clinicalFormConfiguration(
-        manager, String(details.formVersionId), String(details.catalogReleaseId),
+      const clinicalForm = await clinicalDocumentConfiguration(
+        manager, session.organization.id, String(details.formVersionId), String(details.catalogReleaseId),
         details.validationVersionId, details.validationCompiledSha256
       );
+
+
       const calls = await manager.query<Array<{
         call_number: string | null;
         dispatched_at: Date | string | null;
@@ -1351,6 +1354,7 @@ export class DraftReportService {
 
     const upserts = occurrences.filter((occurrence) => !occurrence.tombstone);
     if (!upserts.length) return;
+    for(const occurrence of upserts)await validateDestinationProvenance(manager,report.organization_id,occurrence.elementId,occurrence.value,occurrence.provenanceDetail?.destinationSelection);
     const rows = upserts.map((occurrence) => {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
@@ -1412,7 +1416,7 @@ export class DraftReportService {
         provenance_kind: occurrence.provenanceKind === "demo" ? "demo" : "clinician",
         provenance_detail: occurrence.provenanceKind === "demo"
           ? { ...occurrence.provenanceDetail, ownershipAction: "demo-populate", clinicianValue: occurrence.value }
-          : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value },
+          : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value, destinationSelection: occurrence.provenanceDetail?.destinationSelection ?? null },
         documented_time: occurrence.documentedTime ?? null,
         documented_utc_offset_minutes: occurrence.documentedUtcOffsetMinutes ?? null,
         documented_precision: occurrence.documentedPrecision ?? null

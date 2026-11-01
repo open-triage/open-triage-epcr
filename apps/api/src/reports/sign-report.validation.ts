@@ -58,6 +58,9 @@ export function validateSignReportCommand(value: unknown): SignReportCommand {
     }
   }
   if(value.exportEps!==undefined&&typeof value.exportEps!=='boolean')findings.push('exportEps must be a boolean');
+  if(value.exportCos!==undefined&&typeof value.exportCos!=='boolean')findings.push('exportCos must be a boolean');
+  if (value.skipCosReason !== undefined && (typeof value.skipCosReason !== 'string' ||
+      !value.skipCosReason.trim() || value.skipCosReason.length > 1000)) findings.push('skipCosReason must contain 1–1000 characters');
   optionalString(value.actorPersona, "actorPersona", findings);
   optionalString(value.sessionId, "sessionId", findings);
   optionalString(value.deviceId, "deviceId", findings);

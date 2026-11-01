@@ -47,14 +47,28 @@ function verifiedAmendment(reportId: string, item: AmendmentRow): SignedPdfAmend
  * Photo bytes are deliberately loaded separately after eligibility and requirement checks.
  */
 export async function signedReportSource(manager: EntityManager, reportId: string, snapshotId: string,
-  sequence: number): Promise<SignedReportClinicalSource> {
+  sequence: number, signingSubmission = false): Promise<SignedReportClinicalSource> {
   const [snapshot] = await manager.query<Array<{ id: string; signed_revision: number; signer_id: string;
     signed_at: Date | string; canonical_sha256: string; integrity_manifest: Manifest;
-    catalog_release_id: string; form_version_id: string; synthetic: boolean }>>(`
+    catalog_release_id: string; form_version_id: string; synthetic: boolean; time_zone: string }>>(`
+${signingSubmission ? `
+    select s.id,(s.prepared->'result'->>'signedRevision')::bigint signed_revision,
+      s.prepared->'result'->>'signerId' signer_id,s.prepared->'result'->>'signedAt' signed_at,
+      s.prepared->'result'->>'canonicalSha256' canonical_sha256,s.prepared->'manifest' integrity_manifest,
+      (s.prepared->'result'->>'catalogReleaseId')::uuid catalog_release_id,(s.prepared->'result'->>'formVersionId')::uuid form_version_id,
+      r.synthetic,coalesce(settings.time_zone,organization.deployment_timezone) time_zone
+    from clinical.signing_submission s join clinical.report r on r.id=s.report_id
+    join app_identity.organization organization on organization.id=r.organization_id
+    left join app_identity.agency_settings settings on settings.organization_id=r.organization_id
+    where s.report_id=$1 and s.id=$2 and r.status='draft' and r.revision=s.revision
+    ` : `
     select s.id,s.signed_revision,s.signer_id,s.signed_at,s.canonical_sha256,s.integrity_manifest,
-      s.catalog_release_id,s.form_version_id,r.synthetic
+      s.catalog_release_id,s.form_version_id,r.synthetic,
+      coalesce(settings.time_zone, organization.deployment_timezone) as time_zone
     from clinical.signed_snapshot s join clinical.report r on r.id=s.report_id
-    where s.report_id=$1 and s.id=$2 and r.status='signed'`, [reportId, snapshotId]);
+    join app_identity.organization organization on organization.id=r.organization_id
+    left join app_identity.agency_settings settings on settings.organization_id=r.organization_id
+    where s.report_id=$1 and s.id=$2 and r.status='signed'`}`, [reportId, snapshotId]);
   if (!snapshot) throw new NotFoundException("Signed report version was not found");
   const manifest = snapshot.integrity_manifest;
   if (!manifest || manifest.schemaVersion !== 1 || manifest.report?.id !== reportId ||
@@ -83,20 +97,26 @@ export async function signedReportSource(manager: EntityManager, reportId: strin
   if (amendments.length !== sequence) throw new NotFoundException("Signed amendment sequence was not found");
   const configuration = await clinicalFormConfiguration(manager, snapshot.form_version_id, snapshot.catalog_release_id);
   const source: SignedReportClinicalSource = { reportId, snapshotId, revision: Number(snapshot.signed_revision),
-    amendmentSequence: sequence, synthetic: snapshot.synthetic, signerId: snapshot.signer_id,
+    amendmentSequence: sequence, synthetic: snapshot.synthetic, timeZone: snapshot.time_zone, signerId: snapshot.signer_id,
     ...(manifest.report.signer?.id === snapshot.signer_id ? { signerDisplayName: manifest.report.signer.displayName } : {}),
     signedAt: new Date(snapshot.signed_at).toISOString(), canonicalSha256: snapshot.canonical_sha256,
     catalogReleaseId: snapshot.catalog_release_id, formVersionId: snapshot.form_version_id,
     groups: manifest.groups, occurrences: manifest.occurrences, notes: manifest.notes,
     amendments: amendments.map((item) => verifiedAmendment(reportId, item)), configuration };
-  const allValues = [...manifest.occurrences, ...effectiveSignedPdfOccurrences(source),
+  return completePdfDefinitions(manager, source);
+}
+
+/** Shared sealed definitions for signed exports and explicitly unsigned draft previews. */
+export async function completePdfDefinitions(manager: EntityManager, source: SignedReportClinicalSource): Promise<SignedReportClinicalSource> {
+  const configuration = source.configuration;
+  const allValues = [...source.occurrences, ...effectiveSignedPdfOccurrences(source),
     ...source.amendments.flatMap((item) => item.changes.flatMap((change) => [change.original, change.corrected]
       .filter((value): value is SignedOccurrence => value !== null)))];
   // Fields omitted from the current form layout still belong in the signed clinical artifact.
   const standardIds = [...new Set(allValues.filter((value) => /^e[A-Z]/.test(value.element_id)).map((value) => value.element_id))];
   configuration.catalogFields = { ...configuration.catalogFields,
-    ...await catalogFieldsConfiguration(manager, snapshot.catalog_release_id, standardIds, true) };
-  const custom = await releaseCustomDefinitions(manager, snapshot.catalog_release_id);
+    ...await catalogFieldsConfiguration(manager, source.catalogReleaseId, standardIds, true) };
+  const custom = await releaseCustomDefinitions(manager, source.catalogReleaseId);
   const customById = new Map((custom ?? []).map((item) => [item.id, item]));
   // Keep empty configured custom destinations available using sealed release evidence only.
   configuration.customFields = Object.fromEntries(configuration.definition.sections.flatMap(section=>section.fields)

@@ -5,6 +5,13 @@ export type PatientAccessAction = "eps.read" | "eps.import" | "eps.export" | "ep
   | "report.list" | "assignment.open" | "review.report" | "review.overdue"
   | "photo.read" | "audio.read" | "audit.clinical-values";
 
+type ResourceAccessAction = "photo.read" | "audio.read" | "eps.export" | "eps.submit";
+
+// Keep resource presence aligned with patient_access_resource_shape in PostgreSQL.
+type PatientAccessResource =
+  | { action: ResourceAccessAction; resourceId: string }
+  | { action: Exclude<PatientAccessAction, ResourceAccessAction>; resourceId?: never };
+
 /** Call after authorization, in the transaction preparing the response. Never pass payloads or tokens. */
 export async function recordPatientAccess(
   manager: Pick<EntityManager, "query">,
@@ -13,11 +20,9 @@ export async function recordPatientAccess(
     actorId: string;
     accessOrganizationId?: string;
     reportIds: readonly string[];
-    action: PatientAccessAction;
     careProcess: "documentation" | "review" | "audit";
-    resourceId?: string;
     integrationProvenance?: { configurationRevision: number; mappingId: string; mappingRevision: number; mappingSha256: string; decision?: string; importId?: string };
-  },
+  } & PatientAccessResource,
 ): Promise<void> {
   const reportIds = [...new Set(input.reportIds)];
   if (!reportIds.length) return;
