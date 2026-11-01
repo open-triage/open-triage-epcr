@@ -38,3 +38,13 @@ test("deployment validation builds, starts, and fetches the exported application
   assert.match(deploymentSpec, /request\.get\("\/"\)/);
   assert.match(deploymentSpec, /expect\(response\.status\(\)\)\.toBe\(200\)/);
 });
+
+test("every browser test entrypoint builds its API artifact fixtures on clean checkouts", async () => {
+  const { scripts } = JSON.parse(await readFile(packagePath, "utf8"));
+  const browserCommands = Object.keys(scripts).filter((name) => scripts[name].includes("playwright test"));
+  assert.ok(browserCommands.length > 0);
+  for (const command of browserCommands) {
+    assert.equal(scripts[`pre${command}`], "npm run build -w @open-triage/api",
+      `${command} must prepare renderer and other API-backed fixtures before Playwright loads tests`);
+  }
+});

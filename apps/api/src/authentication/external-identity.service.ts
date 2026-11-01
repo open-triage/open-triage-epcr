@@ -1,3 +1,4 @@
+import { captureHsa, hsaCandidate, type HsaCandidate } from "./hsa-capture.js";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
@@ -10,11 +11,11 @@ import { lockAssignedRoles } from "../admin/role-assignment-locks.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type { OidcDraft } from "./oidc-draft.service.js";
 
-export type ValidatedExternalIdentity = { issuer: string; subject: string; displayName: string | null; email: string | null; username?: string | null };
-type RequestRow = { id:string;group_id:string;provider_id:string;first_revision:string;issuer:string;subject:string;display_name:string|null;email:string|null;username_hint:string|null;created_at:Date;linked_user_id:string|null;linked_at:Date|null;review_revision?:string;denied_at?:Date|null };
+export type ValidatedExternalIdentity = { issuer: string; subject: string; displayName: string | null; email: string | null; username?: string | null; hsa?: HsaCandidate };
+type RequestRow = { hsa_evidence?: {candidate:HsaCandidate;source:"active"|"draft";providerRevision:number;providerId:string;issuer:string;subject:string;capturedAt:string}|null; id:string;group_id:string;provider_id:string;first_revision:string;issuer:string;subject:string;display_name:string|null;email:string|null;username_hint:string|null;created_at:Date;linked_user_id:string|null;linked_at:Date|null;review_revision?:string;denied_at?:Date|null };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const conflict = () => new ConflictException({code:"admin.externalIdentityConflict"});
-function view(row:RequestRow){return {id:row.id,providerId:row.provider_id,revision:Number(row.first_revision),reviewRevision:Number(row.review_revision??1),issuer:row.issuer,subject:row.subject,
+function view(row:RequestRow){return {hsaEvidence:row.hsa_evidence??null,id:row.id,providerId:row.provider_id,revision:Number(row.first_revision),reviewRevision:Number(row.review_revision??1),issuer:row.issuer,subject:row.subject,
   displayName:row.display_name,email:row.email,username:row.username_hint??null,createdAt:row.created_at.toISOString(),status:row.linked_user_id?"linked":row.denied_at?"denied":"pending",linkedUserId:row.linked_user_id,linkedAt:row.linked_at?.toISOString()??null,deniedAt:row.denied_at?.toISOString()??null};}
 function assertReview(row:RequestRow,expected:unknown){
   if(expected===undefined){if(row.denied_at)throw conflict();return;}
@@ -25,7 +26,7 @@ export function externalIdentity(claims:Record<string,unknown>,mappings:OidcDraf
   const issuer=claims.iss,subject=claims.sub;
   if(typeof issuer!=="string"||!issuer||Buffer.byteLength(issuer)>2048||typeof subject!=="string"||!subject||Buffer.byteLength(subject)>255||/[\u0000-\u001f\u007f]/.test(subject))throw new Error("Invalid external identity");
   const hint=(key:string,limit:number)=>{const value=Object.hasOwn(claims,key)?claims[key]:null;return typeof value==="string"&&!/[\u0000-\u001f\u007f]/.test(value)&&value.length<=limit?value:null;};
-  return {issuer,subject,displayName:hint(mappings.displayName,256),email:hint(mappings.email,320),username:hint(mappings.username??"preferred_username",256)||null};
+  return {...(mappings.hsaId?{hsa:hsaCandidate(claims,mappings.hsaId,mappings.hsaAuthoritative)}:{}),issuer,subject,displayName:hint(mappings.displayName,256),email:hint(mappings.email,320),username:hint(mappings.username??"preferred_username",256)||null};
 }
 @Injectable()
 export class ExternalIdentityService {
@@ -46,6 +47,7 @@ export class ExternalIdentityService {
     const row=rows[0]??(await manager.query<RequestRow[]>(`select * from app_identity.regional_identity_request
       where group_id=$1 and provider_id=$2 and issuer=$3 and subject=$4`,[scope.groupId,scope.providerId,identity.issuer,identity.subject]))[0];
     if(!row)throw conflict();
+    if(identity.hsa)await manager.query(`update app_identity.regional_identity_request set hsa_evidence=$2::jsonb where id=$1`,[row.id,JSON.stringify({candidate:identity.hsa,source:"draft",providerRevision:scope.revision,providerId:scope.providerId,issuer:identity.issuer,subject:identity.subject,capturedAt:new Date().toISOString()})]);
     return {requestId:row.id,status:view(row).status,ordinaryAccess:false};
   }
   private async authority(token:string,write:boolean,manager:EntityManager=this.database.manager){
@@ -98,6 +100,8 @@ export class ExternalIdentityService {
       const userId=randomUUID();
       await manager.query("insert into app_identity.app_user(id,organization_id,display_name) values($1,$2,$3)",[userId,groupId,profile.displayName]);
       await this.roles.replaceInTransaction(manager,token,userId,assignments);
+      if(command.providerSource==='active'&&request.hsa_evidence?.source==='active'&&request.hsa_evidence.providerRevision===Number(provider.revision)) await captureHsa(manager,userId,actor.organization.id,request.hsa_evidence.candidate,request.hsa_evidence,actor.user.id);
+
       const final=await this.authority(token,true,manager);
       if(final.groupId!==groupId||final.actor.user.id!==actor.user.id||final.actor.organization.id!==actor.organization.id)throw new ForbiddenException({code:"admin.externalIdentityForbidden"});
       const [linked]=mutationRows<RequestRow>(await manager.query(`update app_identity.regional_identity_request set linked_user_id=$2,linked_by=$3,linked_at=now(),denied_at=null,denied_by=null,denial_note=null,review_revision=review_revision+1 where id=$1 and linked_user_id is null returning *`,[requestId,userId,actor.user.id]));

@@ -10,8 +10,8 @@ export function useRegionalFormat(): RegionalFormat { return useContext(Regional
 
 export function formatClinicalDate(value: string | Date, region: RegionalFormat, options?: Intl.DateTimeFormatOptions, zone: string | null = null): string {
   const date = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat(region ?? "en-US", options ?? {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  return new Intl.DateTimeFormat(region ?? "en-US", {
+    ...(options ?? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
     ...(zone ? { timeZone: zone } : {}),
   }).format(date);
 }

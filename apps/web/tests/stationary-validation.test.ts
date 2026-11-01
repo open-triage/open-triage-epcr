@@ -1,3 +1,4 @@
+import { applyDestinationSelection } from "../app/destination-selection";
 import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
@@ -439,4 +440,59 @@ test("tampered cached live rules produce an integrity error instead of silently 
       bundle: { ...bundle, catalogReleaseId: "tampered" } } };
   const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm, evaluationTimestamp);
   assert.ok(findings.some(({ id, title }) => id.includes("validation.integrity") && title === "Rule engine"));
+});
+
+test("coded validation normalizes absent namespaces without treating them as wildcards", () => {
+  const document = structuredClone(syntheticEncounter.document);
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
+  const form: ClinicalFormConfiguration = {
+    definition: { schemaVersion: 1, sections: [{ key: "patient", fields: [
+      { key: "sex", source: { kind: "nemsis", elementId: "ePatient.25" } },
+    ] }] },
+    catalogFields: { "ePatient.25": { agencyRequired: false, minOccurs: 0, maxOccurs: 1,
+      nillable: true, supportsNotValues: true, supportsPertinentNegatives: true,
+      codeChoices: [{ code: "9906001", codeSystem: "", label: "Female" }] } },
+  };
+  for (const system of [undefined, "", "unrelated-system"]) {
+    Object.assign(patient, { elements: [{ id: "ePatient.25", values: [{ occurrenceId: "sex", kind: "coded", code: "9906001", ...(system === undefined ? {} : { system }) }] }] });
+    const invalid = validateStationaryRecord(document, form, evaluationTimestamp)
+      .filter(item => item.id.includes("value.code"));
+    assert.equal(invalid.length, system === "unrelated-system" ? 1 : 0);
+  }
+  form.catalogFields["ePatient.25"]!.codeChoices![0]!.codeSystem = "explicit-system";
+  for (const system of [undefined, "", "unrelated-system", "explicit-system"]) {
+    Object.assign(patient, { elements: [{ id: "ePatient.25", values: [{ occurrenceId: "sex", kind: "coded", code: "9906001", ...(system === undefined ? {} : { system }) }] }] });
+    assert.equal(validateStationaryRecord(document, form, evaluationTimestamp)
+      .filter(item => item.id.includes("value.code")).length, system === "explicit-system" ? 0 : 1);
+  }
+});
+
+test("COS requires a destination or explicit None independently of authored validation", () => {
+ const groupId = "eDisposition.DestinationGroup";
+ const initial = {...syntheticEncounter.document, groups: syntheticEncounter.document.groups.filter(group => group.id !== groupId)};
+ const field = {agencyRequired:false, minOccurs:0, maxOccurs:1, nillable:true, supportsNotValues:true, supportsPertinentNegatives:false, choiceOrder:[]};
+ const clinicalForm: ClinicalFormConfiguration = {definition:{schemaVersion:1, sections:[{key:"destination", fields:[
+  {key:"name",source:{kind:"nemsis",elementId:"eDisposition.01"}},
+  {key:"code",source:{kind:"nemsis",elementId:"eDisposition.02"}},
+ ]}]}, catalogFields:{
+  "eDisposition.01":{...field,recommendations:{source:"destination-directory",items:[]}},
+  "eDisposition.02":field,
+ }};
+ const required = (doc: typeof syntheticEncounter.document, form = clinicalForm, language = "en") =>
+  validateStationaryRecord(doc, form, evaluationTimestamp, language).filter(finding => finding.id.includes("destination.required"));
+ assert.equal(required(initial).length,1);
+ assert.equal(required(initial)[0]!.severity,"error");
+ assert.equal(required(initial,clinicalForm,"sv")[0]!.message,"Välj en destination eller Ingen.");
+ assert.equal(required(initial,{...clinicalForm,catalogFields:{}}).length,0);
+ const none = applyDestinationSelection(initial, "none", groupId);
+ assert.equal(required(none).length,0);
+ assert.equal(validateStationaryRecord(none,clinicalForm,evaluationTimestamp).filter(finding => finding.id.includes("value.nv")).length,0,
+  "built-in None remains available even when authored choice policy excludes NOT values");
+ assert.equal(required(applyDestinationSelection(none,undefined,groupId)).length,1);
+ const selected = applyDestinationSelection(initial,{id:"destination",groupId:"group",revision:1,displayName:"Hospital",localCode:"ED",hsaId:null,active:true},groupId);
+ assert.equal(required(selected).length,0);
+ const incomplete = {...selected, groups:selected.groups.map(group => group.id !== groupId ? group : {...group,instances:group.instances.map(instance => ({
+  ...instance,elements:instance.elements.filter(element => element.id !== "eDisposition.02"),
+ }))})};
+ assert.equal(required(incomplete).length,1);
 });

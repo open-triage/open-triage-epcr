@@ -30,7 +30,7 @@ integration('agency unit lifecycle preserves IDs, report ownership/configuration
     }});
     const created=await service.save('token',null,{name:'Operational identity',callSign:'UNIT-TEST',active:true});
     assert.equal(created.organizationId,organizationId);assert.equal(created.revision,1);
-    await assert.rejects(service.save('token',null,{name:'Duplicate',callSign:'UNIT-TEST',active:true}),/already assigned/);
+    await assert.rejects(service.save('token',null,{name:'Duplicate',callSign:'UNIT-TEST',active:true}),error=>error.getResponse().code==="admin.unitIdentifierDuplicate");
     scope=otherAgency;
     const other=await service.save('token',null,{name:'Other agency',callSign:'UNIT-TEST',active:true});
     assert.notEqual(other.id,created.id);
@@ -57,7 +57,7 @@ integration('agency unit lifecycle preserves IDs, report ownership/configuration
     const defaultsBefore=await manager.query(`select * from app_identity.active_configuration_bundle where organization_id=$1`,[organizationId]);
     await service.save('token',created.id,{name:renamed.name,callSign:renamed.callSign,active:false,expectedRevision:2});
     assert.equal((await route({...template,revision:4,messageId:randomUUID()})).status,'quarantined');
-    await assert.rejects(service.save('token',null,{name:'Inactive conflict',callSign:'RENAMED-UNIT',active:true}),/already assigned/);
+    await assert.rejects(service.save('token',null,{name:'Inactive conflict',callSign:'RENAMED-UNIT',active:true}),error=>error.getResponse().code==="admin.unitIdentifierDuplicate");
     await assert.rejects(service.save('token',created.id,{name:'Stale edit',callSign:'NEW',active:true,expectedRevision:2}),/changed/);
     const [historicalUnit]=await manager.query(`select id,name,call_sign,revision,default_form_id
       from app_identity.operational_unit where organization_id=$1 and id<>$2 limit 1`,[organizationId,created.id]);

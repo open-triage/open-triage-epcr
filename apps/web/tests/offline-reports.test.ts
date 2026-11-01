@@ -443,3 +443,30 @@ test("reconnection preserves pinned translations, integrity data, canonical edit
   assert.throws(() => cacheOpenedReport(storage, session, { ...pinned, report: {
     ...pinned.report, formVersionId: "new-form-version" } }, "CALL-51"), /pinned clinical configuration/);
 });
+
+test("reopening refreshes destination recommendations without replacing pinned fields or queued edits", () => {
+  const storage = memoryStorage();
+  const field = { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: false, name: "Pinned destination" };
+  const config = { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: { "eDisposition.01": field } };
+  const initial = { ...opened, report: { ...opened.report, clinicalForm: config } };
+  cacheOpenedReport(storage, session, initial, "CALL-51");
+  const command = { commandId: "pending-destination", deviceId: "test-device", clientTime: "2026-10-29T12:00:00Z", expectedRevision: opened.report.revision,
+    authorId: session.user.id, groups: [], occurrences: [] };
+  queueDraftChange(storage, opened.report.id, command);
+  const entry = { id: "destination", groupId: "group", revision: 1, displayName: "Hospital", localCode: "H", hsaId: "HSA", active: true };
+  for (const items of [[entry], [{ ...entry, revision: 2, displayName: "Renamed hospital" }], []]) {
+    const incoming = { ...config, catalogFields: { "eDisposition.01": { ...field, name: "Changed label",
+      recommendations: { source: "destination-directory" as const, items } } } };
+    const result = cacheOpenedReport(storage, session, { ...initial, report: { ...initial.report, clinicalForm: incoming } }, "CALL-51");
+    assert.equal(result.report.clinicalForm!.catalogFields["eDisposition.01"]!.name, field.name);
+    assert.deepEqual(result.report.clinicalForm!.catalogFields["eDisposition.01"]!.recommendations!.items, items);
+    assert.deepEqual(cachedReopenResponse(storage, session.user.id, opened.report.id)!.report.clinicalForm, result.report.clinicalForm);
+    assert.equal(nextDraftChange(storage, opened.report.id)!.command.commandId, command.commandId);
+  }
+  const withoutFreshConfig = cacheOpenedReport(storage, session, opened, "CALL-51");
+  assert.deepEqual(withoutFreshConfig.report.clinicalForm!.catalogFields["eDisposition.01"]!.recommendations!.items, []);
+  const removed = cacheOpenedReport(storage, session, initial, "CALL-51");
+  assert.equal(removed.report.clinicalForm!.catalogFields["eDisposition.01"]!.recommendations, undefined);
+  assert.equal(config.catalogFields["eDisposition.01"].name, "Pinned destination");
+});

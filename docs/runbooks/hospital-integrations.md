@@ -1,0 +1,401 @@
+# Hospital integration configuration
+
+Hospital integrations is available in Administration to users with `settings:read`.
+Saving, importing, testing, activating and deactivating require `settings:write`
+and the existing live personal-session authority. Configuration belongs to the
+selected agency's root group; it grants no patient or report access.
+
+## Migration baseline
+
+The undeployed feature migrations are consolidated into
+`20261019104900_hospital_integration.sql`. Migrations already on main remain
+unchanged. Apply the normal migration runner when upgrading from main or
+installing a fresh database. Development databases that applied the earlier
+feature migrations need to be recreated using the local development runbook;
+the runner deliberately does not accept the obsolete checksums or replay them.
+
+## EPS setup
+
+Publish the root agency's form and catalog first. Select EPS, configure the
+hackathon FHIR endpoint, identifier namespace and explicit equivalent namespace
+aliases, and choose a compatible standard or custom text field. The initial
+selection is `ePatient.01`. Enter the team credential and save a draft. The only
+initial transport is `https://hackathon2026.vadimperetok.in/fhir`, using the
+`Authorization: Bearer <company-token>` header. The public hackathon service is for fictional patients.
+
+For the fictional hackathon examples, Andrea (`200207252388`) and Arne
+(`194302096997`) use `http://electronichealth.se/identifier/personnummer`.
+Ville (`201304822172`) uses `http://electronichealth.se/identifier/samordningsnummer`.
+To look up all three from the demo's single `ePatient.01` field, configure the
+personnummer namespace and explicitly add the samordningsnummer namespace under
+**Known namespace aliases**. Save, test, and activate the new revision. This is
+an explicit demo matching configuration, not a general assertion that these two
+identifier schemes are interchangeable. Matching still requires the exact value
+and a configured namespace; a valid number alone is insufficient.
+
+Test read-only connection issues `GET /Organization/$me` with the protected
+credential. It does not call `$validate`, send a patient document or prove document
+conformance. Activate the exact successfully tested revision. Editing preserves
+the active revision. Deactivation clears the active pointer and preserves all
+versions and history. COS has its separate configuration and simulator below.
+
+Credentials use the existing installation-protected, group-owned credential key
+conventions. The panel never returns a saved credential. No EPS-specific deployment
+secret or CLI action is required for normal configuration.
+
+## Canonical mapping files
+
+Each save writes an `opentriage-definition` package of kind `hospital-mapping` to
+`OPENTRIAGE_DEFINITIONS_ROOT/hospital-mapping/local/<group-organization-id>/`, using the existing
+canonical package atomic-file writer. The default root is `defines`. A failed
+file write prevents publication of the database draft pointer. A transaction
+failure after writing may leave a valid discoverable file, but never activates it.
+The directory must use the installation's ordinary persistent configuration storage.
+The group organization UUID is the result of `app_identity.organization_group`
+for the selected agency. It can differ from a child agency's UUID; it is not a
+legacy identifier. All local definition exports require an organization scope;
+forms, catalogs and validation use the selected agency UUID, while hospital
+mappings use the group owner. See [the definitions layout](../../defines/README.md).
+
+Find saved mapping files lists compatible files for the current group and shared
+bundled templates. Export downloads the same canonical content. Upload or import
+a saved file creates a new local configuration draft and requires a new test.
+Its mapping identity, mapping revision and SHA-256 remain intact. Local connection
+revisions are distinct from portable mapping revisions. Editing a restored mapping
+allocates a new mapping revision beyond every retained revision of that identity.
+
+The schema-versioned mapping definition contains identity, revision, author and
+time, the pinned EPS/FHIR profile dependency, and patient-field/namespace mapping.
+The package contains the pinned catalog fingerprint and content hash. It contains
+no credential, clinical content or local destination/staff assignment. Unsupported
+schema/profile/dependency combinations and unknown properties fail closed.
+Version 1 also supports optional `clinicalMappings` for selected EPS allergies and
+conditions. Packages without that member remain valid identifier-only packages. Runtime identifier settings are rebuilt and validated from the
+canonical package, never independently editable database projections.
+
+## Identifier contract
+
+`resolveHospitalIdentifier` takes the authorized draft or effective signed clinical
+version and that version's pinned form/catalog. Missing, unavailable, incompatible
+and ambiguous values are findings. It does not fall back to a different field,
+coerce a number, remove leading zeroes, choose one repeated occurrence or match a
+patient name. Custom field UUIDs resolve through pinned namespace/slug definitions.
+Callers remain responsible for ordinary report scope, dataset and mutation checks.
+
+## Verification
+
+`hospital-mapping.test.mjs` exercises identifier resolution and portable schema
+rejection. `hospital-postgres.integration.test.mjs` runs the panel with real
+PostgreSQL/session/file persistence and a simulated read-only external connection,
+including activation isolation, stale/unauthorized commands, file round trips,
+failed storage, default and alternative fields, mobile layout and revocation.
+The latter is part of `npm run test:integration -w @open-triage/api` and therefore
+`npm run check:ci`. It uses a temporary configuration root and rolls back its data.
+These deterministic tests do not claim live hackathon connectivity or COS acceptance.
+
+## COS configuration and simulator
+
+The COS section stores one immutable connection revision per agency group;
+child agencies inherit that connection under existing settings authority. Staff HSA identifiers are maintained on active user accounts in that group.
+Destinations resolve from signed directory selections. An unknown destination
+never falls back to the ambulance care unit; that default applies to nontransport.
+
+Choose the patient field (default `ePatient.01`), namespace and explicit aliases
+separately from encounter, staff and organizational identifiers. Configure the
+endpoint, OAuth client credential, template and clinical source-to-template-link
+mappings in the panel. Maintain staff HSA in Users and destinations in the directory. The pinned development dependency
+is `BundlePrehospitalNote/v2` / `QuestionnaireResponsePreHospitalNote/v2` (2.0.0).
+Source/answer types must be compatible. Receiver-specific template link IDs and
+terminology remain subject to the sandbox gate.
+
+Saving writes an authoritative `hospital-mapping` canonical JSON file through
+the existing organization-scoped definitions storage. Portable files include
+mapping identity/revision, catalog hash, profile dependency and clinical/patient
+mappings; they exclude endpoint, credentials, staff and local care-unit assignments.
+Export, saved-file discovery and import retain identity, revision and content hash.
+An import creates a new local draft requiring a new test; it never changes the
+active revision. Runtime projections are rebuilt from the file and pinned form.
+EPS files are rejected by COS and vice versa.
+
+**Simulator evidence is configuration/profile evidence only.** Tests validate
+required local mappings, supported patient namespace, pinned field/type
+compatibility and credential decryptability. They make no outbound request and
+transmit no document. Every result records its exact configuration hash and
+explicit simulator/no-transmission status. A simulator activation cannot verify
+connectivity, OAuth grants, receiver templates, storage or final acknowledgement.
+Live connection tests perform read-only OAuth and metadata checks. Activation also
+requires the installation acceptance fields described below; metadata alone does
+not establish clinical acceptance.
+
+Published profile inspection (19 October 2026):
+[QuestionnaireResponsePreHospitalNote v2 JSON view](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.profile.json.html)
+identifies canonical version 2.0.0, open item slicing, and an `otherInformation`
+slice with one `valueString` and a SNOMED CT `linkId`. It does not enumerate the
+receiving installation's template codes. This configuration slice supports that
+flat text mapping and rejects nonnumeric link IDs, specialized medication IDs,
+and unsupported flat answer types. Numeric shape is not terminology validation.
+Medication requires a Coding answer and five mandatory nested answers; PDF uses
+a separate URI slice and observations/triage use references. Optional canonical
+`vitalMappings` support heart rate, respiratory rate and temperature references;
+see [sandbox payload testing](cos-sandbox-testing.md). Medication, triage and the
+remaining vital structures are not implemented by those mappings. Local payload
+tests do not establish receiver acceptance.
+
+The [Bundle prehospital note profile](https://fhir.openservices.cambio.se/site/StructureDefinition-BundlePrehospitalNote.html)
+and [questionnaire profile](https://fhir.openservices.cambio.se/site/StructureDefinition-QuestionnaireResponsePreHospitalNoteV2.html)
+are development inputs, not proof of target installation compatibility.
+
+## Reading a patient's EPS
+
+After EPS activation, the active draft's call header checks the configured
+identifier field. Checking, available, missing identifier, no match, and lookup
+failure have distinct localized states. The EPS button opens a bounded clinical
+section table with inert narrative, source organization/authorship, summary date,
+and retrieval time. Complete source details preserve every resource and field,
+including unsupported content. Reference findings stay visible; embedded URLs,
+images and markup never execute or trigger additional requests. Source content stays read-only; selective imports and protected offline caching
+are described below.
+
+The hackathon adapter reads the public `$samples` and `$exchange` listings and
+reads the listed documents using strictly constructed same-service paths. It
+indexes each Composition subject's actual Patient identifiers, with explicit
+configured namespace aliases. It does not search generic FHIR Patient endpoints,
+match listing display numbers/names, or send patient identifiers to the service.
+The public reads need no token; the protected team token remains used for the
+configured connection test. Requests have bounded document count/concurrency and
+a shared time budget; a partial failure is never reported as no match.
+
+Both endpoints authorize the live clinician session and owned draft in the
+current agency. Stateless bindings detect report/patient/configuration changes
+across API replicas. The API rechecks after remote lookup; the UI also discards
+late responses, invalidates when local documentation changes, polls configuration,
+and checks again before opening. Successful reads append `eps.read` patient
+access evidence with canonical mapping/configuration revisions and hashes, without
+patient identifiers or clinical payloads. Unopened summaries remain in current-view memory and follow that view's
+report/user/agency lifetime. Opened copies use the protected storage described below.
+
+`eps.test.mjs` covers both pinned example documents, lossless source fallbacks,
+unsafe narratives, unsupported references, malformed documents and discovery
+failures. The PostgreSQL hospital integration suite additionally covers both
+patients, changed identifier selection, late results, authorization/revocation,
+revision audit, multiple service instances, and English/Swedish desktop/mobile
+keyboard and layout behavior using the actual component and service.
+
+## Protected offline EPS
+
+Opened EPS copies share the encounter's existing protected encrypted payload,
+report key, recovery deadline and session lock. Merely discovering a summary
+does not cache it. The viewer retains the original source and retrieval dates,
+labels the cached copy, and offers an explicit online refresh. Refresh replaces
+only the viewer copy; imported encounter provenance is not rewritten.
+
+The cache is scoped to the clinician, agency, report and resolved patient
+identifier using the canonical mapping and report's pinned form. Unrelated
+clinical edits preserve access; patient changes invalidate it. When connected,
+the viewer rechecks the server binding (including configuration revision) and
+clears cached access after a denial or changed binding. While disconnected it
+cannot discover a new server revocation or configuration change; the existing
+local session and protected-record deadlines remain the access boundary. Logout
+locks the same key, and reopening requires normal server-authorized recovery;
+there is no offline login. Synthetic copies expire with their protected report.
+Browsers without protected storage can view online without an offline guarantee.
+
+Under storage pressure the optional EPS copy can be evicted, alongside verified
+server media copies. Pending encounter edits and media remain protected. A failed
+cache write removes only that attempted EPS copy and never replaces newer work;
+the viewer then reports online-only availability.
+
+## Selective EPS allergy and condition imports
+
+In EPS administration, add an exact source resource type, code system and code,
+then select a standard or custom destination from the pinned published form.
+**Check mappings** reports unavailable fields, incompatible types, unsupported
+cardinality and codes absent from the destination. A coded destination must permit
+the identical source code and system, plus unambiguous active/confirmed source
+statuses in their published status code systems. Missing, uncertain, refuted,
+entered-in-error, inactive/resolved or contradictory statuses cannot become a bare
+affirmative destination code. Translations require an explicit crosswalk (see below); there is no inferred translation. Text
+mapping retains readable source narrative, exact coding, status and clinical dates.
+The original resource remains attached as protected provenance. Correlated custom
+groups and ambiguous destination instances are unavailable in this first journey.
+
+Save, export/import, test and activate use the same canonical package workflow as
+identifier mappings. Every selected import retains its canonical identity, revision,
+hash and configuration revision. Changing activation cannot rewrite that evidence.
+
+The EPS dialog offers a per-entry preview with its EPR destination. Unmapped and
+incompatible source entries stay visible. Preview compares the report's pinned
+form and exact current draft revision. Existing values require an explicit keep or
+replace decision. Replacement is limited to that destination group, and both the
+previous value and source remain attributable through existing clinical history.
+Duplicate source entries and replayed commands cannot create duplicate imports.
+Refresh the summary and preview again after a stale-revision/configuration error.
+
+Imports require a current online documenting-clinician session. They cannot edit
+signed reports. Imported source history remains inspectable from the encounter,
+including a warning when its pinned patient identifier no longer matches—even if
+the new identifier is missing or has no matching EPS. Keep/replace/import decisions
+write `eps.import` audit evidence with actor, report and mapping metadata; payloads
+and patient identifiers are excluded from routine audit metadata.
+
+`clinical.eps_import` and short-lived `clinical.eps_import_plan` are report-owned
+protected records and cascade with report deletion and synthetic expiry. A plan
+expires after 15 minutes; new plans remove expired plans and replace that report's
+previous preview. Ordinary signed snapshots include occurrence source provenance.
+The API never fetches arbitrary source references or accepts a client-supplied
+clinical value as authoritative EPS data.
+
+## Selective historical observations, procedures and patient context
+
+Historical Observation and Procedure mappings require an explicit destination
+meaning in the EPS panel. Only uncorrelated custom text fields declared as dated
+observation history or dated procedure history are supported. Encounter vitals,
+encounter treatments and generic narrative fields are incompatible, even when
+their primitive datatype or terminology matches. This does not add a longitudinal
+record model. Source facts that cannot fit faithfully remain readable and view-only.
+
+Observation mappings select an exact terminology system/code and, for quantities,
+an exact expected unit system/code. No numeric or terminology conversion occurs.
+Final/amended/corrected observations with a date or period retain source status,
+values, units, qualifiers, notes and original context. Completed procedures retain
+their performed date or period. Unsupported modifiers, uncertain statuses, missing
+dates, multi-component measurements and richer unsupported values have specific
+view-only findings. Explicit observation absence codes are retained as absence,
+never converted to a numeric measurement. Multiple independent dated source entries
+can be appended to a repeatable custom history field through an explicit decision.
+
+Patient context initially supports a current identifier: select Patient, source
+code `identifier`, the exact source identifier namespace, text representation and
+the patient-identifier destination meaning. The destination must be `ePatient.01`
+or an explicitly designated single custom string field marked identifying. Ambiguous, old, temporary
+or period-limited identifiers remain view-only. If this is the configured lookup
+field, the source namespace must be that configuration's namespace or an explicit
+equivalent alias. Leading zeroes and separators remain unchanged. Preview retains
+the source namespace and complete source context; the destination receives only
+the exact scalar identifier. Replacing identity invalidates EPS availability and
+exposes inconsistencies with previously imported sources after the ordinary draft
+poll. Existing source history is never relabelled as belonging to the new identity.
+
+These mapping roles and expected units are part of the authoritative canonical
+JSON package and its immutable revision/hash. Importing a transferred package
+validates its schema, dependencies and destination semantics before activation.
+Existing occurrence constraints, conflict resolution, deduplication, authorization,
+protected retention and signed provenance also apply to these imports.
+
+Source semantics follow the pinned FHIR R4 definitions for
+[Observation](https://hl7.org/fhir/R4/observation.html),
+[Procedure](https://hl7.org/fhir/R4/procedure.html), and
+[Patient](https://hl7.org/fhir/R4/patient.html). These limited projections are not
+claims that arbitrary FHIR historical content can become a current encounter fact.
+### Medication history imports
+
+For `MedicationStatement`, select an exact source product code and a custom text
+field, then explicitly designate its clinical meaning as medication history.
+This semantic role is part of the transferable canonical mapping. The text retains
+source status, effective dates, assertion date, dosage, route and units without
+translating their codes. Medication references resolve only inside the same EPS
+bundle; unresolved products and unknown extensions remain readable but cannot be
+imported. An absent list creates no negative-history statement.
+
+NEMSIS `eHistory.12`–`.15` describe current medication identity, dose, unit and route
+as grouped fields. This initial projection does not distribute an EPS regimen into
+those scalar fields or infer code conversions. It never writes `eMedications`
+encounter administrations. Use a custom text history field to preserve the whole
+regimen. Explicit crosswalks can separately import a simplified current-medication
+identity into `eHistory.12`, as described below.
+
+A custom history field with multiple occurrences offers **Add alongside existing
+history** in the conflict preview. Keep and replace remain explicit choices.
+Appending preserves the earlier occurrence and its provenance; replaying the same
+source does not append again. Signed provenance includes the original statement
+and its resolved Medication resource, with the applied mapping identity and revision.
+
+### Privacy of imported source text
+
+Every EPS text import into a custom field requires that published field to be
+marked identifying. This covers allergy/condition narrative, medication history
+and historical context: source text can contain names or other identifying facts
+even when the mapped concept is non-identifying. Review detail already suppresses
+unrestricted text without identifying access; custom string analytics also uses
+the published privacy flag. The import guard preserves both boundaries and does
+not change the semantics of existing authored fields.
+
+Explicit signed EPS publication, canonical outgoing mappings, private pinned-validator setup, unknown-outcome handling, and live acceptance are described in [EPS submission](eps-submission.md).
+
+### Explicit NEMSIS allergy and medication crosswalks
+
+Coded allergy and medication mappings may include a `crosswalk` object with
+`system`, `code`, `display`, `relationship` (`equivalent` or `broader`), and an HTTPS
+`reference`. The existing mapping `system` and `code` remain the exact EPS source
+selector. The crosswalk is part of the canonical JSON and immutable hash; old
+packages without it retain exact-code behavior. Admin can inspect and edit these
+values, and the import preview displays the proposed destination code.
+
+The example fragment in
+[`eps-clinical-crosswalks.json`](../../packages/contracts/examples/hospital/eps-clinical-crosswalks.json)
+contains 18 medication and two allergy mappings for the fictional worked examples.
+Medication targets are NLM RxNorm ingredient concepts verified on 19 October 2026.
+They deliberately omit product strength, formulation and dosage. Birch pollen maps
+to the broader NEMSIS suggested pollen-allergy concept. These are explicit local
+simplifications, not a universal or lossless terminology mapping.
+
+Allergy crosswalks target `eHistory.06` or `.07` and require active, confirmed
+`type: allergy` sources. Targets must be enabled in the pinned destination list.
+Repeatable allergy fields support adding alongside existing documentation.
+
+Medication crosswalks target only `eHistory.12` with `semanticRole:
+medication-history` and `representation: coded`. They require an active statement
+without an effective-period end. RxNorm identifiers may come from the open external
+vocabulary even when absent from the non-exhaustive suggested list; an explicit
+form choice policy still restricts them. Each selected import creates its own
+`eHistory.CurrentMedsGroup`, preserving every existing medication and its dose.
+Dose, unit, route and frequency are not populated. Source regimen details remain
+in the preview, import history and signed provenance. Unknown extensions and
+unresolved medication references remain view-only. Source replay is idempotent.
+
+No custom fields are required. Import the complete canonical package through
+Admin → Hospital integrations → EPS, check mappings, save/test and activate.
+The example fragment alone is not a canonical package: it must be wrapped with
+the installation's identifier configuration and published catalog fingerprint.
+
+EPS problem-list Condition crosswalks can target `eHistory.08` (Medical/Surgical
+History) using an explicit ICD-10-CM code from the pinned destination choices.
+The field must be present and enabled in the report's form. Preview identifies
+the history projection and retains the complete source condition in provenance.
+Only active, confirmed conditions without abatement are imported as codes;
+resolved, remission, uncertain and unsupported conditions remain view-only.
+
+## COS canonical clinical mappings
+
+The shared source of COS element/profile bindings is
+`packages/contracts/src/cos-element-mappings.json`. Both the API projection and
+COS administration consume this JSON. It contains clinical source identifiers,
+profile URLs, units, AVPU terminology, numeric pain-scale identity and nested
+medication child bindings. It must not contain local HSA/Rakel assignments,
+endpoints or credentials.
+
+Saved installation mappings continue to use the same canonical package writer,
+SHA-256 verification, catalog pinning, revision history and file import/export
+mechanisms as EPS. COS definitions require schema version 2 and support
+`vitalMappings[].companionSource` for BP and NRS and `medicationMappings` for
+administered medications. Other schema versions are rejected. Importing a package
+does not activate it.
+
+A v2 projection retains independently valid observations when another occurrence
+cannot be projected. Its findings identify the mapping and signed occurrence,
+with `partial` coverage for failed in-scope projection and `note-pdf-only` for
+non-NRS pain or qualified prior medication administration. Times come from the
+signed assessment ancestry and explicit clinical time fields; conflicting times
+are findings. No nearest-time or array-position pairing is performed.
+
+Live connection tests obtain a token and read the configured API's FHIR metadata;
+they do not submit patient data and do not prove clinical acceptance. Activation
+also requires an installation acceptance reference, PDF keyword and marker
+configuration, and explicit acceptance of every enabled Observation profile.
+These declarations must refer to installation acceptance evidence, including
+viewing the PDF in COSMIC. The current journal API cannot retrieve stored PDF
+bytes. The two replacement credential inputs are stored together as one encrypted
+credential envelope and are never returned to the browser.
+
+See [COS signed-record export](cos-signed-record-export.md) for identity setup,
+destination selection, artifact states and recovery procedures.

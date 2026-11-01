@@ -63,7 +63,7 @@ test('assigned reviewer and clinician exchange attributable comments without wor
   assert.equal(requested.assigneeId, reviewer);
   assert.deepEqual(requested.comments, [{ body: reviewerCommand.body, actorId: reviewer }]);
   value.session({ user: { id: clinician }, organization: { id: organization },
-    capabilities: ['review:self', 'review:identifying'] });
+    capabilities: ['review:self'] });
   const response = await value.service.addComment('token', itemId, { commandId: randomUUID(),
     expectedVersion: 3, dataset: 'real', body: 'The event occurred after arrival.' }, 'csrf');
   assert.deepEqual(response.comments.map((entry) => entry.actorId), [reviewer, clinician]);
@@ -108,6 +108,7 @@ test('identifying, report scope, and current reviewer eligibility gate writes', 
 test('item detail withholds discussion text without identifying access but keeps status and outcome', async () => {
   const queries = [];
   let identifying = false;
+  let viewer = reviewer;
   let itemStatus = 'awaiting-clinician';
   const database = { async query(sql) {
     queries.push(sql);
@@ -126,14 +127,19 @@ test('item detail withholds discussion text without identifying access but keeps
       display_name: 'Reviewer', body: 'Patient name here', item_version: '3', recorded_at: signedAt }];
     throw Error(`Unexpected query: ${sql}`);
   } };
-  const service = new ReviewService(database, { get: async () => ({ user: { id: clinician },
+  const service = new ReviewService(database, { get: async () => ({ user: { id: viewer },
     organization: { id: organization }, capabilities: identifying
-      ? ['review:self', 'review:identifying'] : ['review:self'] }) });
+      ? ['review:all', 'review:identifying'] : ['review:all'] }) });
   const restricted = await service.item('token', itemId, 'real');
   assert.equal(restricted.status, 'awaiting-clinician');
   assert.equal(restricted.commentsRestricted, true);
   assert.deepEqual(restricted.comments, []);
   assert.equal(queries.some((sql) => sql.includes('from clinical.review_comment c')), false);
+  viewer = clinician;
+  const own = await service.item('token', itemId, 'real');
+  assert.equal(own.commentsRestricted, false);
+  assert.equal(own.comments[0].body, 'Patient name here');
+  viewer = reviewer;
   identifying = true;
   const permitted = await service.item('token', itemId, 'real');
   assert.equal(permitted.commentsRestricted, false);

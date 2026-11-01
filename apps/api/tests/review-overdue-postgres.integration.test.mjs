@@ -93,7 +93,8 @@ integrationTest("controlled overdue clock, retry, cancellation, and signing reso
   assert.ok(visible.items.some((entry) => entry.id === item.id && entry.kind === "overdue-unsigned"));
   const draftRead = await api(() => service.overdueDraft("unused", item.id, dataset));
   assert.equal(draftRead.id, first);
-  assert.equal(draftRead.values.length, 0);
+  assert.equal(draftRead.identifying, true);
+  assert.equal(draftRead.values.length, identifyingIdentity ? 1 : 0);
   session = { ...session, capabilities: ["review:self", "review:identifying"] };
   if (identifyingIdentity) assert.equal((await api(() => service.overdueDraft("unused", item.id, dataset))).values.length, 1);
   session = { ...session, user: { id: randomUUID() }, capabilities: ["review:self"] };

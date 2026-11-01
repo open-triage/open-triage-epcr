@@ -208,3 +208,48 @@ test("mobile vitals retain direct blood pressure entry and cancellation", async 
   await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
   await expect(page.getByRole("dialog").getByRole("textbox", { name: /Systolic/ })).toHaveValue("123");
 });
+
+test.describe("local vital timestamps", () => {
+  test.use({ timezoneId: "Europe/Stockholm" });
+
+test("a second vital timestamp retains suggested seconds and local time through table edits", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-29T15:00:00Z"));
+  const opened = structuredClone(demoOpenAssignment);
+  const groups = opened.report.document.groups;
+  for (const group of groups) for (const instance of group.instances) for (const element of instance.elements) {
+    if (["eTimes.03", "eTimes.06", "eTimes.07", "eVitals.01"].includes(element.id)) {
+      for (const value of element.values) if (value.kind === "scalar" && "value" in value) value.value = element.id === "eTimes.03"
+        ? "2026-10-29T14:55:56.665+00:00" : "2026-10-29T14:55:57+00:00";
+    }
+  }
+  await page.route(`**/api/calls/${assignmentId}/open`, route => route.fulfill({ json: opened }));
+  await page.route("**/demo-open-assignment.json", route => route.fulfill({ json: opened }));
+  await page.route(`**/api/reports/${opened.report.id}/active`, route => route.fulfill({ status: 304 }));
+  await page.goto("/");
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const table = page.locator('[data-group-id="eVitals.VitalGroup"]');
+  const initialCount = await table.locator("tbody tr").count();
+  const expectedTime = await page.evaluate(() => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date("2026-10-29T14:55:57Z")));
+  await table.getByRole("button", { name: /^Add / }).click();
+  let dialog = page.locator(".stationary-group-dialog");
+  await dialog.locator('[data-element-id="eVitals.01"] .time-picker-trigger').click();
+  await dialog.getByRole("button", { name: "Use date & time", exact: true }).click();
+  await expect(dialog.locator('[data-element-id="eVitals.01"] .time-picker-trigger')).toContainText(expectedTime);
+  await dialog.getByRole("button", { name: "Add row", exact: true }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(initialCount + 1);
+  const row = table.locator("tbody tr").last();
+  await expect(row.locator('[data-element-id="eVitals.01"]')).toHaveText(expectedTime);
+  await row.getByRole("button", { name: /^Edit / }).click();
+  dialog = page.locator(".stationary-group-dialog");
+  await dialog.locator('[data-element-id="eVitals.01"] .time-picker-trigger').click();
+  await dialog.getByRole("button", { name: "Increase minute", exact: true }).click();
+  await dialog.getByRole("button", { name: "Use date & time", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(row.locator('[data-element-id="eVitals.01"]')).toHaveText(expectedTime.replace(":55", ":56"));
+});
+
+});

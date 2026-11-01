@@ -1,4 +1,5 @@
 "use client";
+import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
 import { participateInInstallationTransition,transitionInstallation, INSTALLATION_TRANSITION_KEY,INSTALLATION_TRANSITION_EVENT,INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
@@ -107,8 +108,16 @@ export function ClinicianSessionGate({ children }: {
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
+  const [adminHospitalSettings, setAdminHospitalSettings] = useState(false);
   const [adminReviewSettingsSection, setAdminReviewSettingsSection] = useState<"routing" | "backlog">();
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
+  function completeActiveReport() {
+    if (!activeReport) return;
+    if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
+    setCompletionNotice(activeReport.callNumber ? t("mobile.callSigned", { call: activeReport.callNumber }) : t("mobile.reportSigned"));
+    setActiveReport(null);
+    setOpenReportsRevision((value) => value + 1);
+  }
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [dismissedActiveReportNoticeId, setDismissedActiveReportNoticeId] = useState<string | null>(null);
   const [modeMessage, setModeMessage] = useState<string | null>(null);
@@ -151,6 +160,7 @@ export function ClinicianSessionGate({ children }: {
   const logoutHeadingId = useId();
   const logoutDialog = useRef<HTMLElement>(null);
   const sessionBar = useRef<HTMLElement>(null);
+  const measureSessionBar = useMeasuredParentHeight(sessionBar, "--session-bar-height");
   const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
     setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
   }, [activeReport?.id]);
@@ -167,16 +177,6 @@ export function ClinicianSessionGate({ children }: {
     if (logoutWarning) logoutDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
   }, [logoutWarning]);
 
-  useEffect(() => {
-    const bar = sessionBar.current;
-    const shell = bar?.parentElement;
-    if (!bar || !shell) return;
-    const measure = () => shell.style.setProperty("--session-bar-height", `${bar.getBoundingClientRect().height}px`);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, [session, presentationMode]);
 
   useEffect(() => {
     const viewport = sessionBar.current?.querySelector<HTMLElement>(".presentation-selector-scroll");
@@ -576,7 +576,7 @@ export function ClinicianSessionGate({ children }: {
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
     <div className={`authenticated-shell ${presentationMode}-shell${presentationMode !== "mobile" ? " desktop-shell" : ""}`}>
-      <header ref={sessionBar} className="session-bar">
+      <header ref={measureSessionBar} className="session-bar">
         <LanguageSelector language={language} onChange={(selected) => {
           setPreferredLanguage(selected);
           try { window.localStorage.setItem("open-triage:ui-language", selected); } catch { /* Keep the session preference. */ }
@@ -620,7 +620,7 @@ export function ClinicianSessionGate({ children }: {
             <h2 id={logoutHeadingId}>{t("login.lockWork")}</h2></div></div>
           <p role="note">{resolveMessage(language, "login.unsynchronized", {}, logoutWarning.pendingReportCount)}</p>
           <p className="feedback-warning"><strong>{t("login.recoveryDeadline")}</strong> {logoutWarning.recoveryDeadline
-            ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(logoutWarning.recoveryDeadline))
+            ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", ...(installation.settings.timeZone ? { timeZone: installation.settings.timeZone } : {}) }).format(new Date(logoutWarning.recoveryDeadline))
             : t("login.valueUnavailable")}. {t("login.recoveryHelp")}</p>
           <div className="note-dialog-actions">
             <button type="button" disabled={lockingSession} onClick={() => setLogoutWarning(null)}>{t("login.staySignedIn")}</button>
@@ -649,7 +649,7 @@ export function ClinicianSessionGate({ children }: {
         <LoadingStatus>{t("calls.preparingReport")}</LoadingStatus>
       </section>}
       {presentationMode !== "admin" && presentationMode !== "review" && <div className="call-directory" hidden={activeReport !== null || openingCall !== null}>
-        <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
+        <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount dismissOnInteraction={false} />
         <AssignedCalls paused={activeReport !== null || openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
           setCompletionNotice(null);
@@ -660,9 +660,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenReports key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
-          setActiveReport(null);
-        }} onReopened={(opened) => {
+        <OpenReports key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={completeActiveReport} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
@@ -681,18 +679,15 @@ export function ClinicianSessionGate({ children }: {
         reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
-      }, completeReport: () => {
-        if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
-        setCompletionNotice(activeReport.callNumber ? t("mobile.callSigned", { call: activeReport.callNumber }) : t("mobile.reportSigned"));
-        setActiveReport(null);
-        setOpenReportsRevision((value) => value + 1);
-      } }) : children)}
+      }, completeReport: completeActiveReport }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online} onOpenAgency={changeAgency}
-        reviewSettingsSection={adminReviewSettingsSection} />}
+        reviewSettingsSection={adminReviewSettingsSection} hospitalSettings={adminHospitalSettings} />}
       {presentationMode === "review" && !activeReport && <ReviewShell key={`${session.user.id}:${session.organization.id}:${[...(session.capabilities ?? [])].sort().join(",")}`} session={session} language={language}
         online={online} attention={reviewAttention?.dataset === reviewAttentionDataset ? reviewAttention : null}
-        onAttentionRefresh={refreshReviewAttention} onOpenSettings={(section) => {
-          if (selectPresentationMode("admin")) setAdminReviewSettingsSection(section);
+        onAttentionRefresh={refreshReviewAttention} onOpenHospitalSettings={() => {
+          if (session.capabilities?.includes("settings:write") && selectPresentationMode("admin")) {setAdminHospitalSettings(true);setAdminReviewSettingsSection(undefined);}
+        }} onOpenSettings={(section) => {
+          if (selectPresentationMode("admin")) {setAdminHospitalSettings(false);setAdminReviewSettingsSection(section);}
         }} />}
     </div>
     </RegionalFormatContext.Provider>

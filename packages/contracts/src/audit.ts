@@ -1,7 +1,6 @@
 export const auditCategories = ["patient", "authentication", "authorization", "configuration", "clinical",
-  "media", "recovery", "review", "synthetic", "installations", "feedback", "audit", "analytics"] as const;
+  "media", "recovery", "review", "synthetic", "installations", "feedback", "audit", "analytics", "integrations"] as const;
 export type AuditCategory = typeof auditCategories[number];
-export const patientAuditCategories: readonly AuditCategory[] = ["patient", "clinical", "media", "recovery", "review", "synthetic", "audit", "analytics"];
 // An empty selection means every category the viewer is permitted to read.
 // category remains accepted for older single-category clients.
 export type AuditQuery = { categories?: AuditCategory[]; category?: AuditCategory; from: string; to: string; actorId?: string;
@@ -14,6 +13,8 @@ export type AuditTargetKind = "user" | "role" | "roleVersion" | "rolePackage" | 
 export type AuditTarget = { kind: AuditTargetKind; label: string | null; version?: number | null; occurredAt?: string };
 export type AuditOrganization = { id: string; name: string | null };
 export type AuditEntry = {
+  integration?: {artifactType?:string;artifactKey?:string;verificationOutcome?:string;verificationReason?:string;readBackVerification?:boolean;verificationHttpStatus?:number;journalExtractCount?:number;verificationRequestId?:string;destination:"eps"|"cos";verification?:"simulator"|"unverified"|"eps";reportId?:string;snapshotId?:string;signingSubmissionId?:string;amendmentSequence?:number;payloadSha256?:string|null;dataset?:"real"|"synthetic";configurationRevision:number;mappingId:string;mappingRevision?:number;mappingSha256:string;attemptId?:string;commandId?:string;finding?:string;receiptId?:string;proofOutcome?:string;proofFenced?:boolean;remotePass?:boolean;remoteErrors?:number};
+  recovery?: {reportId:string; itemId:string; dataset:"real"|"synthetic"; amendmentSequence:number};
   // Permanent UUID; source tables may retain separate internal numeric keys.
   id: string; category: AuditCategory; source: string; occurredAt: string; actorId: string | null; action: string;
   actorUsername: string | null; actorDisplayName: string | null;

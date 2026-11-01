@@ -505,12 +505,13 @@ test("an administrator reviews retained roles while disabling and reactivating a
   await page.getByRole("button", { name: "Manage" }).click();
   const manage = page.getByRole("region", { name: "Manage Alex Medic" });
   await manage.getByLabel("Display name").fill("Alex Renamed");
+  await manage.getByLabel("HSA identifier",{exact:true}).fill("001-HSA");
   await manage.getByLabel("Username").fill("alex.renamed");
   await manage.getByLabel("Status").selectOption("false");
   await expect(manage.getByText(/immediately revokes every active session/i)).toBeVisible();
   await manage.getByRole("button", { name: "Save user" }).click();
   await expect(page.getByRole("status")).toContainText("2 active sessions were revoked");
-  expect(commands[0]).toMatchObject({ expectedRevision: 4, username: "alex.renamed", displayName: "Alex Renamed",
+  expect(commands[0]).toMatchObject({ hsaId:"001-HSA", expectedRevision: 4, username: "alex.renamed", displayName: "Alex Renamed",
     active: false });
   expect(commands[0]).not.toHaveProperty("roleIds");
 

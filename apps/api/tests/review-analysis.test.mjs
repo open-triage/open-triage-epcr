@@ -287,5 +287,5 @@ test("Review exposes grouped custom operations and scopes parent-aware analysis"
   assert.deepEqual(source.parameters.slice(2, 6), [[session.organization.id], true, false, session.user.id]);
   assert.match(source.sql, /report.organization_id=any\(\$3::uuid\[\]\)/);
   assert.match(queries.find(({ sql }) => sql.includes("review_custom_dictionary")).sql,
-    /\(\$2::boolean or not identifying\)/);
+    /\(\$2::boolean or not identifying or exists/);
 });

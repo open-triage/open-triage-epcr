@@ -21,3 +21,5 @@ supabase/.temp/
 
 # Operator-owned installation configuration
 /deploy/installations/
+
+/.local/

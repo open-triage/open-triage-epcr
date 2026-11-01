@@ -77,7 +77,7 @@ export const catalogSourceSql = `with scoped_reports as materialized (
     custom.definition,
     coalesce(custom.definition->>'title',ed.name,e.value->>'element_id') label,
     coalesce(custom.definition->>'datatype',case when e.value->>'element_id'=any($6::text[]) then 'number' else 'coded' end) datatype
-  from effective e
+  from effective e left join scoped_reports report on report.id=e.report_id
     left join catalog.element_definition ed on ed.release_id=e.catalog_release_id
       and ed.element_identity_id=(e.value->>'element_identity_id')::uuid
     left join catalog.analytics_element_mapping mapping on mapping.release_id=e.catalog_release_id and mapping.element_id=e.value->>'element_id'
@@ -86,7 +86,7 @@ export const catalogSourceSql = `with scoped_reports as materialized (
   where e.action<>'remove' and coalesce(e.value->>'tombstoned_at','')=''
     and (e.value->>'element_id'=any($5::text[]) or custom.definition is not null)
     and (not coalesce((e.value->>'identifying')::boolean,false) and not coalesce(mapping.identifying,false)
-      and not coalesce((custom.definition->>'identifying')::boolean,false) or ($7::boolean and custom.definition is not null))
+      and not coalesce((custom.definition->>'identifying')::boolean,false) or (($7::boolean or report.documenting_user_id=$4) and custom.definition is not null))
 ), typed as (
   select p.*,case when value->>'value_kind' in ('null','absent','pertinent-negative')
       or value->>'not_value_code' is not null or value->>'pertinent_negative_code' is not null then null
@@ -104,7 +104,7 @@ export const catalogSourceSql = `with scoped_reports as materialized (
       and unit.report_id=p.report_id and unit.group_instance_id=p.value->>'group_instance_id'
   union all
   select r.id,r.catalog_release_id,
-    jsonb_build_object('code_display',case when $7::boolean then coalesce(u.display_name,r.documenting_user_id::text) else r.documenting_user_id::text end),
+    jsonb_build_object('code_display',case when ($7::boolean or r.documenting_user_id=$4) then coalesce(u.display_name,r.documenting_user_id::text) else r.documenting_user_id::text end),
     '${userElement.id}',null::jsonb,'User','coded',
     jsonb_build_object('type','code','value',r.documenting_user_id::text),null::text
   from scoped_reports r left join app_identity.app_user u on u.id=r.documenting_user_id

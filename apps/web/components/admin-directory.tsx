@@ -1,4 +1,5 @@
 "use client";
+import { LocalDateTime, useLocalDateTime } from "./local-date-time";
 
 import { activateListRow } from "./list-row-action";
 import { listAccessRemoved } from "../app/list-refresh";
@@ -49,6 +50,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
 }) {
   const t = useAdminText();
   const language=useContext(AdminLanguageContext);
+  const formatTime = useLocalDateTime(language);
   const adminError = useAdminError();
   const tablePanel = useAvailableHeight<HTMLDivElement>(128);
   const [items, setItems] = useState<AdminUserSummary[]>([]);
@@ -156,7 +158,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       form.reset();
       setCreateOpen(false); setCreationDirty(false);
       requestAnimationFrame(() => document.getElementById("create-user-trigger")?.focus());
-      setNotice(t("admin.userCreatedNotice",{name:created.displayName,expires:new Date(created.temporaryPasswordExpiresAt).toLocaleString(language)}));
+      setNotice(t("admin.userCreatedNotice",{name:created.displayName,expires:formatTime(created.temporaryPasswordExpiresAt)}));
       await load(query);
     } catch (reason) {
       setError(adminError(reason, "admin.userCreationFailed"));
@@ -231,7 +233,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       form.reset(); setCredentialDirty(false);
       setEditing((current) => current ? { ...current, revision: reset.revision } : current);
       setUserSessions([]);
-      setNotice(t("admin.credentialResetNotice",{name:editing.displayName,expires:new Date(reset.temporaryPasswordExpiresAt).toLocaleString(language),count:reset.sessionsRevoked}));
+      setNotice(t("admin.credentialResetNotice",{name:editing.displayName,expires:formatTime(reset.temporaryPasswordExpiresAt),count:reset.sessionsRevoked}));
       await load(query);
     } catch (reason) {
       setError(adminError(reason, "admin.credentialResetFailed"));
@@ -249,6 +251,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     const active = data.get("active") === "true";
     const command: UpdateAdminUserCommand = {
       expectedRevision: editing.revision,
+      ...(((String(data.get("hsaId")??"")||null)!==(editing.hsaId??null)||data.get("confirmHsa")==="on")?{hsaId:String(data.get("hsaId")??"")||null}:{}),
       username: editing.username === null ? null : String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
       active,
@@ -334,6 +337,9 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     {!editing.externalIdentity && canManage && !editing.owner && !editing.superadmin && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onChangeCapture={() => setIdentityDirty(true)} onSubmit={saveUser}>
       <fieldset disabled={saving||externalIdentityBusy}><legend><AdminText messageKey="admin.identityAndAccess" /></legend>
         <label><AdminText messageKey="admin.displayName" /><input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
+        <label><AdminText messageKey="admin.hsaId" /><input name="hsaId" defaultValue={editing.hsaId??""} maxLength={128} autoComplete="off" /></label>
+        {editing.hsaSource&&<small><AdminText messageKey={editing.hsaSource==="oidc"?"admin.hsaSourceOidc":"admin.hsaSourceManual"} /></small>}
+        {editing.hsaConflict && <><p role="alert"><AdminText messageKey="admin.hsaConflict" /></p><label><input type="checkbox" name="confirmHsa" /><AdminText messageKey="admin.hsaConfirm" /></label></>}
         {editing.username !== null ? <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
           pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label> : <><label>{t("admin.ssoUsername")}<input readOnly value={editing.ssoUsername??""} /></label><p><AdminText messageKey="admin.ssoOnlyAccount" /></p></>}
         <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend><AdminText messageKey="admin.completeRetainedRole" /></legend>
@@ -373,9 +379,9 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         {!securityLoading && !userSessions.length && <p><AdminText messageKey="admin.noActiveSessions" /></p>}
         {userSessions.length > 0 && <ul className="admin-session-list">{userSessions.map((session) => <li key={session.id}>
           <div><strong>{session.deviceLabel}</strong>{session.current && <span> <AdminText messageKey="admin.currentSession" /></span>}</div>
-          <dl><div><dt><AdminText messageKey="admin.started" /></dt><dd><time dateTime={session.startedAt}>{new Date(session.startedAt).toLocaleString()}</time></dd></div>
-            <div><dt><AdminText messageKey="admin.lastActivity" /></dt><dd><time dateTime={session.lastActivityAt}>{new Date(session.lastActivityAt).toLocaleString()}</time></dd></div>
-            <div><dt><AdminText messageKey="admin.expires" /></dt><dd><time dateTime={session.expiresAt}>{new Date(session.expiresAt).toLocaleString()}</time></dd></div></dl>
+          <dl><div><dt><AdminText messageKey="admin.started" /></dt><dd><time dateTime={session.startedAt}><LocalDateTime value={session.startedAt} /></time></dd></div>
+            <div><dt><AdminText messageKey="admin.lastActivity" /></dt><dd><time dateTime={session.lastActivityAt}><LocalDateTime value={session.lastActivityAt} /></time></dd></div>
+            <div><dt><AdminText messageKey="admin.expires" /></dt><dd><time dateTime={session.expiresAt}><LocalDateTime value={session.expiresAt} /></time></dd></div></dl>
           {canRevokeSessions && <button type="button" className="button-danger" disabled={securityLoading||externalIdentityBusy} onClick={() => void revokeSession(session)}>
             {session.current ? t("admin.revokeAndSign") : t("admin.revokeSession")}</button>}
         </li>)}</ul>}
@@ -708,11 +714,11 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       </li>)}</ol>
       <h4><AdminText messageKey="admin.assignmentIntervals" /></h4>{history.assignments.length ? <ul>{history.assignments.map((assignment) =>
         <li key={assignment.id}><code>{assignment.userId}</code>: <time dateTime={assignment.assignedAt}>
-          {new Date(assignment.assignedAt).toLocaleString()}</time> – {assignment.endedAt
-          ? <time dateTime={assignment.endedAt}>{new Date(assignment.endedAt).toLocaleString()}</time> : t("admin.current")}</li>)}</ul>
+          <LocalDateTime value={assignment.assignedAt} /></time> – {assignment.endedAt
+          ? <time dateTime={assignment.endedAt}><LocalDateTime value={assignment.endedAt} /></time> : t("admin.current")}</li>)}</ul>
         : <p className="admin-muted"><AdminText messageKey="admin.noAssignmentHistory" /></p>}
       <h4><AdminText messageKey="admin.lifecycleEvents" /></h4><ol>{history.events.map((event) => <li key={event.id}>
-        <code>{event.action}</code> <AdminText messageKey="admin.at" /> <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
+        <code>{event.action}</code> <AdminText messageKey="admin.at" /> <time dateTime={event.occurredAt}><LocalDateTime value={event.occurredAt} /></time>
         {event.note && <small> {t("admin.noteNote", { note: event.note })}</small>}
       </li>)}</ol>
     </section>}

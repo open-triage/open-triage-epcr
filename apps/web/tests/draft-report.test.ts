@@ -20,8 +20,8 @@ import {
   encounterDocumentToDraftMutations,
   fetchActiveReport,
   saveDraftReport,
-  shouldQueueInitialDraftSnapshot,
   signDraftReport,
+  readSigningStatus,
   shellStateToDraftMutations,
   stableDraftId,
   updateReportTextNote,
@@ -67,14 +67,6 @@ test("recovery sends missing manual parent groups before their populated demo va
     { groups: [manual], occurrences: [vital] },
     { demoAction: "populate", groups: [], occurrences: [populated] },
   ]);
-});
-
-test("only a brand-new server report queues an initial persistence snapshot", () => {
-  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, false), true);
-  assert.equal(shouldQueueInitialDraftSnapshot("empty", 11, true, false), false,
-    "reopening an existing report must not create a no-op synchronization write");
-  assert.equal(shouldQueueInitialDraftSnapshot("restored", 0, true, false), false);
-  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, true), false);
 });
 
 test("authoritative reconciliation clears a stale sync blocker when no local changes remain", () => {
@@ -340,10 +332,12 @@ test("signing sends the current revision, clinician attestation, and warning ack
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     request = { input: String(input), init };
-    return new Response(JSON.stringify({ id: reportId, status: "signed" }), { status: 201 });
+    return new Response(JSON.stringify({ id: reportId, status: "signed", signedSnapshotId: "signed-snapshot" }), { status: 201 });
   }) as typeof fetch;
   try {
-    await signDraftReport("token", reportId, 8, "32000000-0000-4000-8000-000000000003", ["missing-vitals"]);
+    const signed = await signDraftReport("token", reportId, 8, "32000000-0000-4000-8000-000000000003", ["missing-vitals"],new Date().toISOString(),true);
+    assert.equal(signed?.signedSnapshotId, "signed-snapshot");
+    assert.equal(JSON.parse(String(request?.init?.body)).exportEps,true);
     const body = JSON.parse(String(request?.init?.body));
     assert.equal(request?.input, expectedApiUrl(`/api/reports/${reportId}/sign`));
     assert.equal(request?.init?.method, "POST");
@@ -499,4 +493,21 @@ test("the web adapter sends cookie credentials and a CSRF proof to the report dr
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("COS pending signatures remain explicit and status polling never submits clinical content", async()=>{
+ const originalFetch=globalThis.fetch,originalDemo=process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+ delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+ const calls:Array<{url:string;init?:RequestInit}>=[];
+ const pending={status:'awaiting-cos',deliveryId:'delivery',deliveryState:'uncertain',finding:'reconciliationUnresolved'};
+ globalThis.fetch=(async(input:string|URL|Request,init?:RequestInit)=>{calls.push({url:String(input),init});return new Response(JSON.stringify(pending),{status:200});}) as typeof fetch;
+ try{
+  const result=await signDraftReport('csrf',reportId,7,'32000000-0000-4000-8000-000000000003',[]);
+  assert.equal(result?.status,'awaiting-cos');assert.equal(result?.signedSnapshotId,undefined);
+  assert.deepEqual(await readSigningStatus(reportId),pending);
+  assert.equal(calls[1]?.url,expectedApiUrl(`/api/reports/${reportId}/signing-status`));
+  assert.equal(calls[1]?.init?.body,undefined);assert.notEqual(calls[1]?.init?.method,'POST');
+  await signDraftReport('csrf',reportId,7,'32000000-0000-4000-8000-000000000003',[],undefined,false,'COS unavailable');
+  assert.equal(JSON.parse(String(calls[2]?.init?.body)).skipCosReason,'COS unavailable');
+ }finally{globalThis.fetch=originalFetch;if(originalDemo===undefined)delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION=originalDemo;}
 });

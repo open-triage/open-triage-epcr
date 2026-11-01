@@ -1,3 +1,6 @@
+import {validateDestinationProvenance} from "../hospital/destination-provenance.js";
+import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
+import { queueSignedCos } from '../hospital/cos-queue.js';
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
@@ -53,6 +56,15 @@ export class AmendReportService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async amend(reportId: string, input: unknown): Promise<AmendedReportResult> {
+    try {
+      return await this.dataSource.transaction("SERIALIZABLE", manager => this.amendInTransaction(manager, reportId, input));
+    } catch (error) {
+      this.rethrowDatabaseConflict(error);
+    }
+  }
+
+  /** Internal trusted command path. Caller owns transaction and authorization; never opens a nested transaction. */
+  async amendInTransaction(manager: EntityManager, reportId: string, input: unknown): Promise<AmendedReportResult> {
     let command: AmendReportCommand;
     try {
       command = validateAmendReportCommand(input);
@@ -63,8 +75,6 @@ export class AmendReportService {
       throw error;
     }
     const digest = commandSha256(command);
-    try {
-      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [command.commandId]);
         const replay = await this.replay(manager, command.commandId, digest, reportId);
         if (replay) return replay;
@@ -131,6 +141,8 @@ export class AmendReportService {
         await this.appendAudit(manager, reportId, command, amendmentId, nextSequence,
           canonicalSha256, signedAt, storedChanges);
 
+        const [snapshot] = await manager.query<Array<{id:string}>>('select id from clinical.signed_snapshot where report_id=$1',[reportId]);
+        if(snapshot)await queueSignedCos(manager,reportId,snapshot.id,command.authorId,nextSequence);
         const result: AmendedReportResult = {
           id: reportId,
           status: "signed",
@@ -147,10 +159,6 @@ export class AmendReportService {
           values ($1, $2, 'amend-report', $3, 201, $4::jsonb)`,
         [command.commandId, reportId, digest, JSON.stringify(result)]);
         return result;
-      });
-    } catch (error) {
-      this.rethrowDatabaseConflict(error);
-    }
   }
 
   private async effectiveOccurrences(
@@ -207,7 +215,9 @@ export class AmendReportService {
         formFieldId: original.form_field_id as string | null, value: change.value
       });
       await this.validateDatatype(manager, change.value, metadata, report, String(original.element_id));
-      const corrected = { ...original, ...this.valueColumns(change.value), author_id: command.authorId,
+      const destinationSelection=await validateDestinationProvenance(manager,report.organization_id,String(original.element_id),change.value,change.destinationSelection);
+      const corrected = { ...original, ...this.valueColumns(change.value),
+        ...(["eDisposition.01","eDisposition.02"].includes(String(original.element_id))?{provenance_detail:{...(original.provenance_detail as Record<string,unknown>??{}),destinationSelection}}:{}), author_id: command.authorId,
         provenance_kind: "amendment", updated_at: signedAt };
       return {
         action: "replace",
@@ -236,6 +246,7 @@ export class AmendReportService {
       if (group[0]?.group_id !== target) throw new UnprocessableEntityException(`Custom element requires ${target} target`);
     }
     await this.validateDatatype(manager, occurrence.value!, metadata, report, occurrence.elementId);
+    await validateDestinationProvenance(manager,report.organization_id,occurrence.elementId,occurrence.value,occurrence.provenanceDetail?.destinationSelection);
     const corrected: Record<string, unknown> = {
       id: occurrence.id,
       report_id: report.id,
@@ -306,6 +317,13 @@ export class AmendReportService {
         where ff.id = $1 and ff.form_version_id = $2 and ced.namespace || '.' || ced.slug = $3`,
       [occurrence.formFieldId, report.form_version_id, occurrence.elementId]);
       metadata = custom[0];
+      if (metadata) {
+        const pinned = (await releaseCustomDefinitions(manager, report.catalog_release_id))
+          ?.find(definition => definition.id === metadata!.element_identity_id);
+        if (!pinned) throw new UnprocessableEntityException("The amendment's pinned custom definition is unavailable");
+        metadata = { ...metadata, custom_definition: pinned, identifying: pinned.identifying === true,
+          base_datatype: pinned.datatype === "number" ? "decimal" : pinned.datatype === "other" ? "string" : pinned.datatype };
+      }
     }
     if (!metadata) throw new UnprocessableEntityException(`Element ${occurrence.elementId} is not in the pinned catalog or form`);
     if (occurrence.formFieldId) {
@@ -317,20 +335,6 @@ export class AmendReportService {
       }
     }
     return metadata;
-  }
-
-  private async baseDatatype(manager: EntityManager, report: ReportRow, elementId: string, formFieldId: string | null): Promise<string> {
-    const metadata = await this.elementMetadata(manager, report, {
-      id: randomUUID(), elementId, formFieldId, value: { kind: "absent" }
-    });
-    return metadata.base_datatype;
-  }
-
-  private async allowedAbsenceStates(manager: EntityManager, report: ReportRow, elementId: string, formFieldId: string | null): Promise<string[]> {
-    const metadata = await this.elementMetadata(manager, report, {
-      id: randomUUID(), elementId, formFieldId, value: { kind: "absent" }
-    });
-    return metadata.allowed_absence_states;
   }
 
   private async validateDatatype(
@@ -441,14 +445,10 @@ export class AmendReportService {
         }
       }
     }
-    const customDefinitions = await manager.query<Array<{ element_id: string }>>(`
-      select ced.namespace || '.' || ced.slug as element_id
-      from forms.custom_element_definition ced
-      join forms.form_field ff on ff.custom_element_definition_id=ced.id
-      where ff.form_version_id=$1 and ced.definition->>'recurrence'='single'`, [report.form_version_id]);
-    for (const definition of customDefinitions) for (const [key, count] of counts) {
-      if (key.endsWith(`:${definition.element_id}`) && count > 1)
-        throw new UnprocessableEntityException(`${definition.element_id} permits one occurrence per target`);
+    const customDefinitions = (await releaseCustomDefinitions(manager, report.catalog_release_id)) ?? [];
+    for (const definition of customDefinitions.filter(item => item.recurrence === "single")) for (const [key, count] of counts) {
+      if (key.endsWith(`:${definition.namespace}.${definition.slug}`) && count > 1)
+        throw new UnprocessableEntityException(`${definition.namespace}.${definition.slug} permits one occurrence per target`);
     }
     const required = await manager.query<Array<{ stable_key: string; identity_id: string }>>(`select stable_key,
         coalesce(catalog_element_identity_id, custom_element_definition_id) as identity_id

@@ -178,6 +178,7 @@ for(const language of ['en','sv'])test(`agency OIDC proof, private origins and p
   if(route.request().method()==='PUT'){
    const body=route.request().postDataJSON();
    expect(body.mappings.username).toBe('preferred_username');
+   expect(body.mappings.hsaId).toBe('verified_hsa');expect(body.mappings.hsaAuthoritative).toBe(true);
    expect(body.personalProof).toEqual({id:'agency-personal-contract-v1',acr:null,requiredAmr:['pwd']});
    expect(body.privateOrigins).toEqual(['https://internal.example.org']);
    saved={...saved,draft:{...draft,...body,revision:2}};
@@ -193,6 +194,8 @@ for(const language of ['en','sv'])test(`agency OIDC proof, private origins and p
  const messages=language==='sv'?sv:en;
  await expect(page.getByLabel(t('Provider name','Leverantörens namn'))).toHaveValue(draft.name);
  await expect(page.getByLabel(messages['admin.oidcUsernameClaim'])).toHaveValue('preferred_username');
+ await page.getByLabel(messages['admin.oidcHsaClaim']).fill('verified_hsa');
+ await page.getByLabel(messages['admin.oidcHsaAuthoritative']).check();
  for(const key of ['admin.oidcRegistrationHelp','admin.oidcDraftHelp','admin.oidcPersonalProofHelp','admin.oidcPrivateOriginsHelp','admin.oidcCredentialKeyHelp','admin.oidcActivationHelp','admin.oidcRotationHelp','admin.oidcDiagnosticHelp','admin.oidcProtocolHelp','admin.oidcTestTitle','admin.oidcRequiredClaims','admin.oidcIdentityPending'] as const){
   await expect(page.getByText(messages[key],{exact:true})).toHaveCount(0);
  }

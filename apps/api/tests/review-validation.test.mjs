@@ -49,7 +49,7 @@ function evaluatingManager({ storedSha256 = compiledSha256 } = {}) {
   const manager = { query: async (sql, parameters = []) => {
     calls.push({ sql, parameters });
     if (sql.includes("from clinical.report") && sql.includes("organization_id=$2")) {
-      return [{ id: reportId, organization_id: organizationId, catalog_release_id: catalogReleaseId, revision: 7 }];
+      return [{ id: reportId, documenting_user_id: userId, organization_id: organizationId, catalog_release_id: catalogReleaseId, revision: 7 }];
     }
     if (sql.includes("from validation.version")) {
       return [{ id: versionId, compiled_bundle: bundle, compiled_sha256: storedSha256 }];
@@ -131,7 +131,7 @@ test("review-only rules do not participate in authoritative signing", async () =
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const signing = new SignReportService({}, {});
-  const findings = await signing.validateAuthoredRules(manager, { id: reportId, organization_id: organizationId,
+  const {findings} = await signing.evaluateAuthoredRules(manager, { id: reportId, organization_id: organizationId,
     catalog_release_id: catalogReleaseId, validation_version_id: versionId,
     validation_compiled_sha256: compiledSha256 }, "2026-09-18T12:00:00Z");
   assert.deepEqual(findings, []);
@@ -184,17 +184,22 @@ test("metric evidence is immutable but identifying dependencies are withheld fro
   const rule = compileValidationRule({ id: ruleId, name: 'Availability', message: 'Missing input', enabled: true, severity: 'warning',
     executionTargets: ['review'], primaryTargetElementId: 'private-input', source: 'require metricAvailable("metric")' }, versionId, catalog, [metric]).compiled;
   const selected = { schemaVersion: 2, languageVersion: '2.0.0', validationVersionId: versionId, catalogReleaseId, rules: [rule], metrics: [metric] };
-  for (const identifying of [false, true]) {
+  for (const own of [false, true]) for (const identifying of [false, true]) {
     const { manager, calls } = evaluatingManager();
-    const proxy = { query: (sql, parameters) => {
+    const proxy = { query: async (sql, parameters) => {
+      if (sql.includes("from clinical.report") && sql.includes("organization_id=$2")) {
+        const rows = await manager.query(sql, parameters);
+        return rows.map(row => ({ ...row, documenting_user_id: own ? userId : randomUUID() }));
+      }
       if (sql.includes('from validation.version')) return [{ id: versionId, compiled_bundle: selected, compiled_sha256: compiledValidationBundleSha256(selected) }];
       if (sql.includes('from catalog.analytics_element_mapping')) return [];
       return manager.query(sql, parameters);
     } };
     const result = await subject(proxy, async () => ({ organization: { id: organizationId }, user: { id: userId },
-      capabilities: ['review:self', ...(identifying ? ['review:identifying'] : [])] })).evaluate('session', reportId, { validationVersionId: versionId });
+      capabilities: ['review:all', ...(identifying ? ['review:identifying'] : [])] })).evaluate('session', reportId, { validationVersionId: versionId });
     const stored = JSON.parse(calls.find(({ sql }) => sql.includes('insert into clinical.validation_review_evaluation')).parameters[7]);
     assert.equal(stored[0].metricEvidence[0].state, 'missing');
-    assert.equal(result.findings[0].metricEvidence.length, identifying ? 1 : 0);
+    assert.equal(result.findings.length, own || identifying ? 1 : 0);
+    if (own || identifying) assert.equal(result.findings[0].metricEvidence.length, 1);
   }
 });

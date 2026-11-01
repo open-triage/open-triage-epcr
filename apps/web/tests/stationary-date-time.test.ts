@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { localStationaryDateTimeParts, stationaryLocalDateTimeInput } from "../app/stationary-date-time";
+import { localStationaryDateTimeParts, stationaryLocalDateTimeInput, stationaryDateTimeSelection } from "../app/stationary-date-time";
+
+test("accepting a suggested clinical time preserves seconds instead of moving it before dispatch", () => {
+  const reference = "2026-10-29T14:55:57.000Z";
+  const selected = stationaryDateTimeSelection("2026-10-29", "15:55", "Europe/Stockholm", undefined, reference);
+  assert.equal(selected, reference);
+  assert.ok(Date.parse(selected) >= Date.parse("2026-10-29T14:55:56.665Z"));
+  assert.equal(stationaryDateTimeSelection("2026-10-29", "15:56", "Europe/Stockholm", undefined, reference),
+    "2026-10-29T14:56:00.000+00:00");
+  assert.equal(stationaryDateTimeSelection("2026-10-30", "15:55", "Europe/Stockholm", undefined, reference),
+    "2026-10-30T14:55:00.000+00:00");
+});
+
+test("an explicit change to the other DST occurrence is saved even when the clock is unchanged", () => {
+  const reference = "2026-10-25T00:30:57.123Z";
+  assert.equal(stationaryDateTimeSelection("2026-10-25", "02:30", "Europe/Stockholm", "2026-10-25T00:30:00.000Z", reference), reference);
+  assert.equal(stationaryDateTimeSelection("2026-10-25", "02:30", "Europe/Stockholm", "2026-10-25T01:30:00.000Z", reference),
+    "2026-10-25T01:30:00.000+00:00");
+});
 
 test("stored UTC timestamps display in the browser's local clock and save the same instant", () => {
   const priorTimeZone = process.env.TZ;

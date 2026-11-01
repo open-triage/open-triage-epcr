@@ -63,3 +63,28 @@ test("concurrent progress commands serialize on the item and stale command confl
   assert.equal(item.version, 2);
   assert.equal(history.length, 1);
 });
+
+for (const kind of ['cos-delivery-failed','missing-transmission-identifiers']) test(`${kind} can be closed without changing or queuing delivery`, async()=>{
+  const outcomeId='22222222-2222-4222-8222-222222222222';
+  let updates=0,history=0;
+  const item={kind,version:'1',status:'new',assignee_id:'reviewer',documenting_user_id:'author',independent_review:false};
+  const manager={query:async(sql,args)=>{
+    if(sql.includes('from app_identity.organization'))return [{id:'organization'}];
+    if(sql.includes('for update of i'))return [item];
+    if(sql.includes('from clinical.review_progress_history'))return [];
+    if(sql.includes('from clinical.review_outcome_option'))return [{revision:1}];
+    if(sql.includes('update clinical.review_item set status=')){assert.equal(args[2],'completed');updates++;return [];}
+    if(sql.includes('insert into clinical.review_progress_history')){assert.equal(args[5],'completed');history++;return [];}
+    throw new Error(`Unexpected side effect: ${sql}`);
+  }};
+  const session={user:{id:'reviewer'},organization:{id:'organization'},capabilities:['review:all','review:identifying']};
+  const service=new ReviewService({transaction:async work=>work(manager)},{get:async()=>session,assertCsrf:async()=>{}});
+  service.item=async()=>({status:'completed'});
+  const command={commandId:'33333333-3333-4333-8333-333333333333',expectedVersion:1,dataset:'real',status:'completed',outcomeOptionId:outcomeId};
+  assert.equal((await service.progress('token','item',command,'csrf')).status,'completed');
+  assert.equal(updates,1);assert.equal(history,1);
+  session.capabilities=['review:all'];
+  await assert.rejects(service.progress('token','item',command,'csrf'),{status:403});
+  session.capabilities.push('review:identifying');item.assignee_id='other';
+  await assert.rejects(service.progress('token','item',command,'csrf'),{status:403});
+});

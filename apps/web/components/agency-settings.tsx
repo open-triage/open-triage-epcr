@@ -204,7 +204,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
           <option value="en-US">English (United States)</option>
           <option value="sv-SE">Svenska (Sverige)</option>
         </select>
-        <p aria-live="polite">{t("settings.preview")}: {formatClinicalDate("2026-09-28T13:45:00Z", draft.regionalFormat ?? null)} · {formatClinicalNumber(1234.5, draft.regionalFormat ?? null)}</p>
+        <p aria-live="polite">{t("settings.preview")}: {formatClinicalDate("2026-09-28T13:45:00Z", draft.regionalFormat ?? null, undefined, draft.timeZone ?? null)} · {formatClinicalNumber(1234.5, draft.regionalFormat ?? null)}</p>
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>

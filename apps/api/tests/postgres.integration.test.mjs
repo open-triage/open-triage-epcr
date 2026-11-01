@@ -4,7 +4,8 @@ import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import test, { before, after } from "node:test";
+import { temporaryDefinitions } from "./fixtures/temporary-definitions.mjs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
@@ -37,6 +38,8 @@ import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
+import { signedReportPdfSource } from "../dist/reports/signed-report-pdf.persistence.js";
+import { renderSignedReportPdf } from "../dist/reports/signed-report-pdf.js";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
 
 const execFileAsync = promisify(execFile);
@@ -52,6 +55,9 @@ if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
 }
 
 const integrationTest = databaseUrl ? test : test.skip;
+let definitions;
+before(async () => { if (databaseUrl) definitions = await temporaryDefinitions(); });
+after(async () => { await definitions?.dispose(); });
 
 const migratedDatabases = new Set();
 // Installation-wide identity scenarios require independent installations, not
@@ -1311,6 +1317,10 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       definitionSha256: draft.digest
     });
     assert.equal(response.status, 201, JSON.stringify(payload));
+    const canonical = JSON.parse(await readFile(path.join(definitions.root, "forms", "local",
+      organizationId, "publication-test-v1.json"), "utf8"));
+    assert.deepEqual(canonical.definition, validDefinition,
+      "HTTP publication must export into the isolated test directory");
     assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1 });
     const event = await client.query(`select action,actor_id,form_version_id,catalog_release_id,change_note,content_sha256
       from app_identity.configuration_event where form_version_id=$1`, [draft.versionId]);
@@ -2328,6 +2338,15 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     synchronized_revision: "8",
     ciphertext_sha256: protectedCiphertextSha256
   });
+  // Exercise real pinned definitions and snapshot JSON from the ordinary signing workflow.
+  const pdfManager = { query: async (sql, params) => (await client.query(sql, params)).rows };
+  const initialPdfSource = await signedReportPdfSource(pdfManager, reportId, signed.payload.signedSnapshotId, 0);
+  assert.equal(initialPdfSource.canonicalSha256, signed.payload.canonicalSha256);
+  assert.equal(initialPdfSource.signerId, userId);
+  const initialPdf = await renderSignedReportPdf(initialPdfSource, "en");
+  assert.equal(initialPdf.subarray(0, 5).toString(), "%PDF-");
+  assert.equal((await renderSignedReportPdf(initialPdfSource, "sv")).subarray(0, 5).toString(), "%PDF-");
+
   const signRetry = await sign(signCommand);
   assert.equal(signRetry.response.status, 201);
   assert.deepEqual(signRetry.payload, signed.payload);
@@ -2475,6 +2494,21 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
 
   amendmentCommand.deviceId = "unit-7";
   const amended = await amendments.amend(reportId, amendmentCommand);
+  const amendedPdfSource = await signedReportPdfSource(pdfManager, reportId, signed.payload.signedSnapshotId, 1);
+  assert.equal(amendedPdfSource.amendments[0].canonicalSha256, amended.canonicalSha256);
+  assert.equal((await renderSignedReportPdf(amendedPdfSource, "en")).subarray(0, 5).toString(), "%PDF-");
+  const originalPdfSourceAgain = await signedReportPdfSource(pdfManager, reportId, signed.payload.signedSnapshotId, 0);
+  assert.deepEqual(originalPdfSourceAgain, initialPdfSource, "later signed amendments must not rewrite the requested original version");
+  // Append-only protection permits INSERTs: an unsigned extra row must never enter a PDF.
+  await client.query("begin");
+  try {
+    await client.query(`insert into clinical.amendment_change
+      (amendment_id, action, target_element_occurrence_id, target_path, original_value, corrected_value)
+      select amendment_id, action, target_element_occurrence_id, target_path, original_value, corrected_value
+      from clinical.amendment_change where amendment_id=$1 limit 1`, [amended.amendmentId]);
+    await assert.rejects(signedReportPdfSource(pdfManager, reportId, signed.payload.signedSnapshotId, 1),
+      (error) => error.getStatus?.() === 422 && error.getResponse().code === "pdf.amendment-evidence-unavailable");
+  } finally { await client.query("rollback"); }
   assert.equal(amended.amendmentSequence, 1);
   assert.equal(amended.changeCount, 3);
   assert.equal(amended.reason, amendmentCommand.reason);
@@ -2510,6 +2544,11 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   }), (error) => error?.getStatus?.() === 409);
   assert.equal((await client.query("select count(*)::integer as count from clinical.amendment where report_id = $1", [reportId])).rows[0].count, 1);
   await assert.rejects(client.query("update clinical.amendment set reason = 'mutated' where id = $1", [amended.amendmentId]),
+    (error) => error.code === "P0001");
+
+  await assert.rejects(client.query("update clinical.amendment_change set corrected_value = '{}'::jsonb where amendment_id = $1", [amended.amendmentId]),
+    (error) => error.code === "P0001");
+  await assert.rejects(client.query("delete from clinical.amendment_change where amendment_id = $1", [amended.amendmentId]),
     (error) => error.code === "P0001");
 
   const history = await client.query(`select event_type, report_revision, amendment_sequence,

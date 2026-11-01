@@ -8,9 +8,9 @@ import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type TargetRow = {
-  id: string; display_name: string; username: string | null; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
+  hsa_id?: string | null; hsa_source?: "manual" | "oidc" | null; hsa_conflict?: boolean; id: string; display_name: string; username: string | null; active: boolean; revision: string | number; owner: boolean; superadmin: boolean;
 };
-type RoleRow = { id: string; display_name: string; active: boolean; protected: boolean };
+type RoleRow = { hsa_id?: string | null; hsa_source?: "manual" | "oidc" | null; hsa_conflict?: boolean; id: string; display_name: string; active: boolean; protected: boolean };
 
 @Injectable()
 export class UserLifecycleService {
@@ -28,7 +28,7 @@ export class UserLifecycleService {
         // Serialize eligibility changes with ownership acceptance, which locks this row first.
         await manager.query(`select user_id from app_identity.installation_owner for update`);
         const targets = await manager.query<TargetRow[]>(`
-          select u.id, u.display_name, credential.username, u.active, u.revision,
+          select u.id, u.display_name, credential.username, u.active, u.revision, u.hsa_id, u.hsa_source, u.hsa_conflict,
           exists (select 1 from app_identity.installation_superadmin where user_id=u.id) superadmin,
             exists (select 1 from app_identity.installation_owner owner_record
               where owner_record.user_id = u.id) as owner
@@ -66,7 +66,7 @@ export class UserLifecycleService {
         `, [actor.organization.id, target.id]);
         const currentRoleIds = currentRoleRows.map(({ id }) => id);
 
-        const before = { username: target.username, displayName: target.display_name, active: target.active,
+        const before = { hsaId: target.hsa_id ?? null, hsaSource: target.hsa_source ?? null, hsaConflict: target.hsa_conflict ?? false, username: target.username, displayName: target.display_name, active: target.active,
           roleIds: currentRoleIds, revision: Number(target.revision) };
 
         // Count and revoke sessions before changing the account row. The
@@ -81,13 +81,15 @@ export class UserLifecycleService {
         }
         if (target.username !== null) await manager.query(`update app_identity.local_credential set username = $2
           where user_id = $1 and username <> $2`, [target.id, command.username]);
+        const hsaId = command.hsaId === undefined ? target.hsa_id ?? null : command.hsaId;
+        const hsaSource = command.hsaId === undefined ? target.hsa_source ?? null : hsaId ? "manual" : null;
         await manager.query(`update app_identity.app_user set display_name = $2, active = $3,
           deactivated_at = case when $3 then null else coalesce(deactivated_at, $4) end,
-          revision = revision + 1 where id = $1`, [target.id, command.displayName, command.active, now]);
+          hsa_id=$5,hsa_source=$6,hsa_conflict=case when $7 then false else hsa_conflict end, revision = revision + 1 where id = $1`, [target.id, command.displayName, command.active, now,hsaId,hsaSource,command.hsaId !== undefined]);
         const action = target.active && !command.active ? "account.disable"
           : !target.active && command.active ? "account.reactivate"
             : "account.identity_change";
-        const after = { username: command.username, displayName: command.displayName, active: command.active,
+        const after = { hsaId, hsaSource, hsaConflict: command.hsaId !== undefined ? false : target.hsa_conflict ?? false, username: command.username, displayName: command.displayName, active: command.active,
           roleIds: currentRoleIds, revision: command.expectedRevision + 1 };
         await manager.query(`insert into app_identity.authentication_event
           (organization_id, actor_id, action, result, target_user_id, note, details)
@@ -100,14 +102,14 @@ export class UserLifecycleService {
           return { id: role.id, displayName: role.display_name, active: role.active, protected: role.protected };
         });
         const reactivated = !target.active && command.active;
-        return { id: target.id, username: command.username, displayName: command.displayName,
+        return { hsaId, hsaSource, hsaConflict: command.hsaId !== undefined ? false : target.hsa_conflict ?? false, id: target.id, username: command.username, displayName: command.displayName,
           active: command.active, revision: command.expectedRevision + 1, roles: retainedRoles,
           restoredRoles: reactivated ? retainedRoles : [], sessionsRevoked,
           freshLoginRequired: reactivated || (target.active && !command.active) };
       });
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "23505") {
-        throw new ConflictException("That username is already reserved");
+        throw new ConflictException({code: "admin.identityAlreadyAssigned"});
       }
       throw error;
     }

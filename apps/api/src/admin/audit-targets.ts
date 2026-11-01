@@ -2,6 +2,7 @@ import type { AuditOrganization, AuditTarget, AuditTargetKind } from "@open-tria
 import type { EntityManager } from "typeorm";
 
 export const auditTargetKinds: Record<string, AuditTargetKind> = {
+  "clinical.cos_recovery_command":"reviewItem", "clinical.cos_delivery_event":"reviewItem",
   "clinical_audit.patient_access_event": "report",
   "clinical_audit.analytics_access_event": "analytics",
   "app_identity.authentication_event": "user",

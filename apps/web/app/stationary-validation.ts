@@ -1,4 +1,5 @@
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
+import { resolveMessage } from "./localization";
+import { DESTINATION_NONE_CODE, encounterDestinationDecision, compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
 import { NEMSIS_DATA_MODEL, getNemsisDataElement, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { validateScalarInput } from "./stationary-scalar";
 import { customTextFindings } from "../components/custom-text-fields";
@@ -159,7 +160,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
     if (resolved.kind === "scalar") return [finding("value.kind", `${element.id} requires a scalar value.`, target, element.name)];
     const configuredChoices = configured?.codeChoices;
     if ((resolved.exhaustive || configured?.choiceOrder !== undefined) && configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
-      code === value.code && (!codeSystem || codeSystem === (value.system ?? "")))) {
+      code === value.code && (codeSystem ?? "") === (value.system ?? ""))) {
       return [finding("value.code", `${value.code} is not permitted for ${element.id}.`, target, element.name)];
     }
     if (!configuredChoices && resolved.exhaustive && !resolved.permissibleValues.some(({ code }) => code === value.code)) {
@@ -188,6 +189,15 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
 export function validateStationaryRecord(document: EncounterDocument, clinicalForm: ClinicalFormConfiguration | undefined,
   evaluationTimestamp: string, language: string = "en"): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
+  if (clinicalForm?.catalogFields["eDisposition.01"]?.recommendations) {
+    const instances = document.groups.find(group => group.id === "eDisposition.DestinationGroup")?.instances ?? [];
+    for (const instance of instances.length ? instances : [undefined]) {
+      if (encounterDestinationDecision(instance) === "missing") findings.push(finding(
+        "destination.required", resolveMessage(language, "hospital.destinationRequired"),
+        {groupId: "eDisposition.DestinationGroup", groupInstanceId: instance?.instanceId, fieldId: "eDisposition.01"},
+        resolveMessage(language, "hospital.destinationChoose")));
+    }
+  }
   const authoredBundle = clinicalForm?.validation &&
     compiledValidationBundleSha256(clinicalForm.validation.bundle) === clinicalForm.validation.compiledSha256
     ? clinicalForm.validation.bundle : undefined;
@@ -216,7 +226,13 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
       for (const value of values) {
         if (seenOccurrences.has(value.occurrenceId)) findings.push(finding("field.identity", `Value occurrence identity ${value.occurrenceId} is duplicated.`, { groupId, groupInstanceId: instance.instanceId, occurrenceId: value.occurrenceId, fieldId: element.id }, element.name));
         seenOccurrences.add(value.occurrenceId);
-        findings.push(...valueFindings(element, instance.instanceId, value, configured));
+        const explicitNone = !!clinicalForm?.catalogFields["eDisposition.01"]?.recommendations
+          && ["eDisposition.01", "eDisposition.02"].includes(element.id)
+          && encounterDestinationDecision(instance) === "none";
+        findings.push(...valueFindings(element, instance.instanceId, value,
+          explicitNone && configured?.choiceOrder ? {...configured, choiceOrder: [
+            ...configured.choiceOrder, {kind: "not-value", code: DESTINATION_NONE_CODE},
+          ]} : configured));
       }
     }
   }

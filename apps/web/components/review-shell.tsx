@@ -1,4 +1,7 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
+import { ReviewMappingRepair } from "./review-mapping-repair";
+import { ReviewIdentifierCorrection } from "./review-identifier-correction";
 import { MetricEvidence } from "./metric-evidence";
 
 import type { ClinicianSession, ReviewAttentionKind, ReviewAttentionResponse, ReviewOverdueDraft, ReviewSignedReport,
@@ -9,11 +12,13 @@ import { useDebouncedValue } from "./use-debounced-value";
 import { useVisiblePolling } from "./use-visible-polling";
 import { useAvailableHeight } from "./use-available-height";
 import { activateListRow } from "./list-row-action";
+import { storePresentationMode } from "../app/presentation-mode";
 import { reviewAccess } from "../app/review-access";
 import { listAccessRemoved } from "../app/list-refresh";
 import { useUnsavedChanges, confirmDiscardChanges } from "./unsaved-changes";
 import { ReviewCriterionHelp } from "./review-criterion-help";
 import { ReviewTabs } from "./review-tabs";
+import {EpsSubmissionPanel} from "./eps-submission";
 import { ReviewReport } from "./review-report";
 import { ReviewStatusBadge } from "./review-status-badge";
 import { WorkspaceSidebar } from "./workspace-sidebar";
@@ -23,7 +28,8 @@ import { AnalyticsWorkspace } from "./analytics-workspace";
 
 type ReviewAction = "comment" | "assign" | "complete" | "await" | "resume" | "exception";
 
-export function ReviewShell({ session, language, online, attention, onAttentionRefresh, callWindow, onOpenSettings }: {
+export function ReviewShell({ session, language, online, attention, onAttentionRefresh, callWindow, onOpenSettings, onOpenHospitalSettings }: {
+  onOpenHospitalSettings?: () => void;
   onOpenSettings?: (section: "routing" | "backlog") => void;
   callWindow?: { reportId: string; itemId?: string; dataset: "real" | "synthetic" };
   session: ClinicianSession;
@@ -59,7 +65,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
   const [bulkError, setBulkError] = useState(false);
   const [attentionFilter, setAttentionFilter] = useState<ReviewAttentionKind | "">("");
   const [priority, setPriority] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("incomplete");
   const [criterion, setCriterion] = useState("");
   const [queueFrom, setQueueFrom] = useState("");
   const [queueTo, setQueueTo] = useState("");
@@ -125,7 +131,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       if (["new", "in-review"].includes(itemDetail.status)) actionOptions.push({ value: "await", label: t("review.awaitClinician") });
       if (itemDetail.status === "awaiting-clinician") actionOptions.push({ value: "resume", label: t("review.resumeReview") });
     }
-    if (itemDetail.kind !== "overdue-unsigned" && (itemDetail.assigneeId === session.user.id || administrator))
+    if (itemDetail.kind !== "overdue-unsigned" && itemDetail.kind !== "eps-export" && !itemDetail.transmissionRestricted && (itemDetail.assigneeId === session.user.id || administrator))
       actionOptions.push({ value: "complete", label: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview"),
         submitLabel: t(itemDetail.status === "completed" ? "review.changeOutcome" : "review.closeReview") });
     if (itemDetail.kind === "overdue-unsigned" && itemDetail.status !== "completed" && administrator)
@@ -434,25 +440,30 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     const count = Math.max(0, Math.floor((Date.parse(queue?.asOf ?? "") - Date.parse(matchedAt)) / 86400000));
     return count === 0 ? t("review.workspace.today") : count === 1 ? t("review.workspace.oneDay") : t("review.ageDays", { count });
   };
-  const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName">>) => item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") :
+  const criterionLabel = (item: Pick<ReviewQueueItem, "criterionId"> & Partial<Pick<ReviewQueueItem, "kind" | "criterionName" | "transmissionReason">>) => item.kind === "eps-export" ? t("review.epsExport") : item.kind === "overdue-unsigned" ? t("review.overdueUnsigned") : item.transmissionReason ? t(`review.transmission.${item.transmissionReason}`) :
     item.criterionName ?? routes?.find((route) => route.criterionId === item.criterionId)?.name ?? t("review.findings");
   const closeReport = () => {
-    if (callWindow) window.close();
-    else {
-      setFullReportOpen(false); setFullFindingsOpen(true);
-      requestAnimationFrame(() => {
-        if (queueScroll.current) { queueScroll.current.scrollTop = queuePosition.current.tableY; queueScroll.current.scrollLeft = queuePosition.current.tableX; }
-        if (queueCard.current) queueCard.current.scrollTop = queuePosition.current.cardY;
-        window.scrollTo(queuePosition.current.x, queuePosition.current.y);
-        reportTrigger.current?.focus({ preventScroll: true });
-      });
+    if (callWindow) {
+      // A restored or directly opened tab may refuse window.close(). Return to
+      // the authenticated app shell so navigation and account controls remain.
+      storePresentationMode(window.localStorage, "review");
+      window.close();
+      window.location.replace("/");
+      return;
     }
+    setFullReportOpen(false); setFullFindingsOpen(true);
+    requestAnimationFrame(() => {
+      if (queueScroll.current) { queueScroll.current.scrollTop = queuePosition.current.tableY; queueScroll.current.scrollLeft = queuePosition.current.tableX; }
+      if (queueCard.current) queueCard.current.scrollTop = queuePosition.current.cardY;
+      window.scrollTo(queuePosition.current.x, queuePosition.current.y);
+      reportTrigger.current?.focus({ preventScroll: true });
+    });
   };
   const closeFindings = () => { setFullFindingsOpen(false); document.getElementById("review-findings-toggle")?.focus(); };
   return <main className="review-workspace" aria-label={t("navigation.review")}>
     {callWindow ? <header className="review-heading review-card">
       <h1 id="review-heading">{t("navigation.review")}</h1>
-      <button type="button" onClick={() => window.close()}>{t("review.close")}</button>
+      <button type="button" onClick={closeReport}>{t("review.close")}</button>
     </header> : <div className="review-workspace-selector"><ReviewTabs id="review-main" label={t("navigation.review")}
       value={tab} onChange={(next) => {
         if (tab === "queue") queuePosition.current = { x: window.scrollX, y: window.scrollY,
@@ -509,7 +520,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         <div id="review-advanced-filters" className="review-controls" hidden={!moreFilters}>
           <label>{t("review.criterion")} <select value={criterion} onChange={(event) => { setCriterion(event.target.value); setQueuePage(1); }}>
             <option value="">{t("review.all")}</option>
-            {((administrator ? routes : null) ?? [...new Map((queue?.items ?? []).filter((item) => item.kind !== "overdue-unsigned").map((item) => [item.criterionId, { criterionId: item.criterionId, name: criterionLabel(item) }])).values()]).map((route) => <option key={route.criterionId} value={route.criterionId}>{route.name}</option>)}
+            {((administrator ? routes : null) ?? [...new Map((queue?.items ?? []).filter((item) => item.kind !== "overdue-unsigned").map((item) => [item.criterionId, { criterionId: item.criterionId, name: criterionLabel(item) }])).values()]).map((route) => <option key={route.criterionId} value={route.criterionId}>{"transmissionReason" in route && route.transmissionReason ? t(`review.transmission.${route.transmissionReason}`) : route.name}</option>)}
           </select></label>
           <label>{t("review.from")} <input type="date" value={queueFrom} onChange={(event) => { setQueueFrom(event.target.value); setQueuePage(1); }} /></label>
           <label>{t("review.to")} <input type="date" value={queueTo} onChange={(event) => { setQueueTo(event.target.value); setQueuePage(1); }} /></label>
@@ -597,9 +608,9 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
       {fullReportOpen && <article id="review-full-report" className="review-call-form" aria-label={t("review.workspace.report")}>
         {detailError && viewDetail && <><p role="alert">{t("review.detailUnavailable")} {t("list.refreshRetained")}</p>
           <button type="button" onClick={() => setRefresh((value) => value + 1)}>{t("list.retry")}</button></>}
-        {viewDetail ? <ReviewReport key={viewDetail.id} report={viewDetail} full language={language} dataset={dataset}
+        {viewDetail ? <ReviewReport key={viewDetail.id} report={viewDetail} csrfToken={session.csrfToken ?? session.accessToken ?? ""} full language={language} dataset={dataset}
           toolbarRef={reportToolbar} findingsOpen={fullFindingsOpen} onToggleFindings={() => setFullFindingsOpen(!fullFindingsOpen)}
-          onClose={closeReport} /> : <>
+          onClose={closeReport} recovery={{userId:session.user.id,online,refreshKey:`${refresh}:${detailRefresh}:${itemDetail?.version}`,onSaved:()=>{setRefresh(value=>value+1);setDetailRefresh(value=>value+1);}}} /> : <>
           <header ref={reportToolbar} className="review-report-toolbar">
             <button type="button" className="review-report-close" aria-label={t("review.workspace.closeReport")} onClick={closeReport}>×</button>
           </header>
@@ -613,7 +624,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           <h2>{reportLabel(selected, (itemDetail ?? selectedItem)?.reportNumber)}</h2></div>
           <button type="button" aria-label={t("review.close")} onClick={() => {
             if (fullReportOpen) { closeFindings(); return; }
-            if (callWindow) { window.close(); return; }
+            if (callWindow) { closeReport(); return; }
             setSelected(null); setSelectedItem(null); setSelectedReportItemId(null); setItemDetail(null); setFullReportOpen(false);
             setDetail(null); setDraftDetail(null); resetFindingsAction();
           }} disabled={actionBusy || findingsDirty}>×</button></header>
@@ -651,9 +662,47 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
         {workflowError && <p role="alert">{t(workflowError === "conflict" ? "review.workflowConflict" : "review.workflowUnavailable")}</p>}
         {claimError && <p role="alert">{t(claimError === "conflict" ? "review.claimConflict" : "review.claimUnavailable")}</p>}
         {viewDetail && <>
-          {draftDetail && <><h3>{t("review.overdueDraft")}</h3><p>{t("review.overdueDeadline")}: {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(draftDetail.deadlineAt))}</p></>}
+          {draftDetail && <><h3>{t("review.overdueDraft")}</h3><p>{t("review.overdueDeadline")}: <LocalDateTime value={draftDetail.deadlineAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} /></p></>}
           <div {...panel("review-detail", "findings", detailTab)}>
           {itemDetail?.findings.map((finding, index) => <MetricEvidence key={index} evidence={finding.metricEvidence} language={language} />)}
+            {itemDetail?.kind==="eps-export"&&<section aria-label={t("review.epsExport")}><h4>{t("review.epsExport")}</h4><p>{t(itemDetail.activeMatch?"review.epsExportPending":"review.epsExportAccepted")}</p>
+              {!fullReportOpen&&"signedSnapshotId" in viewDetail&&viewDetail.signedSnapshotId&&viewDetail.identifying&&
+                <EpsSubmissionPanel reportId={viewDetail.id} snapshotId={viewDetail.signedSnapshotId} amendmentSequence={viewDetail.amendmentSequence} dataset={dataset} language={language} csrfToken={session.csrfToken??session.accessToken??""}/>}
+            </section>}
+            {itemDetail && ["missing-transmission-identifiers","cos-delivery-failed"].includes(itemDetail.kind ?? "") && <section aria-label={t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}>
+              <h4>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.heading':"review.transmission.heading")}</h4>
+              {itemDetail.transmissionRestricted ? <p>{t("review.transmission.restricted")}</p> : itemDetail.transmission && <>
+                <p>{t(itemDetail.kind==='cos-delivery-failed'?(itemDetail.activeMatch?'review.recovery.unconfirmed':'review.recovery.confirmed'):itemDetail.activeMatch ? "review.transmission.unresolved" : "review.transmission.resolved")}</p>
+                {itemDetail.kind==='cos-delivery-failed' && <>
+                  <p>{t('review.recovery.simulator')}</p>
+                  {itemDetail.transmission.reconciliationTarget && <p>{t('review.reconciliation.help',{sequence:itemDetail.transmission.reconciliationTarget.amendmentSequence})}</p>}
+                  {!!itemDetail.transmission.reconciliations?.length && <details><summary>{t('review.reconciliation.history')}</summary><ol>{itemDetail.transmission.reconciliations.map(record=><li key={record.id}>
+                    {t(`review.reconciliation.outcome.${record.outcome}`)} · <LocalDateTime value={record.recordedAt} language={language} options={{dateStyle:'medium',timeStyle:'short'}} />
+                    <p>{t('review.reconciliation.steps',{contact:t(`review.reconciliation.step.${record.evidence.contact}`),note:t(`review.reconciliation.step.${record.evidence.note}`),storage:t(`review.reconciliation.step.${record.evidence.storage}`)})}</p>
+                  </li>)}</ol></details>}
+
+                  <p>{t(`cosDelivery.state.${itemDetail.transmission.deliveryState}`)}</p>
+                  {itemDetail.transmission.finding&&<p>{t(`cosDelivery.finding.${itemDetail.transmission.finding}`)}</p>}
+                  <p>{t(itemDetail.transmission.deliveryState==='uncertain'?'review.recovery.uncertain':itemDetail.transmission.retryable?(itemDetail.transmission.finding==='reconciledNotStored'?'review.reconciliation.retryReady':'review.recovery.ready'):itemDetail.transmission.deliveryState==='confirmed'?'review.recovery.confirmed':itemDetail.transmission.deliveryState==='pending'?'review.recovery.queued':'review.recovery.correct')}</p>
+                  {itemDetail.transmission.automaticRetry&&<><p>{t('review.recovery.retryBudget',{reserved:itemDetail.transmission.automaticRetry.reserved,attempts:itemDetail.transmission.automaticRetry.attempts,total:itemDetail.transmission.automaticRetry.scheduleMinutes.length,revision:itemDetail.transmission.automaticRetry.configurationRevision})}</p><p>{t('review.recovery.retrySchedule')}: {itemDetail.transmission.automaticRetry.scheduleMinutes.join(', ')}</p>{itemDetail.transmission.automaticRetry.paused?<p>{t('review.recovery.retryPaused')}</p>:itemDetail.transmission.automaticRetry.nextDue?<p>{t('review.recovery.nextRetry')}: <LocalDateTime value={itemDetail.transmission.automaticRetry.nextDue} language={language} /></p>:itemDetail.transmission.automaticRetry.exhausted&&itemDetail.transmission.deliveryState==='failed'?<p>{t('review.recovery.retryExhausted')}</p>:null}</>}
+                  {!!itemDetail.transmission.recoveryCommands?.length&&<details><summary>{t('review.recovery.commands')}</summary><ol>{itemDetail.transmission.recoveryCommands.map(command=><li key={command.id}>
+                    {command.automaticOrdinal?t('review.recovery.automaticAttempt',{ordinal:command.automaticOrdinal}):t('review.recovery.actor',{actor:command.actorId??'',sequence:command.amendmentSequence})} · <LocalDateTime value={command.requestedAt} language={language} options={{dateStyle:'medium',timeStyle:'short'}} /> · {t(`cosDelivery.state.${command.outcome}`)}
+                  </li>)}</ol></details>}
+                </>}
+
+                {itemDetail.transmissionReason === "patient-identity" && itemDetail.status !== "completed" && itemDetail.assigneeId === session.user.id && <ReviewIdentifierCorrection key={`${itemDetail.id}:${session.user.id}:${dataset}`} item={itemDetail} session={session} dataset={dataset} language={language} online={online} onSaved={next=>{setItemDetail(next);setSelectedItem(next);setRefresh(value=>value+1);setDetailRefresh(value=>value+1);setActionNotice(t("review.identifier.saved"));}}/>}
+                {itemDetail.transmission.patientField && <p>{t("review.transmission.patientField")}: {language === "sv" ? itemDetail.transmission.patientField.localization?.sv?.label ?? itemDetail.transmission.patientField.localization?.sv?.name ?? itemDetail.transmission.patientField.localization?.sv?.title ?? itemDetail.transmission.patientField.name : itemDetail.transmission.patientField.name} <code>{itemDetail.transmission.patientField.id}</code></p>}
+                <ul>{itemDetail.transmission.missing.map(code=><li key={code}>{t(`review.transmission.requirement.${code}`)}</li>)}</ul>
+                {itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <p>{t(session.capabilities?.includes("settings:write") ? "review.transmission.admin" : "review.transmission.contactAdmin")}</p>}
+                {onOpenHospitalSettings && session.capabilities?.includes("settings:write") && itemDetail.transmission.missing.some(code=>code!=="patientIdentifier") && <button type="button" onClick={()=>{if(confirmDiscardChanges(findingsDirty))onOpenHospitalSettings();}}>{t("review.transmission.openAdmin")}</button>}
+                {itemDetail.transmissionReason==='integration-mapping'&&session.capabilities?.includes('settings:write')&&<ReviewMappingRepair key={`${itemDetail.id}:${session.user.id}:${dataset}`} item={itemDetail} session={session} dataset={dataset} language={language} online={online} onSaved={next=>{setItemDetail(next);setSelectedItem(next);setRefresh(value=>value+1);setDetailRefresh(value=>value+1);}}/>}
+                <p>{t("review.transmission.version", {sequence:itemDetail.transmission.amendmentSequence, revision:itemDetail.transmission.mappingRevision})}</p>
+                {!!itemDetail.transmissionHistory?.length && <details><summary>{t(itemDetail.kind==='cos-delivery-failed'?'review.recovery.history':"review.transmission.history")}</summary><ol>{itemDetail.transmissionHistory.map(event=><li key={event.itemVersion}>
+                  {t(event.active ? "review.transmission.unresolved" : "review.transmission.resolved")} · <LocalDateTime value={event.recordedAt} language={language} options={{dateStyle:"medium",timeStyle:"short"}} />
+                </li>)}</ol></details>}
+              </>}
+            </section>}
+
           {itemDetail && <form className="review-action-form" aria-label={t("review.actionForm")} aria-busy={actionBusy}
             onSubmit={(event) => { event.preventDefault(); void submitReviewAction(itemDetail); }}>
             <label>{t("review.action")} <select value={activeAction} disabled={actionBusy}
@@ -701,7 +750,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
           <div {...panel("review-detail", "summary", detailTab)}>
             <button type="button" className="review-primary" disabled={fullReportOpen} onClick={() => { setFullReportOpen(true); setFullFindingsOpen(true); }}>{t("review.workspace.openReport")}</button>
             {!draftDetail && <p>{t("review.amendments", { count: viewDetail.amendmentSequence })}</p>}
-            {detailTab === "summary" && <ReviewReport key={viewDetail.id} report={viewDetail} language={language} dataset={dataset} />}
+            {detailTab === "summary" && <ReviewReport key={viewDetail.id} report={viewDetail} csrfToken={session.csrfToken ?? session.accessToken ?? ""} language={language} dataset={dataset} />}
           </div>
           <div {...panel("review-detail", "history", detailTab)}>
 {itemDetail ? <>
@@ -710,7 +759,7 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                   {(itemDetail.comments ?? []).length === 0 ? <p>{t("review.discussionEmpty")}</p> :
                     <ol>{(itemDetail.comments ?? []).map((comment) => <li key={comment.id}>
                       <strong>{comment.actorName}</strong>{comment.kind === "finding" && <span className="review-badge">{t("review.documentFindings")}</span>} <time dateTime={comment.recordedAt}>
-                        {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.recordedAt))}
+                        <LocalDateTime value={comment.recordedAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} />
                       </time><p>{comment.body}</p>
                     </li>)}</ol>}
 
@@ -727,18 +776,18 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
                 <li key={event.itemVersion}>{t(`review.overdueHistory.${event.action}`)}
                   {event.reasonCode && <>: {t(`review.exception.${event.reasonCode}`)}</>}
                   {event.actorId && <> · <code>{event.actorId}</code></>}
-                  {" · "}{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}</li>)}</ol>}
+                  {" · "}<LocalDateTime value={event.recordedAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} /></li>)}</ol>}
             </section>}
 
             {itemDetail && <section><h4>{t("review.assignmentHistory")}</h4>
               {itemDetail.assignmentHistory.length === 0 ? <p>{t("review.noAssignmentHistory")}</p> :
                 <ol>{itemDetail.assignmentHistory.map((event) => <li key={event.commandId}>
-                  {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.assignedAt))}: {t(`review.assignmentAction.${event.action ?? "claimed"}`)} {event.assigneeId === session.user.id ? t("review.assignedToYou") : event.assigneeId ? <code>{event.assigneeId}</code> : t("review.unassigned")}
+                  <LocalDateTime value={event.assignedAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} />: {t(`review.assignmentAction.${event.action ?? "claimed"}`)} {event.assigneeId === session.user.id ? t("review.assignedToYou") : event.assigneeId ? <code>{event.assigneeId}</code> : t("review.unassigned")}
                 </li>)}</ol>}</section>}
 {itemDetail && <>              <section><h4>{t("review.progressHistory")}</h4>
                 {!itemDetail.progressHistory?.length ? <p>{t("review.noProgressHistory")}</p> :
                   <ol>{itemDetail.progressHistory.map((event) => <li key={event.commandId}>
-                    {new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.recordedAt))}: {t(`review.${event.status === "in-review" ? "inReview" : event.status === "awaiting-clinician" ? "awaitingClinician" : event.status}`)}
+                    <LocalDateTime value={event.recordedAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} />: {t(`review.${event.status === "in-review" ? "inReview" : event.status === "awaiting-clinician" ? "awaitingClinician" : event.status}`)}
                     {event.outcome && <> — {event.outcome.label}: {event.outcome.meaning}</>}
                     {event.reason && <> — {t(`review.progressReason.${event.reason}`)}</>}
                     {" · "}{event.actorId ? <code>{event.actorId}</code> : t("review.systemActor")}

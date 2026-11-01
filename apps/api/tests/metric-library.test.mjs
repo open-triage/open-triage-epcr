@@ -185,7 +185,7 @@ test('offline clinical bundles retain metric dependencies even when they are not
   assert.equal(evaluateValidationBundle(configuration.validation.bundle, document([row('a', '2026-10-04T00:02:00Z', 5)]), 'live', context)[0].metricEvidence[0].value, 120);
 });
 
-test('configuration discovery includes deduplicated authored identities and hides identifying dependencies', async () => {
+test('configuration discovery retains authored identities and marks identifying dependencies for per-report access', async () => {
   const version = bundle();
   const sourceRule = rule();
   const database = { query: async sql => sql.includes('from app_identity.active_configuration_bundle') ? [{
@@ -195,7 +195,8 @@ test('configuration discovery includes deduplicated authored identities and hide
   const visible = await configuredAnalyticsLibrary(database,{organizationId:'org',identifying:true});
   assert.deepEqual(visible.elements.map(element=>element.configured.id),['metric','rule','alias']);
   const restricted = await configuredAnalyticsLibrary(database,{organizationId:'org',identifying:false});
-  assert.equal(restricted.elements.length,0);
+  assert.deepEqual(restricted.elements.map(element=>element.configured.id),['metric','rule','alias']);
+  assert.deepEqual(restricted.identifyingElementIds,['start']);
 });
 
 test('metric selector offers Records and only enabled Review definitions before search and pagination', async () => {
@@ -350,11 +351,11 @@ test('selector counts batch configured inputs and apply authorized dates, filter
 test('configured contributions use effective amendments, explicit historical compatibility and bounded reads', async () => {
   const version = bundle(), element = {...field,configured:{...field.configured,id:'metric'}};
   const library = { bundle:version,elements:[element] };
-  let changed = false, compatible = true, identifyingInput = false;
+  let changed = false, compatible = true, identifyingInput = false, documentingUser = "other";
   const manager = { query: async (sql, parameters) => {
     if (sql.includes('from clinical.report r')) {
       assert.deepEqual(parameters,[['report'],'org',true,false,'author']);
-      return [{id:'report',created_at:context.timestamp,updated_at:context.timestamp,form_id:'form',form_version:1,
+      return [{id:'report',documenting_user_id:documentingUser,created_at:context.timestamp,updated_at:context.timestamp,form_id:'form',form_version:1,
         catalog_standard:'NEMSIS',catalog_version:'3.5.1',catalog_dataset:'EMSDataSet',catalog_release_id:compatible?'catalog':'older',revision:'7',amendment:changed?1:0}];
     }
     if (sql.includes('from clinical.group_instance')) return [{id:'root',report_id:'report',group_id:'root',ordinal:0},
@@ -378,6 +379,9 @@ test('configured contributions use effective amendments, explicit historical com
   assert.ok(!JSON.stringify(initial.evidence).includes('Unrestricted source metadata'));
   identifyingInput=true;
   assert.equal((await evaluate()).state,'failed');
+  documentingUser='author';
+  assert.equal((await evaluate()).value.value,120);
+  documentingUser='other';
   scope.identifying=true;
   assert.equal((await evaluate()).value.value,120);
   scope.identifying=false; identifyingInput=false;

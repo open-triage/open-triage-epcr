@@ -1,3 +1,4 @@
+import { applyDestinationSelection } from "../app/destination-selection";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -299,4 +300,16 @@ test("configured vital dialog warns for zero and clears after a corrected value 
   const findings = stationaryDialogFindings(corrected.document, form);
   assert.equal(findings.some(({ message }) => message?.includes("Clinically unusual respiratory rate")), false);
   assert.equal(findings.some(({ severity, target }) => severity === "error" && ["eVitals.06", "eVitals.10", "eVitals.27"].includes(target.fieldId ?? target.elementId ?? "")), false);
+});
+
+test("legacy demo population leaves COS destinations for explicit selection", () => {
+ const groupId="eDisposition.DestinationGroup";
+ const empty={...syntheticEncounter.document,groups:syntheticEncounter.document.groups.filter(group=>group.id!==groupId)};
+ const fields:ClinicalFormConfiguration["catalogFields"]={"eDisposition.01":{agencyRequired:false,minOccurs:0,maxOccurs:1,nillable:true,supportsNotValues:true,supportsPertinentNegatives:false,recommendations:{source:"destination-directory",items:[]}}};
+ const pair=(doc:typeof syntheticEncounter.document)=>doc.groups.flatMap(group=>group.instances.flatMap(instance=>instance.elements)).filter(element=>["eDisposition.01","eDisposition.02"].includes(element.id)).flatMap(element=>element.values);
+ for(const source of [empty,populateStationaryDemoData(empty)]) assert.deepEqual(pair(populateStationaryDemoData(source,fields)),[]);
+ for(const choice of ["none",{id:"destination",groupId:"group",revision:1,displayName:"Chosen hospital",localCode:"ED",hsaId:null,active:true}] as const) {
+  const chosen=applyDestinationSelection(empty,choice,groupId);
+  assert.deepEqual(pair(populateStationaryDemoData(chosen,fields)),pair(chosen));
+ }
 });

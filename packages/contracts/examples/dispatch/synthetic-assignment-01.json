@@ -170,7 +170,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-id",
-                  "value": "SYNTHETIC-PATIENT-0001"
+                  "value": "200207252388"
                 }
               ]
             },
@@ -180,28 +180,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-dob",
-                  "value": "1980-01-01"
-                }
-              ]
-            },
-            {
-              "id": "ePatient.18",
-              "values": [
-                {
-                  "kind": "scalar",
-                  "occurrenceId": "synthetic-phone-home",
-                  "value": "212-555-0101",
-                  "attributes": {
-                    "PhoneNumberType": "9913003"
-                  }
-                },
-                {
-                  "kind": "scalar",
-                  "occurrenceId": "synthetic-phone-mobile",
-                  "value": "212-555-0102",
-                  "attributes": {
-                    "PhoneNumberType": "9913005"
-                  }
+                  "value": "2002-07-25"
                 }
               ]
             },
@@ -211,8 +190,51 @@
                 {
                   "kind": "coded",
                   "occurrenceId": "synthetic-patient-sex",
-                  "code": "9919005",
-                  "display": "Unknown"
+                  "code": "9919001",
+                  "display": "Female"
+                }
+              ]
+            },
+            {
+              "id": "ePatient.18",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-phone-mobile",
+                  "value": "+46 70 000 00 01",
+                  "attributes": {
+                    "PhoneNumberType": "9913005"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "ePatient.05",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-ePatient.05",
+                  "value": "Lärkstigen 12"
+                }
+              ]
+            },
+            {
+              "id": "ePatient.09",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-ePatient.09",
+                  "value": "75311"
+                }
+              ]
+            },
+            {
+              "id": "ePatient.19",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-ePatient.19",
+                  "value": "andrea.lindqvist@example.org"
                 }
               ]
             }
@@ -233,7 +255,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-last-name",
-                  "value": "SYNTHETIC-01"
+                  "value": "Lindqvist"
                 }
               ]
             },
@@ -243,7 +265,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-first-name",
-                  "value": "PATIENT-01"
+                  "value": "Andrea"
                 }
               ]
             }

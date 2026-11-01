@@ -1,3 +1,4 @@
+import { captureHsa } from "./hsa-capture.js";
 import { activePersonalProofPolicy } from "./active-personal-provider.js";
 import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException,HttpException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -136,6 +137,7 @@ export class OidcPersonalService {
       where state_sha256=$1 and expires_at>clock_timestamp() and completed_at is null returning state_sha256`,[attempt.state_sha256]));
      if(!live.length)throw new Error();
      if(saved.previousToken)await this.sessions.getAuthenticated(saved.previousToken,new Date(),true,manager);
+     if(validated.identity.hsa)await manager.query(`update app_identity.regional_identity_request set hsa_evidence=$2::jsonb where id=$1`,[identity.requestId,JSON.stringify({candidate:validated.identity.hsa,source:"active",providerRevision:Number(current.revision),providerId:current.provider_id,issuer:validated.identity.issuer,subject:validated.identity.subject,capturedAt:new Date().toISOString()})]);
      if(identity.status!=='linked'){
       // A validated identity that cannot resolve to the outgoing user is a safe
       // switch. Pending onboarding must never leave that user's cookie usable.
@@ -144,6 +146,8 @@ export class OidcPersonalService {
       await manager.query("update app_identity.oidc_personal_transaction set result=$2 where state_sha256=$1",[attempt.state_sha256,identity.status==='denied'?'failed':'pending']);
       return {destination:`${attempt.origin}/?authentication=${identity.status}`,clearSession:true,outcome:identity.status};
      }
+     const [linked]=await manager.query<Array<{linked_user_id:string}>>('select linked_user_id from app_identity.regional_identity_request where id=$1',[identity.requestId]);
+     if(linked?.linked_user_id)await captureHsa(manager,linked.linked_user_id,attempt.organization_id,validated.identity.hsa,{issuer:validated.identity.issuer,subject:validated.identity.subject,providerRevision:Number(current.revision),providerId:current.provider_id});
      const created=await this.sessions.completePersonalAuthentication(manager,identity.requestId,Number(current.revision),validated.proof,saved.previousToken,new Date(),saved.userAgent);
      return {destination:`${attempt.origin}/?authentication=completed`,created,outcome:'succeeded'};
     });

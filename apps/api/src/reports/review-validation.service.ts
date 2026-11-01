@@ -12,13 +12,14 @@ import { DataSource } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encounterDocument } from "./encounter-document.persistence.js";
-import { reviewScope } from "../review/review-scope.js";
+import { reviewIdentifying, reviewScope } from "../review/review-scope.js";
 import { normalizedMetricEvidence, restrictedMetricInputs } from "../review/metric-evidence.js";
 
 type ReportRow = {
   id: string;
   organization_id: string;
   catalog_release_id: string;
+  documenting_user_id: string;
   revision: string | number;
 };
 
@@ -83,7 +84,7 @@ export class ReviewValidationService {
 
     return this.dataSource.transaction("REPEATABLE READ", async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
-        select id,organization_id,catalog_release_id,revision from clinical.report
+        select id,organization_id,catalog_release_id,revision,documenting_user_id from clinical.report
         where id=$1 and organization_id=$2 and status='signed'
           and ($3::boolean or documenting_user_id=$4) and synthetic=$5
       `, [reportId, session.organization.id, scope.reports === "all", session.user.id,
@@ -134,16 +135,16 @@ export class ReviewValidationService {
         version.compiled_sha256, session.user.id, outcome, JSON.stringify(findings),
         JSON.stringify(failures), evaluatedAt]));
       const response = evaluation(inserted[0]!);
-      if (!scope.identifying && response.findings.some((finding) => finding.metricEvidence?.length)) {
+      if (!reviewIdentifying(scope, report.documenting_user_id) && response.findings.length) {
         const inputs = [...new Set(response.findings.flatMap((finding) =>
-          (finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)))];
+          [finding.primaryTarget.elementId, ...(finding.metricEvidence ?? []).flatMap((metric) => metric.inputElementIds)]))];
         const visible = new Set((await manager.query<Array<{ element_id: string }>>(`
           select element_id from catalog.analytics_element_mapping
           where release_id=$1 and element_id=any($2::text[]) and not identifying
         `, [report.catalog_release_id, inputs])).map((row) => row.element_id));
         const restricted = await restrictedMetricInputs(manager, [report.id], inputs);
         // Persist full immutable evidence, but return only inputs this reviewer can read.
-        response.findings = response.findings.map((finding) => !finding.metricEvidence ? finding : ({ ...finding,
+        response.findings = response.findings.filter(finding => visible.has(finding.primaryTarget.elementId)).map((finding) => !finding.metricEvidence ? finding : ({ ...finding,
           metricEvidence: finding.metricEvidence.filter((metric) => metric.inputElementIds.every((id) => visible.has(id) &&
             !restricted.has(`${report.id}:${id}`))).map(normalizedMetricEvidence) }));
       }

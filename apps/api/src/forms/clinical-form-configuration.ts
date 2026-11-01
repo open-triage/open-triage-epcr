@@ -1,4 +1,4 @@
-import { compiledValidationBundleSha256, isNemsisDemographicElementId, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, isNemsisDemographicElementId, type DestinationEntry, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 import { effectiveCatalogFields } from "./field-choice-policy.js";
 import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
@@ -39,6 +39,31 @@ type CachedConfiguration = { configuration: ClinicalFormConfiguration; bytes: nu
 const configurationCaches = new WeakMap<object, Map<string, CachedConfiguration>>();
 const MAX_CACHED_CONFIGURATIONS = 8;
 const MAX_CACHED_CONFIGURATION_BYTES = 16 * 1024 * 1024;
+
+/** Adds live, agency-scoped recommendations only to the response copy, never the pinned cache. */
+export async function clinicalDocumentConfiguration(
+  manager: ConfigurationManager,
+  organizationId: string,
+  formVersionId: string,
+  catalogReleaseId: string,
+  validationVersionId?: string | null,
+  validationCompiledSha256?: string | null,
+): Promise<ClinicalFormConfiguration> {
+  const configuration = await clinicalFormConfiguration(manager, formVersionId, catalogReleaseId,
+    validationVersionId, validationCompiledSha256);
+  const destination = configuration.catalogFields["eDisposition.01"];
+  const [cos] = destination ? await manager.query<Array<{ active: boolean }>>(
+    `select active_revision is not null as active from app_identity.hospital_cos_state
+      where group_id=app_identity.organization_group($1)`, [organizationId]) : [];
+  if (destination && cos?.active) {
+    const items = await manager.query<DestinationEntry[]>(`select id,group_id as "groupId",revision,
+      local_code as "localCode",display_name as "displayName",hsa_id as "hsaId",active
+      from app_identity.destination_directory where group_id=app_identity.organization_group($1)
+      and active order by lower(display_name),id limit 2000`, [organizationId]);
+    destination.recommendations = { source: "destination-directory", items };
+  }
+  return configuration;
+}
 
 /** Loads only immutable, report-pinned configuration; the current agency default is deliberately irrelevant. */
 export async function clinicalFormConfiguration(

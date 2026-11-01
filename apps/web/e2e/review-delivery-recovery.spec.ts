@@ -1,0 +1,101 @@
+import {expect,test} from '@playwright/test';
+import settings from '@open-triage/contracts/config/installation.production.json';
+for(const width of [390,1440])for(const state of ['failed','uncertain','confirmed','permanent','restricted','reconcile-stored','reconcile-fenced','reconcile-unresolved','reconcile-unsupported','scheduled','exhausted','paused','rebuild-held','rebuild-ready','rebuild-progress','rebuild-conflict'])test(`COS recovery ${state} at ${width}px`,async({page,context})=>{
+ test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE!=='true');
+ await page.setViewportSize({width,height:900});
+ const reportId='123e4567-e89b-42d3-a456-426614174111',itemId='123e4567-e89b-42d3-a456-426614174112',userId='123e4567-e89b-42d3-a456-426614174114',now=new Date().toISOString();
+ const identifying=state!=='restricted';const reconciling=state.startsWith('reconcile-');let retries=0,reconciliations=0,rebuilds=0,rebuilt=false;
+ const session={csrfToken:'fixture',user:{id:userId,displayName:'Reviewer'},organization:{id:'organization',name:'Example EMS'},startedAt:now,expiresAt:'2099-10-02T20:00:00Z',capabilities:['review:all',...(identifying?['review:identifying']:[])],workspaceAvailable:true};
+ const evidence={integration:'cos',deliveryId:'123e4567-e89b-42d3-a456-426614174118',amendmentSequence:2,configurationRevision:'3',mappingId:'mapping',mappingRevision:4,mappingSha256:'a'.repeat(64),missing:[],patientField:null,deliveryState:state==='rebuild-held'?'uncertain':state.startsWith('rebuild-')?'failed':reconciling?'uncertain':['permanent','restricted','scheduled','exhausted','paused'].includes(state)?'failed':state,finding:state==='uncertain'?'outcomeUnknown':state==='permanent'?'identityConflict':'outage',stateRevision:5,retryable:['failed','scheduled','exhausted'].includes(state),automaticRetry:{scheduleMinutes:[1,5,15,30,60],configurationRevision:3,reserved:state==='exhausted'?5:1,attempts:state==='exhausted'?5:0,nextDue:state==='scheduled'?new Date(Date.now()+60000).toISOString():null,exhausted:state==='exhausted',paused:state==='paused'},reconciliationTarget:reconciling||state==='rebuild-held'?{deliveryId:'123e4567-e89b-42d3-a456-426614174118',amendmentSequence:2,configurationRevision:3}:undefined,reconciliations:[] as Array<{id:string;actorId:string;outcome:string;evidence:Record<string,unknown>;recordedAt:string}>,recoveryCommands:[{id:'prior',actorId:userId,deliveryId:'old',amendmentSequence:1,requestedAt:now,outcome:'failed'},{id:'automatic',actorId:null,automaticOrdinal:1,deliveryId:'old',amendmentSequence:1,requestedAt:now,outcome:'superseded'}]};
+ const item={id:itemId,reportId,criterionId:'123e4567-e89b-42d3-a456-426614174116',kind:'cos-delivery-failed',transmissionReason:'delivery-failure',priority:'medium',status:state==='confirmed'?'completed':'new',activeMatch:state!=='confirmed',outcome:null,assigneeId:userId,version:7,firstMatchedAt:now,reportingDate:'2026-10-19',signedAt:now,findings:[],assignmentHistory:[],progressHistory:[],amendmentHistory:[],comments:[],commentsRestricted:!identifying,canComment:identifying,transmissionRestricted:!identifying,...(identifying?{transmission:evidence,transmissionHistory:[{itemVersion:7,active:state!=='confirmed',recordedAt:now,evidence}]}:{})};
+ await context.addInitScript(stored=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(stored)),session);
+ await context.route('**/api/**',async route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==='/api/installation')return route.fulfill({json:{settings,appearance:{accentColor:'#315ba8',accentDarkColor:'#24447e',destructiveColor:'#8a2670',inactiveButtonColor:'#edf1fa',textColor:'#202850'}}});
+  if(path==='/api/sessions/current')return route.fulfill({json:session});
+  if(path==='/api/review/attention')return route.fulfill({json:{dataset:'real',asOf:now,total:0,assignments:0,responses:0,reopened:0}});
+  if(path==='/api/review/queue')return route.fulfill({json:{dataset:'real',page:1,pageSize:25,total:1,assignmentCounts:{all:1,mine:1,unassigned:0},asOf:now,items:[item]}});
+  if(path===`/api/review/items/${itemId}/rebuild-cos`){
+   if(route.request().method()==='GET')return route.fulfill({json:{available:state.startsWith('rebuild-')&&!rebuilt,blockedByUncertain:state==='rebuild-held',reason:rebuilt?'alreadyPrepared':null,deliveryId:evidence.deliveryId,amendmentSequence:2,configurationRevision:3,stateRevision:5,expectedVersion:item.version}});
+   rebuilds++;expect(route.request().headers()['x-csrf-token']).toBe('fixture');
+   expect(route.request().postDataJSON()).toMatchObject({expectedVersion:7,dataset:'real',deliveryId:evidence.deliveryId,amendmentSequence:2,configurationRevision:3,stateRevision:5});
+   if(state==='rebuild-conflict')return route.fulfill({status:409,json:{code:'hospital.cos.rebuildIdentityChanged'}});
+   rebuilt=true;item.version++;evidence.deliveryState='pending';evidence.finding=state==='rebuild-held'?'rebuildAwaitingReconciliation':'';
+   return route.fulfill({json:item});
+  }
+  if(path===`/api/review/items/${itemId}/reconcile-cos`){
+   reconciliations++;expect(route.request().headers()['x-csrf-token']).toBe('fixture');
+   expect(route.request().postDataJSON()).toMatchObject({expectedVersion:7,dataset:'real',deliveryId:evidence.reconciliationTarget!.deliveryId,amendmentSequence:2,configurationRevision:3,stateRevision:5});
+   const outcome=state==='reconcile-stored'?'stored':state==='reconcile-fenced'?'not-stored':state==='reconcile-unsupported'?'unsupported':'unresolved';
+   evidence.reconciliations.push({id:'reconciled',actorId:userId,outcome,evidence:{contact:'known',note:outcome==='stored'?'known':outcome==='not-stored'?'rejected':'uncertain',storage:outcome==='stored'?'known':outcome==='not-stored'?'rejected':'uncertain'},recordedAt:now});
+   evidence.deliveryState=outcome==='stored'?'confirmed':outcome==='not-stored'?'failed':'uncertain';evidence.finding=outcome==='not-stored'?'reconciledNotStored':outcome==='stored'?'':outcome==='unsupported'?'reconciliationUnsupported':'reconciliationUnresolved';evidence.retryable=outcome==='not-stored';
+   if(outcome==='stored'||outcome==='not-stored')evidence.reconciliationTarget=undefined;
+   item.activeMatch=outcome!=='stored';item.status=outcome==='stored'?'completed':'new';
+   item.version++;return route.fulfill({json:item});
+  }
+  if(path===`/api/review/items/${itemId}/retry-cos`){
+   retries++;const command=route.request().postDataJSON();expect(command).toMatchObject({expectedVersion:7,dataset:'real',deliveryId:evidence.deliveryId,amendmentSequence:2,configurationRevision:3,stateRevision:5});
+   evidence.deliveryState='pending';evidence.automaticRetry.nextDue=null;evidence.finding=null as unknown as string;evidence.retryable=false;item.version++;
+   return route.fulfill({json:item});
+  }
+  if(path===`/api/review/items/${itemId}`)return route.fulfill({json:item});
+  if(path==='/api/review/eligible-reviewers'||path==='/api/review/outcomes')return route.fulfill({json:[]});
+  if(path===`/api/review/reports/${reportId}`)return route.fulfill({json:{id:reportId,reportingDate:'2026-10-19',signedAt:now,amendmentSequence:2,identifying,groups:[],values:[],notes:[],reviewItems:[item],cosDelivery:{simulated:true,state:evidence.deliveryState,finding:evidence.finding,paused:false,updatedAt:now,configurationRevision:3,mappingRevision:4,reviewItemId:itemId}}});
+  return route.fulfill({status:404});
+ });
+ await page.goto('/');await page.locator('.review-row-actions button').first().click();
+ const inspector=page.locator('#review-inspector');await expect(inspector).toBeVisible();
+ await expect(inspector.getByRole('option',{name:'Retry latest signed version',exact:true})).toHaveCount(0);
+ await expect(inspector.getByRole('option',{name:'Refresh status',exact:true})).toHaveCount(0);
+ const delivery=page.getByRole('region',{name:'COS simulator delivery',exact:true});
+ const retry=delivery.getByRole('button',{name:'Retry latest signed version',exact:true});
+ if(state.startsWith('rebuild-')){
+  await inspector.getByRole('button',{name:'Close report',exact:true}).click();
+  const rebuild=delivery.getByRole('button',{name:'Rebuild corrected export',exact:true});
+  await expect(rebuild).toBeVisible();await rebuild.click();
+  if(state==='rebuild-conflict')await expect(delivery.getByRole('alert')).toContainText('patient or recipient differs');
+  else {
+   await expect(delivery.getByRole('status')).toContainText(state==='rebuild-held'?'Sending is blocked':'prepared and queued');
+   await expect(rebuild).toHaveCount(0);
+   await expect(delivery.getByRole('button',{name:'Refresh status',exact:true})).toHaveCount(state==='rebuild-held'?1:0);
+   if(state==='rebuild-progress'){
+    evidence.deliveryState='uncertain';evidence.finding='reconciliationUnresolved';item.version++;
+    evidence.reconciliationTarget={deliveryId:evidence.deliveryId,amendmentSequence:2,configurationRevision:3};
+    await expect(delivery.getByRole('button',{name:'Refresh status',exact:true})).toBeVisible({timeout:10000});
+    await expect(delivery).toContainText('Stored evidence could not be verified');
+   }
+  }
+  expect(rebuilds).toBe(1);expect(retries).toBe(0);expect(reconciliations).toBe(0);
+  await page.locator('#review-findings-toggle').click();
+ }else if(reconciling){
+  await expect(retry).toHaveCount(0);
+  await inspector.getByRole('button',{name:'Close report',exact:true}).click();
+  await delivery.getByRole('button',{name:'Refresh status',exact:true}).click();
+  await expect(delivery).toContainText('Reconciliation recorded. No contact or note was resent.');
+  await page.locator('#review-findings-toggle').click();
+  expect(reconciliations).toBe(1);expect(retries).toBe(0);
+  await inspector.getByText('Reconciliation evidence',{exact:true}).click();
+  await expect(inspector).toContainText(state==='reconcile-stored'?'Final storage confirmed':state==='reconcile-fenced'?'original attempt fenced':state==='reconcile-unsupported'?'Real reconciliation unsupported':'Evidence unresolved');
+  await expect(retry).toHaveCount(state==='reconcile-fenced'?1:0);
+  if(state==='reconcile-stored'){await expect(inspector).toContainText('Delivery confirmed');await expect(inspector).not.toContainText('Delivery remains unconfirmed');await expect(inspector).not.toContainText('rejected the request during an outage');}
+  if(state==='reconcile-fenced'){await expect(inspector).toContainText('Verified non-delivery');await expect(inspector).not.toContainText('rejected the request during an outage');}
+ }else if(['failed','scheduled','exhausted'].includes(state)){
+  if(state==='scheduled')await expect(inspector).toContainText('Next planned retry');
+  if(state==='exhausted')await expect(inspector).toContainText('Automatic retry budget exhausted');
+  await expect(retry).toHaveCount(1);
+  await inspector.getByRole('button',{name:'Close report',exact:true}).click();
+  await delivery.getByRole('button',{name:'Retry latest signed version',exact:true}).click();
+  await expect(delivery).toContainText('Delivery queued. This Review item stays open');expect(retries).toBe(1);
+  await expect(retry).toHaveCount(0);
+  await page.locator('#review-findings-toggle').click();
+ }else{
+  await expect(retry).toHaveCount(0);
+  await expect(inspector).toContainText(state==='uncertain'?'Retry is blocked':state==='confirmed'?'Delivery confirmed':state==='restricted'?'Identifying report access is required':state==='scheduled'?'Next planned retry':state==='exhausted'?'Automatic retry budget exhausted':state==='paused'?'Automatic retries paused':'Correct the indicated payload');
+ }
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.screenshot({path:test.info().outputPath('delivery-recovery.png'),fullPage:true});
+ if(identifying){await inspector.getByText('Recovery command history',{exact:true}).click();await expect(inspector).toContainText('signed amendment 1');await expect(inspector).toContainText('Automatic retry 1');await expect(inspector).toContainText('Policy revision 3');}
+ if(state==='paused'){await expect(inspector).toContainText('pinned configuration');await expect(inspector).toContainText('1, 5, 15, 30, 60');}
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ expect(retries).toBe(['failed','scheduled','exhausted'].includes(state)?1:0);
+});

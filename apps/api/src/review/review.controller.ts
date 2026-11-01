@@ -1,3 +1,4 @@
+import type { RetryCosReviewCommand } from '@open-triage/contracts';
 import { BadRequestException, Body, ConflictException, Controller, Get, Header, Headers, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
 import type { AddReviewCommentCommand, AssignReviewItemCommand, ClaimReviewItemCommand, CloseReviewOverdueCommand, ConfigureReviewRouteCommand, ReviewAttentionKind, ReviewAttentionResponse, ReviewCriterionRoute, ReviewEligibleReviewer, ReviewItemDetail, ReviewProgressCommand, ReviewOutcomeCommand, ReviewOutcomeOption, ReviewSignedReport, ReviewVolumeResult, ReviewAnalysisDefinition, ReviewAnalysisField, ReviewAnalysisResult, ReviewAnalysisReviewFilters, ReviewWorkloadDefinition, ReviewWorkloadResult, ReviewRetrospectiveDefinition, ReviewRetrospectivePreview, ReviewRetrospectiveRun, ReviewRetrospectiveVersion, StartReviewRetrospectiveCommand, ConfigureReviewAmendmentPolicyCommand, ReviewAmendmentPolicy, ReviewBulkClaimCommand, ReviewBulkAssignCommand, ReviewBulkResult, ReviewSavedAnalysis, ReviewSavedAnalysisOpen, SaveReviewAnalysisCommand } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
@@ -33,6 +34,59 @@ function sendCsv(response: CsvResponse, filename: string, value: string) {
 @Controller("review")
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}
+
+  @Get("items/:itemId/mapping-repair")
+  @Header("Cache-Control", "no-store, private")
+  mappingRepairContext(@Param("itemId",ParseUUIDPipe) itemId:string,@Query("dataset") dataset:string,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string) {
+    return this.review.mappingRepairContext(bearerToken(authorization,cookie),itemId,dataset);
+  }
+  @Post("items/:itemId/mapping-repair")
+  @Header("Cache-Control", "no-store, private")
+  repairMapping(@Param("itemId",ParseUUIDPipe) itemId:string,@Body() command:import("@open-triage/contracts").CosMappingRepairCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string) {
+    return this.review.repairCosMapping(bearerToken(authorization,cookie),itemId,command,csrfToken);
+  }
+
+  @Get("items/:itemId/identifier-correction")
+  @Header("Cache-Control", "no-store, private")
+  identifierCorrectionContext(@Param("itemId",ParseUUIDPipe) itemId:string,@Query("dataset") dataset:string,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string) {
+    return this.review.identifierCorrectionContext(bearerToken(authorization,cookie),itemId,dataset);
+  }
+  @Post("items/:itemId/identifier-correction")
+  @Header("Cache-Control", "no-store, private")
+  correctIdentifier(@Param("itemId",ParseUUIDPipe) itemId:string,@Body() command:import("@open-triage/contracts").ReviewIdentifierCorrectionCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string) {
+    return this.review.correctIdentifier(bearerToken(authorization,cookie),itemId,command,csrfToken);
+  }
+
+  @Post("items/:id/reconcile-cos")
+  @Header("Cache-Control", "no-store, private")
+  reconcileCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string){
+    return this.review.reconcileCos(bearerToken(authorization,cookie),id,command,csrfToken);
+  }
+
+  @Get("items/:id/rebuild-cos")
+  @Header("Cache-Control", "no-store, private")
+  rebuildCosContext(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Query("dataset") dataset:string,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string){
+    return this.review.rebuildCosContext(bearerToken(authorization,cookie),id,dataset);
+  }
+  @Post("items/:id/rebuild-cos")
+  @Header("Cache-Control", "no-store, private")
+  rebuildCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string){
+    return this.review.rebuildCos(bearerToken(authorization,cookie),id,command,csrfToken);
+  }
+
+  @Post("items/:id/retry-cos")
+  @Header("Cache-Control", "no-store, private")
+  retryCos(@Param("id", new ParseUUIDPipe({version:"4"})) id:string,@Body() command:RetryCosReviewCommand,
+    @Headers("authorization") authorization?:string,@Headers("cookie") cookie?:string,@Headers("x-csrf-token") csrfToken?:string){
+    return this.review.retryCos(bearerToken(authorization,cookie),id,command,csrfToken);
+  }
 
   @Get("overdue-policy")
   @Header("Cache-Control", "no-store, private")
@@ -287,6 +341,38 @@ export class ReviewController {
     const csv = underlyingCsv(result);
     await this.review.auditExport(bearerToken(authorization, cookie), "review.analysis", "records", result);
     return sendCsv(response, "review-analysis-records.csv", csv);
+  }
+
+  @Get("reports/:id/cos-deliveries/:deliveryId/pdf")
+  async submittedCosPdf(@Param("id",new ParseUUIDPipe({version:"4"})) id:string,
+    @Param("deliveryId",new ParseUUIDPipe({version:"4"})) deliveryId:string,
+    @Query("dataset") dataset:string|undefined,@Headers("authorization") authorization:string|undefined,
+    @Headers("cookie") cookie:string|undefined,
+    @Res() response:{setHeader(name:string,value:string):void;send(value:Buffer):unknown}){
+    const pdf=await this.review.submittedCosPdf(bearerToken(authorization,cookie),id,deliveryId,dataset);
+    response.setHeader("Content-Type","application/pdf");
+    response.setHeader("Content-Disposition",`inline; filename="cos-submitted-${deliveryId}.pdf"`);
+    response.setHeader("Cache-Control","no-store, private");
+    response.setHeader("Pragma","no-cache");
+    response.setHeader("X-Content-Type-Options","nosniff");
+    return response.send(pdf);
+  }
+
+  @Get("reports/:id/snapshots/:snapshotId/pdf")
+  async signedPdf(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Param("snapshotId", new ParseUUIDPipe({ version: "4" })) snapshotId: string,
+    @Query("amendmentSequence") sequence: string, @Query("language") language: string,
+    @Query("dataset") dataset: string | undefined, @Headers("authorization") authorization: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res() response: { setHeader(name: string, value: string): void; send(value: Buffer): unknown },
+    @Query("timeZone") timeZone?: string) {
+    const pdf = await this.review.signedPdf(bearerToken(authorization, cookie), id, snapshotId, sequence, language, dataset, timeZone);
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Content-Disposition", `inline; filename="signed-report-${id}-${sequence}.pdf"`);
+    response.setHeader("Cache-Control", "no-store, private");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    return response.send(pdf);
   }
 
   @Get("reports/:id")

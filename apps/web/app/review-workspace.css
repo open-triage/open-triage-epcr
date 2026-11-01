@@ -61,7 +61,9 @@
 .review-inspector-heading > button { font-size: 24px; line-height: 1; padding: 4px 12px; }
 .review-inspector .review-tabs { margin-top: 12px; border-width: 0 0 1px; border-radius: 0; }
 .review-inspector .review-tabs button { min-height: 44px; padding: 10px 9px; font-size: var(--text-control); }
-.review-action-form { display: grid; gap: 12px; margin-top: 14px; }
+.review-action-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 14px; overflow-wrap: anywhere; }
+.review-action-form label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.review-action-form input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; flex: 0 0 20px; margin: 0; padding: 0; }
 .review-action-form p { margin: 0; }
 .review-action-form > button { justify-self: start; max-width: 100%; }
 .review-inspector h3 { margin-top: 12px; }
@@ -188,3 +190,20 @@
 
 .review-report-item-row:hover { background: color-mix(in srgb, var(--green) 8%, transparent); cursor: pointer; }
 .review-report-item-row:has([aria-current="true"]) { background: color-mix(in srgb, var(--green) 14%, transparent); }
+
+.cos-issue-settings {
+  width: min(72rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  border: 1px solid var(--border, #ccc);
+  border-radius: .5rem;
+  padding: 1rem;
+}
+.cos-issue-settings::backdrop { background: rgb(0 0 0 / 45%); }
+.cos-signing-status table { width: 100%; table-layout: fixed; }
+.cos-signing-status th, .cos-signing-status td { overflow-wrap: anywhere; text-align: start; padding: .35rem; }
+.cos-signing-status .cos-issue-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.cos-signing-status details p { overflow-wrap: anywhere; }
+
+.cos-signing-status .review-findings > li { padding: 12px; }
+.cos-signing-status .cos-issue-actions button { width: auto; min-height: 44px; }

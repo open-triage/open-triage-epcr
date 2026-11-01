@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  matchingProtectedEps,
   assertMonotonicCiphertextRevision,
   applyProtectedAuthorityResponse,
   decryptProtectedPayload,
@@ -182,6 +183,27 @@ test("schema, opaque recovery handle, revision, and authentication tag are all a
   }));
 });
 
+test("signing retries a failed protected write once and retains its completion boundary", async () => {
+  let fail = true;
+  const writes: number[] = [];
+  const queue = new LatestProtectedWriteQueue<number>(async value => {
+    writes.push(value);
+    if (fail) throw new Error("receipt unavailable");
+  });
+  queue.request(1);
+  await assert.rejects(queue.flush(), /receipt unavailable/);
+  await assert.rejects(queue.holdAfterFlush(), /receipt unavailable/);
+  assert.deepEqual(writes, [1, 1], "persistent failures are bounded and still block signing");
+  fail = false;
+  const held = queue.holdAfterFlush();
+  queue.request(2);
+  const release = await held;
+  assert.deepEqual(writes, [1, 1, 1]);
+  release();
+  await queue.flush();
+  assert.deepEqual(writes, [1, 1, 1, 2]);
+});
+
 test("rollout removes every known and report-scoped plaintext clinical key without migration", () => {
   const values = new Map([
     ["open-triage:offline-reports-v1", "call number"],
@@ -335,4 +357,21 @@ test("a recovered persisted baseline does not rewrite restored work and still wr
   queue.request(structuredClone(changed));
   await queue.flush();
   assert.equal(writes.length, 3, "a failed identical write must remain retryable");
+});
+
+
+test("EPS cache binds user, agency, report and local patient document inside encrypted report payload", async () => {
+  const scope = { reportId: "report", organizationId: "agency", userId: "clinician", documentKey: "patient-A" };
+  const entry = { scope, lookup: { status: "available", context: { reportId: "report", organizationId: "agency", binding: "patient-A-config-4", configurationRevision: 4 }, summary: { patient: "PRIVATE EPS" }, retrievedAt: "2026-01-01" } } as unknown as import("../app/protected-clinical-storage").ProtectedEpsEntry;
+  assert.deepEqual(matchingProtectedEps(entry, scope), entry.lookup);
+  for (const field of ["reportId", "organizationId", "userId", "documentKey"]) assert.equal(matchingProtectedEps(entry, { ...scope, [field]: "other" }), null);
+  assert.equal(matchingProtectedEps(undefined, scope), null);
+  const result = matchingProtectedEps(entry, scope)!;
+  result.context!.configurationRevision = 9;
+  assert.equal(entry.lookup.context!.configurationRevision, 4, "refresh never mutates an existing source snapshot");
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const payload = { schemaVersion: 1, eps: entry };
+  const encrypted = await encryptProtectedPayload(key, "opaque-eps", 1, payload);
+  assert.equal(new TextDecoder().decode(encrypted.ciphertext).includes("PRIVATE EPS"), false);
+  assert.deepEqual(await decryptProtectedPayload(key, { schemaVersion: 1, recoveryHandle: "opaque-eps", ciphertextRevision: 1, ...encrypted }), payload);
 });

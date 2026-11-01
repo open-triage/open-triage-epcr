@@ -30,15 +30,6 @@ export class DraftSaveRejectedError extends Error {
   }
 }
 
-export function shouldQueueInitialDraftSnapshot(
-  localStateStatus: "empty" | "restored" | "incompatible" | "invalid",
-  serverRevision: number,
-  hasServerDocument: boolean,
-  hasQueuedChange: boolean,
-): boolean {
-  return localStateStatus === "empty" && serverRevision === 0 && hasServerDocument && !hasQueuedChange;
-}
-
 export interface ActiveDraftReport {
   readonly id: string;
   readonly revision: number;
@@ -211,6 +202,7 @@ export function encounterDocumentToDraftMutations(
           id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
           ...(hasDemoProvenance(value.attributes) ? { provenanceKind: "demo", provenanceDetail: { generator: DEMO_PROVENANCE_VALUE } } : {}),
+          ...(value.destinationSelection ? {provenanceDetail:{destinationSelection:value.destinationSelection}} : {}),
           value: draftValue(element.id, value, customFields),
         });
       }));
@@ -417,6 +409,24 @@ export async function fetchActiveReport(
   return { etag: response.headers.get("etag") ?? "", resource: await response.json() as ActiveReportResource };
 }
 
+export type EpsDeliveryIssue = {code:string;action:'edit'|'configuration';elementId?:string};
+export type EpsDeliverySummary = {state:'awaitingCos'|'prepared'|'pending'|'accepted'|'rejected'|'unknown'|'draftChanged';issues:EpsDeliveryIssue[]};
+export type SigningStatus = {epsDelivery?:EpsDeliverySummary|null;status:'draft'|'signed'|'awaiting-cos'|'awaiting-eps';signedSnapshotId?:string;submissionId?:string;revision?:number;deliveryId?:string;deliveryState?:string;finding?:string|null;findings?:string[];issues?:import('@open-triage/contracts').CosSigningIssue[];context?:{unitName?:string;callSign?:string;authorName?:string;configurationRevision?:string;mappingId?:string;mappingRevision?:number}};
+export async function readCosPatientComparison(csrfToken:string,reportId:string,revision:number,deliveryId:string):Promise<import('@open-triage/contracts').CosPatientComparison>{
+ const configuration=browserRequestConfiguration();
+ const response=await fetch(browserRouteUrl(`/api/reports/${reportId}/signing-patient-comparison`,configuration),browserRequestInit({
+  method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify({revision,deliveryId})}));
+ if(!response.ok)throw await platformRequestError(response);
+ return response.json();
+}
+export async function readSigningStatus(reportId:string):Promise<SigningStatus>{
+ const configuration=browserRequestConfiguration();
+ if(configuration.mode==='static'&&!configuration.routeStaticMutationsToApi)return {status:'draft'};
+ const response=await fetch(browserRouteUrl(`/api/reports/${reportId}/signing-status`,configuration),browserRequestInit({cache:'no-store'}));
+ if(!response.ok)throw await platformRequestError(response);
+ return response.json();
+}
+
 export async function signDraftReport(
   csrfToken: string,
   reportId: string,
@@ -431,7 +441,10 @@ export async function signDraftReport(
     readonly inputFingerprint: string;
   } }>,
   evaluationTimestamp = new Date().toISOString(),
-): Promise<void> {
+  exportEps = false,
+  skipCosReason?: string,
+  exportCos?: boolean,
+): Promise<SigningStatus|undefined> {
   const configuration = browserRequestConfiguration();
   if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) return;
   const path = `/api/reports/${reportId}/sign`;
@@ -445,6 +458,9 @@ export async function signDraftReport(
         expectedRevision,
         signerId,
         attestation: { meaning: "clinician approval" },
+        ...(exportEps?{exportEps:true}:{}),
+        ...(exportCos!==undefined?{exportCos}:{}),
+        ...(skipCosReason?{skipCosReason}:{}),
         warningAcknowledgements: Object.fromEntries(warningAcknowledgements.map((item) => typeof item === "string"
           ? [item, true] : [item.id, item.acknowledgement ?? true])),
         deviceId: `web:${reportId}`,
@@ -455,4 +471,5 @@ export async function signDraftReport(
     throw new Error("The record could not be signed. Check your connection and try again.");
   }
   if (!response.ok) throw await platformRequestError(response);
+  return response.json();
 }

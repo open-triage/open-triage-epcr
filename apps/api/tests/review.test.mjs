@@ -7,13 +7,14 @@ import { reviewScope } from "../dist/review/review-scope.js";
 
 test("signed inspection applies amendments and withholds unrestricted content", async () => {
   const queries = [];
-  let capabilities = ["review:self"];
+  let capabilities = ["review:all"];
   let reportVisible = true;
+  let documentingUserId = "other-user";
   const manager = { async query(sql, params) {
     if (sql.includes("with recorded_access")) return [{ recorded: params[3].length }];
     queries.push({ sql, params });
     if (sql.includes("from clinical.report r join clinical.signed_snapshot")) return reportVisible ? [{
-      id: "report-a", reporting_date: "2026-10-02", signed_at: "2026-10-02T08:00:00Z", catalog_release_id: "release-a", form_version_id: "form-pinned",
+      id: "report-a", documenting_user_id: documentingUserId, reporting_date: "2026-10-02", signed_at: "2026-10-02T08:00:00Z", catalog_release_id: "release-a", form_version_id: "form-pinned",
     }] : [];
     if (sql.includes("select canonical_definition from forms.form_version")) {
       assert.deepEqual(params, ["form-pinned", "release-a"]);
@@ -45,6 +46,11 @@ test("signed inspection applies amendments and withholds unrestricted content", 
       corrected_value: { id: "old", value_integer: 4 }, sequence: 1 }];
     if (sql.includes("from clinical.report_note note") || sql.includes("from clinical.report_photo_note note") ||
         sql.includes("from clinical.report_audio_note note")) return [];
+    if (sql.includes("from clinical.cos_delivery d")) {
+      assert.equal(reportVisible, true);
+      assert.deepEqual(params, ["report-a", "org-a"]);
+      return [{ state: "uncertain", finding: "outcomeUnknown", paused: false, updated_at: new Date("2026-10-19T12:00:00Z"), configuration_revision: "3", mapping_revision: 2 }];
+    }
     if (sql.includes("from clinical.review_item item")) return [];
     if (sql.includes("from catalog.") || sql.includes("from forms.")) return [];
     throw new Error(`unexpected query ${sql}`);
@@ -54,6 +60,8 @@ test("signed inspection applies amendments and withholds unrestricted content", 
     { get: async () => session(capabilities) });
   const report = await service.report("token", "report-a");
   assert.equal(report.amendmentSequence, 1);
+  assert.deepEqual(report.cosDelivery, { simulated: true, state: "uncertain", finding: "outcomeUnknown", paused: false,
+    updatedAt: "2026-10-19T12:00:00.000Z", configurationRevision: 3, mappingRevision: 2 });
   assert.deepEqual(report.groups.map(({ id, label }) => [id, label]), [["group-a", "Assessment entry"]]);
   assert.deepEqual(report.values.map(({ id, value, groupInstanceId }) => [id, value, groupInstanceId]),
     [["old", 4, "group-a"]]);
@@ -65,9 +73,14 @@ test("signed inspection applies amendments and withholds unrestricted content", 
   assert.match(queries[0].sql, /r\.organization_id = \$2/);
   assert.match(queries[0].sql, /r\.synthetic = \$3/);
   assert.match(queries[0].sql, /r\.status = 'signed'/);
-  assert.deepEqual(queries[0].params.slice(1), ["org-a", false, false, "user-a"]);
+  assert.deepEqual(queries[0].params.slice(1), ["org-a", false, true, "user-a"]);
   await assert.rejects(service.media("token", "report-a", "note-a", "photo"), ForbiddenException);
-  capabilities = ["review:self", "review:identifying"];
+  documentingUserId = "user-a";
+  const own = await service.report("token", "report-a");
+  assert.equal(own.identifying, true);
+  assert.equal(own.values.length, 3);
+  documentingUserId = "other-user";
+  capabilities = ["review:all", "review:identifying"];
   const identified = await service.report("token", "report-a");
   assert.equal(identified.values.length, 3);
   assert.equal(identified.values.find(({ id }) => id === "identity").value, "Surname");
@@ -245,8 +258,8 @@ test("only review administrators can inspect processing failures", async () => {
   assert.deepEqual((await service.backlog("token")).work, []);
 });
 
-test("Review routing is admin-only, versioned, replay-safe, and validates named reviewers", async () => {
-  const criterionId = "123e4567-e89b-42d3-a456-426614174021";
+for (const kind of ["clinical", "overdue", "transmission", "delivery-failure"]) test(`Review ${kind} routing is admin-only, versioned, replay-safe, and validates named reviewers`, async () => {
+  const criterionId = kind === "clinical" ? "123e4567-e89b-42d3-a456-426614174021" : kind === "overdue" ? "123e4567-e89b-42d3-a456-426614174099" : kind === "transmission" ? "123e4567-e89b-42d3-a456-426614174098" : "123e4567-e89b-42d3-a456-426614174097";
   const namedId = "123e4567-e89b-42d3-a456-426614174022";
   let current = session(["review:all"]);
   let eligible = true;
@@ -254,7 +267,9 @@ test("Review routing is admin-only, versioned, replay-safe, and validates named 
   const history = [];
   const manager = { async query(sql, params) {
     if (sql.includes("from app_identity.organization")) return [{ id: params[0] }];
-    if (sql.includes("from validation.version v")) return [{ id: "published" }];
+    if (sql.includes("from validation.version v")) return kind === "clinical" ? [{ id: "published" }] : [];
+    if (sql.includes("review_cos_criterion_id")) { assert.match(sql,/delivery-failure/); return [{id:"123e4567-e89b-42d3-a456-426614174098"},{id:"123e4567-e89b-42d3-a456-426614174097"}]; }
+    if (sql.includes("insert into validation.rule_identity")) {assert.notEqual(kind,"clinical");assert.equal(params[0],criterionId);return [];}
     if (sql.includes("review_overdue_criterion_id")) return [{ id: "123e4567-e89b-42d3-a456-426614174099" }];
     if (sql.includes("insert into clinical.review_criterion_route (")) return [];
     if (sql.includes("select version from clinical.review_criterion_route")) return [{ version: String(state.version) }];
@@ -317,9 +332,9 @@ test('queue search and assignment filters stay scoped, parameterized, and identi
   assert.match(calls[0].sql, /r.documenting_user_id=\$4/);
   assert.equal(calls[0].params[9], "Oxygen%'");
   assert.ok(!calls[0].sql.includes("Oxygen%'"));
-  assert.ok(!calls[0].sql.includes("eRecord.01"));
-  assert.match(calls[1].sql, /null report_number/);
-  assert.match(calls[1].sql, /null assignee_name/);
+  assert.match(calls[0].sql, /r.documenting_user_id=\$4\) and strpos/);
+  assert.match(calls[1].sql, /else null end report_number/);
+  assert.match(calls[1].sql, /else null end assignee_name/);
   assert.deepEqual(calls[1].params.slice(-2), [10, 10]);
   calls.length = 0;
   capabilities = ['review:all', 'review:identifying'];
@@ -358,3 +373,38 @@ for (const authority of ["installationOwner", "installationSuperadmin"]) {
     assert.ok(queries.length);
   });
 }
+
+test("mixed queues and amendment evidence authorize identifying findings per documenting clinician", async () => {
+  let capabilities = ["review:all"];
+  const privateFinding = { primaryTarget: { elementId: "ePatient.02" }, message: "Private finding",
+    metricEvidence: [{ inputElementIds: ["ePatient.02"], value: 1 }] };
+  const rows = ["user-a", "user-b"].map((author, index) => ({ id: `item-${index}`, report_id: `report-${index}`,
+    documenting_user_id: author, criterion_id: "rule", catalog_release_id: "catalog", priority: "high",
+    status: "new", assignee_id: "user-a", version: "0", first_matched_at: "2026-10-02T08:00:00Z",
+    signed_at: "2026-10-02T08:00:00Z", findings: [privateFinding] }));
+  const database = { async query(sql, params) {
+    if (sql.includes("from clinical.review_item i")) {
+      if (sql.includes("count(*)")) return [{ total: "2", all: "2", mine: "2", unassigned: "0" }];
+      return sql.includes("where i.id=$1") ? rows.filter(row => row.id === params[0]) : rows;
+    }
+    if (sql.includes("from clinical.review_amendment_decision")) return [{
+      evaluation_id: "evaluation", amendment_sequence: 1, matched: true, action: "retained",
+      item_version: "0", validation_version_id: "version", evaluated_at: "2026-10-02T08:00:00Z",
+      findings: [privateFinding], changes: [{ elementId: "ePatient.02", identifying: true, change: "changed" }],
+    }];
+    return [];
+  } };
+  const service = new ReviewService(database, { get: async () => session(capabilities) });
+  for (const identifying of [false, true]) {
+    capabilities = ["review:all", ...(identifying ? ["review:identifying"] : [])];
+    const queue = await service.queue("token", {});
+    assert.deepEqual(queue.items.map(row => row.findings.length), [1, identifying ? 1 : 0]);
+    for (const [index, row] of rows.entries()) {
+      const detail = await service.item("token", row.id);
+      const expected = index === 0 || identifying ? 1 : 0;
+      assert.equal(detail.findings.length, expected);
+      assert.equal(detail.amendmentHistory[0].findings.length, expected);
+      assert.equal(detail.amendmentHistory[0].changes.length, expected);
+    }
+  }
+});

@@ -8,6 +8,7 @@ export type ReviewScope = Readonly<{
   organizationNames?: Record<string, string>;
   userId: string;
   reports: "own" | "all";
+  /** Session grant for other reports; use reviewIdentifying for a scoped report. */
   identifying: boolean;
   administrator: boolean;
   defaultDataset: "real" | "synthetic";
@@ -49,4 +50,16 @@ export async function reviewTargetScope(database: Pick<EntityManager, "query">, 
     where id=$1 and organization_id=any($2::uuid[])`, [id, reviewOrganizations(scope)]);
   if (!row) throw new NotFoundException("Review record was not found in scope");
   return { ...scope, organizationId: row.organization_id };
+}
+
+/** Only call after the report's agency, dataset and report scope are authorized.
+ * This does not grant report access, mutation authority, or audit access.
+ */
+export function reviewIdentifying(scope: ReviewScope, documentingUserId: string): boolean {
+  return scope.identifying || documentingUserId === scope.userId;
+}
+
+/** SQL counterpart for an already scoped report row; arguments are trusted SQL expressions. */
+export function reviewIdentifyingSql(scope: ReviewScope, documentingUser: string, viewer: string): string {
+  return scope.identifying ? "true" : `${documentingUser}=${viewer}`;
 }

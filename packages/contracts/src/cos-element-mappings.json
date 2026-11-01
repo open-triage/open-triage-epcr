@@ -1,0 +1,119 @@
+{
+  "assessment": {
+    "bloodPressureGroup": "eVitals.BloodPressureGroup",
+    "medicationGroup": "eMedications.MedicationGroup",
+    "medicationTime": "eMedications.01",
+    "painScaleGroup": "eVitals.PainScaleGroup",
+    "vitalGroup": "eVitals.VitalGroup",
+    "vitalTime": "eVitals.01"
+  },
+  "avpu": {
+    "3326001": "248234008",
+    "3326003": "300202002",
+    "3326005": "450847001",
+    "3326007": "422768004"
+  },
+  "bloodPressureComponents": {
+    "diastolic": {
+      "loinc": "8462-4",
+      "snomed": "271650006"
+    },
+    "systolic": {
+      "loinc": "8480-6",
+      "snomed": "271649006"
+    }
+  },
+  "medication": {
+    "dose": {
+      "linkId": "118555000",
+      "source": "eMedications.05"
+    },
+    "name": {
+      "linkId": "410942007",
+      "source": "eMedications.03"
+    },
+    "otherUnit": {
+      "noCode": "9923001",
+      "source": "eMedications.13"
+    },
+    "parent": "62521000052103",
+    "priorCare": {
+      "noCode": "9923001",
+      "source": "eMedications.02"
+    },
+    "route": {
+      "linkId": "410675002",
+      "source": "eMedications.04"
+    },
+    "time": {
+      "linkId": "118575009",
+      "source": "eMedications.01"
+    },
+    "unit": {
+      "linkId": "767525000",
+      "source": "eMedications.06"
+    }
+  },
+  "numericPainSystem": "https://cambio.codes/nrs/cs/pain-numeric-rating-scale",
+  "numericTextRules": {
+    "bloodPressure": {
+      "maximum": 500,
+      "minimum": 0,
+      "pattern": "^(?:0|[1-9][0-9]{0,2})$",
+      "source": "eVitals.07"
+    }
+  },
+  "schemaVersion": 2,
+  "vitals": {
+    "avpu": {
+      "loinc": "",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationAcvpuLite/v1",
+      "snomed": "1104441000000107",
+      "source": "eVitals.26",
+      "unit": ""
+    },
+    "bloodPressure": {
+      "companionSource": "eVitals.07",
+      "loinc": "85354-9",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationBPLite/v1",
+      "snomed": "75367002",
+      "source": "eVitals.06",
+      "unit": "mm[Hg]"
+    },
+    "bodyTemperature": {
+      "loinc": "8310-5",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationBodyTemperatureLite/v1",
+      "snomed": "276885007",
+      "source": "eVitals.24",
+      "unit": "Cel"
+    },
+    "heartRate": {
+      "loinc": "8867-4",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationHeartRateLite/v1",
+      "snomed": "364075005",
+      "source": "eVitals.10",
+      "unit": "/min"
+    },
+    "oxygenSaturation": {
+      "loinc": "2708-6",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationOxygenSaturationLite/v1",
+      "snomed": "103228002",
+      "source": "eVitals.12",
+      "unit": "%"
+    },
+    "painNrs": {
+      "loinc": "",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationPainNrsLite/v1",
+      "snomed": "49121000146105",
+      "source": "eVitals.27",
+      "unit": ""
+    },
+    "respiratoryRate": {
+      "loinc": "9279-1",
+      "profile": "https://fhir.cambio.se/StructureDefinition/ObservationRespiratoryRateLite/v1",
+      "snomed": "86290005",
+      "source": "eVitals.14",
+      "unit": "/min"
+    }
+  }
+}

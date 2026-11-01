@@ -53,7 +53,7 @@ async function validatedCodeClaims(metadata: ServerMetadata, clientId: string, s
   // Bind that response to the signed subject and use it solely for profile hints.
   // Authentication methods/freshness must continue to come from the ID token.
   const identityClaims:Record<string,unknown>={...claims};
-  const missing=mappings ? [mappings.displayName,mappings.email,mappings.username??"preferred_username"].filter((key):key is string=>!!key && claims[key]===undefined) : [];
+  const missing=mappings ? [mappings.displayName,mappings.email,mappings.username??"preferred_username",mappings.hsaId].filter((key):key is string=>!!key && claims[key]===undefined) : [];
   if(missing.length && metadata.userinfo_endpoint && tokens.access_token){
     const profile=await client.fetchUserInfo(config,tokens.access_token,claims.sub);
     for(const key of missing)if(key!=='iss' && key!=='sub' && Object.hasOwn(profile,key))identityClaims[key]=profile[key];

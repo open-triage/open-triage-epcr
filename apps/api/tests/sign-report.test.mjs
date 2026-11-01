@@ -24,6 +24,10 @@ test("sign commands require a revision, signer, and explicit attestation", () =>
     clientTime: "2026-08-30T14:30:00-04:00"
   };
   assert.deepEqual(validateSignReportCommand(command), command);
+  assert.equal(validateSignReportCommand({...command,exportEps:true}).exportEps,true);
+  for(const exportCos of [true,false])assert.equal(validateSignReportCommand({...command,exportCos}).exportCos,exportCos);
+  assert.throws(()=>validateSignReportCommand({...command,exportCos:"false"}),SignReportValidationError);
+  assert.throws(()=>validateSignReportCommand({...command,exportEps:"yes"}),SignReportValidationError);
   assert.throws(() => validateSignReportCommand({ ...command, expectedRevision: -1, attestation: {} }),
     (error) => error instanceof SignReportValidationError &&
       error.findings.some((finding) => finding.includes("expectedRevision")) &&
@@ -258,19 +262,19 @@ test("authoritative signing evaluates the report's pinned required-element bundl
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new SignReportService({}, {});
-  const findings = await service.validateAuthoredRules(manager, {
+  const {findings} = await service.evaluateAuthoredRules(manager, {
     id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
     validation_version_id: validationVersionId, validation_compiled_sha256: compiledSha256
-  });
+  }, "2026-01-01T00:00:00.000Z");
   assert.deepEqual(findings.map(({ severity, ruleId: id, targetElementId }) => ({ severity, id, targetElementId })), [{
     severity: "error", id: ruleId, targetElementId: "ePatient.02"
   }]);
   assert.equal(findings[0].message, "Patientnamn krävs");
   valuePresent = true;
-  assert.deepEqual(await service.validateAuthoredRules(manager, {
+  assert.deepEqual((await service.evaluateAuthoredRules(manager, {
     id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
     validation_version_id: validationVersionId, validation_compiled_sha256: compiledSha256
-  }), []);
+  }, "2026-01-01T00:00:00.000Z")).findings, []);
 });
 
 test("signing blocks tampered artifacts and identifies a rule that fails at runtime", async () => {
@@ -296,9 +300,69 @@ test("signing blocks tampered artifacts and identifies a rule that fails at runt
   const service = new SignReportService({}, {});
   const report = { id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
     validation_version_id: validationVersionId, validation_compiled_sha256: compiledSha256 };
-  const runtime = await service.validateAuthoredRules(manager, report, "2026-01-01T00:00:00.000Z");
+  const {findings:runtime} = await service.evaluateAuthoredRules(manager, report, "2026-01-01T00:00:00.000Z");
   assert.deepEqual(runtime.map(({ code, ruleId: id }) => ({ code, id })), [{ code: "validation.compatibility", id: ruleId }]);
-  const tampered = await service.validateAuthoredRules(manager, { ...report, validation_compiled_sha256: "0".repeat(64) },
+  const {findings:tampered} = await service.evaluateAuthoredRules(manager, { ...report, validation_compiled_sha256: "0".repeat(64) },
     "2026-01-01T00:00:00.000Z");
   assert.deepEqual(tampered.map(({ code, ruleId: id }) => ({ code, id })), [{ code: "validation.integrity", id: "bundle" }]);
+});
+
+test("COS signing requires a destination or explicit None, independently of authored rules", async () => {
+ const service = new SignReportService({}, {});
+ let active = true, occurrences = [];
+ const manager = {query:async sql => {
+  if (sql.includes("from forms.form_version")) return [{status:"published",catalog_release_id:"catalog",canonical_definition:{
+   schemaVersion:1,sections:[{key:"destination",fields:["eDisposition.01","eDisposition.02"].map(elementId=>({
+    key:elementId,source:{kind:"nemsis",elementId},choicePolicy:[],
+   }))}],
+  }}];
+  if (sql.includes("from forms.form_field")) return [{id:"field",stable_key:"destination",element_id:"eDisposition.01",clinically_stored:true}];
+  if (sql.includes("from forms.form_rule")) return [];
+  if (sql.includes("from clinical.element_occurrence")) return occurrences;
+  if (sql.includes("from app_identity.hospital_cos_state")) return [{active}];
+  throw new Error("Unexpected SQL: "+sql);
+ }};
+ const report = {id:"report",organization_id:"agency",form_version_id:"form",catalog_release_id:"catalog"};
+ const check = () => service.validateSemantics(manager,report);
+ assert.equal((await check()).filter(row=>row.code==="destination.required").length,1);
+ active=false;
+ assert.equal((await check()).filter(row=>row.code==="destination.required").length,0);
+ active=true;
+ const pair = (kind,values) => ["eDisposition.01","eDisposition.02"].map((element_id,index)=>({
+  id:String(index),element_id,group_instance_id:"destination-group",value_kind:kind,base_datatype:"string",
+  scalar_value:kind==="text"?values[index]:null,
+  absence_code:kind==="null"?values[index]:null,not_value_code:kind==="null"?values[index]:null,
+ }));
+ occurrences=pair("null",["7701001","7701001"]);
+ assert.deepEqual(await check(),[],"None satisfies the requirement despite authored choice restrictions");
+ occurrences=pair("text",["Hospital","ED"]);
+ assert.equal((await check()).filter(row=>row.code==="destination.required").length,0);
+ for(const rows of [pair("null",["7701003","7701003"]),pair("null",["7701001","7701003"]),pair("text",["Hospital",""]),pair("text",["Hospital","ED"]).slice(0,1)]) {
+  occurrences=rows;
+  assert.equal((await check()).filter(row=>row.code==="destination.required").length,1);
+ }
+});
+
+test('skipping COS requires a bounded explicit reason',()=>{
+ const command={commandId:randomUUID(),expectedRevision:0,signerId:randomUUID(),attestation:{meaning:'approval'}};
+ for(const reason of ['', '   ', true, 'x'.repeat(1001)])assert.throws(()=>validateSignReportCommand({...command,skipCosReason:reason}),SignReportValidationError);
+ assert.equal(validateSignReportCommand({...command,skipCosReason:'COS unavailable'}).skipCosReason,'COS unavailable');
+});
+
+test('COS activation and draft PDF access are scoped to the clinician and revision',async()=>{
+ const session={organization:{id:'org'},user:{id:'clinician'}};
+ let rows=[{revision:'3'}],queries=[];
+ const manager={query:async(sql,args)=>{queries.push({sql,args});return rows;}};
+ const service=new SignReportService({...manager,transaction:async(_isolation,fn)=>fn(manager)},{requireCapability:async()=>session});
+ assert.deepEqual(await service.cosContext('token','report'),{binding:'3'});
+ assert.deepEqual(queries[0].args,['report','org','clinician']);
+ assert.match(queries[0].sql,/expires_at/);
+ rows=[{revision:null}];assert.deepEqual(await service.cosContext('token','report'),{binding:null});
+ rows=[];await assert.rejects(service.cosContext('token','report'),{status:404});
+ await assert.rejects(service.cosPdfPreview('token','report','2','en'),{status:404});
+ rows=[{revision:3}];await assert.rejects(service.cosPdfPreview('token','report','2','en'),{status:409});
+ await assert.rejects(service.cosPdfPreview('token','report','bad','en'),{status:422});
+ assert.match(queries.at(-1).sql,/documenting_user_id=\$3/);
+ const denied=new SignReportService({}, {requireCapability:async()=>{throw Error('denied');}});
+ await assert.rejects(denied.cosPdfPreview('token','report','2','en'),/denied/);
 });

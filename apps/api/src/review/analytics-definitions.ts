@@ -4,10 +4,10 @@ import { compiledValidationBundleSha256, readValidationDefinition, evaluateMetri
 import type { EntityManager } from "typeorm";
 import { assembleEncounterDocument } from "../reports/encounter-document.persistence.js";
 import type { AnalyticsReport } from "./analytics-engine.js";
-import { reviewOrganizations, type ReviewScope } from "./review-scope.js";
+import { reviewIdentifying, reviewOrganizations, type ReviewScope } from "./review-scope.js";
 import { normalizedMetricEvidence } from "./metric-evidence.js";
 
-export interface ConfiguredAnalyticsLibrary { bundle: CompiledValidationBundle | null; elements: AnalyticsElement[];
+export interface ConfiguredAnalyticsLibrary { bundle: CompiledValidationBundle | null; elements: AnalyticsElement[]; identifyingElementIds?: string[];
   agencies?: Array<{ organizationId: string; library: ConfiguredAnalyticsLibrary }> }
 /** Membership comes from the active configuration, even with no readable report observations. */
 export async function configuredAnalyticsLibrary(database: Pick<EntityManager, "query">, scope: ReviewScope): Promise<ConfiguredAnalyticsLibrary> {
@@ -50,17 +50,17 @@ export async function configuredAnalyticsLibrary(database: Pick<EntityManager, "
     select definition->>'namespace'||'.'||(definition->>'slug') as element_id
       from catalog.release cr cross join lateral jsonb_array_elements(coalesce(cr.provenance->'customElementDefinitions','[]'::jsonb)) definition
       where cr.id=$1 and (definition->>'identifying')::boolean`, [version.catalog_release_id]);
-  const blocked = new Set(identifying.map((row) => row.element_id));
-  const allowed = (references: string[]) => !references.some((id) => blocked.has(id));
+  // Definitions are metadata; authorize their clinical inputs separately for each report.
+  const identifyingElementIds = identifying.map((row) => row.element_id);
   const identity = (kind: "metric" | "rule", id: string) => ({ kind, id, validationVersionId: version.id,
     version: Number(version.version), catalogReleaseId: version.catalog_release_id, compiledSha256: version.compiled_sha256 });
-  return { bundle, elements: [
-    ...(bundle.metrics ?? []).filter((metric) => metric.enabled && metric.reviewEnabled && allowed(metric.references.elementIds)).map((metric): AnalyticsElement => ({
+  return { bundle, identifyingElementIds, elements: [
+    ...(bundle.metrics ?? []).filter((metric) => metric.enabled && metric.reviewEnabled).map((metric): AnalyticsElement => ({
       id: `metric:${version.id}:${metric.id}`, label: metric.name, configured: identity("metric", metric.id),
       datatype: "number", kind: "numeric", unit: metric.unit, units: [metric.unit], operations: ["mean", "median", "minimum", "maximum"],
       aggregations: ["mean", "median", "minimum", "maximum", "p90"], grouping: false, filtering: false, recordCount: 0,
     })),
-    ...bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("review") && allowed(rule.references.elementIds)).map((rule): AnalyticsElement => ({
+    ...bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("review")).map((rule): AnalyticsElement => ({
       id: `rule:${version.id}:${rule.ruleId}`, label: rule.name, configured: identity("rule", rule.ruleId),
       datatype: "boolean", kind: "categorical", unit: null, units: [], operations: ["distribution"], aggregations: ["count", "percentage"],
       grouping: false, filtering: false, recordCount: 0,
@@ -98,8 +98,8 @@ export async function contributeConfiguredDefinitions(database: Pick<EntityManag
     return [{ metric, configured, definition, rule }];
   });
   const ids = reports.map((report) => report.id);
-  type DocumentReport = Parameters<typeof assembleEncounterDocument>[0] & { catalog_release_id: string; revision: string; amendment: number };
-  const rows = await database.query<DocumentReport[]>(`select r.id,r.created_at,r.updated_at,r.catalog_release_id,r.revision::text,
+  type DocumentReport = Parameters<typeof assembleEncounterDocument>[0] & { catalog_release_id: string; revision: string; amendment: number; documenting_user_id: string };
+  const rows = await database.query<DocumentReport[]>(`select r.id,r.created_at,r.updated_at,r.catalog_release_id,r.revision::text,r.documenting_user_id,
     f.id form_id,fv.version form_version,cr.standard catalog_standard,cr.version catalog_version,cr.dataset catalog_dataset,
     coalesce((select max(a.sequence) from clinical.amendment a where a.report_id=r.id),0) amendment
     from clinical.report r join forms.form_version fv on fv.id=r.form_version_id join forms.form f on f.id=fv.form_id
@@ -167,8 +167,10 @@ export async function contributeConfiguredDefinitions(database: Pick<EntityManag
       report.revision = JSON.stringify([report.revision, row.revision, row.amendment, configured]);
       let result: MetricResult | ValidationRuleOutcome | { state: "failed"; value: null; reason: string };
       if (row.catalog_release_id !== configured.catalogReleaseId) result = { state: "failed", value: null, reason: "Historical report catalog is incompatible with this definition" };
-      else if (!scope.identifying && (valuesByReport.get(row.id) ?? []).some(value => value.identifying &&
-        (definition?.references.elementIds ?? rule?.references.elementIds ?? []).includes(value.element_id)))
+      else if (!reviewIdentifying(scope, row.documenting_user_id) &&
+        ((definition?.references.elementIds ?? rule?.references.elementIds ?? []).some(id => library.identifyingElementIds?.includes(id)) ||
+          (valuesByReport.get(row.id) ?? []).some(value => value.identifying &&
+            (definition?.references.elementIds ?? rule?.references.elementIds ?? []).includes(value.element_id))))
         result = { state: "failed", value: null, reason: "Calculation inputs require identifying-data access" };
       else {
         document ??= assembleEncounterDocument(row, groupsByReport.get(row.id) ?? [], valuesByReport.get(row.id) ?? []);
@@ -176,7 +178,7 @@ export async function contributeConfiguredDefinitions(database: Pick<EntityManag
         const context = { timestamp: new Date(row.updated_at).toISOString() };
         result = definition ? { ...evaluateMetric(definition, document, context) } :
           { ...evaluateValidationOutcomes({ ...bundle, rules: [rule!] }, document, "review", context).outcomes[0]! };
-        if (!scope.identifying) result = "metricId" in result ? normalizedMetricEvidence(result)
+        if (!reviewIdentifying(scope, row.documenting_user_id)) result = "metricId" in result ? normalizedMetricEvidence(result)
           : { ...result, metricEvidence: result.metricEvidence.map(normalizedMetricEvidence) };
       }
       report.values.push({ id: `${report.id}:${metric.id}`, element: metric.id,

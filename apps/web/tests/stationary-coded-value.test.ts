@@ -86,7 +86,8 @@ test("a populated coded dropdown presents deletion as its first option", () => {
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, {
     field: stationaryCodedField(patientTarget.elementId), value, onChange() {},
   }));
-  assert.match(html, /clinical-searchable-trigger[^>]*>Unknown/);
+  assert.ok(value?.kind === "coded");
+  assert.ok(html.includes(`>${value.display}</button>`), "the trigger displays the fixture's selected code");
 });
 
 test("external canonical options retain metadata behind one dropdown", () => {

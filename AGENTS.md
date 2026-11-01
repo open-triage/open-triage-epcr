@@ -23,8 +23,9 @@ for prerequisites.
 Before developing UI, read [the UI style guide](docs/design/ui-style-guide.md).
 Apply it to new or changed UI and the shared components needed for that work.
 Use the guide to inform future UI development. Keep unrelated redesigns outside
-the current task.
-All user-visible text must reference localization files.
+the current task. All user-visible text must reference localization files.
+Avoid including verbose help text in interfaces, include only necessary information
+in tooltips.
 
 # Local database-backed development
 

@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "prebuild": "npm run build -w @open-triage/contracts",
-    "dev": "concurrently --kill-others-on-fail -n api,analytics,review \"nest start --watch\" \"npm run project:watch -w @open-triage/database\" \"npm run review:watch\"",
+    "dev": "concurrently --kill-others-on-fail -n api,analytics,review \"nest start --watch --exec \\\"node --watch --watch-preserve-output\\\"\" \"npm run project:watch -w @open-triage/database\" \"npm run review:watch\"",
     "build": "nest build",
     "start": "node dist/main.js",
     "dispatch:ingest": "npm run build && node dist/dispatch/dispatch-file-cli.entry.js",
@@ -13,10 +13,10 @@
     "identity:account:runtime": "node dist/identity/identity-account.cli.entry.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/new-patient-demo-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/audit-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/installation-accounts-postgres.integration.test.mjs tests/installation-patient-access-postgres.integration.test.mjs tests/agency-handoff-postgres.integration.test.mjs tests/multi-organization-postgres.integration.test.mjs tests/agency-authentication-postgres.integration.test.mjs tests/group-authentication-postgres.integration.test.mjs tests/agency-settings-policy-postgres.integration.test.mjs tests/oidc-draft-postgres.integration.test.mjs tests/agency-oidc-keys-postgres.integration.test.mjs tests/external-identity-postgres.integration.test.mjs tests/external-user-approval-postgres.integration.test.mjs tests/oidc-personal-postgres.integration.test.mjs tests/oidc-activation-postgres.integration.test.mjs tests/oidc-rotation-postgres.integration.test.mjs tests/oidc-rotation-migration-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/review-postgres.integration.test.mjs tests/review-saved-postgres.integration.test.mjs tests/review-completion-postgres.integration.test.mjs tests/review-amendment-postgres.integration.test.mjs tests/review-bulk-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/units-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/installation-enrollment-postgres.integration.test.mjs tests/installation-revocation-postgres.integration.test.mjs tests/installation-reassignment-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/schedules-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/production-workflow-postgres.integration.test.mjs tests/production-job-postgres.integration.test.mjs tests/current-shift-oidc-postgres.integration.test.mjs",
+    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/new-patient-demo-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/audit-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/installation-accounts-postgres.integration.test.mjs tests/installation-patient-access-postgres.integration.test.mjs tests/agency-handoff-postgres.integration.test.mjs tests/multi-organization-postgres.integration.test.mjs tests/agency-authentication-postgres.integration.test.mjs tests/group-authentication-postgres.integration.test.mjs tests/agency-settings-policy-postgres.integration.test.mjs tests/oidc-draft-postgres.integration.test.mjs tests/agency-oidc-keys-postgres.integration.test.mjs tests/external-identity-postgres.integration.test.mjs tests/external-user-approval-postgres.integration.test.mjs tests/oidc-personal-postgres.integration.test.mjs tests/oidc-activation-postgres.integration.test.mjs tests/oidc-rotation-postgres.integration.test.mjs tests/oidc-rotation-migration-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/review-postgres.integration.test.mjs tests/review-saved-postgres.integration.test.mjs tests/review-completion-postgres.integration.test.mjs tests/review-amendment-postgres.integration.test.mjs tests/review-bulk-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/units-postgres.integration.test.mjs tests/cos-identity-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/installation-enrollment-postgres.integration.test.mjs tests/installation-revocation-postgres.integration.test.mjs tests/installation-reassignment-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/schedules-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/production-workflow-postgres.integration.test.mjs tests/production-job-postgres.integration.test.mjs tests/demo-generation-default-postgres.integration.test.mjs tests/current-shift-oidc-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/hospital-postgres.integration.test.mjs tests/eps-export-review-postgres.integration.test.mjs tests/eps-automatic-postgres.integration.test.mjs tests/eps-crosswalk-postgres.integration.test.mjs tests/cos-postgres.integration.test.mjs && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/cos-delivery-postgres.integration.test.mjs tests/cos-patient-postgres.integration.test.mjs tests/cos-signing-postgres.integration.test.mjs",
     "review:work": "npm run build && node dist/review/review-worker.entry.js",
     "review:watch": "node --env-file-if-exists=../../.env.local scripts/watch-review.mjs",
-    "test:authentication-rollout": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/postgres.integration.test.mjs tests/new-patient-demo-postgres.integration.test.mjs tests/group-authentication-postgres.integration.test.mjs tests/installation-enrollment-postgres.integration.test.mjs tests/external-user-approval-postgres.integration.test.mjs tests/production-workflow-postgres.integration.test.mjs tests/production-job-postgres.integration.test.mjs tests/current-shift-oidc-postgres.integration.test.mjs"
+    "test:authentication-rollout": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test --test-concurrency=1 tests/postgres.integration.test.mjs tests/new-patient-demo-postgres.integration.test.mjs tests/group-authentication-postgres.integration.test.mjs tests/installation-enrollment-postgres.integration.test.mjs tests/external-user-approval-postgres.integration.test.mjs tests/production-workflow-postgres.integration.test.mjs tests/production-job-postgres.integration.test.mjs tests/demo-generation-default-postgres.integration.test.mjs tests/current-shift-oidc-postgres.integration.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -25,18 +25,24 @@
     "@nestjs/typeorm": "^12.0.1",
     "@open-triage/contracts": "0.1.6",
     "dotenv": "^17.4.2",
+    "fontkit": "2.0.4",
     "ipaddr.js": "2.5.0",
     "openid-client": "6.8.8",
+    "pdfkit": "0.17.2",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "sharp": "0.35.4",
     "typeorm": "^0.3.31"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
+    "@types/fontkit": "2.0.8",
     "@types/node": "^22.18.0",
+    "@types/pdfkit": "0.17.5",
     "ffmpeg-static": "5.3.0",
     "ffprobe-static": "3.1.0",
+    "pdfjs-dist": "5.4.624",
     "typescript": "^5.9.2"
   }
 }

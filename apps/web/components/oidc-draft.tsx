@@ -6,7 +6,7 @@ import { platformRequestError } from "../app/platform-errors";
 import { useUnsavedChanges } from "./unsaved-changes";
 
 type Draft = { revision: number; name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
-  mappings: { displayName: string; email: string; username?: string }; credentialConfigured: boolean; requiredFields: string[];
+  mappings: { displayName: string; email: string; username?: string; hsaId?:string; hsaAuthoritative?:boolean }; credentialConfigured: boolean; requiredFields: string[];
   personalProof?:{id:string;acr:string|null;requiredAmr:string[];purposeClaim?:string;purposes?:{login:string;switch:string;reauthenticate:string}}|null;
   privateOrigins?:string[];
   discoveryHealth: string; discovery: Record<string, unknown> | null; discoveredAt: string | null };
@@ -14,12 +14,12 @@ type View = { groupName?:string;agencyCount?:number;credentialKeyVersion?:number
   identityImpact?:{integrationChanged:boolean;activeRevision:number|null;draftRevision:number|null;linkedIdentities:number};
   history:{revision:number;createdAt:string;actorId:string;actorName?:string|null;credentialConfigured:boolean;discoveryHealth:string;status?:string;changedFields?:string[];credentialReplaced?:boolean}[] };
 const providerFields=["name","issuer","discoveryUrl","clientId","scopes","displayName","email","username"] as const;
-const empty = { name:"", issuer:"", discoveryUrl:"", clientId:"", scopes:"openid",displayName:"",email:"",username:"preferred_username",
+const empty = { name:"", issuer:"", discoveryUrl:"", clientId:"", scopes:"openid",displayName:"",email:"",username:"preferred_username",hsaId:"",hsaAuthoritative:"no",
   proofEnabled:"no",proofId:"agency-personal-contract-v1",requireAcr:"yes",acr:"",amr:"",purposeClaim:"",loginPurpose:"",switchPurpose:"",reauthenticatePurpose:"",privateOrigins:"" };
 function editable(value:Draft|null|undefined){
  if(!value)return empty;
  const proof=value.personalProof;
- return {...empty,...value,scopes:value.scopes.join(" "),...value.mappings,username:value.mappings.username??"preferred_username",proofEnabled:proof?"yes":"no",proofId:proof?.id??empty.proofId,
+ return {...empty,...value,scopes:value.scopes.join(" "),...value.mappings,username:value.mappings.username??"preferred_username",hsaId:value.mappings.hsaId??"",hsaAuthoritative:value.mappings.hsaAuthoritative?"yes":"no",proofEnabled:proof?"yes":"no",proofId:proof?.id??empty.proofId,
   requireAcr:proof?.acr===null?"no":"yes",acr:proof?.acr??"",amr:proof?.requiredAmr.join(" ")??"",purposeClaim:proof?.purposeClaim??"",
   loginPurpose:proof?.purposes?.login??"",switchPurpose:proof?.purposes?.switch??"",reauthenticatePurpose:proof?.purposes?.reauthenticate??"",privateOrigins:value.privateOrigins?.join("\n")??""};
 }
@@ -60,7 +60,7 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
     try{
       const next=await request(csrfToken,discovery?"/discovery":"",discovery?{expectedRevision:value?.draft?.revision}:{expectedRevision:value?.draft?.revision ?? 0,
         name:draft.name,issuer:draft.issuer,discoveryUrl:draft.discoveryUrl,clientId:draft.clientId,scopes:draft.scopes.trim().split(/\s+/).filter(Boolean),
-        mappings:{displayName:draft.displayName,email:draft.email,username:draft.username},
+        mappings:{displayName:draft.displayName,email:draft.email,username:draft.username,hsaId:draft.hsaId,hsaAuthoritative:draft.hsaAuthoritative==="yes"},
         personalProof:draft.proofEnabled==="yes"?{id:draft.proofId,acr:draft.requireAcr==="yes"?draft.acr:null,requiredAmr:draft.amr.trim().split(/\s+/).filter(Boolean),
           ...(draft.purposeClaim?{purposeClaim:draft.purposeClaim,purposes:{login:draft.loginPurpose,switch:draft.switchPurpose,reauthenticate:draft.reauthenticatePurpose}}:{})}:null,
         privateOrigins:draft.privateOrigins.trim().split(/\s+/).filter(Boolean),clientAuthentication:"client_secret_post",...(secret?{replacementSecret:secret}:{})},discovery?"POST":"PUT");
@@ -104,6 +104,8 @@ export function OidcDraftPanel({language,csrfToken,canWrite}:{language:string;cs
       {canWrite && value.active && <div className="form-actions"><button type="button" disabled={busy} onClick={()=>void copyActive()}>{t("admin.oidcCopyActive")}</button></div>}
       <form onSubmit={event=>{event.preventDefault();if(canWrite&&dirty&&!busy)void mutate();}}>
         <fieldset disabled={!canWrite||busy}><legend>{t("admin.oidcConfiguration")}</legend>
+          <label htmlFor="oidc-hsa">{t("admin.oidcHsaClaim")}<input id="oidc-hsa" maxLength={256} value={draft.hsaId} onChange={event=>setDraft(current=>({...current,hsaId:event.target.value,hsaAuthoritative:event.target.value?current.hsaAuthoritative:"no"}))} /></label>
+          <label><input type="checkbox" checked={draft.hsaAuthoritative==="yes"} disabled={!draft.hsaId||!canWrite} onChange={event=>setDraft(current=>({...current,hsaAuthoritative:event.target.checked?"yes":"no"}))} />{t("admin.oidcHsaAuthoritative")}</label>
           {providerFields.map((field,index)=><label key={field} htmlFor={`oidc-${field}`}>{t(["admin.oidcName","admin.oidcIssuer","admin.oidcDiscovery","admin.oidcClient","admin.oidcScopes","admin.oidcDisplayClaim","admin.oidcEmailClaim","admin.oidcUsernameClaim"][index]!)}{!["discoveryUrl","email","username"].includes(field)?" *":""}
             <input id={`oidc-${field}`} autoCapitalize={field==="name"?"sentences":"none"} autoCorrect={field==="name"?"on":"off"} spellCheck={field==="name"} type={field==="issuer"||field==="discoveryUrl"?"url":"text"} maxLength={field==="issuer"||field==="discoveryUrl"?2048:field==="clientId"?500:field==="scopes"?2020:field==="displayName"||field==="email"||field==="username"?256:120} value={draft[field]} onChange={event=>setDraft(current=>({...current,[field]:event.target.value}))}/>
           </label>)}

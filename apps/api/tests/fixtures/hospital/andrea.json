@@ -1,0 +1,1527 @@
+{
+  "resourceType": "Bundle",
+  "id": "3654dc9c-e0fc-54f9-9bde-15c7b16a91d9",
+  "meta": {
+    "profile": [
+      "http://hl7.eu/fhir/eps/StructureDefinition/bundle-eu-eps"
+    ],
+    "tag": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+        "code": "HTEST",
+        "display": "test health data"
+      }
+    ]
+  },
+  "language": "en",
+  "identifier": {
+    "system": "urn:ietf:rfc:3986",
+    "value": "urn:uuid:53b4be7b-214d-5d8c-bd00-918fda66b8c5"
+  },
+  "type": "document",
+  "timestamp": "2026-08-24T09:00:00+02:00",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:8d88d9e7-6c46-50c6-ae7b-564f54af5dc6",
+      "resource": {
+        "resourceType": "Composition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/composition-eu-eps"
+          ]
+        },
+        "language": "en",
+        "identifier": {
+          "system": "urn:ietf:rfc:3986",
+          "value": "urn:uuid:ba80c83f-cc26-5f8f-a4f7-3fae436e3e8f"
+        },
+        "status": "final",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "60591-5",
+              "display": "Patient summary Document"
+            }
+          ],
+          "text": "Patient summary Document"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+        },
+        "date": "2026-08-24T09:00:00+02:00",
+        "author": [
+          {
+            "reference": "urn:uuid:e73ff2cf-f90b-52b9-a74d-b802fff486fb"
+          }
+        ],
+        "title": "European Patient Summary",
+        "confidentiality": "N",
+        "custodian": {
+          "reference": "urn:uuid:41e60249-8b67-5008-8176-3a1b44f17192"
+        },
+        "section": [
+          {
+            "title": "Allergies and intolerances",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "48765-2",
+                  "display": "Allergies and adverse reactions Document"
+                }
+              ],
+              "text": "Allergies and adverse reactions Document"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><p>No known allergies or intolerances.</p></div>"
+            },
+            "emptyReason": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/list-empty-reason",
+                  "code": "nilknown",
+                  "display": "Nil Known"
+                }
+              ],
+              "text": "Nil Known"
+            }
+          },
+          {
+            "title": "Problem list",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "11450-4",
+                  "display": "Problem list - Reported"
+                }
+              ],
+              "text": "Problem list - Reported"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Condition</th><th>Onset</th><th>Status</th></tr></thead><tbody><tr><td>Type 1 diabetes mellitus</td><td>2012-09-04</td><td>active</td></tr><tr><td>Attention deficit hyperactivity disorder</td><td>2015-02-11</td><td>active</td></tr><tr><td>Recurrent major depression</td><td>2021-11-08</td><td>remission</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:874c4fd8-ade8-5598-b72e-8cc273ef093d"
+              },
+              {
+                "reference": "urn:uuid:e98805ce-a9ff-5726-86cb-8307078d32bf"
+              },
+              {
+                "reference": "urn:uuid:77cbfd38-db09-5d18-a969-ddb5e1772fcb"
+              }
+            ]
+          },
+          {
+            "title": "Medication list",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "10160-0",
+                  "display": "History of Medication use Narrative"
+                }
+              ],
+              "text": "History of Medication use Narrative"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Medication</th><th>Since</th><th>Until</th><th>Dosage</th></tr></thead><tbody><tr><td>Insulin degludec 100 units/mL solution for injection</td><td>2019-01-14</td><td>ongoing</td><td>26 units subcutaneously once daily at bedtime</td></tr><tr><td>Insulin aspart 100 units/mL solution for injection</td><td>2019-01-14</td><td>ongoing</td><td>4-8 units subcutaneously with each main meal, adjusted to carbohydrate intake and pre-meal glucose</td></tr><tr><td>Lisdexamfetamine 50 mg capsule</td><td>2021-03-02</td><td>ongoing</td><td>1 capsule (50 mg) by mouth each morning</td></tr><tr><td>Sertraline 50 mg tablet</td><td>2021-11-20</td><td>2023-05-30</td><td>1 tablet (50 mg) by mouth once daily</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:c6f4df66-84cc-5e92-8b4d-0a3dd0fd861a"
+              },
+              {
+                "reference": "urn:uuid:3e676e4a-d665-55d7-9071-8ea9f6e697d8"
+              },
+              {
+                "reference": "urn:uuid:76570bc6-580e-5194-ae0d-15005ef5756a"
+              },
+              {
+                "reference": "urn:uuid:8c038105-1f0d-5ad1-bbf6-54f82ebda0ec"
+              }
+            ]
+          },
+          {
+            "title": "Immunizations",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "11369-6",
+                  "display": "History of Immunization note"
+                }
+              ],
+              "text": "History of Immunization note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Vaccine</th><th>Date</th></tr></thead><tbody><tr><td>Human papillomavirus vaccine</td><td>2014-09-16</td></tr><tr><td>COVID-19 vaccine</td><td>2021-10-11</td></tr><tr><td>Influenza vaccine</td><td>2025-10-14</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:7261a43b-1001-5885-a70c-312275576729"
+              },
+              {
+                "reference": "urn:uuid:2f9d687e-72ce-5a8c-9f05-134a697f1575"
+              },
+              {
+                "reference": "urn:uuid:1cace978-7ea5-5fc0-afb5-ae9bdabac689"
+              }
+            ]
+          },
+          {
+            "title": "Relevant diagnostic tests and laboratory data",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "30954-2",
+                  "display": "Relevant diagnostic tests/laboratory data note"
+                }
+              ],
+              "text": "Relevant diagnostic tests/laboratory data note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Test</th><th>Date</th><th>Result</th><th>Interpretation</th></tr></thead><tbody><tr><td>Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood</td><td>2025-12-09</td><td>68 mmol/mol</td><td>High</td></tr><tr><td>Creatinine [Moles/volume] in Serum or Plasma</td><td>2025-12-09</td><td>71 umol/L</td><td>Within range</td></tr><tr><td>Albumin/Creatinine [Ratio] in Urine</td><td>2025-12-09</td><td>4.1 mg/mmol</td><td>High</td></tr><tr><td>Cholesterol [Moles/volume] in Serum or Plasma</td><td>2025-12-09</td><td>4.4 mmol/L</td><td>Within range</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:9e729bf4-a2b9-5f87-a917-504310a7ee92"
+              },
+              {
+                "reference": "urn:uuid:e6d85490-887f-54e8-aaf6-c8d6f40321d5"
+              },
+              {
+                "reference": "urn:uuid:114dacad-c252-590e-b139-a7f6276091b2"
+              },
+              {
+                "reference": "urn:uuid:a9845b9f-24a5-5646-a202-91eeb62427bd"
+              }
+            ]
+          },
+          {
+            "title": "Medical devices",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "46264-8",
+                  "display": "History of medical device use"
+                }
+              ],
+              "text": "History of medical device use"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Device</th><th>In use since</th><th>Status</th></tr></thead><tbody><tr><td>Continuous glucose monitoring system</td><td>2019-05-20</td><td>In use</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:530f9007-e92e-5b55-8d60-a81332527c0f"
+              }
+            ]
+          },
+          {
+            "title": "Plan of care",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "18776-5",
+                  "display": "Plan of care note"
+                }
+              ],
+              "text": "Plan of care note"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Planned activity</th><th>Since</th><th>Status</th></tr></thead><tbody><tr><td>Digital follow-up with diabetes specialist nurse, Uppsala - every 3 months</td><td>2019-01-14</td><td>cancelled</td></tr><tr><td>Mental health safety plan agreed with adult psychiatric outpatient clinic, Uppsala</td><td>2022-03-14</td><td>in-progress</td></tr></tbody></table></div>"
+            },
+            "entry": [
+              {
+                "reference": "urn:uuid:97f50e54-ccec-5413-a517-0d6bb7c09f0a"
+              },
+              {
+                "reference": "urn:uuid:9d6ab621-7bfd-546d-af4c-ef56d04b4cba"
+              }
+            ]
+          },
+          {
+            "title": "History of procedures",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "47519-4",
+                  "display": "History of Procedures Document"
+                }
+              ],
+              "text": "History of Procedures Document"
+            },
+            "text": {
+              "status": "generated",
+              "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><p>No procedures recorded.</p></div>"
+            },
+            "emptyReason": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/list-empty-reason",
+                  "code": "nilknown",
+                  "display": "Nil Known"
+                }
+              ],
+              "text": "Nil Known"
+            }
+          }
+        ],
+        "id": "8d88d9e7-6c46-50c6-ae7b-564f54af5dc6",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Document</td><td>European Patient Summary</td></tr><tr><td>Patient</td><td>Andrea Lindqvist</td></tr><tr><td>Document date</td><td>2026-08-24</td></tr><tr><td>Sections</td><td>Allergies and intolerances, Problem list, Medication list, Immunizations, Relevant diagnostic tests and laboratory data, Medical devices, Plan of care, History of procedures</td></tr><tr><td>Note</td><td>Synthetic example generated for the Nordic Hackathon 2026 - not a real patient.</td></tr></tbody></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+      "resource": {
+        "resourceType": "Patient",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/patient-eu-eps",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePatient"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "http://electronichealth.se/identifier/personnummer",
+            "value": "200207252388"
+          }
+        ],
+        "name": [
+          {
+            "text": "Andrea Lindqvist",
+            "family": "Lindqvist",
+            "given": [
+              "Andrea"
+            ]
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+46 70 000 00 01",
+            "use": "mobile"
+          },
+          {
+            "system": "email",
+            "value": "andrea.lindqvist@example.org"
+          }
+        ],
+        "gender": "female",
+        "birthDate": "2002-07-25",
+        "address": [
+          {
+            "use": "home",
+            "type": "physical",
+            "line": [
+              "Lärkstigen 12"
+            ],
+            "city": "Uppsala",
+            "postalCode": "753 11",
+            "country": "SE"
+          },
+          {
+            "use": "temp",
+            "type": "physical",
+            "line": [
+              "Résidence Les Tilleuls, 8 rue Camille Vasseur"
+            ],
+            "city": "Paris",
+            "postalCode": "75014",
+            "country": "FR",
+            "period": {
+              "start": "2026-02-01"
+            }
+          }
+        ],
+        "communication": [
+          {
+            "language": {
+              "coding": [
+                {
+                  "system": "urn:ietf:bcp:47",
+                  "code": "sv",
+                  "display": "Swedish"
+                }
+              ],
+              "text": "Swedish"
+            },
+            "preferred": true
+          }
+        ],
+        "id": "0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Andrea Lindqvist</td></tr><tr><th>Gender</th><td>female</td></tr><tr><th>Date of birth</th><td>2002-07-25</td></tr><tr><th>Identifier</th><td>200207252388</td></tr><tr><th>Preferred language</th><td>Swedish</td></tr><tr><th>Address</th><td>Lärkstigen 12, Uppsala, SE</td></tr><tr><th>Temporary address</th><td>Résidence Les Tilleuls, 8 rue Camille Vasseur, Paris, FR</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:41e60249-8b67-5008-8176-3a1b44f17192",
+      "resource": {
+        "resourceType": "Organization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/organization-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBaseOrganization"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000008-1001"
+          },
+          {
+            "system": "urn:oid:2.5.4.97",
+            "value": "2321000008"
+          }
+        ],
+        "name": "Vårdcentralen Norrskogen",
+        "address": [
+          {
+            "city": "Uppsala",
+            "postalCode": "752 28",
+            "country": "SE"
+          }
+        ],
+        "id": "41e60249-8b67-5008-8176-3a1b44f17192",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Organisation</th><td>Vårdcentralen Norrskogen</td></tr><tr><th>Address</th><td>Uppsala, SE</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:665cb823-b90a-579c-a9b6-4748afeab259",
+      "resource": {
+        "resourceType": "Practitioner",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitioner-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitioner"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "urn:oid:1.2.752.29.4.19",
+            "value": "SE2321000008-2001"
+          }
+        ],
+        "name": [
+          {
+            "family": "Sundström",
+            "given": [
+              "Åsa"
+            ],
+            "prefix": [
+              "Dr"
+            ]
+          }
+        ],
+        "id": "665cb823-b90a-579c-a9b6-4748afeab259",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Name</th><td>Dr Åsa Sundström</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e73ff2cf-f90b-52b9-a74d-b802fff486fb",
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/practitionerRole-eu",
+            "http://hl7.se/fhir/ig/base/StructureDefinition/SEBasePractitionerRole"
+          ]
+        },
+        "practitioner": {
+          "reference": "urn:uuid:665cb823-b90a-579c-a9b6-4748afeab259"
+        },
+        "organization": {
+          "reference": "urn:uuid:41e60249-8b67-5008-8176-3a1b44f17192"
+        },
+        "id": "e73ff2cf-f90b-52b9-a74d-b802fff486fb",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Role</th><td>Authoring practitioner at the custodian organisation</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:874c4fd8-ade8-5598-b72e-8cc273ef093d",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "46635009",
+              "display": "Type 1 diabetes mellitus"
+            }
+          ],
+          "text": "Type 1 diabetes mellitus"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "onsetDateTime": "2012-09-04",
+        "id": "874c4fd8-ade8-5598-b72e-8cc273ef093d",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Type 1 diabetes mellitus</td></tr><tr><th>Onset</th><td>2012-09-04</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e98805ce-a9ff-5726-86cb-8307078d32bf",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "406506008",
+              "display": "Attention deficit hyperactivity disorder"
+            }
+          ],
+          "text": "Attention deficit hyperactivity disorder"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "onsetDateTime": "2015-02-11",
+        "id": "e98805ce-a9ff-5726-86cb-8307078d32bf",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Attention deficit hyperactivity disorder</td></tr><tr><th>Onset</th><td>2015-02-11</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:77cbfd38-db09-5d18-a969-ddb5e1772fcb",
+      "resource": {
+        "resourceType": "Condition",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/condition-eu-core"
+          ]
+        },
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "remission"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem List Item"
+              }
+            ],
+            "text": "Problem List Item"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "66344007",
+              "display": "Recurrent major depression"
+            }
+          ],
+          "text": "Recurrent major depression"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "onsetDateTime": "2021-11-08",
+        "id": "77cbfd38-db09-5d18-a969-ddb5e1772fcb",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Condition</th><td>Recurrent major depression</td></tr><tr><th>Onset</th><td>2021-11-08</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:8f301d87-9634-52b7-ba4e-8a113ea8b863",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "A10AE06",
+              "display": "insulin degludec"
+            }
+          ],
+          "text": "Insulin degludec 100 units/mL solution for injection"
+        },
+        "id": "8f301d87-9634-52b7-ba4e-8a113ea8b863",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Insulin degludec 100 units/mL solution for injection</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:c6f4df66-84cc-5e92-8b4d-0a3dd0fd861a",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:8f301d87-9634-52b7-ba4e-8a113ea8b863",
+          "display": "Insulin degludec 100 units/mL solution for injection"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "effectivePeriod": {
+          "start": "2019-01-14"
+        },
+        "dosage": [
+          {
+            "text": "26 units subcutaneously once daily at bedtime",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "46635009",
+                "display": "Type 1 diabetes mellitus"
+              }
+            ],
+            "text": "Type 1 diabetes mellitus"
+          }
+        ],
+        "id": "c6f4df66-84cc-5e92-8b4d-0a3dd0fd861a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Insulin degludec 100 units/mL solution for injection</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>26 units subcutaneously once daily at bedtime</td></tr><tr><th>Period</th><td>2019-01-14</td></tr><tr><th>Reason</th><td>Type 1 diabetes mellitus</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:f6b9c617-3b26-5136-8d78-4dd708c71068",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "A10AB05",
+              "display": "insulin aspart"
+            }
+          ],
+          "text": "Insulin aspart 100 units/mL solution for injection"
+        },
+        "id": "f6b9c617-3b26-5136-8d78-4dd708c71068",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Insulin aspart 100 units/mL solution for injection</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3e676e4a-d665-55d7-9071-8ea9f6e697d8",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:f6b9c617-3b26-5136-8d78-4dd708c71068",
+          "display": "Insulin aspart 100 units/mL solution for injection"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "effectivePeriod": {
+          "start": "2019-01-14"
+        },
+        "dosage": [
+          {
+            "text": "4-8 units subcutaneously with each main meal, adjusted to carbohydrate intake and pre-meal glucose",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "46635009",
+                "display": "Type 1 diabetes mellitus"
+              }
+            ],
+            "text": "Type 1 diabetes mellitus"
+          }
+        ],
+        "id": "3e676e4a-d665-55d7-9071-8ea9f6e697d8",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Insulin aspart 100 units/mL solution for injection</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>4-8 units subcutaneously with each main meal, adjusted to carbohydrate intake and pre-meal glucose</td></tr><tr><th>Period</th><td>2019-01-14</td></tr><tr><th>Reason</th><td>Type 1 diabetes mellitus</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:da235197-e55b-58ab-a2df-4ca2734204af",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "N06BA12",
+              "display": "lisdexamfetamine"
+            }
+          ],
+          "text": "Lisdexamfetamine 50 mg capsule"
+        },
+        "id": "da235197-e55b-58ab-a2df-4ca2734204af",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Lisdexamfetamine 50 mg capsule</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:76570bc6-580e-5194-ae0d-15005ef5756a",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "medicationReference": {
+          "reference": "urn:uuid:da235197-e55b-58ab-a2df-4ca2734204af",
+          "display": "Lisdexamfetamine 50 mg capsule"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "effectivePeriod": {
+          "start": "2021-03-02"
+        },
+        "dosage": [
+          {
+            "text": "1 capsule (50 mg) by mouth each morning",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "406506008",
+                "display": "Attention deficit hyperactivity disorder"
+              }
+            ],
+            "text": "Attention deficit hyperactivity disorder"
+          }
+        ],
+        "id": "76570bc6-580e-5194-ae0d-15005ef5756a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Lisdexamfetamine 50 mg capsule</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Dosage</th><td>1 capsule (50 mg) by mouth each morning</td></tr><tr><th>Period</th><td>2021-03-02</td></tr><tr><th>Reason</th><td>Attention deficit hyperactivity disorder</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:412be15c-331e-5cdb-84d5-cd812b895f59",
+      "resource": {
+        "resourceType": "Medication",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medication-eu-core"
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "N06AB06",
+              "display": "sertraline"
+            }
+          ],
+          "text": "Sertraline 50 mg tablet"
+        },
+        "form": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "421026006",
+              "display": "Oral tablet"
+            }
+          ],
+          "text": "Oral tablet"
+        },
+        "id": "412be15c-331e-5cdb-84d5-cd812b895f59",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Sertraline 50 mg tablet</td></tr><tr><th>Form</th><td>Oral tablet</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:8c038105-1f0d-5ad1-bbf6-54f82ebda0ec",
+      "resource": {
+        "resourceType": "MedicationStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/MedicationStatement-eu-eps"
+          ]
+        },
+        "status": "completed",
+        "medicationReference": {
+          "reference": "urn:uuid:412be15c-331e-5cdb-84d5-cd812b895f59",
+          "display": "Sertraline 50 mg tablet"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "effectivePeriod": {
+          "start": "2021-11-20",
+          "end": "2023-05-30"
+        },
+        "dosage": [
+          {
+            "text": "1 tablet (50 mg) by mouth once daily",
+            "asNeededBoolean": false
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "66344007",
+                "display": "Recurrent major depression"
+              }
+            ],
+            "text": "Recurrent major depression"
+          }
+        ],
+        "id": "8c038105-1f0d-5ad1-bbf6-54f82ebda0ec",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Medication</th><td>Sertraline 50 mg tablet</td></tr><tr><th>Status</th><td>completed</td></tr><tr><th>Dosage</th><td>1 tablet (50 mg) by mouth once daily</td></tr><tr><th>Period</th><td>2021-11-20 to 2023-05-30</td></tr><tr><th>Reason</th><td>Recurrent major depression</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:7261a43b-1001-5885-a70c-312275576729",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "911000221103",
+              "display": "Human papillomavirus antigen only vaccine product"
+            }
+          ],
+          "text": "Human papillomavirus vaccine"
+        },
+        "patient": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "occurrenceDateTime": "2014-09-16",
+        "id": "7261a43b-1001-5885-a70c-312275576729",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Human papillomavirus vaccine</td></tr><tr><th>Date</th><td>2014-09-16</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:2f9d687e-72ce-5a8c-9f05-134a697f1575",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1119305005",
+              "display": "SARS-CoV-2 antigen vaccine"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BN04",
+              "display": "covid-19, protein subunit"
+            }
+          ],
+          "text": "COVID-19 vaccine"
+        },
+        "patient": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "occurrenceDateTime": "2021-10-11",
+        "id": "2f9d687e-72ce-5a8c-9f05-134a697f1575",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>COVID-19 vaccine</td></tr><tr><th>Date</th><td>2021-10-11</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:1cace978-7ea5-5fc0-afb5-ae9bdabac689",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/immunization-eu-core"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1181000221105",
+              "display": "Vaccine product containing only Influenza virus antigen (medicinal product)"
+            },
+            {
+              "system": "http://www.whocc.no/atc",
+              "code": "J07BB02",
+              "display": "influenza, inactivated, split virus or surface antigen"
+            }
+          ],
+          "text": "Influenza vaccine"
+        },
+        "patient": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "occurrenceDateTime": "2025-10-14",
+        "id": "1cace978-7ea5-5fc0-afb5-ae9bdabac689",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Vaccine</th><td>Influenza vaccine</td></tr><tr><th>Date</th><td>2025-10-14</td></tr><tr><th>Status</th><td>completed</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:9e729bf4-a2b9-5f87-a917-504310a7ee92",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "59261-8",
+              "display": "Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood"
+            }
+          ],
+          "text": "Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+        },
+        "effectiveDateTime": "2025-12-09",
+        "valueQuantity": {
+          "value": 68,
+          "unit": "mmol/mol",
+          "system": "http://unitsofmeasure.org",
+          "code": "mmol/mol"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Sävelunds sjukhus, Uppsala"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "High"
+              }
+            ],
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 27,
+              "unit": "mmol/mol",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/mol"
+            },
+            "high": {
+              "value": 42,
+              "unit": "mmol/mol",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/mol"
+            }
+          }
+        ],
+        "id": "9e729bf4-a2b9-5f87-a917-504310a7ee92",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Hemoglobin A1c/Hemoglobin.total standardized per IFCC-RMP for CDT in Blood</td></tr><tr><th>Date</th><td>2025-12-09</td></tr><tr><th>Result</th><td>68 mmol/mol</td></tr><tr><th>Interpretation</th><td>High</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:e6d85490-887f-54e8-aaf6-c8d6f40321d5",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "14682-9",
+              "display": "Creatinine [Moles/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Creatinine [Moles/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+        },
+        "effectiveDateTime": "2025-12-09",
+        "valueQuantity": {
+          "value": 71,
+          "unit": "umol/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "umol/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Sävelunds sjukhus, Uppsala"
+          }
+        ],
+        "referenceRange": [
+          {
+            "low": {
+              "value": 45,
+              "unit": "umol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "umol/L"
+            },
+            "high": {
+              "value": 90,
+              "unit": "umol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "umol/L"
+            }
+          }
+        ],
+        "id": "e6d85490-887f-54e8-aaf6-c8d6f40321d5",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Creatinine [Moles/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2025-12-09</td></tr><tr><th>Result</th><td>71 umol/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:114dacad-c252-590e-b139-a7f6276091b2",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "32294-1",
+              "display": "Albumin/Creatinine [Ratio] in Urine"
+            }
+          ],
+          "text": "Albumin/Creatinine [Ratio] in Urine"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+        },
+        "effectiveDateTime": "2025-12-09",
+        "valueQuantity": {
+          "value": 4.1,
+          "unit": "mg/mmol",
+          "system": "http://unitsofmeasure.org",
+          "code": "mg/mmol"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Sävelunds sjukhus, Uppsala"
+          }
+        ],
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "High"
+              }
+            ],
+            "text": "High"
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 3.0,
+              "unit": "mg/mmol",
+              "system": "http://unitsofmeasure.org",
+              "code": "mg/mmol"
+            }
+          }
+        ],
+        "id": "114dacad-c252-590e-b139-a7f6276091b2",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Albumin/Creatinine [Ratio] in Urine</td></tr><tr><th>Date</th><td>2025-12-09</td></tr><tr><th>Result</th><td>4.1 mg/mmol</td></tr><tr><th>Interpretation</th><td>High</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a9845b9f-24a5-5646-a202-91eeb62427bd",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/base/StructureDefinition/medicalTestResult-eu-core"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ],
+            "text": "Laboratory"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "14647-2",
+              "display": "Cholesterol [Moles/volume] in Serum or Plasma"
+            }
+          ],
+          "text": "Cholesterol [Moles/volume] in Serum or Plasma"
+        },
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+        },
+        "effectiveDateTime": "2025-12-09",
+        "valueQuantity": {
+          "value": 4.4,
+          "unit": "mmol/L",
+          "system": "http://unitsofmeasure.org",
+          "code": "mmol/L"
+        },
+        "performer": [
+          {
+            "display": "Klinisk kemi, Sävelunds sjukhus, Uppsala"
+          }
+        ],
+        "referenceRange": [
+          {
+            "high": {
+              "value": 5.0,
+              "unit": "mmol/L",
+              "system": "http://unitsofmeasure.org",
+              "code": "mmol/L"
+            }
+          }
+        ],
+        "id": "a9845b9f-24a5-5646-a202-91eeb62427bd",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Test</th><td>Cholesterol [Moles/volume] in Serum or Plasma</td></tr><tr><th>Date</th><td>2025-12-09</td></tr><tr><th>Result</th><td>4.4 mmol/L</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:eccf7b0a-a524-5a3a-bb3b-452b58c61080",
+      "resource": {
+        "resourceType": "Device",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/device-eu-eps"
+          ]
+        },
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "463729000",
+              "display": "Point-of-care blood glucose continuous monitoring system"
+            }
+          ],
+          "text": "Continuous glucose monitoring system"
+        },
+        "patient": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea"
+        },
+        "id": "eccf7b0a-a524-5a3a-bb3b-452b58c61080",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Device</th><td>Continuous glucose monitoring system</td></tr><tr><th>Status</th><td>active</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:530f9007-e92e-5b55-8d60-a81332527c0f",
+      "resource": {
+        "resourceType": "DeviceUseStatement",
+        "meta": {
+          "profile": [
+            "http://hl7.eu/fhir/eps/StructureDefinition/deviceUseStatement-eu-eps"
+          ]
+        },
+        "status": "active",
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "timingPeriod": {
+          "start": "2019-05-20"
+        },
+        "device": {
+          "reference": "urn:uuid:eccf7b0a-a524-5a3a-bb3b-452b58c61080",
+          "display": "Continuous glucose monitoring system"
+        },
+        "note": [
+          {
+            "text": "Sensor-based continuous glucose monitor, worn continuously. Data shared with the diabetes clinic in Uppsala; no readings uploaded since 2026-06-02."
+          }
+        ],
+        "id": "530f9007-e92e-5b55-8d60-a81332527c0f",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Device</th><td>Continuous glucose monitoring system</td></tr><tr><th>In use since</th><td>2019-05-20</td></tr><tr><th>Status</th><td>active</td></tr><tr><th>Note</th><td>Sensor-based continuous glucose monitor, worn continuously. Data shared with the diabetes clinic in Uppsala; no readings uploaded since 2026-06-02.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:97f50e54-ccec-5413-a517-0d6bb7c09f0a",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Digital follow-up with diabetes specialist nurse, Uppsala - every 3 months",
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "period": {
+          "start": "2019-01-14"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Appointment",
+              "status": "cancelled",
+              "description": "Digital follow-up with diabetes specialist nurse, Uppsala - every 3 months",
+              "reasonCode": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://snomed.info/sct",
+                      "code": "46635009",
+                      "display": "Type 1 diabetes mellitus"
+                    }
+                  ],
+                  "text": "Type 1 diabetes mellitus"
+                }
+              ],
+              "scheduledPeriod": {
+                "start": "2026-06-03"
+              }
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Appointment on 2026-06-03 was cancelled by the patient and has not been rebooked. Last completed review 2025-12-09."
+          }
+        ],
+        "id": "97f50e54-ccec-5413-a517-0d6bb7c09f0a",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Digital follow-up with diabetes specialist nurse, Uppsala - every 3 months</td></tr><tr><th>Status</th><td>cancelled</td></tr><tr><th>Scheduled</th><td>2026-06-03</td></tr><tr><th>Plan active since</th><td>2019-01-14</td></tr><tr><th>Note</th><td>Appointment on 2026-06-03 was cancelled by the patient and has not been rebooked. Last completed review 2025-12-09.</td></tr></table></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:9d6ab621-7bfd-546d-af4c-ef56d04b4cba",
+      "resource": {
+        "resourceType": "CarePlan",
+        "status": "active",
+        "intent": "plan",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "734163000",
+                "display": "Care plan"
+              }
+            ],
+            "text": "Care plan"
+          }
+        ],
+        "title": "Mental health safety plan agreed with adult psychiatric outpatient clinic, Uppsala",
+        "subject": {
+          "reference": "urn:uuid:0d5ab87d-331e-5d01-94d6-17b3cf70d4ea",
+          "display": "Andrea Lindqvist"
+        },
+        "period": {
+          "start": "2022-03-14"
+        },
+        "activity": [
+          {
+            "detail": {
+              "kind": "Appointment",
+              "status": "in-progress",
+              "description": "Mental health safety plan agreed with adult psychiatric outpatient clinic, Uppsala",
+              "reasonCode": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://snomed.info/sct",
+                      "code": "66344007",
+                      "display": "Recurrent major depression"
+                    }
+                  ],
+                  "text": "Recurrent major depression"
+                }
+              ]
+            }
+          }
+        ],
+        "note": [
+          {
+            "text": "Documented early warning signs: broken sleep, withdrawal from friends, skipped meals and missed medication. Agreed first step is to contact the outpatient clinic or the named relative. Patient consented to sharing the plan with treating clinicians abroad."
+          }
+        ],
+        "id": "9d6ab621-7bfd-546d-af4c-ef56d04b4cba",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><table><tr><th>Planned activity</th><td>Mental health safety plan agreed with adult psychiatric outpatient clinic, Uppsala</td></tr><tr><th>Status</th><td>in-progress</td></tr><tr><th>Plan active since</th><td>2022-03-14</td></tr><tr><th>Note</th><td>Documented early warning signs: broken sleep, withdrawal from friends, skipped meals and missed medication. Agreed first step is to contact the outpatient clinic or the named relative. Patient consented to sharing the plan with treating clinicians abroad.</td></tr></table></div>"
+        }
+      }
+    }
+  ]
+}

@@ -70,7 +70,7 @@ test("disablement atomically renames durable identity, retains roles, revokes se
   const { service, events } = setup();
   const now = new Date("2026-09-11T12:00:00.000Z");
   const result = await service.update("opaque-session", targetId, command(), now);
-  assert.deepEqual(result, { id: targetId, username: "renamed.user", displayName: "Renamed User", active: false,
+  assert.deepEqual(result, { hsaId:null,hsaSource:null,hsaConflict:false,id: targetId, username: "renamed.user", displayName: "Renamed User", active: false,
     revision: 5, roles: [{ id: roleId, displayName: "Clinician", active: true, protected: true }],
     restoredRoles: [], sessionsRevoked: 2, freshLoginRequired: true });
   assert.equal(events[0].sql, "begin");
@@ -143,4 +143,10 @@ test("patient-review administration remains a privilege ceiling for ordinary adm
     targetOnly: [{ capability_key: "review:admin" }] });
   await assert.rejects(service.update("token",targetId,command({active:true})),ForbiddenException);
   assert.equal(events.some(({sql}) => sql.startsWith("update app_identity.app_user")),false);
+});
+
+test("manual HSA changes preserve textual identity and record source and prior assignment",async()=>{
+ const command=validateUpdateAdminUser({expectedRevision:4,username:"original.user",displayName:"User",active:true,hsaId:" 001-SE-HSA "});
+ assert.equal(command.hsaId,"001-SE-HSA");
+ for(const hsaId of [12,["a"],"bad\nvalue","x".repeat(129)])assert.throws(()=>validateUpdateAdminUser({...command,hsaId}));
 });

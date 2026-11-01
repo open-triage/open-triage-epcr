@@ -10,7 +10,9 @@ test("signed snapshots retain a checked canonical integrity manifest", () => {
   assert.match(migration, /add column integrity_manifest jsonb not null/);
   assert.match(migration, /jsonb_typeof\(integrity_manifest->'notes'\) = 'array'/);
   assert.match(signing, /lockAndValidateReportNotes\(manager, report\)/);
-  assert.match(signing, /JSON\.stringify\(payload\)/);
+  const finalization = readFileSync(new URL("../../../apps/api/src/reports/signing-submission.ts", import.meta.url), "utf8");
+  assert.match(signing, /manifest: payload/);
+  assert.match(finalization, /JSON\.stringify\(manifest\)/);
 });
 
 test("media note state and integrity metadata remain enforceable and immutable", () => {

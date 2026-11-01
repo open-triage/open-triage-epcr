@@ -20,7 +20,6 @@ import {
   fetchActiveReport,
   saveDraftReport,
   shellStateToDraftMutations,
-  shouldQueueInitialDraftSnapshot,
   type ActiveDraftReport,
   type DraftSaveFailureCategory,
   type DraftSyncStatus,
@@ -67,6 +66,7 @@ export interface ReportWorkspace {
   readonly editingBlocked: boolean;
   readonly mediaPolicy: ReportMediaPolicy | undefined;
   readonly flushSave: () => Promise<void>;
+  readonly refreshReport: () => void;
   readonly completeReport: () => void;
   readonly resolveConflict: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => Promise<void>;
 }
@@ -102,7 +102,8 @@ export function useReportWorkspace({
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [mediaPolicy, setMediaPolicy] = useState<ReportMediaPolicy | undefined>(report?.mediaPolicy);
-  const [conflictRecoveryRequest, setConflictRecoveryRequest] = useState(0);
+  const [reconciliationRequest, setReconciliationRequest] = useState(0);
+  const refreshReport = useCallback(() => setReconciliationRequest(value => value + 1), []);
   const protectedStatus = useSyncExternalStore(
     useCallback((changed) => subscribeProtectedStorageStatus((reportId) => {
       if (reportId === report?.id) changed();
@@ -120,7 +121,6 @@ export function useReportWorkspace({
   const recoverConflictingQueue = useRef(false);
   const conflictRecoveryAttempts = useRef(0);
   const skipInitialQueue = useRef(false);
-  const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
   const completed = useRef(false);
   const pendingDemoAction = useRef<"populate" | "clear" | null>(null);
@@ -161,12 +161,6 @@ export function useReportWorkspace({
         catalogFields: report.clinicalForm?.catalogFields,
       },
     );
-    queueInitialSnapshot.current = shouldQueueInitialDraftSnapshot(
-      result.status,
-      report?.revision ?? 0,
-      Boolean(report?.document),
-      Boolean(report && nextDraftChange(window.localStorage, report.id)),
-    );
     if (result.status === "restored") {
       skipInitialQueue.current = true;
       dispatch({ type: "state-restored", state: result.state });
@@ -193,6 +187,12 @@ export function useReportWorkspace({
       if (!queued) {
         setSyncFailure(null);
         setSyncStatus("Saved");
+        return;
+      }
+      // Connectivity can change while an earlier command is awaiting acknowledgement.
+      // Preserve newly queued work until the online retry resumes this drain.
+      if (!navigator.onLine) {
+        setSyncStatus("Pending sync");
         return;
       }
       setSyncStatus("Saving");
@@ -257,7 +257,7 @@ export function useReportWorkspace({
       await attempt;
       activeSave.current = null;
       if (requestConflictRecovery) {
-        setConflictRecoveryRequest((request) => request + 1);
+        setReconciliationRequest((request) => request + 1);
         return;
       }
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
@@ -269,7 +269,7 @@ export function useReportWorkspace({
     recoverConflictingQueue.current = true;
     activeEtag.current = undefined;
     setSyncStatus("Saving");
-    setConflictRecoveryRequest((request) => request + 1);
+    setReconciliationRequest((request) => request + 1);
   }, [report]);
 
   useEffect(() => {
@@ -298,7 +298,7 @@ export function useReportWorkspace({
       (baseline, queued) => applyDraftMutationDelta(baseline, queued.command),
       persistedDraft.current,
     );
-    const unscopedMutations = queueInitialSnapshot.current ? projected : draftMutationDelta(
+    const unscopedMutations = draftMutationDelta(
       projected,
       optimisticDraft,
     );
@@ -323,7 +323,6 @@ export function useReportWorkspace({
       pendingDemoAction.current = null;
       return;
     }
-    queueInitialSnapshot.current = false;
     for (const mutations of changes) {
       const last = queuedDraftChanges(window.localStorage, report.id).at(-1);
       const existing = last && !last.attempted && last.command.demoAction === mutations.demoAction ? last : undefined;
@@ -503,7 +502,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
+  }, [completeReport, reconciliationRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;
@@ -540,6 +539,7 @@ export function useReportWorkspace({
       (!online && !offlineEditingAvailable(protectedStatus.mode)),
     mediaPolicy,
     flushSave,
+    refreshReport,
     completeReport,
     resolveConflict,
   };

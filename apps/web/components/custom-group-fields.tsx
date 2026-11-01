@@ -1,4 +1,5 @@
 "use client";
+import { LocalDateTimeText } from "./local-date-time";
 
 import type { CatalogDraftCustomGroup, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FormDraftField } from "@open-triage/contracts";
 import React from "react";
@@ -68,7 +69,7 @@ export function CustomGroupFields({ document, fields, definitions, groups, langu
       {parents.map((parent) => {
         const instances = customGroupInstances(document, definition).filter((instance) => instance.parentInstanceId === parent.instanceId);
         return <div key={parent.instanceId} data-custom-group-parent-id={parent.instanceId}>
-          <h4>{parentLabel(parent, definition.correlatesTo, language)}</h4>
+          <h4><LocalDateTimeText value={parentLabel(parent, definition.correlatesTo, language)} language={language} /></h4>
           {instances.map((instance, index) => <div key={instance.instanceId} data-custom-group-instance-id={instance.instanceId}>
             <h5>{title} {index + 1}</h5>
             <RepeatedCustomFields document={document} fields={memberFields} definitions={definitions} language={language}

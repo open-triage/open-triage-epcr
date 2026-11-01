@@ -1,7 +1,9 @@
 "use client";
+import { useLocalDateTime } from "./local-date-time";
 
 import { resolveCatalogElementText, resolveCatalogGroupText } from "../app/catalog-localization";
 import { resolveMessage } from "../app/localization";
+import { useAgencyTimeZone } from "../app/agency-time-zone";
 import type { FormLanguage } from "../app/form-localization";
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
@@ -57,12 +59,13 @@ function ReadOnlyGroupField({ instance, placement, findings, catalogFields }: {
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
 }) {
   const { language } = useContext(FormPresentationContext);
+  const format = useLocalDateTime(language);
   const pinned = catalogFields?.[placement.id];
   const label = pinned ? resolveCatalogElementText(pinned, placement.id, language, "label")
     : placement.label ?? requireNemsisDataElement(placement.id).name;
   const values = instance.elements.find(({ id }) => id === placement.id)?.values ?? [];
   return <div data-element-id={placement.id}><strong>{label}</strong><p>{values.map((value) =>
-    value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code
+    value.kind === "scalar" ? (requireNemsisDataElement(placement.id).datatype.base === "dateTime" ? format(String(value.value)) : String(value.value)) : value.kind === "coded" ? value.display ?? value.code
       : resolveMessage(language, "stationary.exceptionalValue")).join(", ") || resolveMessage(language, "stationary.notRecorded")}</p>
     <StationaryValidationMessages findings={elementValidationFindings(findings, placement.groupId, instance.instanceId, placement.id)} />
   </div>;
@@ -320,6 +323,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const headingId = useId();
+  const zone = useAgencyTimeZone();
   const { language } = useContext(FormPresentationContext);
   const t = (key: string, parameters: Record<string, string | number> = {}) => resolveMessage(language, key, parameters);
   const instances = sortRepeatingGroupInstancesByTimestamp(document, repeatingGroupInstances(document, placement.id, parentInstanceId));
@@ -359,7 +363,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
           const rowSeverity = stationaryFindingSeverity(stationaryGroupValidationFindings(document, validationFindings, placement.id, instance.instanceId, true));
           return <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}
             className={rowSeverity ? `stationary-validation-state ${rowSeverity}` : undefined}>
-            {repeatingGroupSummary(document, placement, instance).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>{t("stationary.notRecorded")}</span>}</td>)}
+            {repeatingGroupSummary(document, placement, instance, zone).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>{t("stationary.notRecorded")}</span>}</td>)}
             <td className="stationary-table-actions"><div className="stationary-row-actions"><button className="stationary-icon-action edit" type="button" aria-label={t(editable ? "stationary.editNamedRow" : "stationary.viewNamedRow", { label: actionLabel })} title={t(editable ? "stationary.edit" : "stationary.view")} data-dialog-return-focus={`${placement.id}:${instance.instanceId}:edit`} onClick={(event) => setDialogState({ draft: document, instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget })}><span aria-hidden="true">{editable ? "✎" : t("stationary.view")}</span></button>
               {editable && <button className="stationary-icon-action remove" type="button" aria-label={t("stationary.removeNamedRow", { label: actionLabel })} title={t("stationary.remove")} onClick={() => { const result = removeRepeatingGroupOccurrence(document, placement.id, instance.instanceId); if (result.ok) { setFinding(undefined); onDocumentChange(result.document); } else setFinding(result.findings[0]); }}><span aria-hidden="true">×</span></button>}</div></td>
           </tr>;

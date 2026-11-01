@@ -1,3 +1,10 @@
+import { EpsWorkerService } from '../hospital/eps-worker.service.js';
+import { EpsSubmissionController } from '../hospital/eps-submission.controller.js';
+import { EpsSubmissionService } from '../hospital/eps-submission.service.js';
+import {EpsImportService} from '../hospital/eps-import.service.js';
+import { CosWorkerService } from '../hospital/cos-worker.service.js';
+import { EpsController } from '../hospital/eps.controller.js';
+import { EpsService } from '../hospital/eps.service.js';
 import { Module } from "@nestjs/common";
 import { DraftReportController } from "./draft-report.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
@@ -14,8 +21,8 @@ import { ReportAudioNormalizer } from "./report-audio-normalizer.service.js";
 
 @Module({
   imports: [SessionsModule, SchedulesModule],
-  controllers: [DraftReportController],
-  providers: [DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
+  controllers: [EpsSubmissionController, DraftReportController, EpsController],
+  providers: [EpsWorkerService, EpsSubmissionService, CosWorkerService, EpsImportService, EpsService, DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
     ReviewValidationService, ReportNoteService, ReportPhotoService, ReportAudioService, ReportAudioNormalizer]
 })
 export class ReportsModule {}

@@ -50,10 +50,18 @@ test("deactivation updates only mutable fields and audits in the same transactio
   const write=queries.find(query=>query.sql?.startsWith("update"));
   assert.match(write.sql,/where organization_id=\$1 and id=\$2/);
   assert.doesNotMatch(write.sql,/default_form_id|clinical\.|delete/i);
-  assert.deepEqual(write.params,["agency",unit.id,"Replacement","M2",false]);
+  assert.deepEqual(write.params,["agency",unit.id,"Replacement","M2",false,null]);
   assert.ok(queries.some(query=>query.sql?.includes("operational_unit_event")));
 });
 test("duplicate call signs produce a useful conflict",async()=>{
   const {service}=fixture({fail:{code:"23505"}});
-  await assert.rejects(service.save("token",null,{name:"Medic",callSign:"M1",active:true}),/call sign is already assigned/);
+  await assert.rejects(service.save("token",null,{name:"Medic",callSign:"M1",active:true}),error=>error.getResponse().code==="admin.unitIdentifierDuplicate");
+});
+
+test("Rakel is optional text preserving leading zeroes and separators, omitted edits retain it",async()=>{
+ assert.equal(validateUnit({name:"Medic",callSign:"M1",active:true,rakelId:" 001-02 "},false).rakelId,"001-02");
+ for(const rakelId of [123,[],"a\nb","a".repeat(129)])assert.throws(()=>validateUnit({name:"Medic",callSign:"M1",active:true,rakelId},false));
+ const {service,queries}=fixture({rows:[{...unit,rakelId:"001-02"}]});
+ await service.save("token",unit.id,{name:"Medic",callSign:"M1",active:true,expectedRevision:1});
+ assert.equal(queries.find(row=>row.sql?.startsWith("update")).params[5],"001-02");
 });

@@ -16,6 +16,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
     capabilities: [id === reviewer ? "review:all" : "review:self",
       ...(identifying ? ["review:identifying"] : [])], workspaceAvailable: true });
   let session = sessionFor(reviewer);
+  const identifying = () => session.user.id === clinician || session.capabilities.includes("review:identifying");
   let status = "in-review";
   let version = 1;
   const comments: Array<{ id: string; actorId: string; actorName: string; body: string;
@@ -25,9 +26,9 @@ test("reviewer requests a clinician response and both see the scoped discussion"
     status, outcome: null, assigneeId: reviewer, version, recoveryReason: null,
     firstMatchedAt: "2026-10-02T07:00:00Z", reportingDate: "2026-10-02",
     signedAt: "2026-10-02T07:00:00Z", findings: [], assignmentHistory: [], progressHistory: [],
-    comments: session.capabilities.includes("review:identifying") ? comments : [],
-    commentsRestricted: !session.capabilities.includes("review:identifying"),
-    canComment: session.capabilities.includes("review:identifying") });
+    comments: identifying() ? comments : [],
+    commentsRestricted: !identifying(),
+    canComment: identifying() });
   await page.addInitScript((stored) => {
     if (!localStorage.getItem("open-triage.clinician-session.v1"))
       localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored));
@@ -38,7 +39,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
     if (path === "/api/sessions/current") return route.fulfill({ json: session });
     if (path === `/api/review/reports/${reportId}`) return route.fulfill({ json: { id: reportId,
       reportingDate: "2026-10-02", signedAt: "2026-10-02T07:00:00Z", amendmentSequence: 0,
-      identifying: session.capabilities.includes("review:identifying"), groups: [], values: [], notes: [],
+      identifying: identifying(), groups: [], values: [], notes: [],
       reviewItems: [{ id: itemId, criterionId, status, outcome: null }] } });
     if (path === "/api/review/queue") return route.fulfill({ json: { dataset: "real", page: 1,
       pageSize: 25, total: 1, asOf: new Date().toISOString(), items: [item()] } });
@@ -55,7 +56,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
       expect(route.request().headers()["x-csrf-token"]).toBe("discussion-csrf");
       const command = route.request().postDataJSON() as { body: string; expectedVersion: number };
       expect(command.expectedVersion).toBe(version);
-      expect(session.capabilities).toContain("review:identifying");
+      expect(identifying()).toBe(true);
       version++;
       comments.push({ id: crypto.randomUUID(), actorId: session.user.id,
         actorName: session.user.displayName, body: command.body, itemVersion: version,
@@ -74,7 +75,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
   expect(status).toBe("awaiting-clinician");
   await closeReviewCall(call);
 
-  session = sessionFor(clinician);
+  session = sessionFor(clinician, false);
   await page.evaluate((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.reload();
   call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).last());
@@ -93,7 +94,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
   expect(comments.map((entry) => entry.actorId)).toEqual([reviewer, clinician]);
   await closeReviewCall(call);
 
-  session = sessionFor(clinician, false);
+  session = sessionFor(reviewer, false);
   await page.evaluate((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
   await page.reload();
   call = await openReviewCall(page, page.getByRole("button", { name: `View Report ID · ${reportId.slice(0, 8).toUpperCase()}` }).last());
@@ -103,7 +104,7 @@ test("reviewer requests a clinician response and both see the scoped discussion"
   await expect(call.getByText("Please clarify the timeline.")).toHaveCount(0);
   await expect(call.getByRole("button", { name: "Send comment" })).toHaveCount(0);
   await call.getByRole("tab", { name: "Actions", exact: true }).click();
-  await expect(call.getByRole("combobox", { name: "Action", exact: true }).locator("option")).toHaveText(["Comment"]);
+  await expect(call.getByRole("combobox", { name: "Action", exact: true }).getByRole("option", { name: "Comment", exact: true })).toHaveCount(1);
   await expect(call.getByRole("textbox", { name: "Comment", exact: true })).toBeDisabled();
   await expect(call.getByRole("button", { name: "Send comment" })).toBeDisabled();
 });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { compileValidationRule } from '@open-triage/contracts';
 import { parseOptions, seededRandom, serviceTime, operationalTimeline } from '../scripts/lib/synthetic-record-options.mjs';
@@ -205,4 +206,82 @@ test('prefix repair respects form choice policies on both related fields', () =>
     { kind: 'code', code: '06', codeSystem: '' },
   ];
   assert.throws(() => generateDocument({ ...input, random: () => 0.1, maxPasses: 3 }), /Could not satisfy active validation.*county-state/);
+});
+
+test('dispatch birth dates derive ages in years or days and missing/invalid dates never produce random ages', () => {
+  for (const [birthDate, age, unit] of [['2002-07-25', 24, '2516009'], ['2026-09-10', 5, '2516001'],
+    [undefined, undefined, undefined], ['invalid', undefined, undefined], ['2027-01-01', undefined, undefined]]) {
+    const input = fixture();
+    input.source.groups.push({ id: 'PatientCareReportGroup', instances: [{ instanceId: 'patient', elements: [
+      { id: 'ePatient.01', values: [{ kind: 'scalar', occurrenceId: 'identity', value: 'fictional' }] },
+      ...(birthDate ? [{ id: 'ePatient.17', values: [{ kind: 'scalar', occurrenceId: 'birth', value: birthDate }] }] : []),
+    ] }] });
+    for (const id of ['ePatient.15', 'ePatient.16']) {
+      input.configuration.definition.sections[0].fields.push({ key: id, source: { kind: 'nemsis', elementId: id } });
+      input.model.elements.push({ id, base: id.endsWith('15') ? 'integer' : 'string', path: ['PatientCareReportGroup'],
+        minimum: 0, maximum: 1, definition: { datatype: { constraints: {} }, valueSource: { kind: id.endsWith('15') ? 'scalar' : 'inline-enumerated' } } });
+    }
+    input.configuration.catalogFields['ePatient.16'] = { codeChoices: ['2516001', '2516009'].map(code => ({ code, label: code })) };
+    const { document } = generateDocument({ ...input, random: seededRandom('age') });
+    const elements = document.groups.flatMap(group => group.instances.flatMap(instance => instance.elements));
+    assert.equal(elements.find(element => element.id === 'ePatient.15')?.values[0]?.value, age);
+    assert.equal(elements.find(element => element.id === 'ePatient.16')?.values[0]?.code, unit);
+  }
+});
+
+test('coded not-equal repair chooses a permitted alternative instead of the forbidden code', () => {
+  const input = fixture(['require compareValue("eSituation.02", "not-equal", "B")']);
+  for (const seed of ['first', 'second', 'third']) {
+    const { document } = generateDocument({ ...input, random: seededRandom(seed) });
+    assert.equal(value(document, 'eSituation.02').code, 'C');
+    assert.deepEqual(validationProblems(input.bundle, document, input.now.toISOString()), []);
+  }
+});
+
+test('Populate repairs restricted dispatch county in a mixed group without overwriting clinician values', () => {
+  const catalog = JSON.parse(readFileSync(new URL('../defines/catalog/catalog_nemsis-3.5.1.json', import.meta.url), 'utf8'));
+  const county = catalog.elements.find(element => element.id === 'eScene.21');
+  for (const owner of ['dispatch', 'clinician', 'unknown']) {
+    const input = fixture();
+    input.model.elements.push({ id: county.id, base: county.datatype.base, minimum: 0, maximum: 1,
+      path: ['PatientCareReportGroup'], definition: county });
+    input.configuration.catalogFields[county.id] = { codeChoices: catalog.bundledLists
+      .filter(list => county.valueSource.bundledListIds.includes(list.id)).flatMap(list => list.values) };
+    input.configuration.definition.sections[0].fields.push({ key: county.id, source: { kind: 'nemsis', elementId: county.id },
+      choicePolicy: [{ kind: 'not-value', code: '7701001' }, { kind: 'not-value', code: '7701003' }] });
+    input.source.groups.push({ id: 'PatientCareReportGroup', instances: [{ instanceId: 'mixed',
+      attributes: { 'x-open-triage-owner': 'clinician' }, elements: [
+        { id: county.id, values: [{ kind: 'coded', occurrenceId: 'county', code: '36061', system: 'ANSI-COUNTY',
+          attributes: { 'x-open-triage-owner': owner } }] },
+        { id: 'eVitals.10', values: [{ kind: 'scalar', occurrenceId: 'pulse', value: 72,
+          attributes: { 'x-open-triage-owner': 'clinician' } }] },
+      ] }] });
+    const original = structuredClone(input.source);
+    const { document } = generateDocument({ ...input, preserveExisting: true, random: seededRandom('county') });
+    if (owner === 'dispatch') {
+      assert.equal(value(document, county.id).kind, 'null');
+      assert.ok(['7701001', '7701003'].includes(value(document, county.id).notValue.code));
+    } else assert.deepEqual(value(document, county.id), value(original, county.id));
+    assert.deepEqual(value(document, 'eVitals.10'), value(original, 'eVitals.10'));
+    assert.deepEqual(input.source, original);
+  }
+});
+
+test('shared Populate/CLI generation selects COS-compatible pain and dose units across seeds',()=>{
+ const input=fixture();
+ for(const [id,base,choices]of [['eVitals.27','decimal',null],['eVitals.28','string',[{code:'3328001',label:'Faces'},{code:'3328003',label:'Numeric'}]],['eMedications.06','string',[{code:'rate',label:'Milligrams per minute'},{code:'dose',label:'Milligrams (mg)'}]]]){
+  input.model.elements.push({id,base,path:['PatientCareReportGroup'],minimum:0,maximum:1,definition:{datatype:{constraints:{minInclusive:0,maxInclusive:10}},valueSource:{kind:choices?'inline-enumerated':'scalar'}}});
+  input.configuration.definition.sections[0].fields.push({key:id,source:{kind:'nemsis',elementId:id}});
+  input.configuration.catalogFields[id]={codeChoices:choices??[]};
+ }
+ for(let seed=0;seed<100;seed++){
+  const {document}=generateDocument({...input,random:seededRandom(String(seed))});
+  assert.equal(Number.isInteger(value(document,'eVitals.27').value),true);
+  assert.ok(['3328001','3328003'].includes(value(document,'eVitals.28').code),'pain scales retain their configured choices');
+  assert.equal(value(document,'eMedications.06').code,'dose');
+ }
+ const source=generateDocument({...input,random:seededRandom('existing')}).document;
+ const existing=value(source,'eVitals.28');existing.code='3328001';delete existing.attributes;
+ const result=generateDocument({...input,source,preserveExisting:true,random:seededRandom('preserve')}).document;
+ assert.equal(value(result,'eVitals.28').code,'3328001','never replace clinician-entered scales');
 });

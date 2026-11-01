@@ -8,7 +8,7 @@ export function validateUpdateAdminUser(input: unknown): UpdateAdminUserCommand 
     throw new BadRequestException("User lifecycle details are required");
   }
   const value = input as Record<string, unknown>;
-  const allowed = new Set(["expectedRevision", "username", "displayName", "active", "note"]);
+  const allowed = new Set(["expectedRevision", "username", "displayName", "active", "note", "hsaId"]);
   if (Object.keys(value).some((key) => !allowed.has(key))) throw new BadRequestException("Unexpected user lifecycle field");
   const username = value.username === null ? null : typeof value.username === "string" ? value.username.trim().toLowerCase() : "";
   const displayName = typeof value.displayName === "string" ? value.displayName.trim().normalize("NFC") : "";
@@ -24,6 +24,7 @@ export function validateUpdateAdminUser(input: unknown): UpdateAdminUserCommand 
   if (note !== undefined && (note.length > 1000 || /[\p{Cc}\p{Cf}]/u.test(note))) {
     throw new BadRequestException("Note must contain at most 1000 visible characters");
   }
-  return { expectedRevision: Number(value.expectedRevision), username, displayName,
+  if (value.hsaId !== undefined && value.hsaId !== null && (typeof value.hsaId !== "string" || value.hsaId.length > 128 || /[\p{Cc}\p{Cf}]/u.test(value.hsaId))) throw new BadRequestException({code:"admin.hsaInvalid"});
+  return { ...(value.hsaId !== undefined ? {hsaId: typeof value.hsaId === "string" ? value.hsaId.trim() || null : null} : {}), expectedRevision: Number(value.expectedRevision), username, displayName,
     active: value.active, ...(note ? { note } : {}) };
 }

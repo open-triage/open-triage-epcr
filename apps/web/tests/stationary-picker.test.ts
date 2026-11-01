@@ -1,16 +1,15 @@
+import { repeatedPhoneEncounter } from "./fixtures/repeated-phone-encounter";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { EncounterDocument } from "@open-triage/contracts";
-import synthetic from "../app/data/synthetic-encounter-document.json";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
 import { stationaryCodedField } from "../app/stationary-coded-value";
 import { scalarControlPresentation } from "../app/stationary-scalar";
 import { StationaryCodedOccurrencesField } from "../components/stationary-coded-field";
 import { StationaryScalarOccurrences } from "../components/stationary-scalar-occurrences";
 
-const document = synthetic as EncounterDocument;
+const document = repeatedPhoneEncounter();
 const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
 
 test("repeatable phone values share one labeled multi-input picker", () => {

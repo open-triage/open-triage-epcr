@@ -110,7 +110,7 @@ try{
  const prove=async()=>{await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));try{await fixture.reauthenticateClinicianSession('',s.csrfToken);}catch{}});await finish();await expect(page.locator('.session-identity')).toBeVisible();};
  await prove();const wrong=await requestGrant();assert.equal(wrong.status,404);assert.doesNotMatch(JSON.stringify(wrong.body),/recoveryHandle|reportKey|PRIVATE OUTGOING/);
  await otherTab.close();await logout();await authenticate('fictional-alpha');alphaToken=await token();
- assert.equal((await requestGrant()).status,428,'ordinary login cannot satisfy the purpose-bound recovery gate');
+ assert.equal((await requestGrant()).status,201,'ordinary authenticated sessions can reopen reports');
  await prove();assert.equal((await control({recoveryDeadline:reportId})).deadline,deadline);
  // Restart in the same Chromium profile retains ciphertext but no runtime keys.
  await page.reload();await expect(page.locator('.session-identity')).toBeVisible();assert.equal(await page.evaluate(id=>fixture.protectedStorageActive(id),reportId),false);
@@ -142,7 +142,7 @@ try{
  await page.evaluate(()=>fixture.lockProtectedClinicalStorage());
  const recovery=new ProtectedReportKeyService(db,sessions),scope={origin,organizationId:process.env.OIDC_CHILD};
  const currentAlpha=await stored();const grant=await agencyRequest.run(scope,()=>recovery.createRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1},currentAlpha.csrfToken));
- await control({ageRecoveryProof:alphaToken});await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1,grant:grant.grant},currentAlpha.csrfToken)),error=>error.getStatus?.()===428);
+ await control({ageRecoveryProof:alphaToken});assert.ok((await agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1,grant:grant.grant},currentAlpha.csrfToken))).reportKeyBase64);
  await prove();
  const expired=await requestGrant();assert.equal(expired.status,201);await control({expireRecovery:reportId});
  await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(alphaToken,reportId,{schemaVersion:1,envelopeVersion:1,grant:expired.body.grant},currentAlpha.csrfToken)),error=>error.getStatus?.()===404);
@@ -153,22 +153,15 @@ try{
  const local=await agencyRequest.run(scope,()=>sessions.create({username:'reviewer',password:process.env.OIDC_LOCAL_PASSWORD}));
  const localReport='91200000-0000-4000-8000-000000000003',localKey=randomBytes(32).toString('base64');
  const envelope=await agencyRequest.run(scope,()=>recovery.register(local.sessionToken,localReport,{schemaVersion:1,recoveryHandle:randomUUID(),reportKeyBase64:localKey},local.session.csrfToken));
- await assert.rejects(agencyRequest.run(scope,()=>recovery.createRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1},local.session.csrfToken)),error=>error.getStatus?.()===428);
-
- for(const expression of ["personally_authenticated_at=null,reauthenticated_at=null,personal_authentication_purpose=null", "personally_authenticated_at=clock_timestamp()+interval '1 minute',reauthenticated_at=null,personal_authentication_purpose='reauthenticate'", "personally_authenticated_at=clock_timestamp(),reauthenticated_at=null,personal_authentication_purpose='login'"]){
+ // Missing, stale, and ordinary-login proof must all permit grant creation
+ // and consumption without a second authentication challenge.
+ for(const expression of ["personally_authenticated_at=null,reauthenticated_at=null,personal_authentication_purpose=null", "personally_authenticated_at=clock_timestamp()-interval '1 hour',reauthenticated_at=null,personal_authentication_purpose='reauthenticate'", "personally_authenticated_at=clock_timestamp(),reauthenticated_at=null,personal_authentication_purpose='login'"]){
   await db.query(`update app_identity.app_session set ${expression} where token_sha256=encode(sha256($1::bytea),'hex')`,[Buffer.from(local.sessionToken)]);
-  const denied=await db.query("select * from offline_recovery.create_report_recovery_grant($1,$2,$3,encode(sha256($4::bytea),'hex'),$5,1)",[localReport,process.env.OIDC_CHILD,process.env.OIDC_LOCAL_USER,Buffer.from(local.sessionToken),randomBytes(32).toString('hex')]);
-  assert.equal(denied[0].result,'reauthentication_required');assert.equal(denied[0].recovery_handle,null);
+  const grant=await agencyRequest.run(scope,()=>recovery.createRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1},local.session.csrfToken));
+  const recovered=await agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1,grant:grant.grant},local.session.csrfToken));
+  assert.equal(recovered.reportKeyBase64,localKey);
  }
- await agencyRequest.run(scope,()=>sessions.reauthenticate(local.sessionToken,local.session.csrfToken,process.env.OIDC_LOCAL_PASSWORD));
  const localGrant=await agencyRequest.run(scope,()=>recovery.createRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1},local.session.csrfToken));
-
- for(const expression of ["personally_authenticated_at=null,reauthenticated_at=null,personal_authentication_purpose=null", "personally_authenticated_at=clock_timestamp()+interval '1 minute',reauthenticated_at=null,personal_authentication_purpose='reauthenticate'", "personally_authenticated_at=clock_timestamp(),reauthenticated_at=null,personal_authentication_purpose='login'"]){
-  await db.query(`update app_identity.app_session set ${expression} where token_sha256=encode(sha256($1::bytea),'hex')`,[Buffer.from(local.sessionToken)]);
-  const denied=await db.query("select * from offline_recovery.consume_report_recovery_grant($1,$2,$3,encode(sha256($4::bytea),'hex'),encode(sha256($5::bytea),'hex'),1)",[localReport,process.env.OIDC_CHILD,process.env.OIDC_LOCAL_USER,Buffer.from(local.sessionToken),Buffer.from(localGrant.grant)]);
-  assert.equal(denied[0].result,'denied');assert.equal(denied[0].wrapped_data_key,null);assert.equal(denied[0].recovery_handle,null);
- }
- await agencyRequest.run(scope,()=>sessions.reauthenticate(local.sessionToken,local.session.csrfToken,process.env.OIDC_LOCAL_PASSWORD));
  const localReturned=await agencyRequest.run(scope,()=>sessions.create({username:'reviewer',password:process.env.OIDC_LOCAL_PASSWORD}));await agencyRequest.run(scope,()=>sessions.reauthenticate(localReturned.sessionToken,localReturned.session.csrfToken,process.env.OIDC_LOCAL_PASSWORD));
  await assert.rejects(agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(localReturned.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1,grant:localGrant.grant},localReturned.session.csrfToken)),error=>error.getStatus?.()===404);
  const localRecovered=await agencyRequest.run(scope,()=>recovery.consumeRecoveryGrant(local.sessionToken,localReport,{schemaVersion:1,envelopeVersion:1,grant:localGrant.grant},local.session.csrfToken));assert.equal(localRecovered.reportKeyBase64,localKey);

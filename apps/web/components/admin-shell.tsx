@@ -1,7 +1,9 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
 import { SchedulesPanel } from "./schedules-panel";
 import { AuditingPanel } from "./auditing-panel";
 import { UnitsPanel } from "./units-panel";
+import { HospitalIntegrationsPanel } from "./hospital-integrations";
 import { AuthenticationPolicyPanel } from "./authentication-policy";
 
 import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
@@ -19,12 +21,12 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
 import { OrganizationManagement } from "./organization-management";
 
-type AdminPanel = "Auditing" | "Shift schedules" | "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
+type AdminPanel = "Hospital integrations" | "Auditing" | "Shift schedules" | "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
   ["auditing", "Auditing"],
   ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
-  ["authentication", "Authentication"], ["units", "Units"], ["schedules", "Shift schedules"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
+  ["hospital", "Hospital integrations"], ["authentication", "Authentication"], ["units", "Units"], ["schedules", "Shift schedules"], ["settings", "Agency Settings"], ["review-settings", "Review settings"], ["agencies", "Super-admin"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -39,33 +41,35 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session, language = "en", online = true, reviewSettingsSection, onOpenAgency }: {
+export function AdminShell({ session, language = "en", online = true, reviewSettingsSection, hospitalSettings, onOpenAgency }: {
   readonly session: ClinicianSession;
   readonly language?: AgencyLanguage;
   readonly online?: boolean;
+  readonly hospitalSettings?: boolean;
   readonly reviewSettingsSection?: ReviewSettingsSection;
   readonly onOpenAgency?: (id: string) => Promise<void>;
 }) {
-  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} onOpenAgency={onOpenAgency} /></AdminLanguageContext.Provider>;
+  return <AdminLanguageContext.Provider value={language}><AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} online={online} reviewSettingsSection={reviewSettingsSection} hospitalSettings={hospitalSettings} onOpenAgency={onOpenAgency} /></AdminLanguageContext.Provider>;
 }
 
-function AuthorizedAdminShell({ session, language, online, reviewSettingsSection, onOpenAgency }: {
+function AuthorizedAdminShell({ session, language, online, reviewSettingsSection, hospitalSettings, onOpenAgency }: {
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly online: boolean;
+  readonly hospitalSettings?: boolean;
   readonly reviewSettingsSection?: ReviewSettingsSection;
   readonly onOpenAgency?: (id: string) => Promise<void>;
 }) {
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
   const adminT = useAdminText();
-  const panelKeys: Record<AdminPanel, string> = { Auditing: "navigation.auditing", "Shift schedules": "navigation.shiftSchedules", Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
+  const panelKeys: Record<AdminPanel, string> = { "Hospital integrations": "hospital.title", Auditing: "navigation.auditing", "Shift schedules": "navigation.shiftSchedules", Units: "navigation.units", Authentication: "navigation.authentication", Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
     "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
     "Agency Settings": "navigation.settings", "Review settings": "navigation.reviewSettings", "Super-admin": "navigation.superAdmin" };
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contextRefresh, setContextRefresh] = useState(0);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
-  const [activePanel, setActivePanel] = useState<AdminPanel | null>(reviewSettingsSection ? "Review settings" : null);
+  const [activePanel, setActivePanel] = useState<AdminPanel | null>(hospitalSettings ? "Hospital integrations" : reviewSettingsSection ? "Review settings" : null);
   const [visitedPanels, setVisitedPanels] = useState<readonly AdminPanel[]>([]);
 
   useEffect(() => {
@@ -156,7 +160,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
         <div><dt><AdminText messageKey="admin.databaseStorage" /></dt><dd>{formattedBytes(context.dashboard.databaseSizeBytes)}</dd></div>
         <div><dt><AdminText messageKey="admin.databaseConnections" /></dt><dd>{context.dashboard.databaseConnections} / {context.dashboard.maxDatabaseConnections}</dd>
           <small>{adminT("admin.percentUtilized", { percent: Math.round(context.dashboard.databaseConnections / Math.max(context.dashboard.maxDatabaseConnections, 1) * 100) })}</small></div>
-        <div><dt><AdminText messageKey="admin.measured" /></dt><dd><time dateTime={context.dashboard.generatedAt}>{new Date(context.dashboard.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></dd></div>
+        <div><dt><AdminText messageKey="admin.measured" /></dt><dd><time dateTime={context.dashboard.generatedAt}><LocalDateTime value={context.dashboard.generatedAt} options={{ hour: "numeric", minute: "2-digit" }} /></time></dd></div>
       </dl>
     </section>}
 
@@ -205,6 +209,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section></div>}
 
+    {context && mounted("Hospital integrations") && <div hidden={activePanel !== "Hospital integrations"}><HospitalIntegrationsPanel initialTab={hospitalSettings ? "cos" : "eps"} language={language} csrfToken={session.csrfToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
     {context && mounted("Authentication") && <div hidden={activePanel !== "Authentication"}><AuthenticationPolicyPanel language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} canWrite={context.capabilities.includes("settings:write")} /></div>}
 
     {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { compileValidationRule, compiledValidationBundleSha256, type CompiledValidationBundle, type EncounterDocument } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle, type EncounterDocument } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
 import { NEMSIS_DATA_MODEL } from "../app/nemsis-data-model";
 import {
@@ -20,8 +20,40 @@ import { editScalarOccurrence } from "../app/stationary-scalar";
 import { INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { editNonRepeatingScalarValue } from "../app/stationary-non-repeating";
+import { applyDestinationSelection } from "../app/destination-selection";
 
 const document = structuredClone(synthetic) as EncounterDocument;
+
+test("missing COS destination stays in sync between inline errors and the stationary sidebar", () => {
+  const groupId = "eDisposition.DestinationGroup";
+  const empty = { ...document, groups: document.groups.filter(group => group.id !== groupId) };
+  const field = { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: false, choiceOrder: [] };
+  const form: ClinicalFormConfiguration = {
+    definition: { schemaVersion: 1, sections: [{ key: "eDispositionSection", fields: [
+      { key: "destination", source: { kind: "nemsis", elementId: "eDisposition.01" } },
+      { key: "destination-code", source: { kind: "nemsis", elementId: "eDisposition.02" } },
+    ] }] },
+    catalogFields: { "eDisposition.01": { ...field, recommendations: { source: "destination-directory", items: [] } },
+      "eDisposition.02": field },
+  };
+  const none = applyDestinationSelection(empty, "none", groupId);
+  const cleared = applyDestinationSelection(none, undefined, groupId);
+  for (const definition of [undefined, form.definition]) {
+    for (const [record, count] of [[empty, 1], [none, 0], [cleared, 1]] as const) {
+      const findings = actionableStationaryFindings(validateStationaryRecord(record, form, "2026-11-01T12:00:00Z"));
+      const html = renderToStaticMarkup(createElement(StationaryRecord, {
+        document: record, formDefinition: definition, catalogFields: form.catalogFields, findings,
+        sectionFindings: findings.map(({ severity, target }) => ({ severity, target })), onDocumentChange() {},
+      }));
+      assert.match(html, new RegExp(`aria-label="Disposition: ${count} errors?, 0 warnings"`, "i"));
+      if (count) {
+        assert.match(html, /Choose a destination or None\./);
+        assert.match(html, /<option[^>]*>Disposition — 1 error, 0 warnings<\/option>/i);
+      } else assert.doesNotMatch(html, /Choose a destination or None\./);
+    }
+  }
+});
 
 test("main report displays and clears report-scoped errors for missing mandatory inline ancestry", () => {
   const elementIds = ["eResponse.03", "ePatient.15"];

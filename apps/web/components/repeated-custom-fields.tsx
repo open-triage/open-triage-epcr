@@ -1,4 +1,8 @@
 "use client";
+import { LocalDateTimeText } from "./local-date-time";
+import { clinicalInstantParts, useAgencyTimeZone } from "../app/agency-time-zone";
+import { stationaryDateTimeSelection } from "../app/stationary-date-time";
+import { TimePicker } from "./time-picker";
 
 import type { CatalogDraftCustomElement, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue, FormDraftField } from "@open-triage/contracts";
 import React, { useState } from "react";
@@ -84,6 +88,7 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
   readonly onMultiChoiceOpenChange?: (open: boolean) => void;
 }) {
   const [pending, setPending] = useState<Record<string, boolean>>({});
+  const zone = useAgencyTimeZone();
   return <div className="repeated-custom-fields">{fields.flatMap((field) => {
     if (field.source.kind !== "custom" || Boolean(field.source.groupDefinitionId) !== Boolean(targetGroupId) ||
       targetGroupId && !field.source.groupDefinitionId) return [];
@@ -111,7 +116,7 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
               .map((code) => ({ key: `pn:${code}`, label: `PN ${code}` })),
           ];
           return <div key={instance.instanceId} data-custom-target-id={instance.instanceId}>
-            <h4>{targetLabel(instance, groupId, targetIndex, language)}</h4>
+            <h4><LocalDateTimeText value={targetLabel(instance, groupId, targetIndex, language)} language={language} /></h4>
             <ClinicalSearchableSelect label={label} values={selected} onOpenChange={onMultiChoiceOpenChange}
               placeholder={language === "sv" ? "Välj värden" : "Choose values"}
               options={choices.map((choice) => ({ ...choice, disabled: !selected.includes(choice.key) &&
@@ -127,7 +132,7 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
           </div>;
         }
         return <div key={instance.instanceId} data-custom-target-id={instance.instanceId}>
-          <h4>{targetLabel(instance, groupId, targetIndex, language)}</h4>
+          <h4><LocalDateTimeText value={targetLabel(instance, groupId, targetIndex, language)} language={language} /></h4>
           {displayed.map((value, valueIndex) => {
             const isPending = value.occurrenceId.startsWith("pending:");
             const id = `custom-${field.key}-${instance.instanceId}-${value.occurrenceId}`.replaceAll(/[^A-Za-z0-9_-]/g, "-");
@@ -165,11 +170,14 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
                 const encoded = btoa(Array.from(new Uint8Array(await file.arrayBuffer()), (byte) => String.fromCharCode(byte)).join(""));
                 update({ kind: "scalar", occurrenceId: value.occurrenceId, value: encoded });
               }} /><span>{String(scalar).length ? `${Math.floor(String(scalar).length * 3 / 4)} bytes saved` : ""}</span></>
-              : <input id={id} type={definition.datatype === "number" ? "number" : "datetime-local"}
-                step={definition.datatype === "number" ? "any" : undefined}
-                value={definition.datatype === "dateTime" ? String(scalar).slice(0, 16) : String(scalar)}
+              : definition.datatype === "dateTime" ? <TimePicker label={label} language={language === "sv" ? "sv" : "en"}
+                date={clinicalInstantParts(String(scalar), zone)?.date} value={clinicalInstantParts(String(scalar), zone)?.time ?? ""}
+                selectedInstant={String(scalar) || undefined} onChange={() => undefined}
+                onDateTimeChange={(date, time, selected) => update({ kind: "scalar", occurrenceId: value.occurrenceId,
+                  value: stationaryDateTimeSelection(date, time, zone, selected, String(scalar)) })} />
+              : <input id={id} type="number" step="any" value={String(scalar)}
                 onChange={(event) => { if (event.target.value) update({ kind: "scalar", occurrenceId: value.occurrenceId,
-                  value: definition.datatype === "number" ? Number(event.target.value) : new Date(event.target.value).toISOString() }); }} />}
+                  value: Number(event.target.value) }); }} />}
               {findings.length > 0 && <ul>{findings.map((finding) => <li key={finding}>{finding}</li>)}</ul>}
               <button className={isPending ? undefined : "button-danger"} type="button" onClick={() => update(undefined)}>{isPending ? language === "sv" ? "Avbryt" : "Cancel"
                 : language === "sv" ? "Ta bort värde" : "Remove value"}</button>

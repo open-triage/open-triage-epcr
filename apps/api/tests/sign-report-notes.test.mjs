@@ -49,7 +49,7 @@ test("signing blockers cover races, missing and corrupt bytes, quota, and revoke
       created_by: authorId, author_display_name: "Former Medic", author_active: false, content_type: "image/jpeg",
       byte_size: 8, sha256: "a".repeat(64), processing_state: "processing", blob_size: 7, blob_sha256: "b".repeat(64) }],
     audio: [{ id: audioId, caption: null, captured_at: "2026-09-24T10:00:01Z", captured_utc_offset_minutes: 0,
-      created_by: authorId, author_display_name: "Morgan Medic", author_active: true, content_type: "audio/mp4",
+      created_by: authorId, author_display_name: "Morgan Medic", author_active: true, duration_milliseconds: 1500, content_type: "audio/mp4",
       byte_size: 8, sha256: "c".repeat(64), processing_state: "failed", blob_size: null, blob_sha256: null }],
     targets: [{ note_type: "text", note_id: missingId }],
   });
@@ -57,4 +57,32 @@ test("signing blockers cover races, missing and corrupt bytes, quota, and revoke
   const codes = new Set(result.findings.map(({ code }) => code));
   assert.deepEqual(codes, new Set(["note.missing", "note.not-ready", "note.unauthorized", "note.integrity", "note.quota"]));
   assert.ok(result.findings.every(({ path }) => path.startsWith("$.notes.")));
+});
+
+
+test("signing pins immutable audio duration and blocks unavailable duration", async () => {
+  const row={id:randomUUID(),caption:null,captured_at:'2026-10-19T10:00:00Z',captured_utc_offset_minutes:0,
+    created_by:authorId,author_display_name:'Alex Example',author_active:true,content_type:'audio/mp4',
+    byte_size:4,sha256:'a'.repeat(64),processing_state:'ready',blob_size:4,blob_sha256:'a'.repeat(64),duration_milliseconds:12345};
+  const run = () => lockAndValidateReportNotes(managerWith({audio:[row]}),{id:reportId,report_media_allowance_bytes:10,image_media_limit_bytes:10});
+  const ready=await run(); assert.deepEqual(ready.findings,[]); assert.equal(ready.notes[0].media.durationMilliseconds,12345);
+  delete row.duration_milliseconds;
+  assert.ok((await run()).findings.some(f=>f.code==='note.duration'));
+});
+
+
+test("audio duration finding follows the report agency language", async () => {
+  for (const language of ['en','sv']) {
+    const base=managerWith({audio:[{id:randomUUID(),caption:null,captured_at:'2026-10-19T10:00:00Z',captured_utc_offset_minutes:0,
+      created_by:authorId,author_display_name:'Alex',author_active:true,content_type:'audio/mp4',byte_size:4,
+      sha256:'a'.repeat(64),processing_state:'ready',blob_size:4,blob_sha256:'a'.repeat(64)}]});
+    const manager={query:async(sql,params)=>{
+      if(sql.includes('select language from app_identity.agency_settings')) {
+        assert.deepEqual(params,['report-agency']); return [{language}];
+      }
+      return base.query(sql,params);
+    }};
+    const result=await lockAndValidateReportNotes(manager,{id:reportId,organization_id:'report-agency',report_media_allowance_bytes:10,image_media_limit_bytes:10});
+    assert.match(result.findings.find(f=>f.code==='note.duration').message,language==='sv'?/Ljudlängden saknas/:/Audio duration is unavailable/);
+  }
 });

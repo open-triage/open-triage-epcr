@@ -492,6 +492,7 @@ test("another clinician cannot replay a queued signing command", async () => {
     queried.push(normalized);
     if (normalized.includes("pg_advisory_xact_lock")) return [];
     if (normalized.includes("from clinical.report")) return [];
+    if (normalized.includes("pg_try_advisory_xact_lock")) return [{locked:true}];
     throw new Error(`Ownership must be checked before signing receipt lookup: ${normalized}`);
   } };
   const dataSource = { transaction: (_isolation, work) => work(manager) };

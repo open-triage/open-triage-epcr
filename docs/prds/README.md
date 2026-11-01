@@ -2,7 +2,9 @@
 
 These documents record product intent and the scope of successive delivery
 milestones. **Status reviewed against the repository on 8 October 2026;
-audit logging added and its related status notes updated on 19 October 2026.**
+audit logging and the planned hospital integration specification added, with
+related status notes updated on 19 October 2026. COS signed-record export scope
+and sandbox status were updated on 27 October 2026.**
 An older PRD's problem statement or Out of Scope list describes that milestone,
 not necessarily today's product. Follow its delivery/supersession note before
 using it as a roadmap.
@@ -39,6 +41,8 @@ authority for delivered behavior.
 | [Localization](localization.md) | English/Swedish UI, agency regional settings, and versioned definition translations implemented | Additional languages need dictionaries and definition translations; absent translations fall back to English. |
 | [User feedback](user-feedback.md) | Online bug/feature submission and operator review tooling implemented | See [feedback review](../runbooks/feedback-review.md); feedback messages must not contain patient-identifying information. |
 | [Audit logging](audit-logging.md) | Retrospective: agency-scoped audit browsing, patient/analytics access evidence, and recorded value/payload inspection implemented | Documents PR #746 and existing tests. Coverage is incremental; offline viewing, audit-log export, formal review sign-off, and independent archival are outside this delivery. See [auditing](../runbooks/auditing.md) for operational boundaries. |
+| [Hospital integration](hospital-integration.md) | Broader design agreed on 2026-10-19; COS sandbox access and partial write/read-back verified on 2026-10-27 | Automatic COS signed-report/PDF delivery, EPS exchange and Review recovery. The focused COS milestone below supersedes the access-pending assumption; sandbox evidence does not establish full live application delivery. |
+| [COS signed-record export](cos-signed-record-export.md) | Planned; five modules and testing of all five confirmed on 2026-10-27 | Live signed-record delivery with user HSA/optional SSO capture, unit Rakel, destination recommendations and HSA mapping. Clinical additions are BP, SpO2, AVPU, NRS pain and medication-note entries; includes PDF ingestion, artifact verification and recovery. |
 | [Review and basic analytics](review.md) | Scoped review, assignments, discussion, outcomes, and overdue follow-up implemented | Retrospective APIs and a standalone panel exist, but the panel is not connected to the current workspace. Unified Analytics and Metric Library supersede the original analytics presentation and metric selection. |
 | [Unified analytics workspace](unified-analytics-workspace.md) | Line/Bar/Table workspace, filters, CSV exports, and personal saved visualizations implemented | Metric selection now uses Records and review-enabled configured metrics/rules. Workload-analysis UI, sharing, and scheduled reports remain outside this workspace's scope. |
 | [Metric library](metric-library.md) | Numeric metrics and Boolean rules share the Validation lifecycle and feed Analytics | See [metric behavior and limits](../runbooks/metric-library.md). Trauma-destination and aspirin example rules remain disabled pending definition of unresolved mappings. |

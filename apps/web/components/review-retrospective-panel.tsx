@@ -1,4 +1,6 @@
 "use client";
+import { useAgencyTimeZone } from "../app/agency-time-zone";
+import { localClinicalDate } from "../app/time-picker";
 
 import type { ReviewRetrospectiveDefinition, ReviewRetrospectivePreview,
   ReviewRetrospectiveRun, ReviewRetrospectiveVersion } from "@open-triage/contracts";
@@ -10,10 +12,11 @@ export function ReviewRetrospectivePanel({ dataset, language, online, csrfToken,
   dataset: "real" | "synthetic"; language: AgencyLanguage; online: boolean;
   csrfToken: string; refresh: () => void;
 }) {
+  const zone = useAgencyTimeZone();
   const [versions, setVersions] = useState<ReviewRetrospectiveVersion[]>([]);
   const [selected, setSelected] = useState("");
-  const [from, setFrom] = useState(() => new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10));
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(() => localClinicalDate(new Date(Date.now() - 29 * 86400000), zone));
+  const [to, setTo] = useState(() => localClinicalDate(new Date(), zone));
   const [preview, setPreview] = useState<ReviewRetrospectivePreview | null>(null);
   const [runs, setRuns] = useState<ReviewRetrospectiveRun[]>([]);
   const [message, setMessage] = useState("");

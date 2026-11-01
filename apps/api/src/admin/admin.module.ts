@@ -1,3 +1,11 @@
+import { DestinationService } from "../hospital/destination.service.js";
+import { DestinationController } from "../hospital/destination.controller.js";
+import {HospitalHistoryController} from "../hospital/hospital-history.controller.js";
+import {HospitalHistoryService} from "../hospital/hospital-history.service.js";
+import { CosController } from "../hospital/cos.controller.js";
+import { CosService } from "../hospital/cos.service.js";
+import { HospitalController } from "../hospital/hospital.controller.js";
+import { HospitalService } from "../hospital/hospital.service.js";
 import { AuditController } from "./audit.controller.js";
 import { AuditService } from "./audit.service.js";
 import { InstallationEnrollmentController } from "./installation-enrollment.controller.js";
@@ -28,8 +36,8 @@ import { OrganizationsService } from "./organizations.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
-  controllers: [AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
-  providers: [AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
+  controllers: [DestinationController, HospitalHistoryController, CosController, HospitalController, AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
+  providers: [DestinationService, HospitalHistoryService, CosService, HospitalService, AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
     AgencySettingsService, OrganizationsService],

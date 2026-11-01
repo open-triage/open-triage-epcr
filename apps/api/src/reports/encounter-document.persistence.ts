@@ -293,7 +293,7 @@ export async function nextPcrNumber(manager: Queryable): Promise<string> {
 }
 
 export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
-  const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}),
+  const common = { occurrenceId: row.id, ...(row.provenance_detail?.destinationSelection ? {destinationSelection:row.provenance_detail.destinationSelection} : {}), ...(row.source_attributes ? { attributes: row.source_attributes } : {}),
     ...(row.not_value_code ? { notValue: { code: row.not_value_code, ...(row.not_value_display ? { display: row.not_value_display } : {}) } } : {}),
     ...(row.pertinent_negative_code ? { pertinentNegative: { code: row.pertinent_negative_code, ...(row.pertinent_negative_display ? { display: row.pertinent_negative_display } : {}) } } : {}) };
   const source = row.provenance_detail?.sourceValue;
@@ -395,7 +395,11 @@ export function assembleEncounterDocument(report: ReportDocumentRow, groups: Sto
     for (const occurrence of groupOccurrences) {
       let element = instance.elements.find((item) => item.id === occurrence.element_id);
       if (!element) { element = { id: occurrence.element_id, values: [] }; instance.elements.push(element); }
-      element.values.push(storedEncounterValue(occurrence));
+      const value = storedEncounterValue(occurrence);
+      // A group can mix dispatch and clinician values. Preserve each value's
+      // authoritative owner so Populate never mistakes a sibling edit for ownership.
+      element.values.push({ ...value, attributes: { ...value.attributes,
+        "x-open-triage-owner": occurrence.provenance_kind } });
     }
     target.instances.push(instance); byGroup.set(group.group_id, target);
   }

@@ -1,3 +1,4 @@
+import ts from "typescript";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -43,8 +44,7 @@ test("production browser rollout destroys plaintext compatibility state", async 
   assert.match(compatibility, /deletes the old encounter, per-report, synchronization/);
   assert.match(compatibility, /never imports, copies,\s+or rewrites those values/);
   assert.match(protectedStorage, /deleteLegacyClinicalStorage/);
-  assert.doesNotMatch(protectedStorage, /readonly reportId\??:/,
-    "the cleartext IndexedDB envelope must not label the retained report");
+  assertOpaqueProtectedEnvelope(protectedStorage);
 });
 
 test("service-worker runtime caching is restricted to reviewed static shell resources", async () => {
@@ -76,4 +76,22 @@ test("clinical cache protection rejects one missing route header and accepts add
   assert.equal(assertClinicalRouteCacheHeaders(expanded).length, 3, "new protected routes need no count update");
   assert.throws(() => assertClinicalRouteCacheHeaders(expanded.replace(header, `// ${header}\n`)), /ClinicalController\.read/,
     "a header in a comment cannot protect a route");
+});
+
+
+function assertOpaqueProtectedEnvelope(source) {
+  const parsed = ts.createSourceFile("storage.ts", source, ts.ScriptTarget.Latest, true);
+  const envelope = parsed.statements.find(statement => ts.isInterfaceDeclaration(statement) && statement.name.text === "ProtectedClinicalRecord");
+  assert.ok(envelope, "protected envelope must be declared explicitly");
+  const allowed = new Set(["localRecordId", "schemaVersion", "algorithm", "recoveryHandle", "checkpointScope", "recoveryDeadline", "ciphertextRevision", "synchronizedRevision", "updatedAt", "nonce", "ciphertext"]);
+  for (const member of envelope.members) assert.ok(member.name && allowed.has(member.name.getText(parsed)),
+    "the cleartext IndexedDB envelope must contain only reviewed opaque metadata");
+}
+
+test("envelope guard distinguishes encrypted payload identity from cleartext clinical labels", () => {
+  const source = 'interface ProtectedClinicalRecord { readonly ciphertext: ArrayBuffer; } interface EncryptedPayload { readonly reportId: string; readonly patientId: string; }';
+  assertOpaqueProtectedEnvelope(source);
+  for (const field of ["reportId", "patientId", "organizationId", "userId", "summary"]) {
+    assert.throws(() => assertOpaqueProtectedEnvelope(source.replace('readonly ciphertext', `readonly ${field}: string; readonly ciphertext`)), /opaque metadata/);
+  }
 });

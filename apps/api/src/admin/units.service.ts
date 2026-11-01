@@ -9,7 +9,7 @@ import { mutationRows } from "../database/mutation-result.js";
 export function validateUnit(input: unknown, editing: boolean): SaveOperationalUnitCommand {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new UnprocessableEntityException("Invalid unit");
   const body = input as Record<string, unknown>;
-  const allowed = ["name", "callSign", "active", ...(editing ? ["expectedRevision"] : [])];
+  const allowed = ["name", "callSign", "active", "rakelId", ...(editing ? ["expectedRevision"] : [])];
   if (Object.keys(body).some(key => !allowed.includes(key))) throw new UnprocessableEntityException("Unknown unit field");
   for (const key of ["name", "callSign"]) {
     if (typeof body[key] !== "string" || !body[key].trim() || body[key].length > (key === "name" ? 100 : 40)
@@ -18,10 +18,11 @@ export function validateUnit(input: unknown, editing: boolean): SaveOperationalU
   if (typeof body.active !== "boolean" || (editing && (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1))) {
     throw new UnprocessableEntityException("Invalid unit state or revision");
   }
-  return { name: (body.name as string).trim(), callSign: (body.callSign as string).trim(), active: body.active,
+  if (body.rakelId !== undefined && body.rakelId !== null && (typeof body.rakelId !== "string" || body.rakelId.length > 128 || /[\p{Cc}\p{Cf}]/u.test(body.rakelId))) throw new UnprocessableEntityException({code:"admin.rakelInvalid"});
+  return { ...(body.rakelId !== undefined ? {rakelId: typeof body.rakelId === "string" ? body.rakelId.trim() || null : null} : {}), name: (body.name as string).trim(), callSign: (body.callSign as string).trim(), active: body.active,
     ...(editing ? { expectedRevision: Number(body.expectedRevision) } : {}) };
 }
-const columns = `id,organization_id as "organizationId",name,call_sign as "callSign",active,revision`;
+const columns = `id,organization_id as "organizationId",name,call_sign as "callSign",rakel_id as "rakelId",active,revision`;
 @Injectable()
 export class UnitsService {
   constructor(@InjectDataSource() private readonly database: DataSource, private readonly sessions: ClinicianSessionService) {}
@@ -56,10 +57,10 @@ export class UnitsService {
           if (Number(before.revision) !== body.expectedRevision) throw new ConflictException("Unit changed; reload before saving");
         }
         const rows = id ? mutationRows<OperationalUnitSummary>(await manager.query(`update app_identity.operational_unit
-          set name=$3,call_sign=$4,active=$5,revision=revision+1 where organization_id=$1 and id=$2 returning ${columns}`,
-          [actor.organization.id,id,body.name,body.callSign,body.active])) : await manager.query<OperationalUnitSummary[]>(`
-          insert into app_identity.operational_unit(id,organization_id,name,call_sign,active)
-          values ($1,$2,$3,$4,$5) returning ${columns}`, [randomUUID(),actor.organization.id,body.name,body.callSign,body.active]);
+          set name=$3,call_sign=$4,active=$5,rakel_id=$6,revision=revision+1 where organization_id=$1 and id=$2 returning ${columns}`,
+          [actor.organization.id,id,body.name,body.callSign,body.active,body.rakelId === undefined ? before?.rakelId ?? null : body.rakelId])) : mutationRows<OperationalUnitSummary>(await manager.query(`
+          insert into app_identity.operational_unit(id,organization_id,name,call_sign,active,rakel_id)
+          values ($1,$2,$3,$4,$5,$6) returning ${columns}`, [randomUUID(),actor.organization.id,body.name,body.callSign,body.active,body.rakelId ?? null]));
         const unit = rows[0]!;
         await manager.query(`insert into app_identity.operational_unit_event(organization_id,unit_id,actor_id,details)
           values ($1,$2,$3,$4::jsonb)`, [actor.organization.id,unit.id,actor.user.id,JSON.stringify({ before: before ?? null, after: unit })]);
@@ -67,7 +68,7 @@ export class UnitsService {
       });
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "23505") {
-        throw new ConflictException("That call sign is already assigned in this agency, including inactive units");
+        throw new ConflictException({code:"admin.unitIdentifierDuplicate"});
       }
       throw error;
     }

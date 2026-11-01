@@ -1,0 +1,191 @@
+import { processSigningChecks } from './cos-signing-check.js';
+import { finalizeVerifiedSigning } from '../reports/signing-submission.js';
+import { pinCosRetryPolicy, scheduleDueCosRetries, updateCosRetryDue } from './cos-automatic-retry.js';
+import { reconcileCosFailure } from './cos-recovery-review.js';
+import { contentDigest } from '../admin/canonical-package.js';
+import { reconcileTransmissionReview } from '../review/review-transmission.js';
+import { randomUUID } from 'node:crypto';
+import type { DataSource, EntityManager } from 'typeorm';
+import type { CosConnectionSettings } from '@open-triage/contracts';
+import type { CanonicalPackage } from '../admin/canonical-package.js';
+import { signedReportSource, loadSignedReportPdfPhotos } from '../reports/signed-report-pdf.persistence.js';
+import { renderSignedReportPdf, SignedPdfError } from '../reports/signed-report-pdf.js';
+import { bytesHash, buildCosPayload, cosIdentifierRequirements, CosFinding, type CosPreparedPayload } from './cos-payload.js';
+import { resolveCosExportContext } from './cos-export-context.js';
+import { prepareCosArtifacts, pinCosTransportTime, createCosLiveAdapter, deliverCosLive, cosArtifacts } from './cos-live-delivery.js';
+import { PersistentCosSimulator, CosRejected, type CosReceiver } from './cos-simulator.js';
+type Job={id:string;report_id:string;snapshot_id:string;signing_submission_id?:string;finding?:string;organization_id:string;group_id:string;configuration_revision:string;
+ credential_revision:string;mapping_id:string;mapping_revision:number;mapping_sha256:string;amendment_sequence:number;pdf_language:'en'|'sv';settings:CosConnectionSettings;canonical_mapping:CanonicalPackage};
+async function event(manager:EntityManager,job:Pick<Job,'id'|'report_id'>,worker:string,state:string,finding:string|null=null,attempt:string|null=null,evidence:unknown={},now:Date=new Date()){
+ await manager.query('select id from clinical.report where id=$1 for update',[job.report_id]);
+ await manager.query('update clinical.cos_delivery set state=$2,finding=$3,updated_at=clock_timestamp() where id=$1',[job.id,state,finding]);
+ await manager.query(`insert into clinical.cos_delivery_event(delivery_id,report_id,attempt_id,worker_id,state,finding,evidence) values($1,$2,$3,$4,$5,$6,$7::jsonb)`,[job.id,job.report_id,attempt,worker,state,finding,JSON.stringify(evidence)]);
+ await updateCosRetryDue(manager,job.id,state,finding,now);
+ if(state==='confirmed')await finalizeVerifiedSigning(manager,job.id);
+ await reconcileCosFailure(manager,job.report_id);
+}
+/** Configuration changes must expose held, unprepared work in the ordinary Review repair path.
+ * Only recorded metadata is examined; no PDF bytes or receiver effects occur here. */
+async function reconcileConfigurationHolds(database:DataSource,limit:number,worker:string){
+ const candidates=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d
+  join app_identity.hospital_cos_state s on s.group_id=d.group_id join clinical.report r on r.id=d.report_id
+  where s.active_revision is not null and (r.expires_at is null or r.expires_at>clock_timestamp())
+   and ((d.state='pending' and not app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision))
+    or (d.state='waiting' and d.finding='configurationChanged' and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision)))
+   and not exists(select 1 from clinical.cos_payload p where p.delivery_id=d.id)
+   and not exists(select 1 from clinical.cos_attempt a where a.delivery_id=d.id)
+  order by d.created_at,d.id limit $1`,[limit]);
+ for(const candidate of candidates)await database.transaction(async manager=>{
+  const [lock]=await manager.query<Array<{locked:boolean}>>('select pg_try_advisory_xact_lock(731013,hashtext($1)) locked',[candidate.report_id]);if(!lock?.locked)return;
+  await manager.query('select id from clinical.report where id=$1 for update',[candidate.report_id]);
+  const [job]=await manager.query<Array<Job&{compatible:boolean}>>(`select d.*,v.settings,v.canonical_mapping,s.active_revision credential_revision,
+   app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision) compatible from clinical.cos_delivery d
+   join app_identity.hospital_cos_version v on v.group_id=d.group_id and v.revision=d.configuration_revision
+   join app_identity.hospital_cos_state s on s.group_id=d.group_id
+   join clinical.report r on r.id=d.report_id
+   where d.id=$1 and s.active_revision is not null and (r.expires_at is null or r.expires_at>clock_timestamp())
+    and (d.state='pending' or d.state='waiting' and d.finding='configurationChanged')
+    and not exists(select 1 from clinical.cos_payload p where p.delivery_id=d.id)
+    and not exists(select 1 from clinical.cos_attempt a where a.delivery_id=d.id)
+   for update of d for share of s`,[candidate.id]);if(!job)return;
+  const [newer]=await manager.query(`select 1 from clinical.amendment where report_id=$1 and sequence>$2
+   union all select 1 from clinical.cos_delivery where report_id=$1 and amendment_sequence>$2 limit 1`,[job.report_id,job.amendment_sequence]);
+  if(newer){await event(manager,job,worker,'superseded');return;}
+  if(job.compatible){await event(manager,job,worker,'pending');return;}
+  let source:Awaited<ReturnType<typeof signedReportSource>>;
+  try{source=await signedReportSource(manager,job.report_id,job.snapshot_id??job.signing_submission_id!,job.amendment_sequence,!!job.signing_submission_id&&!job.snapshot_id);}
+  catch(error){if(error instanceof SignedPdfError||error instanceof Error&&'getResponse' in error){await event(manager,job,worker,'failed','versionUnavailable');return;}throw error;}
+  const context=await resolveCosExportContext(manager,source,job.settings);
+  const requirements=cosIdentifierRequirements(source,job.canonical_mapping,context.settings);
+  requirements.missing=[...new Set([...requirements.missing,...context.missing])];
+  await event(manager,job,worker,'waiting','configurationChanged',null,{preparationRevision:Number(job.configuration_revision),activationRevision:Number(job.credential_revision)});
+  await reconcileTransmissionReview(manager,job.report_id,{integration:'cos',deliveryId:job.id,amendmentSequence:job.amendment_sequence,
+   configurationRevision:job.configuration_revision,mappingId:job.mapping_id,mappingRevision:job.mapping_revision,mappingSha256:job.mapping_sha256,
+   ...requirements,missing:[...new Set([...requirements.missing,'configurationChanged'])]});
+ });
+}
+/** Bounded durable worker. Session advisory lock spans separately committed local/receiver steps.
+ * 'uncertain' intent is committed BEFORE a possible remote effect, so restart cannot blind-resend.
+ * Service authority is limited to a queued report in its recorded agency/group/snapshot, created
+ * by an authorized signature under activated simulator configuration. No forged end-user session.
+ */
+export async function processCosWork(database:DataSource,limit=10,receiver:CosReceiver=new PersistentCosSimulator(database),clock:()=>Date=()=>new Date()){
+ if(!Number.isInteger(limit)||limit<1||limit>100)throw new RangeError('Invalid COS batch size');
+ await processSigningChecks(database,limit);
+ await scheduleDueCosRetries(database,limit,clock());
+ const worker=randomUUID();let processed=0;
+ await reconcileConfigurationHolds(database,limit,worker);
+ // A vanished process can leave durable intent without recording its unknown outcome.
+ // Owning the same lock proves no live worker is still awaiting the receiver. Reconcile,
+ // never resend; a process crash must still leave an operational recovery home.
+ const interrupted=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join clinical.report r on r.id=d.report_id where d.state='uncertain' and d.finding in ('inFlight','contactStored') and (r.expires_at is null or r.expires_at>clock_timestamp()) order by d.updated_at,d.id limit $1`,[limit]);
+ for(const prior of interrupted)await database.transaction(async manager=>{
+  const [lock]=await manager.query<Array<{locked:boolean}>>('select pg_try_advisory_xact_lock(731013,hashtext($1)) locked',[prior.report_id]);
+  if(!lock?.locked)return;
+  await manager.query('select id from clinical.report where id=$1 for update',[prior.report_id]);
+  const [still]=await manager.query(`select id,finding from clinical.cos_delivery where id=$1 and state='uncertain' and finding in ('inFlight','contactStored') for update`,[prior.id]);
+  if(!still)return;
+  const [attempt]=await manager.query<Array<{id:string}>>('select id from clinical.cos_attempt where delivery_id=$1 order by created_at desc,id desc limit 1',[prior.id]);
+  await event(manager,prior,worker,'uncertain','outcomeUnknown',attempt?.id??null,{contact:still.finding==='contactStored'?'known':'uncertain',note:'uncertain',storage:'uncertain'});
+ });
+ const candidates=await database.query<Array<{id:string;report_id:string}>>(`select d.id,d.report_id from clinical.cos_delivery d join app_identity.hospital_cos_state s on s.group_id=d.group_id join clinical.report r on r.id=d.report_id where (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and (d.signing_submission_id is null or d.snapshot_id is not null or exists(select 1 from clinical.signing_submission pending_sign where pending_sign.id=d.signing_submission_id and pending_sign.revision=r.revision)) and s.active_revision is not null and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision) and not exists(select 1 from clinical.cos_delivery barrier where barrier.report_id=d.report_id and barrier.id<>d.id and barrier.state='uncertain') order by d.created_at,d.id limit $1`,[limit]);
+ for(const candidate of candidates){
+  const runner=database.createQueryRunner();await runner.connect();let held=false;
+  try{
+   const [lock]=await runner.query('select pg_try_advisory_lock(731013,hashtext($1)) locked',[candidate.report_id]);held=!!lock?.locked;if(!held)continue;
+   let job:Job|undefined,payload:CosPreparedPayload|undefined,attempt:string|undefined,recovery:string|undefined,preparedRebuild=false,signingResume=false;
+   await runner.startTransaction('REPEATABLE READ');
+   try{
+    await runner.manager.query('select id from clinical.report where id=$1 for update',[candidate.report_id]);
+    [job]=await runner.manager.query<Job[]>(`select d.*,s.active_revision credential_revision,v.settings,v.canonical_mapping from clinical.cos_delivery d
+     join clinical.report r on r.id=d.report_id and r.organization_id=d.organization_id and (r.status='signed' and d.snapshot_id is not null or r.status='draft' and d.signing_submission_id is not null and exists(select 1 from clinical.signing_submission signing where signing.id=d.signing_submission_id and signing.revision=r.revision))
+     join app_identity.hospital_cos_version v on v.group_id=d.group_id and v.revision=d.configuration_revision
+     join app_identity.hospital_cos_state s on s.group_id=d.group_id
+     where d.id=$1 and (r.expires_at is null or r.expires_at>clock_timestamp()) and d.state='pending' and s.active_revision is not null
+       and app_identity.cos_configuration_compatible(d.group_id,d.configuration_revision,s.active_revision)
+       and app_identity.organization_group(r.organization_id)=d.group_id for update of d for share of s`,[candidate.id]);
+    if(job){
+     const [ordering]=await runner.manager.query<Array<{blocked:boolean;obsolete:boolean;prepared:boolean;prepared_rebuild:boolean}>>(`select
+      exists(select 1 from clinical.cos_delivery where report_id=$1 and id<>$2 and state='uncertain') blocked,
+      (exists(select 1 from clinical.cos_delivery where report_id=$1 and (amendment_sequence>$3 or lineage_parent_id=$2)) or exists(select 1 from clinical.amendment where report_id=$1 and sequence>$3)) obsolete,
+      exists(select 1 from clinical.cos_attempt where delivery_id=$2) or exists(select 1 from clinical.cos_payload where delivery_id=$2) prepared,
+      (exists(select 1 from clinical.cos_payload where delivery_id=$2)
+       and exists(select 1 from clinical.cos_delivery d join clinical.cos_delivery_event e on e.delivery_id=d.id where d.id=$2 and d.lineage_parent_id is not null and e.actor_id is not null and e.evidence->>'action'='rebuild' and e.evidence->>'parentDeliveryId'=d.lineage_parent_id::text)
+       and not exists(select 1 from clinical.cos_attempt where delivery_id=$2)
+       and not exists(select 1 from clinical.cos_artifact_event where delivery_id=$2 and (state in ('sending','accepted','uncertain','rejected') or evidence ? 'request'))) prepared_rebuild`,[job.report_id,job.id,job.amendment_sequence]);
+     [recovery]=await runner.manager.query<Array<{id:string}>>(`select c.id from clinical.cos_recovery_command c where c.delivery_id=$1 and not exists(select 1 from clinical.cos_attempt a where a.recovery_command_id=c.id) order by c.created_at limit 1`,[job.id]).then(rows=>rows.map(row=>row.id));
+     preparedRebuild=ordering?.prepared_rebuild===true;
+     signingResume=!!job.signing_submission_id&&job.finding==='signingResume';
+     if(ordering?.prepared&&!recovery&&!preparedRebuild&&!signingResume){await event(runner.manager,job,worker,'uncertain','outcomeUnknown');job=undefined;}
+     else if(ordering?.obsolete){await event(runner.manager,job,worker,'superseded');job=undefined;}
+     else if(ordering?.blocked)job=undefined;
+    }
+    if(job){
+     await pinCosRetryPolicy(runner.manager,job.id,job.configuration_revision,job.settings);
+     try{
+      if(job.canonical_mapping.sha256!==job.mapping_sha256)throw new CosFinding('configuration','failed');
+      if(recovery||preparedRebuild||signingResume){
+       const [live]=await runner.manager.query<Array<{compatible:boolean}>>('select app_identity.cos_configuration_compatible(group_id,$2,active_revision) compatible from app_identity.hospital_cos_state where group_id=$1',[job.group_id,job.configuration_revision]);
+       if(!live?.compatible)throw new CosFinding('configuration','failed');
+       const [stored]=await runner.manager.query<Array<{bundle:CosPreparedPayload['bundle'];pdf:Buffer;payload_sha256:string;pdf_sha256:string;contact:CosPreparedPayload['contact'];contact_sha256:string}>>('select * from clinical.cos_payload where delivery_id=$1 and report_id=$2',[job.id,job.report_id]);
+       if(!stored||bytesHash(stored.pdf)!==stored.pdf_sha256||contentDigest(stored.contact)!==stored.contact_sha256||contentDigest({bundle:stored.bundle,pdfSha256:stored.pdf_sha256})!==stored.payload_sha256)throw new CosFinding('configuration','failed');
+       payload={amendmentSequence:job.amendment_sequence,bundle:stored.bundle,pdf:stored.pdf,payloadSha256:stored.payload_sha256,pdfSha256:stored.pdf_sha256,contact:stored.contact,contactSha256:stored.contact_sha256,findings:[],observations:[]};
+       if(job.settings.mode==='live'){const manifest=await cosArtifacts(runner.manager,job.id);payload.findings=manifest.find(a=>a.kind==='context')?.resource.findings??[];}
+      }else{
+      const source=await signedReportSource(runner.manager,job.report_id,job.snapshot_id??job.signing_submission_id!,job.amendment_sequence,!!job.signing_submission_id&&!job.snapshot_id);
+      const [repair]=await runner.manager.query<Array<{accepted:boolean;revision:number}>>(`select true accepted,(e.evidence->'repair'->>'acceptedDestinationRevision')::integer revision from clinical.cos_delivery_event e join clinical.cos_delivery d on d.id=e.delivery_id where d.id=$1 and d.lineage_parent_id is not null and e.actor_id is not null and e.evidence->'repair'->>'destinationRevisionAccepted'='true' order by e.created_at limit 1`,[job.id]);
+      const resolved=await resolveCosExportContext(runner.manager,source,job.settings,{acceptDestinationRevision:repair?.accepted??false,expectedDestinationRevision:repair?.revision});
+      const effectiveSettings=resolved.settings;
+      const requirements=cosIdentifierRequirements(source,job.canonical_mapping,effectiveSettings);
+      requirements.missing=[...new Set([...requirements.missing,...resolved.missing])];
+      await reconcileTransmissionReview(runner.manager,job.report_id,{integration:'cos',deliveryId:job.id,
+       amendmentSequence:job.amendment_sequence,configurationRevision:job.configuration_revision,
+       mappingId:job.mapping_id,mappingRevision:job.mapping_revision,mappingSha256:job.mapping_sha256,...requirements});
+      if(requirements.missing.length)throw new CosFinding(requirements.missing[0]!);
+      const pdf=await renderSignedReportPdf(await loadSignedReportPdfPhotos(runner.manager,source),job.pdf_language);
+      payload=buildCosPayload(source,job.canonical_mapping,effectiveSettings,pdf,job.id);
+      if(job.settings.mode==='live'){const previous=await runner.manager.query<Array<{updated:string}>>(`select bundle->'meta'->>'lastUpdated' updated from clinical.cos_payload where report_id=$1`,[job.report_id]);pinCosTransportTime(payload,previous.map(row=>row.updated),clock());}
+      await runner.manager.query(`insert into clinical.cos_payload(delivery_id,report_id,bundle,pdf,payload_sha256,pdf_sha256,contact,contact_sha256) values($1,$2,$3::jsonb,$4,$5,$6,$7::jsonb,$8)`,[job.id,job.report_id,JSON.stringify(payload.bundle),pdf,payload.payloadSha256,payload.pdfSha256,JSON.stringify(payload.contact),payload.contactSha256]);
+      if(job.settings.mode==='live')await prepareCosArtifacts(runner.manager,job.id,source,payload,{...resolved.context,ambulanceOrganizations:{careProviderHsaId:effectiveSettings.organizationHsaId,careUnitHsaId:effectiveSettings.defaultAmbulanceCareUnit}});
+      }
+      attempt=randomUUID();
+      await runner.manager.query(`insert into clinical.cos_attempt(id,delivery_id,report_id,configuration_revision,mapping_id,mapping_revision,mapping_sha256,payload_sha256,pdf_sha256,worker_id,recovery_command_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[attempt,job.id,job.report_id,job.configuration_revision,job.mapping_id,job.mapping_revision,job.mapping_sha256,payload.payloadSha256,payload.pdfSha256,worker,recovery??null]);
+      await event(runner.manager,job,worker,'uncertain','inFlight',attempt,{preparationRevision:Number(job.configuration_revision),activationRevision:Number(job.credential_revision),verification:job.settings.mode==='simulator'?'simulator-only':'live-awaiting-verification',contact:'uncertain',note:'uncertain',storage:'uncertain'});
+     }catch(error){
+      if(error instanceof CosFinding||error instanceof SignedPdfError||error instanceof Error&&'getResponse' in error){
+       await event(runner.manager,job,worker,error instanceof CosFinding?error.state:'failed',error instanceof CosFinding?error.code:error instanceof SignedPdfError?'pdfUnavailable':'versionUnavailable');payload=undefined;
+      }else throw error;
+     }
+    }
+    await runner.commitTransaction();
+   }catch(error){await runner.rollbackTransaction();throw error;}
+   if(!job)continue;
+   processed++;
+   if(!payload||!attempt)continue;
+   if(job.settings.mode==='live'){
+    try{const adapter=await createCosLiveAdapter(database.manager,job.group_id,job.credential_revision,job.settings);
+     const result=await deliverCosLive(database.manager,job.id,job.report_id,adapter,true,!!recovery||signingResume);
+     const authenticationRejected=result.artifacts.some(a=>a.state==='rejected'&&([401,403].includes(a.evidence.httpStatus)||a.evidence.clinicalRequestSent===false))&&!result.artifacts.some(a=>['sending','uncertain'].includes(a.state));
+     await database.transaction(manager=>event(manager,job!,worker,(result.outcome==='stored'||result.outcome==='accepted')?'confirmed':authenticationRejected?'failed':'uncertain',(result.outcome==='stored'||result.outcome==='accepted')?('coverageIncomplete' in result&&result.coverageIncomplete?'clinicalProjectionIncomplete':result.outcome==='accepted'?'readBackDisabled':null):authenticationRejected?'credentialRejected':'reconciliationUnresolved',attempt,{verification:'live',outcome:result.outcome,artifacts:result.artifacts.map(a=>({key:a.artifact_key,kind:a.kind,state:a.state,remoteId:a.remote_id}))}));
+    }catch{await database.transaction(manager=>event(manager,job!,worker,'uncertain','outcomeUnknown',attempt,{verification:'live',outcome:'unresolved'}));}
+    continue;
+   }
+   let contactKnown=false;
+   try{
+    const contact=await receiver.contact(job.report_id,payload,{deliveryId:job.id,attemptId:attempt});
+    const expectedContact=`${payload.contact.encounter.system}|${payload.contact.encounter.value}`;
+    if(contact.kind!=='simulator-stored'||contact.contactKey!==expectedContact)throw new Error('Unproven contact');
+    contactKnown=true;
+    await database.transaction(manager=>event(manager,job!,worker,'uncertain','contactStored',attempt,{kind:contact.kind,contactKeySha256:payload!.contactSha256,contact:'known',note:'uncertain',storage:'uncertain'}));
+    const note=await receiver.note(job.report_id,job.id,payload,attempt);
+    if(note.kind!=='simulator-stored'||note.contactKey!==expectedContact||!note.receiptId||note.payloadSha256!==payload.payloadSha256||note.pdfSha256!==payload.pdfSha256)throw new Error('Unproven final storage');
+    await database.transaction(manager=>event(manager,job!,worker,'confirmed',null,attempt,{kind:note.kind,receiptId:note.receiptId,payloadSha256:note.payloadSha256,pdfSha256:note.pdfSha256,contact:'known',note:'known',storage:'known'}));
+   }catch(error){
+    await database.transaction(manager=>event(manager,job!,worker,error instanceof CosRejected?'failed':'uncertain',error instanceof CosRejected?error.code:'outcomeUnknown',attempt,{contact:contactKnown?'known':error instanceof CosRejected?'rejected':'uncertain',note:error instanceof CosRejected?'rejected':'uncertain',storage:error instanceof CosRejected?'rejected':'uncertain'},clock()));
+   }
+  }finally{
+   try{if(held)await runner.query('select pg_advisory_unlock(731013,hashtext($1))',[candidate.report_id]);}finally{await runner.release();}
+  }
+ }
+ return {processed};
+}

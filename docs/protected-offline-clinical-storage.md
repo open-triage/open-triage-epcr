@@ -37,9 +37,9 @@ wrapping secrets, grants, wrapped keys, request bodies, or ciphertext samples.
   report online-only; a write failure while disconnected makes it read-only without
   evicting unsynchronized ciphertext.
 - A page restart reveals no retained-report label. After the server identifies a
-  report already authorized to the current user, recent personal reauthentication through the shared local/OIDC interface
-  is required before a single-use, 60-second, report/session/user/organization
-  bound grant releases exactly that report's key. A grant cannot be replayed.
+  report already authorized to the current user, the active authenticated session
+  authorizes a single-use, 60-second grant bound to the report, session, user and
+  organization that releases exactly that report's key. A grant cannot be replayed.
 - An authorized second browser can use that grant to create its own encrypted
   offline copy when it has no local record. Its opaque local record ID gives it
   an independent ciphertext revision and rollback checkpoint. The first
@@ -93,8 +93,8 @@ Use the rotation inventory, staged old-plus-new keyring deployment, idempotent
 rewrap command, retirement check, and backup-retention procedure in
 [Database operations](runbooks/database-operations.md#offline-recovery-wrapping-secret-backup-and-rotation).
 Defaults are configured by `offlineRecovery` in the installation settings: retain
-only pending work, use the configured bounded recovery window, require recent
-personal reauthentication through the shared local/OIDC interface, and issue a one-time short-lived grant. Monitor
+only pending work, use the configured bounded recovery window, and issue a
+one-time short-lived grant using the active authenticated session. Monitor
 aggregate outcomes and cleanup lag without report labels or payloads. Alert on
 cleanup failure, repeated generic denials, checkpoint conflicts, storage-failure
 mode, and old wrapping-key versions. Run the database expiry function at least
@@ -133,12 +133,12 @@ not be represented as any of those controls.
 ## Recovery through the shared authentication interface
 
 Recovery always requires an online, active application session belonging to the
-original clinician, current agency/group access and clinical capability, and a
-recent proof bound to the initiating session's reauthentication purpose. Ordinary
-login, activity and pairing do not satisfy this sensitive-action gate. Local
-password confirmation and approved controlled OIDC proof use the same one-use,
-report-scoped grant. Grant consumption rechecks session, personal proof, report
-owner/state and envelope deadline under the shared authority lock order. Runtime
+original clinician, current agency/group access and clinical capability. Reopening
+a report does not require additional password confirmation or OIDC reauthentication,
+even after a page restart or when the last personal proof is older than five minutes.
+Both authentication modes use the same one-use, report-scoped grant. Grant
+consumption rechecks session, report owner/state and envelope deadline under the
+shared authority lock order. Runtime
 cannot call the underlying raw key-release function directly.
 
 Logout, switching, expiry and reassignment cancel outstanding preparation and
@@ -151,7 +151,7 @@ online server authority. Provider outages cannot create a password fallback.
 
 Mandatory deployment checks include browser persistence/recovery and delayed-key
 transition regressions. The controlled TLS-provider integration checks both login
-modes, group-owned clinicians in child agencies, wrong users/sessions, proof and
+modes, group-owned clinicians in child agencies, wrong users/sessions, stale personal proof, and
 ciphertext expiry, restart and competing tabs against real PostgreSQL and IndexedDB.
 They do not establish regional AD FS/PAS or physical fleet acceptance.
 

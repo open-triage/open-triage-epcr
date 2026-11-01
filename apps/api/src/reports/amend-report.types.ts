@@ -2,7 +2,7 @@ import type { DraftOccurrenceMutation, DraftValue } from "./draft-report.types.j
 
 export type AmendmentChange =
   | { action: "add"; occurrence: Omit<DraftOccurrenceMutation, "tombstone"> }
-  | { action: "replace"; targetElementOccurrenceId: string; value: DraftValue }
+  | { action: "replace"; targetElementOccurrenceId: string; value: DraftValue; destinationSelection?: import("@open-triage/contracts").DestinationSelection | null }
   | { action: "remove"; targetElementOccurrenceId: string };
 
 export interface AmendReportCommand {

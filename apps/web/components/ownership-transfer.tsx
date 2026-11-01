@@ -1,4 +1,5 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
@@ -59,8 +60,8 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
     {state && <><p><AdminText messageKey="admin.currentOwner" /> <strong>{state.owner.displayName}</strong></p>
       {state.transfer && <div className="admin-transfer-status">
         <p><strong>{t(statusText[state.transfer.status])}</strong>: {state.transfer.nominee.displayName}</p>
-        <p><AdminText messageKey="admin.initiated" /> <time dateTime={state.transfer.initiatedAt}>{new Date(state.transfer.initiatedAt).toLocaleString()}</time>.
-          {state.transfer.status === "pending" && <> <AdminText messageKey="admin.expires" /> <time dateTime={state.transfer.expiresAt}>{new Date(state.transfer.expiresAt).toLocaleString()}</time>.</>}</p>
+        <p><AdminText messageKey="admin.initiated" /> <time dateTime={state.transfer.initiatedAt}><LocalDateTime value={state.transfer.initiatedAt} /></time>.
+          {state.transfer.status === "pending" && <> <AdminText messageKey="admin.expires" /> <time dateTime={state.transfer.expiresAt}><LocalDateTime value={state.transfer.expiresAt} /></time>.</>}</p>
         {state.transfer.resolutionReason && state.transfer.status !== "pending" && <p>{t("admin.reasonReason", { reason: state.transfer.resolutionReason.replaceAll("_", " ") })}</p>}
       </div>}
       {state.currentUserIsOwner && state.transfer?.status !== "pending" && <form onSubmit={initiate}>

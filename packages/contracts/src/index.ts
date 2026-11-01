@@ -152,7 +152,8 @@ export interface ReviewQueueItem {
   criterionDescription?: string | null;
   assigneeName?: string | null;
   criterionId: string;
-  kind?: "criterion" | "overdue-unsigned";
+  kind?: "criterion" | "overdue-unsigned" | "missing-transmission-identifiers" | "cos-delivery-failed" | "eps-export";
+  transmissionReason?: "patient-identity" | "integration-mapping" | "delivery-failure";
   deadlineAt?: string | null;
   deadlineSource?: "call-completed" | "report-created" | null;
   resolutionReason?: string | null;
@@ -184,7 +185,68 @@ export interface ReviewAssignmentEvent {
   assignedAt: string;
 }
 
+export interface ReviewIdentifierCorrectionContext {
+  expectedVersion: number;
+  expectedReportRevision: number;
+  expectedAmendmentSequence: number;
+  configurationRevision: number;
+  stateRevision: number;
+  mappingRevision: number;
+  mappingSha256: string;
+  field: import("./hospital-integration.js").HospitalField;
+  namespace: string;
+  label: string;
+}
+export interface ReviewIdentifierCorrectionCommand {
+  commandId: string;
+  dataset: "real" | "synthetic";
+  context: ReviewIdentifierCorrectionContext;
+  namespace: string;
+  value: string;
+  reason: string;
+  attested: boolean;
+}
+
+
+export interface CosMappingRepairContext {
+ deliveryId: string; reportId: string; expectedVersion: number; configurationRevision: number; stateRevision: number;
+ previousConfigurationRevision: number; previousMappingRevision: number; mappingRevision: number;
+ previousPatient: {field:import("./hospital-integration.js").HospitalField;namespace:string;value:string|null}; patient: {field:import("./hospital-integration.js").HospitalField;namespace:string;value:string|null};
+ missing: string[]; conflicts: Array<"patientIdentifier" | "recipient">; safe: boolean;
+}
+export interface CosMappingRepairCommand {
+ commandId: string; dataset: "real" | "synthetic"; context: CosMappingRepairContext;
+ acceptRecipientChange: boolean; acceptPatientMappingChange: boolean;
+}
+
+export interface CosRebuildContext {
+ available:boolean; blockedByUncertain:boolean; reason:'alreadyPrepared'|'configurationChanged'|'versionChanged'|null;
+ deliveryId:string; amendmentSequence:number; configurationRevision:number; stateRevision:number; expectedVersion:number;
+}
+export interface RetryCosReviewCommand {
+ commandId: string; expectedVersion: number; dataset: "real" | "synthetic";
+ deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
+}
+export interface ReviewTransmissionEvidence {
+ reconciliationTarget?: {deliveryId:string;amendmentSequence:number;configurationRevision:number};
+ reconciliations?: Array<{id:string;actorId:string;outcome:string;evidence:Record<string,unknown>;recordedAt:string}>;
+ automaticRetry?: {scheduleMinutes:number[]; configurationRevision:number; reserved:number; attempts:number; nextDue:string|null; exhausted:boolean; paused:boolean};
+ deliveryState?: string; finding?: string | null; stateRevision?: number; retryable?: boolean;
+ recoveryCommands?: Array<{id:string; actorId:string|null; automaticOrdinal?:number|null; deliveryId:string; amendmentSequence:number; requestedAt:string; outcome:string}>;
+  repair?: {previousConfigurationRevision:number; previousMappingId:string; previousMappingRevision:number; previousMappingSha256:string; satisfied:string[]; remaining:string[]; recipientChangeAccepted:boolean};
+  integration: "cos";
+  deliveryId: string;
+  amendmentSequence: number;
+  configurationRevision: string;
+  mappingId: string;
+  mappingRevision: number;
+  mappingSha256: string;
+  missing: string[];
+  patientField: { field: import("./hospital-integration.js").HospitalField; id: string; name: string; localization?: { sv?: { label?: string; name?: string; title?: string } } | null } | null;
+}
+
 export interface ReviewCriterionRoute {
+  transmissionReason?: "patient-identity" | "integration-mapping" | "delivery-failure";
   criterionId: string;
   name: string;
   route: "unassigned" | "author" | "named";
@@ -237,6 +299,9 @@ export interface ReviewBulkResult {
 }
 
 export interface ReviewItemDetail extends ReviewQueueItem {
+  transmission?: ReviewTransmissionEvidence;
+  transmissionRestricted?: boolean;
+  transmissionHistory?: Array<{ itemVersion: number; active: boolean; recordedAt: string; evidence: ReviewTransmissionEvidence }>;
   overdueHistory?: Array<{ action: "detected" | "resolved-by-signing" | "closed-exceptionally" |
     "signed-after-exception"; recordedAt: string; itemVersion: number;
     actorId: string | null; reasonCode: ReviewOverdueExceptionCode | null }>;
@@ -361,17 +426,22 @@ export interface ReviewReportGroup {
 }
 
 export interface ReviewSignedReport {
+  cosDelivery?: { reviewItemId?: string; simulated: boolean; deliveryId?: string; amendmentSequence?: number; submittedPdf?: boolean; artifacts?: {key:string;kind:string;state:string;remoteId?:string|null; issues?:import('./cos-signing.js').CosSigningIssue[]; findings?:{mappingId:string;code:string;coverage:'partial'|'note-pdf-only'}[]}[]; state: string; finding: string | null; paused: boolean; updatedAt: string; configurationRevision: number; mappingRevision: number } | null;
+  /** Explicit immutable artifact identity; absent in static/demo-only projections. */
+  signedSnapshotId?: string;
+  signedRevision?: number;
   document?: EncounterDocument;
   clinicalForm?: ClinicalFormConfiguration;
   id: string;
   reportingDate: string;
   signedAt: string;
   amendmentSequence: number;
+  /** Effective identifying visibility for this report, including documenting-clinician access. */
   identifying: boolean;
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
   notes: ReportNote[];
-  reviewItems?: Array<{ id: string; criterionId: string; criterionName?: string; status: ReviewQueueItem["status"];
+  reviewItems?: Array<{ id: string; criterionId: string; criterionName?: string; kind?: ReviewQueueItem["kind"]; transmissionReason?: ReviewQueueItem["transmissionReason"]; status: ReviewQueueItem["status"];
     outcome: ReviewQueueItem["outcome"]; clearancePending: boolean; closureReason: string | null }>;
 }
 
@@ -383,6 +453,7 @@ export interface ReviewOverdueDraft {
   createdAt: string;
   deadlineAt: string;
   deadlineSource: "call-completed" | "report-created";
+  /** Effective identifying visibility for this draft; never reuse for another report. */
   identifying: boolean;
   groups: ReviewReportGroup[];
   values: ReviewReportValue[];
@@ -952,7 +1023,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "auditing" | "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
+export type AdminPanelKey = "hospital" | "auditing" | "schedules" | "units" | "authentication" | "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings" | "review-settings" | "agencies";
 
 export interface AdminRoleSummary {
   id: string;
@@ -969,6 +1040,7 @@ export interface AdminAssignableRoleSummary extends AdminRoleSummary {
 }
 
 export interface AdminExternalIdentitySummary {
+  hsaEvidence?: { candidate: { value: string | null; finding: "missing" | "malformed" | null; authoritative: boolean }; source: "active" | "draft"; providerRevision: number; capturedAt: string } | null;
   id: string;
   providerId: string;
   revision: number;
@@ -987,6 +1059,9 @@ export interface AdminExternalIdentitySummary {
 }
 
 export interface AdminUserSummary {
+  hsaId?: string | null;
+  hsaSource?: "manual" | "oidc" | null;
+  hsaConflict?: boolean;
   id: string;
   displayName: string;
   /** Null when this account has no local password credential. */
@@ -1031,6 +1106,7 @@ export interface ProvisionedAdminUser {
 }
 
 export interface UpdateAdminUserCommand {
+  hsaId?: string | null;
   expectedRevision: number;
   username: string | null;
   displayName: string;
@@ -1537,6 +1613,8 @@ export interface ClinicalFormConfiguration {
   } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    /** Versioned local recommendations; scalar datatype and free text remain unchanged. */
+    recommendations?: { source: "destination-directory"; items: import("./cos-context.js").DestinationEntry[] };
     /** Pinned datatype and group structure shared by CLI and browser synthetic generation. */
     generation?: import("../synthetic-record-generator.js").GenerationElement;
     /** Effective unified order for enabled codes and NOT values on a field. */
@@ -1979,6 +2057,7 @@ export type EncounterAttributes = Readonly<Record<string, EncounterAttributeValu
 type EncounterValueBase = {
   /** Stable identity for this occurrence when the element repeats. */
   readonly occurrenceId: string;
+  readonly destinationSelection?: import("./cos-context.js").DestinationSelection;
   /** XML-style NEMSIS attributes and compatible extension attributes. */
   readonly attributes?: EncounterAttributes;
   /** NEMSIS Not Value metadata is independent of the ordinary payload. */
@@ -2099,13 +2178,23 @@ export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
 };
 /** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
 export interface OperationalUnitSummary {
+  rakelId?: string | null;
   id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;
   /** Live prerequisites for ordinary work; absent in older static fixtures. */
   scheduleSelected?: boolean;
   enrolled?: boolean;
 }
 export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCursor: string | null; }
-export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }
+export interface SaveOperationalUnitCommand { rakelId?: string | null; name: string; callSign: string; active: boolean; expectedRevision?: number; }
 
 export * from "./schedules.js";
 export * from "./audit.js";
+
+export * from "./hospital-integration.js";
+
+export * from "./patient-summary.js";
+
+export * from "./hospital-identifier-scheme.js";
+export * from "./hospital-history.js";
+export * from "./cos-context.js";
+export type { CosPatientDemographics, CosPatientComparison, CosSigningIssue } from './cos-signing.js';

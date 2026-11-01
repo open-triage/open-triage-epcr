@@ -18,7 +18,7 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
   const [items,setItems] = useState<OperationalUnitSummary[]>([]);
   const [cursor,setCursor] = useState<string | null>(null);
   const [currentCursor,setCurrentCursor] = useState<string | undefined>();
-  const [editor,setEditor] = useState<{ id: string | null; name: string; callSign: string; active: boolean; revision?: number } | null>(null);
+  const [editor,setEditor] = useState<{ id: string | null; name: string; callSign: string; rakelId?: string | null; active: boolean; revision?: number } | null>(null);
   const [dirty,setDirty] = useState(false);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState<string | null>(null);
@@ -82,14 +82,15 @@ export function UnitsPanel({ csrfToken, canManage, language }: { csrfToken: stri
       <form onSubmit={async event => {
         event.preventDefault();setBusy(true);
         try {
-          await saveOperationalUnit(csrfToken,editor.id,{ name:editor.name,callSign:editor.callSign,active:editor.active,
+          await saveOperationalUnit(csrfToken,editor.id,{ name:editor.name,callSign:editor.callSign,rakelId:editor.rakelId??null,active:editor.active,
             ...(editor.id ? { expectedRevision:editor.revision } : {}) });
           close(true);await load(currentCursor);
-        } catch { setError(text("Could not save. Check the call sign is unique in this agency and refresh if the unit changed.","Kunde inte spara. Kontrollera att anropssignalen är unik i organisationen och uppdatera om enheten ändrats.")); }
+        } catch { setError(resolveMessage(language,"admin.unitSaveFailure")); }
         finally { setBusy(false); }
       }}>
         <label>{text("Name","Namn")}<input autoFocus required maxLength={100} value={editor.name} onChange={event => { setDirty(true);setEditor({ ...editor,name:event.target.value }); }} /></label>
         <label>{text("Call sign","Anropssignal")}<input required maxLength={40} value={editor.callSign} onChange={event => { setDirty(true);setEditor({ ...editor,callSign:event.target.value }); }} /></label>
+        <label>{resolveMessage(language,"admin.rakelId")}<input maxLength={128} value={editor.rakelId??""} onChange={event => { setDirty(true);setEditor({ ...editor,rakelId:event.target.value }); }} /></label>
         <label><input type="checkbox" checked={editor.active} onChange={event => { setDirty(true);setEditor({ ...editor,active:event.target.checked }); }} />{text("Active","Aktiv")}</label>
         <p>{text("Deactivation preserves past reports and associations. Inactive call signs remain reserved.","Inaktivering bevarar tidigare rapporter och kopplingar. Inaktiva anropssignaler förblir reserverade.")}</p>
         {error && <p role="alert" className="admin-error">{error}</p>}

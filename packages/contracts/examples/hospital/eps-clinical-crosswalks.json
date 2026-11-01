@@ -1,0 +1,472 @@
+{
+  "clinicalMappings": [
+    {
+      "id": "medication-a10ae06",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "A10AE06",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "1670007",
+        "display": "insulin degludec",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/1670007/properties.json"
+      }
+    },
+    {
+      "id": "medication-a10ab05",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "A10AB05",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "51428",
+        "display": "insulin aspart, human",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/51428/properties.json"
+      }
+    },
+    {
+      "id": "medication-n06ba12",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "N06BA12",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "700810",
+        "display": "lisdexamfetamine",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/700810/properties.json"
+      }
+    },
+    {
+      "id": "medication-n06ab06",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "N06AB06",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "36437",
+        "display": "sertraline",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/36437/properties.json"
+      }
+    },
+    {
+      "id": "medication-b01af02",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "B01AF02",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "1364430",
+        "display": "apixaban",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/1364430/properties.json"
+      }
+    },
+    {
+      "id": "medication-c07ab02",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "C07AB02",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "6918",
+        "display": "metoprolol",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/6918/properties.json"
+      }
+    },
+    {
+      "id": "medication-c09aa05",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "C09AA05",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "35296",
+        "display": "ramipril",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/35296/properties.json"
+      }
+    },
+    {
+      "id": "medication-c03ca01",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "C03CA01",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "4603",
+        "display": "furosemide",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/4603/properties.json"
+      }
+    },
+    {
+      "id": "medication-a10ae04",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "A10AE04",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "274783",
+        "display": "insulin glargine",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/274783/properties.json"
+      }
+    },
+    {
+      "id": "medication-a10ba02",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "A10BA02",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "6809",
+        "display": "metformin",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/6809/properties.json"
+      }
+    },
+    {
+      "id": "medication-c01da02",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "C01DA02",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "4917",
+        "display": "nitroglycerin",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/4917/properties.json"
+      }
+    },
+    {
+      "id": "medication-r03bb04",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "R03BB04",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "69120",
+        "display": "tiotropium",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/69120/properties.json"
+      }
+    },
+    {
+      "id": "medication-l02bb03",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "L02BB03",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "83008",
+        "display": "bicalutamide",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/83008/properties.json"
+      }
+    },
+    {
+      "id": "medication-c10aa05",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "C10AA05",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "83367",
+        "display": "atorvastatin",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/83367/properties.json"
+      }
+    },
+    {
+      "id": "medication-l04ab04",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "L04AB04",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "327361",
+        "display": "adalimumab",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/327361/properties.json"
+      }
+    },
+    {
+      "id": "medication-l04ax03",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "L04AX03",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "6851",
+        "display": "methotrexate",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/6851/properties.json"
+      }
+    },
+    {
+      "id": "medication-b03bb01",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://www.whocc.no/atc",
+      "code": "B03BB01",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "4511",
+        "display": "folic acid",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/4511/properties.json"
+      }
+    },
+    {
+      "id": "medication-387390002",
+      "resourceType": "MedicationStatement",
+      "semanticRole": "medication-history",
+      "system": "http://snomed.info/sct",
+      "code": "387390002",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.12"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "RxNorm",
+        "code": "9863",
+        "display": "sodium chloride",
+        "relationship": "broader",
+        "reference": "https://rxnav.nlm.nih.gov/REST/rxcui/9863/properties.json"
+      }
+    },
+    {
+      "id": "allergy-penicillin",
+      "resourceType": "AllergyIntolerance",
+      "system": "http://snomed.info/sct",
+      "code": "764146007",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.06"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "ICD-10-CM",
+        "code": "Z88.0",
+        "display": "Allergy status to penicillin",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/MedicationAllergy/MedicationAllergy.json"
+      }
+    },
+    {
+      "id": "allergy-birch-pollen",
+      "resourceType": "AllergyIntolerance",
+      "system": "http://snomed.info/sct",
+      "code": "256262001",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.07"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "SNOMED-CT",
+        "code": "300910009",
+        "display": "Allergy to pollen",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/EnvironmentalFoodAllergy/EnvironmentalFoodAllergy.json"
+      }
+    },
+    {
+      "id": "condition-59621000",
+      "resourceType": "Condition",
+      "system": "http://snomed.info/sct",
+      "code": "59621000",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.08"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "ICD-10-CM",
+        "code": "I10",
+        "display": "Essential hypertension",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/MedicalSurgicalHistory/MedicalSurgicalHistory.json"
+      }
+    },
+    {
+      "id": "condition-406506008",
+      "resourceType": "Condition",
+      "system": "http://snomed.info/sct",
+      "code": "406506008",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.08"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "ICD-10-CM",
+        "code": "F90.9",
+        "display": "Attention-deficit hyperactivity disorder, unspecified type",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/MedicalSurgicalHistory/MedicalSurgicalHistory.json"
+      }
+    },
+    {
+      "id": "condition-399068003",
+      "resourceType": "Condition",
+      "system": "http://snomed.info/sct",
+      "code": "399068003",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.08"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "ICD-10-CM",
+        "code": "C61",
+        "display": "Malignant neoplasm of prostate",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/MedicalSurgicalHistory/MedicalSurgicalHistory.json"
+      }
+    },
+    {
+      "id": "condition-233819005",
+      "resourceType": "Condition",
+      "system": "http://snomed.info/sct",
+      "code": "233819005",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.08"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "ICD-10-CM",
+        "code": "I20.9",
+        "display": "Angina pectoris, unspecified",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/MedicalSurgicalHistory/MedicalSurgicalHistory.json"
+      }
+    },
+    {
+      "id": "condition-88805009",
+      "resourceType": "Condition",
+      "system": "http://snomed.info/sct",
+      "code": "88805009",
+      "destination": {
+        "kind": "nemsis",
+        "elementId": "eHistory.08"
+      },
+      "representation": "coded",
+      "crosswalk": {
+        "system": "ICD-10-CM",
+        "code": "I50.9",
+        "display": "Heart failure, unspecified",
+        "relationship": "broader",
+        "reference": "https://nemsis.org/media/nemsis_v3/master/SuggestedLists/MedicalSurgicalHistory/MedicalSurgicalHistory.json"
+      }
+    }
+  ]
+}

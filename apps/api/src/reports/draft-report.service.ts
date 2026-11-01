@@ -1,3 +1,4 @@
+import {validateDestinationProvenance} from "../hospital/destination-provenance.js";
 import { recordPatientAccess } from "./patient-access-audit.js";
 import {
   ConflictException,
@@ -16,7 +17,7 @@ import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
 import { assertProductionJobAccess, productionJobAccess } from "../calls/production-job-access.js";
-import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
+import { clinicalDocumentConfiguration } from "../forms/clinical-form-configuration.js";
 import type {
   CreateDraftReportCommand,
   DraftGroupMutation,
@@ -514,6 +515,29 @@ export class DraftReportService {
     }
   }
 
+  /** Trusted integration entry point. Caller holds the authorized draft row lock and
+   * rechecks its exact revision. Reuses all catalog/value/cardinality persistence checks. */
+  async applyImportedOccurrence(manager: EntityManager, reportId: string, command: SaveDraftReportCommand,
+    provenance: Record<string, unknown>): Promise<number> {
+    const [report] = await manager.query<ReportRow[]>('select * from clinical.report where id=$1 for update',[reportId]);
+    if (!report || report.status !== 'draft' || Number(report.revision)!==command.expectedRevision ||
+      report.documenting_user_id!==command.authorId) throw new ConflictException({code:'eps.stale'});
+    const occurrences=command.occurrences??[];
+    await this.applyGroups(manager,report,command);
+    const metadata=await this.elementMetadataBatch(manager,report,occurrences.filter(o=>!o.tombstone));
+    await this.applyOccurrences(manager,report,command,occurrences,metadata);
+    await this.assertPinnedCardinality(manager,report);
+    await this.assertCodedChoiceCombinations(manager,report);
+    const imported=occurrences.filter(o=>!o.tombstone).map(o=>o.id);
+    await manager.query(`update clinical.element_occurrence set provenance_detail=coalesce(provenance_detail,'{}'::jsonb)||jsonb_build_object('epsImport',$2::jsonb) where report_id=$1 and id=any($3::uuid[])`,[reportId,JSON.stringify(provenance),imported]);
+    const revision=Number(report.revision)+1;
+    await manager.query(`with updated as (update clinical.report set revision=$2,updated_at=now() where id=$1 returning id)
+      insert into clinical.report_change(report_id,revision,idempotency_key,author_id,changes)
+      select id,$2,$3,$4,$5::jsonb from updated`,[reportId,revision,command.commandId,command.authorId,JSON.stringify({baseRevision:command.expectedRevision,groups:command.groups??[],occurrences,epsImport:provenance})]);
+    await this.storeTargetStates(manager,reportId,occurrences.map(value=>({targetType:'occurrence' as const,targetId:value.id,value,revision,commandId:command.commandId,authorId:command.authorId,deviceId:null,clientTime:null,serverReceivedTime:new Date(),baseRevision:command.expectedRevision})));
+    return revision;
+  }
+
   private async retainPostSignatureAttempt(
     manager: EntityManager,
     report: ReportRow,
@@ -912,10 +936,12 @@ export class DraftReportService {
       const document = await encounterDocument(manager, reportId);
       const notes = await reportTextNotes(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
-      const clinicalForm = await clinicalFormConfiguration(
-        manager, String(details.formVersionId), String(details.catalogReleaseId),
+      const clinicalForm = await clinicalDocumentConfiguration(
+        manager, session.organization.id, String(details.formVersionId), String(details.catalogReleaseId),
         details.validationVersionId, details.validationCompiledSha256
       );
+
+
       const calls = await manager.query<Array<{
         call_number: string | null;
         dispatched_at: Date | string | null;
@@ -1328,6 +1354,7 @@ export class DraftReportService {
 
     const upserts = occurrences.filter((occurrence) => !occurrence.tombstone);
     if (!upserts.length) return;
+    for(const occurrence of upserts)await validateDestinationProvenance(manager,report.organization_id,occurrence.elementId,occurrence.value,occurrence.provenanceDetail?.destinationSelection);
     const rows = upserts.map((occurrence) => {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
@@ -1389,7 +1416,7 @@ export class DraftReportService {
         provenance_kind: occurrence.provenanceKind === "demo" ? "demo" : "clinician",
         provenance_detail: occurrence.provenanceKind === "demo"
           ? { ...occurrence.provenanceDetail, ownershipAction: "demo-populate", clinicianValue: occurrence.value }
-          : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value },
+          : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value, destinationSelection: occurrence.provenanceDetail?.destinationSelection ?? null },
         documented_time: occurrence.documentedTime ?? null,
         documented_utc_offset_minutes: occurrence.documentedUtcOffsetMinutes ?? null,
         documented_precision: occurrence.documentedPrecision ?? null

@@ -32,17 +32,17 @@
       { "id": "eTimes.05", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-time-en-route", "value": "2026-08-15T09:17:05-04:00" }] }
     ] }] },
     { "id": "ePatientSection", "instances": [{ "instanceId": "synthetic-patient-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
-      { "id": "ePatient.01", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-id", "value": "SYNTHETIC-PATIENT-0001" }] },
-      { "id": "ePatient.17", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-dob", "value": "1980-01-01" }] },
-      { "id": "ePatient.18", "values": [
-        { "kind": "scalar", "occurrenceId": "synthetic-phone-home", "value": "212-555-0101", "attributes": { "PhoneNumberType": "9913003" } },
-        { "kind": "scalar", "occurrenceId": "synthetic-phone-mobile", "value": "212-555-0102", "attributes": { "PhoneNumberType": "9913005" } }
-      ] },
-      { "id": "ePatient.25", "values": [{ "kind": "coded", "occurrenceId": "synthetic-patient-sex", "code": "9919005", "display": "Unknown" }] }
+      { "id": "ePatient.01", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-id", "value": "200207252388" }] },
+      { "id": "ePatient.17", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-dob", "value": "2002-07-25" }] },
+      { "id": "ePatient.18", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-phone-mobile", "value": "+46 70 000 00 01", "attributes": { "PhoneNumberType": "9913005" } }] },
+      {"id": "ePatient.05", "values": [{"kind": "scalar", "occurrenceId": "synthetic-ePatient.05", "value": "Lärkstigen 12"}]},
+      {"id": "ePatient.09", "values": [{"kind": "scalar", "occurrenceId": "synthetic-ePatient.09", "value": "75311"}]},
+      {"id": "ePatient.19", "values": [{"kind": "scalar", "occurrenceId": "synthetic-ePatient.19", "value": "andrea.lindqvist@example.org"}]},
+      { "id": "ePatient.25", "values": [{ "kind": "coded", "occurrenceId": "synthetic-patient-sex", "code": "9919001", "display": "Female" }] }
     ] }] },
     { "id": "ePatient.PatientNameGroup", "instances": [{ "instanceId": "synthetic-patient-name-1", "parentInstanceId": "synthetic-patient-1", "elements": [
-      { "id": "ePatient.02", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-last-name", "value": "SYNTHETIC" }] },
-      { "id": "ePatient.03", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-first-name", "value": "PATIENT" }] }
+      { "id": "ePatient.02", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-last-name", "value": "Lindqvist" }] },
+      { "id": "ePatient.03", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-patient-first-name", "value": "Andrea" }] }
     ] }] },
     { "id": "eSceneSection", "instances": [{ "instanceId": "synthetic-scene-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
       { "id": "eScene.11", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-gps", "value": "40.750600,-73.997200" }] },

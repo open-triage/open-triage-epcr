@@ -236,6 +236,12 @@ function replaceElementValues(document: EncounterDocument, groupId: string, grou
   if (values.length === 0 && elementIndex >= 0) elements.splice(elementIndex, 1);
   else if (elementIndex < 0 && values.length > 0) elements.push({ id: elementId, values });
   else if (elementIndex >= 0) elements[elementIndex] = { ...elements[elementIndex]!, values };
+  // Manual edits, removals and exceptional choices clear both halves of a directory association.
+  if (["eDisposition.01","eDisposition.02"].includes(elementId)) {
+    for (let i=0;i<elements.length;i++) if (["eDisposition.01","eDisposition.02"].includes(elements[i]!.id)) {
+      elements[i]={...elements[i]!,values:elements[i]!.values.map(({destinationSelection: _selection,...value})=>value)};
+    }
+  }
   const instances = [...group.instances];
   instances[instanceIndex] = { ...instance, attributes: clinicianOwnedAttributes(instance.attributes), elements };
   const groups = [...document.groups];

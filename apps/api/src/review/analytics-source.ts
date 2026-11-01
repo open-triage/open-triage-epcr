@@ -30,7 +30,7 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
     etimes_03: Date | null; etimes_06: Date | null; etimes_09: Date | null; etimes_11: Date | null;
     etimes_03_absent: boolean; etimes_06_absent: boolean; etimes_09_absent: boolean; etimes_11_absent: boolean }>>(`
     select p.report_id,p.organization_id,p.reporting_date::text,p.projected_at,r.revision::text,
-      r.documenting_user_id,case when $7::boolean then ${needsUser ? "coalesce(u.display_name,r.documenting_user_id::text)" : "r.documenting_user_id::text"} else r.documenting_user_id::text end documenting_user_label,
+      r.documenting_user_id,case when ($7::boolean or r.documenting_user_id=$4) then ${needsUser ? "coalesce(u.display_name,r.documenting_user_id::text)" : "r.documenting_user_id::text"} else r.documenting_user_id::text end documenting_user_label,
       coalesce((select max(a.sequence) from clinical.amendment a where a.report_id=r.id),0) amendment,
       ${scalarFields.length ? "f.field_values,f.field_absences" : "'{}'::jsonb field_values,'{}'::jsonb field_absences"}
       ${needsTimes ? ",t.etimes_03,t.etimes_06,t.etimes_09,t.etimes_11,t.etimes_03_absent,t.etimes_06_absent,t.etimes_09_absent,t.etimes_11_absent" : ""}
@@ -96,7 +96,7 @@ export async function loadAnalyticsReports(database: Pick<EntityManager, "query"
     from analytics.review_custom_field_source c join analytics.review_volume_source p on p.report_id=c.report_id and p.reporting_date=c.reporting_date
     where c.organization_id=any($1::uuid[]) and p.synthetic=$2 and ($3 or p.documenting_user_id=$4)
       and c.report_id=any($5::uuid[]) and ${customIdentitySql("c.custom_definition_id", "c.custom_definition")}=any($6::text[])
-      and (not c.is_identifying or $7) and c.reporting_date between $8::date and $9::date
+      and (not c.is_identifying or $7 or p.documenting_user_id=$4) and c.reporting_date between $8::date and $9::date
     order by c.report_id,c.element_occurrence_id limit 20001`,
   [...params.slice(0, 4), reportIds, customIds, scope.identifying, definition.from, definition.through]) : [];
   if (repeated.length + custom.length > 20000) throw new BadRequestException("Analysis exceeds the 20,000-occurrence limit; narrow the query");

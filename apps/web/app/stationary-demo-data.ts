@@ -207,7 +207,9 @@ export function populateStationaryDemoData(document: EncounterDocument,
       const existing = elementIndex < 0 ? undefined : instance.elements[elementIndex];
       if (existing?.values.length && !existing.values.every((value) => hasDemoProvenance(value.attributes))) return instance;
       const elements = [...instance.elements];
-      const generated = demoValue(next, element, instance.instanceId, catalogFields?.[element.id]);
+      const destinationPicker = catalogFields?.["eDisposition.01"]?.recommendations
+        && ["eDisposition.01", "eDisposition.02"].includes(element.id);
+      const generated = destinationPicker ? undefined : demoValue(next, element, instance.instanceId, catalogFields?.[element.id]);
       if (!generated) {
         if (existing && existing.values.every((value) => hasDemoProvenance(value.attributes))) {
           elements.splice(elementIndex, 1);

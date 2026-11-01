@@ -15,7 +15,9 @@
     "test": "node scripts/test-server-configurations.mjs",
     "generate:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts",
     "check:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts --check",
+    "pretest:a11y": "npm run build -w @open-triage/api",
     "test:a11y": "playwright test --config playwright.config.ts",
+    "pretest:deployment": "npm run build -w @open-triage/api",
     "test:deployment": "OPEN_TRIAGE_E2E_SERVER_MODE=true playwright test --config playwright.deployment.config.ts",
     "typecheck": "tsc --noEmit"
   },

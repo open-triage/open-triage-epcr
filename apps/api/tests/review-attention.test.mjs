@@ -39,7 +39,7 @@ test('attention counts are request-time scoped, dataset separated, and administr
   assert.deepEqual(calls[3].params, [['agency-b'], true, true, 'person-b']);
   current = session(['review:self', 'review:admin']);
   assert.equal((await service.attention('token')).unavailableAssignees, undefined);
-  assert.match(calls.at(-1).sql, /filter \(where false\)::text responses/);
+  assert.match(calls.at(-1).sql, /r\.documenting_user_id=\$4 and i\.status='awaiting-clinician'/);
   current = session([]);
   await assert.rejects(service.attention('token'), { status: 403 });
 });

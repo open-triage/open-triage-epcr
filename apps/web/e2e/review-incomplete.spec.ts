@@ -38,10 +38,9 @@ for (const width of [390, 1440]) test(`Incomplete queue filter preserves state a
   const table = page.getByRole("table", { name: "Review queue", exact: true });
   await expect(table.locator("tbody tr")).toHaveCount(2);
   const pagination = page.getByRole("navigation", { name: "Review queue pages" });
-  await pagination.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(table.getByText("Completed", { exact: true })).toBeVisible();
   const status = page.getByRole("combobox", { name: "Status", exact: true });
-  await status.selectOption("incomplete");
+  await expect(status).toHaveValue("incomplete");
+  expect(searches[0]?.get("status")).toBe("incomplete");
   await expect.poll(() => searches.at(-1)?.get("status")).toBe("incomplete");
   await expect.poll(() => searches.at(-1)?.get("page")).toBe("1");
   await expect(page.getByRole("button", { name: "All reviews 3", exact: true })).toBeVisible();

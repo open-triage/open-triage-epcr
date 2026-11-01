@@ -3,6 +3,22 @@ import test from "node:test";
 import { applyDocumentLanguage, availableUiLanguages, languageDisplayName, resolveMessage } from "../app/localization";
 import english from "../messages/en.json";
 import swedish from "../messages/sv.json";
+import type { ProductionJobAccess } from "@open-triage/contracts";
+
+test("every displayed production access state has English and Swedish copy", () => {
+  const states = {
+    ready: false, "synthetic-only": false, preparation: true,
+    "enrollment-required": true, "agency-mismatch": true, "schedule-required": true,
+    "handover-required": true, "reauthentication-required": true, "identity-confirmation-required": true,
+  } satisfies Record<ProductionJobAccess["state"], boolean>;
+  for (const [state, displayed] of Object.entries(states)) {
+    if (!displayed) continue;
+    const key = `calls.production.${state}`;
+    for (const dictionary of [english, swedish]) {
+      assert.ok((dictionary as Record<string, unknown>)[key], `Missing ${key}`);
+    }
+  }
+});
 
 test("named parameters, count variants, and fallback are stable", () => {
   assert.equal(resolveMessage("sv", "navigation.signedInAs", { name: "Anna" }), "Inloggad som Anna");

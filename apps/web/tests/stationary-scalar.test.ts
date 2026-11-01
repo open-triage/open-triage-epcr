@@ -1,3 +1,4 @@
+import { repeatedPhoneEncounter } from "./fixtures/repeated-phone-encounter";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { EncounterDocument } from "@open-triage/contracts";
@@ -99,7 +100,7 @@ test("stationary date-times default to the latest sibling timestamp, then arrive
 });
 
 test("repeatable scalar occurrences add, edit, order, remove, and project stable draft identities", () => {
-  let document = structuredClone(synthetic) as EncounterDocument;
+  let document = repeatedPhoneEncounter();
   const original = scalarOccurrences(document, patientGroupId, patientInstanceId, "ePatient.18");
   assert.deepEqual(original.map(({ occurrenceId }) => occurrenceId), ["synthetic-phone-home", "synthetic-phone-mobile"]);
 

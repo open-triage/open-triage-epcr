@@ -1,4 +1,4 @@
-import { evaluateValidationBundleSafely } from './dist/index.js';
+import { evaluateValidationBundleSafely, COS_ELEMENT_MAPPINGS, cosMedicationUnitIsRate } from './dist/index.js';
 
 const PROVENANCE = 'stationary-populate-v1';
 const attributes = () => ({ 'x-open-triage-demo': PROVENANCE });
@@ -70,7 +70,7 @@ function scalar(metadata, random, timeline) {
   const max = Number(limits.maxInclusive ?? limits.maximum ?? Math.max(min + 100, 100));
   if (['integer', 'decimal'].includes(metadata.base)) {
     const [mean, deviation] = numericVitals[metadata.id] ?? [(min + max) / 2, (max - min) / 6];
-    const digits = metadata.base === 'integer' || metadata.id === 'eVitals.16' ? 0 : Math.min(2, Number(limits.fractionDigits ?? 1));
+    const digits = metadata.base === 'integer' || ['eVitals.16',COS_ELEMENT_MAPPINGS.vitals.painNrs.source].includes(metadata.id) ? 0 : Math.min(2, Number(limits.fractionDigits ?? 1));
     return Number(Math.max(min, Math.min(max, normal(random, mean, deviation))).toFixed(digits));
   }
   // Try diverse fictional values first, then known catalog formats. Every result
@@ -121,7 +121,8 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       if (value.attributes?.['x-open-triage-demo'] === PROVENANCE) return false;
       // Only explicitly dispatch-owned source values may be repaired. Clinician
       // edits and values with unknown ownership remain protected, even if invalid.
-      if (instance.attributes?.['x-open-triage-owner'] !== 'dispatch' || value.kind !== 'coded') return true;
+      const owner = value.attributes?.['x-open-triage-owner'] ?? instance.attributes?.['x-open-triage-owner'];
+      if (owner !== 'dispatch' || value.kind !== 'coded') return true;
       const restricted = fieldsById.get(element.id)?.choicePolicy !== undefined
         || configuration.catalogFields[element.id]?.choiceOrder !== undefined
         || metadata.get(element.id)?.definition.valueSource?.kind === 'inline-enumerated';
@@ -129,6 +130,19 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         && (choice.codeSystem ?? '') === (value.system ?? ''));
     }))
       .map(element => element.id))) : []);
+  // Operational routing is an explicit clinician decision, never synthetic data.
+  if (configuration.catalogFields['eDisposition.01']?.recommendations) {
+    for (const id of ['eDisposition.01', 'eDisposition.02']) {
+      protectedElements.add(id);
+      for (const group of document.groups) for (const instance of group.instances) {
+        instance.elements = instance.elements.flatMap(element => {
+          if (element.id !== id) return [element];
+          const values = element.values.filter(value => value.attributes?.['x-open-triage-demo'] !== PROVENANCE);
+          return values.length ? [{...element, values}] : [];
+        });
+      }
+    }
+  }
   const values = id => document.groups.flatMap(group => group.instances.flatMap(instance =>
     instance.elements.filter(element => element.id === id).flatMap(element => element.values)));
   function group(id, trail = new Set()) {
@@ -149,11 +163,20 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     let candidates = spec?.choices ?? configuration.catalogFields[id]?.codeChoices ?? [];
     if (field?.choicePolicy) candidates = candidates.filter(candidate => field.choicePolicy.some(choice => choice.kind === 'code' &&
       choice.code === candidate.code && choice.codeSystem === (candidate.codeSystem ?? '')));
+    // Exercise the interoperable clinical representation while respecting the
+    // installed choices. Existing clinician values are protected separately.
+    if(id===COS_ELEMENT_MAPPINGS.medication.unit.source)candidates=candidates.filter(choice=>!cosMedicationUnitIsRate(choice.label));
     return candidates;
   }
   function makeValue(id, literal) {
     const spec = metadata.get(id);
     if (!spec) throw new Error(`Cannot generate ${id}: not in the clinical catalog`);
+    if (patientField(id)) {
+      const absent = spec.definition.permittedNotValues ?? [];
+      const notValue = absent.find(value => value.code === '7701003') ?? absent[0];
+      if (!notValue) throw new Error(`Cannot generate ${id}: dispatch patient demographics are unavailable`);
+      return { kind: 'null', occurrenceId: createId(), notValue: { code: notValue.code }, attributes: attributes() };
+    }
     const candidates = choices(id);
     const coded = spec.definition.valueSource?.kind !== 'scalar' || spec.choices !== undefined;
     if (coded) {
@@ -178,8 +201,25 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       ...(spec.base === 'dateTime' ? { precision: 'second', utcOffsetMinutes: 0 } : {}),
       attributes: { ...attributes(), ...(id === 'eVitals.16' ? { ETCO2Type: '3340001' } : {}) } };
   }
+  // A dispatch patient is one identity, not independent random fields. Keep the
+  // supplied demographics together for CLI generation as well as Populate. Missing
+  // identity data stays undocumented rather than inventing another person's data.
+  const patientIdentity = values('ePatient.01').some(value => ordinary(value));
+  const patientField = id => patientIdentity
+    && id.startsWith('ePatient.') && !['ePatient.15', 'ePatient.16'].includes(id);
   function set(id, literal, count = 1) {
+    if (patientField(id) && values(id).length) return;
     if (id === 'eRecord.01' || protectedElements.has(id)) return;
+    if (patientIdentity && ['ePatient.15', 'ePatient.16'].includes(id)) {
+      const birthDate = ordinary(values('ePatient.17')[0]);
+      const birth = new Date(String(birthDate ?? ''));
+      const at = new Date(dispatchedAt);
+      if (!Number.isFinite(+birth) || !Number.isFinite(+at) || birth > at) { remove(id); return; }
+      const years = at.getUTCFullYear() - birth.getUTCFullYear()
+        - (at.toISOString().slice(5, 10) < birth.toISOString().slice(5, 10) ? 1 : 0);
+      const age = years < 1 ? Math.floor((at - birth) / 86400000) : years;
+      literal = id === 'ePatient.15' ? age : years < 1 ? '2516001' : '2516009';
+    }
     const spec = metadata.get(id);
     if (!spec) throw new Error(`Rule references unavailable clinical field ${id}`);
     if (count > 100 || spec.maximum !== null && count > spec.maximum) throw new Error(`Impossible occurrence count for ${id}: ${count}`);
@@ -190,6 +230,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       occurrenceId: element.values[index]?.occurrenceId ?? createId(`occurrence:${id}:${instance.instanceId}:${index}`) }));
   }
   function remove(id) {
+    if (patientField(id)) return;
     if (id === 'eRecord.01' || protectedElements.has(id)) return;
     for (const group of document.groups) for (const instance of group.instances) {
       instance.elements = instance.elements.filter(element => element.id !== id);
@@ -202,6 +243,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     const id = fieldId(field);
     if (!metadata.has(id) || identity.has(id)) continue;
     const spec = metadata.get(id);
+    if (patientField(id) && !values(id).length && !spec.definition.permittedNotValues?.length) continue;
     if (spec.definition.valueSource?.kind !== 'scalar' && !choices(id).length &&
       !spec.definition.permittedNotValues?.length && !spec.definition.permittedPertinentNegatives?.length &&
       !field.required && !spec.minimum) { remove(id); continue; }
@@ -267,6 +309,11 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         let comparison = expression.comparison;
         if (!want) comparison = ({ equal: 'not-equal', 'not-equal': 'equal', 'less-than': 'greater-or-equal',
           'less-or-equal': 'greater-than', 'greater-than': 'less-or-equal', 'greater-or-equal': 'less-than' })[comparison];
+        if (comparison === 'not-equal' && choices(target).length) {
+          const alternatives = choices(target).filter(choice => String(choice.code) !== String(reference));
+          if (alternatives.length) set(target, pick(alternatives, random).code);
+          break;
+        }
         const adjustment = ({ 'less-than': -1, 'greater-than': 1, 'not-equal': 1 })[comparison] ?? 0;
         set(target, typeof reference === 'number' ? reference + adjustment : reference); break;
       }

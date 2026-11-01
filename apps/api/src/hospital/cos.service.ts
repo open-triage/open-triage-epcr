@@ -1,0 +1,254 @@
+import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { randomUUID } from 'node:crypto';
+import { DataSource, type EntityManager } from 'typeorm';
+import { type HospitalIntegrationLifecycleState, DEFAULT_HOSPITAL_PATIENT_FIELD, hospitalFieldId, isSupportedHospitalIdentifierNamespace, type CosMappingDefinition, type CosReadiness } from '@open-triage/contracts';
+import { ClinicianSessionService } from '../sessions/clinician-session.service.js';
+import { clinicalFormConfiguration } from '../forms/clinical-form-configuration.js';
+import { generateAgencyKey, encryptAgencyCredential, decryptAgencyCredential } from '../authentication/agency-oidc-keys.js';
+import type { CredentialEnvelope } from '../authentication/oidc-credentials.js';
+
+import { discoverPackages, writePackage, type CanonicalPackage } from '../admin/canonical-package.js';
+import { contentDigest, identifier, identifierOptions, invalid, keys, makePackage } from './hospital-mapping.js';
+import { COS_PROFILE, compileCosMapping as compileMapping, cosMappingPackage as mappingPackage, connectionSettings, cosEndpoint, clinicalMappings, vitalMappings, medicationMappings, cosPdfMappingEdit, cosFindings } from './cos-configuration.js';
+import { CosLiveAdapter } from './cos-live-adapter.js';
+import { COS_VITAL_PROFILES } from './cos-vital-profiles.js';
+import type { CosConnectionSettings } from '@open-triage/contracts';
+
+type Version={settings:CosConnectionSettings;revision:string;endpoint:string;canonical_mapping:CanonicalPackage;catalog_release_id:string;form_version_id:string;credential_id:string;encrypted_credential:CredentialEnvelope|null;created_at:Date;created_by:string};
+type State={draft_revision:string;active_revision:string|null;state_revision:string;paused_revision:string|null};
+const stale=()=>new ConflictException({code:'hospital.stale'});
+function revision(value:unknown,min=0):number {if(!Number.isSafeInteger(value)||Number(value)<min)return invalid();return Number(value);}
+@Injectable()
+export class CosService {
+  constructor(@InjectDataSource() private readonly database:DataSource,private readonly sessions:ClinicianSessionService){}
+  private async scope(token:string,write=false,manager:EntityManager=this.database.manager) {
+    if(write&&manager.queryRunner?.isTransactionActive)await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
+    const actor=await this.sessions.requireCapability(token,write?'settings:write':'settings:read',manager);
+    const [group]=await manager.query<Array<{id:string;name:string}>>('select id,name from app_identity.organization where id=app_identity.organization_group($1)',[actor.organization.id]);
+    if(!group)throw stale();
+    return {actor,groupId:group.id,groupName:group.name};
+  }
+  private async locked(token:string,manager:EntityManager,expected:number) {
+    const scope=await this.scope(token,true,manager);
+    await manager.query('select group_id from app_identity.group_authentication_policy where group_id=$1 for update',[scope.groupId]);
+    const [clock]=await manager.query<Array<{now:Date}>>('select clock_timestamp() now');
+    await this.sessions.requireCapability(token,'settings:write',manager,clock!.now);
+    const [state]=await manager.query<State[]>('select * from app_identity.hospital_cos_state where group_id=$1',[scope.groupId]);
+    if(Number(state?.draft_revision??0)!==expected)throw stale();
+    return {...scope,state};
+  }
+  private async currentForm(manager:EntityManager,groupId:string) {
+    const [row]=await manager.query<Array<{form_version_id:string;catalog_release_id:string}>>(`select d.form_version_id,v.catalog_release_id from forms.agency_stationary_default d join forms.form_version v on v.id=d.form_version_id where d.organization_id=$1 and v.status='published'`,[groupId]);
+    if(!row)throw new ServiceUnavailableException({code:'hospital.formRequired'});
+    const form=await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id);
+    return {...row,form,catalogHash:contentDigest({catalogFields:form.catalogFields,customFields:form.customFields??{}})};
+  }
+  private async version(manager:EntityManager,groupId:string,rev:number) {
+    const [row]=await manager.query<Version[]>('select * from app_identity.hospital_cos_version where group_id=$1 and revision=$2',[groupId,rev]);
+    if(!row)throw stale();return row;
+  }
+  private view(row:Version|undefined) {
+    if(!row)return null;
+    return {revision:Number(row.revision),endpoint:row.endpoint,settings:row.settings,authentication:row.settings.authentication,mapping:row.canonical_mapping,
+      credentialConfigured:!!row.encrypted_credential,createdAt:row.created_at.toISOString()};
+  }
+  async get(token:string) {
+    const {groupId,groupName}=await this.scope(token);
+    const [state]=await this.database.query<State[]>('select * from app_identity.hospital_cos_state where group_id=$1',[groupId]);
+    const rows=await this.database.query<Version[]>('select * from app_identity.hospital_cos_version where group_id=$1 order by revision desc limit 20',[groupId]);
+    const active=state?.active_revision?await this.version(this.database.manager,groupId,Number(state.active_revision)):undefined;
+    const tests=await this.database.query<Array<{id:string;revision:string;result:string;evidence:unknown;created_at:Date}>>('select id,revision,result,evidence,created_at from app_identity.hospital_cos_test where group_id=$1 order by created_at desc,id desc limit 20',[groupId]);
+    const events=await this.database.query<Array<{action:string;occurred_at:Date;actor_id:string;details:unknown}>>(`select action,occurred_at,actor_id,details from app_identity.configuration_event where organization_id=$1 and action like 'hospital.%' and details->>'integration'='cos' order by occurred_at desc,id desc limit 30`,[groupId]);
+    let options:ReturnType<typeof identifierOptions>=[];let clinicalOptions:typeof options=[];
+    try {const {form}=await this.currentForm(this.database.manager,groupId);options=identifierOptions(form);
+      clinicalOptions=form.definition.sections.flatMap(section=>section.fields).map(({source})=>{const id=hospitalFieldId(source),field=source.kind==='nemsis'?form.catalogFields[id]:form.customFields?.[id];return {field:source.kind==='nemsis'?{kind:'nemsis' as const,elementId:source.elementId}:{kind:'custom' as const,elementDefinitionId:source.elementDefinitionId},id,name:(source.kind==='nemsis'?form.catalogFields[id]?.name:form.customFields?.[id]?.title)??id,localization:field?.localization??null};}).filter((row,i,rows)=>rows.findIndex(other=>other.id===row.id&&other.field.kind===row.field.kind)===i);
+    }catch(error){if(!(error instanceof ServiceUnavailableException))throw error;}
+    const [readiness]=await this.database.query<CosReadiness[]>(`select
+      (select count(*)::integer from app_identity.app_user where app_identity.organization_group(organization_id)=$1 and active and nullif(btrim(hsa_id),'') is null) as "usersMissingHsa",
+      (select count(*)::integer from app_identity.app_user where app_identity.organization_group(organization_id)=$1 and active and hsa_conflict) as "usersConflictingHsa",
+      (select count(*)::integer from app_identity.operational_unit where app_identity.organization_group(organization_id)=$1 and active and nullif(btrim(rakel_id),'') is null) as "unitsMissingRakel",
+      (select count(*)::integer from app_identity.destination_directory where group_id=$1 and active and nullif(btrim(hsa_id),'') is null) as "destinationsMissingHsa"`,[groupId]);
+    const draft=rows[0];
+    const paused=state?.paused_revision?await this.version(this.database.manager,groupId,Number(state.paused_revision)):undefined;
+    const currentHealth=await this.database.query<Array<{revision:string;result:'healthy'|'failed'}>>('select distinct on(revision) revision,result from app_identity.hospital_cos_test where group_id=$1 and revision=any($2::bigint[]) order by revision,created_at desc,id desc',[groupId,[active?.revision,paused?.revision,draft?.revision].filter(Boolean)]);
+    const latestTest=(revision:string|undefined)=>currentHealth.find(test=>test.revision===revision);
+    const baseline=active??paused;
+    const operationState:HospitalIntegrationLifecycleState={pausedRevision:state?.paused_revision?Number(state.paused_revision):null,
+      credentialReplacement:!!draft&&!!baseline&&JSON.stringify(draft.encrypted_credential)!==JSON.stringify(baseline.encrypted_credential),
+      activeHealth:latestTest(active?.revision)?.result??'untested',pausedHealth:latestTest(paused?.revision)?.result??'untested',draftHealth:latestTest(draft?.revision)?.result??'untested',
+      verification:active?.settings.mode==='live'?'read-only-live-connectivity':'simulator-only',keyManagement:'agency-envelope'};
+    return {...operationState,readiness,groupId,groupName,clinicalOptions,stateRevision:Number(state?.state_revision??0),draft:this.view(rows[0]),active:this.view(active),options,
+      defaultPatientField:DEFAULT_HOSPITAL_PATIENT_FIELD,defaultEndpoint:'https://cos.example.invalid',
+      tests:tests.map(t=>({id:t.id,revision:Number(t.revision),result:t.result,createdAt:t.created_at.toISOString(),kind:(t.evidence as {kind?:string})?.kind??'simulator-profile',publication:false,evidence:t.evidence})),
+      history:rows.map(row=>({revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,sha256:row.canonical_mapping.sha256,createdAt:row.created_at.toISOString(),actorId:row.created_by,status:Number(row.revision)===Number(state?.active_revision)?'active':Number(row.revision)===Number(state?.draft_revision)?'draft':'superseded'})),
+      events:events.map(event=>({action:event.action,occurredAt:event.occurred_at.toISOString(),actorId:event.actor_id,details:event.details}))};
+  }
+  async save(token:string,input:unknown) {
+    const body=keys(input,['expectedRevision','endpoint','authentication','patientIdentifier','replacementSecret','mapping','settings','clinicalMappings','pdfLinkId','vitalMappings','medicationMappings']);
+    const expected=revision(body.expectedRevision);
+    if(body.pdfLinkId!==undefined&&(typeof body.pdfLinkId!=='string'||body.pdfLinkId!==''&&!/^\d{6,18}$/.test(body.pdfLinkId)))return invalid();
+    const endpoint=cosEndpoint(body.endpoint),settings=connectionSettings(body.settings);
+    if(body.authentication!==settings.authentication)return invalid();
+    if(body.replacementSecret!==undefined&&(typeof body.replacementSecret!=='string'||body.replacementSecret.length<1||body.replacementSecret.length>4096||/[\u0000-\u001f\u007f]/.test(body.replacementSecret)))return invalid();
+    if(body.replacementSecret!==undefined&&settings.authentication==='oauth-client-credentials')oauthCredential(body.replacementSecret as string);
+    await this.database.transaction(async manager=>{
+      const {actor,groupId,state}=await this.locked(token,manager,expected);
+      const dependencies=await this.currentForm(manager,groupId);
+      const prior=state?await this.version(manager,groupId,expected):undefined;
+      const incoming=body.mapping===undefined?null:mappingPackage(body.mapping);
+      if(incoming&&incoming.catalog.sha256!==dependencies.catalogHash)throw new ConflictException({code:'hospital.dependencies'});
+      const patientIdentifier=incoming?.definition.patientIdentifier??identifier(body.patientIdentifier);
+      const priorDefinition=prior?mappingPackage(prior.canonical_mapping).definition:null;
+      // Imported identity/revision/hash remains intact in its canonical file. Local
+      // configuration revision is independent and still requires a fresh test.
+      const mappingId=incoming?.definition.id??priorDefinition?.id??randomUUID();
+      const [maximum]=await manager.query<Array<{revision:number}>>(`select coalesce(max((canonical_mapping->'definition'->>'revision')::integer),0)::integer revision from app_identity.hospital_cos_version where group_id=$1 and canonical_mapping->'definition'->>'id'=$2`,[groupId,mappingId]);
+      if(incoming){const existing=await manager.query<Array<{sha256:string}>>(`select canonical_mapping->>'sha256' sha256 from app_identity.hospital_cos_version where group_id=$1 and canonical_mapping->'definition'->>'id'=$2 and canonical_mapping->'definition'->>'revision'=$3`,[groupId,mappingId,String(incoming.definition.revision)]);if(existing.some(row=>row.sha256!==incoming.sha256))throw stale();}
+      const mappingRevision=Number(maximum?.revision??0)+1;
+      const mapping=incoming??makePackage({kind:'hospital-mapping',name:`COS-${mappingId}`,version:String(mappingRevision),catalog:{sha256:dependencies.catalogHash},definition:{
+        schemaVersion:2,id:mappingId,revision:mappingRevision,
+        authoredAt:new Date().toISOString(),author:actor.user.id,
+        profile:COS_PROFILE,patientIdentifier,...cosPdfMappingEdit(body.pdfLinkId,priorDefinition?.pdfLinkId),clinicalMappings:clinicalMappings(body.clinicalMappings??priorDefinition?.clinicalMappings??[]),
+        ...((body.medicationMappings!==undefined||priorDefinition?.medicationMappings!==undefined)?{medicationMappings:medicationMappings(body.medicationMappings??priorDefinition?.medicationMappings??[])}:{}),
+        ...((body.vitalMappings!==undefined||priorDefinition?.vitalMappings!==undefined)?{vitalMappings:vitalMappings(body.vitalMappings??priorDefinition?.vitalMappings??[])}:{})
+      } satisfies CosMappingDefinition});
+      compileMapping(mapping,dependencies.form);
+      const credentialId=prior?.credential_id??randomUUID();
+      let credential=prior?.encrypted_credential??null;
+      try {
+        if(body.replacementSecret){await generateAgencyKey(manager,groupId,actor.user.id);credential=await encryptAgencyCredential(manager,body.replacementSecret as string,groupId,`hospital-cos:${credentialId}`);}
+      }catch {throw new ServiceUnavailableException({code:'hospital.encryptionUnavailable'});}
+      // Persist before publishing the database pointer. Failed storage never claims
+      // a successful save. An orphan file after rollback remains a valid draft import.
+      try {await writePackage(mapping,groupId);}catch {throw new ServiceUnavailableException({code:'hospital.fileUnavailable'});}
+      await manager.query(`insert into app_identity.hospital_cos_version(group_id,revision,credential_id,endpoint,settings,canonical_mapping,catalog_release_id,form_version_id,encrypted_credential,created_by) values($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9::jsonb,$10)`,
+        [groupId,expected+1,credentialId,endpoint,JSON.stringify(settings),JSON.stringify(mapping),dependencies.catalog_release_id,dependencies.form_version_id,credential?JSON.stringify(credential):null,actor.user.id]);
+      await manager.query(`insert into app_identity.hospital_cos_state(group_id,draft_revision) values($1,$2) on conflict(group_id) do update set draft_revision=$2,state_revision=hospital_cos_state.state_revision+1`,[groupId,expected+1]);
+      await this.audit(manager,groupId,actor.user.id,await this.version(manager,groupId,expected+1),'draft_save','succeeded',incoming?'import':'edit');
+    });
+    return this.get(token);
+  }
+  /** Connectivity sends no clinical data; it does not establish clinical acceptance. */
+  async test(token:string,input:unknown) {
+    const body=keys(input,['expectedRevision']);const expected=revision(body.expectedRevision,1);
+    await this.database.transaction(async manager=>{
+      const {groupId,actor}=await this.locked(token,manager,expected);
+      const row=await this.version(manager,groupId,expected);
+      const mapping=compileMapping(row.canonical_mapping,await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id));
+      const findings=cosFindings(row.settings);
+      if(row.settings.mode==='live')findings.push(...liveAcceptanceFindings(row.settings,mapping));
+      if(!isSupportedHospitalIdentifierNamespace(mapping.patientIdentifier.namespace))findings.push('patientNamespace');
+      if(!row.encrypted_credential)findings.push('credential');
+      else try{const secret=await decryptAgencyCredential(manager,row.encrypted_credential,groupId,`hospital-cos:${row.credential_id}`);if(row.settings.mode==='live'){if(!row.settings.live)throw new Error('configuration');const adapter=new CosLiveAdapter(row.settings.live,oauthCredential(secret));const capabilities=await adapter.read('fhir/metadata');if(capabilities.resourceType!=='CapabilityStatement')findings.push('connectivity');}}catch{findings.push(row.settings.mode==='live'?'connectivity':'credential');}
+      const evidence={kind:row.settings.mode==='live'?'live-connectivity':'simulator-profile',simulated:row.settings.mode==='simulator',externalTransmission:row.settings.mode==='live',liveDeliveryVerified:false,
+        configurationHash:contentDigest({endpoint:row.endpoint,settings:row.settings,mapping:row.canonical_mapping,credentialId:row.credential_id,revision:expected}),
+        mappingHash:row.canonical_mapping.sha256,profile:COS_PROFILE,findings};
+      const healthy=!findings.length;
+      await manager.query(`insert into app_identity.hospital_cos_test(id,group_id,revision,result,evidence,created_by) values($1,$2,$3,$4,$5::jsonb,$6)`,[randomUUID(),groupId,expected,healthy?'healthy':'failed',JSON.stringify(evidence),actor.user.id]);
+      await this.audit(manager,groupId,actor.user.id,row,'test',healthy?'succeeded':'failed');
+    });return this.get(token);
+  }
+  async activate(token:string,input:unknown,deactivate=false) {
+    const body=keys(input,['expectedRevision','expectedStateRevision','testId']);const expected=revision(body.expectedRevision,1),expectedState=revision(body.expectedStateRevision,1);
+    if(!deactivate&&(typeof body.testId!=='string'||!/^[-0-9a-f]{36}$/.test(body.testId)))return invalid();
+    await this.database.transaction(async manager=>{
+      const {groupId,actor,state}=await this.locked(token,manager,expected);
+      if(Number(state?.state_revision)!==expectedState)throw stale();
+      const row=await this.version(manager,groupId,expected);
+      if(!deactivate){
+        if(row.settings.mode==='live'&&liveAcceptanceFindings(row.settings,mappingPackage(row.canonical_mapping).definition).length)throw new ConflictException({code:'hospital.cos.sandboxRequired'});
+        const [tested]=await manager.query<Array<{id:string;result:string}>>('select id,result from app_identity.hospital_cos_test where group_id=$1 and revision=$2 order by created_at desc,id desc limit 1',[groupId,expected]);
+        if(!tested||tested.id!==body.testId||tested.result!=='healthy')throw new ConflictException({code:'hospital.testRequired'});
+        compileMapping(row.canonical_mapping,await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id));
+        try{await writePackage(row.canonical_mapping,groupId);}catch{throw new ServiceUnavailableException({code:'hospital.fileUnavailable'});}
+      }
+      if(!deactivate){
+        const previousRevision=state?.active_revision??state?.paused_revision;
+        if(previousRevision&&Number(previousRevision)<expected){
+          const previous=await this.version(manager,groupId,Number(previousRevision));
+          if((await manager.query(`select 1 from app_identity.configuration_event where organization_id=$1 and action='hospital.credential_replace' and details->>'integration'='cos' and details->>'revision'=$2`,[groupId,String(expected)])).length&&previous.endpoint===row.endpoint&&previous.form_version_id===row.form_version_id&&previous.catalog_release_id===row.catalog_release_id&&
+            contentDigest(previous.settings)===contentDigest(row.settings)&&contentDigest(previous.canonical_mapping)===contentDigest(row.canonical_mapping)){
+            await manager.query(`insert into app_identity.hospital_cos_credential_lineage(group_id,predecessor_revision,successor_revision,test_id,actor_id) values($1,$2,$3,$4,$5) on conflict do nothing`,[groupId,previousRevision,expected,body.testId,actor.user.id]);
+          }
+        }
+      }
+      await manager.query('update app_identity.hospital_cos_state set paused_revision=case when $3 then coalesce(active_revision,paused_revision) else null end,active_revision=$2,state_revision=state_revision+1 where group_id=$1',[groupId,deactivate?null:expected,deactivate]);
+      await this.audit(manager,groupId,actor.user.id,deactivate&&state?.active_revision?await this.version(manager,groupId,Number(state.active_revision)):row,deactivate?'deactivate':'activate');
+    });return this.get(token);
+  }
+  /** Credential-only revision: exact mapping/recipient pins are copied, never regenerated. */
+  async rotateCredential(token:string,input:unknown) {
+    const body=keys(input,['expectedRevision','replacementSecret']);const expected=revision(body.expectedRevision,1);
+    if(typeof body.replacementSecret!=='string'||body.replacementSecret.length<1||body.replacementSecret.length>4096||/[\u0000-\u001f\u007f]/.test(body.replacementSecret))return invalid();
+    await this.database.transaction(async manager=>{
+      const {actor,groupId}=await this.locked(token,manager,expected);
+      const prior=await this.version(manager,groupId,expected);
+      if(prior.settings.authentication==='oauth-client-credentials')oauthCredential(body.replacementSecret as string);
+      let credential:CredentialEnvelope;
+      try{await generateAgencyKey(manager,groupId,actor.user.id);credential=await encryptAgencyCredential(manager,body.replacementSecret as string,groupId,`hospital-cos:${prior.credential_id}`);}
+      catch{throw new ServiceUnavailableException({code:'hospital.encryptionUnavailable'});}
+      await manager.query(`insert into app_identity.hospital_cos_version(group_id,revision,credential_id,endpoint,settings,canonical_mapping,catalog_release_id,form_version_id,encrypted_credential,created_by)
+        select group_id,$2,credential_id,endpoint,settings,canonical_mapping,catalog_release_id,form_version_id,$3::jsonb,$4 from app_identity.hospital_cos_version where group_id=$1 and revision=$5`,[groupId,expected+1,JSON.stringify(credential),actor.user.id,expected]);
+      await manager.query('update app_identity.hospital_cos_state set draft_revision=$2,state_revision=state_revision+1 where group_id=$1',[groupId,expected+1]);
+      await this.audit(manager,groupId,actor.user.id,await this.version(manager,groupId,expected+1),'credential_replace');
+    });return this.get(token);
+  }
+  /** Resume the previously activated configuration even when an unrelated import is a draft. */
+  async resume(token:string,input:unknown){
+    const body=keys(input,['expectedRevision','expectedStateRevision','expectedPausedRevision']);
+    const expected=revision(body.expectedRevision,1),stateRevision=revision(body.expectedStateRevision,1),paused=revision(body.expectedPausedRevision,1);
+    await this.database.transaction(async manager=>{
+      const {actor,groupId,state}=await this.locked(token,manager,expected);
+      if(state?.active_revision||Number(state?.paused_revision)!==paused||Number(state?.state_revision)!==stateRevision)throw stale();
+      const row=await this.version(manager,groupId,paused);
+      const [tested]=await manager.query<Array<{result:string}>>('select result from app_identity.hospital_cos_test where group_id=$1 and revision=$2 order by created_at desc,id desc limit 1',[groupId,paused]);
+      if(tested?.result!=='healthy')throw new ConflictException({code:'hospital.testRequired'});
+      compileMapping(row.canonical_mapping,await clinicalFormConfiguration(manager,row.form_version_id,row.catalog_release_id));
+      await manager.query('update app_identity.hospital_cos_state set active_revision=$2,paused_revision=null,state_revision=state_revision+1 where group_id=$1',[groupId,paused]);
+      await this.audit(manager,groupId,actor.user.id,row,'resume');
+    });return this.get(token);
+  }
+  async files(token:string){
+    const {groupId}=await this.scope(token);
+    const files=await discoverPackages('hospital-mapping',groupId);
+    if(!files.length)return [];
+    let dependencies:Awaited<ReturnType<CosService['currentForm']>>|undefined;
+    try{dependencies=await this.currentForm(this.database.manager,groupId);}catch(error){if(!(error instanceof ServiceUnavailableException))throw error;}
+    return files.map(file=>{
+      try {
+        const mapping=mappingPackage(file.package);
+        if(!dependencies||mapping.catalog.sha256!==dependencies.catalogHash)throw stale();
+        compileMapping(mapping,dependencies.form);
+        return {file:file.file,mapping,compatible:true};
+      }catch{return {file:file.file,mapping:null,compatible:false};}
+    });
+  }
+  async importFile(token:string,input:unknown){
+    const body=keys(input,['expectedRevision','file']);const {groupId}=await this.scope(token,true);
+    if(typeof body.file!=='string')return invalid();
+    const file=(await discoverPackages('hospital-mapping',groupId)).find(file=>file.file===body.file);
+    if(!file?.package)return invalid();
+    const view=await this.get(token);
+    if(!view.draft)throw new ConflictException({code:'hospital.cos.settingsRequired'});
+    return this.save(token,{expectedRevision:body.expectedRevision,endpoint:view.draft.endpoint,authentication:view.draft.authentication,settings:view.draft.settings,mapping:file.package});
+  }
+  async export(token:string,rev:string){const {groupId}=await this.scope(token);return (await this.version(this.database.manager,groupId,revision(Number(rev),1))).canonical_mapping;}
+  private async audit(manager:EntityManager,groupId:string,actorId:string,row:Version,operation:string,result='succeeded',mappingOperation?:'import'|'edit') {
+    await manager.query(`insert into app_identity.configuration_event(organization_id,actor_id,action,result,form_version_id,catalog_release_id,change_note,content_sha256,details) values($1,$2,$3,$4,$5,$6,$3,$7,$8::jsonb)`,
+      [groupId,actorId,`hospital.${operation}`,result,row.form_version_id,row.catalog_release_id,row.canonical_mapping.sha256,JSON.stringify({integration:'cos',revision:Number(row.revision),mappingId:mappingPackage(row.canonical_mapping).definition.id,publication:false,...(mappingOperation?{mappingOperation}:{})})]);
+  }
+}
+
+export function oauthCredential(secret:string):{clientSecret:string;subscriptionKey:string}{
+ let parsed:unknown;try{parsed=JSON.parse(secret);}catch{return invalid();}
+ const value=keys(parsed,['clientSecret','subscriptionKey']);
+ for(const key of ['clientSecret','subscriptionKey'])if(typeof value[key]!=='string'||!(value[key] as string).trim()||(value[key] as string).length>4096||/[\u0000-\u001f\u007f]/.test(value[key] as string))return invalid();
+ return value as {clientSecret:string;subscriptionKey:string};
+}
+export function liveAcceptanceFindings(settings:CosConnectionSettings,mapping:CosMappingDefinition){
+ const live=settings.live,findings:string[]=[];
+ if(!live?.acceptanceRevision||!live.pdfKeyword||!live.versionMarkerLinkId||!mapping.pdfLinkId||live.versionMarkerLinkId===mapping.pdfLinkId||mapping.clinicalMappings?.some(row=>row.linkId===live.versionMarkerLinkId)||(mapping.vitalMappings??[]).some(row=>row.linkId===live.versionMarkerLinkId))findings.push('installationAcceptance');
+ for(const row of mapping.vitalMappings??[])if(!live?.acceptedProfiles.includes(COS_VITAL_PROFILES[row.vital].profile))findings.push('profileAcceptance');
+ return [...new Set(findings)];
+}
