@@ -84,6 +84,22 @@ test("deployment and scheduled monitoring share the same read-only runtime check
   assert.equal(health.on.schedule[0].cron, "17,47 * * * *");
   assert.equal(health.jobs["runtime-health"].environment, "demo");
   assert.equal(health.jobs["runtime-health"]["timeout-minutes"], 5);
+  assert.equal(health.jobs["runtime-health"].env, undefined);
+  for (const step of health.jobs["runtime-health"].steps.filter((step) => /kubeconfig save|check-node-runtime/.test(step.run ?? ""))) {
+    assert.match(step.env.KUBECONFIG, /runner.temp/);
+  }
   assert.deepEqual(health.permissions, { contents: "read" });
   assert.ok(health.jobs["runtime-health"].steps.some((step) => step.run === steps[check].run));
+});
+
+test("workflow expression validation runs before PR application checks and in the local preflight", async () => {
+  const deployment = load(await readFile(new URL("../.github/workflows/demo-validation.yml", import.meta.url), "utf8"));
+  const steps = deployment.jobs["application-validation"].steps;
+  const validation = steps.findIndex((step) => step.run === "npm run check:workflows");
+  assert.ok(validation >= 0 && validation < steps.findIndex((step) => step.run === "npm ci"));
+  const preflight = await readFile(new URL("../scripts/check-ci.mjs", import.meta.url), "utf8");
+  const localCheck = preflight.indexOf('npm(["run", "check:workflows"]');
+  assert.ok(localCheck >= 0 && localCheck < preflight.indexOf('npm(["run", "typecheck"]'));
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.scripts["check:workflows"], "node scripts/check-workflows.mjs");
 });

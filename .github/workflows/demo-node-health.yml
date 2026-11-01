@@ -18,8 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: demo
-    env:
-      KUBECONFIG: ${{ runner.temp }}/open-triage-health-kubeconfig
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,6 +30,9 @@ jobs:
       - name: Obtain an expiring DOKS kubeconfig
         env:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
+          KUBECONFIG: ${{ runner.temp }}/open-triage-health-kubeconfig
         run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 600
       - name: Check every worker's host runtime filesystem
+        env:
+          KUBECONFIG: ${{ runner.temp }}/open-triage-health-kubeconfig
         run: node scripts/check-node-runtime.mjs

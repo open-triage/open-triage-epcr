@@ -17,6 +17,7 @@ try {
   const env = { ...process.env };
   delete env.DATABASE_URL;
   for (const key of Object.keys(env)) if (key.startsWith("NEXT_PUBLIC_")) delete env[key];
+  npm(["run", "check:workflows"], env);
   npm(["run", "typecheck"], env);
   npm(["run", "lint"], env);
   npm(["test"], env);

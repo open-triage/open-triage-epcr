@@ -19,6 +19,12 @@ files. The Kubernetes credentials need to list nodes and kube-system pods and
 execute the read-only probe in Cilium's agent container. Scheduled CI reuses the
 existing demo environment and its short-lived DOKS kubeconfig.
 
+Run `npm run check:workflows` to validate GitHub expression/context availability
+as well as workflow syntax. The pinned actionlint container runs in PR application
+validation and the local CI preflight; `DOCKER_COMMAND=docker.exe` is supported
+on WSL. This catches invalid contexts in scheduled workflows before merge, even
+when those workflows do not run on pull requests.
+
 The check fails when either bytes or inodes reach 70% use, fewer than 32 MiB
 remain, a node is not Ready, or a worker cannot be inspected. Each successful
 probe logs a JSON measurement containing the node, mount, available bytes and

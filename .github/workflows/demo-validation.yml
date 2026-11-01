@@ -48,6 +48,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Validate all GitHub workflow expressions and contexts
+        run: npm run check:workflows
       - run: npm ci
       - name: Typecheck all workspaces
         run: npm run typecheck
