@@ -29,3 +29,12 @@ export function hospitalIdentifierSchemeFinding(namespace: string, value: string
  for(let index=2;index<12;index++){const product=Number(value[index])*(index%2===0?2:1);sum+=product>9?product-9:product;}
  return sum%10===0?null:'invalid';
 }
+
+/** Select the exact Swedish national scheme only after its complete format validates.
+ * Reserve/custom identifiers and invalid values retain their configured namespace. */
+export function hospitalIdentifierNamespace(configuredNamespace:string,value:string):string {
+ const {personal,coordination}=SWEDISH_PATIENT_IDENTIFIER_NAMESPACES;
+ if(configuredNamespace!==personal&&configuredNamespace!==coordination)return configuredNamespace;
+ for(const namespace of [personal,coordination])if(hospitalIdentifierSchemeFinding(namespace,value)===null)return namespace;
+ return configuredNamespace;
+}

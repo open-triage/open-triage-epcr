@@ -219,6 +219,10 @@ export interface CosMappingRepairCommand {
  acceptRecipientChange: boolean; acceptPatientMappingChange: boolean;
 }
 
+export interface CosRebuildContext {
+ available:boolean; blockedByUncertain:boolean; reason:'alreadyPrepared'|'configurationChanged'|'versionChanged'|null;
+ deliveryId:string; amendmentSequence:number; configurationRevision:number; stateRevision:number; expectedVersion:number;
+}
 export interface RetryCosReviewCommand {
  commandId: string; expectedVersion: number; dataset: "real" | "synthetic";
  deliveryId: string; amendmentSequence: number; configurationRevision: number; stateRevision: number;
@@ -422,7 +426,7 @@ export interface ReviewReportGroup {
 }
 
 export interface ReviewSignedReport {
-  cosDelivery?: { reviewItemId?: string; simulated: true; state: string; finding: string | null; paused: boolean; updatedAt: string; configurationRevision: number; mappingRevision: number } | null;
+  cosDelivery?: { reviewItemId?: string; simulated: boolean; deliveryId?: string; amendmentSequence?: number; submittedPdf?: boolean; artifacts?: {key:string;kind:string;state:string;remoteId?:string|null; issues?:import('./cos-signing.js').CosSigningIssue[]; findings?:{mappingId:string;code:string;coverage:'partial'|'note-pdf-only'}[]}[]; state: string; finding: string | null; paused: boolean; updatedAt: string; configurationRevision: number; mappingRevision: number } | null;
   /** Explicit immutable artifact identity; absent in static/demo-only projections. */
   signedSnapshotId?: string;
   signedRevision?: number;
@@ -1036,6 +1040,7 @@ export interface AdminAssignableRoleSummary extends AdminRoleSummary {
 }
 
 export interface AdminExternalIdentitySummary {
+  hsaEvidence?: { candidate: { value: string | null; finding: "missing" | "malformed" | null; authoritative: boolean }; source: "active" | "draft"; providerRevision: number; capturedAt: string } | null;
   id: string;
   providerId: string;
   revision: number;
@@ -1054,6 +1059,9 @@ export interface AdminExternalIdentitySummary {
 }
 
 export interface AdminUserSummary {
+  hsaId?: string | null;
+  hsaSource?: "manual" | "oidc" | null;
+  hsaConflict?: boolean;
   id: string;
   displayName: string;
   /** Null when this account has no local password credential. */
@@ -1098,6 +1106,7 @@ export interface ProvisionedAdminUser {
 }
 
 export interface UpdateAdminUserCommand {
+  hsaId?: string | null;
   expectedRevision: number;
   username: string | null;
   displayName: string;
@@ -1604,6 +1613,8 @@ export interface ClinicalFormConfiguration {
   } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    /** Versioned local recommendations; scalar datatype and free text remain unchanged. */
+    recommendations?: { source: "destination-directory"; items: import("./cos-context.js").DestinationEntry[] };
     /** Pinned datatype and group structure shared by CLI and browser synthetic generation. */
     generation?: import("../synthetic-record-generator.js").GenerationElement;
     /** Effective unified order for enabled codes and NOT values on a field. */
@@ -2046,6 +2057,7 @@ export type EncounterAttributes = Readonly<Record<string, EncounterAttributeValu
 type EncounterValueBase = {
   /** Stable identity for this occurrence when the element repeats. */
   readonly occurrenceId: string;
+  readonly destinationSelection?: import("./cos-context.js").DestinationSelection;
   /** XML-style NEMSIS attributes and compatible extension attributes. */
   readonly attributes?: EncounterAttributes;
   /** NEMSIS Not Value metadata is independent of the ordinary payload. */
@@ -2166,13 +2178,14 @@ export type GroupAuthenticationPolicyView = GroupAuthenticationPolicy & {
 };
 /** Agency-owned identity; physical vehicles and clinical form overrides are not unit properties. */
 export interface OperationalUnitSummary {
+  rakelId?: string | null;
   id: string; organizationId: string; name: string; callSign: string; active: boolean; revision: number;
   /** Live prerequisites for ordinary work; absent in older static fixtures. */
   scheduleSelected?: boolean;
   enrolled?: boolean;
 }
 export interface OperationalUnitPage { items: OperationalUnitSummary[]; nextCursor: string | null; }
-export interface SaveOperationalUnitCommand { name: string; callSign: string; active: boolean; expectedRevision?: number; }
+export interface SaveOperationalUnitCommand { rakelId?: string | null; name: string; callSign: string; active: boolean; expectedRevision?: number; }
 
 export * from "./schedules.js";
 export * from "./audit.js";
@@ -2183,3 +2196,5 @@ export * from "./patient-summary.js";
 
 export * from "./hospital-identifier-scheme.js";
 export * from "./hospital-history.js";
+export * from "./cos-context.js";
+export type { CosPatientDemographics, CosPatientComparison, CosSigningIssue } from './cos-signing.js';

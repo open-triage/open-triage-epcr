@@ -16,14 +16,18 @@ const text = (value: unknown): string => typeof value === 'string' ? value : '';
 /** XHTML is reduced to inert display text. React still escapes the result. */
 export function narrativeText(value: string): string {
   return value.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<\/(?:p|div|tr|li|h[1-6])\s*>|<br\s*\/?>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '\n• ')
+    .replace(/<\/(?:p|h[1-6])\s*>/gi, '\n\n')
+    .replace(/<\/(?:div|tr|li)\s*>|<br\s*\/?>/gi, '\n')
+    .replace(/<\/th\s*>\s*<td\b[^>]*>/gi, ': ')
+    .replace(/<\/(?:td|th)\s*>\s*<(?:td|th)\b[^>]*>/gi, ' | ')
     .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gi, ' $2 ')
     .replace(/<[^>]*>/g, ' ')
     .replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (source, code: string) => {
       const n = code[0]?.toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : Number(code);
       return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : source;
     }).replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_, name: string) => ({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '}[name] ?? ''))
-    .replace(/[ \t]+/g, ' ').trim();
+    .replace(/[ \t]+/g, ' ').replace(/[ \t]*\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 /** Extract only simple rectangular XHTML tables into inert strings. Unsupported
  * structures remain in prose; no source markup or attributes reach the browser. */
@@ -41,6 +45,31 @@ export function narrativeTables(value: string): {tables:NarrativeTable[];prose:s
     return [...body.matchAll(/<caption\b[^>]*>([^]*?)<\/caption\s*>/gi)].map(caption=>caption[1]).join(' ');
   });
   return {tables,prose:narrativeText(remainder)};
+}
+/** Display-only clinical text. Only source-authored labels and values are shown;
+ * metadata, raw references and unknown extensions stay in the lossless projection.
+ * An empty result means the caller should show its localized unavailable label. */
+export function clinicalResourceText(resource:Resource, medication?:Resource):string {
+  const narrative=text(object(resource.text)?.div);
+  if(narrative)return narrativeText(narrative);
+  const concept=(value:unknown):string=>{const item=object(value);return text(item?.text)||list(item?.coding).map(c=>text(object(c)?.display)).filter(Boolean).join('; ');};
+  const qualifier=(value:unknown):string=>concept(value)||text(value)||list(object(value)?.coding).map(c=>text(object(c)?.code)).filter(Boolean).join('; ');
+  const quantity=(value:unknown):string=>{const item=object(value);return typeof item?.value==='number'&&Number.isFinite(item.value)?[text(item.comparator),String(item.value),text(item.unit)].filter(Boolean).join(' '):'';};
+  const period=(value:unknown):string=>{const item=object(value);return [text(item?.start),text(item?.end)].filter(Boolean).join(' – ');};
+  const value=(item:Resource):string=>text(item.valueString)||concept(item.valueCodeableConcept)||quantity(item.valueQuantity)||text(item.valueDateTime)||text(item.valueTime)||(typeof item.valueInteger==='number'?String(item.valueInteger):'')||(typeof item.valueBoolean==='boolean'?String(item.valueBoolean):'');
+  const lines=[text(resource.title),concept(resource.code??resource.vaccineCode),concept(resource.medicationCodeableConcept)||text(object(resource.medicationReference)?.display)||concept(medication?.code),value(resource),text(resource.description)];
+  // Status and absence qualifiers must accompany the clinical label: a refuted
+  // allergy or resolved condition must never become a positive assertion.
+  for(const key of ['clinicalStatus','verificationStatus','status','statusReason','dataAbsentReason'])lines.push(qualifier(resource[key]));
+  for(const key of ['interpretation','reasonNotTaken'])for(const item of list(resource[key]))lines.push(qualifier(item));
+  for(const component of list(resource.component)){const item=object(component);if(item)lines.push([concept(item.code),value(item),qualifier(item.dataAbsentReason),...list(item.interpretation).map(qualifier)].filter(Boolean).join(': '));}
+  for(const annotation of list(resource.note))lines.push(text(object(annotation)?.text));
+  for(const dosage of list(resource.dosage))lines.push(text(object(dosage)?.text));
+  for(const activity of list(resource.activity))lines.push(text(object(object(activity)?.detail)?.description));
+  // Preserve explicitly recorded dates without assigning inferred chronology.
+  for(const key of ['occurrenceDateTime','effectiveDateTime','onsetDateTime','performedDateTime','recordedDate','dateAsserted'])lines.push(text(resource[key]));
+  for(const key of ['effectivePeriod','onsetPeriod','performedPeriod'])lines.push(period(resource[key]));
+  return [...new Set(lines.filter(line=>line.trim()))].join('\n\n');
 }
 export function parsePatientSummary(input: unknown): { summary: PatientSummary; identifiers: { system: string; value: string }[] } {
   const bundle = object(input);
@@ -99,30 +128,44 @@ export function parsePatientSummary(input: unknown): { summary: PatientSummary; 
       const resource=index.get(text(object(entry)?.reference));
       if(!resource)return text(object(entry)?.reference);
       const div=text(object(resource.text)?.div);
-      return div ? narrativeText(div) : rows(resource).map(row=>`${row.path}: ${row.value}`).join('\n');
+      return div ? narrativeText(div) : clinicalResourceText(resource,index.get(text(object(resource.medicationReference)?.reference)));
     }).join('\n\n');
     const sectionEntries=list(section.entry).map(entry=>{
       const reference=text(object(entry)?.reference),resource=index.get(reference);
       if(!resource)return {identity:reference,label:reference,content:reference};
       const identity=entries.find(e=>e.resource===resource)?.fullUrl||`${resource.resourceType}/${resource.id}`;
-      const code=object(resource.code??resource.medicationCodeableConcept);
+      const code=object(resource.code??resource.vaccineCode??resource.medicationCodeableConcept);
       const label=text(code?.text)||list(code?.coding).map(c=>text(object(c)?.display)||text(object(c)?.code)).filter(Boolean).join('; ')||text(resource.title)||text(resource.resourceType);
-      const narrative=text(object(resource.text)?.div);
-      return {identity,label,content:narrative?narrativeText(narrative):rows(resource).map(row=>`${row.path}: ${row.value}`).join('\n')};
+      return {identity,label,content:clinicalResourceText(resource,index.get(text(object(resource.medicationReference)?.reference)))};
     });
     const structured=narrativeTables(narrative);
-    // Never associate clinical actions by row order: narratives may omit entries,
-    // reorder them, or include additional text-only records. Require a unique
-    // exact source label in the first cell and a unique row for that identity.
+    // Match only explicit source evidence, never row order, fuzzy similarity or
+    // elimination of a previously matched entry. Ambiguity keeps source details.
+    const normalize=(value:string)=>value.normalize('NFC').replace(/\s+/g,' ').trim().toLocaleLowerCase('und');
+    const primaryHeaders:Record<string,string[]>={Condition:['condition'],AllergyIntolerance:['allergy','allergen'],Procedure:['procedure'],Flag:['alert'],DeviceUseStatement:['device'],MedicationStatement:['medication'],MedicationAdministration:['medication'],Immunization:['vaccine']};
     const candidates=sectionEntries.map(entry=>{
       const resource=index.get(entry.identity);
       const medication=index.get(text(object(resource?.medicationReference)?.reference));
-      const concepts=[resource?.code,resource?.medicationCodeableConcept,medication?.code].map(object);
-      const labels=[text(object(resource?.medicationReference)?.display),...concepts.flatMap(code=>[text(code?.text),...list(code?.coding).map(c=>text(object(c)?.display))])].filter(Boolean);
-      return {identity:entry.identity,labels};
+      const device=index.get(text(object(resource?.device)?.reference));
+      const concepts=[resource?.code,resource?.vaccineCode,resource?.medicationCodeableConcept,medication?.code,device?.type].map(object);
+      const labels=[text(resource?.title),text(object(resource?.device)?.display),text(object(resource?.medicationReference)?.display),...concepts.flatMap(code=>[text(code?.text),...list(code?.coding).map(c=>text(object(c)?.display))])].filter(Boolean);
+      // Only a first, explicitly labeled clinical identity cell is an alias.
+      // Arbitrary note/description text cannot identify a different resource.
+      const ownNarrative=text(object(resource?.text)?.div);
+      const firstRowBody=/<tr\b[^>]*>([^]*?)<\/tr\s*>/i.exec(ownNarrative)?.[1]??'';
+      const firstRow=/^\s*<th\b[^>]*>([^]*?)<\/th\s*>\s*<td\b[^>]*>([^]*?)<\/td\s*>\s*$/i.exec(firstRowBody);
+      if(firstRow&&(primaryHeaders[text(resource?.resourceType)]??[]).includes(normalize(narrativeText(firstRow[1]!))))labels.push(narrativeText(firstRow[2]!));
+      const facts=[...['performedDateTime','effectiveDateTime','occurrenceDateTime'].map(key=>text(resource?.[key])),...['performedPeriod','effectivePeriod','timingPeriod'].flatMap(key=>[text(object(resource?.[key])?.start),text(object(resource?.[key])?.end)]),...list(resource?.dosage).map(d=>text(object(d)?.text)),text(object(resource?.dosage)?.text)].filter(Boolean).map(normalize);
+      const urls=resource?.resourceType==='DocumentReference'?list(resource.content).map(item=>text(object(object(item)?.attachment)?.url)).filter(Boolean):[];
+      return {identity:entry.identity,labels:labels.map(normalize),facts,urls};
     });
     for(const table of structured.tables)for(const row of table.rows){
-      const matches=candidates.filter(candidate=>candidate.labels.includes(row.cells[0]??''));
+      const label=normalize(row.cells[0]??'');if(!label)continue;
+      const urlMatches=candidates.filter(candidate=>candidate.urls.some(url=>row.cells.some(cell=>cell.trim()===url)));
+      const labelMatches=candidates.filter(candidate=>candidate.labels.includes(label));
+      // A supporting document URL must not override a different clinical label.
+      let matches=urlMatches.length?[...new Set([...urlMatches,...labelMatches])]:labelMatches;
+      if(matches.length>1&&!urlMatches.length){const cells=row.cells.slice(1).map(normalize).filter(Boolean);matches=matches.filter(candidate=>candidate.facts.some(fact=>cells.includes(fact)));}
       if(matches.length===1)row.identity=matches[0]!.identity;
     }
     const identities=structured.tables.flatMap(table=>table.rows.map(row=>row.identity).filter(Boolean));

@@ -1,3 +1,10 @@
+import { hospitalIdentifierNamespace, SWEDISH_PATIENT_IDENTIFIER_NAMESPACES } from './hospital-identifier-scheme.js';
+import cosElementMappings from './cos-element-mappings.json' with { type: 'json' };
+export const COS_ELEMENT_MAPPINGS = cosElementMappings;
+/** Infusion rates cannot be represented as a single administered dose. */
+export function cosMedicationUnitIsRate(unit:string):boolean {
+ return /(?:\/|per\s+)(?:min(?:ute)?s?|h(?:r|our)?s?|s(?:ec(?:ond)?s?)?)(?:\b|$)/i.test(unit);
+}
 import type { ClinicalFormConfiguration, EncounterDocument, FormDraftField } from './index.js';
 
 /** Portable field identity; never a form control key or localized label. */
@@ -44,29 +51,46 @@ export function resolveHospitalIdentifier(configuration: HospitalIdentifier, doc
   if (value.kind !== 'scalar' || typeof value.value !== 'string') return fail('incompatible');
   // Do not coerce numbers or discard meaningful separators/leading zeroes.
   if (!value.value.trim()) return fail('missing');
-  return { identifier: { system: configuration.namespace, value: value.value }, finding: null };
+  return { identifier: { system: hospitalIdentifierNamespace(configuration.namespace,value.value), value: value.value }, finding: null };
 }
 export function hospitalIdentifiersMatch(configuration: HospitalIdentifier, local: { system: string; value: string }, remote: { system: string; value: string }): boolean {
-  const systems = new Set([configuration.namespace, ...configuration.aliases]);
+  const namespace = hospitalIdentifierNamespace(configuration.namespace,local.value);
+  const {personal,coordination} = SWEDISH_PATIENT_IDENTIFIER_NAMESPACES;
+  // Aliases describe the configured scheme, not a different resolved national scheme.
+  const aliases = namespace === configuration.namespace ? configuration.aliases.filter(alias =>
+    (namespace !== personal && namespace !== coordination) || (alias !== personal && alias !== coordination) || alias === namespace) : [];
+  const systems = new Set([namespace, ...aliases]);
   return systems.has(local.system) && systems.has(remote.system) && local.value === remote.value;
 }
 
 /** COS portable mappings exclude endpoints, credentials and local identity assignments. */
-export type CosMappingDefinition = Omit<HospitalMappingDefinition, 'profile' | 'clinicalMappings'> & {
+export type CosMappingDefinition = Omit<HospitalMappingDefinition, 'profile' | 'clinicalMappings' | 'schemaVersion'> & {
+  schemaVersion: 2;
+  medicationMappings?: { id: string; groupId: string }[];
   profile: { package: 'cambio.cos.prehospital'; version: '2.0.0'; fhirVersion: '4.0.1';
     bundle: 'https://fhir.cambio.se/StructureDefinition/BundlePrehospitalNote/v2';
     questionnaire: 'https://fhir.cambio.se/StructureDefinition/QuestionnaireResponsePreHospitalNote/v2' };
   pdfLinkId?: string;
-  clinicalMappings: { id: string; source: HospitalField; linkId: string; answerType: 'string' | 'decimal' | 'boolean' | 'dateTime' }[];
+  vitalMappings?: CosVitalMapping[];
+  clinicalMappings: { id: string; source: HospitalField; linkId: string; answerType: 'string' }[];
+};
+/** Units are explicit; this projection performs no implicit clinical conversion. */
+export type CosVitalMapping = {
+  id: string; source: HospitalField; linkId: string;
+  vital: 'heartRate' | 'respiratoryRate' | 'bodyTemperature' | 'bloodPressure' | 'oxygenSaturation' | 'avpu' | 'painNrs';
+  companionSource?: HospitalField;
+  unit: '/min' | 'Cel' | 'mm[Hg]' | '%' | '';
 };
 export type CosConnectionSettings = {
-  mode: 'simulator' | 'live'; authentication: 'api-key' | 'bearer-token';
+  mode: 'simulator' | 'live'; authentication: 'api-key' | 'bearer-token' | 'oauth-client-credentials';
+  live?: { initialVerificationDelaySeconds?: number; readBackVerification?: boolean; baseUrl: string; tokenUrl: string; clientId: string; scope?: string; acceptedProfiles: string[]; pdfKeyword: string; acceptanceRevision?: string; versionMarkerLinkId: string };
   template: string; encounterNamespace: string; organizationHsaId: string;
   defaultAmbulanceCareUnit: string;
-  staff: { userId: string; hsaId: string }[];
-  careUnits: { hospital: string; localCareUnit: string; hsaId: string }[];
   retryScheduleMinutes?: number[];
 };
+
+/** Resolved identities for a single export; never persisted as connection settings. */
+export type CosPayloadSettings = CosConnectionSettings & { authorHsaId: string | null; destinationHsaId: string | null };
 
 /** Exact source selector with an optional explicit, attributable terminology crosswalk. */
 export type EpsClinicalMapping = {
@@ -104,3 +128,5 @@ export interface HospitalIntegrationLifecycleState {
   verification: 'read-only-live-connectivity' | 'simulator-only';
   keyManagement: 'agency-envelope';
 }
+
+export type CosReadiness = { usersMissingHsa: number; usersConflictingHsa: number; unitsMissingRakel: number; destinationsMissingHsa: number };
