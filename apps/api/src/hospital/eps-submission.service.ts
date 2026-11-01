@@ -40,7 +40,7 @@ export class EpsSubmissionService{
   return {active:state?.active===true};
  });}
  async history(token:string,reportId:string,dataset:unknown){return this.database.transaction('REPEATABLE READ',async manager=>{
-  const actor=await this.authorize(manager,token,reportId,dataset);const rows=await manager.query<Prepared[]>('select * from clinical.eps_submission where report_id=$1 order by created_at desc limit 30',[reportId]);
+  const actor=await this.authorize(manager,token,reportId,dataset);const rows=await manager.query<Prepared[]>('select *,coalesce(snapshot_id,signing_submission_id) snapshot_id from clinical.eps_submission where report_id=$1 order by created_at desc limit 30',[reportId]);
   if(rows[0])await this.audit(manager,actor,rows[0],'eps.submission-history');const result=[];for(const row of rows)result.push(await this.view(manager,row));return result;
  });}
  async preview(token:string,reportId:string,input:unknown,csrfToken?:string){
@@ -51,7 +51,7 @@ export class EpsSubmissionService{
    await this.authorize(manager,token,reportId,body.dataset);await this.sessions.assertCsrf(token,csrfToken,manager);
    const [config]=await manager.query<Array<{revision:string;canonical_mapping:unknown;group_id:string}>>(`select v.* from app_identity.hospital_eps_state s join app_identity.hospital_eps_version v on v.group_id=s.group_id and v.revision=s.active_revision where s.group_id=app_identity.organization_group((select organization_id from clinical.report where id=$1))`,[reportId]);
    if(!config)throw new ConflictException({code:'epsSubmission.disabled'});
-   if(body.lineageParentId){const [parent]=await manager.query<Array<{id:string}>>('select id from clinical.eps_submission where id=$1 and report_id=$2 and snapshot_id=$3 and amendment_sequence=$4',[body.lineageParentId,reportId,body.snapshotId,body.amendmentSequence]);if(!parent)throw new NotFoundException();}
+   if(body.lineageParentId){const [parent]=await manager.query<Array<{id:string}>>('select id from clinical.eps_submission where id=$1 and report_id=$2 and coalesce(snapshot_id,signing_submission_id)=$3 and amendment_sequence=$4',[body.lineageParentId,reportId,body.snapshotId,body.amendmentSequence]);if(!parent)throw new NotFoundException();}
    const source=await signedReportSource(manager,reportId,body.snapshotId as string,Number(body.amendmentSequence));
    if(!source.synthetic)throw new UnprocessableEntityException({code:'epsSubmission.fictionalOnly'});
    await manager.query('select id from clinical.report where id=$1 for update',[reportId]);
@@ -63,7 +63,7 @@ export class EpsSubmissionService{
   return this.database.transaction('REPEATABLE READ',async manager=>{
    const actor=await this.authorize(manager,token,reportId,body.dataset,true);await this.sessions.assertCsrf(token,csrfToken,manager);const mapping=mappingPackage(prepared.config.canonical_mapping);
    await manager.query(`insert into clinical.eps_submission(id,report_id,snapshot_id,amendment_sequence,organization_id,group_id,configuration_revision,mapping_id,mapping_revision,mapping_sha256,destination,bundle,validation,payload_sha256,source_sha256,amendment_hashes,lineage_parent_id,prepared_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16::jsonb,$17,$18)`,[id,reportId,body.snapshotId,body.amendmentSequence,actor.scope.organizationId,prepared.config.group_id,prepared.config.revision,mapping.definition.id,mapping.definition.revision,mapping.sha256,`${EPS_ENDPOINT}/Bundle/$validate`,JSON.stringify(prepared.output.bundle),JSON.stringify(validation),contentDigest(prepared.output.bundle),prepared.sourceHash,JSON.stringify(prepared.output.amendmentHashes),body.lineageParentId??null,actor.scope.userId]);
-   const [row]=await manager.query<Prepared[]>('select * from clinical.eps_submission where id=$1',[id]);await this.audit(manager,actor,row!,'eps.preview');return this.view(manager,row!);
+   const [row]=await manager.query<Prepared[]>('select *,coalesce(snapshot_id,signing_submission_id) snapshot_id from clinical.eps_submission where id=$1',[id]);await this.audit(manager,actor,row!,'eps.preview');return this.view(manager,row!);
   });
  }
  async submit(token:string,reportId:string,input:unknown,csrfToken?:string){
@@ -72,11 +72,11 @@ export class EpsSubmissionService{
    const actor=await this.authorize(manager,token,reportId,body.dataset,true);await this.sessions.assertCsrf(token,csrfToken,manager);
    await manager.query('select pg_advisory_xact_lock(hashtextextended($1,1))',[body.commandId]);
    await manager.query('select pg_advisory_xact_lock(hashtextextended($1,2))',[body.submissionId]);
-   const [row]=await manager.query<Prepared[]>('select * from clinical.eps_submission where id=$1 and report_id=$2',[body.submissionId,reportId]);if(!row)throw new NotFoundException();
+   const [row]=await manager.query<Prepared[]>('select *,coalesce(snapshot_id,signing_submission_id) snapshot_id from clinical.eps_submission where id=$1 and report_id=$2',[body.submissionId,reportId]);if(!row)throw new NotFoundException();
    const prior=await manager.query<Array<{submission_id:string;command_id:string;actor_id:string}>>('select submission_id,command_id,actor_id from clinical.eps_submission_attempt where command_id=$1 or submission_id=$2',[body.commandId,row.id]);
    if(prior.length){if(prior.some(value=>value.submission_id!==row.id||value.command_id===body.commandId&&value.actor_id!==actor.scope.userId))throw new ConflictException({code:'epsSubmission.commandConflict'});return {replay:await this.view(manager,row)};}
    await manager.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`${row.snapshot_id}:${row.amendment_sequence}`]);
-   const [previousPublication]=await manager.query<Array<{state:string|null}>>(`select result.state from clinical.eps_submission p join clinical.eps_submission_attempt attempt on attempt.submission_id=p.id left join clinical.eps_submission_result result on result.attempt_id=attempt.id where p.snapshot_id=$1 and p.amendment_sequence=$2 and (result.state is null or result.state in ('accepted','unknown')) limit 1`,[row.snapshot_id,row.amendment_sequence]);
+   const [previousPublication]=await manager.query<Array<{state:string|null}>>(`select result.state from clinical.eps_submission p join clinical.eps_submission_attempt attempt on attempt.submission_id=p.id left join clinical.eps_submission_result result on result.attempt_id=attempt.id where coalesce(p.snapshot_id,p.signing_submission_id)=$1 and p.amendment_sequence=$2 and (result.state is null or result.state in ('accepted','unknown')) limit 1`,[row.snapshot_id,row.amendment_sequence]);
    if(previousPublication)throw new ConflictException({code:'epsSubmission.alreadyAttempted'});
    if(row.validation.findings.some(value=>value.severity==='error')||!['pending','passed'].includes(row.validation.profile.state))throw new ConflictException({code:'epsSubmission.validationRequired'});
    // Recheck the current activation before contact; an explicitly remapped preview is separate immutable lineage.

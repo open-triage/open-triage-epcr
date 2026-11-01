@@ -1,3 +1,4 @@
+import {SWEDISH_PATIENT_IDENTIFIER_NAMESPACES as schemes} from '@open-triage/contracts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -87,4 +88,37 @@ test('all narrative fields omit technical field/group prefixes while retaining v
  assert.match(sections,/Clinical narrative/);assert.match(sections,/Recorded medical history/);assert.match(sections,/Additional clinical detail/);
  assert.match(sections,/Documented: 2026-10-19T09:30:00Z/);
  assert.doesNotMatch(sections,/eNarrative\.01|eHistory\.09|custom-field-identity|eNarrativeSection|internal-group-uuid|source group|occurrence 4/);
+});
+
+test('signed EPS emits the exact national identifier under its validated personal or coordination namespace',()=>{
+ for(const [configured,value,expected] of [[schemes.personal,'201304822172',schemes.coordination],[schemes.coordination,'200207252388',schemes.personal],[schemes.carelinkReserve,'201304822172',schemes.carelinkReserve],['urn:custom:patient','201304822172','urn:custom:patient'],[schemes.personal,'201304822173',schemes.personal]]){
+  const s=source();s.occurrences[0].value_text=value;
+  const {format,schemaVersion,sha256,...portable}=mapping();
+  portable.definition.patientIdentifier.namespace=configured;
+  const result=buildEpsOutput(s,makePackage(portable),randomUUID());
+  assert.deepEqual(result.bundle.entry.find(entry=>entry.resource.resourceType==='Patient').resource.identifier,[{system:expected,value}]);
+  assert.equal(s.occurrences[0].value_text,value);
+ }
+});
+
+test('EPS delivery errors identify correctable mapped fields without exposing diagnostics or scores',async()=>{
+ const {epsDeliveryIssues}=await import('../dist/hospital/eps-delivery-summary.js');
+ const definition=mapping().definition;
+ definition.outputMappings.push({id:'birth',source:{kind:'nemsis',elementId:'ePatient.17'},section:'patientBirthDate',representation:'structured-patient'});
+ assert.deepEqual(epsDeliveryIssues([
+  {code:'login',severity:'error',diagnostics:'private'},
+  {code:'patientIdentifier',severity:'error'},
+  {code:'patientDemographic',severity:'error',mappingId:'birth'},
+  {code:'invalid',severity:'error',expression:['Bundle.entry[1].resource/*Patient/private*/.birthDate']},
+  {code:'invalid',severity:'error',expression:['Bundle.entry[1].resource.identifier[0].system']},
+  {code:'invalid',severity:'warning',expression:['Bundle.entry[1].resource.birthDate']},
+  {code:'structure',severity:'fatal',expression:['Bundle.entry[0].resource.birthDate']},
+ ],definition),[
+  {code:'login',action:'configuration'},
+  {code:'patientIdentifier',action:'edit',elementId:'ePatient.01'},
+  {code:'patientDemographic',action:'edit',elementId:'ePatient.17'},
+  {code:'invalid',action:'edit',elementId:'ePatient.17'},
+  {code:'invalid',action:'configuration'},
+  {code:'structure',action:'configuration'},
+ ]);
 });

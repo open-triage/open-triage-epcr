@@ -10,7 +10,7 @@ for(const scenario of ['pending','passed','failed','unavailable','mapping-error'
  let published=0,intents=0;
  const manager={query:async(sql)=>{
   if(sql.startsWith('select pg_advisory'))return [];
-  if(sql.startsWith('select * from clinical.eps_submission'))return [row];
+  if(sql.startsWith('select *,coalesce(snapshot_id,signing_submission_id) snapshot_id from clinical.eps_submission'))return [row];
   if(sql.startsWith('select submission_id'))return [];
   if(sql.startsWith('select result.state'))return scenario==='unknown-outcome'?[{state:'unknown'}]:[];
   if(sql.startsWith('select v.encrypted_credential'))return [{encrypted_credential:{},credential_id:randomUUID()}];

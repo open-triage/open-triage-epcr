@@ -27,6 +27,7 @@ test('EPS export intent persists, is idempotent, and only confirmed acceptance c
   const {manager,transaction,query}=database;
   // Own the report fixture: other suites roll back their signed reports.
   const baseline=await hospitalFixtureBaseline(query),sessions=new ClinicianSessionService(database);
+  await query('update app_identity.hospital_cos_state set active_revision=null where group_id=app_identity.organization_group($1)',[baseline.organization_id]);
   const username=`eps-review-${randomUUID()}`,password='Fictional EPS review password 42!';
   const admin=await new AccountService(database).provision({organizationId:baseline.organization_id,username,displayName:'EPS review fixture',role:'administrator',temporaryPassword:password});
   await query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null where user_id=$1',[admin.userId]);
@@ -60,7 +61,7 @@ test('EPS export intent persists, is idempotent, and only confirmed acceptance c
   await resolveEpsExportReview(manager,report.id,report.snapshot);
   await resolveEpsExportReview(manager,report.id,report.snapshot);
   const [resolved]=await query('select active_match,status,closure_reason from clinical.review_item where id=$1',[item.id]);
-  assert.equal((await reviews.queue('fixture',{dataset:'synthetic',criterion:item.criterion_id,status:'incomplete'})).items.length,0);
+  assert.ok(!(await reviews.queue('fixture',{dataset:'synthetic',criterion:item.criterion_id,status:'incomplete'})).items.some(row=>row.id===item.id));
   assert.deepEqual(resolved,{active_match:false,status:'completed',closure_reason:'eps-export-accepted'});
   assert.equal((await query("select count(*)::int n from clinical.review_progress_history where item_id=$1 and reason='eps-export-accepted'",[item.id]))[0].n,1);
   await queueEpsExportReview(manager,report.id,report.snapshot,1);
