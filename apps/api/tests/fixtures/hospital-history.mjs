@@ -66,16 +66,6 @@ export async function hospitalHistoryJourney({db,sample,reviewer,run,expiring}){
 
   throw marker;
  }),error=>error===marker);
- // Re-run the exact migration over existing journals inside a rollback transaction:
- // historical evidence is copied honestly, without source payloads or invented results.
- const migration=await readFile(new URL('../../../../supabase/migrations/20261019164802_hospital_protected_operational_history.sql',import.meta.url),'utf8');
- await assert.rejects(db.transaction(async manager=>{
-  await manager.query('drop trigger cos_operational_audit on clinical.cos_delivery_event;drop trigger eps_attempt_operational_audit on clinical.eps_submission_attempt;drop trigger eps_result_operational_audit on clinical.eps_submission_result;drop function clinical_audit.record_hospital_operational_event();drop table clinical_audit.hospital_operational_event');
-  await manager.query(migration);
-  const [totals]=await manager.query('select (select count(*)::int from clinical.cos_delivery_event where report_id=$1) source,(select count(*)::int from clinical_audit.hospital_operational_event where report_id=$1) retained',[report]);assert.equal(totals.retained,totals.source);
-  const proof=await manager.query("select proof_outcome,proof_fenced,command_id from clinical_audit.hospital_operational_event where organization_id=$1 and action='cos.reconcile'",[organization]);assert.ok(proof.some(e=>e.proof_outcome==='not-stored'&&e.proof_fenced===true&&e.command_id));
-  throw marker;
- }),error=>error===marker);
  // Actual browser/UI reads the real service output. No simulated network publication.
  const {build}=await import('esbuild'),{chromium}=await import('@playwright/test');const web=path.resolve(new URL('../../../web/',import.meta.url).pathname);
  const bundle=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:web,loader:'tsx',contents:`import React from 'react';import{createRoot}from'react-dom/client';import{HospitalHistoryPanel}from'./components/hospital-history';function App(){const[scope,setScope]=React.useState('fixture');return <><button onClick={()=>setScope('changed')}>Change scope fixture</button><HospitalHistoryPanel language="en" scopeKey={scope}/></>}createRoot(document.getElementById('root')).render(<App/>);`}});

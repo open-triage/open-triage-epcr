@@ -15,7 +15,7 @@ export async function catalogAuditCompatibility({database,query,sessions,token,r
  await query(`alter table pg_temp.hospital_audit_upgrade add constraint configuration_event_action_check check(action in ('catalog.draft_delete','form.draft_create','form.draft_save','form.draft_delete','form.publish','form.activate','configuration.activate'))`);
  await query(`insert into pg_temp.hospital_audit_upgrade select * from app_identity.configuration_event where action in ('catalog.draft_delete','form.draft_create','form.draft_save','form.draft_delete','form.publish','form.activate','configuration.activate')`);
  assert.ok((await query("select 1 from pg_temp.hospital_audit_upgrade where action='catalog.draft_delete'")).length);
- for(const file of ['20261019104900_hospital_eps_configuration.sql','20261019163807_hospital_integration_credential_lifecycle.sql']){
+ for(const file of ['20261019104900_hospital_integration.sql']){
   const sql=await readFile(new URL(`../../../../supabase/migrations/${file}`,import.meta.url),'utf8');
   const match=sql.match(/alter table app_identity\.configuration_event drop constraint configuration_event_action_check,[^]*?;/i);assert.ok(match,file);await query(match[0].replaceAll('app_identity.configuration_event','pg_temp.hospital_audit_upgrade'));
  }

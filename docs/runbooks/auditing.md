@@ -16,7 +16,7 @@ The endpoint is `GET /api/admin/audit`. It resolves a live session and requires
 not a request parameter. Parent-agency membership does not aggregate child logs.
 Switch to the relevant agency using the existing agency workflow. Shared hospital
 configuration events from that agency’s parent group are included in Configuration.
-Apply `20261019205938_complete_audit_event_sources.sql` for the Integrations category
+Apply `20261019104900_hospital_integration.sql` for the Integrations category
 and the additional retained-event identifiers.
 
 Every section is available with `audit:read`, including patient access, integration,
