@@ -57,7 +57,7 @@ async function setup(page: Page, failFirst = false) {
   });
   await page.goto("/__opening");
   await expect(page.getByRole("button", { name: "Open call", exact: true })).toBeVisible();
-  await expect(page.getByText("Production workflow setup is in progress. Available calls and existing reports can still be opened.")).toBeVisible();
+  await expect(page.getByText("Production workflow setup is in progress. Available calls and existing reports can still be opened.")).toHaveCount(0);
   await expect(page.getByText("calls.production.preparation", { exact: true })).toHaveCount(0);
   return { open, envelope, receipt, stalePoll, counts: () => ({ opens, polls, keyRequests, receipts }) };
 }

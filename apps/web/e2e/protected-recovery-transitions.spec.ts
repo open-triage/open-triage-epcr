@@ -58,3 +58,29 @@ test('protected recovery cannot start during concurrent transition write settlem
  release();await settling;expect(await page.evaluate(()=> (window as unknown as Harness).active())).toBe(false);
  expect(await page.evaluate(()=>navigator.locks.request('open-triage:report:second-report',{ifAvailable:true},lock=>Boolean(lock)))).toBe(true);
 });
+
+test('signing recovers from a failed receipt without reusing committed ciphertext revisions',async({page,context})=>{
+ const bundle=await build({bundle:true,write:false,format:'iife',platform:'browser',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'ts',contents:`
+ import{prepareProtectedReport,updateProtectedReport,flushProtectedReport,holdProtectedReportForCompletion}from './app/protected-clinical-storage';
+ Object.assign(window,{prepare:()=>prepareProtectedReport('csrf','receipt-report'),edit:()=>updateProtectedReport('receipt-report',{note:'saved clinical draft'}),flush:()=>flushProtectedReport('receipt-report'),hold:async()=>{const release=await holdProtectedReportForCompletion('receipt-report');release();}});`}});
+ await context.route('**/__receipt-retry',route=>route.fulfill({contentType:'text/html',body:`<html><body><script>${bundle.outputFiles[0]!.text}</script></body></html>`}));
+ const revisions:number[]=[];let fail=true,checkpoints=0;
+ await context.route('**/api/reports/receipt-report/**',route=>{
+  const url=route.request().url(),body=route.request().postDataJSON();
+  if(url.endsWith('/protected-key-envelope'))return route.fulfill({json:{schemaVersion:1,recoveryHandle:body.recoveryHandle,recoveryDeadline:'2099-01-01T00:00:00Z',wrappingKeyVersion:1}});
+  if(url.endsWith('/protected-ciphertext-receipt')){revisions.push(body.ciphertextRevision);return route.fulfill(fail?{status:503,json:{}}:{json:{schemaVersion:1,recoveryDeadline:'2099-01-01T00:00:00Z'}});}
+  checkpoints++;return route.fulfill({json:body});
+ });
+ await page.goto('/__receipt-retry');
+ expect(await page.evaluate(()=>(window as unknown as Harness).prepare())).toBe(true);
+ await page.evaluate(()=>(window as unknown as Harness).edit());
+ expect(await page.evaluate(()=>(window as unknown as Harness).flush().then(()=>null,error=>error.message))).toContain('receipt');
+ const hold=()=>page.evaluate(()=>(window as unknown as {hold:()=>Promise<void>}).hold().then(()=>null,error=>error.message));
+ expect(await hold()).toContain('receipt');
+ expect(revisions).toEqual([1,2]);expect(checkpoints).toBe(0);
+ fail=false;
+ expect(await hold()).toBeNull();
+ expect(revisions).toEqual([1,2,3]);expect(checkpoints).toBe(1);
+ // A successful completion does not create another ciphertext revision.
+ expect(await hold()).toBeNull();expect(revisions).toEqual([1,2,3]);
+});

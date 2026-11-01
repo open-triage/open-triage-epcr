@@ -33,13 +33,13 @@ for(const width of [390,1440])for(const identifying of [true,false])test(`Signed
  await expect(requirements).toBeVisible();
  if(identifying){
   await expect(requirements).toContainText('Configured identifier');
-  for(const expected of ['Patient identifier is missing','Practitioner HSA identifier is missing','Destination care-unit mapping is missing','Encounter identifier namespace is missing'])await expect(requirements).toContainText(expected);
+  for(const expected of ['Patient identifier is missing','Practitioner HSA identifier is missing','Receiving care-unit HSA identity is missing','Encounter identifier namespace is missing'])await expect(requirements).toContainText(expected);
   if(width===390)await expect(requirements).toContainText('authorized hospital integration administrator');
  }else{
   await expect(requirements).toContainText('Identifying report access is required');
   await expect(inspector).not.toContainText('Configured identifier');
  }
- await expect(inspector.getByRole('option',{name:'Close review',exact:true})).toHaveCount(0);
+ await expect(inspector.getByRole('option',{name:'Close review',exact:true})).toHaveCount(identifying?1:0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  if(identifying){
   await requirements.getByRole('button',{name:'Document valid identifier',exact:true}).click();

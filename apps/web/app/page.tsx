@@ -1,5 +1,11 @@
 "use client";
+import {SignedReportPdfPreview} from '../components/signed-report-pdf-preview';
 
+import { CosIssueSettings } from "../components/cos-issue-settings";
+import { applyCosPatientComparison, cosIssueElement, cosIssueIsWarning } from "./cos-signing-actions";
+import { getNemsisDataElement } from "./nemsis-data-model";
+import type { CosPatientComparison, CosSigningIssue } from "@open-triage/contracts";
+import { CosSigningStatus } from "../components/cos-signing-status";
 import { PatientSummaryButton } from "../components/patient-summary";
 import { ExceptionalValueMenu } from "../components/exceptional-value-menu";
 
@@ -8,7 +14,7 @@ import { enabledMobileOptions, mobileDisplayDefinition } from "./mobile-localiza
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import {EpsOutgoingPreview} from '../components/eps-outgoing-preview';
-import {EpsSigningCheckbox,useEpsSigningActivation} from '../components/eps-sign-export';
+import {EpsSigningCheckbox,EpsDeliveryStatus,useEpsSigningActivation,useSigningExportSelection} from '../components/eps-sign-export';
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
@@ -46,6 +52,9 @@ import {
   deleteReportTextNote,
   DraftSaveRejectedError,
   signDraftReport,
+  readSigningStatus,
+  readCosPatientComparison,
+  type SigningStatus,
   type ActiveDraftReport,
   updateReportTextNote,
 } from "./draft-report";
@@ -112,14 +121,13 @@ function validationTimestampFor(document: unknown, clinicalForm: unknown): strin
   return new Date().toISOString();
 }
 
-function EncounterWorkspace({ session, report, presentationMode, language, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange, onExportSignedEps }:  {
+function EncounterWorkspace({ session, report, presentationMode, language, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }:  {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
   readonly presentationMode: PresentationMode;
   readonly language: AgencyLanguage;
   readonly onSaveAndClose: () => void;
   readonly onReportCompleted: () => void;
-  readonly onExportSignedEps: (snapshotId:string) => void;
   readonly onSessionEnded: () => void;
   readonly onErrorStateChange: (hasErrors: boolean) => void;
 }) {
@@ -133,8 +141,24 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
   const [pinnedChecklistFinding, setPinnedChecklistFinding] = useState<StationaryValidationFinding | null>(null);
   const epsBinding=useEpsSigningActivation(report?.id,sessionRequestToken(session));
-  const [exportBinding,setExportBinding]=useState<string|null>(null);
+  const cosBinding=useEpsSigningActivation(report?.id,sessionRequestToken(session),'cos');
+  const [exportEps,setExportEps]=useSigningExportSelection(epsBinding,report?.id,sessionRequestToken(session));
+  const [exportCos,setExportCos]=useSigningExportSelection(cosBinding,report?.id,sessionRequestToken(session));
   const [signing, setSigning] = useState(false);
+  const signingEpoch=useRef(0);
+  const signingInFlight=useRef(false);
+  const [cosEditor,setCosEditor]=useState<StationaryValidationFinding|null>(null);
+  const [epsSettings,setEpsSettings]=useState(false);
+  const [cosSettings,setCosSettings]=useState<'units'|'users'|'configuration'|null>(null);
+  const comparisonDocument=useRef<string|null>(null);
+  const currentCosDocument=useRef(shell.encounter.document);
+  useEffect(()=>{currentCosDocument.current=shell.encounter.document;},[shell.encounter.document]);
+  const [epsDelivery,setEpsDelivery]=useState<{reportId:string;value:SigningStatus['epsDelivery']}|null>(null);
+  const [cosSigning,setCosSigning]=useState<SigningStatus|null>(null);
+  const epsBusy=epsDelivery?.reportId===report?.id&&['prepared','pending'].includes(epsDelivery?.value?.state??'');
+  const cosBusy=epsBusy||cosSigning?.status==='awaiting-cos'&&cosSigning.finding!=='draftChanged'&&(cosSigning.deliveryState==='pending'||['inFlight','contactStored'].includes(cosSigning.finding??''));
+  const [cosAcknowledgement,setCosAcknowledgement]=useState<string|null>(null);
+  const cosAcknowledgementKey=JSON.stringify([(cosSigning?.issues??cosSigning?.findings?.map(code=>({code}))??[]).filter(cosIssueIsWarning),shell.encounter.document]);
   const [signError, setSignError] = useState<string | null>(null);
   const [populateError, setPopulateError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
@@ -587,6 +611,47 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />;
   }
 
+  const cosPermissions = [
+    ...(session.capabilities?.includes('settings:write') && session.capabilities.includes('settings:read') ? ['units','configuration'] : []),
+    ...(session.capabilities?.includes('users:write') && session.capabilities.includes('users:read') ? ['users'] : []),
+  ];
+  async function compareCosPatientForDraft() {
+    if (!report || !cosSigning?.deliveryId || syncStatus !== 'Saved' )
+      throw Error('cosSigning.comparisonUnavailable');
+    const fingerprint=JSON.stringify(currentCosDocument.current);
+    const comparison=await readCosPatientComparison(sessionRequestToken(session),report.id,revisionRef.current,cosSigning.deliveryId);
+    if (comparison.revision!==revisionRef.current || fingerprint!==JSON.stringify(currentCosDocument.current))
+      throw Error('cosSigning.comparisonUnavailable');
+    comparisonDocument.current=fingerprint;
+    return comparison;
+  }
+  function useCosPatient(comparison:CosPatientComparison) {
+    if (!report?.clinicalForm || editingBlocked || signing || cosBusy || syncStatus!=='Saved' ||
+      comparison.reportId!==report.id || comparison.deliveryId!==cosSigning?.deliveryId ||
+      comparison.revision!==revisionRef.current || comparisonDocument.current!==JSON.stringify(currentCosDocument.current)) {
+      setSignError(t('cosSigning.comparisonUnavailable')); return;
+    }
+    try {
+      const document=applyCosPatientComparison(currentCosDocument.current,report.clinicalForm,comparison);
+      comparisonDocument.current=null;
+      dispatch({type:'document-opened',document});
+      setNavigationMessage(t('cosSigning.applied'));
+    } catch { setSignError(t('cosSigning.editManually')); }
+  }
+  function editCosIssue(issue:CosSigningIssue,integration:'eps'|'cos'='cos') {
+    const fieldId=cosIssueElement(issue);
+    const groupId=issue.groupId ?? (fieldId ? getNemsisDataElement(fieldId)?.groupPath.at(-1) : undefined);
+    if (!groupId) { dispatch({type:'view-selected',view:'timeline'}); return; }
+    const group=encounter.document.groups.find(group=>group.id===groupId);
+    const groupInstanceId=issue.groupInstanceId ?? (group?.instances.length===1 ? group.instances[0]?.instanceId : undefined);
+    const finding:StationaryValidationFinding={id:'cos:'+issue.code, severity:'error',category:t(integration==='eps'?'epsSubmission.latestDelivery':'cosSigning.heading'),
+      title:t(integration==='eps'?'epsSubmission.latestDelivery':'cosSigning.heading'),message:'',reference:fieldId??groupId,acknowledged:false,
+      target:{sectionId:stationarySectionForGroup(groupId)?.hash??'',groupId,groupInstanceId,fieldId,occurrenceId:issue.occurrenceId}};
+    if (presentationMode==='stationary') { setCosEditor(null);navigateToStationaryFinding(finding); }
+    else if (report?.clinicalForm && checklistFieldTarget(finding,encounter.document,report.clinicalForm)) setCosEditor(finding);
+    else navigateToStationaryFinding(finding);
+  }
+
   function startPhoto(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
@@ -683,8 +748,33 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote,
   };
 
-  async function signRecord() {
+  const signingReportId=report?.id;
+  useEffect(()=>{
+    if(!signingReportId)return;
+    let active=true,polling=false;
+    const check=async()=>{
+      if(polling||signingInFlight.current)return;
+      polling=true;const epoch=signingEpoch.current;
+      try{
+        const status=await readSigningStatus(signingReportId);
+        if(!active||signingInFlight.current||epoch!==signingEpoch.current)return;
+        setEpsDelivery({reportId:signingReportId,value:status.epsDelivery});
+        setCosSigning(status.status==='awaiting-cos'?status:null);
+        if(status.status==='signed'){
+          completeWorkspaceReport();
+        }
+      }catch{/* Keep the draft and last known delivery state when offline. */}
+      finally{polling=false;}
+    };
+    void check();
+    const timer=window.setInterval(()=>void check(),3000);
+    return ()=>{active=false;window.clearInterval(timer);};
+  },[signingReportId,completeWorkspaceReport]);
+
+  async function signRecord(acknowledgeCos=cosAcknowledgement===cosAcknowledgementKey) {
     if (!report || !canFinish || signing) return;
+    signingEpoch.current++;
+    signingInFlight.current=true;
     setSigning(true);
     setSignError(null);
     let releaseProtectedHold: () => void = () => undefined;
@@ -693,27 +783,38 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       releaseProtectedHold = await holdProtectedReportForCompletion(report.id);
     } catch {
       setSignError(t("mobile.protectedBeforeSign"));
+      signingInFlight.current=false;
       setSigning(false);
       return;
     }
     if (!navigator.onLine || nextDraftChange(window.localStorage, report.id)) {
       releaseProtectedHold();
       setSignError(t("mobile.syncBeforeSign"));
+      signingInFlight.current=false;
       setSigning(false);
       return;
     }
     try {
       const signed=await signDraftReport(sessionRequestToken(session), report.id, revisionRef.current, session.user.id,
-        reviewWarnings.filter(({ acknowledged }) => acknowledged).map((finding) => ({
+        [...reviewWarnings.filter(({ acknowledged }) => acknowledged).map((finding) => ({
           id: finding.id,
           acknowledgement: "acknowledgement" in finding ? finding.acknowledgement : undefined,
-        })), validationEvaluationTimestamp, !!epsBinding&&exportBinding===epsBinding);
-      if(epsBinding&&exportBinding===epsBinding&&signed?.signedSnapshotId)onExportSignedEps(signed.signedSnapshotId);
+        })), ...(acknowledgeCos?["cos:clinicalProjectionIncomplete"]:[])], validationEvaluationTimestamp, !!epsBinding&&exportEps, undefined,cosBinding?exportCos:undefined);
+      if(signed?.status==='awaiting-eps'){
+        setEpsDelivery({reportId:report.id,value:signed.epsDelivery});setCosSigning(null);return;
+      }
+      if(signed?.status==='awaiting-cos'){
+        // The command response is intentionally brief. Keep the current warning
+        // details until the next full status read so acknowledgements do not vanish.
+        setCosSigning(previous=>previous?.deliveryId===signed.deliveryId?{...previous,...signed}:signed);return;
+      }
       completeWorkspaceReport();
     } catch (error) {
       setSignError(error instanceof Error ? error.message : t("mobile.signFailed"));
     } finally {
       releaseProtectedHold();
+      signingEpoch.current++;
+      signingInFlight.current=false;
       setSigning(false);
     }
   }
@@ -796,22 +897,48 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }
 
   const blockProtectedEdit = (event: SyntheticEvent<HTMLElement>) => {
-    if (!editingBlocked) return;
+    if (!editingBlocked&&!signing&&!cosBusy) return;
     const target = event.target as HTMLElement;
     if (!target.closest("button, input, select, textarea, label, [contenteditable='true']")) return;
     event.preventDefault();
     event.stopPropagation();
   };
 
+  const epsChecklist = <EpsDeliveryStatus language={language} delivery={(epsDelivery?.reportId===report?.id?epsDelivery?.value:null)??(exportEps&&cosSigning?{state:'awaitingCos',issues:[]}:null)} disabled={signing||cosBusy} onEdit={issue=>editCosIssue({code:issue.code,elementId:issue.elementId},'eps')} onConfigure={cosPermissions.includes("configuration")?()=>setEpsSettings(true):undefined}/>;
+  const cosChecklist = <>
+            {!cosSigning&&cosEditor&&inlineChecklistEditor(cosEditor)}
+            {epsSettings&&cosPermissions.includes("configuration")&&<CosIssueSettings integration="eps" kind="configuration" language={language} csrfToken={sessionRequestToken(session)} userId={session.user.id} onClose={()=>setEpsSettings(false)}/> }
+            {cosSettings && cosPermissions.includes(cosSettings) && <CosIssueSettings kind={cosSettings} language={language} csrfToken={sessionRequestToken(session)} userId={session.user.id} onClose={()=>setCosSettings(null)}/>}
+            {cosSigning && <CosSigningStatus language={language} status={cosSigning} busy={signing||cosBusy}
+              onAcknowledge={()=>void signRecord(true)}
+              onRetry={()=>void signRecord()} onEdit={editCosIssue} onConfigure={setCosSettings} canConfigure={cosPermissions}
+              onCompare={compareCosPatientForDraft} onApply={useCosPatient}
+              onAcknowledgementChange={acknowledged=>setCosAcknowledgement(acknowledged?cosAcknowledgementKey:null)}
+              canCompare={!editingBlocked && syncStatus==='Saved'}
+              documentKey={JSON.stringify(encounter.document)} editor={cosEditor?inlineChecklistEditor(cosEditor):null}/>}
+          </>;
+
+  const readDraftRevision=useCallback(()=>revisionRef.current,[revisionRef]);
+
+  const integrations = (epsBinding || cosBinding || cosSigning) ? <section className="review-group" aria-labelledby="signing-integrations-heading">
+    <h2 id="signing-integrations-heading">{t("mobile.integrations")}</h2>
+    <>{epsBinding?<EpsSigningCheckbox result={epsChecklist} summary={report?<EpsOutgoingPreview key={JSON.stringify([report.id,epsBinding,syncStatus,report.revision])} reportId={report.id} binding={epsBinding} language={language} disabled={signing||!online||syncStatus!=="Saved"}/>:null} language={language} checked={exportEps} disabled={signing||cosBusy} onChange={setExportEps}/>:null}
+          {cosBinding&&report?<EpsSigningCheckbox integration="cos" language={language} checked={exportCos} disabled={signing||cosBusy} onChange={setExportCos}
+            summary={<SignedReportPdfPreview key={JSON.stringify([report.id,cosBinding,syncStatus,encounter.document])} reportId={report.id} snapshotId="" amendmentSequence={0} dataset="synthetic" language={language}
+              draftRevision={readDraftRevision} disabled={signing||!online||syncStatus!=="Saved"}/>}/>:null}</>
+    {cosChecklist}
+  </section> : null;
+
   return (
     <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
-      data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
+      data-editing-blocked={editingBlocked || signing || cosBusy || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
+      {cosBusy&&<aside className="safety-notice" role="status">{t(epsBusy?"epsSubmission.signingPending":"cosSigning.pending")}</aside>}
       {populateError && <aside className="safety-notice" role="alert">{populateError}</aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>{t("mobile.dispatchCancelled")}</strong>
-        <span>{t("mobile.cancellationNotice", { date: formatClinicalDate(dispatchCancellation.canceledAt, region) })}</span>
+        <span>{t("mobile.cancellationNotice", { date: formatClinicalDate(dispatchCancellation.canceledAt, region, undefined, zone) })}</span>
       </aside>}
       {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
       {noteStatusMessage && <p className="visually-hidden" role="status" aria-live="polite">{noteStatusMessage}</p>}
@@ -951,7 +1078,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           </div>
           <p className="review-intro">{t("mobile.checksHelp")}</p>
           <NoteReadinessList language={language} blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
-          {!displayMobileChecklistFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.noFindings")}</p> : displayMobileChecklistFindings.length ? (
+          {!cosSigning && !epsDelivery?.value?.issues.length && !displayMobileChecklistFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.allValidationsPassed")}</p> : displayMobileChecklistFindings.length ? (
             <ul className="review-findings checklist-findings">
               {displayMobileChecklistFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
@@ -966,8 +1093,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               ))}
             </ul>
           ) : null}
+          {signError && <p className="finish-help" role="alert">{signError}</p>}
           <DispatchConflictList language={language} conflicts={dispatchConflicts} onDispose={disposeConflict} />
           {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
+          {integrations}
         </section>
       )}
 
@@ -982,13 +1111,16 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
           validationClear={validationClear && noteBlockers.length === 0}
-          signing={signing}
+          allValidationsPassed={!displayStationaryFindings.length && !noteBlockers.length && !unresolvedDispatchConflicts.length && !cosSigning && !epsDelivery?.value?.issues.length}
+          signing={signing||cosBusy}
           signError={signError}
           onFinding={editValidationFinding}
           inlineEditor={inlineChecklistEditor}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onNoteBlocker={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)}
-          epsExport={epsBinding?<EpsSigningCheckbox summary={report?<EpsOutgoingPreview key={JSON.stringify([report.id,epsBinding,syncStatus,report.revision])} reportId={report.id} binding={epsBinding} language={language} disabled={signing||!online||syncStatus!=="Saved"}/>:null} language={language} checked={exportBinding===epsBinding} disabled={signing} onChange={checked=>setExportBinding(checked?epsBinding:null)}/>:null}
+          dispatchDifferences={<><DispatchConflictList language={language} conflicts={dispatchConflicts} onDispose={disposeConflict} />
+            {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}</>}
+          integrations={integrations}
           onSign={() => void signRecord()}
           blockedReason={!restored ? t("mobile.reportLoading")
             : !online ? t("mobile.signOffline")
@@ -998,8 +1130,6 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                 : unresolvedDispatchConflicts.length ? t("mobile.signConflicts")
                   : undefined}
         />
-        <DispatchConflictList language={language} conflicts={dispatchConflicts} onDispose={disposeConflict} />
-        {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </>
       )}
 
@@ -1129,8 +1259,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, exportSignedEps, sessionEnded, reportErrorStateChanged, language }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} language={language} onSaveAndClose={closeReport} onReportCompleted={completeReport} onExportSignedEps={exportSignedEps} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded, reportErrorStateChanged, language }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} language={language} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
   )}</ClinicianSessionGate>;
 }
 
@@ -1150,6 +1280,7 @@ function DispatchConflictList({ language, conflicts, onDispose }: {
   readonly onDispose: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => void;
 }) {
   const unresolved = conflicts.filter(({ disposition }) => disposition === null);
+  if (!unresolved.length) return null;
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   return (
     <section className="review-group dispatch-conflicts" aria-labelledby="dispatch-conflicts-heading">
@@ -1172,8 +1303,8 @@ function DispatchConflictList({ language, conflicts, onDispose }: {
   );
 }
 
-function ReviewPanel({ language, findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
-  blockedReason, onFinding, inlineEditor, onWarning, onNoteBlocker, onSign, epsExport }: {
+function ReviewPanel({ language, findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, allValidationsPassed, signing, signError,
+  blockedReason, onFinding, inlineEditor, onWarning, onNoteBlocker, onSign, dispatchDifferences, integrations }: {
   readonly language: AgencyLanguage;
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly errors: ReadonlyArray<SigningFinding>;
@@ -1182,6 +1313,7 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly validationClear: boolean;
+  readonly allValidationsPassed: boolean;
   readonly signing: boolean;
   readonly signError: string | null;
   readonly blockedReason?: string;
@@ -1190,7 +1322,8 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
   readonly onWarning: (id: string, acknowledged: boolean) => void;
   readonly onNoteBlocker: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
   readonly onSign: () => void;
-  readonly epsExport?: ReactNode;
+  readonly dispatchDifferences: ReactNode;
+  readonly integrations: ReactNode;
 }) {
   return (
     <section className="content-panel review-panel" aria-labelledby="review-heading">
@@ -1203,11 +1336,13 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
         : resolveMessage(language, "mobile.reviewIntroClear")}</p>
       {errors[0] && <button type="button" className="next-review-error" onClick={(event) => onFinding(errors[0]!, event.currentTarget)}>{resolveMessage(language, "mobile.fixNext")}</button>}
 
+      {allValidationsPassed && <p className="review-empty checklist-empty" role="status">✓ {resolveMessage(language, "mobile.allValidationsPassed")}</p>}
       <NoteReadinessList language={language} blockers={noteBlockers} onOpen={onNoteBlocker} />
       {groups.map((group) => <FindingGroup language={language} key={group.severity} title={resolveMessage(language, group.severity === "error" ? "stationary.review.errors" : "stationary.review.warnings")} empty={resolveMessage(language, group.severity === "error" ? "stationary.review.errorsEmpty" : "stationary.review.warningsEmpty")} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} inlineEditor={inlineEditor} onWarning={onWarning} />)}
       <FindingGroup language={language} title={resolveMessage(language, "stationary.review.information")} empty={resolveMessage(language, "stationary.review.informationEmpty")} findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} inlineEditor={inlineEditor} onWarning={onWarning} />
 
-      {epsExport}
+      {dispatchDifferences}
+      {integrations}
       <div className="review-actions">
         <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? resolveMessage(language, "mobile.signing") : resolveMessage(language, "mobile.sign")}</button>
       </div>
@@ -1222,6 +1357,7 @@ function NoteReadinessList({ language, blockers, onOpen }: {
   readonly blockers: ReadonlyArray<NoteReadinessBlocker>;
   readonly onOpen: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
 }) {
+  if (!blockers.length) return null;
   return <section className="review-group note-readiness" aria-labelledby="note-readiness-heading">
     <h2 id="note-readiness-heading">{resolveMessage(language, "mobile.noteReadiness")} <span className={blockers.length ? undefined : "zero-count"}>{blockers.length}</span></h2>
     {!blockers.length ? <p className="review-empty">✓ {resolveMessage(language, "mobile.allNotesReady")}</p> : <ul className="review-findings">
@@ -1245,6 +1381,7 @@ function FindingGroup({ language, title, empty, findings, onFinding, inlineEdito
   readonly inlineEditor: (finding: SigningFinding) => ReactNode;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
 }) {
+  if (!findings.length) return null;
   const sections = groupReviewFindings(findings);
   return (
     <section className="review-group">

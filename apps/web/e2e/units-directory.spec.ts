@@ -31,6 +31,7 @@ for(const language of ['en','sv']) {
       if(request.method()==='GET') return route.fulfill(failRefresh?{status:503,json:{message:'Unavailable'}}:{json:{items:rows,nextCursor:null}});
       expect(request.headers()['x-csrf-token']).toBe('csrf');
       const body=request.postDataJSON();
+      expect(body.rakelId).toBe('001-020');
       if(request.method()==='POST') rows.push({id:'30000000-0000-4000-8000-000000000010',organizationId:'agency',revision:1,scheduleSelected:false,enrolled:false,...body});
       else {expect(body.expectedRevision).toBe(rows[0]!.revision);rows=[{...rows[0]!,...body,revision:rows[0]!.revision+1}];}
       return route.fulfill({json:rows[0]});
@@ -45,6 +46,7 @@ for(const language of ['en','sv']) {
         const dialog=page.getByRole('dialog');
         await dialog.getByLabel(t('Name','Namn'),{exact:true}).fill('Medic 7');
         await dialog.getByLabel(t('Call sign','Anropssignal'),{exact:true}).fill('MEDIC-7');
+        await dialog.getByLabel(t('Rakel identifier','Rakel-id'),{exact:true}).fill('001-020');
         await dialog.getByRole('button',{name:t('Save','Spara'),exact:true}).focus();await page.keyboard.press('Enter');
         await expect(dialog).toHaveCount(0);await expect(create).toBeFocused();
       }

@@ -1,4 +1,5 @@
 "use client";
+import { useLocalDateTime } from "./local-date-time";
 import {useEffect,useRef,useState} from 'react';
 import type {HospitalHistoryEntry,HospitalHistoryPage} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from '../app/browser-api';
@@ -27,7 +28,7 @@ function HistoryWorkspace({language,scopeKey,initialReportId='',initialDataset='
  const [loaded,setLoaded]=useState<HospitalHistoryPage|null>(null),[selected,setSelected]=useState<HospitalHistoryEntry|null>(null),[error,setError]=useState(false),[busy,setBusy]=useState(false);
  const generation=useRef(0),scroll=useAvailableHeight<HTMLDivElement>(100);
  useEffect(()=>{if(!active)return;let current=true;const version=++generation.current;void Promise.resolve().then(async()=>{if(!current)return;setBusy(true);setError(false);const query=new URLSearchParams({dataset:filters.dataset,...(filters.destination?{destination:filters.destination}:{}),...(filters.reportId?{reportId:filters.reportId}:{}),...(cursor?{cursor}:{})});const url=apiRequestUrl(`/api/admin/hospital/history?${query}`);if(!url)throw new Error();const response=await fetch(url,browserRequestInit());if(!response.ok)throw await platformRequestError(response,language);return response.json();}).then(page=>{if(current&&version===generation.current){setLoaded(page);setSelected(null);}}).catch(reason=>{if(current&&version===generation.current){if(reason instanceof PlatformRequestError&&[401,403,404,410].includes(reason.status)){generation.current++;setLoaded(null);setSelected(null);}setError(true);}}).finally(()=>{if(current)setBusy(false);});return()=>{current=false;};},[active,scopeKey,filters,cursor,refresh,language]);
- const time=(value:string)=>new Date(value).toLocaleString(language);
+ const time=useLocalDateTime(language);
  const label=(kind:string,value:string)=>{const text=t(`${kind}.${value}`);return text===`hospitalHistory.${kind}.${value}`?t('unknown'):text;};
  return <section className="hospital-history-panel" aria-label={t('title')}><h3>{t('title')}</h3><p>{t('help')}</p>
  <form className="audit-filters" onSubmit={event=>{event.preventDefault();if(dataset!==filters.dataset||destination!==filters.destination||reportId.trim()!==filters.reportId){generation.current++;setLoaded(null);setSelected(null);}setFilters({dataset,destination,reportId:reportId.trim()});setCursor(null);setRefresh(v=>v+1);}}>

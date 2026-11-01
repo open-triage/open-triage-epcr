@@ -1,4 +1,7 @@
 "use client";
+import {cosReceiverIssueMessage} from '../app/cos-receiver-issue';
+import { LocalDateTime } from "./local-date-time";
+import { CosRecoveryActions } from "./cos-recovery-actions";
 import { EpsSubmissionPanel } from "./eps-submission";
 
 import type { ReportAudioNote, ReportNote, ReportPhotoNote, ReviewOverdueDraft, ReviewSignedReport } from "@open-triage/contracts";
@@ -17,7 +20,7 @@ import { StationaryRecord } from "./stationary-record";
 import { SignedReportPdfPreview } from "./signed-report-pdf-preview";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
-export function ReviewReport({ report, full = false, dataset, language, toolbarRef, csrfToken, findingsOpen, onToggleFindings, onClose }: {
+export function ReviewReport({ report, full = false, dataset, language, toolbarRef, csrfToken, findingsOpen, onToggleFindings, onClose, recovery }: {
   report: ReviewSignedReport | ReviewOverdueDraft;
   full?: boolean;
   dataset: "real" | "synthetic";
@@ -27,6 +30,7 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
   findingsOpen?: boolean;
   onToggleFindings?: () => void;
   onClose?: () => void;
+  recovery?: {userId:string;online:boolean;onSaved:()=>void;refreshKey:string};
 }) {
   const t = (key: string) => resolveMessage(language, key);
   const zone = useAgencyTimeZone();
@@ -65,10 +69,10 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       {t("mobile.timeline")} <span aria-hidden="true">· {timeline.length}</span>
     </button>
     {"signedSnapshotId" in report && report.signedSnapshotId && report.identifying &&
-      <SignedReportPdfPreview key={`${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
+      <SignedReportPdfPreview key={`pdf:${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
         reportId={report.id} snapshotId={report.signedSnapshotId} amendmentSequence={report.amendmentSequence}
         dataset={dataset} language={language} />}
-    {"signedSnapshotId" in report && report.signedSnapshotId && report.identifying && csrfToken && <EpsSubmissionPanel key={`${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
+    {"signedSnapshotId" in report && report.signedSnapshotId && report.identifying && csrfToken && <EpsSubmissionPanel key={`eps:${report.id}:${report.signedSnapshotId}:${report.amendmentSequence}:${dataset}:${language}`}
       reportId={report.id} snapshotId={report.signedSnapshotId} amendmentSequence={report.amendmentSequence} dataset={dataset} language={language} csrfToken={csrfToken}/>}
     {full && onToggleFindings && <button id="review-findings-toggle" type="button" aria-expanded={findingsOpen} aria-controls="review-inspector"
       onClick={onToggleFindings}>{t("review.workspace.findings")}</button>}
@@ -79,12 +83,18 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       anchor={toolbar} onEscape={closeTimeline}>{timelinePanel}</WorkspaceSidebar> :
       <div id={timelineId} className="review-report-timeline">{timelinePanel}</div>)}
     <div className="review-report-body">
-    {"cosDelivery" in report && report.cosDelivery && <section className="review-report-amendments" aria-label={t("cosDelivery.title")}>
-      <strong>{t("cosDelivery.title")}: {t(`cosDelivery.state.${report.cosDelivery.state}`)}</strong>
+    {"cosDelivery" in report && report.cosDelivery && <section className="review-report-amendments" aria-label={t(report.cosDelivery.simulated ? "cosDelivery.title" : "cosDelivery.liveTitle")}>
+      <strong>{t(report.cosDelivery.simulated ? "cosDelivery.title" : "cosDelivery.liveTitle")}: {t(report.cosDelivery.state === "confirmed" && !report.cosDelivery.simulated ? report.cosDelivery.finding === "readBackDisabled" ? "cosDelivery.acceptedWithoutReadBack" : "cosDelivery.verified" : `cosDelivery.state.${report.cosDelivery.state}`)}</strong>
       {report.cosDelivery.paused && <p>{t("cosDelivery.paused")}</p>}
       {report.cosDelivery.finding && <p>{t(`cosDelivery.finding.${report.cosDelivery.finding}`)}</p>}
-      <p>{t("cosDelivery.refresh")}</p>
-      {report.cosDelivery.reviewItemId&&<a href={`/review-call?report=${report.id}&item=${report.cosDelivery.reviewItemId}&dataset=${dataset}`}>{t('review.recovery.open')}</a>}
+      <p>{t(report.cosDelivery.simulated ? "cosDelivery.refresh" : "cosDelivery.liveRefresh")}</p>
+      {!!report.cosDelivery.artifacts?.length && <ul>{report.cosDelivery.artifacts.map(artifact => <li key={artifact.key}>{t(`cosDelivery.artifact.${artifact.kind}`)}: {t(`cosDelivery.artifactState.${artifact.state}`)}{artifact.issues?.map((issue,index)=><p key={`receiver-${index}`}>{cosReceiverIssueMessage(language,issue)}</p>)}{artifact.findings?.map((finding,index)=><p key={index}>{finding.mappingId}: {t(`cosDelivery.projection.${finding.code}`)} · {t(`cosDelivery.coverage.${finding.coverage}`)}</p>)}</li>)}</ul>}
+      {report.identifying && report.cosDelivery.submittedPdf && report.cosDelivery.deliveryId && "signedSnapshotId" in report && report.signedSnapshotId && <SignedReportPdfPreview
+        key={report.cosDelivery.deliveryId} reportId={report.id} snapshotId={report.signedSnapshotId} deliveryId={report.cosDelivery.deliveryId}
+        amendmentSequence={report.cosDelivery.amendmentSequence ?? 0} dataset={dataset} language={language} />}
+      {report.cosDelivery.reviewItemId && csrfToken && recovery && <CosRecoveryActions
+        key={`${report.id}:${report.cosDelivery.reviewItemId}`} itemId={report.cosDelivery.reviewItemId} reportId={report.id}
+        refreshKey={recovery.refreshKey} userId={recovery.userId} online={recovery.online} onSaved={recovery.onSaved} csrfToken={csrfToken} dataset={dataset} language={language}/>}
     </section>}
     {full && "amendmentSequence" in report && report.amendmentSequence > 0 && <p className="review-report-amendments">{resolveMessage(language, "review.amendments", { count: report.amendmentSequence })}</p>}
     {full && report.document ? <StationaryRecord readOnly
@@ -101,7 +111,7 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
     </>}
     {(!full || !report.document) && report.notes.length > 0 && <section><h3>{t("review.notes")}</h3>
       {report.notes.map((note) => <article key={note.id} className="review-report-note">
-        <time dateTime={note.capturedAt}>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(note.capturedAt))}</time>
+        <time dateTime={note.capturedAt}><LocalDateTime value={note.capturedAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} /></time>
         {note.type === "text" ? <p>{note.content}</p> : <>
           {note.caption && <p>{note.caption}</p>}
           <button type="button" onClick={(event) => openNote(note, event.currentTarget)}>{t(note.type === "photo" ? "review.openPhoto" : "review.playAudio")}</button>
@@ -115,7 +125,7 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
         <button type="button" aria-label={t("stationary.closeDialog")} onClick={() => dialog.current?.close()}>{t("review.close")}</button></header>
       {displayedEvent && <><p>{displayedEvent.time}</p><p>{encounterEventDetail(displayedEvent, definition)}</p><small>{displayedEvent.reference}</small></>}
       {selection && "note" in selection && <>
-        <p>{new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(selection.note.capturedAt))}</p>
+        <p><LocalDateTime value={selection.note.capturedAt} language={language} options={{ dateStyle: "medium", timeStyle: "short" }} /></p>
         {selection.note.type === "text" ? <p className="review-note-text">{selection.note.content}</p> : <>
           {selection.note.caption && <p>{selection.note.caption}</p>}
           {selection.note.type === "photo" ? <AuthorizedPhotoImage key={selection.note.id} reportId={report.id} noteId={selection.note.id}

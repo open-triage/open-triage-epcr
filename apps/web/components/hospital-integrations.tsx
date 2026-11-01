@@ -1,4 +1,5 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
 import {activateListRow} from './list-row-action';
 import {CosIntegrationsPanel} from './cos-integrations';
 import React,{useEffect,useState} from 'react';
@@ -44,7 +45,7 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
  useEffect(()=>{let alive=true;request().then(next=>{if(alive)load(next);}).catch(reason=>{if(alive)failed(reason);});return()=>{alive=false;};},[csrfToken]); // Scope changes remount the Admin shell.
  async function action(path:string,body:unknown,method='POST'){
   setBusy(true);setError('');setStatus('');try{
-   const next:View=await request(path,body,method);load(next);setStatus(t('saved'));
+   const next:View=await request(path,body,method);load(next);setStatus(path==='/test'?t(next.tests.find(test=>test.revision===next.draft?.revision)?.result==='healthy'?'healthy':'failed'):t('saved'));
    if(path===''&&method==='PUT'){
     setMappingFindings({key:'',rows:[]});
     const clinicalMappings=next.draft?.mapping.definition.clinicalMappings??[];
@@ -65,7 +66,7 @@ export function HospitalIntegrationsPanel({language,csrfToken,canWrite,initialTa
    <div className="eps-integration-workspace" hidden={tab!=='eps'}>
     <div className="hospital-integration-status" aria-label={t('health')}>
      <p><strong>{t('active')}: {value.active?.revision??t('inactive')}</strong>{value.active&&<> · {t(`health.${value.activeHealth}`)}</>}</p>
-     <p><strong>{t('draft')}: {value.draft?.revision??t('unsaved')}</strong>{value.draft&&<> · {tested?t(tested.result):t(`health.${value.draftHealth}`)}</>}{tested&&<> · <time dateTime={tested.createdAt}>{new Date(tested.createdAt).toLocaleString(language)}</time></>}</p>
+     <p><strong>{t('draft')}: {value.draft?.revision??t('unsaved')}</strong>{value.draft&&<> · {tested?t(tested.result):t(`health.${value.draftHealth}`)}</>}{tested&&<> · <time dateTime={tested.createdAt}><LocalDateTime value={tested.createdAt} language={language} /></time></>}</p>
      {value.pausedRevision&&<p><strong>{t('paused')}: {value.pausedRevision}</strong> · {t(`health.${value.pausedHealth}`)}</p>}
      {value.credentialReplacement&&<p>{t('replacementPendingCompact')}</p>}
     </div>

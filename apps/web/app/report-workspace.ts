@@ -20,7 +20,6 @@ import {
   fetchActiveReport,
   saveDraftReport,
   shellStateToDraftMutations,
-  shouldQueueInitialDraftSnapshot,
   type ActiveDraftReport,
   type DraftSaveFailureCategory,
   type DraftSyncStatus,
@@ -122,7 +121,6 @@ export function useReportWorkspace({
   const recoverConflictingQueue = useRef(false);
   const conflictRecoveryAttempts = useRef(0);
   const skipInitialQueue = useRef(false);
-  const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
   const completed = useRef(false);
   const pendingDemoAction = useRef<"populate" | "clear" | null>(null);
@@ -162,12 +160,6 @@ export function useReportWorkspace({
         ...report.document.formProfile,
         catalogFields: report.clinicalForm?.catalogFields,
       },
-    );
-    queueInitialSnapshot.current = shouldQueueInitialDraftSnapshot(
-      result.status,
-      report?.revision ?? 0,
-      Boolean(report?.document),
-      Boolean(report && nextDraftChange(window.localStorage, report.id)),
     );
     if (result.status === "restored") {
       skipInitialQueue.current = true;
@@ -306,7 +298,7 @@ export function useReportWorkspace({
       (baseline, queued) => applyDraftMutationDelta(baseline, queued.command),
       persistedDraft.current,
     );
-    const unscopedMutations = queueInitialSnapshot.current ? projected : draftMutationDelta(
+    const unscopedMutations = draftMutationDelta(
       projected,
       optimisticDraft,
     );
@@ -331,7 +323,6 @@ export function useReportWorkspace({
       pendingDemoAction.current = null;
       return;
     }
-    queueInitialSnapshot.current = false;
     for (const mutations of changes) {
       const last = queuedDraftChanges(window.localStorage, report.id).at(-1);
       const existing = last && !last.attempted && last.command.demoAction === mutations.demoAction ? last : undefined;

@@ -1,7 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+async function expectTimestamp(page: Page, value: string) {
+  const displayed = await page.evaluate(timestamp => new Date(timestamp).toLocaleString(document.documentElement.lang), value);
+  await expect(page.getByText(displayed, {exact:true})).toBeVisible();
+}
 let script: string, css: string;
 test.beforeAll(async () => {
   css = await readFile(path.resolve(__dirname, '../app/styles.css'), 'utf8');
@@ -55,10 +59,10 @@ for (const language of ['en', 'sv']) test(`protected EPS open, offline, refresh 
   await expect(refresh).toBeDisabled(); expect(count).toBe(1);
   await context.setOffline(false); await page.clock.runFor(400); expect(count).toBe(1);
   await refresh.click(); await page.clock.runFor(400); await expect(button).toBeEnabled(); await button.click();
-  await expect(page.getByText('2026-10-19T10:00:02Z')).toBeVisible();
+  await expectTimestamp(page,'2026-10-19T10:00:02Z');
   expect((original as { retrievedAt: string }).retrievedAt).toBe('2026-10-19T10:00:01Z');
   unavailable = true; await refresh.click(); await page.clock.runFor(400); await expect(button).toBeEnabled(); await button.click();
-  await expect(page.getByText('2026-10-19T10:00:02Z')).toBeVisible();
+  await expectTimestamp(page,'2026-10-19T10:00:02Z');
   await context.setOffline(true); await page.clock.runFor(121_000);
   await expect(page.getByText('PRIVATE ANDREA')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as Fixture).cache())).toBeNull();
@@ -109,7 +113,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     await expect.poll(() => receiptWaiting).toBe(true);
     revision = 2; await page.clock.runFor(16000); await expect.poll(() => lookups).toBe(2);
     await page.getByRole('button', { name: 'Patient summary (EPS)', exact: true }).click();
-    releaseReceipt(); await expect(page.getByText('2026-10-19T10:00:02Z')).toBeVisible();
+    releaseReceipt(); await expectTimestamp(page,'2026-10-19T10:00:02Z');
     const cached = await page.evaluate(() => (window as unknown as Fixture).cache()) as { context: { configurationRevision: number }; retrievedAt: string };
     expect(cached.context.configurationRevision).toBe(2); expect(cached.retrievedAt).toBe('2026-10-19T10:00:02Z');
     return;
@@ -143,7 +147,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     await expect.poll(() => lookups).toBe(count); await expect(open).toBeEnabled();
     releaseContext(); await page.clock.runFor(1000);
     await expect(page.getByRole('dialog')).not.toBeVisible();
-    await open.click(); await expect(page.getByText(`2026-10-19T10:00:0${count}Z`)).toBeVisible();
+    await open.click(); await expectTimestamp(page,`2026-10-19T10:00:0${count}Z`);
     const cached = await page.evaluate(() => (window as unknown as Fixture).cache()) as { context: { configurationRevision: number }; retrievedAt: string };
     expect(cached.retrievedAt).toBe(`2026-10-19T10:00:0${count}Z`);
     expect(cached.context.configurationRevision).toBe(transition === 'binding-race' ? 2 : 1);
@@ -181,7 +185,7 @@ for (const transition of ['logout', 'user', 'agency', 'patient', 'revoked', 'con
     await context.setOffline(true); await page.clock.runFor(400);
     await page.getByRole('button', { name: 'Patient summary (EPS)', exact: true }).click();
     await expect(page.getByText('PRIVATE ANDREA')).toBeVisible();
-    await expect(page.getByText('2026-10-19T10:00:01Z')).toBeVisible();
+    await expectTimestamp(page,'2026-10-19T10:00:01Z');
     return;
   }
   if (transition === 'revoked' || transition === 'configuration') { denied = transition === 'revoked'; revision = 2; await page.clock.runFor(16000); }

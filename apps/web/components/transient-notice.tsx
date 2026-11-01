@@ -6,9 +6,10 @@ type TransientNoticeProps = {
   readonly message: string | null;
   readonly onDismiss: () => void;
   readonly focusOnMount?: boolean;
+  readonly dismissOnInteraction?: boolean;
 } & Omit<ComponentPropsWithoutRef<"div">, "children" | "role" | "aria-live">;
 
-export function TransientNotice({ message, onDismiss, focusOnMount = false, className, ...attributes }: TransientNoticeProps) {
+export function TransientNotice({ message, onDismiss, focusOnMount = false, dismissOnInteraction = true, className, ...attributes }: TransientNoticeProps) {
   const notice = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,7 +17,7 @@ export function TransientNotice({ message, onDismiss, focusOnMount = false, clas
   }, [focusOnMount, message]);
 
   useEffect(() => {
-    if (!message) return;
+    if (!message || !dismissOnInteraction) return;
     const dismissOnOutsideInteraction = (event: Event) => {
       if (!notice.current?.contains(event.target as Node)) onDismiss();
     };
@@ -26,7 +27,7 @@ export function TransientNotice({ message, onDismiss, focusOnMount = false, clas
       window.removeEventListener("pointerdown", dismissOnOutsideInteraction, { capture: true });
       window.removeEventListener("keydown", dismissOnOutsideInteraction, { capture: true });
     };
-  }, [message, onDismiss]);
+  }, [message, onDismiss, dismissOnInteraction]);
 
   if (!message) return null;
   return <div {...attributes} ref={notice} className={`transient-notice${className ? ` ${className}` : ""}`} role="status" aria-live="polite"

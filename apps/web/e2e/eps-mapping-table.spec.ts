@@ -12,6 +12,8 @@ for(const language of ['en','sv']) test(`EPS mapping table edits and responsive 
  const field={kind:'nemsis',elementId:'eHistory.06'};
  const mappings=['one','two','three'].map(id=>({id,resourceType:id==='three'?'Condition':'AllergyIntolerance',system:'http://snomed.info/sct',code:id,destination:field,representation:'coded',crosswalk:{system:'urn:target',code:id,display:id,relationship:'equivalent',reference:'https://example.org'}}));
  const view={groupName:'Fixture',stateRevision:1,active:null,activeHealth:'untested',draftHealth:'untested',draft:{revision:1,endpoint:'https://example.org/fhir',credentialConfigured:true,mapping:{sha256:'fixture',definition:{patientIdentifier:{field,namespace:'urn:patient',aliases:[]},clinicalMappings:mappings,outputMappings:[{id:'out',source:{kind:'nemsis',elementId:'eNarrative.01'},section:'patientStory',representation:'signed-narrative'}]}}},options:[],clinicalOptions:['eNarrative.01','ePatient.02'].map(id=>({id,field:{kind:'nemsis',elementId:id},name:id})),tests:[],history:[],events:[]};
+ let connectionResult='failed';
+ await page.route('**/api/admin/hospital/eps/test',route=>route.fulfill({json:{...view,tests:[{id:'connection-test',revision:1,result:connectionResult,createdAt:new Date().toISOString()}]}}));
  let inspections=0;
  let saved: {clinicalMappings: typeof mappings;outputMappings:{section:string;representation:string;source:{elementId:string}}[]} | undefined;
  await page.route('**/api/admin/hospital/eps',async route=>{
@@ -24,6 +26,11 @@ for(const language of ['en','sv']) test(`EPS mapping table edits and responsive 
  await expect(page.getByRole('group',{name:language==='en'?'Canonical mapping files':'Kanoniska mappningsfiler',exact:true})).toHaveCount(0);
  await expect(page.locator('input[type=file]')).toHaveCount(0);
  await expect(page.locator('.hospital-integration-status')).toContainText(language==='en'?'Draft revision: 1':'Utkastrevision: 1');
+ await page.getByRole('button',{name:language==='en'?'Test read-only connection':'Testa skrivskyddad anslutning',exact:true}).click();
+ await expect(page.getByRole('status')).toHaveText(language==='en'?'Connection test failed':'Anslutningstest misslyckades');
+ connectionResult='healthy';
+ await page.getByRole('button',{name:language==='en'?'Test read-only connection':'Testa skrivskyddad anslutning',exact:true}).click();
+ await expect(page.getByRole('status')).toHaveText(language==='en'?'Connection verified':'Anslutning verifierad');
  const table=page.locator('.hospital-mappings-table').first();
  const outgoing=page.locator('.hospital-output-table');
  await expect(outgoing.getByRole('columnheader')).toHaveCount(3);

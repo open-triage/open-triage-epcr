@@ -27,7 +27,7 @@ for(const width of [390,1440])for(const authority of ['admin','review-only','non
   if(path===`/api/review/items/${itemId}`)return route.fulfill({json:item});
   if(path==='/api/review/eligible-reviewers'||path==='/api/review/outcomes')return route.fulfill({json:[]});
   if(path===`/api/review/reports/${reportId}`)return route.fulfill({json:{id:reportId,reportingDate:'2026-10-19',signedAt:now,amendmentSequence:0,identifying,groups:[],values:[],notes:[],reviewItems:[{...item,criterionName:'COS: missing mappings'}]}});
-  if(path==='/api/admin/hospital/cos')return route.fulfill({json:{groupName:'Example EMS',stateRevision:5,options:[],staffOptions:[],clinicalOptions:[],draft:null,active:null,tests:[],history:[],events:[]}});
+  if(path==='/api/admin/hospital/cos')return route.fulfill({json:{groupName:'Example EMS',stateRevision:5,options:[],clinicalOptions:[],draft:null,active:null,tests:[],history:[],events:[]}});
   if(path==='/api/admin/hospital/eps')return route.fulfill({json:{groupName:'Example EMS',stateRevision:0,options:[],draft:null,active:null,tests:[],history:[],events:[]}});
   return route.fulfill({status:404});
  });

@@ -39,3 +39,25 @@ test('confirmed EPS imports authenticate both commands and immediately reconcile
  await expect(page.getByLabel('Current medications')).toContainText('Imported folic acid');
  expect(afterReads).toBeGreaterThan(0);expect(saves).toBe(0);
 });
+
+test('opening a revision-zero report preserves unchanged dispatch provenance',async({page})=>{
+ const script=(await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':'{}'},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`
+ import React,{useReducer}from'react';import{createRoot}from'react-dom/client';
+ import{useReportWorkspace}from'./app/report-workspace';import{INITIAL_SHELL_STATE,transitionShell}from'./app/standard-encounter';import{cacheOpenedReport}from'./app/offline-reports';import opened from'./public/demo-open-assignment.json';
+ const report={...opened.report,revision:0,demoMutable:true};const session={user:{id:report.documentingUserId},csrfToken:'fixture-csrf',capabilities:['clinical:document']};
+ cacheOpenedReport(localStorage,session,{...opened,report},'PCR-REVISION-ZERO');const noop=()=>{};
+ function App(){const[shell,dispatch]=useReducer(transitionShell,INITIAL_SHELL_STATE);const workspace=useReportWorkspace({session,report,shell,dispatch,validationErrorCount:0,presentationMode:'stationary',online:true,onSessionEnded:noop,onReportCompleted:noop,onNotesChange:noop});
+ const elements=shell.encounter.document.groups.flatMap(g=>g.instances.flatMap(i=>i.elements));
+ return <><output aria-label="Restored">{String(workspace.restored)}</output><output aria-label="Dispatch county">{JSON.stringify(elements.find(e=>e.id==='eScene.21'))}</output><button onClick={()=>{const document=structuredClone(shell.encounter.document);const address=document.groups.flatMap(g=>g.instances.flatMap(i=>i.elements)).find(e=>e.id==='eScene.15');address.values[0].value='Clinician corrected street';dispatch({type:'document-opened',document});}}>Correct street</button></>;}
+ createRoot(window.document.getElementById('root')).render(<App/>);`}})).outputFiles[0]!.text;
+ const commands:Array<{expectedRevision:number;occurrences:unknown[]}>=[];
+ await page.route('**/api/reports/*/active',route=>route.fulfill({status:304}));
+ await page.route('**/api/reports/*/draft-changes',route=>{const command=route.request().postDataJSON();commands.push(command);return route.fulfill({json:{id:'report',status:'draft',revision:command.expectedRevision+1}});});
+ await page.route('**/__revision-zero',route=>route.fulfill({contentType:'text/html',body:`<html><body><div id="root"></div><script>${script}</script></body></html>`}));
+ await page.clock.install();await page.goto('/__revision-zero');
+ await expect(page.getByLabel('Restored',{exact:true})).toHaveText('true');await expect(page.getByLabel('Dispatch county')).toContainText('36061');
+ await page.clock.runFor(15000);expect(commands).toEqual([]);
+ await page.getByRole('button',{name:'Correct street'}).click();await page.clock.runFor(2000);
+ await expect.poll(()=>commands.length).toBe(1);expect(commands[0]!.expectedRevision).toBe(0);expect(commands[0]!.occurrences).toHaveLength(1);
+ expect(JSON.stringify(commands[0])).toContain('Clinician corrected street');expect(JSON.stringify(commands[0])).not.toContain('36061');expect(JSON.stringify(commands[0])).not.toContain('eScene.21');
+});

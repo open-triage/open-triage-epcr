@@ -1,11 +1,12 @@
 'use client';
-import {useEffect,useRef,useState,type ReactNode} from 'react';
+import {useEffect,useState,type ReactNode} from 'react';
 import {browserRequestConfiguration,browserRequestInit,browserRouteUrl} from '../app/browser-api';
+import type {EpsDeliverySummary,EpsDeliveryIssue} from '../app/draft-report';
 import {resolveMessage} from '../app/localization';
 
 /** Activation only: no patient summary fetch is needed to offer export. */
-export function useEpsSigningActivation(reportId:string|undefined,csrfToken:string){
- const key=JSON.stringify([reportId,csrfToken]);
+export function useEpsSigningActivation(reportId:string|undefined,csrfToken:string,integration:'eps'|'cos'='eps'){
+ const key=JSON.stringify([reportId,csrfToken,integration]);
  const [value,setValue]=useState<{key:string;binding:string}|null>(null);
  useEffect(()=>{
   if(!reportId||browserRequestConfiguration().mode==='static')return;
@@ -13,54 +14,40 @@ export function useEpsSigningActivation(reportId:string|undefined,csrfToken:stri
   const controller=new AbortController();
   async function check(){
    try{
-    if(!navigator.onLine){if(!stopped)setValue(null);return;}
-    const response=await fetch(browserRouteUrl(`/api/reports/${reportId}/eps/context`),browserRequestInit({signal:controller.signal}));
+    if(!navigator.onLine)return;
+    const response=await fetch(browserRouteUrl(`/api/reports/${reportId}/${integration}/context`),browserRequestInit({signal:controller.signal}));
+    if(!response.ok&&!([401,403,404].includes(response.status)))return;
     const context=response.ok?await response.json():null;
     if(!stopped)setValue(context?.binding?{key,binding:context.binding}:null);
-   }catch{if(!stopped)setValue(null);}
+   }catch{/* Retain this report's activation through transient network failures. */}
    finally{if(!stopped)timer=setTimeout(()=>void check(),15000);}
   }
   void check();
   return()=>{stopped=true;controller.abort();clearTimeout(timer);};
- },[key,reportId]);
+ },[key,reportId,integration]);
  return value?.key===key?value.binding:null;
 }
 
-export function EpsSigningCheckbox({language,checked,disabled,onChange,summary}:{summary?:ReactNode;language:string;checked:boolean;disabled:boolean;onChange:(checked:boolean)=>void}){
- return <div className="eps-sign-actions"><label className="review-acknowledgement eps-sign-checkbox"><input type="checkbox" checked={checked} disabled={disabled} onChange={event=>onChange(event.target.checked)}/>{resolveMessage(language,'epsSubmission.exportOnSign')}</label>{summary}</div>;
+export function EpsSigningCheckbox({language,checked,disabled,onChange,summary,result,integration='eps'}:{integration?:'eps'|'cos';summary?:ReactNode;result?:ReactNode;language:string;checked:boolean;disabled:boolean;onChange:(checked:boolean)=>void}){
+ return <div className="eps-sign-actions"><label className="review-acknowledgement eps-sign-checkbox"><input type="checkbox" checked={checked} disabled={disabled} onChange={event=>onChange(event.target.checked)}/>{resolveMessage(language,integration==='cos'?'cosSigning.exportOnSign':'epsSubmission.exportOnSign')}</label>{summary}{result&&<div className="eps-sign-result">{result}</div>}</div>;
 }
 
-type Prepared={id:string;state:string;validation:{profile:{state:string};findings:{severity:string}[]}};
-export function EpsSignedExport({reportId,snapshotId,csrfToken,onClose}:{reportId:string;snapshotId:string;csrfToken:string;language:string;onClose:()=>void}){
+/** Default each newly activated binding to selected; polling never undoes an explicit opt-out. */
+export function useSigningExportSelection(binding:string|null,reportId:string|undefined,csrfToken:string){
+ const key=JSON.stringify([reportId,csrfToken,binding]);
+ const [choice,setChoice]=useState<{key:string;checked:boolean}|null>(null);
+ return [!!binding&&(choice?.key!==key||choice.checked),(checked:boolean)=>setChoice({key,checked})] as const;
+}
 
- const alive=useRef(true);
- const operation=useRef<Promise<Prepared>|null>(null);
- const prepared=useRef<Prepared|null>(null);
- const command=useRef<string|null>(null);
- async function request(path:string,body:unknown):Promise<Prepared>{
-  const response=await fetch(browserRouteUrl(`/api/reports/${reportId}/eps/submissions/${path}`),browserRequestInit({method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify(body)}));
-  if(!response.ok){const failure=await response.json().catch(()=>({}));throw new Error(typeof failure.code==='string'&&failure.code.startsWith('epsSubmission.')?failure.code:'epsSubmission.failed');}
-  return response.json();
- }
- async function exportSigned(){
-  if(!prepared.current)prepared.current=await request('preview',{dataset:'synthetic',snapshotId,amendmentSequence:0});
-  if(!alive.current)throw new Error('epsSubmission.failed');
-  const row=prepared.current;
-  if(!['pending','passed'].includes(row.validation.profile.state)||row.validation.findings.some(finding=>finding.severity==='error'))throw new Error('epsSubmission.exportValidationFailed');
-  command.current??=crypto.randomUUID();
-  return request('submit',{dataset:'synthetic',submissionId:row.id,commandId:command.current,confirmPublicFictional:true});
- }
- useEffect(()=>{
-  alive.current=true;
-
-  // Retain one operation across React Strict Mode's effect replay.
-  if(!operation.current)operation.current=exportSigned();
-  let subscribed=true;
-  // The signature transaction already created persistent Review follow-up.
-  void operation.current.then(()=>{if(subscribed)onClose();},()=>{if(subscribed)onClose();});
-  return()=>{subscribed=false;alive.current=false;};
- // This component is keyed by signed snapshot and session by its owner.
- // eslint-disable-next-line react-hooks/exhaustive-deps
- },[]);
- return null;
+export function EpsDeliveryStatus({language,delivery,onEdit,onConfigure,disabled=false}:{language:string;delivery?:EpsDeliverySummary|null;onEdit?:(issue:EpsDeliveryIssue)=>void;onConfigure?:()=>void;disabled?:boolean}){
+ if(!delivery)return null;
+ const t=(key:string)=>resolveMessage(language,`epsSubmission.${key}`);
+ const message=(code:string)=>{for(const key of [`finding.${code}`,`issue.${code}`]){const value=t(key);if(value!==`epsSubmission.${key}`)return value;}return t('validationError');};
+ return <section aria-label={t('latestDelivery')}><p role="status"><strong>{t('latestDelivery')}: </strong>{t(delivery.state)}</p>
+  {!!delivery?.issues.length&&<ul className="review-findings">{delivery.issues.map((issue,index)=><li className="error" key={JSON.stringify(issue)}>
+   <p role={index===0?'alert':undefined}>{message(issue.code)}</p>
+   {issue.action==='edit'&&onEdit?<button type="button" disabled={disabled} onClick={()=>onEdit(issue)}>{t('correctField')}</button>:
+    issue.action==='configuration'&&onConfigure?<button type="button" disabled={disabled} onClick={onConfigure}>{t('correctSettings')}</button>:<p>{issue.action==='configuration'?resolveMessage(language,'cosSigning.administratorRequired'):t('correctionInReview')}</p>}
+  </li>)}</ul>}
+ </section>;
 }

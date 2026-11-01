@@ -76,6 +76,7 @@ export function ExternalIdentityManagement({ identity, language, csrfToken, canM
       <div><dt>{t("admin.externalIdentitySubject")}</dt><dd>{identity.subject}</dd></div>
       <div><dt>{t("admin.ssoUsername")}</dt><dd>{identity.username??t("admin.ssoUsernameUnavailable")}</dd></div>
       <div><dt>{t("admin.externalIdentityProfileHints")}</dt><dd>{identity.displayName ?? t("admin.externalIdentityNoDisplayName")} / {identity.email ?? t("admin.externalIdentityNoEmail")}</dd></div>
+      {identity.hsaEvidence&&<div><dt>{t("admin.hsaCandidate")}</dt><dd>{identity.hsaEvidence.candidate.value??t(identity.hsaEvidence.candidate.finding==="malformed"?"admin.hsaMalformed":"admin.hsaMissing")} — {t(identity.hsaEvidence.source==="draft"?"admin.hsaDraftCandidate":"admin.hsaValidatedCandidate")}</dd></div>}
     </dl>
     {identity.status === "denied" && <p>{t("admin.externalIdentityDeniedHelp")}</p>}
     {!canManage ? <p>{t("admin.externalIdentityUserManagementAndAuthenticationWrite")}</p> : <>

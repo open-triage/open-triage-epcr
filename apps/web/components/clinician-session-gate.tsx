@@ -1,5 +1,4 @@
 "use client";
-import {EpsSignedExport} from './eps-sign-export';
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
@@ -75,7 +74,6 @@ export function ClinicianSessionGate({ children }: {
     report: ActiveDraftReport | null;
     closeReport: () => void;
     completeReport: () => void;
-    exportSignedEps: (snapshotId:string) => void;
     reportErrorStateChanged: (hasErrors: boolean) => void;
     sessionEnded: () => void;
     presentationMode: PresentationMode;
@@ -105,7 +103,6 @@ export function ClinicianSessionGate({ children }: {
   },[]);
   const openingHeading = useRef<HTMLHeadingElement>(null);
   const [openingCall, setOpeningCall] = useState<AssignedCall | null>(null);
-  const [epsExport,setEpsExport]=useState<{reportId:string;snapshotId:string;session:ClinicianSession}|null>(null);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
   useEffect(() => { if (openingCall) openingHeading.current?.focus(); }, [openingCall]);
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
@@ -114,6 +111,13 @@ export function ClinicianSessionGate({ children }: {
   const [adminHospitalSettings, setAdminHospitalSettings] = useState(false);
   const [adminReviewSettingsSection, setAdminReviewSettingsSection] = useState<"routing" | "backlog">();
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
+  function completeActiveReport() {
+    if (!activeReport) return;
+    if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
+    setCompletionNotice(activeReport.callNumber ? t("mobile.callSigned", { call: activeReport.callNumber }) : t("mobile.reportSigned"));
+    setActiveReport(null);
+    setOpenReportsRevision((value) => value + 1);
+  }
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [dismissedActiveReportNoticeId, setDismissedActiveReportNoticeId] = useState<string | null>(null);
   const [modeMessage, setModeMessage] = useState<string | null>(null);
@@ -616,7 +620,7 @@ export function ClinicianSessionGate({ children }: {
             <h2 id={logoutHeadingId}>{t("login.lockWork")}</h2></div></div>
           <p role="note">{resolveMessage(language, "login.unsynchronized", {}, logoutWarning.pendingReportCount)}</p>
           <p className="feedback-warning"><strong>{t("login.recoveryDeadline")}</strong> {logoutWarning.recoveryDeadline
-            ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(logoutWarning.recoveryDeadline))
+            ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", ...(installation.settings.timeZone ? { timeZone: installation.settings.timeZone } : {}) }).format(new Date(logoutWarning.recoveryDeadline))
             : t("login.valueUnavailable")}. {t("login.recoveryHelp")}</p>
           <div className="note-dialog-actions">
             <button type="button" disabled={lockingSession} onClick={() => setLogoutWarning(null)}>{t("login.staySignedIn")}</button>
@@ -645,7 +649,7 @@ export function ClinicianSessionGate({ children }: {
         <LoadingStatus>{t("calls.preparingReport")}</LoadingStatus>
       </section>}
       {presentationMode !== "admin" && presentationMode !== "review" && <div className="call-directory" hidden={activeReport !== null || openingCall !== null}>
-        <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
+        <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount dismissOnInteraction={false} />
         <AssignedCalls paused={activeReport !== null || openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
           setCompletionNotice(null);
@@ -656,9 +660,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenReports key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
-          setActiveReport(null);
-        }} onReopened={(opened) => {
+        <OpenReports key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={completeActiveReport} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
@@ -674,16 +676,10 @@ export function ClinicianSessionGate({ children }: {
         data-form-version-id={activeReport?.formVersionId}
       />
       {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, language,
-        reportErrorStateChanged, exportSignedEps: snapshotId=>setEpsExport({reportId:activeReport.id,snapshotId,session}), closeReport: () => {
+        reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
-      }, completeReport: () => {
-        if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
-        setCompletionNotice(activeReport.callNumber ? t("mobile.callSigned", { call: activeReport.callNumber }) : t("mobile.reportSigned"));
-        setActiveReport(null);
-        setOpenReportsRevision((value) => value + 1);
-      } }) : children)}
-      {epsExport?.session===session&&<EpsSignedExport key={epsExport.snapshotId} reportId={epsExport.reportId} snapshotId={epsExport.snapshotId} csrfToken={sessionRequestToken(session)} language={language} onClose={()=>setEpsExport(null)}/>}
+      }, completeReport: completeActiveReport }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} online={online} onOpenAgency={changeAgency}
         reviewSettingsSection={adminReviewSettingsSection} hospitalSettings={adminHospitalSettings} />}
       {presentationMode === "review" && !activeReport && <ReviewShell key={`${session.user.id}:${session.organization.id}:${[...(session.capabilities ?? [])].sort().join(",")}`} session={session} language={language}

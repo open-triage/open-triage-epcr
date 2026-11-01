@@ -1,4 +1,5 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
 import { SchedulesPanel } from "./schedules-panel";
 import { AuditingPanel } from "./auditing-panel";
 import { UnitsPanel } from "./units-panel";
@@ -159,7 +160,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
         <div><dt><AdminText messageKey="admin.databaseStorage" /></dt><dd>{formattedBytes(context.dashboard.databaseSizeBytes)}</dd></div>
         <div><dt><AdminText messageKey="admin.databaseConnections" /></dt><dd>{context.dashboard.databaseConnections} / {context.dashboard.maxDatabaseConnections}</dd>
           <small>{adminT("admin.percentUtilized", { percent: Math.round(context.dashboard.databaseConnections / Math.max(context.dashboard.maxDatabaseConnections, 1) * 100) })}</small></div>
-        <div><dt><AdminText messageKey="admin.measured" /></dt><dd><time dateTime={context.dashboard.generatedAt}>{new Date(context.dashboard.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></dd></div>
+        <div><dt><AdminText messageKey="admin.measured" /></dt><dd><time dateTime={context.dashboard.generatedAt}><LocalDateTime value={context.dashboard.generatedAt} options={{ hour: "numeric", minute: "2-digit" }} /></time></dd></div>
       </dl>
     </section>}
 
