@@ -109,7 +109,9 @@ test("table rows sort chronologically by their canonical timestamp with untimed 
   const instances = repeatingGroupInstances(document, "eVitals.VitalGroup", "vitals-section");
   assert.deepEqual(sortRepeatingGroupInstancesByTimestamp(document, instances).map(({ instanceId }) => instanceId), ["early", "late", "untimed"]);
   const placement = configuredRepeatingGroups().find(({ id }) => id === "eVitals.VitalGroup")!;
-  assert.equal(repeatingGroupSummary(document, placement, instances.find(({ instanceId }) => instanceId === "early")!)[0]?.values[0]?.text, "11:45");
+  const early = instances.find(({ instanceId }) => instanceId === "early")!;
+  assert.equal(repeatingGroupSummary(document, placement, early, "America/New_York")[0]?.values[0]?.text, "11:45");
+  assert.equal(repeatingGroupSummary(document, placement, early, "Europe/Stockholm")[0]?.values[0]?.text, "17:45");
 });
 
 test("group cardinality, duplicate identity, and parent ownership are enforced", () => {

@@ -1,4 +1,4 @@
-import { evaluateValidationBundleSafely } from './dist/index.js';
+import { evaluateValidationBundleSafely, COS_ELEMENT_MAPPINGS, cosMedicationUnitIsRate } from './dist/index.js';
 
 const PROVENANCE = 'stationary-populate-v1';
 const attributes = () => ({ 'x-open-triage-demo': PROVENANCE });
@@ -70,7 +70,7 @@ function scalar(metadata, random, timeline) {
   const max = Number(limits.maxInclusive ?? limits.maximum ?? Math.max(min + 100, 100));
   if (['integer', 'decimal'].includes(metadata.base)) {
     const [mean, deviation] = numericVitals[metadata.id] ?? [(min + max) / 2, (max - min) / 6];
-    const digits = metadata.base === 'integer' || metadata.id === 'eVitals.16' ? 0 : Math.min(2, Number(limits.fractionDigits ?? 1));
+    const digits = metadata.base === 'integer' || ['eVitals.16',COS_ELEMENT_MAPPINGS.vitals.painNrs.source].includes(metadata.id) ? 0 : Math.min(2, Number(limits.fractionDigits ?? 1));
     return Number(Math.max(min, Math.min(max, normal(random, mean, deviation))).toFixed(digits));
   }
   // Try diverse fictional values first, then known catalog formats. Every result
@@ -121,7 +121,8 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       if (value.attributes?.['x-open-triage-demo'] === PROVENANCE) return false;
       // Only explicitly dispatch-owned source values may be repaired. Clinician
       // edits and values with unknown ownership remain protected, even if invalid.
-      if (instance.attributes?.['x-open-triage-owner'] !== 'dispatch' || value.kind !== 'coded') return true;
+      const owner = value.attributes?.['x-open-triage-owner'] ?? instance.attributes?.['x-open-triage-owner'];
+      if (owner !== 'dispatch' || value.kind !== 'coded') return true;
       const restricted = fieldsById.get(element.id)?.choicePolicy !== undefined
         || configuration.catalogFields[element.id]?.choiceOrder !== undefined
         || metadata.get(element.id)?.definition.valueSource?.kind === 'inline-enumerated';
@@ -129,6 +130,19 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         && (choice.codeSystem ?? '') === (value.system ?? ''));
     }))
       .map(element => element.id))) : []);
+  // Operational routing is an explicit clinician decision, never synthetic data.
+  if (configuration.catalogFields['eDisposition.01']?.recommendations) {
+    for (const id of ['eDisposition.01', 'eDisposition.02']) {
+      protectedElements.add(id);
+      for (const group of document.groups) for (const instance of group.instances) {
+        instance.elements = instance.elements.flatMap(element => {
+          if (element.id !== id) return [element];
+          const values = element.values.filter(value => value.attributes?.['x-open-triage-demo'] !== PROVENANCE);
+          return values.length ? [{...element, values}] : [];
+        });
+      }
+    }
+  }
   const values = id => document.groups.flatMap(group => group.instances.flatMap(instance =>
     instance.elements.filter(element => element.id === id).flatMap(element => element.values)));
   function group(id, trail = new Set()) {
@@ -149,6 +163,9 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     let candidates = spec?.choices ?? configuration.catalogFields[id]?.codeChoices ?? [];
     if (field?.choicePolicy) candidates = candidates.filter(candidate => field.choicePolicy.some(choice => choice.kind === 'code' &&
       choice.code === candidate.code && choice.codeSystem === (candidate.codeSystem ?? '')));
+    // Exercise the interoperable clinical representation while respecting the
+    // installed choices. Existing clinician values are protected separately.
+    if(id===COS_ELEMENT_MAPPINGS.medication.unit.source)candidates=candidates.filter(choice=>!cosMedicationUnitIsRate(choice.label));
     return candidates;
   }
   function makeValue(id, literal) {

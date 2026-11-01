@@ -5,7 +5,7 @@ import React, { useId, useSyncExternalStore } from "react";
 import type { ChangeEvent } from "react";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { canonicalDecimal, displayDecimal, useRegionalFormat } from "../app/regional-format";
-import { localStationaryDateTimeParts, stationaryLocalDateTimeInput } from "../app/stationary-date-time";
+import { localStationaryDateTimeParts, stationaryDateTimeSelection } from "../app/stationary-date-time";
 import type { ScalarControlPresentation, ScalarValidationFinding } from "../app/stationary-scalar";
 import { ExceptionalValueMenu } from "./exceptional-value-menu";
 import { StationaryPickerLegend } from "./stationary-picker-label";
@@ -78,8 +78,9 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
         hideLabel
         onChange={() => undefined}
         onDateTimeChange={(date, time, selectedInstant) => {
-          if (selected && selected.date === date && selected.time === time) return;
-          onInput(stationaryLocalDateTimeInput(date, time, zone, selectedInstant));
+          const next = stationaryDateTimeSelection(date, time, zone, selectedInstant,
+            typeof candidate === "string" && candidate ? candidate : defaultDateTime);
+          if (next !== candidate) onInput(next);
         }}
       />
       {exceptionalControl}</div>

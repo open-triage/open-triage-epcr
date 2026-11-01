@@ -2,6 +2,7 @@ import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup } from "./stationary-layout";
 import { getNemsisDataElement, getNemsisGroup, NEMSIS_DATA_MODEL } from "./nemsis-data-model";
 import { ensureNonRepeatingInstance } from "./stationary-non-repeating";
+import { localStationaryDateTimeParts } from "./stationary-date-time";
 
 export type RepeatingGroupFinding = {
   readonly code: "cardinality" | "parent" | "identity";
@@ -291,9 +292,9 @@ export function encounterValueSummary(value: EncounterValue): string {
   return "Not recorded";
 }
 
-function tableValueSummary(value: EncounterValue, dateTime: boolean): string {
+function tableValueSummary(value: EncounterValue, dateTime: boolean, zone: string | null): string {
   const summary = encounterValueSummary(value);
-  return dateTime && value.kind === "scalar" ? /T(\d{2}:\d{2})/.exec(summary)?.[1] ?? summary : summary;
+  return dateTime && value.kind === "scalar" ? localStationaryDateTimeParts(String(value.value), zone)?.time ?? summary : summary;
 }
 
 /** Resolves configured columns through descendant elements while retaining occurrence ids. */
@@ -301,6 +302,7 @@ export function repeatingGroupSummary(
   document: EncounterDocument,
   placement: CompiledStationaryGroup,
   instance: EncounterGroupInstance,
+  zone: string | null = null,
 ): ReadonlyArray<RepeatingGroupSummaryCell> {
   return (placement.presentation.columns ?? []).map((column) => {
     const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === column.elementId);
@@ -313,7 +315,7 @@ export function repeatingGroupSummary(
       label: column.label ?? element?.name ?? column.elementId,
       values: values.map((value) => ({
         occurrenceId: value.occurrenceId,
-        text: tableValueSummary(value, element?.datatype.base === "dateTime"),
+        text: tableValueSummary(value, element?.datatype.base === "dateTime", zone),
       })),
     };
   });

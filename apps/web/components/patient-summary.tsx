@@ -1,4 +1,5 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
 import { EpsSectionTables } from './eps-section-tables';
 import { EpsImports, EpsImportWarning } from './eps-imports';
 import type { ClinicalFormConfiguration } from '@open-triage/contracts';
@@ -30,8 +31,8 @@ export function PatientSummaryButton({reportId, organizationId, userId, document
           <dt>{t('patient')}</dt><dd>{summary.patient||t('unknown')}</dd>
           <dt>{t('source')}</dt><dd>{summary.source||t('unknown')}</dd>
           <dt>{t('authors')}</dt><dd>{summary.authors.join('; ')||t('unknown')}</dd>
-          <dt>{t('date')}</dt><dd>{summary.date||t('unknown')}</dd>
-          <dt>{t('retrieved')}</dt><dd>{current.result?.retrievedAt}</dd>
+          <dt>{t('date')}</dt><dd>{summary.date ? <LocalDateTime value={summary.date} language={language} /> : t('unknown')}</dd>
+          <dt>{t('retrieved')}</dt><dd>{current.result?.retrievedAt && <LocalDateTime value={current.result.retrievedAt} language={language} />}</dd>
         </dl>{current.cached&&<p role="status">{t(online?'cached':'offlineCached')}</p>}
         <button type="button" disabled={!online} onClick={refresh}>{t('refresh')}</button>
         {!accessBlocked&&current.result?.context&&<EpsImports csrfToken={csrfToken} key={JSON.stringify([reportId,organizationId,userId,documentKey,ready,language,current.result.context.binding])} reportId={reportId} binding={current.result.context.binding} language={language} ready={ready} onImported={onImported}>{(rows,action)=><EpsSectionTables summary={summary} language={language} rows={rows} action={action}/>}</EpsImports>}

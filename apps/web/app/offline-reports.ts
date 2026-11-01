@@ -1,4 +1,4 @@
-import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, RetainedSignedDraftAttempt, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 import { browserRequestConfiguration } from "./browser-api";
 import { sameJsonValue } from "./json-values";
@@ -92,6 +92,18 @@ function replace(storage: StoragePort, report: CachedOpenReport): void {
   write(storage, index < 0 ? [...reports, report] : reports.map((candidate, position) => position === index ? report : candidate));
 }
 
+/** Directory recommendations are live; the rest of the published form stays pinned. */
+function refreshRecommendations(pinned: ClinicalFormConfiguration, incoming?: ClinicalFormConfiguration): ClinicalFormConfiguration {
+  if (!incoming) return pinned;
+  return { ...pinned, catalogFields: Object.fromEntries(Object.entries(pinned.catalogFields).map(([id, field]) => {
+    const refreshed = { ...field };
+    delete refreshed.recommendations;
+    const recommendations = incoming.catalogFields[id]?.recommendations;
+    if (recommendations) refreshed.recommendations = structuredClone(recommendations);
+    return [id, refreshed];
+  })) };
+}
+
 export function cacheOpenedReport(
   storage: StoragePort,
   session: ClinicianSession,
@@ -119,7 +131,7 @@ export function cacheOpenedReport(
       ...opened.report,
       // Published definitions are immutable. A reconnect must not replace the exact
       // translations and validation wording already protected with this report.
-      ...(existing?.report.clinicalForm ? { clinicalForm: existing.report.clinicalForm } : {}),
+      ...(existing?.report.clinicalForm ? { clinicalForm: refreshRecommendations(existing.report.clinicalForm, opened.report.clinicalForm) } : {}),
       ...(existing?.report.validationVersionId ? { validationVersionId: existing.report.validationVersionId } : {}),
       ...(existing?.report.formDefinitionSha256 ? { formDefinitionSha256: existing.report.formDefinitionSha256 } : {}),
       ...(existing?.report.catalogArtifactSha256 ? { catalogArtifactSha256: existing.report.catalogArtifactSha256 } : {}),

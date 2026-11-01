@@ -183,6 +183,27 @@ test("schema, opaque recovery handle, revision, and authentication tag are all a
   }));
 });
 
+test("signing retries a failed protected write once and retains its completion boundary", async () => {
+  let fail = true;
+  const writes: number[] = [];
+  const queue = new LatestProtectedWriteQueue<number>(async value => {
+    writes.push(value);
+    if (fail) throw new Error("receipt unavailable");
+  });
+  queue.request(1);
+  await assert.rejects(queue.flush(), /receipt unavailable/);
+  await assert.rejects(queue.holdAfterFlush(), /receipt unavailable/);
+  assert.deepEqual(writes, [1, 1], "persistent failures are bounded and still block signing");
+  fail = false;
+  const held = queue.holdAfterFlush();
+  queue.request(2);
+  const release = await held;
+  assert.deepEqual(writes, [1, 1, 1]);
+  release();
+  await queue.flush();
+  assert.deepEqual(writes, [1, 1, 1, 2]);
+});
+
 test("rollout removes every known and report-scoped plaintext clinical key without migration", () => {
   const values = new Map([
     ["open-triage:offline-reports-v1", "call number"],

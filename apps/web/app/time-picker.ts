@@ -1,4 +1,11 @@
-import { clinicalInstantParts } from "./agency-time-zone";
+import { clinicalInstantParts, clinicalWallTimeInput } from "./agency-time-zone";
+
+/** Inclusive local calendar dates expressed as an exclusive instant range. */
+export function clinicalDateRange(from: string, through: string, zone: string | null) {
+  // API filters require UTC Z timestamps; clinical inputs preserve explicit offsets.
+  return { from: new Date(clinicalWallTimeInput(from, "00:00", zone)).toISOString(),
+    to: new Date(clinicalWallTimeInput(adjustClinicalDate(through, 1), "00:00", zone)).toISOString() };
+}
 
 export function parseClinicalTime(value: string): { hours: number; minutes: number } {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);

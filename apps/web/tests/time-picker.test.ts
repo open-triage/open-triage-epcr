@@ -42,3 +42,24 @@ test("Swedish time picker announces missing value without creating one", () => {
   assert.match(html, /Bedömningstid: ej registrerat/);
   assert.doesNotMatch(html, /10:30/);
 });
+
+test("local audit date ranges cover whole days across daylight-saving transitions", async () => {
+  const { clinicalDateRange } = await import('../app/time-picker');
+  const spring = clinicalDateRange('2026-03-29', '2026-03-29', 'Europe/Stockholm');
+  assert.deepEqual(spring, { from: '2026-03-28T23:00:00.000Z', to: '2026-03-29T22:00:00.000Z' });
+  assert.equal(Date.parse(spring.to) - Date.parse(spring.from), 23 * 3600000);
+  assert.equal(Date.parse(spring.from), Date.parse('2026-03-28T23:00:00Z'));
+  const autumn = clinicalDateRange('2026-10-25', '2026-10-25', 'Europe/Stockholm');
+  assert.deepEqual(autumn, { from: '2026-10-24T22:00:00.000Z', to: '2026-10-25T23:00:00.000Z' });
+  assert.equal(Date.parse(autumn.to) - Date.parse(autumn.from), 25 * 3600000);
+});
+
+test('audit date ranges use the API UTC format with agency and browser time zones', async () => {
+  const { clinicalDateRange } = await import('../app/time-picker');
+  for (const zone of [null, 'UTC', 'Europe/Stockholm', 'America/New_York', 'Asia/Kolkata']) {
+    const range = clinicalDateRange('2026-10-23', '2026-10-29', zone);
+    for (const value of Object.values(range)) {
+      assert.match(value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
+  }
+});

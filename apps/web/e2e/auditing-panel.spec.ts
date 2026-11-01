@@ -64,6 +64,13 @@ test("combined audit filters, paging and failure recovery preserve results until
   const requests: URL[] = [];
   await page.route("**/api/admin/audit?*", route => {
     const url = new URL(route.request().url()); requests.push(url);
+    // The audit API requires canonical UTC timestamps, unlike clinical inputs.
+    for (const key of ['from', 'to']) {
+      const value = url.searchParams.get(key) ?? '';
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/.test(value)) {
+        return route.fulfill({ status: 400, json: { code: 'audit.invalidQuery' } });
+      }
+    }
     if (failure) return route.fulfill({ status: failure, json: { code: "platform.unavailable" } });
     const next = !!url.searchParams.get("cursor");
     return route.fulfill({ json: auditPage({ categories: auditCategories, pageNumber: next ? 2 : 1, totalEntries: 51, entries: [{ ...entry, id: eventId(next ? 2 : 1),
@@ -652,7 +659,7 @@ test("EPS and COS settings omit history even when the API supplies historical re
   await page.route('**/api/admin/hospital/*', route => route.fulfill({ json: {
     groupName: 'Fixture group', stateRevision: 0, draft: null, active: null, pausedRevision: null,
     activeHealth: 'unknown', draftHealth: 'unknown', credentialReplacement: false,
-    options: [], clinicalOptions: [], staffOptions: [], tests: [],
+    options: [], clinicalOptions: [], tests: [],
     history: [{ revision: 1, sha256: 'a'.repeat(64), status: 'retired', createdAt: '2026-10-19T10:00:00Z' }],
     events: [{ action: 'hospital.draft_save', actorId: actor, occurredAt: '2026-10-19T10:00:00Z' }],
   } }));
@@ -660,7 +667,8 @@ test("EPS and COS settings omit history even when the API supplies historical re
   await expect(page.getByRole('group', { name: 'EPS configuration', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'History', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'COS', exact: true }).click();
-  await expect(page.getByText('Simulator tests run locally', { exact: false })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'COS connection', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'COS configuration', exact: true })).toBeVisible();
   await expect(page.locator('.hospital-history, .hospital-history-panel')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'History', exact: true })).toHaveCount(0);
 });

@@ -216,6 +216,12 @@ export class LatestProtectedWriteQueue<T> {
     const target = this.requested;
     this.heldTarget = target;
     this.heldSnapshot = this.latest;
+    // An explicit completion attempt retries a settled failure once. The hold
+    // still prevents later edits from entering this completion snapshot.
+    if (this.failed) {
+      this.failed = null;
+      this.running = null;
+    }
     try {
       await this.drainThrough(target);
     } catch (error) {
@@ -823,6 +829,9 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
     publishAudio(reportId);
   }
 
+  // IndexedDB has committed this revision even if the following receipt fails.
+  // Retrying must use a new revision, not overwrite authenticated ciphertext.
+  context.revision = revision;
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
   if (url && navigator.onLine && !context.locking) {
     const receiptRequest = new AbortController();
@@ -860,7 +869,6 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
     context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
     await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
   }
-  context.revision = revision;
   context.recoveryInitialization = false;
   context.synchronizedRevision = synchronizedRevision;
   context.failure = null;

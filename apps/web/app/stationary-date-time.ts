@@ -22,6 +22,15 @@ export function localStationaryDateTimeParts(value: string, zone: string | null 
   return Number.isFinite(instant.getTime()) ? (zone ? clinicalInstantParts(instant, zone) : localParts(instant)) : undefined;
 }
 
+/** Keep the precision of an unchanged stored or suggested timestamp. */
+export function stationaryDateTimeSelection(date: string, time: string, zone: string | null,
+  selectedInstant?: string, reference?: string): string {
+  const parts = reference ? localStationaryDateTimeParts(reference, zone) : undefined;
+  if (reference && parts?.date === date && parts.time === time && (!selectedInstant
+    || Math.floor(Date.parse(selectedInstant) / 60000) === Math.floor(Date.parse(reference) / 60000))) return reference;
+  return stationaryLocalDateTimeInput(date, time, zone, selectedInstant);
+}
+
 /** Resolve the selected wall clock in the browser's zone and persist the instant in UTC. */
 export function stationaryLocalDateTimeInput(date: string, time: string, zone: string | null = null, selected?: string): string {
   if (zone || selected) return clinicalWallTimeInput(date, time, zone, selected);

@@ -690,6 +690,8 @@ test("a stationary-completed report disappears from Open reports and only its ca
 });
 
 test("completion discovered while a form is active stops editing and returns to the call list", async ({ page }) => {
+  await page.route('**/api/reports/*/active',route=>route.fulfill({status:304}));
+  await page.route('**/api/reports/*/signing-status',route=>route.fulfill({json:{status:'draft'}}));
   let completed = false;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
   await page.route("**/demo-open-calls.json", (route) => route.fulfill({
@@ -710,7 +712,9 @@ test("completion discovered while a form is active stops editing and returns to 
   completed = true;
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
 
-  await expect(page.locator(".transient-notice")).toHaveCount(0);
+  await expect(page.locator(".call-directory .transient-notice")).toContainText(/signed/i);
+  await page.getByRole("heading", { name: "Open reports" }).click();
+  await expect(page.locator(".call-directory .transient-notice")).toContainText(/signed/i);
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);

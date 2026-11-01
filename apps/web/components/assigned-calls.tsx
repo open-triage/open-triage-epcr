@@ -188,7 +188,7 @@ export function AssignedCalls({
         </div>
       </div>
       {error && <p className="assignment-error" role="alert">{error}</p>}
-      {productionAccess && !["ready", "synthetic-only"].includes(productionAccess.state) &&
+      {productionAccess && !["ready", "synthetic-only", "preparation"].includes(productionAccess.state) &&
         <p className="assignment-empty" role="status">{t(`calls.production.${productionAccess.state}`)}</p>}
       {productionAccess?.state === "reauthentication-required" && <form className="report-reauthentication"
         onSubmit={event => void reauthenticateAndOpen(event)} aria-describedby="assigned-shift-help">

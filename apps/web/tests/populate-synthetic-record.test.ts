@@ -1,3 +1,4 @@
+import { applyDestinationSelection } from "../app/destination-selection";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration } from "@open-triage/contracts";
@@ -173,4 +174,55 @@ test("Populate repairs a dispatch code-system mismatch using the pinned code-sys
   assert.equal(selected.kind === "coded" && selected.code, "Y92.03");
   assert.equal(selected.kind === "coded" && selected.system, "ICD-10-CM");
   assert.deepEqual(validateStationaryRecord(populated, configuration, now.toISOString()), []);
+});
+
+test("Populate replaces a disallowed dispatch county with the pinned absence choice", () => {
+  const { document, configuration } = fixture();
+  const policy = [{ kind: "not-value" as const, code: "7701003" }];
+  configuration.definition.sections.push({ key: "scene", fields: [
+    { key: "county", source: { kind: "nemsis", elementId: "eScene.21" }, choicePolicy: policy },
+  ] });
+  configuration.catalogFields["eScene.21"] = {
+    agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: false, codeChoices: [], choiceOrder: policy,
+    generation: { id: "eScene.21", base: "string", path: ["eSceneSection"], minimum: 0, maximum: 1,
+      definition: { datatype: { constraints: { pattern: "[0-9]{5}" } },
+        valueSource: { kind: "external-code-system" }, permittedNotValues: [{ code: "7701003" }] } },
+  };
+  configuration.catalogGroups!["eSceneSection"] = { name: "Scene", parentId: "PatientCareReportGroup" };
+  const scene = document.groups.find(group => group.id === "eSceneSection")!.instances[0]!;
+  Object.assign(scene, { attributes: { "x-open-triage-owner": "dispatch" } });
+  assert.ok(validateStationaryRecord(document, configuration, now.toISOString())
+    .some(finding => finding.message === "36061 is not permitted for eScene.21."));
+  const populated = populateSyntheticRecord(document, configuration, now);
+  const county = populated.groups.find(group => group.id === "eSceneSection")!.instances[0]!.elements
+    .find(element => element.id === "eScene.21")!.values[0]!;
+  assert.equal(county.kind, "null");
+  assert.equal(county.notValue?.code, "7701003");
+  assert.ok(hasDemoProvenance(county.attributes));
+  assert.deepEqual(validateStationaryRecord(populated, configuration, now.toISOString()), []);
+});
+
+test("Populate leaves COS destination unanswered, removes old demo values, and preserves explicit choices", () => {
+ const {document,configuration} = fixture();
+ const groupId = "eDisposition.DestinationGroup";
+ const empty = {...document,groups:document.groups.filter(group=>group.id!==groupId)};
+ configuration.catalogGroups![groupId]={name:"Destination",parentId:"PatientCareReportGroup"};
+ for(const id of ["eDisposition.01","eDisposition.02"]) {
+  configuration.definition.sections[0]!.fields.push({key:id,source:{kind:"nemsis",elementId:id}});
+  configuration.catalogFields[id]={agencyRequired:false,minOccurs:0,maxOccurs:1,nillable:true,supportsNotValues:true,supportsPertinentNegatives:false,
+   generation:{id,base:"string",path:[groupId],minimum:0,maximum:1,definition:{datatype:{constraints:{minLength:2,maxLength:100}},valueSource:{kind:"scalar"}}}};
+ }
+ const legacy = populateSyntheticRecord(empty,configuration,now);
+ configuration.catalogFields["eDisposition.01"]!.recommendations={source:"destination-directory",items:[]};
+ const pair = (doc: typeof syntheticEncounter.document) => doc.groups.flatMap(group=>group.instances.flatMap(instance=>instance.elements))
+  .filter(element=>["eDisposition.01","eDisposition.02"].includes(element.id)).flatMap(element=>element.values);
+ for(const source of [empty,legacy]) {
+  assert.deepEqual(pair(populateSyntheticRecord(source,configuration,now)),[]);
+ }
+ const entry={id:"destination",groupId:"group",revision:1,displayName:"Chosen hospital",localCode:"ED",hsaId:null,active:true};
+ for(const choice of [entry,"none"] as const) {
+  const chosen=applyDestinationSelection(empty,choice,groupId);
+  assert.deepEqual(pair(populateSyntheticRecord(chosen,configuration,now)),pair(chosen));
+ }
 });

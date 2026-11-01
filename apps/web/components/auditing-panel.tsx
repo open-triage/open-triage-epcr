@@ -1,4 +1,7 @@
 "use client";
+import { useAgencyTimeZone } from "../app/agency-time-zone";
+import { clinicalDateRange, localClinicalDate } from "../app/time-picker";
+import { LocalDateTime } from "./local-date-time";
 import {HospitalReviewLink} from "./hospital-history";
 
 import { auditCategories, auditDumpSources, clinicalValueSources, type AuditCategory, type AuditDump, type AuditEntry, type AuditPage, type AuditQuery, type AuditTarget, type AuditUserPage, type ClinicalAuditValues } from "@open-triage/contracts";
@@ -10,14 +13,13 @@ import { activateListRow } from "./list-row-action";
 import { useReturnFocus } from "./use-return-focus";
 import { useAvailableHeight } from "./use-available-height";
 
-function initialFilters() {
+function initialFilters(zone: string | null) {
   const today = new Date();
-  return { from: new Date(today.getTime() - 6 * 86400_000).toISOString().slice(0, 10),
-    through: today.toISOString().slice(0, 10), actorId: "", uuid: "", categories: [] as AuditCategory[] };
+  return { from: localClinicalDate(new Date(today.getTime() - 6 * 86400_000), zone),
+    through: localClinicalDate(today, zone), actorId: "", uuid: "", categories: [] as AuditCategory[] };
 }
-function requestFilters(filters: ReturnType<typeof initialFilters>): AuditQuery {
-  return { categories: filters.categories, from: `${filters.from}T00:00:00.000Z`,
-    to: new Date(Date.parse(`${filters.through}T00:00:00Z`) + 86400_000).toISOString(),
+function requestFilters(filters: ReturnType<typeof initialFilters>, zone: string | null): AuditQuery {
+  return { categories: filters.categories, ...clinicalDateRange(filters.from, filters.through, zone),
     ...(filters.actorId.trim() ? { actorId: filters.actorId.trim() } : {}),
     ...(filters.uuid.trim() ? { uuid: filters.uuid.trim() } : {}) };
 }
@@ -27,7 +29,7 @@ function actorLabel(entry: AuditEntry) {
 }
 
 function referenceLabel(id: string | null | undefined, target: AuditTarget | null | undefined,
-  t: ReturnType<typeof useAdminText>, language: string) {
+  t: ReturnType<typeof useAdminText>, language: string, zone: string | null) {
   if (!id) return t("auditUi.noValue");
   if (target?.kind === "auditEvent") return id;
   const kind = t(`auditUi.targetKind.${target?.kind ?? "record"}`);
@@ -37,7 +39,7 @@ function referenceLabel(id: string | null | undefined, target: AuditTarget | nul
     if (translated !== key) name = translated;
   }
   if (target?.occurredAt && target.kind !== "analytics") {
-    const time = new Date(target.occurredAt).toLocaleString(language, { timeZone: "UTC" });
+    const time = new Date(target.occurredAt).toLocaleString(language, zone ? { timeZone: zone } : undefined);
     name = name ? t("auditUi.datedLabel", { label: name, time }) : t("auditUi.referenceTime", { time });
   }
   if (!name) return t("auditUi.targetReference", { kind, reference: id.slice(0, 8) });
@@ -50,10 +52,11 @@ function referenceLabel(id: string | null | undefined, target: AuditTarget | nul
 export function AuditingPanel({ canReadPatients, active, online }: {
   readonly canReadPatients: boolean; readonly active: boolean; readonly online: boolean;
 }) {
+  const zone = useAgencyTimeZone();
   const t = useAdminText();
   const language = useContext(AdminLanguageContext);
-  const [filters, setFilters] = useState(initialFilters);
-  const [query, setQuery] = useState<AuditQuery>(() => requestFilters(initialFilters()));
+  const [filters, setFilters] = useState(() => initialFilters(zone));
+  const [query, setQuery] = useState<AuditQuery>(() => requestFilters(initialFilters(zone), zone));
   const [loaded, setLoaded] = useState<{ query: AuditQuery; page: AuditPage } | null>(null);
   const [selected, setSelected] = useState<AuditEntry | null>(null);
   const [error, setError] = useState(false);
@@ -97,7 +100,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
 
   const submit = () => {
     try {
-      setQuery(requestFilters(filters)); setSelected(null);
+      setQuery(requestFilters(filters, zone)); setSelected(null);
       if (typeFilter.current) typeFilter.current.open = false;
     }
     catch { setError(true); }
@@ -114,8 +117,8 @@ export function AuditingPanel({ canReadPatients, active, online }: {
     ? entry.inspection.category === "combined"
       ? t("auditUi.combinedListTarget", { count: entry.inspection.categories?.length ?? 0 })
       : t("auditUi.listTarget", { category: t(`auditUi.category.${entry.inspection.category}`) })
-    : referenceLabel(entry.targetId, entry.target, t, language);
-  const agencyLabel = (id: string | null, name?: string | null) => referenceLabel(id, { kind: "organization", label: name ?? null }, t, language);
+    : referenceLabel(entry.targetId, entry.target, t, language, zone);
+  const agencyLabel = (id: string | null, name?: string | null) => referenceLabel(id, { kind: "organization", label: name ?? null }, t, language, zone);
   return <section className="admin-panel audit-panel" aria-labelledby="audit-heading">
     <h2 id="audit-heading">{t("auditUi.title")}</h2>
     <form className="audit-filters" onSubmit={(event) => { event.preventDefault(); submit(); }}>
@@ -152,7 +155,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
     {busy && <p role="status">{t("auditUi.loading")}</p>}
     {loaded && <>
       <p className="audit-results-label" aria-live="polite">{t("auditUi.showing", { category: categoryLabel(loaded.query.categories),
-        from: loaded.query.from.slice(0, 10), to: new Date(Date.parse(loaded.query.to) - 1).toISOString().slice(0, 10) })}</p>
+        from: localClinicalDate(new Date(loaded.query.from), zone), to: localClinicalDate(new Date(Date.parse(loaded.query.to) - 1), zone) })}</p>
       <div className="audit-results">
         <div ref={tableScroll} className="audit-table-scroll" tabIndex={0} role="region" aria-label={t("auditUi.events")}>
           <table className="audit-table"><thead><tr>
@@ -167,7 +170,7 @@ export function AuditingPanel({ canReadPatients, active, online }: {
             }}>
             <td>{entry.id}</td>
             <td>{t(`auditUi.category.${entry.category}`)}</td>
-            <td><time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString(language, { timeZone: "UTC" })}</time></td>
+            <td><time dateTime={entry.occurredAt}><LocalDateTime value={entry.occurredAt} language={language} /></time></td>
             <td>{actorLabel(entry) ?? (entry.integration ? t("admin.system") : missing)}</td><td>{actionLabel(entry)}</td><td>{outcomeLabel(entry)}</td><td>{targetLabel(entry)}</td>
           </tr>)}</tbody></table>
           {!loaded.page.entries.length && <p role="status">{t("auditUi.empty")}</p>}
@@ -188,9 +191,9 @@ export function AuditingPanel({ canReadPatients, active, online }: {
               ...(selected.inspection?.uuidFilter ? [["searchedUuid", selected.inspection.uuidFilter]] : []),
               ["patient", selected.patientId && selected.target?.kind === "report" && selected.target.label
                 ? t("auditUi.patientForReport", { report: selected.target.label })
-                : referenceLabel(selected.patientId, { kind: "patient", label: null }, t, language)],
+                : referenceLabel(selected.patientId, { kind: "patient", label: null }, t, language, zone)],
               ["accessOrganization", agencyLabel(selected.accessOrganizationId, selected.accessOrganizationName)],
-              ["careProcess", selected.careProcess], ["resource", referenceLabel(selected.resourceId, selected.resource, t, language)],
+              ["careProcess", selected.careProcess], ["resource", referenceLabel(selected.resourceId, selected.resource, t, language, zone)],
               ...(selected.analytics ? [ ["dataset", selected.analytics.dataset], ["queryFrom", selected.analytics.from],
                 ["queryThrough", selected.analytics.through], ["reportCount", selected.analytics.reportCount?.toString()],
                 ["reportScope", selected.analytics.reportScope], ["identifying", t(selected.analytics.identifying ? "auditUi.yes" : "auditUi.no")],

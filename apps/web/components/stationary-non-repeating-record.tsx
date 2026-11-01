@@ -1,6 +1,10 @@
 "use client";
+import { useLocalDateTime } from "./local-date-time";
 
+import { encounterDestinationDecision } from "@open-triage/contracts";
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import {DestinationRecommendations} from "./destination-recommendations";
+import {applyDestinationSelection} from "../app/destination-selection";
 import React, { useId, useState } from "react";
 import {
   editNonRepeatingCodedValue,
@@ -27,10 +31,10 @@ export type StationaryApplicability = {
   readonly reason?: string;
 };
 
-function canonicalValueText(value: EncounterValue): string {
+function canonicalValueText(value: EncounterValue, format: (value: string) => string): string {
   const pn = value.pertinentNegative
     ? ` — ${value.pertinentNegative.display ?? `Pertinent negative (${value.pertinentNegative.code})`}` : "";
-  if (value.kind === "scalar") return `${String(value.lexical ?? value.value)}${pn}`;
+  if (value.kind === "scalar") return `${format(String(value.lexical ?? value.value))}${pn}`;
   if (value.kind === "coded") return `${value.display ? `${value.display} (${value.code})` : value.code}${pn}`;
   if (value.kind === "pertinent-negative") return value.display ? `${value.display} (${value.code})` : value.code;
   if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "No value";
@@ -39,13 +43,14 @@ function canonicalValueText(value: EncounterValue): string {
 
 function ReadOnlyField({ field, instance, language }: { readonly field: StationaryNonRepeatingField; readonly instance?: EncounterGroupInstance; readonly language: FormLanguage }) {
   const id = useId();
+  const format = useLocalDateTime(language);
   const values = instance?.elements.find(({ id }) => id === field.id)?.values ?? [];
   return (
     <fieldset className="stationary-field-control stationary-read-only-field" data-element-id={field.id} data-read-only="true" tabIndex={0} aria-describedby={`${id}-help`}>
       <StationaryPickerLegend label={field.catalog.name} tooltipId={`${id}-help`} tooltip={<>{field.id}: {field.catalog.definition}</>} />
       {values.length ? (
         <ul>{values.map((value) => <li key={value.occurrenceId}>
-          <output>{canonicalValueText(value)}</output>
+          <output>{canonicalValueText(value, field.catalog.datatype.base === "dateTime" ? format : (text) => text)}</output>
           {value.attributes && <small>{resolveMessage(language, "stationary.sourceAttributes")} {JSON.stringify(value.attributes)}</small>}
         </li>)}</ul>
       ) : <output>{resolveMessage(language, "stationary.notProvided")}</output>}
@@ -53,7 +58,8 @@ function ReadOnlyField({ field, instance, language }: { readonly field: Stationa
   );
 }
 
-function EditableScalarField({ document, group, field, instance, parentInstanceId, disabled, catalogField, onDocumentChange }: {
+function EditableScalarField({ language, document, group, field, instance, parentInstanceId, disabled, catalogField, onDocumentChange }: {
+  readonly language: FormLanguage;
   readonly document: EncounterDocument;
   readonly group: StationaryNonRepeatingGroup;
   readonly field: StationaryNonRepeatingField;
@@ -74,6 +80,20 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
   }
   const value = instance ? scalarOccurrences(document, group.id, instance.instanceId, field.id)[0] : undefined;
   const current = instance?.elements.find(({ id }) => id === field.id)?.values[0];
+  if (field.id === "eDisposition.01" && catalogField?.recommendations) {
+    const code = instance?.elements.find(element => element.id === "eDisposition.02")?.values[0];
+    return <div data-element-id={field.id}>
+      <DestinationRecommendations items={catalogField.recommendations.items} language={language} disabled={disabled} populated={!!current || !!code} none={encounterDestinationDecision(instance) === "none"}
+        name={current?.kind === "scalar" ? String(current.lexical ?? current.value) : undefined}
+        code={code?.kind === "scalar" ? String(code.lexical ?? code.value) : undefined}
+        onSelect={entry => {
+          if (disabled) return;
+          setRaw(undefined);
+          setFindings([]);
+          onDocumentChange(applyDestinationSelection(document, entry, group.id, instance?.instanceId, parentInstanceId));
+        }} />
+    </div>;
+  }
   const exceptionalChoices = field.catalog.permittedNotValues.filter(({ code }) =>
     catalogField?.choiceOrder === undefined || catalogField.choiceOrder.some((choice) =>
       choice.kind === "not-value" && choice.code === code));
@@ -91,6 +111,7 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
     onDocumentChange(result.document);
   };
   return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
+
     <StationaryScalarControl presentation={field.scalar} value={value}
       exceptionalValue={current?.kind === "null" ? current : undefined} exceptionalChoices={exceptionalChoices}
       onExceptionalChange={(code) => {
@@ -209,6 +230,8 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
             instance?.instanceId, false, parentInstanceId);
           return <div className="stationary-inline-fields" key={contexts.length === 1 ? `${document.encounter.id}:single` : instance?.parentInstanceId ?? parentInstanceId ?? instance?.instanceId ?? contextIndex}>
           {group.fields.map((field) => {
+            const destinationPicker = !!catalogFields["eDisposition.01"]?.recommendations;
+            if (destinationPicker && field.id === "eDisposition.02") return null;
             const pinned = catalogFields[field.id];
             const catalogLocalizedField = pinned ? { ...field,
               catalog: { ...field.catalog,
@@ -223,7 +246,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
             const disabled = fieldApplicability?.applicable === false;
             const fieldFindings = contextFindings.filter((finding) => {
               const targetField = finding.target.fieldId ?? finding.target.elementId;
-              return targetField === field.id;
+              return targetField === field.id || (destinationPicker && field.id === "eDisposition.01" && targetField === "eDisposition.02");
             });
             const fieldSeverity = stationaryFindingSeverity(fieldFindings);
             return <div className={`stationary-field-shell${fieldSeverity ? ` stationary-validation-state ${fieldSeverity}` : ""}`} key={field.id}>
@@ -231,7 +254,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
               {field.readOnly
                 ? <ReadOnlyField field={localizedField} instance={instance} language={language} />
                 : field.scalar
-                  ? <EditableScalarField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />
+                  ? <EditableScalarField language={language} document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />
                 : <EditableCodedField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />}
               <StationaryValidationMessages findings={fieldFindings} />
             </div>;

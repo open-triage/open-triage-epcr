@@ -1,11 +1,11 @@
 "use client";
+import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
 
-import { useAgencyTimeZone } from "../app/agency-time-zone";
 
 import type { CreateReportAudioNoteCommand, ReportAudioNote, ReportAudioSourceContentType, ReportMediaPolicy } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
@@ -94,7 +94,6 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   readonly onQueued: (note: ReportAudioNote) => void;
   readonly onSessionEnded: () => void;
 }) {
-  const zone = useAgencyTimeZone();
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -384,7 +383,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       {mode === "preview" && capture && <div className="audio-preview"><p role={capture.interrupted ? "alert" : "status"}>{capture.interrupted ? t("noteUi.recording.interrupted.review.it.then.explicitly.use.or.discard.it") : t("noteUi.capturedDuration", { duration: formatAudioDuration(capture.durationMilliseconds) })}</p>
         <PreviewAudioButton source={capture.previewUrl} language={language} /></div>}
       {mode === "viewer" && note && <div className="audio-preview"><AuthorizedAudioButton reportId={reportId} noteId={note.id} language={language} label={t("noteUi.play.complete.audio.note")} />
-        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured {new Date(note.capturedAt).toLocaleString(undefined, zone ? { timeZone: zone } : undefined)} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
+        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured <LocalDateTime value={note.capturedAt} /> · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
         {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>{t("noteUi.retry.upload")}</button>}</div>}
       {(mode === "preview" || mode === "viewer") && <><label htmlFor="report-audio-caption">{t("noteUi.audioCaption")} <small>{t("noteUi.optional")}</small></label>
         <textarea id="report-audio-caption" rows={3} maxLength={REPORT_AUDIO_CAPTION_MAX_CHARACTERS} value={caption}

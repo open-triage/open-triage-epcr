@@ -33,7 +33,7 @@ export function TimePicker({ language = "en", label, value, onChange, date = "",
   const [error, setError] = useState<string | null>(null);
   const [occurrence, setOccurrence] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(() => parseClinicalTime(value || initialValue || ""));
+  const [draft, setDraft] = useState(() => parseClinicalTime(value || initialValue || clinicalInstantParts(new Date(), zone)?.time || ""));
   const [draftDate, setDraftDate] = useState(date || initialDate || localClinicalDate(new Date(), zone));
   const popover = useRef<HTMLDivElement>(null);
 
@@ -44,7 +44,7 @@ export function TimePicker({ language = "en", label, value, onChange, date = "",
   }, [open]);
 
   function showPicker() {
-    setDraft(parseClinicalTime(value || initialValue || ""));
+    setDraft(parseClinicalTime(value || initialValue || clinicalInstantParts(new Date(), zone)?.time || ""));
     setDraftDate(date || initialDate || localClinicalDate(new Date(), zone));
     setError(null);
     setOccurrence(null);
