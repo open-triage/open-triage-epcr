@@ -12,7 +12,7 @@ import { publicSigningKeyIds } from "./oidc-signing-keys.js";
 import { oidcConfiguration } from "./oidc-library.js";
 
 export type OidcDraft = { name: string; issuer: string; discoveryUrl: string; clientId: string; scopes: string[];
-  mappings: { displayName: string; email: string; username?: string }; clientAuthentication: "client_secret_post";personalProof?:PersonalProofRequirements|null;privateOrigins?:string[] };
+  mappings: { displayName: string; email: string; username?: string; hsaId?: string; hsaAuthoritative?: boolean }; clientAuthentication: "client_secret_post";personalProof?:PersonalProofRequirements|null;privateOrigins?:string[] };
 type Version = { group_id:string; revision: string | number; provider_id: string; configuration: OidcDraft; credential_configured: boolean;
   discovery: unknown; discovery_health: string; discovered_at: Date | null; created_at: Date; created_by: string;
   changed_fields?: string[]; credential_replaced?: boolean; actor_name?:string|null };
@@ -29,9 +29,12 @@ export function validateOidcDraft(input: unknown): { expectedRevision: number; c
   if (body.clientAuthentication !== "client_secret_post") return invalid("clientAuthentication");
   if (!Array.isArray(body.scopes) || body.scopes.length > 20 || body.scopes.some(scope => typeof scope !== "string" || !/^[\x21\x23-\x5b\x5d-\x7e]{1,100}$/.test(scope))) return invalid("scopes");
   const mappings = body.mappings as Record<string,unknown> | undefined;
-  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings) || Object.keys(mappings).some(key => !["displayName","email","username"].includes(key)) ||
+  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings) || Object.keys(mappings).some(key => !["displayName","email","username","hsaId","hsaAuthoritative"].includes(key)) ||
       ["displayName","email"].some(key => typeof mappings[key] !== "string" || !/^[^\s\u0000-\u001f\u007f]{0,256}$/.test(String(mappings[key])))) return invalid("mappings");
   if (mappings.username !== undefined && (typeof mappings.username !== "string" || !/^[^\s\u0000-\u001f\u007f]{0,256}$/.test(mappings.username))) return invalid("mappings");
+  if (mappings.hsaId !== undefined && (typeof mappings.hsaId !== "string" || !/^[^\s\u0000-\u001f\u007f]{0,256}$/.test(mappings.hsaId))) return invalid("mappings");
+  if (mappings.hsaAuthoritative !== undefined && typeof mappings.hsaAuthoritative !== "boolean") return invalid("mappings");
+  if (mappings.hsaAuthoritative && !mappings.hsaId) return invalid("mappings");
   let replacementSecret: string | undefined;
   if (body.replacementSecret !== undefined) {
     if (typeof body.replacementSecret !== "string" || body.replacementSecret.length < 1 || body.replacementSecret.length > 4096 || /[\u0000-\u001f\u007f]/.test(body.replacementSecret)) return invalid("replacementSecret");

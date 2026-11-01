@@ -21,7 +21,7 @@ type UserCursor = {
   kind?: "user" | "external";
 };
 type UserRow = {
-  id: string; display_name: string; username: string | null; active: boolean; revision: string | number;
+  hsa_id?:string|null;hsa_source?:"manual"|"oidc"|null;hsa_conflict?:boolean;id: string; display_name: string; username: string | null; active: boolean; revision: string | number;
   owner: boolean; superadmin: boolean;
   sso_linked: boolean;
   sso_username: string | null;
@@ -116,7 +116,7 @@ export class UserRoleReadService {
           where assignment.organization_id = $1 and assignment.user_id = u.id
             and assignment.ended_at is null and not role.hidden
         ), '[]'::jsonb) as roles, 'user'::text kind, null::jsonb regional_identity,
-        exists(select 1 from app_identity.regional_identity_request linked where linked.linked_user_id=u.id) sso_linked
+        exists(select 1 from app_identity.regional_identity_request linked where linked.linked_user_id=u.id) sso_linked,u.hsa_id,u.hsa_source,u.hsa_conflict
       from app_identity.app_user u
       left join app_identity.local_credential credential on credential.user_id = u.id
       where app_identity.organization_group(u.organization_id) = app_identity.organization_group($1)
@@ -126,13 +126,13 @@ export class UserRoleReadService {
           'id',r.id,'providerId',r.provider_id,'revision',r.first_revision,'reviewRevision',r.review_revision,
           'issuer',r.issuer,'subject',r.subject,'displayName',r.display_name,'email',r.email,'username',r.username_hint,'createdAt',r.created_at,
           'status',case when r.denied_at is null then 'pending' else 'denied' end,
-          'linkedUserId',null,'deniedAt',r.denied_at,'reviewProviders',coalesce((
+          'linkedUserId',null,'deniedAt',r.denied_at,'hsaEvidence',r.hsa_evidence,'reviewProviders',coalesce((
             select jsonb_agg(jsonb_build_object('source',p.source,'revision',v.revision))
             from app_identity.oidc_provider_state s
             cross join lateral (values ('draft',s.draft_revision),('active',s.active_revision)) p(source,revision)
             join app_identity.oidc_provider_version v on v.group_id=s.group_id and v.revision=p.revision
             where s.group_id=r.group_id and v.provider_id=r.provider_id and v.configuration->>'issuer'=r.issuer
-          ),'[]'::jsonb)),false
+          ),'[]'::jsonb)),false,null,null,false
       from app_identity.regional_identity_request r
       where $10::boolean and r.group_id=app_identity.organization_group($1) and r.linked_user_id is null)
       select u.* from directory u
@@ -157,7 +157,7 @@ export class UserRoleReadService {
     const last = visible.at(-1);
     return {
       items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,ssoUsername:row.sso_username??null,ssoLinked:row.sso_linked,
-        active: row.active, revision: Number(row.revision), owner: row.owner, superadmin: row.superadmin,
+        hsaId:row.hsa_id??null,hsaSource:row.hsa_source??null,hsaConflict:row.hsa_conflict??false,active: row.active, revision: Number(row.revision), owner: row.owner, superadmin: row.superadmin,
         roles: parsedJsonArray(row.roles),...(row.regional_identity?{externalIdentity:row.regional_identity}:{}) })),
       pageSize,
       nextCursor: rows.length > pageSize && last ? encodeCursor({ active: last.active,
