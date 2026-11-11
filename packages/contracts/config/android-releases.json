@@ -31,6 +31,33 @@
         "artifact": "opentriage-0.1.0-rc.2-2-e8c628d4686c421fd8541e9e9de4a957b4dd470ab087ab8a6f0f21d1b1ffe5b6.apk"
       },
       "downloadUrl": "https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-2-0.1.0-rc.2/opentriage-0.1.0-rc.2-2-e8c628d4686c421fd8541e9e9de4a957b4dd470ab087ab8a6f0f21d1b1ffe5b6.apk"
+    },
+    {
+      "tag": "android-candidate-1-0.1.0-rc.1",
+      "descriptor": {
+        "schemaVersion": 1,
+        "applicationId": "org.opentriage.android",
+        "versionCode": 1,
+        "versionName": "0.1.0-rc.1",
+        "certificateSha256": "2103f9a5fd4b17b113666165b86d52fad495d4e07b1507b18ee66a487a552a3a",
+        "apkSha256": "f53b493e91bc0511da5b3514ced154e8eed2420b4c5e6a3510ead3060ca2277c",
+        "apkBytes": 9260198,
+        "uiSha256": "29db0273df4277f86ded9daf82289d8f15a6b84a7ab316461f294a09add18c76",
+        "sourceCommit": "bbb55c5237d4900f450ebf9dca996370254c4704",
+        "compatibility": {
+          "pairingArtifact": 1,
+          "protectedReportSchema": 1,
+          "recoveryEnvelope": 1,
+          "api": {
+            "minimum": 1,
+            "maximum": 1
+          }
+        },
+        "minAndroidApi": 33,
+        "targetAndroidApi": 36,
+        "artifact": "opentriage-0.1.0-rc.1-1-f53b493e91bc0511da5b3514ced154e8eed2420b4c5e6a3510ead3060ca2277c.apk"
+      },
+      "downloadUrl": "https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-1-0.1.0-rc.1/opentriage-0.1.0-rc.1-1-f53b493e91bc0511da5b3514ced154e8eed2420b4c5e6a3510ead3060ca2277c.apk"
     }
   ]
 }

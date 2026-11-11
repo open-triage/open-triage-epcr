@@ -4,6 +4,7 @@ const fixture = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const runtimeDatabase = new URL(fixture.databaseUrl);
 runtimeDatabase.searchParams.set('options', '-c role=open_triage_api_runtime');
 Object.assign(process.env, {
+  ANDROID_APPROVED_RELEASE: '',
   OIDC_CREDENTIAL_KEYS_JSON: JSON.stringify({'1': Buffer.alloc(32,44).toString('base64')}),
   DATABASE_URL: runtimeDatabase.toString(), WEB_ORIGIN: fixture.origin, NODE_ENV: 'development',
   PATIENT_KEY_INSTALLATION_ID: fixture.organizationId, PATIENT_KEY_VERSION: '1',
