@@ -1,3 +1,4 @@
+import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -33,7 +34,7 @@ const tasks = [':app:testReleaseUnitTest', ':app:lintRelease', ':app:assembleRel
 if (env.ANDROID_RELEASE_INSTRUMENTATION === '1') tasks.push(':app:assembleReleaseAndroidTest');
 run('./gradlew', ['--no-daemon', ...tasks], join(root, 'android'));
 const source = join(root, 'android/app/build/outputs/apk/release/app-release.apk');
-const signature = execFileSync(join(tools, 'apksigner'), ['verify', '--verbose', '--print-certs', source], { env, encoding: 'utf8' });
+const signature = verifyApkSignature(sdk, source, env);
 const metadata = execFileSync(join(tools, 'aapt'), ['dump', 'badging', source], { env, encoding: 'utf8' });
 verifyApkMetadata(metadata, signature, identity);
 const bytes = readFileSync(source), apkSha256 = createHash('sha256').update(bytes).digest('hex');

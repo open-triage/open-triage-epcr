@@ -1,3 +1,4 @@
+import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -17,7 +18,7 @@ assert.equal(evidence.releaseB.sourceCommit, descriptor.sourceCommit, 'Evidence 
 assert.equal(preflight.status, 'passed'); assert.equal(preflight.command, 'npm run check:ci'); assert.equal(preflight.sourceCommit, descriptor.sourceCommit);
 const apk = join(folder, descriptor.artifact), sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
 assert.equal(createHash('sha256').update(readFileSync(apk)).digest('hex'), descriptor.apkSha256);
-verifyApkMetadata(execFileSync(join(sdk, 'build-tools/36.0.0/aapt'), ['dump', 'badging', apk], { encoding: 'utf8' }), execFileSync(join(sdk, 'build-tools/36.0.0/apksigner'), ['verify', '--print-certs', apk], { encoding: 'utf8' }), descriptor);
+verifyApkMetadata(execFileSync(join(sdk, 'build-tools/36.0.0/aapt'), ['dump', 'badging', apk], { encoding: 'utf8' }), verifyApkSignature(sdk, apk), descriptor);
 const gh = args => execFileSync('gh', args, { cwd: root, encoding: 'utf8' });
 assert.equal(JSON.parse(gh(['api', `repos/${repository}/immutable-releases`])).enabled, true, 'Repository immutable releases must be enabled');
 const releases = JSON.parse(gh(['api', '--paginate', '--slurp', `repos/${repository}/releases?per_page=100`])).flat();

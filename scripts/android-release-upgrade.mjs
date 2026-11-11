@@ -1,3 +1,4 @@
+import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync, fork } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -26,7 +27,7 @@ for (const [directory, descriptor] of [[aDirectory, a], [bDirectory, b]]) {
   const file = join(directory, descriptor.artifact);
   assert.equal(createHash('sha256').update(await readFile(file)).digest('hex'), descriptor.apkSha256, 'Immutable APK digest');
   verifyApkMetadata(execFileSync(join(sdk, 'build-tools/36.0.0/aapt'), ['dump', 'badging', file], { encoding: 'utf8' }),
-    execFileSync(join(sdk, 'build-tools/36.0.0/apksigner'), ['verify', '--verbose', '--print-certs', file], { encoding: 'utf8' }), descriptor);
+    verifyApkSignature(sdk, file), descriptor);
 }
 const directory = await mkdtemp(join(tmpdir(), 'open-triage-upgrade-')), container = `open-triage-upgrade-${randomUUID()}`;
 const children = []; let ownsController = false;

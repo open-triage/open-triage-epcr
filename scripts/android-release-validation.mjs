@@ -1,3 +1,4 @@
+import { verifyApkSignature } from './android/apk-signature.mjs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
@@ -15,7 +16,7 @@ try {
   run(join(env.JAVA_HOME, 'bin/keytool'), ['-genkeypair', '-keystore', env.ANDROID_KEYSTORE_PATH, '-storetype', 'PKCS12', '-storepass:env', 'ANDROID_KEYSTORE_PASSWORD', '-keypass:env', 'ANDROID_KEY_PASSWORD', '-alias', env.ANDROID_KEY_ALIAS, '-keyalg', 'RSA', '-keysize', '2048', '-validity', '2', '-dname', 'CN=Disposable Android validation']);
   run('./gradlew', ['--no-daemon', ':app:testReleaseUnitTest', ':app:lintRelease', ':app:assembleRelease', ':app:assembleReleaseAndroidTest'], join(root, 'android'));
   const tools = join(env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT, 'build-tools/36.0.0'), apk = join(root, 'android/app/build/outputs/apk/release/app-release.apk');
-  const signature = execFileSync(join(tools, 'apksigner'), ['verify', '--print-certs', apk], { encoding: 'utf8' });
+  const signature = verifyApkSignature(env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT, apk, env);
   const certificateSha256 = /Signer #1 certificate SHA-256 digest: ([a-f0-9]+)/.exec(signature)[1];
   verifyApkMetadata(execFileSync(join(tools, 'aapt'), ['dump', 'badging', apk], { encoding: 'utf8' }), signature, { applicationId: 'org.opentriage.android', versionCode: 2, versionName: '0.0.0-validation', certificateSha256 });
   const refused = spawnSync('./gradlew', ['--no-daemon', ':app:assembleDebug'], { cwd: join(root, 'android'), env, encoding: 'utf8' });
