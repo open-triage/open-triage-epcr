@@ -3035,6 +3035,7 @@
   "epsSubmission.draftChanged": "Draft changed — submit the corrected version.",
   "android.pairingTitle": "Pair Android installation",
   "android.importPairing": "Import vehicle pairing file",
+  "android.tlsFailed": "Secure connection failed. Check the device time or ask IT to verify the server certificate and CA trust. Local work is retained.",
   "android.pairingFailed": "Pairing failed. Check the file, server connection and certificate, or request a new code.",
   "android.cancel": "Cancel",
   "android.publicCa": "Public CA certificates (PEM, optional)",

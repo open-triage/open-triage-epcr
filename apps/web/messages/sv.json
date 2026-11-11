@@ -3033,6 +3033,7 @@
   "epsSubmission.draftChanged": "Utkastet har ändrats — skicka den korrigerade versionen.",
   "android.pairingTitle": "Koppla Android-installation",
   "android.importPairing": "Importera fil för fordonskoppling",
+  "android.tlsFailed": "Säker anslutning misslyckades. Kontrollera enhetens tid eller be IT kontrollera servercertifikatet och CA-förtroendet. Lokalt arbete behålls.",
   "android.pairingFailed": "Kopplingen misslyckades. Kontrollera fil, serveranslutning och certifikat eller begär en ny kod.",
   "android.cancel": "Avbryt",
   "android.publicCa": "Publika CA-certifikat (PEM, valfritt)",
