@@ -576,6 +576,7 @@
   "noteUi.audioConnection": "Inspelningen kunde inte sparas. Kontrollera anslutningen och försök igen.",
   "noteUi.photoNormalize": "Bildbehandling är inte tillgänglig på den här enheten.",
   "noteUi.photoWaitPreview": "Vänta tills kamerans direktbild visas innan du tar en bild.",
+  "noteUi.androidPhotoTransferLimit": "Fotot är för stort för att överföras på den här enheten. Kasta och ta om det.",
   "noteUi.photoCaptureUnavailable": "Kameran är inte tillgänglig på den här enheten.",
   "noteUi.photoEncode": "Den tagna bilden kunde inte behandlas.",
   "platform.error.auth.invalidCredentials": "Användarnamnet eller lösenordet är felaktigt.",

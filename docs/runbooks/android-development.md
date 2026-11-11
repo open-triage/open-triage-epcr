@@ -194,6 +194,49 @@ deadline. API fixture startup
 asserts that its explicit synthetic wrapping key is used, so a development fallback
 cannot silently substitute for recovery configuration.
 
+## Photo notes and binary media
+
+Android uses the existing shared live-camera photo dialog, preview, rotation,
+caption, timeline, thumbnails and full viewer. WebView camera requests use Android
+runtime permission; denial keeps the localized recovery flow and text notes.
+The pending permission request is serialized across the dialog’s transient
+Activity pause/resume, so denial cannot automatically trigger another prompt.
+Native Activity pause stops the live track, resume reacquires it, and late results
+from a cancelled or paused capture cannot reopen the preview. Frames remain in
+memory; previews and queued canonical photos use the existing encrypted protected
+report store. No native camera file, gallery entry or backup copy is created.
+
+The credentialed native connection carries request and response bytes as Base64
+across the bridge, without decoding media as UTF-8. JSON and media share the same
+origin, trust roots, cookie vault, managed-policy checks and redirect rejection.
+Photo retrieval additionally rejects non-API and cross-origin locations in the
+shared client and disables redirects in the browser. HEAD and 204/205/304 do not
+buffer a body, even when representation Content-Length is present.
+
+The current bridge caps decoded request and response wire bodies at 16 MiB to
+bound simultaneous native/bridge/WebView copies. This supports the default 10 MiB
+photo policy plus its JSON/Base64 command. Photo capture checks the encoded command
+before staging an upload; a larger photo retains its encrypted preview and shows
+localized retake guidance. A declared oversized response is rejected before its
+body is read, and unknown-length bodies are bounded while reading. Future larger
+media/download work must deliberately provide a bounded streaming path rather
+than increasing this allocation ceiling without device acceptance.
+
+Early `android:build` validation includes real TLS default-size binary round-trip,
+invalid UTF-8 bytes, oversized response/request rejection and bodyless responses.
+`android:test` captures a synthetic frame through the production shared camera
+flow after actual permission denial/grant and Activity pause/resume, saves it
+offline into encrypted report storage, then force-stops the live process. The
+existing wrong-clinician and authorized recovery phases preserve ownership and
+verify the recovered upload returns an exact hashed JPEG that decodes at its
+expected dimensions. Physical image quality remains ticket 019 acceptance.
+
+Automatic signing status, review-attention and EPS readers share the foreground
+subscription with media draining. They start no new traffic during a paused
+reconnect and refresh once per reader after resume without another connectivity
+event. The early browser journey covers all three readers as well as delayed
+permission denial and cancelled capture callbacks.
+
 ### Installation reassignment and interrupted confirmation
 
 Use **Change installation** from the APK login or session controls to scan or
@@ -253,5 +296,9 @@ Run `npm run android:validate:release` after `android:build` to catch release-on
 build/signature regressions locally; the Android PR workflow runs this same early
 check with a disposable key. Permanent-key distribution requires the separate
 protected release workflow and actual signed upgrade evidence.
+
+Android validation failures preserve bounded crash/runtime logs, application exit reasons, app memory and WebView version under `android/app/build/reports/android-failure/` before fixture/emulator teardown. These synthetic-emulator reports are included in the PR artifact for seven days. The collector excludes command arguments, screenshots, app files and bugreports; it redacts credential fields, known fixture secrets, URL queries, PEM blocks and long opaque values. Probe timeouts or collection failures never replace the original failing result, and instrumentation is never retried automatically.
+
+Camera discovery records the active device without reopening its stream. Only an explicit camera cycle requests another device; duplicate native/document visibility notifications leave an already foregrounded stream running. Browser lifecycle coverage checks this before native acceptance.
 
 The generic APK uses platform and WebView fonts. Its manifest removes only AndroidX EmojiCompat's automatic downloadable-font initializer; other local Startup components remain. A hosted process death was traced to Android killing the clinical PID after its Google Play Services font provider died. Both debug and production builds check their actual merged manifests before device execution, and the installed native startup test verifies remote emoji initialization stays disabled. See [Android's initializer configuration](https://developer.android.com/reference/androidx/emoji2/text/EmojiCompatInitializer).

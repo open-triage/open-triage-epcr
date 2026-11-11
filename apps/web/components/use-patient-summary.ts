@@ -4,6 +4,8 @@ import type { ClinicalFormConfiguration, HospitalIdentifier, EpsContext, EpsLook
 import { browserRequestConfiguration, browserRequestInit, browserRouteUrl } from '../app/browser-api';
 import { applyProtectedAuthorityResponse, discardProtectedEps, protectedEps, protectedEpsPatientMapping, protectedStorageActive, protectedStorageStatus, retainProtectedEps, subscribeProtectedStorageStatus, type ProtectedEpsScope } from '../app/protected-clinical-storage';
 
+import { foregroundNetworkAllowed } from "../app/application-foreground";
+import { useNativeForeground } from "./use-native-foreground";
 import { patientSummaryDocumentKey } from '../app/patient-summary-identity';
 
 type State = { key: string; status: string; result?: EpsLookup; cached?: boolean };
@@ -18,6 +20,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [online, setOnline] = useState(true);
+  const foreground = useNativeForeground();
   const [activatedKey, setActivatedKey] = useState<string | null>(null);
   const [authorizedKey, setAuthorizedKey] = useState<string | null>(null);
   const active = useRef('');
@@ -61,7 +64,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
     return () => { remove(); clearInterval(timer); };
   }, [key, reportId, invalidate]);
   useEffect(() => {
-    if (browserRequestConfiguration().mode === 'static') return;
+    if (browserRequestConfiguration().mode === 'static' || !foreground) return;
     const scope = JSON.parse(key) as ProtectedEpsScope;
     let stopped = false;
     const controller = new AbortController();
@@ -75,6 +78,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
       if (!result) setOpenKey(null);
     }
     async function read<T>(path: string): Promise<T> {
+      if (!foregroundNetworkAllowed()) throw new Error("EPS paused");
       const response = await fetch(browserRouteUrl(`/api/reports/${reportId}/eps${path}`), browserRequestInit({ signal: controller.signal }));
       if (!response.ok) {
         if (response.status >= 500) throw new Error('EPS temporarily unavailable');
@@ -113,7 +117,7 @@ export function usePatientSummary(rawScope: ProtectedEpsScope, ready: boolean, f
     }
     timer = setTimeout(() => void check(), 300);
     return () => { stopped = true; controller.abort(); clearTimeout(timer); };
-  }, [key, reportId, organizationId, ready, retry, online, mapping, form, invalidate]);
+  }, [key, reportId, organizationId, ready, retry, online, foreground, mapping, form, invalidate]);
 
   async function openSummary() {
     if (locked.current) return;
