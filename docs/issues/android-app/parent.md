@@ -2,7 +2,7 @@
 
 # Android application: shared UI, vehicle pairing and standard MDM deployment
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Published; approved for implementation.
 
 Repository: `open-triage/open-triage-epcr`
 
@@ -12,27 +12,27 @@ Source PRD: `docs/prds/android-app.md` at commit `4fb8d1b68ec2313b8300f8e8d18af5
 
 ## Delivery hierarchy
 
-- 001: **AFK** — Import vehicle pairing and sign in to the bundled Android app. Blocked by: none.
-- 002: **AFK** — Scan the existing vehicle-pairing QR in Android. Blocked by: 001.
-- 003: **AFK** — Document offline and recover work after Android process restart. Blocked by: 001.
-- 004: **AFK** — Provision and lock server settings through standard Android management. Blocked by: 001.
-- 005: **AFK** — Revoke or reassign Android installations without losing pending work. Blocked by: 003, 004.
-- 006: **AFK** — Complete OIDC sign-in and personal reauthentication in the APK. Blocked by: 003.
-- 007: **AFK** — Switch authorized agencies without leaking Android session or draft state. Blocked by: 005, 006.
-- 008: **AFK** — Capture and view photo notes over the configured Android connection. Blocked by: 003.
-- 009: **AFK** — Record and play audio notes over the configured Android connection. Blocked by: 003.
-- 010: **AFK** — Sign, review and download reports through the shared Android UI. Blocked by: 008, 009.
-- 011: **AFK** — Preserve the shared workflow through Android navigation and layout changes. Blocked by: 003.
-- 012: **AFK** — Provision server TLS and replace CA trust without rebuilding the APK. Blocked by: 001, 004.
-- 013: **HITL** — Establish the production signing identity and verify a signed APK upgrade. Blocked by: 003.
-- 014: **AFK** — Download a compatible signed APK from Admin. Blocked by: 013.
-- 015: **AFK** — Configure installation-wide APK upgrade grace in Super-admin. Blocked by: 014.
-- 016: **AFK** — Require upgrades before new work while preserving retained drafts. Blocked by: 003, 004, 014, 015.
-- 017: **HITL** — Accept installation, configuration and upgrades through Intune. Blocked by: 002, 004, 005, 012, 014, 016.
-- 018: **HITL** — Accept standard app management through combined Headwind/MDMesh. Blocked by: 002, 004, 005, 012, 014, 016.
-- 019: **HITL** — Accept the complete APK workflow on a physical phone and tablet. Blocked by: 002, 005, 006, 007, 010, 011, 012, 016.
+- [001: Import vehicle pairing and sign in to the bundled Android app](https://github.com/open-triage/open-triage-epcr/issues/799) — **AFK**. Blocked by: none.
+- [002: Scan the existing vehicle-pairing QR in Android](https://github.com/open-triage/open-triage-epcr/issues/800) — **AFK**. Blocked by: [#799](https://github.com/open-triage/open-triage-epcr/issues/799).
+- [003: Document offline and recover work after Android process restart](https://github.com/open-triage/open-triage-epcr/issues/801) — **AFK**. Blocked by: [#799](https://github.com/open-triage/open-triage-epcr/issues/799).
+- [004: Provision and lock server settings through standard Android management](https://github.com/open-triage/open-triage-epcr/issues/802) — **AFK**. Blocked by: [#799](https://github.com/open-triage/open-triage-epcr/issues/799).
+- [005: Revoke or reassign Android installations without losing pending work](https://github.com/open-triage/open-triage-epcr/issues/803) — **AFK**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801), [#802](https://github.com/open-triage/open-triage-epcr/issues/802).
+- [006: Complete OIDC sign-in and personal reauthentication in the APK](https://github.com/open-triage/open-triage-epcr/issues/804) — **AFK**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801).
+- [007: Switch authorized agencies without leaking Android session or draft state](https://github.com/open-triage/open-triage-epcr/issues/805) — **AFK**. Blocked by: [#803](https://github.com/open-triage/open-triage-epcr/issues/803), [#804](https://github.com/open-triage/open-triage-epcr/issues/804).
+- [008: Capture and view photo notes over the configured Android connection](https://github.com/open-triage/open-triage-epcr/issues/806) — **AFK**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801).
+- [009: Record and play audio notes over the configured Android connection](https://github.com/open-triage/open-triage-epcr/issues/807) — **AFK**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801).
+- [010: Sign, review and download reports through the shared Android UI](https://github.com/open-triage/open-triage-epcr/issues/808) — **AFK**. Blocked by: [#806](https://github.com/open-triage/open-triage-epcr/issues/806), [#807](https://github.com/open-triage/open-triage-epcr/issues/807).
+- [011: Preserve the shared workflow through Android navigation and layout changes](https://github.com/open-triage/open-triage-epcr/issues/809) — **AFK**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801).
+- [012: Provision server TLS and replace CA trust without rebuilding the APK](https://github.com/open-triage/open-triage-epcr/issues/810) — **AFK**. Blocked by: [#799](https://github.com/open-triage/open-triage-epcr/issues/799), [#802](https://github.com/open-triage/open-triage-epcr/issues/802).
+- [013: Establish the production signing identity and verify a signed APK upgrade](https://github.com/open-triage/open-triage-epcr/issues/811) — **HITL**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801).
+- [014: Download a compatible signed APK from Admin](https://github.com/open-triage/open-triage-epcr/issues/812) — **AFK**. Blocked by: [#811](https://github.com/open-triage/open-triage-epcr/issues/811).
+- [015: Configure installation-wide APK upgrade grace in Super-admin](https://github.com/open-triage/open-triage-epcr/issues/813) — **AFK**. Blocked by: [#812](https://github.com/open-triage/open-triage-epcr/issues/812).
+- [016: Require upgrades before new work while preserving retained drafts](https://github.com/open-triage/open-triage-epcr/issues/814) — **AFK**. Blocked by: [#801](https://github.com/open-triage/open-triage-epcr/issues/801), [#802](https://github.com/open-triage/open-triage-epcr/issues/802), [#812](https://github.com/open-triage/open-triage-epcr/issues/812), [#813](https://github.com/open-triage/open-triage-epcr/issues/813).
+- [017: Accept installation, configuration and upgrades through Intune](https://github.com/open-triage/open-triage-epcr/issues/815) — **HITL**. Blocked by: [#800](https://github.com/open-triage/open-triage-epcr/issues/800), [#802](https://github.com/open-triage/open-triage-epcr/issues/802), [#803](https://github.com/open-triage/open-triage-epcr/issues/803), [#810](https://github.com/open-triage/open-triage-epcr/issues/810), [#812](https://github.com/open-triage/open-triage-epcr/issues/812), [#814](https://github.com/open-triage/open-triage-epcr/issues/814).
+- [018: Accept standard app management through combined Headwind/MDMesh](https://github.com/open-triage/open-triage-epcr/issues/816) — **HITL**. Blocked by: [#800](https://github.com/open-triage/open-triage-epcr/issues/800), [#802](https://github.com/open-triage/open-triage-epcr/issues/802), [#803](https://github.com/open-triage/open-triage-epcr/issues/803), [#810](https://github.com/open-triage/open-triage-epcr/issues/810), [#812](https://github.com/open-triage/open-triage-epcr/issues/812), [#814](https://github.com/open-triage/open-triage-epcr/issues/814).
+- [019: Accept the complete APK workflow on a physical phone and tablet](https://github.com/open-triage/open-triage-epcr/issues/817) — **HITL**. Blocked by: [#800](https://github.com/open-triage/open-triage-epcr/issues/800), [#803](https://github.com/open-triage/open-triage-epcr/issues/803), [#804](https://github.com/open-triage/open-triage-epcr/issues/804), [#805](https://github.com/open-triage/open-triage-epcr/issues/805), [#808](https://github.com/open-triage/open-triage-epcr/issues/808), [#809](https://github.com/open-triage/open-triage-epcr/issues/809), [#810](https://github.com/open-triage/open-triage-epcr/issues/810), [#814](https://github.com/open-triage/open-triage-epcr/issues/814).
 
-All 49 source user stories are mapped in the child bodies and publication manifest. The first three slices form the initial manual-install/pair/offline/restart/recovery milestone. Each implementation slice includes its own tests. The four HITL tickets require actual signing-owner or deployment/device input. Exact child links and real GitHub sub-issue relationships will be added only after approval.
+All 49 source user stories are mapped in the child bodies and publication manifest. The first three slices form the initial manual-install/pair/offline/restart/recovery milestone. Each implementation slice includes its own tests. The four HITL tickets require actual signing-owner or deployment/device input. All 19 tickets are attached as real GitHub sub-issues; blocker links specify implementation order.
 
 ## Source PRD
 
@@ -470,12 +470,12 @@ an optional managed-device deployment mechanism.
 
 ## References
 
-- [Protected offline storage and recovery](../../protected-offline-clinical-storage.md).
-- [Existing installation enrollment and reassignment](../../runbooks/installation-enrollment.md).
-- [Personal OIDC sessions](../../runbooks/personal-oidc-sessions.md).
-- [Kubernetes production deployment and TLS setup](../../runbooks/kubernetes-production.md).
-- [UI style guide](../../design/ui-style-guide.md).
-- [Local development and preflight prerequisites](../../runbooks/local-development.md).
+- [Protected offline storage and recovery](https://github.com/open-triage/open-triage-epcr/blob/main/docs/protected-offline-clinical-storage.md).
+- [Existing installation enrollment and reassignment](https://github.com/open-triage/open-triage-epcr/blob/main/docs/runbooks/installation-enrollment.md).
+- [Personal OIDC sessions](https://github.com/open-triage/open-triage-epcr/blob/main/docs/runbooks/personal-oidc-sessions.md).
+- [Kubernetes production deployment and TLS setup](https://github.com/open-triage/open-triage-epcr/blob/main/docs/runbooks/kubernetes-production.md).
+- [UI style guide](https://github.com/open-triage/open-triage-epcr/blob/main/docs/design/ui-style-guide.md).
+- [Local development and preflight prerequisites](https://github.com/open-triage/open-triage-epcr/blob/main/docs/runbooks/local-development.md).
 - [Capacitor configuration](https://capacitorjs.com/docs/config), [Android support](https://capacitorjs.com/docs/android), and [native HTTP support](https://capacitorjs.com/docs/apis/http).
 - [Android managed configurations](https://developer.android.com/work/managed-configurations) and [application network security configuration](https://developer.android.com/privacy-and-security/security-config).
 - [Intune Android configuration](https://learn.microsoft.com/en-us/intune/app-management/configuration/configure-managed-android), [direct APK deployment](https://learn.microsoft.com/en-us/intune/app-management/deployment/add-lob-android), and [trusted certificate profiles](https://learn.microsoft.com/mem/intune/protect/certificates-trusted-root).

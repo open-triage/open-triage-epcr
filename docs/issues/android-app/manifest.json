@@ -5,7 +5,7 @@
   "sourceCommit": "4fb8d1b68ec2313b8300f8e8d18af512ead79b53",
   "parentTitle": "[PRD] Android application: shared UI, vehicle pairing and standard MDM deployment",
   "parentMarker": "android-app:parent",
-  "publicationStatus": "draft-awaiting-approval",
+  "publicationStatus": "published-verified",
   "relationshipMethod": "GitHub REST sub-issues via gh api; standard GitHub integration for issue creation where available",
   "slices": [
     {
@@ -31,7 +31,13 @@
         29,
         49
       ],
-      "marker": "android-app:slice-001"
+      "marker": "android-app:slice-001",
+      "published": {
+        "number": 799,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/799",
+        "attachedToParent": true,
+        "id": 6329494359
+      }
     },
     {
       "number": 2,
@@ -49,7 +55,13 @@
         18,
         25
       ],
-      "marker": "android-app:slice-002"
+      "marker": "android-app:slice-002",
+      "published": {
+        "number": 800,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/800",
+        "attachedToParent": true,
+        "id": 6329495449
+      }
     },
     {
       "number": 3,
@@ -69,7 +81,13 @@
         38,
         48
       ],
-      "marker": "android-app:slice-003"
+      "marker": "android-app:slice-003",
+      "published": {
+        "number": 801,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/801",
+        "attachedToParent": true,
+        "id": 6329496610
+      }
     },
     {
       "number": 4,
@@ -88,7 +106,13 @@
         45,
         46
       ],
-      "marker": "android-app:slice-004"
+      "marker": "android-app:slice-004",
+      "published": {
+        "number": 802,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/802",
+        "attachedToParent": true,
+        "id": 6329497996
+      }
     },
     {
       "number": 5,
@@ -108,7 +132,13 @@
         30,
         38
       ],
-      "marker": "android-app:slice-005"
+      "marker": "android-app:slice-005",
+      "published": {
+        "number": 803,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/803",
+        "attachedToParent": true,
+        "id": 6329500277
+      }
     },
     {
       "number": 6,
@@ -125,7 +155,13 @@
         37,
         48
       ],
-      "marker": "android-app:slice-006"
+      "marker": "android-app:slice-006",
+      "published": {
+        "number": 804,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/804",
+        "attachedToParent": true,
+        "id": 6329501624
+      }
     },
     {
       "number": 7,
@@ -142,7 +178,13 @@
         29,
         30
       ],
-      "marker": "android-app:slice-007"
+      "marker": "android-app:slice-007",
+      "published": {
+        "number": 805,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/805",
+        "attachedToParent": true,
+        "id": 6329502681
+      }
     },
     {
       "number": 8,
@@ -159,7 +201,13 @@
         34,
         38
       ],
-      "marker": "android-app:slice-008"
+      "marker": "android-app:slice-008",
+      "published": {
+        "number": 806,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/806",
+        "attachedToParent": true,
+        "id": 6329503704
+      }
     },
     {
       "number": 9,
@@ -176,7 +224,13 @@
         34,
         38
       ],
-      "marker": "android-app:slice-009"
+      "marker": "android-app:slice-009",
+      "published": {
+        "number": 807,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/807",
+        "attachedToParent": true,
+        "id": 6329505016
+      }
     },
     {
       "number": 10,
@@ -192,7 +246,13 @@
         29,
         32
       ],
-      "marker": "android-app:slice-010"
+      "marker": "android-app:slice-010",
+      "published": {
+        "number": 808,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/808",
+        "attachedToParent": true,
+        "id": 6329510222
+      }
     },
     {
       "number": 11,
@@ -212,7 +272,13 @@
         35,
         48
       ],
-      "marker": "android-app:slice-011"
+      "marker": "android-app:slice-011",
+      "published": {
+        "number": 809,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/809",
+        "attachedToParent": true,
+        "id": 6329511339
+      }
     },
     {
       "number": 12,
@@ -231,7 +297,13 @@
         45,
         48
       ],
-      "marker": "android-app:slice-012"
+      "marker": "android-app:slice-012",
+      "published": {
+        "number": 810,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/810",
+        "attachedToParent": true,
+        "id": 6329512656
+      }
     },
     {
       "number": 13,
@@ -248,7 +320,13 @@
         47,
         48
       ],
-      "marker": "android-app:slice-013"
+      "marker": "android-app:slice-013",
+      "published": {
+        "number": 811,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/811",
+        "attachedToParent": true,
+        "id": 6329514315
+      }
     },
     {
       "number": 14,
@@ -265,7 +343,13 @@
         6,
         9
       ],
-      "marker": "android-app:slice-014"
+      "marker": "android-app:slice-014",
+      "published": {
+        "number": 812,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/812",
+        "attachedToParent": true,
+        "id": 6329515854
+      }
     },
     {
       "number": 15,
@@ -280,7 +364,13 @@
         41,
         42
       ],
-      "marker": "android-app:slice-015"
+      "marker": "android-app:slice-015",
+      "published": {
+        "number": 813,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/813",
+        "attachedToParent": true,
+        "id": 6329518626
+      }
     },
     {
       "number": 16,
@@ -300,7 +390,13 @@
         44,
         48
       ],
-      "marker": "android-app:slice-016"
+      "marker": "android-app:slice-016",
+      "published": {
+        "number": 814,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/814",
+        "attachedToParent": true,
+        "id": 6329519948
+      }
     },
     {
       "number": 17,
@@ -327,7 +423,13 @@
         47,
         48
       ],
-      "marker": "android-app:slice-017"
+      "marker": "android-app:slice-017",
+      "published": {
+        "number": 815,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/815",
+        "attachedToParent": true,
+        "id": 6329521073
+      }
     },
     {
       "number": 18,
@@ -354,7 +456,13 @@
         47,
         48
       ],
-      "marker": "android-app:slice-018"
+      "marker": "android-app:slice-018",
+      "published": {
+        "number": 816,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/816",
+        "attachedToParent": true,
+        "id": 6329522098
+      }
     },
     {
       "number": 19,
@@ -395,7 +503,26 @@
         47,
         48
       ],
-      "marker": "android-app:slice-019"
+      "marker": "android-app:slice-019",
+      "published": {
+        "number": 817,
+        "url": "https://github.com/open-triage/open-triage-epcr/issues/817",
+        "attachedToParent": true,
+        "id": 6329523233
+      }
     }
-  ]
+  ],
+  "parent": {
+    "number": 798,
+    "url": "https://github.com/open-triage/open-triage-epcr/issues/798",
+    "id": 6329485873
+  },
+  "verification": {
+    "date": "2026-11-11",
+    "parentBody": true,
+    "childBodies": 19,
+    "realSubIssues": 19,
+    "dependencyLinks": true,
+    "userStoriesCovered": 49
+  }
 }

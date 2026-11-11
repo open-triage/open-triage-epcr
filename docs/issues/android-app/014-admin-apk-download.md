@@ -2,11 +2,11 @@
 
 # [AFK] 014 - Download a compatible signed APK from Admin
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Approved for implementation.
 
-Parent PRD: [Android application](parent.md#source-prd)
+Parent PRD: [Android application](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
-Source: [Android app PRD](../../prds/android-app.md)
+Source: [Android app PRD](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
 Implementation branch: `feature/android_app`
 
@@ -30,4 +30,4 @@ Follow the parent PRD and repository instructions. Implement the complete behavi
 
 ## Blocked by
 
-- Blocked by `013-signed-release-upgrade.md`
+- Blocked by [#811](https://github.com/open-triage/open-triage-epcr/issues/811)

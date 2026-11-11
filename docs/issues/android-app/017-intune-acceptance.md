@@ -2,11 +2,11 @@
 
 # [HITL] 017 - Accept installation, configuration and upgrades through Intune
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Approved for implementation.
 
-Parent PRD: [Android application](parent.md#source-prd)
+Parent PRD: [Android application](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
-Source: [Android app PRD](../../prds/android-app.md)
+Source: [Android app PRD](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
 Implementation branch: `feature/android_app`
 
@@ -35,9 +35,9 @@ IT supplies access to an Intune test deployment, an enrolled Android 13+ device,
 
 ## Blocked by
 
-- Blocked by `002-scan-vehicle-pairing.md`
-- Blocked by `004-standard-managed-configuration.md`
-- Blocked by `005-revoke-and-reassign.md`
-- Blocked by `012-tls-provisioning-and-rotation.md`
-- Blocked by `014-admin-apk-download.md`
-- Blocked by `016-upgrade-gate-and-recovery.md`
+- Blocked by [#800](https://github.com/open-triage/open-triage-epcr/issues/800)
+- Blocked by [#802](https://github.com/open-triage/open-triage-epcr/issues/802)
+- Blocked by [#803](https://github.com/open-triage/open-triage-epcr/issues/803)
+- Blocked by [#810](https://github.com/open-triage/open-triage-epcr/issues/810)
+- Blocked by [#812](https://github.com/open-triage/open-triage-epcr/issues/812)
+- Blocked by [#814](https://github.com/open-triage/open-triage-epcr/issues/814)

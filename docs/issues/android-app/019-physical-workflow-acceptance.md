@@ -2,11 +2,11 @@
 
 # [HITL] 019 - Accept the complete APK workflow on a physical phone and tablet
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Approved for implementation.
 
-Parent PRD: [Android application](parent.md#source-prd)
+Parent PRD: [Android application](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
-Source: [Android app PRD](../../prds/android-app.md)
+Source: [Android app PRD](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
 Implementation branch: `feature/android_app`
 
@@ -35,11 +35,11 @@ IT/product owners select and provide representative physical phone/tablet models
 
 ## Blocked by
 
-- Blocked by `002-scan-vehicle-pairing.md`
-- Blocked by `005-revoke-and-reassign.md`
-- Blocked by `006-oidc-and-reauthentication.md`
-- Blocked by `007-agency-handoff.md`
-- Blocked by `010-stationary-review-downloads.md`
-- Blocked by `011-navigation-and-layout.md`
-- Blocked by `012-tls-provisioning-and-rotation.md`
-- Blocked by `016-upgrade-gate-and-recovery.md`
+- Blocked by [#800](https://github.com/open-triage/open-triage-epcr/issues/800)
+- Blocked by [#803](https://github.com/open-triage/open-triage-epcr/issues/803)
+- Blocked by [#804](https://github.com/open-triage/open-triage-epcr/issues/804)
+- Blocked by [#805](https://github.com/open-triage/open-triage-epcr/issues/805)
+- Blocked by [#808](https://github.com/open-triage/open-triage-epcr/issues/808)
+- Blocked by [#809](https://github.com/open-triage/open-triage-epcr/issues/809)
+- Blocked by [#810](https://github.com/open-triage/open-triage-epcr/issues/810)
+- Blocked by [#814](https://github.com/open-triage/open-triage-epcr/issues/814)

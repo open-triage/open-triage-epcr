@@ -2,11 +2,11 @@
 
 # [AFK] 016 - Require upgrades before new work while preserving retained drafts
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Approved for implementation.
 
-Parent PRD: [Android application](parent.md#source-prd)
+Parent PRD: [Android application](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
-Source: [Android app PRD](../../prds/android-app.md)
+Source: [Android app PRD](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
 Implementation branch: `feature/android_app`
 
@@ -31,7 +31,7 @@ Follow the parent PRD and repository instructions. Implement the complete behavi
 
 ## Blocked by
 
-- Blocked by `003-offline-report-recovery.md`
-- Blocked by `004-standard-managed-configuration.md`
-- Blocked by `014-admin-apk-download.md`
-- Blocked by `015-admin-upgrade-policy.md`
+- Blocked by [#801](https://github.com/open-triage/open-triage-epcr/issues/801)
+- Blocked by [#802](https://github.com/open-triage/open-triage-epcr/issues/802)
+- Blocked by [#812](https://github.com/open-triage/open-triage-epcr/issues/812)
+- Blocked by [#813](https://github.com/open-triage/open-triage-epcr/issues/813)

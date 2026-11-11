@@ -2,11 +2,11 @@
 
 # [HITL] 013 - Establish the production signing identity and verify a signed APK upgrade
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Approved for implementation.
 
-Parent PRD: [Android application](parent.md#source-prd)
+Parent PRD: [Android application](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
-Source: [Android app PRD](../../prds/android-app.md)
+Source: [Android app PRD](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
 Implementation branch: `feature/android_app`
 
@@ -35,4 +35,4 @@ The product/release owner selects the production application ID, signing-key own
 
 ## Blocked by
 
-- Blocked by `003-offline-report-recovery.md`
+- Blocked by [#801](https://github.com/open-triage/open-triage-epcr/issues/801)

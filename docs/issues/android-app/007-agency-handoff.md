@@ -2,11 +2,11 @@
 
 # [AFK] 007 - Switch authorized agencies without leaking Android session or draft state
 
-Status: Draft awaiting breakdown and publication approval.
+Status: Approved for implementation.
 
-Parent PRD: [Android application](parent.md#source-prd)
+Parent PRD: [Android application](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
-Source: [Android app PRD](../../prds/android-app.md)
+Source: [Android app PRD](https://github.com/open-triage/open-triage-epcr/issues/798#source-prd)
 
 Implementation branch: `feature/android_app`
 
@@ -30,5 +30,5 @@ Follow the parent PRD and repository instructions. Implement the complete behavi
 
 ## Blocked by
 
-- Blocked by `005-revoke-and-reassign.md`
-- Blocked by `006-oidc-and-reauthentication.md`
+- Blocked by [#803](https://github.com/open-triage/open-triage-epcr/issues/803)
+- Blocked by [#804](https://github.com/open-triage/open-triage-epcr/issues/804)
