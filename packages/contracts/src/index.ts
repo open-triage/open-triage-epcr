@@ -2201,3 +2201,5 @@ export * from "./hospital-identifier-scheme.js";
 export * from "./hospital-history.js";
 export * from "./cos-context.js";
 export type { CosPatientDemographics, CosPatientComparison, CosSigningIssue } from './cos-signing.js';
+
+export * from "./android-upgrade-policy.js";

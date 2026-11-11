@@ -20,6 +20,11 @@ export class AndroidReleaseService {
 
   async read(token: string): Promise<AndroidReleaseAvailability> {
     await this.sessions.requireCapability(token, "settings:read");
+    return this.verifiedSelection();
+  }
+
+  /** Internal callers must establish their own session/enrollment authority first. */
+  async verifiedSelection(): Promise<AndroidReleaseAvailability> {
     const selection = process.env.ANDROID_APPROVED_RELEASE;
     if (!selection) return unavailable("not-selected");
     const cached = this.verified.get(selection);
@@ -33,6 +38,14 @@ export class AndroidReleaseService {
     }
     const value = await pending;
     return process.env.ANDROID_APPROVED_RELEASE === selection ? value : unavailable("not-selected");
+  }
+
+  /** No network or cache renewal: a write transaction can reject stale verification without holding its row lock across a download. */
+  currentVerifiedSelection(): AndroidReleaseAvailability | null {
+    const selection = process.env.ANDROID_APPROVED_RELEASE;
+    if (!selection) return unavailable("not-selected");
+    const cached = this.verified.get(selection);
+    return cached && cached.expiresAt > Date.now() ? cached.value : null;
   }
 
   private async load(selection: string): Promise<AndroidReleaseAvailability> {

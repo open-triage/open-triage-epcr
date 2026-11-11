@@ -49,6 +49,10 @@
     "./android-release": {
       "types": "./android-release.d.mts",
       "default": "./android-release.mjs"
+    },
+    "./android-upgrade-policy": {
+      "types": "./android-upgrade-policy.d.mts",
+      "default": "./android-upgrade-policy.mjs"
     }
   },
   "scripts": {
