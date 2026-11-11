@@ -36,9 +36,9 @@
   top: calc(var(--session-bar-height, 98px) + var(--clinical-demo-banner-height, 0px));
 }
 
-/* Keyboards, landscape and enlarged text can make the pinned bars taller than
-   the usable viewport. Let every control scroll into view in that space. */
-@media (max-height: 540px) {
+/* Keyboards, landscape and narrow screens with enlarged text can make the
+   pinned bars taller than the usable viewport. Let every control scroll into view. */
+@media (max-height: 540px), (max-width: 370px) {
   .authenticated-shell :is(.session-bar, .clinical-demo-banner, .encounter-header,
     .quick-actions, .stationary-record-section-heading, .stationary-section-rail,
     .form-editor-toolbar) { position: static; }
