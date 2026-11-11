@@ -13,12 +13,10 @@ import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.Until;
 import com.google.zxing.BarcodeFormat;
-import com.google.zxing.BinaryBitmap;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.RGBLuminanceSource;
 import com.google.zxing.common.BitMatrix;
-import com.google.zxing.common.HybridBinarizer;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -60,7 +58,9 @@ public class ScanPairingJourneyTest extends PairingJourneyTest {
             Map.of(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M, EncodeHintType.CHARACTER_SET, "UTF-8", EncodeHintType.MARGIN, 4));
         int[] pixels = new int[matrix.getWidth() * matrix.getHeight()];
         for (int y = 0; y < matrix.getHeight(); y++) for (int x = 0; x < matrix.getWidth(); x++) pixels[y * matrix.getWidth() + x] = matrix.get(x, y) ? 0xff000000 : 0xffffffff;
-        return PairingQrDecoder.reader(null).decodeWithState(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(matrix.getWidth(), matrix.getHeight(), pixels)))).getText();
+        var decoded = PairingQrDecoder.cameraDecoder(null).decode(new RGBLuminanceSource(matrix.getWidth(), matrix.getHeight(), pixels));
+        assertNotNull("Production camera decoder must read QR pixels, bytes=" + artifact.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, decoded);
+        return decoded.getText();
     }
     @Override protected void importFile(String artifact) throws Exception {
         if (!prepared) { permissionDenialAndCancellation(); prepared = true; }

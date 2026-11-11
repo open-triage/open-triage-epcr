@@ -16,7 +16,6 @@ import com.journeyapps.barcodescanner.BarcodeCallback;
 import com.journeyapps.barcodescanner.BarcodeResult;
 import com.journeyapps.barcodescanner.BarcodeView;
 import com.journeyapps.barcodescanner.CameraPreview;
-import com.journeyapps.barcodescanner.Decoder;
 import java.util.List;
 
 /** Camera frames are decoded in memory; this activity has no network, file or enrollment access. */
@@ -35,7 +34,7 @@ public class PairingScannerActivity extends AppCompatActivity {
         TextView title = new TextView(this); title.setText(R.string.pairing_scanner_title); title.setTextSize(24);
         content.addView(title, new LinearLayout.LayoutParams(-1, -2));
         camera = new BarcodeView(this);
-        camera.setDecoderFactory(hints -> new Decoder(PairingQrDecoder.reader(hints)));
+        camera.setDecoderFactory(PairingQrDecoder::cameraDecoder);
         camera.addStateListener(new CameraPreview.StateListener() {
             @Override public void previewSized() {}
             @Override public void previewStarted() {}

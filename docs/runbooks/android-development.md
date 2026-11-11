@@ -94,8 +94,13 @@ and clears any displayed QR when its CA text changes, so old trust material is
 not silently reused. Keep the screen large enough and free from glare when
 scanning; validate real print/screen/device conditions in the checklist below.
 
-Camera frames are decoded in memory by the pinned ZXing Android Embedded 4.3.0
-library. Scanning pauses when its activity pauses. Denial, cancellation, invalid
+Camera frames are decoded in memory by pinned ZXing Android Embedded 4.3.0 with
+ZXing core 3.5.4. Dense trust payloads can defeat finder search in one orientation;
+the production decoder rotates actual cropped grayscale pixels through the four
+orientations while retaining normal finder detection and error correction. Native
+regressions cover independent payloads, all QR masks, practical image scales and
+non-square YUV crops, so this category fails before emulator acceptance.
+Scanning pauses when its activity pauses. Denial, cancellation, invalid
 codes and unavailable cameras return to setup without consuming a code or changing
 connection state. File import remains available when camera access is denied.
 
