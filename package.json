@@ -38,7 +38,8 @@
     "android:test": "node scripts/android-emulator-test.mjs",
     "android:release": "node scripts/android-release.mjs",
     "android:test:upgrade": "node scripts/android-release-upgrade.mjs",
-    "android:validate:release": "node scripts/android-release-validation.mjs"
+    "android:validate:release": "node scripts/android-release-validation.mjs",
+    "android:verify:download": "node scripts/android-download-check.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "8.6.0",

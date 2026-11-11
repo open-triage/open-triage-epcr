@@ -1,10 +1,17 @@
-import { ANDROID_API_PROTOCOL_VERSION, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES, ANDROID_CLIENT_REQUIRED_CAPABILITIES, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
+import { compatibility, validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
 const inputs = { ANDROID_KEYSTORE_PATH: '/protected/key.p12', ANDROID_KEYSTORE_PASSWORD: 'synthetic', ANDROID_KEY_PASSWORD: 'synthetic', ANDROID_KEY_ALIAS: 'synthetic', ANDROID_CERTIFICATE_SHA256: 'ab'.repeat(32), ANDROID_VERSION_CODE: '2', ANDROID_VERSION_NAME: '0.1.0-rc.2' };
 const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificateSha256: 'ab'.repeat(32), apkSha256: 'a'.repeat(64) };
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
+test('future live-audio clients require duration-less WebM support even from a protocol-one server', () => {
+  const descriptor = { compatibility };
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ['native-enrollment-attempt-v1']), false);
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES), true);
+  assert.equal(isAndroidReleaseCompatible({ compatibility: { ...compatibility, requiredCapabilities: undefined } }, 1, []), true);
+});
 test('release signing fails closed for every missing required input and malformed versions/fingerprint', () => {
   assert.equal(validateReleaseInputs(inputs).versionCode, 2);
   for (const name of Object.keys(inputs)) { const missing = { ...inputs }; delete missing[name]; assert.throws(() => validateReleaseInputs(missing), /Missing required/); }
@@ -25,7 +32,7 @@ test('APK verification checks real package metadata, release flag and certificat
 });
 
  test('publication rejects incomplete acceptance, mismatched descriptors and unverified preflight', () => {
-  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33, compatibility: { api: ANDROID_CLIENT_API_PROTOCOL_RANGE } };
+  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33, compatibility: { pairingArtifact: 1, protectedReportSchema: 1, recoveryEnvelope: 1, api: ANDROID_CLIENT_API_PROTOCOL_RANGE } };
   const evidence = { status: 'passed', serverAndroidApiProtocol: ANDROID_API_PROTOCOL_VERSION, releaseA: { ...a, sourceCommit: descriptor.sourceCommit, minAndroidApi: 33 }, releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
   const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit };
   const identity = { applicationId: b.applicationId, certificateSha256: b.certificateSha256 };
@@ -41,4 +48,23 @@ test('API compatibility uses an explicit protocol range across source revisions 
   assert(isAndroidApiProtocolCompatible({ minimum: 1, maximum: 2 }, 2));
   for (const version of [undefined, null, 0, 2, '1', 1.5, NaN]) assert.equal(isAndroidApiProtocolCompatible(ANDROID_CLIENT_API_PROTOCOL_RANGE, version), false);
   for (const range of [undefined, null, { minimum: 0, maximum: 1 }, { minimum: 2, maximum: 1 }, { minimum: 1.5, maximum: 2 }]) assert.equal(isAndroidApiProtocolCompatible(range, 1), false);
+});
+
+test('publication requires acceptance evidence for every native extension required by a future APK', () => {
+  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33,
+    compatibility: { pairingArtifact: 1, protectedReportSchema: 1, recoveryEnvelope: 1, api: ANDROID_CLIENT_API_PROTOCOL_RANGE, requiredCapabilities: ['native-enrollment-attempt-v1'] } };
+  const evidence = { status: 'passed', serverAndroidApiProtocol: 1, releaseA: { ...a, sourceCommit: descriptor.sourceCommit },
+    releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
+  const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit };
+  const identity = { applicationId: b.applicationId, certificateSha256: b.certificateSha256 };
+  for (const serverAndroidApiCapabilities of [undefined, [], ['native-oidc-return-v1'], 'native-enrollment-attempt-v1']) {
+    assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities }, preflight, identity), /protocol and capabilities/);
+  }
+  validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities: ['native-enrollment-attempt-v1'] }, preflight, identity);
+});
+
+test('merged enrollment attempt implementation is advertised and required by future APK descriptors', () => {
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'audio-webm-live-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'audio-webm-live-v1']);
+  assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });

@@ -1,7 +1,9 @@
-import { ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { ANDROID_CLIENT_API_PROTOCOL_RANGE, ANDROID_CLIENT_REQUIRED_CAPABILITIES } from '@open-triage/contracts/android-client-protocol';
 import assert from 'node:assert/strict';
+import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 export const applicationId = 'org.opentriage.android';
-export const compatibility = Object.freeze({ pairingArtifact: 1, protectedReportSchema: 1, recoveryEnvelope: 1, api: ANDROID_CLIENT_API_PROTOCOL_RANGE });
+export const compatibility = Object.freeze({ pairingArtifact: 1, protectedReportSchema: 1, recoveryEnvelope: 1, api: ANDROID_CLIENT_API_PROTOCOL_RANGE,
+  ...(ANDROID_CLIENT_REQUIRED_CAPABILITIES.length ? { requiredCapabilities: ANDROID_CLIENT_REQUIRED_CAPABILITIES } : {}) });
 export function validateReleaseInputs(env) {
   for (const name of ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD', 'ANDROID_CERTIFICATE_SHA256', 'ANDROID_VERSION_CODE', 'ANDROID_VERSION_NAME']) assert(env[name], `Missing required ${name}`);
   assert(/^[1-9]\d{0,9}$/.test(env.ANDROID_VERSION_CODE) && Number(env.ANDROID_VERSION_CODE) <= 2100000000, 'Invalid Android version code');
@@ -27,7 +29,7 @@ export const requiredUpgradeAssertions = Object.freeze(['in-place-install-r', 'd
 export function validatePublicationEvidence(descriptor, evidence, preflight, identity) {
   assert.equal(descriptor.applicationId, identity.applicationId); assert.equal(descriptor.certificateSha256, identity.certificateSha256);
   assert.match(descriptor.sourceCommit, /^[a-f0-9]{40}$/);
-  assert(isAndroidApiProtocolCompatible(descriptor.compatibility?.api, evidence.serverAndroidApiProtocol), 'Release must support the actually tested server protocol');
+  assert(isAndroidReleaseCompatible(descriptor, evidence.serverAndroidApiProtocol, evidence.serverAndroidApiCapabilities ?? []), 'Release must support the actually tested server protocol and capabilities');
   assert.equal(evidence.status, 'passed'); validateUpgrade(evidence.releaseA, evidence.releaseB);
   const covered = [evidence.releaseA, evidence.releaseB].find(value => value.apkSha256 === descriptor.apkSha256);
   assert.deepEqual(covered, descriptor, 'Evidence must cover the complete exact release descriptor');

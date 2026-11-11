@@ -153,6 +153,7 @@ public class TrustedConnectionTest {
             assertThrows(IllegalArgumentException.class, () -> connection.requestBytes("/api/media", "POST", new JSONObject(), new byte[TrustedConnection.MAX_BODY + 1]));
         }
     }
+
     @Test public void replacementCandidatesNeverCopyPersonalOrForeignOriginAuthority() throws Exception {
         var cookies = new org.json.JSONArray().put(new JSONObject().put("name", "open_triage_installation").put("value", "installation-only").put("expires", Long.MAX_VALUE))
             .put(new JSONObject().put("name", "open_triage_session").put("value", "personal-never-copied").put("expires", Long.MAX_VALUE));

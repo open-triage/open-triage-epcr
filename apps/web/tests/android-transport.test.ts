@@ -73,3 +73,19 @@ test('a delayed native reply cannot revive the previous installation context', a
   await assert.rejects(pending,/Installation changed/);
   configureNativeConnection({configured:false});
 });
+
+
+test('connection replacement during binary body preparation prevents native dispatch', async () => {
+  configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
+  let release!: () => void;
+  const body = new ReadableStream<Uint8Array>({start(controller) {release=()=>{controller.enqueue(Uint8Array.of(0,255));controller.close();};}});
+  let calls=0;
+  const transport=androidFetch(fetch,async()=>{calls++;return {status:204,headers:{},bodyBase64:''};},'https://localhost');
+  const request=new Request('https://localhost/api/media',{method:'POST',body,duplex:'half'} as RequestInit);
+  const pending=transport(request);
+  configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'new'});
+  release();
+  await assert.rejects(pending,/Installation changed/);
+  assert.equal(calls,0);
+  configureNativeConnection({configured:false});
+});

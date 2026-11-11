@@ -38,6 +38,15 @@ test("digest pinning applies to the API and every operational workload", () => {
   for (const image of contract.images) assert.ok(image.endsWith(`@${digest}`));
 });
 
+test("Android approval is explicit installation-wide API configuration and is not a web client setting", () => {
+  const tag = "android-candidate-2-0.1.0-rc.2";
+  const deployment = (objects, component) => objects.find(object => object.kind === "Deployment" && object.metadata.name.endsWith(`-${component}`));
+  const selected = render("--set", `api.androidApprovedRelease=${tag}`);
+  assert.equal(deployment(selected, "api").spec.template.spec.containers[0].env.find(value => value.name === "ANDROID_APPROVED_RELEASE").value, tag);
+  assert.equal(deployment(selected, "web").spec.template.spec.containers[0].env.some(value => value.name === "ANDROID_APPROVED_RELEASE"), false);
+  assert.equal(deployment(render(), "api").spec.template.spec.containers[0].env.find(value => value.name === "ANDROID_APPROVED_RELEASE").value, "");
+});
+
 test("preflight blocks demo/managed secrets, unsafe pods and synthetic bootstrap", () => {
   assert.throws(() => deploymentContract(render("--set", "web.image.tag=latest")), /immutable/);
   assert.throws(() => deploymentContract(render("--set", "web.replicas=1")), /at least 2/);

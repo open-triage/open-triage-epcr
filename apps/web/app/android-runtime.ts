@@ -55,11 +55,13 @@ export function androidFetch(browserFetch: typeof fetch, nativeRequest: Connecti
     if (effective.signal.aborted) throw effective.signal.reason;
     const headers: Record<string, string> = {};
     effective.headers.forEach((value, name) => { headers[name] = value; });
+    const expectedContext = connectionContext;
     const declaredLength = Number(effective.headers.get("content-length"));
     if (declaredLength > MAX_NATIVE_BODY_BYTES) throw new Error("Oversized native request");
-    const expectedContext = connectionContext;
-    const result = await nativeRequest({ ...(expectedContext ? { connectionContext: expectedContext } : {}), path: target.pathname + target.search, method: effective.method, headers,
-      ...(!["GET", "HEAD"].includes(effective.method) ? { bodyBase64: encodeBytes(new Uint8Array(await effective.arrayBuffer())) } : {}) });
+    const body = !["GET", "HEAD"].includes(effective.method) ? { bodyBase64: encodeBytes(new Uint8Array(await effective.arrayBuffer())) } : {};
+    if (effective.signal.aborted) throw effective.signal.reason;
+    if (expectedContext !== connectionContext) throw new Error("Installation changed");
+    const result = await nativeRequest({ ...(expectedContext ? {connectionContext: expectedContext} : {}), path: target.pathname + target.search, method: effective.method, headers, ...body });
     if (effective.signal.aborted) throw effective.signal.reason;
     if (expectedContext !== connectionContext) throw new Error("Installation changed");
     return new Response(effective.method === "HEAD" || [204, 205, 304].includes(result.status) ? null : decodeBytes(result.bodyBase64), { status: result.status, headers: result.headers });

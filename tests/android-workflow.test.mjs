@@ -83,3 +83,41 @@ test('Android declares every permission requested by the installed WebView media
   assert(permissions.length > 0, 'Inspect the installed SDK media permission contract');
   for (const permission of permissions) assert(manifest.includes(`android:name="android.permission.${permission}"`), `WebView media requires manifest permission ${permission}`);
 });
+
+function assertCompletePreflightBrowser(workflow, label) {
+  let checks = 0;
+  for (const [name, job] of Object.entries(workflow.jobs ?? {})) {
+    const steps = job.steps ?? [];
+    for (const [index, step] of steps.entries()) {
+      if (typeof step.run !== 'string' || !/\bnpm\s+run\s+check:ci\b/.test(step.run)) continue;
+      checks++;
+      const controlled = steps.slice(0, index).some(prerequisite => typeof prerequisite.run === 'string' &&
+        /\bnpx\s+playwright\s+install\b/.test(prerequisite.run) && /\bchromium\b/.test(prerequisite.run) &&
+        (prerequisite.if === undefined || prerequisite.if === step.if));
+      assert(controlled, `${label}/${name}: install controlled Chromium before check:ci`);
+    }
+  }
+  return checks;
+}
+
+test('every complete-preflight job installs its controlled browser first, while unit-only jobs need none', async () => {
+  let checked = 0;
+  for (const file of await readdir(workflows)) {
+    if (!/\.ya?ml$/.test(file)) continue;
+    const workflow = yaml.load(await readFile(new URL(file, workflows), 'utf8'));
+    const count = assertCompletePreflightBrowser(workflow, file);
+    checked += count;
+    if (count) {
+      // The actual former release preflight must fail without its prerequisite.
+      const missing = structuredClone(workflow);
+      for (const job of Object.values(missing.jobs ?? {})) if (job.steps) job.steps = job.steps.filter(step => !/playwright\s+install/.test(step.run ?? ''));
+      assert.throws(() => assertCompletePreflightBrowser(missing, file), /install controlled Chromium/);
+    }
+  }
+  assert(checked > 0);
+  const install = { run: 'npx playwright install --with-deps chromium' }, complete = { run: 'npm run check:ci' };
+  assertCompletePreflightBrowser({ jobs: { complete: { steps: [{ run: 'npm ci' }, install, complete] }, units: { steps: [{ run: 'npm test' }] } } }, 'supported');
+  for (const steps of [[complete, install], [{ ...install, if: 'false' }, complete], [{ run: 'npx playwright install firefox' }, complete]]) {
+    assert.throws(() => assertCompletePreflightBrowser({ jobs: { complete: { steps } } }, 'invalid'), /install controlled Chromium/);
+  }
+});
