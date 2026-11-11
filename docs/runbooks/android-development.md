@@ -1,5 +1,8 @@
 # Android connection development
 
+For Android Enterprise restrictions, policy transitions and vendor configuration
+examples, see [managed connection configuration](android-managed-configuration.md).
+
 Tickets 001–002 supply a development APK with the shared static web UI, import or
 camera QR vehicle pairing and ordinary local sign-in. It uses Capacitor 8.6.0 and requires
 Android 13 (API 33) or newer. This is a development identity

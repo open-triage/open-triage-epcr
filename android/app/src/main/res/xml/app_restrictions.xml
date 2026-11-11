@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction android:key="configurationVersion" android:title="@string/managed_version" android:restrictionType="integer" android:defaultValue="1" />
+    <restriction android:key="serverOrigin" android:title="@string/managed_origin" android:restrictionType="string" />
+    <restriction android:key="publicCaPem" android:title="@string/managed_ca" android:restrictionType="string" android:defaultValue="" />
+</restrictions>

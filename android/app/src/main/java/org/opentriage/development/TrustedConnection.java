@@ -38,7 +38,8 @@ final class TrustedConnection {
         URI uri = URI.create(origin);
         if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getRawUserInfo() != null ||
                 uri.getRawQuery() != null || uri.getRawFragment() != null || !uri.getRawPath().isEmpty() ||
-                !origin.equals("https://" + uri.getHost().toLowerCase(Locale.ROOT) + (uri.getPort() == -1 ? "" : ":" + uri.getPort())) || uri.getPort() == 443 || origin.length() > 2048) throw new IllegalArgumentException("Invalid origin");
+                !origin.equals("https://" + canonicalHost(uri.getHost()) + (uri.getPort() == -1 ? "" : ":" + uri.getPort())) ||
+                uri.getPort() == 443 || uri.getPort() > 65535 || origin.length() > 2048) throw new IllegalArgumentException("Invalid origin");
         this.origin = origin;
         this.caPem = caPem;
         if (caPem.length() > 48000 || caPem.contains("PRIVATE KEY")) throw new IllegalArgumentException("Invalid public CA");
@@ -64,6 +65,43 @@ final class TrustedConnection {
         SSLContext tls = SSLContext.getInstance("TLS");
         tls.init(null, trust.getTrustManagers(), null);
         socketFactory = tls.getSocketFactory();
+    }
+
+    /** Reject IP representations that the shared URL-based pairing parser normalizes. */
+    private static String canonicalHost(String host) throws Exception {
+        String lower = host.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("[")) {
+            if (lower.contains("%")) throw new IllegalArgumentException("IPv6 zones are not URL origins");
+            byte[] bytes = java.net.InetAddress.getByName(lower.substring(1, lower.length() - 1)).getAddress();
+            if (bytes.length == 4) {
+                byte[] mapped = new byte[16]; mapped[10] = (byte) 255; mapped[11] = (byte) 255;
+                System.arraycopy(bytes, 0, mapped, 12, 4); bytes = mapped;
+            }
+            int[] groups = new int[8];
+            for (int i = 0; i < 8; i++) groups[i] = (bytes[i * 2] & 255) * 256 + (bytes[i * 2 + 1] & 255);
+            int start = -1, length = 0;
+            for (int i = 0; i < 8;) {
+                if (groups[i] != 0) { i++; continue; }
+                int end = i; while (end < 8 && groups[end] == 0) end++;
+                if (end - i >= 2 && end - i > length) { start = i; length = end - i; }
+                i = end;
+            }
+            var before = new ArrayList<String>(); var after = new ArrayList<String>();
+            for (int i = 0; i < 8; i++) {
+                if (start >= 0 && i >= start && i < start + length) continue;
+                (start < 0 || i < start ? before : after).add(Integer.toHexString(groups[i]));
+            }
+            return "[" + String.join(":", before) + (start >= 0 ? "::" + String.join(":", after) : "") + "]";
+        }
+        String numericHost = lower.endsWith(".") ? lower.substring(0, lower.length() - 1) : lower;
+        String last = numericHost.substring(numericHost.lastIndexOf('.') + 1);
+        if (last.matches("[0-9]+|0x[0-9a-f]+")) {
+            if (lower.endsWith(".")) throw new IllegalArgumentException("Noncanonical IPv4 origin");
+            String[] labels = lower.split("\\.");
+            if (labels.length != 4) throw new IllegalArgumentException("Noncanonical IPv4 origin");
+            for (String label : labels) if (!label.matches("0|[1-9][0-9]{0,2}") || Integer.parseInt(label) > 255) throw new IllegalArgumentException("Noncanonical IPv4 origin");
+        }
+        return lower;
     }
 
     private static Set<String> keys(JSONObject value) {
