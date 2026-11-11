@@ -1,8 +1,9 @@
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { validateReleaseInputs, validateUpgrade, verifyApkMetadata, compatibility } from './android/release-contract.mjs';
 
@@ -39,9 +40,14 @@ const metadata = execFileSync(join(tools, 'aapt'), ['dump', 'badging', source], 
 verifyApkMetadata(metadata, signature, identity);
 const bytes = readFileSync(source), apkSha256 = createHash('sha256').update(bytes).digest('hex');
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const packaged = execFileSync('unzip', ['-Z1', source], { encoding: 'utf8' }).trim().split('\n').filter(name => name.startsWith('assets/public/') && !name.endsWith('/')).sort();
-const uiHash = createHash('sha256');
-for (const name of packaged) { uiHash.update(name); uiHash.update('\0'); uiHash.update(execFileSync('unzip', ['-p', source, name], { maxBuffer: 32 * 1024 * 1024 })); }
+const jar = env.JAVA_HOME ? join(env.JAVA_HOME, 'bin/jar') : 'jar';
+const packaged = execFileSync(jar, ['tf', source], { encoding: 'utf8' }).trim().split('\n').filter(name => name.startsWith('assets/public/') && !name.endsWith('/')).sort();
+assert(packaged.length > 0 && packaged.every(name => !name.split('/').includes('..')), 'Packaged UI entries must be bounded assets');
+const uiHash = createHash('sha256'), extracted = mkdtempSync(join(tmpdir(), 'android-packaged-ui-'));
+try {
+  execFileSync(jar, ['xf', source, 'assets/public'], { cwd: extracted });
+  for (const name of packaged) { uiHash.update(name); uiHash.update('\0'); uiHash.update(readFileSync(join(extracted, name))); }
+} finally { rmSync(extracted, { recursive: true, force: true }); }
 const descriptor = { schemaVersion: 1, ...identity, apkSha256, apkBytes: bytes.length, uiSha256: uiHash.digest('hex'), sourceCommit, compatibility, minAndroidApi: 33, targetAndroidApi: 36, artifact: `opentriage-${identity.versionName}-${identity.versionCode}-${apkSha256}.apk` };
 if (env.ANDROID_PREVIOUS_DESCRIPTOR) validateUpgrade(JSON.parse(readFileSync(env.ANDROID_PREVIOUS_DESCRIPTOR, 'utf8')), descriptor);
 mkdirSync(output, { recursive: true, mode: 0o700 });
