@@ -258,6 +258,15 @@ native foreground state, and read the acknowledged server copy without uploading
 it again. URL, redirect, HTTP authorization and canonical MIME failures retain
 their existing rejection boundaries.
 
+Protected receipts and checkpoints obey the same foreground boundary. Pause does
+not block local encrypted durability behind an older network reply. Resume drains
+the latest committed revision and digest, without re-encrypting unchanged data or
+repeating an acknowledged receipt just to create its checkpoint. Expiry, withdrawn
+authorization and installation/session transitions keep their existing limits.
+Browser regressions include held receipt/checkpoint replies and context changes;
+the native journey interrupts a real online recorder and proves durable encrypted
+bytes with zero new API requests while paused.
+
 A future release using live WebM capture must declare and require the server
 capability `audio-webm-live-v1` through the release compatibility contract before
 distribution. Existing immutable release candidates are unchanged by this slice.

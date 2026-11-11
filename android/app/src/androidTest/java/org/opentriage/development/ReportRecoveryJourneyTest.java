@@ -158,6 +158,12 @@ public class ReportRecoveryJourneyTest {
     private void tapElement(String expression) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").disabled");
         var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        // This status notice intentionally stays until an outside user interaction.
+        // Dismiss it normally before testing the underlying control's trusted touch.
+        if ("true".equals(evaluate("!!document.querySelector('.active-report-notice')"))) {
+            assertTrue("A genuine keyboard interaction dismisses the active report notice", device.pressKeyCode(android.view.KeyEvent.KEYCODE_TAB));
+            waitFor("!document.querySelector('.active-report-notice')");
+        }
         var ime = new java.util.concurrent.atomic.AtomicBoolean();
         activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); });
         if (ime.get()) {
@@ -204,6 +210,21 @@ public class ReportRecoveryJourneyTest {
         audioCaption(caption); click(interrupted ? "Use interrupted recording" : "Use recording");
         waitFor("!document.querySelector('.audio-note-dialog') && document.body.innerText.includes(" + JSONObject.quote(caption) + ")");
     }
+    private void interruptOnlineAudio() throws Exception {
+        click("Add audio note"); beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
+        Thread.sleep(2200); records();
+        evaluate("window.__beforeOnlineAudioPause=window.__retained[0].ciphertextRevision;window.__backgroundRequests=0;window.__backgroundPaths=[]");
+        activity.moveToState(Lifecycle.State.CREATED); waitFor("window.__nativeActive===false");
+        waitFor("document.querySelector('.audio-note-dialog .audio-preview') && window.__audioHardwareTracks.every(track=>track.readyState==='ended')");
+        long deadline=System.currentTimeMillis()+30000; boolean durable=false;
+        while(System.currentTimeMillis()<deadline){records();if("true".equals(evaluate("window.__retained[0].ciphertextRevision>window.__beforeOnlineAudioPause"))){durable=true;break;}Thread.sleep(100);}
+        assertTrue("An online interrupted recorder commits encrypted local bytes while native-paused",durable);
+        Thread.sleep(1200);
+        assertEquals("Paused local audio durability starts no new API requests: "+evaluate("JSON.stringify(window.__backgroundPaths)"),"0",evaluate("window.__backgroundRequests"));
+        activity.moveToState(Lifecycle.State.RESUMED);
+        waitFor("window.__nativeActive!==false && document.querySelector('.audio-note-dialog').innerText.includes('Recording interrupted')");
+        click("Cancel");waitFor("!document.querySelector('.audio-note-dialog')");
+    }
     private void audioOfflineCapture() throws Exception {
         click("Mobile"); click("Add audio note"); observeAudio(); beginAudioHold();
         var denied = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
@@ -231,6 +252,7 @@ public class ReportRecoveryJourneyTest {
         assertEquals("Paused reconnect must not start audio or other API drains: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
         activity.moveToState(Lifecycle.State.RESUMED); waitFor("window.__nativeActive!==false"); verifyCanonicalAudio("ANDROID-AUDIO-RESUME-SYNTHETIC");
         waitFor("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))");
+        interruptOnlineAudio();
         connection(false); click("Stationary"); waitFor(FIELD);
     }
     private void stageRetainedAudio() throws Exception {
