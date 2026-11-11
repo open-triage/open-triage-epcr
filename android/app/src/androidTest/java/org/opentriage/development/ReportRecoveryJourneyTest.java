@@ -33,7 +33,7 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
@@ -104,6 +104,15 @@ public class ReportRecoveryJourneyTest {
             .putString("presentation", evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
         assertTrue(editor.commit());
     }
+    private java.util.List<String> publicCertificateIdentities(String pem) throws Exception {
+        var factory = java.security.cert.CertificateFactory.getInstance("X.509");
+        var certificates = factory.generateCertificates(new java.io.ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
+        assertFalse("The private-CA upgrade fixture must contain public certificates", certificates.isEmpty());
+        var encoded = new java.util.ArrayList<String>();
+        for (var certificate : certificates) encoded.add(android.util.Base64.encodeToString(certificate.getEncoded(), android.util.Base64.NO_WRAP));
+        java.util.Collections.sort(encoded);
+        return encoded;
+    }
     private void verifyUpgrade() throws Exception {
         if (!"1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) return;
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -117,7 +126,8 @@ public class ReportRecoveryJourneyTest {
         assertEquals(1, restrictions.getInt("configurationVersion"));
         var connection = new ConnectionVault(context).read().saved();
         assertEquals(connection.getString("origin"), restrictions.getString("serverOrigin"));
-        assertEquals(connection.getString("caPem"), restrictions.getString("publicCaPem"));
+        assertEquals("Managed and retained trust must contain the same DER public certificates, independent of PEM whitespace",
+            publicCertificateIdentities(connection.getString("caPem")), publicCertificateIdentities(restrictions.getString("publicCaPem")));
         assertFalse("Clinical app remains an ordinary managed application", context.getSystemService(android.app.admin.DevicePolicyManager.class).isDeviceOwnerApp(context.getPackageName()));
     }
     private void prepare() throws Exception {
@@ -133,7 +143,12 @@ public class ReportRecoveryJourneyTest {
         if ("1".equals(args.getString("upgrade"))) {
             evaluate("window.__deployment=null;fetch('/api/__android-web-deployment',{method:'POST'}).then(response=>response.json()).then(value=>window.__deployment=value)");
             waitFor("window.__deployment?.revision===2");
+            String previousTimeOrigin = evaluate("performance.timeOrigin");
+            evaluate("window.__beforeUpgradeReload=true");
             activity.onActivity(screen -> screen.getBridge().getWebView().reload());
+            // Old and new pages render identical selectors; require a new JS realm
+            // before attaching observations that would otherwise be discarded.
+            waitFor("window.__beforeUpgradeReload===undefined && performance.timeOrigin!==" + previousTimeOrigin);
             waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
             assertFalse("Remote web deployment cannot replace APK UI after reload", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
             assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));

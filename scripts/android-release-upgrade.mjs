@@ -24,6 +24,7 @@ function run(command, args, env = process.env) {
   assert.equal(result.status, 0, `${command} failed (${result.status ?? result.signal})`);
 }
 assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1');
+assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.kernel.qemu'], { encoding: 'utf8' }).trim(), '1', 'Destructive synthetic setup is restricted to a disposable emulator');
 for (const [directory, descriptor] of [[aDirectory, a], [bDirectory, b]]) {
   const file = join(directory, descriptor.artifact);
   assert.equal(createHash('sha256').update(await readFile(file)).digest('hex'), descriptor.apkSha256, 'Immutable APK digest');
@@ -43,6 +44,9 @@ try {
   assert.equal(health.status, 200);
   const serverAndroidApiProtocol = health.body.androidApiProtocol;
   for (const descriptor of [a, b]) assert(isAndroidApiProtocolCompatible(descriptor.compatibility?.api, serverAndroidApiProtocol), 'A/B client range must support the real server API protocol');
+  // Only initial synthetic setup is reset. A-to-B itself never clears/uninstalls data.
+  const previousFixture = spawnSync(adb, ['-s', serial, 'shell', 'pm', 'path', a.applicationId], { encoding: 'utf8' });
+  if (previousFixture.status === 0 && previousFixture.stdout.includes('package:')) run(adb, ['-s', serial, 'uninstall', a.applicationId]);
   run(adb, ['-s', serial, 'install', '-r', join(aDirectory, a.artifact)]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk')]);
   run(adb, ['-s', serial, 'install', '-t', '-r', join(root, 'android/management-test-controller/build/outputs/apk/debug/management-test-controller-debug.apk')]);

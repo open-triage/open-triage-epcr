@@ -101,7 +101,9 @@ npm run build -w @open-triage/api
 npm run android:test:upgrade -- /path/to/release-A /path/to/release-B
 ```
 
-The real synthetic API/database and separate test DPC deliver a private CA,
+The harness rejects physical devices and resets only a prior synthetic production
+installation on the disposable emulator before installing/enrolling A. The real
+synthetic API/database and separate test DPC deliver a private CA,
 managed server and ordinary enrollment. A clinician creates a durable encrypted
 pending edit offline. After abrupt process termination the host installs B with
 `adb install -r`, without clearing/uninstalling/copying data, and confirms ordinary
