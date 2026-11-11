@@ -79,9 +79,14 @@ SDK tools. Each output contains a content-addressed APK, `SHA256SUMS` and
 `release.json` recording identity, certificate, code/name, source commit, APK and
 packaged-UI SHA-256, Android API range and client protocol versions. Customer
 origins, public CAs and enrollment arrive after installation; customer server
-configuration and TLS private keys are never compiled into the app. Current API
-compatibility is the recorded source revision; do not assume arbitrary server
-versions are compatible. Pairing artifact/protected schema/recovery-envelope
+configuration and TLS private keys are never compiled into the app. API compatibility uses the explicit inclusive protocol range in `compatibility.api`
+(currently minimum 1 / maximum 1), independent of source provenance. The shared
+contract exports the current protocol and range; `GET /api/health` advertises
+`androidApiProtocol`. Compatible server commits retain protocol 1. Breaking
+Android API changes require advancing the protocol and shipping a client whose
+range includes it; test both boundaries before deployment. The actual upgrade
+harness checks both APK descriptors against the fixture server's advertised
+protocol, and publication requires that recorded protocol to be supported. Pairing artifact/protected schema/recovery-envelope
 versions are explicitly recorded, and report/form/catalog/validation pins remain
 part of existing protected storage.
 

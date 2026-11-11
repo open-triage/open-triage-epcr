@@ -1,3 +1,4 @@
+import { ANDROID_API_PROTOCOL_VERSION, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
@@ -24,12 +25,20 @@ test('APK verification checks real package metadata, release flag and certificat
 });
 
  test('publication rejects incomplete acceptance, mismatched descriptors and unverified preflight', () => {
-  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33 };
-  const evidence = { status: 'passed', releaseA: { ...a, sourceCommit: descriptor.sourceCommit, minAndroidApi: 33 }, releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
+  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33, compatibility: { api: ANDROID_CLIENT_API_PROTOCOL_RANGE } };
+  const evidence = { status: 'passed', serverAndroidApiProtocol: ANDROID_API_PROTOCOL_VERSION, releaseA: { ...a, sourceCommit: descriptor.sourceCommit, minAndroidApi: 33 }, releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
   const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit };
   const identity = { applicationId: b.applicationId, certificateSha256: b.certificateSha256 };
   validatePublicationEvidence(descriptor, evidence, preflight, identity);
   for (const missing of requiredUpgradeAssertions) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, assertions: evidence.assertions.filter(value => value !== missing) }, preflight, identity), /Missing upgrade acceptance/);
-  for (const altered of [{ status: 'failed' }, { androidApi: '32' }, { releaseB: { ...descriptor, uiSha256: 'tampered' } }]) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, ...altered }, preflight, identity));
+  for (const altered of [{ status: 'failed' }, { serverAndroidApiProtocol: 2 }, { serverAndroidApiProtocol: undefined }, { androidApi: '32' }, { releaseB: { ...descriptor, uiSha256: 'tampered' } }]) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, ...altered }, preflight, identity));
   for (const altered of [{ status: 'failed' }, { command: 'npm test' }, { sourceCommit: 'b'.repeat(40) }]) assert.throws(() => validatePublicationEvidence(descriptor, evidence, { ...preflight, ...altered }, identity));
+});
+
+test('API compatibility uses an explicit protocol range across source revisions and rejects unsupported or missing contracts', () => {
+  assert(isAndroidApiProtocolCompatible(ANDROID_CLIENT_API_PROTOCOL_RANGE, ANDROID_API_PROTOCOL_VERSION));
+  assert(isAndroidApiProtocolCompatible({ minimum: 1, maximum: 2 }, 1));
+  assert(isAndroidApiProtocolCompatible({ minimum: 1, maximum: 2 }, 2));
+  for (const version of [undefined, null, 0, 2, '1', 1.5, NaN]) assert.equal(isAndroidApiProtocolCompatible(ANDROID_CLIENT_API_PROTOCOL_RANGE, version), false);
+  for (const range of [undefined, null, { minimum: 0, maximum: 1 }, { minimum: 2, maximum: 1 }, { minimum: 1.5, maximum: 2 }]) assert.equal(isAndroidApiProtocolCompatible(range, 1), false);
 });
