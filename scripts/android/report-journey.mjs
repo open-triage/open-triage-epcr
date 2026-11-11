@@ -108,6 +108,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     assert.equal(consumed.status, 200); assert.equal(consumed.body.wrappingKeyVersion, 1);
     const afterGrant = (await db.query('select recovery_deadline from offline_recovery.report_key_envelope where report_id=$1', [opened.id])).rows[0];
     assert.equal(afterGrant.recovery_deadline.toISOString(), opened.recovery_deadline.toISOString(), 'Authorized sign-in, grant and key restoration alone never renew the deadline');
+    console.log('PASS authority-only recovery: restart, other clinician, original sign-in, grant and key restoration preserved the exact prior deadline');
     instrument('recover', fixture.clinician.username, fixture.clinicianPassword);
     assert.equal(await firstName(), 'ANDROID-RETAINED-SYNTHETIC', 'Authorized online recovery synchronized the retained encrypted edit');
     let synchronizedReceipt;

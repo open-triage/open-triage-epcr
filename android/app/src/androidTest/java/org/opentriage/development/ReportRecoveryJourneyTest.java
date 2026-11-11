@@ -33,7 +33,7 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         evaluate("(()=>{const input=" + expression + ";input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()");
