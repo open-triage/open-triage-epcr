@@ -290,3 +290,13 @@ PR. The latter uses two disposable synthetic installations and a booted Android 
 emulator. Toolchain prerequisites and manual pairing are documented in
 [Android connection development](android-development.md). These supplement
 `npm run check:ci`; browser checks alone do not establish Android acceptance.
+
+### Browser preflight resources
+
+The deployment browser suite defaults to two Playwright workers. The full local
+preflight can run alongside an Android emulator and isolated database/API checks;
+using half the host logical CPU count can exhaust memory and stall otherwise
+ordinary page creation and clicks. All browser cases and their existing timeouts
+remain enabled. On an idle machine, an explicit Playwright `--workers` argument
+can opt into greater parallelism. Reserve the documented browser server port
+before running another full suite.

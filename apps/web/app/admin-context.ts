@@ -4,6 +4,8 @@ import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory,
 import type { AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
+export const loadAndroidRelease = () => catalogRequest<import("@open-triage/contracts").AndroidReleaseAvailability>("android/release");
+
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
   emptyResponse?: { value: T }): Promise<T> {
   const requestPath = `/api/admin/${path}`;

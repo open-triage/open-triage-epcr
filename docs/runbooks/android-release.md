@@ -143,3 +143,9 @@ The APK bundles its own UI bytes; a web deployment does not update them. Upgrade
 APK and compatible API deliberately, and retain the old immutable descriptor for
 incident diagnosis. Candidate acceptance does not establish physical phone/tablet,
 actual Intune/Headwind/MDMesh deployment or production rollout acceptance.
+
+## Installation-approved downloads
+
+See [Admin APK downloads](android-downloads.md) for explicit installation selection,
+public hosting/MDM prerequisites, actual download verification and additive native
+capability compatibility. Published candidate descriptors remain immutable.
