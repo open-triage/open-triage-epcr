@@ -27,6 +27,15 @@ if (databaseIdentity.effective_role !== 'open_triage_api_runtime') throw new Err
 // A bounded fixture-only barrier makes lifecycle/policy races deterministic.
 // This file is a synthetic API launcher, never the production API entry point.
 const managementHolds = new Map();
+let webDeployment = 1;
+app.use((request, response, next) => {
+  if (request.url === '/api/__android-web-deployment') {
+    if (request.method === 'POST') webDeployment++;
+    return response.json({ revision: webDeployment, marker: `SYNTHETIC-REMOTE-WEB-DEPLOYMENT-${webDeployment}` });
+  }
+  if (request.url === '/') return response.type('html').send(`<html><body>SYNTHETIC-REMOTE-WEB-DEPLOYMENT-${webDeployment}</body></html>`);
+  next();
+});
 app.use((request, response, next) => {
   const url = new URL(request.url, fixture.origin), id = url.searchParams.get('requestId');
   if (!/^[a-f0-9-]{36}$/.test(id ?? '')) return next();

@@ -194,3 +194,12 @@ Unchanged browser recovery is separately checked to produce no new receipt or
 deadline. API fixture startup
 asserts that its explicit synthetic wrapping key is used, so a development fallback
 cannot silently substitute for recovery configuration.
+
+## Production signing and upgrade checks
+
+Production identity, custody, immutable artifact workflow and the real signed A/B
+upgrade acceptance are documented in [Android releases](android-release.md).
+Run `npm run android:validate:release` after `android:build` to catch release-only
+build/signature regressions locally; the Android PR workflow runs this same early
+check with a disposable key. Permanent-key distribution requires the separate
+protected release workflow and actual signed upgrade evidence.

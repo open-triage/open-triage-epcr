@@ -7,19 +7,41 @@
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    "./runtime-node": { "types": "./runtime-node.d.cts", "default": "./runtime-node.cjs" },
+    "./runtime-node": {
+      "types": "./runtime-node.d.cts",
+      "default": "./runtime-node.cjs"
+    },
     "./runtime-node/check": "./runtime-node-check.cjs",
-    ".": { "types": "./src/index.ts", "default": "./dist/index.js" },
-    "./patient-key": { "types": "./patient-key.d.ts", "default": "./patient-key.mjs" },
-    "./synthetic-record-generator": { "types": "./synthetic-record-generator.d.ts", "default": "./synthetic-record-generator.mjs" },
-    "./quality-rules": { "types": "./quality-rules.d.ts", "default": "./quality-rules.mjs" },
-    "./validation-group-scope": { "types": "./validation-group-scope.d.ts", "default": "./validation-group-scope.mjs" },
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./patient-key": {
+      "types": "./patient-key.d.ts",
+      "default": "./patient-key.mjs"
+    },
+    "./synthetic-record-generator": {
+      "types": "./synthetic-record-generator.d.ts",
+      "default": "./synthetic-record-generator.mjs"
+    },
+    "./quality-rules": {
+      "types": "./quality-rules.d.ts",
+      "default": "./quality-rules.mjs"
+    },
+    "./validation-group-scope": {
+      "types": "./validation-group-scope.d.ts",
+      "default": "./validation-group-scope.mjs"
+    },
     "./quality-normalization-policy.json": "./quality-normalization-policy.json",
     "./encounter-document.schema-1.0.0.json": "./encounter-document.schema-1.0.0.json",
     "./dispatch-message.schema-1.0.0.json": "./dispatch-message.schema-1.0.0.json",
     "./installation-settings.schema-1.0.0.json": "./installation-settings.schema-1.0.0.json",
     "./config/*.json": "./config/*.json",
-    "./examples/dispatch/*.json": "./examples/dispatch/*.json"
+    "./examples/dispatch/*.json": "./examples/dispatch/*.json",
+    "./android-client-protocol": {
+      "types": "./android-client-protocol.d.ts",
+      "default": "./android-client-protocol.mjs"
+    }
   },
   "scripts": {
     "generate:nemsis-ems-import": "node scripts/generate-nemsis-ems-import.mjs",

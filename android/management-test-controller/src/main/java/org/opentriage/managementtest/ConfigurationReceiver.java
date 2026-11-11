@@ -40,8 +40,11 @@ public class ConfigurationReceiver extends BroadcastReceiver {
                     else if (value instanceof String) values.putString(key, (String) value);
                     else throw new IllegalArgumentException();
                 }
+                String target = intent.getStringExtra("targetPackage");
+                if (target == null) target = "org.opentriage.development";
+                if (!target.equals("org.opentriage.development") && !target.equals("org.opentriage.android")) throw new IllegalArgumentException();
                 context.getSystemService(DevicePolicyManager.class).setApplicationRestrictions(
-                    new ComponentName(context, AdminReceiver.class), "org.opentriage.development", values);
+                    new ComponentName(context, AdminReceiver.class), target, values);
                 result.setResultCode(0);
             } catch (Exception invalid) { result.setResultCode(1); }
             finally { result.finish(); }
