@@ -36,7 +36,7 @@ writeFileSync(join(root, 'android/app/src/main/assets/capacitor.config.json'), J
 const tasks = [':app:testReleaseUnitTest', ':app:lintRelease', ':app:assembleRelease'];
 if (env.ANDROID_RELEASE_INSTRUMENTATION === '1') tasks.push(':app:assembleReleaseAndroidTest');
 run('./gradlew', ['--no-daemon', ...tasks], join(root, 'android'));
-verifyNativeStartup(root, 'release');
+verifyNativeStartup(root, 'release', {instrumentation:env.ANDROID_RELEASE_INSTRUMENTATION === '1'});
 const source = join(root, 'android/app/build/outputs/apk/release/app-release.apk');
 const signature = verifyApkSignature(sdk, source, env);
 const metadata = execFileSync(join(tools, 'aapt'), ['dump', 'badging', source], { env, encoding: 'utf8' });

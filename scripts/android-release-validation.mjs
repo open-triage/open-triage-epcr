@@ -16,7 +16,7 @@ try {
   assert(existsSync(join(root, 'android/app/src/main/assets/public/index.html')), 'Build the bundled UI first with npm run android:build');
   run(join(env.JAVA_HOME, 'bin/keytool'), ['-genkeypair', '-keystore', env.ANDROID_KEYSTORE_PATH, '-storetype', 'PKCS12', '-storepass:env', 'ANDROID_KEYSTORE_PASSWORD', '-keypass:env', 'ANDROID_KEY_PASSWORD', '-alias', env.ANDROID_KEY_ALIAS, '-keyalg', 'RSA', '-keysize', '2048', '-validity', '2', '-dname', 'CN=Disposable Android validation']);
   run('./gradlew', ['--no-daemon', ':app:testReleaseUnitTest', ':app:lintRelease', ':app:assembleRelease', ':app:assembleReleaseAndroidTest'], join(root, 'android'));
-verifyNativeStartup(root, 'release');
+verifyNativeStartup(root, 'release', {instrumentation:true});
   const tools = join(env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT, 'build-tools/36.0.0'), apk = join(root, 'android/app/build/outputs/apk/release/app-release.apk');
   const signature = verifyApkSignature(env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT, apk, env);
   const certificateSha256 = /Signer #1 certificate SHA-256 digest: ([a-f0-9]+)/.exec(signature)[1];
