@@ -23,9 +23,9 @@ try{
  const incoming=Date.parse(process.env.SHIFT_INCOMING),schedules=app.get(SchedulesService),liveNow=schedules.now.bind(schedules);let crossing=false;
  schedules.now=manager=>crossing?Promise.resolve(Math.max(incoming,Date.now())):liveNow(manager);
  const css=await readFile(new URL('../../../web/app/styles.css',import.meta.url),'utf8');
- const bundled=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:fileURLToPath(new URL('../../../web',import.meta.url)),loader:'tsx',contents:`import React,{useState,useEffect}from'react';import{createRoot}from'react-dom/client';import{AssignedCalls}from'./components/assigned-calls';import{PersonalAuthenticationContext}from'./components/personal-authentication';import{NewJobConfirmationProvider,useNewJobConfirmation}from'./components/new-job-confirmation';import{createNewPatientReport}from'./app/assigned-calls';import{transitionInstallation}from'./app/installation-transition';import{beginPersonalClinicianSession,createClinicianSession,endClinicianSession}from'./app/clinician-session';
- function CreateJob({session}){const confirm=useNewJobConfirmation(),[result,setResult]=useState('');return <><button onClick={async()=>{try{const opened=await createNewPatientReport(session,confirm);setResult(opened.report.id)}catch(e){setResult(e.message)}}}>Create grace report</button><output>{result}</output></>}
- function App(){const[session,setSession]=useState(null);useEffect(()=>{fetch('/api/sessions/current').then(async r=>{if(r.ok){const s=await r.json(),old=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null');if(old?.user?.id===s.user.id&&old?.organization?.id===s.organization.id)s.csrfToken??=old.csrfToken;localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s));setSession(s)}})},[]);return session?<NewJobConfirmationProvider language="en" onLogout={()=>{const token=session.csrfToken;transitionInstallation(()=>endClinicianSession(token)).finally(()=>setSession(null));}}><PersonalAuthenticationContext.Provider value={session.authenticationSource||"local"}><AssignedCalls session={session} language="en"/><CreateJob session={session}/></PersonalAuthenticationContext.Provider></NewJobConfirmationProvider>:location.hostname==='localshift.localhost'?<><button onClick={async()=>{const s=await createClinicianSession({username:'local-shift-clinician',password:'Local shift password 42!'});localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s));setSession(s)}}>Local login</button><button onClick={async()=>{const s=await createClinicianSession({username:'incoming-local-clinician',password:'Local shift password 42!'});localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s));setSession(s)}}>Incoming local login</button></>:<button onClick={()=>beginPersonalClinicianSession('login').catch(()=>{})}>Regional login</button>};createRoot(document.getElementById('root')).render(<App/>);`}});
+ const bundled=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:fileURLToPath(new URL('../../../web',import.meta.url)),loader:'tsx',contents:`import React,{useState,useEffect}from'react';import{createRoot}from'react-dom/client';import{AssignedCalls}from'./components/assigned-calls';import{createNewPatientReport}from'./app/assigned-calls';import{transitionInstallation}from'./app/installation-transition';import{beginPersonalClinicianSession,createClinicianSession,endClinicianSession}from'./app/clinician-session';
+ function CreateJob({session}){const[result,setResult]=useState('');return <><button onClick={async()=>{try{const opened=await createNewPatientReport(session);setResult(opened.report.id)}catch(e){setResult(e.message)}}}>Create grace report</button><output>{result}</output></>}
+ function App(){const[session,setSession]=useState(null);useEffect(()=>{fetch('/api/sessions/current').then(async r=>{if(r.ok){const s=await r.json(),old=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null');if(old?.user?.id===s.user.id&&old?.organization?.id===s.organization.id)s.csrfToken??=old.csrfToken;localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s));setSession(s)}})},[]);return session?<><AssignedCalls session={session} language="en"/><CreateJob session={session}/></>:location.hostname==='localshift.localhost'?<><button onClick={async()=>{const s=await createClinicianSession({username:'local-shift-clinician',password:'Local shift password 42!'});localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s));setSession(s)}}>Local login</button><button onClick={async()=>{const s=await createClinicianSession({username:'incoming-local-clinician',password:'Local shift password 42!'});localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(s));setSession(s)}}>Incoming local login</button></>:<button onClick={()=>beginPersonalClinicianSession('login').catch(()=>{})}>Regional login</button>};createRoot(document.getElementById('root')).render(<App/>);`}});
  const route=localRouting({OPEN_TRIAGE_API_UPSTREAM:api,OPEN_TRIAGE_PUBLIC_SITE_HOST:''});
  proxy=createServer((req,res)=>{if(route(req,res))return;if(req.url==='/fixture.js'){res.setHeader('content-type','text/javascript');res.end(bundled.outputFiles[0].text);return;}res.setHeader('content-type','text/html');res.end(`<html lang="en"><head><style>${css}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`);});proxy.listen(0,'127.0.0.1');await once(proxy,'listening');
  const origin=`http://child.localhost:${proxy.address().port}`;process.env.WEB_ORIGIN=`http://localhost:${proxy.address().port}`;process.env.NODE_ENV='development';
@@ -46,52 +46,41 @@ try{
  await localContext.addCookies([{name:'open_triage_installation',value:localPaired.credential,url:localOrigin+'/api',httpOnly:true,secure:true,sameSite:'Strict'}]);
  page=await localContext.newPage();await page.goto(localOrigin);await page.getByRole('button',{name:'Local login',exact:true}).click();await expect(page.getByText('No calls are currently assigned.',{exact:true})).toBeVisible();
  const localFirst=await newReport();assert.equal(localFirst.status,201,JSON.stringify(localFirst.body));
- const localToken=await token(localContext);await control({age:localToken});await page.reload();await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toBeVisible();
- assert.equal((await newReport()).status,403);assert.equal((await reopen(localFirst.body.id)).status,200);
- await page.getByLabel('Current password').fill('wrong personal password');await page.getByRole('button',{name:'Authenticate for this shift'}).click();await expect(page.getByRole('alert')).toBeVisible();assert.equal((await newReport()).status,403);
- await page.getByLabel('Current password').fill('Local shift password 42!');await page.getByRole('button',{name:'Authenticate for this shift'}).click();await expect(page.getByText('No calls are currently assigned.',{exact:true})).toBeVisible();
- assert.equal(await token(localContext),localToken);const localNew=await newReport();assert.equal(localNew.status,201,JSON.stringify(localNew.body));
- await control({grace:true,local:true});await page.reload();
- const graceJourney=async(ctx,personal)=>{
+ const localToken=await token(localContext);await control({age:localToken});await page.reload();
+ await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toHaveCount(0);
+ assert.equal((await newReport()).status,201);assert.equal((await reopen(localFirst.body.id)).status,200);
+ const validLoginJourney=async(ctx,personal)=>{
   const originalToken=await token(ctx),before=await control({inspect:originalToken});
-  const trigger=page.getByRole('button',{name:'Create grace report'}),dialog=page.getByRole('dialog',{name:'Confirm clinician and unit'});
-  await trigger.click();await expect(dialog).toBeVisible();await expect(dialog).toContainText(personal?'Shift regional clinician':'Local shift clinician');
-  await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();await expect(page.locator('output')).toBeEmpty();
-  await trigger.click();await expect(dialog).toBeVisible();await dialog.getByRole('button',{name:personal?'Continue as Shift regional clinician':'Continue as Local shift clinician'}).click();
-  await expect(page.locator('output')).toHaveText(/^[a-f0-9-]{36}$/);const first=await page.locator('output').textContent();
-  const after=await control({inspect:originalToken});assert.deepEqual(after.session,before.session,'Continue never changes proof or fixed expiry');
-  await trigger.click();await expect(dialog).toBeVisible();await dialog.getByRole('button',{name:personal?'Continue as Shift regional clinician':'Continue as Local shift clinician'}).click();
-  await expect(page.locator('output')).not.toHaveText(first);await expect(page.locator('output')).toHaveText(/^[a-f0-9-]{36}$/);
-  await trigger.click();await expect(dialog).toBeVisible();if(personal)await control({subject:'incoming-shift-clinician'});await dialog.getByRole('button',{name:'Log out',exact:true}).click();
-  if(personal){await page.getByRole('button',{name:'Regional login',exact:true}).click();await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();const revoked=await control({inspect:originalToken});assert(revoked.session.revoked_at);await finish(page);}
-  else{await expect(page.getByRole('button',{name:'Local login',exact:true})).toBeVisible();const revoked=await control({inspect:originalToken});assert(revoked.session.revoked_at);}
-  if(!personal){assert.equal(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1')),null);await expect(page.locator('output')).toHaveCount(0);await page.getByRole('button',{name:'Incoming local login',exact:true}).click();}
+  await control({grace:true,...(!personal?{local:true}:{})});await page.reload();
+  const trigger=page.getByRole('button',{name:'Create grace report'});
+  await trigger.click();await expect(page.locator('output')).toHaveText(/^[a-f0-9-]{36}$/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const first=await page.locator('output').textContent();
+  await trigger.click();await expect(page.locator('output')).not.toHaveText(first);
+  await expect(page.locator('output')).toHaveText(/^[a-f0-9-]{36}$/);
+  assert.deepEqual((await control({inspect:originalToken})).session,before.session,'ordinary work never changes proof or fixed expiry');
+  // Actual logout and initial authentication still change the clinician.
+  await page.evaluate(async()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));await fetch('/api/sessions/current',{method:'DELETE',headers:{'x-csrf-token':s.csrfToken}});localStorage.removeItem('open-triage.clinician-session.v1');});
+  if(personal)await control({subject:'incoming-shift-clinician'});
+  await page.reload();
+  assert((await control({inspect:originalToken})).session.revoked_at);
+  if(personal){await page.getByRole('button',{name:'Regional login',exact:true}).click();await finish(page);}
+  else await page.getByRole('button',{name:'Incoming local login',exact:true}).click();
   await expect(page.locator('output')).toBeEmpty();
-  const incomingSession=await page.evaluate(async()=>(await fetch('/api/sessions/current')).json());assert.notEqual(incomingSession.user.id,before.session.user_id);
-  assert.equal(incomingSession.user.displayName,personal?'Incoming regional clinician':'Incoming local clinician');
+  const incomingSession=await page.evaluate(async()=>(await fetch('/api/sessions/current')).json());
+  assert.notEqual(incomingSession.user.id,before.session.user_id);
   assert.equal((await reopen(first)).status,404,'incoming clinician cannot reopen outgoing report');
  };
- await graceJourney(localContext,false);await localContext.close();page=regionalPage;
+ await validLoginJourney(localContext,false);await localContext.close();page=regionalPage;
  await login(page);const first=await newReport();assert.equal(first.status,201,JSON.stringify(first.body));
- const originalToken=await token(context),original=await page.evaluate(async()=> (await fetch('/api/sessions/current')).json());
- await control({age:originalToken});assert.equal((await newReport()).status,403);const existing=await reopen(first.body.id);assert.equal(existing.status,200);assert.equal(existing.body.report.id,first.body.id);await page.reload();await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toBeVisible();
- const other=await newContext(),otherPage=await other.newPage();await login(otherPage);await otherPage.close();await other.close();
- await page.reload();await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toBeVisible(); // Another device proof does not qualify.
- await page.getByRole('button',{name:'Authenticate for this shift'}).click();await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();
- crossing=true;await finish(page);await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toBeVisible();
- assert.equal(await token(context),originalToken);const after=await page.evaluate(async()=> (await fetch('/api/sessions/current')).json());assert.equal(after.expiresAt,original.expiresAt);
- assert.equal((await newReport()).status,403);assert.equal((await reopen(first.body.id)).status,200);
- assert(Date.parse(after.personallyAuthenticatedAt)<incoming,'signed auth_time before the crossed checkpoint stays insufficient');
- const reused=await page.evaluate(async()=>{const session=await(await fetch('/api/sessions/current')).json();const response=await fetch('/api/sessions/reauthenticate',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({currentPassword:''})});return response.json();});assert(reused.reauthenticatedUntil);assert.equal(reused.authorizationUrl,undefined,'ordinary sensitive actions may reuse the still-recent purpose-bound proof');
- await control({mode:'outage'});await page.getByRole('button',{name:'Authenticate for this shift'}).click();await finish(page);await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toBeVisible();assert.equal(await token(context),originalToken);
- await control({mode:'fresh'});
- // Wait for actual personal authentication to reach the injected handover; no
- // call transaction or clinical dialog owns locks while provider work is pending.
- while(Date.now()<=incoming)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,incoming-Date.now()+1)));
- await page.getByRole('button',{name:'Authenticate for this shift'}).click();await finish(page);
- await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toHaveCount(0);await expect(page.getByText('No calls are currently assigned.',{exact:false})).toBeVisible();
- const fresh=await page.evaluate(async()=> (await fetch('/api/sessions/current')).json());assert(Date.parse(fresh.personallyAuthenticatedAt)>=incoming);assert.equal(fresh.expiresAt,original.expiresAt);assert.equal(await token(context),originalToken);
- const created=await newReport();assert.equal(created.status,201,JSON.stringify(created.body));assert.equal((await reopen(created.body.id)).status,200);
- await control({grace:true});await page.reload();await graceJourney(context,true);
- console.log(JSON.stringify({graceContinue:true,graceSwitch:true,overlappingGrace:true,shiftOidc:true,localBrowser:true,productionCreated:true,existingReport:true,crossing:true,otherDevice:true,outage:true,fixedExpiry:true}));
+ const originalToken=await token(context);await control({age:originalToken});
+ const before=await control({inspect:originalToken});
+ crossing=true;await control({mode:'outage'});await page.reload();
+ await expect(page.getByRole('button',{name:'Authenticate for this shift'})).toHaveCount(0);
+ assert.equal((await newReport()).status,201,'valid SSO session remains sufficient across shift and provider outage');
+ assert.equal((await reopen(first.body.id)).status,200);
+ assert.deepEqual((await control({inspect:originalToken})).session,before.session);
+ await control({mode:'fresh'});await validLoginJourney(context,true);
+
+ console.log(JSON.stringify({currentLogin:true,ownershipSwitch:true,shiftOidc:true,localBrowser:true,crossing:true,outage:true,fixedExpiry:true}));
 }finally{await browser?.close();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}await app.close();}

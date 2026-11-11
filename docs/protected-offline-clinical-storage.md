@@ -47,10 +47,10 @@ wrapping secrets, grants, wrapped keys, request bodies, or ciphertext samples.
   browser must reach the server once to establish its recovery receipt before
   it can continue editing offline.
 - Opening an assigned call also uses this recovery flow if another browser
-  already registered its key, including password confirmation when required.
+  already registered its key, using the current authenticated login.
   Open-report lists render before background recovery. Completed-report checks
   run only when this browser retains locked, unsynchronized ciphertext, stop
-  when its handles are recovered, and pause after a reauthentication requirement.
+  when its handles are recovered. No repeated credential prompt is shown.
 - A different user receives neither a list nor labels from the browser store and
   cannot request or consume the original user's grant. Concurrent tabs use an
   exclusive per-report lock. Tampering fails AES-GCM authentication. A server
