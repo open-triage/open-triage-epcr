@@ -1,4 +1,4 @@
-import { ConflictException, HttpException, HttpStatus, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
   CheckpointProtectedReportCommand,
@@ -213,9 +213,6 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
         select * from offline_recovery.create_report_recovery_grant($1, $2, $3, $4, $5, $6)
       `, [reportId, session.organization.id, session.user.id, sha256(accessToken), sha256(grant), command.envelopeVersion]);
       const created = rows[0];
-      if (created?.result === "reauthentication_required") {
-        throw new HttpException("Recent personal reauthentication is required", HttpStatus.PRECONDITION_REQUIRED);
-      }
       if (created?.result !== "created" || !created.recovery_handle || !created.expires_at ||
           (created.report_status !== "draft" && created.report_status !== "signed")) {
         throw new NotFoundException("Protected report recovery is unavailable");

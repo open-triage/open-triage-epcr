@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createCipheriv, randomUUID } from "node:crypto";
 import test from "node:test";
-import { ConflictException, ForbiddenException, HttpException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { offlineRecoveryWrappingKey, ProtectedReportKeyService } from "../dist/reports/protected-report-key.service.js";
 
 test("offline recovery wrapping uses a dedicated exact-length versioned secret", () => {
@@ -198,7 +198,7 @@ test("recovery consumption unwraps one report key only after the atomic database
   }
 });
 
-test("grant assurance failures are distinct while every recovery denial is generic", async () => {
+test("legacy assurance and recovery denials never request another login", async () => {
   const session = { organization: { id: randomUUID() }, user: { id: randomUUID() } };
   const serviceFor = (result) => new ProtectedReportKeyService(
     { transaction: async (work) => work({ query: async () => [result] }) },
@@ -206,7 +206,7 @@ test("grant assurance failures are distinct while every recovery denial is gener
   );
   await assert.rejects(serviceFor({ result: "reauthentication_required" }).createRecoveryGrant(
     "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1 }, "csrf"),
-  (error) => error instanceof HttpException && error.getStatus() === 428);
+  (error) => error instanceof NotFoundException && error.getStatus() === 404);
   await assert.rejects(serviceFor({ result: "denied" }).createRecoveryGrant(
     "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1 }, "csrf"), NotFoundException);
   await assert.rejects(serviceFor({ result: "denied" }).consumeRecoveryGrant(

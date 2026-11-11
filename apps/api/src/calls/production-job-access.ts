@@ -1,9 +1,8 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import type { ClinicianSession, ProductionJobAccess, UnitSchedulePreview, NewJobConfirmation } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 import { productionWorkflow } from "../authentication/production-workflow.js";
-import { mutationRows } from "../database/mutation-result.js";
 import { agencyRequest } from "../sessions/agency-context.js";
 import type { SchedulesService } from "../schedules/schedules.service.js";
 
@@ -142,70 +141,32 @@ async function enrolledUnitAccess(manager: EntityManager, token: string,
   return { state: "ready", unit };
 }
 
-/** A preview is schedule evidence only. Only this session's personal proof qualifies.
- * Grace requires a separate attempt-specific reminder; it never advances proof. */
-export function shiftAuthenticationState(evaluated: UnitSchedulePreview, personallyAuthenticatedAt: string | Date | null): ProductionJobAccess["state"] {
-  if (evaluated.state === "missing") return "schedule-required";
-  if (evaluated.state === "blank") return "ready";
-  if (evaluated.graceCheckpoints.length) return "identity-confirmation-required";
-  if (!evaluated.activeCheckpoint) return "ready"; // Initial selection is prospective.
-  const proof = personallyAuthenticatedAt == null ? NaN : new Date(personallyAuthenticatedAt).getTime();
-  return Number.isFinite(proof) && proof >= Date.parse(evaluated.activeCheckpoint.graceStartsAt)
-    && proof <= Date.parse(evaluated.evaluatedAt) ? "ready" : "reauthentication-required";
+/** Schedules remain required; an already validated login needs no shift proof. */
+export function shiftAuthenticationState(evaluated: UnitSchedulePreview, _personallyAuthenticatedAt?: string | Date | null): ProductionJobAccess["state"] {
+  return evaluated.state === "missing" ? "schedule-required" : "ready";
 }
 
 /** Repeat at the creation boundary after assignment/command waits. The caller
  * already owns the authority/device/unit/session locks, with no provider interaction. */
 export async function currentShiftAccess(manager: EntityManager, token: string,
-  unit: {organizationId: string; id: string}, schedules: SchedulesService, confirmation?: JobConfirmation): Promise<ProductionJobAccess["state"]> {
+  unit: {organizationId: string; id: string}, schedules: SchedulesService, _confirmation?: JobConfirmation): Promise<ProductionJobAccess["state"]> {
   if ((await productionWorkflow(manager, unit.organizationId, "share")).state === "preparation") return "ready";
-  const [evidence] = await manager.query<Array<ConfirmationSessionContext & { personally_authenticated_at: Date | null }>>(`
-    select personally_authenticated_at,user_id,organization_id,installation_registration_id,browser_origin from app_identity.app_session
-    where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()`, [digest(token)]);
+  const [evidence] = await manager.query(`select s.id, app_identity.user_has_capability(s.user_id,s.organization_id,'clinical:document') as can_document from app_identity.app_session s
+    join app_identity.app_user u on u.id=s.user_id
+    where s.token_sha256=$1 and s.organization_id=$2 and s.revoked_at is null
+      and s.expires_at>clock_timestamp() and u.active
+      and app_identity.session_authentication_valid(s)
+      and app_identity.user_can_access_organization(s.user_id,s.organization_id)`, [digest(token),unit.organizationId]);
   if (!evidence) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
-  const evaluated = await schedules.evaluateUnit(manager, unit.organizationId, unit.id);
-  const state = shiftAuthenticationState(evaluated, evidence.personally_authenticated_at);
-  if (state !== "identity-confirmation-required" || !confirmation?.token) return state;
-  const values = [digest(confirmation.token), digest(token), confirmation.target, confirmationContext(evaluated, evidence)];
-  const rows = await manager.query(confirmation.consume
-    ? `update app_identity.new_job_confirmation set consumed_at=clock_timestamp()
-       where token_sha256=$1 and session_sha256=$2 and target=$3 and context_sha256=$4
-       and consumed_at is null and expires_at>clock_timestamp() returning token_sha256`
-    : `select token_sha256 from app_identity.new_job_confirmation
-       where token_sha256=$1 and session_sha256=$2 and target=$3 and context_sha256=$4
-       and consumed_at is null and expires_at>clock_timestamp()`, values);
-  return (confirmation.consume ? mutationRows(rows) : rows).length ? "ready" : "identity-confirmation-required";
+  if (!evidence.can_document) throw new ForbiddenException("The clinical:document capability is required");
+  return shiftAuthenticationState(await schedules.evaluateUnit(manager, unit.organizationId, unit.id));
 }
 
 export interface JobConfirmation { target: string; token?: string; consume?: boolean; }
 
-// Evaluation time advances normally. Every authority-bearing schedule field stays bound.
-interface ConfirmationSessionContext {
-  user_id: string; organization_id: string; installation_registration_id: string; browser_origin: string;
-}
-function confirmationContext({ evaluatedAt: _time, scheduleName: _name, ...context }: UnitSchedulePreview,
-  session: ConfirmationSessionContext): string {
-  return digest(JSON.stringify({ schedule: context, actor: session.user_id, agency: session.organization_id,
-    registration: session.installation_registration_id, origin: session.browser_origin }));
-}
-
+/** Compatibility endpoint: validate existing authority without issuing an identity challenge. */
 export async function prepareNewJobConfirmation(manager: EntityManager, token: string,
-  session: ClinicianSession, schedules: SchedulesService, target: string): Promise<NewJobConfirmation | null> {
-  const access = await productionJobAccess(manager, token, session, schedules);
-  if (access.state === "preparation" || access.state === "ready" || access.state === "synthetic-only") return null;
-  if (access.state !== "identity-confirmation-required") assertProductionJobAccess(access);
-  const evaluated = await schedules.evaluateUnit(manager, access.unit!.organizationId, access.unit!.id);
-  if (!evaluated.graceCheckpoints.length) {
-    assertProductionJobAccess({ ...access, state: await currentShiftAccess(manager, token, access.unit!, schedules) });
-    return null;
-  }
-  const [binding] = await manager.query<ConfirmationSessionContext[]>(`select user_id,organization_id,installation_registration_id,browser_origin
-    from app_identity.app_session where token_sha256=$1 and revoked_at is null and expires_at>clock_timestamp()`, [digest(token)]);
-  if (!binding) throw new UnauthorizedException({ code: "calls.sessionExpired", params: {} });
-  const reminder = randomBytes(32).toString("base64url");
-  await manager.query(`delete from app_identity.new_job_confirmation where session_sha256=$1
-    and (target=$2 or expires_at<=clock_timestamp() or consumed_at is not null)`, [digest(token), target]);
-  await manager.query(`insert into app_identity.new_job_confirmation(token_sha256,session_sha256,target,context_sha256)
-    values($1,$2,$3,$4)`, [digest(reminder),digest(token),target,confirmationContext(evaluated,binding)]);
-  return { token: reminder, clinicianName: session.user.displayName, unit: access.unit! };
+  session: ClinicianSession, schedules: SchedulesService, _target: string): Promise<NewJobConfirmation | null> {
+  assertProductionJobAccess(await productionJobAccess(manager, token, session, schedules));
+  return null;
 }
