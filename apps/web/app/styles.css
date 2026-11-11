@@ -1486,3 +1486,5 @@ fieldset { min-inline-size: 0; }
 .stationary-field-control .stationary-element-tooltip { max-width: calc(100% - 20px); overflow-wrap: anywhere; }
 .cos-destination-directory { min-width: 0; }
 .cos-destination-directory > .admin-table-scroll { margin-inline: 18px; padding-inline: 0; }
+
+.android-managed-connection { margin-block: 0 12px; color: var(--muted); font-size: var(--text-caption); overflow-wrap: anywhere; }

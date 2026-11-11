@@ -3035,5 +3035,12 @@
   "android.pairingFailed": "Kopplingen misslyckades. Kontrollera fil, serveranslutning och certifikat eller begär en ny kod.",
   "android.cancel": "Avbryt",
   "android.publicCa": "Publika CA-certifikat (PEM, valfritt)",
-  "android.downloadPairing": "Hämta Android-kopplingsfil"
+  "android.downloadPairing": "Hämta Android-kopplingsfil",
+  "android.managed.locked": "Anslutningen hanteras av din organisation",
+  "android.managed.missing": "Hanterade inställningar saknas. Kontakta IT.",
+  "android.managed.pending": "Hanterade inställningar levereras.",
+  "android.managed.invalid": "Hanterade inställningar är ogiltiga. Kontakta IT.",
+  "android.managed.changed": "Den hanterade anslutningen har ändrats. Kontakta IT för att återställa eller omplacera installationen.",
+  "android.managed.unavailable": "Hanterade inställningar är inte tillgängliga. Kontakta IT.",
+  "android.managed.conflict": "Kopplingen stämmer inte med den hanterade anslutningen."
 }

@@ -3037,5 +3037,12 @@
   "android.pairingFailed": "Pairing failed. Check the file, server connection and certificate, or request a new code.",
   "android.cancel": "Cancel",
   "android.publicCa": "Public CA certificates (PEM, optional)",
-  "android.downloadPairing": "Download Android pairing file"
+  "android.downloadPairing": "Download Android pairing file",
+  "android.managed.locked": "Connection managed by your organization",
+  "android.managed.missing": "Managed settings are missing. Contact IT.",
+  "android.managed.pending": "Managed settings are being delivered.",
+  "android.managed.invalid": "Managed settings are invalid. Contact IT.",
+  "android.managed.changed": "The managed connection changed. Contact IT to restore or reassign this installation.",
+  "android.managed.unavailable": "Managed settings are unavailable. Contact IT.",
+  "android.managed.conflict": "Pairing conflicts with the managed connection."
 }

@@ -15,6 +15,24 @@ const { agencyContextMiddleware } = await import('../../apps/api/dist/sessions/a
 const { PlatformErrorFilter } = await import('../../apps/api/dist/platform-error.filter.js');
 const { securityHeaders } = await import('../../apps/api/dist/security-headers.js');
 const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false, httpsOptions: { key: await readFile(fixture.keyPath), cert: await readFile(fixture.certPath) } });
+// A bounded fixture-only barrier makes lifecycle/policy races deterministic.
+// This file is a synthetic API launcher, never the production API entry point.
+const managementHolds = new Map();
+app.use((request, response, next) => {
+  const url = new URL(request.url, fixture.origin), id = url.searchParams.get('requestId');
+  if (!/^[a-f0-9-]{36}$/.test(id ?? '')) return next();
+  if (url.pathname === '/api/__android-managed-hold' && managementHolds.size < 128) {
+    const release = () => { managementHolds.delete(id); response.json({ok: true}); };
+    const timeout = setTimeout(release, 15000);
+    managementHolds.set(id, () => { clearTimeout(timeout); release(); });
+    return;
+  }
+  if (url.pathname === '/api/__android-managed-hold-started') return response.json({pending: managementHolds.has(id)});
+  if (url.pathname === '/api/__android-managed-hold-release') {
+    const release = managementHolds.get(id); release?.(); return response.json({released: !!release});
+  }
+  next();
+});
 app.setGlobalPrefix('api'); app.use(agencyContextMiddleware); app.use(securityHeaders); app.useGlobalFilters(new PlatformErrorFilter());
 await app.listen(fixture.port, '0.0.0.0');
 process.send?.({ ready: true });

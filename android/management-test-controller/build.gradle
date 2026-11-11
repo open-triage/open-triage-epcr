@@ -1,0 +1,12 @@
+apply plugin: 'com.android.application'
+android {
+    namespace 'org.opentriage.managementtest'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId 'org.opentriage.managementtest'
+        minSdk rootProject.ext.minSdkVersion
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName '1.0-test-only'
+    }
+}

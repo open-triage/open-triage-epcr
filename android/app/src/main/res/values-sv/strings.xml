@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenTriage Utveckling</string>
+    <string name="title_activity_main">OpenTriage Utveckling</string>
+    <string name="managed_version">Konfigurationsversion</string>
+    <string name="managed_origin">Serverns HTTPS-ursprung</string>
+    <string name="managed_ca">Publika CA-certifikat (PEM)</string>
+</resources>

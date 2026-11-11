@@ -76,6 +76,24 @@ public class TrustedConnectionTest {
             assertThrows(Exception.class, () -> restored.request("/api/current", "GET", new JSONObject().put("Origin", "https://attacker.test"), null));
             assertThrows(Exception.class, () -> new TrustedConnection(origin, "").request("/api/current", "GET", new JSONObject(), null));
             assertThrows(Exception.class, () -> new TrustedConnection(origin.replace("localhost", "127.0.0.1"), ca()).request("/api/current", "GET", new JSONObject(), null));
+            // Public-CA management selects platform trust rather than requiring app-specific PEM.
+            // Give this isolated JVM a synthetic platform root and prove a real TLS handshake.
+            KeyStore platformRoots = KeyStore.getInstance("PKCS12"); platformRoots.load(null);
+            platformRoots.setCertificateEntry("synthetic-platform-root", java.security.cert.CertificateFactory.getInstance("X.509")
+                .generateCertificate(new java.io.ByteArrayInputStream(ca().getBytes(StandardCharsets.US_ASCII))));
+            var rootsFile = java.nio.file.Files.createTempFile("android-managed-platform-roots", ".p12");
+            String[] properties = {"javax.net.ssl.trustStore", "javax.net.ssl.trustStoreType", "javax.net.ssl.trustStorePassword"};
+            String[] previous = java.util.Arrays.stream(properties).map(System::getProperty).toArray(String[]::new);
+            try {
+                try (var output = java.nio.file.Files.newOutputStream(rootsFile)) { platformRoots.store(output, "synthetic-only".toCharArray()); }
+                System.setProperty(properties[0], rootsFile.toString()); System.setProperty(properties[1], "PKCS12"); System.setProperty(properties[2], "synthetic-only");
+                assertEquals(origin + "|null", new TrustedConnection(origin, "").request("/api/current", "GET", new JSONObject(), null).body());
+            } finally {
+                for (int i = 0; i < properties.length; i++) {
+                    if (previous[i] == null) System.clearProperty(properties[i]); else System.setProperty(properties[i], previous[i]);
+                }
+                java.nio.file.Files.deleteIfExists(rootsFile);
+            }
         } finally { server.close(); worker.join(3000); }
     }
 }

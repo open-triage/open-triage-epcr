@@ -34,3 +34,10 @@ test('Android PR validation uses the same compile SDK, native build and minimum-
   assert.equal(emulator.with.script, 'npm run android:test -- --skip-build');
   assert(workflow.on.pull_request.branches.includes('feature/android_app'));
 });
+test('Android browser regressions are included in the full deployment preflight', async () => {
+  const directory = new URL('../apps/web/e2e/', import.meta.url);
+  const deployment = await readFile(new URL('../apps/web/playwright.deployment.config.ts', import.meta.url), 'utf8');
+  const androidSuites = (await readdir(directory)).filter(name => /^android-.*\.spec\.ts$/.test(name));
+  assert(androidSuites.length > 0);
+  for (const file of androidSuites) assert(deployment.includes(JSON.stringify(file)), `${file}: include Android browser regression in npm run check:ci`);
+});

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import https from 'node:https';
 import assert from 'node:assert/strict';
 import { prepareFixtures } from './android/fixtures.mjs';
+import { runManagedJourneys } from './android/managed-journey.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
 const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-android-${randomUUID()}`;
@@ -61,6 +62,7 @@ try {
     assert.equal(replay.status, 401, 'Confirmed enrollment authorization must reject replay');
     console.log(`PASS fixture ${fixture.index}: same APK, private CA, import/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
+  await runManagedJourneys({root, fixtures, run, api, adb, serial});
 } finally {
   for (const child of children) child.kill('SIGTERM');
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
