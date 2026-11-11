@@ -17,6 +17,7 @@ test.beforeAll(async () => {
       builder.onLoad({filter: /.*/, namespace: 'managed-fixture'}, () => ({loader: 'js', contents: `
         export const isAndroidRuntime=()=>true;
         export const installAndroidTransport=()=>{};
+        export const configureNativeConnection=()=>{};
         export const AndroidConnection={
           state:async()=>{const f=window.managedFixture;f.stateCalls=(f.stateCalls||0)+1;return f.holdState?new Promise(resolve=>{f.releaseState=resolve}):f.state},
           addListener:async(_event,listener)=>{window.managedFixture.emit=state=>{window.managedFixture.state=state;listener(state)};return{remove:async()=>{}}},

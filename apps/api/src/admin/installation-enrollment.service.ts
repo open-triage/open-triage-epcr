@@ -6,20 +6,22 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { AgencyDirectoryService } from "../sessions/agency-directory.service.js";
 import { agencyRequest } from "../sessions/agency-context.js";
 import { mutationRows } from "../database/mutation-result.js";
+import { enrollmentAttemptBinding, enrollmentAttemptCredential, enrollmentDigest, sameEnrollmentDigest } from "./enrollment-attempt.js";
 import { revokeRegistrationSessions } from "../sessions/installation-session.js";
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const columns = `i.id,i.installation_identity_id as "installationId",i.organization_id as "organizationId",i.unit_id as "unitId",i.name,i.enrolled_at as "enrolledAt",i.revoked_at as "revokedAt"`;
 export type InstallationSummary = { id: string; installationId: string; organizationId: string; unitId: string; name: string; enrolledAt: string; revokedAt: string | null };
-export function enrollmentInput(input: unknown, consuming: boolean): { token: string; name?: string; reassign?: boolean } {
+export function enrollmentInput(input: unknown, consuming: boolean): { token: string; name?: string; reassign?: boolean; attempt?: string } {
  if (!input || typeof input !== "object" || Array.isArray(input)) throw new UnprocessableEntityException("Invalid enrollment");
  const b = input as Record<string, unknown>;
- if (Object.keys(b).some(key => !(consuming ? ["token","name","confirmInstallation","reassign"] : ["token"]).includes(key)) ||
+ if (Object.keys(b).some(key => !(consuming ? ["token","name","confirmInstallation","reassign","attempt"] : ["token"]).includes(key)) ||
  typeof b.token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(b.token)) throw new UnprocessableEntityException("Invalid enrollment code");
+ if ("attempt" in b && (!consuming || typeof b.attempt !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(b.attempt) || Buffer.from(b.attempt,"base64url").toString("base64url") !== b.attempt)) throw new UnprocessableEntityException("Invalid enrollment attempt");
  if ("reassign" in b && (!consuming || b.reassign !== true)) throw new UnprocessableEntityException("Invalid reassignment confirmation");
  if (consuming && (b.confirmInstallation !== true || typeof b.name !== "string" || !b.name.trim() || b.name.length > 100 || /[\u0000-\u001f\u007f]/u.test(b.name))) {
  throw new UnprocessableEntityException("Name and explicit intended installation confirmation are required");
  }
- return {token:b.token,...(consuming ? {name:(b.name as string).trim(),...(b.reassign===true?{reassign:true}:{})} : {})};
+ return {token:b.token,...(typeof b.attempt === "string"?{attempt:b.attempt}:{}),...(consuming ? {name:(b.name as string).trim(),...(b.reassign===true?{reassign:true}:{})} : {})};
 }
 @Injectable()
 export class InstallationEnrollmentService {
@@ -98,6 +100,7 @@ export class InstallationEnrollmentService {
  async consume(input: unknown, existingCredential?: string, existingSession?: string) {
  await this.requireOrigin();
  const body=enrollmentInput(input,true);
+ const origin=agencyRequest.getStore()!.origin!;
  return this.database.transaction(async manager=>{
  if(!existingCredential || !/^[A-Za-z0-9_-]{43}$/.test(existingCredential)) throw new UnauthorizedException("Open enrollment in the intended browser first");
  await manager.query(`select pg_advisory_xact_lock(hashtextextended($1,0))`,[digest(existingCredential)]);
@@ -105,6 +108,26 @@ export class InstallationEnrollmentService {
  // revoked-cookie retries. Registration row locks also serialize session issuers.
  const [known]=await manager.query(`select installation_identity_id from app_identity.installation_registration where credential_sha256=$1`,[digest(existingCredential)]);
  if(known) await manager.query(`select pg_advisory_xact_lock(hashtextextended($1,1))`,[known.installation_identity_id]);
+ // Every retry acquires the same stable-identity guard as its original commit.
+ const binding=body.attempt?enrollmentAttemptBinding(origin,body.token,body.name!,!!body.reassign,existingCredential):null;
+ if(body.attempt) {
+ const [receipt]=await manager.query(`select e.native_attempt_sha256,e.native_binding_sha256,e.installation_id,
+ e.consumed_at>clock_timestamp()-interval '15 minutes' as retry_live
+ from app_identity.unit_enrollment e where e.token_sha256=$1 and e.origin=$2 and e.consumed_at is not null`,[digest(body.token),origin]);
+ if(receipt) {
+ if(!receipt.retry_live || !sameEnrollmentDigest(receipt.native_attempt_sha256,enrollmentDigest(body.attempt)) || !sameEnrollmentDigest(receipt.native_binding_sha256,enrollmentDigest(binding!))) throw new UnauthorizedException("Enrollment attempt is unavailable");
+ const credential=enrollmentAttemptCredential(body.attempt,binding!);
+ const [live]=await manager.query(`select ${columns} from app_identity.installation_registration i
+ where i.id=$1 and i.credential_sha256=$2 and i.revoked_at is null for share of i`,[receipt.installation_id,digest(credential)]);
+ if(!live) throw new UnauthorizedException("Enrollment attempt is unavailable");
+ await this.unit(manager,live.organizationId,live.unitId);
+ // Waiting on live registration/unit authority cannot extend retry eligibility.
+ const [stillLive]=await manager.query(`select id from app_identity.unit_enrollment where token_sha256=$1 and origin=$2
+ and consumed_at>clock_timestamp()-interval '15 minutes'`,[digest(body.token),origin]);
+ if(!stillLive) throw new UnauthorizedException("Enrollment attempt is unavailable");
+ return {installation:live as InstallationSummary,credential,...(body.reassign?{reassigned:true}:{})};
+ }
+ }
  const [previous]=await manager.query(`select i.*,exists(select 1 from app_identity.installation_event e
  where e.installation_id=i.id and e.event_type='installation-reassigned') as retired
  from app_identity.installation_registration i where credential_sha256=$1 for update of i`,[digest(existingCredential)]);
@@ -116,7 +139,7 @@ export class InstallationEnrollmentService {
  if(body.reassign && (!previous || previous.revoked_at)) throw new ConflictException("Reassignment requires a live installation registration; this credential is unavailable");
  const row=await this.code(manager,body.token,true);
  await this.unit(manager,row.organization_id,row.unit_id);
- const credential=previous?randomBytes(32).toString("base64url"):existingCredential,id=randomUUID(),identityId=previous?.installation_identity_id??randomUUID();
+ const credential=body.attempt?enrollmentAttemptCredential(body.attempt,binding!):previous?randomBytes(32).toString("base64url"):existingCredential,id=randomUUID(),identityId=previous?.installation_identity_id??randomUUID();
  let sessionsRevoked=0;
  if(body.reassign) {
  await manager.query(`update app_identity.installation_registration set revoked_at=clock_timestamp() where id=$1`,[previous.id]);
@@ -139,8 +162,8 @@ export class InstallationEnrollmentService {
  and app_identity.session_authentication_valid(app_session)`,
  [digest(existingSession),id,agencyRequest.getStore()?.origin??"",row.organization_id]);
  // Recheck time after acquiring locks: a waiter cannot consume an expired code.
- const consumed=mutationRows(await manager.query(`update app_identity.unit_enrollment set consumed_at=clock_timestamp(),installation_id=$2
- where id=$1 and consumed_at is null and expires_at>clock_timestamp() returning id`,[row.id,id]));
+ const consumed=mutationRows(await manager.query(`update app_identity.unit_enrollment set consumed_at=clock_timestamp(),installation_id=$2,native_attempt_sha256=$3,native_binding_sha256=$4
+ where id=$1 and consumed_at is null and expires_at>clock_timestamp() returning id`,[row.id,id,body.attempt?digest(body.attempt):null,binding?digest(binding):null]));
  if(!consumed.length) throw new UnauthorizedException("Enrollment code is expired, invalid or already used");
  await manager.query(`insert into app_identity.installation_event(organization_id,unit_id,installation_id,actor_id,event_type)
  values($1,$2,$3,$4,'installation-enrolled')`,[row.organization_id,row.unit_id,id,row.issued_by]);

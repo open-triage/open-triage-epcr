@@ -32,7 +32,7 @@ public class PairingJourneyTest {
         fail("UI condition failed: " + expression + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     protected void importFile(String artifact) throws Exception {
-        evaluate("(()=>{const input=document.querySelector('input[type=file]');const files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()");
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
     }
     private void rejected(String artifact) throws Exception {
         importFile(artifact);

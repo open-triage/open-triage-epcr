@@ -3059,5 +3059,8 @@
   "noteUi.capture.androidCameraUnavailable": "Kameran är inte tillgänglig. Kontrollera Android-appens behörigheter och enheten och försök igen. Textanteckningar är fortfarande tillgängliga.",
   "noteUi.capture.androidMicrophoneUnavailable": "Mikrofonen är inte tillgänglig. Kontrollera Android-appens behörigheter och enheten och försök igen. Textanteckningar är fortfarande tillgängliga.",
   "noteUi.androidAudioTransferLimit": "Inspelningen är för stor för att överföras på enheten. Avbryt och spela in en kortare anteckning.",
-  "noteUi.audioDiscardFailed": "Inspelningen kunde inte tas bort. Försök igen."
+  "noteUi.audioDiscardFailed": "Inspelningen kunde inte tas bort. Försök igen.",
+  "android.changeInstallation": "Byt installation",
+  "android.retryPairing": "Försök slutföra bekräftad koppling",
+  "android.returnInstallation": "Återgå till nuvarande installation"
 }

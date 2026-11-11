@@ -1,3 +1,4 @@
+import { nativeStorageScope, nativeLegacyStorageScope } from "./native-storage-context";
 import type { EpsLookup, CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 import { sameJsonValue } from "./json-values";
@@ -8,6 +9,7 @@ export const PROTECTED_ENVELOPE_SCHEMA = 1 as const;
 
 export interface ProtectedClinicalRecord {
   readonly localRecordId: string;
+  readonly nativeScope?: string;
   readonly schemaVersion: 1;
   readonly algorithm: "AES-256-GCM";
   readonly recoveryHandle: string;
@@ -164,6 +166,7 @@ export function protectedRecordExpired(
 type RuntimeContext = {
   readonly key: CryptoKey;
   readonly localRecordId: string;
+  readonly nativeScope?: string;
   readonly checkpointScope: "report" | "browser";
   envelope: ProtectedReportKeyEnvelope;
   readonly releaseLock: () => void;
@@ -660,6 +663,7 @@ export async function pendingProtectedRecoveryHandles(): Promise<Set<string>> {
   if (!("indexedDB" in globalThis)) return new Set();
   const unlocked = new Set([...contexts.values()].map(({ envelope }) => envelope.recoveryHandle));
   return new Set(retainedProtectedRecords(await allRecords())
+    .filter(record => (record.nativeScope ?? nativeLegacyStorageScope()) === nativeStorageScope())
     .filter(({ recoveryHandle }) => !unlocked.has(recoveryHandle))
     .map(({ recoveryHandle }) => recoveryHandle));
 }
@@ -771,7 +775,7 @@ async function updateRecordDeadline(localRecordId: string, ciphertextRevision: n
 }
 
 async function recordForRecoveryHandle(recoveryHandle: string): Promise<ProtectedClinicalRecord | null> {
-  return (await allRecords()).find((record) => record.recoveryHandle === recoveryHandle) ?? null;
+  return (await allRecords()).find((record) => record.recoveryHandle === recoveryHandle && (record.nativeScope === nativeStorageScope() || record.nativeScope === undefined)) ?? null;
 }
 
 export async function encryptProtectedPayload(
@@ -826,7 +830,7 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   let persistedPayload = payload;
   let encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, persistedPayload);
   let record: ProtectedClinicalRecord = {
-    localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
+    localRecordId: context.localRecordId, ...(context.nativeScope ? { nativeScope: context.nativeScope } : {}), schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     ...(context.checkpointScope === "browser" ? { checkpointScope: "browser" as const } : {}),
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
     ciphertextRevision: revision, synchronizedRevision: Math.min(synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
@@ -1096,7 +1100,7 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
     if (generation !== protectedAuthorityGeneration) { releaseLock(); return false; }
-    const context = { key, localRecordId: crypto.randomUUID(), checkpointScope: "report" as const, envelope, csrfToken,
+    const context = { key, nativeScope: nativeStorageScope(), localRecordId: crypto.randomUUID(), checkpointScope: "report" as const, envelope, csrfToken,
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
       checkpointQueue: Promise.resolve(),
@@ -1205,6 +1209,7 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
     const context = {
       key,
       localRecordId: record?.localRecordId ?? crypto.randomUUID(),
+      nativeScope: nativeStorageScope(),
       checkpointScope: record?.checkpointScope === "browser" || !record ? "browser" as const : "report" as const,
       envelope: { schemaVersion: 1, recoveryHandle: grant.recoveryHandle,
         recoveryDeadline: record?.recoveryDeadline ?? grant.expiresAt, wrappingKeyVersion: recovered.wrappingKeyVersion },

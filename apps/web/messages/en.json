@@ -3061,5 +3061,8 @@
   "noteUi.capture.androidCameraUnavailable": "The camera is unavailable. Check Android app permissions and the device, then try again. Text notes remain available.",
   "noteUi.capture.androidMicrophoneUnavailable": "The microphone is unavailable. Check Android app permissions and the device, then try again. Text notes remain available.",
   "noteUi.androidAudioTransferLimit": "This recording is too large to transfer on this device. Cancel and record a shorter note.",
-  "noteUi.audioDiscardFailed": "The recording could not be discarded. Try again."
+  "noteUi.audioDiscardFailed": "The recording could not be discarded. Try again.",
+  "android.changeInstallation": "Change installation",
+  "android.retryPairing": "Retry confirmed pairing",
+  "android.returnInstallation": "Return to current installation"
 }

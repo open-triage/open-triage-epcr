@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { prepareFixtures } from './android/fixtures.mjs';
 import { fixtureApi as api } from './android/fixture-client.mjs';
 import { runManagedJourneys } from './android/managed-journey.mjs';
+import { runReassignmentTransition } from './android/reassignment-journey.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
@@ -29,6 +30,9 @@ try {
   else { ownsContainer = true; fixtures = await prepareFixtures(root, directory, run, docker, container); }
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/debug/app-debug.apk')]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]);
+  run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
+  const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
@@ -58,7 +62,7 @@ try {
     assert.equal(replay.status, 401, 'Confirmed enrollment authorization must reject replay');
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true });
+  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true, hooks: { beforeReconnect: runReassignmentTransition } });
   // A separate real process-loss run preserves incomplete encrypted recorder slices.
   await runReportRecoveryJourney({ root, fixture: fixtures[1], adb, serial, run, api, audio: true, unsavedAudio: true });
   await runManagedJourneys({root, fixtures, run, api, adb, serial});
