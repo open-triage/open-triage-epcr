@@ -46,7 +46,7 @@ public class ManagedConfigurationJourneyTest {
         return new JSONObject().put("configurationVersion", 1).put("serverOrigin", artifact.getString("origin")).put("publicCaPem", artifact.getString("caPem"));
     }
     private void importFile(String artifact) throws Exception {
-        evaluate("(()=>{const input=document.querySelector('input[type=file]');const files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()");
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
     }
     private void requestStatus(String path) throws Exception {
         evaluate("window.__managedResult=null;fetch(" + JSONObject.quote(path) + ").then(async response=>{window.__managedResult={status:response.status,body:await response.json()}}).catch(()=>{window.__managedResult={status:0}})");

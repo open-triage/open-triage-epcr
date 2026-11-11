@@ -195,6 +195,13 @@ final class TrustedConnection {
         }
     }
 
+    /** Candidate enrollment can reuse only installation authority, never personal login. */
+    TrustedConnection enrollmentCandidate(String nextOrigin, String nextCa) throws Exception {
+        TrustedConnection next = new TrustedConnection(nextOrigin, nextCa);
+        if (origin.equals(nextOrigin) && cookies.containsKey("open_triage_installation")) next.cookies.put("open_triage_installation", cookies.get("open_triage_installation"));
+        return next;
+    }
+
     JSONObject saved() throws Exception {
         JSONArray savedCookies = new JSONArray();
         for (var entry : cookies.entrySet()) savedCookies.put(new JSONObject().put("name", entry.getKey()).put("value", entry.getValue().value).put("expires", entry.getValue().expires));
