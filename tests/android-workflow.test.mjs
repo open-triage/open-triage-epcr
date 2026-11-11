@@ -41,3 +41,11 @@ test('Android declares network observation so WebView emits real online/offline 
   const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
   assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.ACCESS_NETWORK_STATE"\s*\/>/);
 });
+
+test('Android browser regressions are included in the full deployment preflight', async () => {
+  const directory = new URL('../apps/web/e2e/', import.meta.url);
+  const deployment = await readFile(new URL('../apps/web/playwright.deployment.config.ts', import.meta.url), 'utf8');
+  const androidSuites = (await readdir(directory)).filter(name => /^android-.*\.spec\.ts$/.test(name));
+  assert(androidSuites.length > 0);
+  for (const file of androidSuites) assert(deployment.includes(JSON.stringify(file)), `${file}: include Android browser regression in npm run check:ci`);
+});

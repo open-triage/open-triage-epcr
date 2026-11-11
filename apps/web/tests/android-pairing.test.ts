@@ -13,3 +13,12 @@ test("pairing rejects expired, oversized, non-HTTPS, secret-bearing and wrong-ve
   }
   assert.throws(() => parseAndroidPairing(" ".repeat(65537)));
 });
+test("pairing and native managed settings require the same canonical origin representations", () => {
+  const artifact = {version: 1, ...code(), caPem: ""};
+  for (const origin of ["https://AGENCY.example", "https://agency.example:443", "https://agency.example/", "https://127.00.0.1", "https://127.0.0.1.", "https://2130706433", "https://[0:0:0:0:0:0:0:1]", "https://[::FFFF:192.0.2.1]"]) {
+    assert.throws(() => parseAndroidPairing(JSON.stringify({...artifact, origin})), origin);
+  }
+  for (const origin of ["https://agency.example", "https://127.0.0.1:9443", "https://[::1]:9443", "https://[::ffff:c000:201]"]) {
+    assert.equal(parseAndroidPairing(JSON.stringify({...artifact, origin})).origin, origin);
+  }
+});

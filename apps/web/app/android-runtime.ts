@@ -1,9 +1,11 @@
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
 export type NativeResponse = { status: number; headers: Record<string, string>; bodyBase64: string };
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
+export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string };
 type ConnectionPlugin = {
-  state(): Promise<{ configured: boolean; origin?: string }>;
+  state(): Promise<AndroidConnectionState>;
+  addListener(event: "configurationChanged", listener: (state: AndroidConnectionState) => void): Promise<PluginListenerHandle>;
   preview(options: { artifact: string }): Promise<PairingPreview>;
   confirm(options: { name: string; confirmInstallation: true }): Promise<{ configured: true }>;
   cancel(): Promise<void>;
