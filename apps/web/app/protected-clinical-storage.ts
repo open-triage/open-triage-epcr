@@ -167,6 +167,7 @@ type RuntimeContext = {
   failure: Error | null;
   locking: boolean;
   receiptRequest: AbortController | null;
+  checkpointRequest: AbortController | null;
   readonly persistentStorage: boolean;
   recoveryInitialization?: boolean;
 };
@@ -208,6 +209,16 @@ export class LatestProtectedWriteQueue<T> {
 
   async flush(): Promise<void> {
     await this.drainThrough(this.heldTarget ?? this.requested);
+  }
+
+  /** An explicit close retries one settled failure and drains edits arriving while it waits. */
+  async flushLatest(): Promise<void> {
+    if (this.failed) { this.failed = null; this.running = null; }
+    while (true) {
+      const target = this.requested;
+      await this.drainThrough(target);
+      if (this.requested === target) return;
+    }
   }
 
   async holdAfterFlush(): Promise<() => void> {
@@ -281,13 +292,6 @@ export type RecoveredProtectedPayload = {
   readonly audioQueue?: ReadonlyArray<ProtectedAudioQueueEntry>;
   readonly audioPreview?: ProtectedAudioPreview;
 };
-
-export class RecoveryReauthenticationRequiredError extends Error {
-  constructor() {
-    super("Confirm your password to recover this protected report.");
-    this.name = "RecoveryReauthenticationRequiredError";
-  }
-}
 
 const contexts = new Map<string, RuntimeContext>();
 const statuses = new Map<string, ProtectedStorageStatus>();
@@ -677,6 +681,7 @@ export async function lockProtectedClinicalStorage(now = new Date()): Promise<vo
       context.locking = true;
       publishStatus(reportId, { mode: "locked", explanation: null });
       context.receiptRequest?.abort();
+      context.checkpointRequest?.abort();
     }
     await Promise.allSettled(active.map(([, context]) => context.writer.flush()));
     for (const [reportId, context] of active) {
@@ -745,13 +750,13 @@ function ciphertextSha256(ciphertext: ArrayBuffer): Promise<string> {
     [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""));
 }
 
-async function updateRecordDeadline(localRecordId: string, ciphertextRevision: number, recoveryDeadline: string): Promise<void> {
+async function updateRecordDeadline(localRecordId: string, ciphertextRevision: number, recoveryDeadline: string, isCurrent: () => boolean): Promise<void> {
   const database = await openDatabase();
   try {
     const transaction = database.transaction(PROTECTED_CLINICAL_STORE, "readwrite", { durability: "strict" });
     const store = transaction.objectStore(PROTECTED_CLINICAL_STORE);
     const current = await requestResult(store.get(localRecordId)) as ProtectedClinicalRecord | undefined;
-    if (current?.ciphertextRevision === ciphertextRevision) store.put({ ...current, recoveryDeadline });
+    if (isCurrent() && current?.ciphertextRevision === ciphertextRevision) store.put({ ...current, recoveryDeadline });
     await transactionComplete(transaction);
   } finally { database.close(); }
 }
@@ -789,6 +794,18 @@ export async function restoreProtectedRecord<T>(key: CryptoKey, record: Protecte
     ? { status: "ready", payload }
     : { status: "incompatible", reason: "Protected clinical data was preserved in its original authenticated envelope." };
 }
+
+function cancelProtectedRequest<T>(request: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) { void request.catch(() => undefined); return Promise.reject(signal.reason); }
+  return new Promise<T>((resolve, reject) => {
+    const aborted = () => { signal.removeEventListener("abort", aborted); reject(signal.reason); };
+    signal.addEventListener("abort", aborted, { once: true });
+    request.then(value => { signal.removeEventListener("abort", aborted); resolve(value); },
+      error => { signal.removeEventListener("abort", aborted); reject(error); });
+  });
+}
+
+class ProtectedReceiptTransportError extends Error {}
 
 async function persist(reportId: string, payload: ProtectedClinicalPayload): Promise<void> {
   const context = contexts.get(reportId);
@@ -833,47 +850,71 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   // Retrying must use a new revision, not overwrite authenticated ciphertext.
   context.revision = revision;
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
-  if (url && navigator.onLine && !context.locking) {
+  let receiptRecorded = false;
+  const current = () => contexts.get(reportId) === context && !context.locking;
+  if (url && navigator.onLine && current()) {
     const receiptRequest = new AbortController();
     context.receiptRequest = receiptRequest;
-    let response: Response;
     try {
-      response = await fetch(url, browserRequestInit({
-        method: "POST",
-        headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
-        body: JSON.stringify({
-          schemaVersion: 1,
-          recoveryHandle: context.envelope.recoveryHandle,
-          ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
-          ciphertextRevision: revision,
-          ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
-          ...(context.recoveryInitialization && !payloadHasPendingWork(payload) ? { preserveRecoveryDeadline: true } : {}),
-        }),
-        signal: receiptRequest.signal,
-      }));
+      const digest = await ciphertextSha256(encrypted.ciphertext);
+      if (!current() || receiptRequest.signal.aborted) return;
+      let response: Response | undefined;
+      try {
+        response = await cancelProtectedRequest(fetch(url, browserRequestInit({
+          method: "POST",
+          headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            recoveryHandle: context.envelope.recoveryHandle,
+            ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
+            ciphertextRevision: revision,
+            ciphertextSha256: digest,
+            ...(context.recoveryInitialization && !payloadHasPendingWork(payload) ? { preserveRecoveryDeadline: true } : {}),
+          }),
+          signal: receiptRequest.signal,
+        })), receiptRequest.signal);
+      } catch (error) {
+        // Durable encryption succeeded independently of the remote receipt.
+        // Keep online flush/signing failed, without disabling offline storage.
+        if (!current() || receiptRequest.signal.aborted) return;
+        if (navigator.onLine) throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its server receipt");
+      }
+      if (!current() || receiptRequest.signal.aborted) return;
+      if (response) {
+        if (applyProtectedAuthorityResponse(reportId, response)) throw new Error("Clinical authorization changed; protected editing is locked");
+        if (response.status === 404 || response.status === 410) {
+          contexts.delete(reportId); statuses.delete(reportId); context.releaseLock();
+          await deleteRecords([context.localRecordId]);
+          throw new Error("Protected report recovery is unavailable");
+        }
+        if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
+        let receipt: ProtectedCiphertextReceipt | undefined;
+        try { receipt = await cancelProtectedRequest(response.json(), receiptRequest.signal) as ProtectedCiphertextReceipt; }
+        catch (error) {
+          if (!current() || receiptRequest.signal.aborted) return;
+          // A broken stream is transport loss; malformed JSON remains an error.
+          if (!(error instanceof TypeError)) throw error;
+          if (navigator.onLine) throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its complete server receipt");
+        }
+        if (!current() || receiptRequest.signal.aborted) return;
+        if (receipt) {
+          await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline, current);
+          if (!current() || receiptRequest.signal.aborted) return;
+          context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
+          receiptRecorded = true;
+        }
+      }
     } finally {
+      // Keep cancellation effective until the body and deadline update settle.
       if (context.receiptRequest === receiptRequest) context.receiptRequest = null;
     }
-    if (applyProtectedAuthorityResponse(reportId, response)) {
-      throw new Error("Clinical authorization changed; protected editing is locked");
-    }
-    if (response.status === 404 || response.status === 410) {
-      contexts.delete(reportId);
-      statuses.delete(reportId);
-      context.releaseLock();
-      await deleteRecords([context.localRecordId]);
-      throw new Error("Protected report recovery is unavailable");
-    }
-    if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
-    const receipt = await response.json() as ProtectedCiphertextReceipt;
-    context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
-    await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
   }
+  if (!current()) return;
   context.recoveryInitialization = false;
   context.synchronizedRevision = synchronizedRevision;
   context.failure = null;
   publishStatus(reportId, writableStorageStatus(context));
-  if (context.synchronizedRevision >= revision) {
+  if (receiptRecorded && context.synchronizedRevision >= revision) {
     // The server accepts a checkpoint only for its latest receipt. Keep the
     // writer held until this checkpoint settles so the next receipt cannot
     // advance that revision while this request is in flight.
@@ -885,21 +926,26 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
 
 async function checkpointProtectedCiphertext(reportId: string, context: RuntimeContext, revision: number, ciphertext: ArrayBuffer): Promise<void> {
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-checkpoint`);
-  if (!url || context.locking || contexts.get(reportId) !== context) return;
+  const current = () => !context.locking && contexts.get(reportId) === context;
+  if (!url || !current()) return;
+  const request = new AbortController(); context.checkpointRequest = request;
   try {
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
+    if (!current() || request.signal.aborted) return;
     const ciphertextSha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-    const response = await fetch(url, browserRequestInit({
+    const response = await cancelProtectedRequest(fetch(url, browserRequestInit({
       method: "POST",
       headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
       body: JSON.stringify({ schemaVersion: 1, recoveryHandle: context.envelope.recoveryHandle,
         ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
         ciphertextRevision: revision, ciphertextSha256 }),
-    }));
+      signal: request.signal,
+    })), request.signal);
+    if (!current() || request.signal.aborted) return;
     if (applyProtectedAuthorityResponse(reportId, response)) return;
-    if (response.status === 409 && contexts.get(reportId) === context)
-      publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
+    if (response.status === 409) publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
   } catch { /* The local authenticated ciphertext remains authoritative until reconnect. */ }
+  finally { if (context.checkpointRequest === request) context.checkpointRequest = null; }
 }
 
 function queuePersist(reportId: string): void {
@@ -914,8 +960,8 @@ function createProtectedWriter(reportId: string, context: RuntimeContext, persis
       await persist(reportId, payload);
     } catch (error) {
       context.failure = error instanceof Error ? error : new Error("Protected clinical persistence failed");
-      if (contexts.get(reportId) === context) {
-        publishStatus(reportId, {
+      if (contexts.get(reportId) === context && !context.locking) {
+        publishStatus(reportId, error instanceof ProtectedReceiptTransportError ? writableStorageStatus(context) : {
           mode: navigator.onLine ? "online-only" : "read-only",
           explanation: navigator.onLine
             ? "This browser cannot preserve offline changes. Server saves remain available while connected."
@@ -968,6 +1014,7 @@ export function applyProtectedAuthorityResponse(reportId: string,
   if (!context) return true;
   context.locking = true;
   context.receiptRequest?.abort();
+  context.checkpointRequest?.abort();
   contexts.delete(reportId);
   context.payload = { schemaVersion: PROTECTED_ENVELOPE_SCHEMA };
   context.releaseLock();
@@ -994,7 +1041,9 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
     return false;
   }
   const persistentStorage = await persistentStorageGranted();
+  if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
   const releaseLock = await acquireEditLock(reportId);
+  if (generation !== protectedAuthorityGeneration || signal.aborted) { releaseLock?.(); return false; }
   if (!releaseLock) {
     publishStatus(reportId, { mode: "read-only", explanation: "This report is already open for editing in another browser tab." });
     return false;
@@ -1005,6 +1054,7 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
     if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
     const generated = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
     raw = new Uint8Array(await crypto.subtle.exportKey("raw", generated));
+    if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
     const recoveryHandle = crypto.randomUUID();
     const url = apiRequestUrl(`/api/reports/${reportId}/protected-key-envelope`);
     if (!url) { raw.fill(0); releaseLock(); return false; }
@@ -1041,7 +1091,7 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
       checkpointQueue: Promise.resolve(),
-      failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
+      failure: null, locking: false, receiptRequest: null, checkpointRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
     context.writer = createProtectedWriter(reportId, context);
     contexts.set(reportId, context);
     activated = true;
@@ -1049,6 +1099,7 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
     return true;
   } catch (error) {
     releaseLock();
+    if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
     publishStatus(reportId, { mode: "online-only", explanation: "Protected offline storage could not be prepared; connected server saves remain available." });
     throw error;
   } finally { raw?.fill(0); if (!activated) releaseLock(); }
@@ -1081,7 +1132,6 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
     body: JSON.stringify({ schemaVersion: 1, envelopeVersion: 1 }),
   }));
   if (!current()) return null;
-  if (grantResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
   if (grantResponse.status === 404 || grantResponse.status === 410) {
     // Records deliberately contain no report identifier or other label. A
     // denial therefore cannot safely target ciphertext without either making
@@ -1127,7 +1177,6 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
       body: JSON.stringify({ schemaVersion: 1, envelopeVersion: grant.envelopeVersion, grant: grant.grant }),
     }));
     if (!current()) return null;
-    if (consumeResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
     if (!consumeResponse.ok) throw new Error(consumeResponse.status === 401
       ? "Your shift session has ended." : "Protected report recovery is unavailable.");
     const recovered = await consumeResponse.json() as { reportKeyBase64: string; wrappingKeyVersion: number };
@@ -1160,6 +1209,7 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
       failure: null,
       locking: false,
       receiptRequest: null,
+      checkpointRequest: null,
       persistentStorage,
       recoveryInitialization: !record,
     } satisfies RuntimeContext;
@@ -1196,9 +1246,10 @@ export function updateProtectedShellState(reportId: string, shellState: unknown)
 
 export function protectedShellState(reportId: string): unknown { return contexts.get(reportId)?.payload.shellState; }
 
-export async function flushProtectedReport(reportId: string): Promise<void> {
+export async function flushProtectedReport(reportId: string, options: { readonly retryFailed?: boolean } = {}): Promise<void> {
   const context = contexts.get(reportId);
-  await context?.writer.flush();
+  if (options.retryFailed) await context?.writer.flushLatest();
+  else await context?.writer.flush();
   if (context?.failure) throw context.failure;
 }
 

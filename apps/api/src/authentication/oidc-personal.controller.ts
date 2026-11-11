@@ -35,10 +35,9 @@ export class OidcPersonalController {
   const session=await this.sessions.getAuthenticated(token,new Date(),true);
   const command=validateReauthenticate(body,(session.nextAuthenticationSource ?? session.authenticationSource)==='oidc');
   if((session.nextAuthenticationSource ?? session.authenticationSource)==='oidc'){
-   if(!command.forcePersonalAuthentication)try{
-    await this.sessions.requireRecentReauthentication(token);
-    return {reauthenticatedUntil:new Date(Date.parse(session.personallyAuthenticatedAt!)+300000).toISOString()};
-   }catch{ /* An explicit purpose-bound proof is needed for this session. */ }
+   // Compatibility requests reuse current login authority without inventing
+   // personal-proof freshness or extending the persisted session expiry.
+   if(!command.forcePersonalAuthentication)return {reauthenticatedUntil:session.expiresAt};
    const result=await this.personal.begin({purpose:'reauthenticate'},token,csrf,request.headers['user-agent']);
    response.clearCookie("open_triage_oidc_test",personalCookieOptions);
    response.cookie(PERSONAL_COOKIE,result.correlation,personalCookieOptions);

@@ -17,6 +17,19 @@ function mutationChanged<T>(current: T, baseline: T | undefined): boolean {
   return baseline === undefined || JSON.stringify(current) !== JSON.stringify(baseline);
 }
 
+/** Recovery may restore an optimistic document containing its queued changes.
+ * Compare queued targets with inbound server state, never that optimistic copy.
+ * Unchanged parent context must not hide disjoint server occurrence updates. */
+export function queuedDraftTargets(
+  commands: ReadonlyArray<Pick<SaveDraftReportCommand, "groups" | "occurrences">>,
+  server: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): PendingDraftTargets {
+  return pendingDraftTargets({
+    groups: commands.flatMap(({ groups }) => groups),
+    occurrences: commands.flatMap(({ occurrences }) => occurrences),
+  }, server);
+}
+
 /** Identifies the actual local targets in a full-document draft command. */
 export function pendingDraftTargets(
   command: Pick<SaveDraftReportCommand, "groups" | "occurrences">,

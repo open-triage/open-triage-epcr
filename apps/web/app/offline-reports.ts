@@ -144,7 +144,7 @@ export function cacheOpenedReport(
         ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
         ...(call.unit?.callSign ? { unitCallSign: call.unit.callSign } : {}),
       }),
-      ...(existing?.queuedChanges.length && existing.report.document ? {
+      ...(existing?.report.document && (existing.queuedChanges.length || existing.report.revision > opened.report.revision) ? {
         revision: existing.report.revision,
         document: existing.report.document,
         dispatchConflicts: existing.report.dispatchConflicts ?? [],
@@ -197,6 +197,9 @@ export function cacheReopenedReport(
 
 export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSession, call: OpenCall): void {
   const existing = read(storage).find((candidate) => candidate.report.id === call.reportId);
+  // Directory and reopen requests can finish after a concurrent pending edit was
+  // acknowledged. Older responses cannot roll its confirmed revision backward.
+  if (existing && existing.report.revision > call.revision) return;
   replace(storage, {
     report: {
       ...existing?.report,

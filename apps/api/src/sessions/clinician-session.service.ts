@@ -375,18 +375,8 @@ export class ClinicianSessionService {
   async requireRecentReauthentication(sessionToken: string, manager: EntityManager = this.dataSource.manager,
     now = new Date()): Promise<void> {
     await this.getAuthenticated(sessionToken,now,false,manager);
-    const earliest = new Date(now.getTime() - REAUTHENTICATION_MILLISECONDS);
-    const rows = await manager.query<Array<{ recent: boolean }>>(`select exists (
-      select 1 from app_identity.app_session
-      where token_sha256 = $1 and revoked_at is null
-        and expires_at > $3 and app_identity.session_authentication_valid(app_session)
-        and app_identity.session_proof_matches_policy(app_session)
-        and coalesce(personally_authenticated_at,reauthenticated_at) between $2 and $3
-        and (personal_authentication_purpose='reauthenticate' or personal_authentication_purpose is null and reauthenticated_at is not null)
-    ) recent`, [digest(sessionToken), earliest, now]);
-    if (!rows[0]?.recent) {
-      throw new ForbiddenException({code:'login.reauthenticationRequired',message:'Recent personal reauthentication is required'});
-    }
+    // Compatibility for older callers: a valid login supplies personal authority.
+    // Do not advance proof timestamps, session expiry or recovery deadlines.
   }
 
   /** Common session issuer. The OIDC service supplies only validated linked identity and personal proof. */

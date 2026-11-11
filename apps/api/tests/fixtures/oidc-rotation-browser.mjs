@@ -108,10 +108,10 @@ try{
  const replacementProvider=(await version(replacement.draft.revision)).provider_id;
  const approved=await save({personalProof:{...contract,id:'separately-reviewed-controlled-replacement'}});await inspect();const approvedTest=await diagnostic(approved.draft.revision);
  await inAgency(()=>drafts.activate(ownerToken,{expectedRevision:approved.draft.revision,testId:approvedTest.testId,identityChangeAcknowledgment:{activeRevision:7,draftRevision:approved.draft.revision}}));assert.equal((await view()).active.revision,approved.draft.revision);
- // The old session still has ordinary authority and fixed issuance/expiry, but
- // old-namespace sensitive/recovery proof cannot satisfy the new integration.
- assert.equal((await inAgency(()=>sessions.get(issued.sessionToken))).expiresAt,initialExpiry);await assert.rejects(inAgency(()=>sessions.requireRecentReauthentication(issued.sessionToken)),e=>e.getResponse?.().code==='login.reauthenticationRequired');
- const [proofState]=await db.query("select app_identity.session_proof_matches_policy(s) matches,oidc_revision,personal_revision from app_identity.app_session s where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(issued.sessionToken)]);assert.equal(proofState.matches,false);assert.equal((await control({proof:issued.sessionToken})).recovery,false);assert.equal(proofState.oidc_revision,'1');assert.equal(proofState.personal_revision,'7');
+ // Historical valid login retains ordinary and recovery authority with fixed
+ // issuance/expiry, even when its proof differs from the next-login integration.
+ assert.equal((await inAgency(()=>sessions.get(issued.sessionToken))).expiresAt,initialExpiry);await inAgency(()=>sessions.requireRecentReauthentication(issued.sessionToken));
+ const [proofState]=await db.query("select app_identity.session_proof_matches_policy(s) matches,oidc_revision,personal_revision from app_identity.app_session s where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(issued.sessionToken)]);assert.equal(proofState.matches,false);assert.equal((await control({proof:issued.sessionToken})).recovery,true);assert.equal(proofState.oidc_revision,'1');assert.equal(proofState.personal_revision,'7');
  const pending=await proof('login');assert.equal(pending.created,undefined);assert.equal(pending.clearSession,true);assert.match(pending.destination,/authentication=pending/);
  // Ambiguous upgrade evidence blocks new regional proof, preserves existing
  // sessions, and offers independent recovery without artificial field edits.

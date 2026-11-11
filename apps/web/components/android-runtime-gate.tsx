@@ -4,6 +4,7 @@ import { AndroidConnection, installAndroidTransport, isAndroidRuntime, type Pair
 import { MAX_PAIRING_BYTES, parseAndroidPairing } from "../app/android-pairing";
 import { AndroidScanner, parseAndroidPairingQr, scannerFailureMessage } from "../app/android-scanner";
 import { resolveMessage } from "../app/localization";
+import { installAndroidLifecycle } from "../app/android-lifecycle";
 
 export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false), [native, setNative] = useState(false), [busy, setBusy] = useState(false);
@@ -18,7 +19,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       setNative(true);
       setLanguage(navigator.language.startsWith("sv") ? "sv" : "en");
       installAndroidTransport();
-      try { const state = await AndroidConnection.state(); if (active) setReady(state.configured); }
+      try { await installAndroidLifecycle(); const state = await AndroidConnection.state(); if (active) setReady(state.configured); }
       catch { if (active) setError("android.pairingFailed"); }
     });
     return () => { active = false; };
@@ -47,7 +48,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       } catch { setError("android.pairingFailed"); } finally { setBusy(false); }
     }} /></label></> : <form onSubmit={async event => {
       event.preventDefault(); setBusy(true); setError(null);
-      try { await AndroidConnection.confirm({ name, confirmInstallation: true }); setPreview(null); setReady(true); }
+      try { await installAndroidLifecycle(); await AndroidConnection.confirm({ name, confirmInstallation: true }); setPreview(null); setReady(true); }
       catch { setError("android.pairingFailed"); } finally { setBusy(false); }
     }}>
       <p>{preview.organizationName} — {preview.unitName} — {preview.callSign}</p><p>{preview.origin}</p>

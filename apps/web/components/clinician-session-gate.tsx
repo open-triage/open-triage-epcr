@@ -1,4 +1,5 @@
 "use client";
+import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
@@ -13,14 +14,11 @@ import {
   createClinicianSession,
   endClinicianSession,
   authenticateRestartedClinicianSession,
-  reauthenticateClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
   sessionRequestToken
 } from "../app/clinician-session";
 import { beginPersonalClinicianSession,completePersonalClinicianSession,organizationLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
-import { NewJobConfirmationProvider } from "./new-job-confirmation";
-import { PersonalAuthenticationContext } from "./personal-authentication";
 import { LanguageSelector } from "./language-selector";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
@@ -242,7 +240,7 @@ export function ClinicianSessionGate({ children }: {
     const loadedSession = loadClinicianSession(window.localStorage);
     const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
     const load = async () => {
-      if (inFlight || resolved) return;
+      if (inFlight || resolved || !foregroundNetworkAllowed()) return;
       inFlight = true;
       try {
         const handoff=await resumeAgencyHandoff();
@@ -288,10 +286,12 @@ export function ClinicianSessionGate({ children }: {
     const reconnect = () => void load();
     const retry = window.setInterval(reconnect, 5_000);
     window.addEventListener("online", reconnect);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
     return () => {
       current = false;
       window.clearInterval(retry);
       window.removeEventListener("online", reconnect);
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
     };
   }, []);
 
@@ -324,7 +324,14 @@ export function ClinicianSessionGate({ children }: {
     let current = true;
     let inFlight = false;
     const reassess = async () => {
-      if (!current || inFlight || !navigator.onLine) return;
+      if (!current || inFlight || !foregroundNetworkAllowed()) return;
+      // Android may suspend timers while paused. Enforce the original local
+      // deadline before consulting connectivity or waiting for server proof.
+      if (Date.parse(authenticatedSession.expiresAt) <= Date.now()) {
+        await lockAndEndLocalSession(t("login.sessionExpired"));
+        return;
+      }
+      if (!navigator.onLine) return;
       inFlight = true;
       try {
         const live = await authenticateRestartedClinicianSession(authenticatedSession);
@@ -335,10 +342,11 @@ export function ClinicianSessionGate({ children }: {
       } catch { /* Connection failure does not extend the existing local deadline. */ }
       finally { inFlight = false; }
     };
-    const visible = () => { if (document.visibilityState === "visible") void reassess(); };
+    const visible = () => { if (applicationVisible()) void reassess(); };
     const interval = window.setInterval(() => void reassess(), 30_000);
     window.addEventListener("online", visible);
     window.addEventListener("focus", visible);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, visible);
     window.addEventListener("open-triage.authentication-policy-changed", visible);
     window.addEventListener("open-triage.production-workflow-changed", visible);
     document.addEventListener("visibilitychange", visible);
@@ -347,6 +355,7 @@ export function ClinicianSessionGate({ children }: {
       window.clearInterval(interval);
       window.removeEventListener("online", visible);
       window.removeEventListener("focus", visible);
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, visible);
       window.removeEventListener("open-triage.authentication-policy-changed", visible);
       window.removeEventListener("open-triage.production-workflow-changed", visible);
       document.removeEventListener("visibilitychange", visible);
@@ -382,14 +391,6 @@ export function ClinicianSessionGate({ children }: {
   async function personalLogin(){
     setSubmitting(true);setMessage(null);
     try{await beginPersonalClinicianSession("login",authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
-    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
-    finally{setSubmitting(false);}
-  }
-
-  async function authenticateTemporaryOrganization() {
-    if(!authenticatedSession||submitting||lockingSession)return;
-    setSubmitting(true);setMessage(null);
-    try {await reauthenticateClinicianSession("",sessionRequestToken(authenticatedSession),true);}
     catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
     finally{setSubmitting(false);}
   }
@@ -526,7 +527,7 @@ export function ClinicianSessionGate({ children }: {
       <h1 id="temporary-organization-heading">{t("login.temporaryOrganizationAuthentication")}</h1>
       <p>{t("login.temporaryOrganizationAuthenticationHelp")}</p>
       {message && <p className="login-message" role="status">{message}</p>}
-      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void authenticateTemporaryOrganization()}>{t("login.organizationSignIn")}</button>
+      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin()}>{t("login.organizationSignIn")}</button>
       <button type="button" disabled={submitting||lockingSession} onClick={requestLogout}>{t("navigation.logOut")}</button>
     </section></main>;
   }
@@ -568,10 +569,7 @@ export function ClinicianSessionGate({ children }: {
     </div>
   </UnsavedChangesContext.Provider>;
 
-  const nextAuthenticationSource = (session as ClinicianSession & { nextAuthenticationSource?: "local" | "oidc" }).nextAuthenticationSource ?? session.authenticationSource ?? "local";
   return (
-    <NewJobConfirmationProvider language={language} onLogout={requestLogout}>
-    <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
@@ -693,7 +691,5 @@ export function ClinicianSessionGate({ children }: {
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>
     </UnsavedChangesContext.Provider>
-    </PersonalAuthenticationContext.Provider>
-    </NewJobConfirmationProvider>
   );
 }

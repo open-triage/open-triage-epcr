@@ -29,8 +29,15 @@ test('Android PR validation uses the same compile SDK, native build and minimum-
   const setup = steps.find(step => step.uses?.startsWith('android-actions/setup-android@'));
   assert(setup.with.packages.split(/\s+/).includes(`platforms;android-${compile}`));
   assert(steps.some(step => step.run === 'npm run android:build'));
+  assert(steps.findIndex(step => step.run === 'node --test tests/android-*.test.mjs') < steps.findIndex(step => step.run === 'npm run android:build'));
+  assert(steps.some(step => step.run === 'node --test tests/android-*.test.mjs'));
   const emulator = steps.find(step => step.uses?.startsWith('reactivecircus/android-emulator-runner@'));
   assert.equal(String(emulator.with['api-level']), minimum);
   assert.equal(emulator.with.script, 'npm run android:test -- --skip-build');
   assert(workflow.on.pull_request.branches.includes('feature/android_app'));
+});
+
+test('Android declares network observation so WebView emits real online/offline transitions', async () => {
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.ACCESS_NETWORK_STATE"\s*\/>/);
 });
