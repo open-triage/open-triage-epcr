@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { androidFetch } from '../app/android-runtime';
+import { androidFetch, configureNativeConnection } from '../app/android-runtime';
 test('shared API requests preserve CSRF/agency/body through the native connection and surface HTTP failures', async () => {
   let received: unknown;
   const transport = androidFetch(async () => { throw new Error('API escaped the native boundary'); }, async options => {
@@ -61,4 +61,31 @@ test('default-size media transfers through bridge bytes and declared oversize fa
   assert.deepEqual(new Uint8Array(await (await transport('/api/media', { method: 'POST', body: bytes })).arrayBuffer()), bytes);
   await assert.rejects(transport('/api/media', { method: 'POST', headers: { 'content-length': String(16 * 1024 * 1024 + 1) }, body: 'small' }), /Oversized/);
   assert.equal(calls, 1);
+});
+
+test('a delayed native reply cannot revive the previous installation context', async () => {
+  configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
+  let release!: (value:{status:number;headers:Record<string,string>;bodyBase64:string})=>void;
+  const transport=androidFetch(fetch,async options=>{assert.equal(options.connectionContext,'old');return new Promise(resolve=>{release=resolve;});},'https://localhost');
+  const pending=transport('/api/sessions/current');
+  configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'new'});
+  release({status:200,headers:{},bodyBase64:btoa('old context')});
+  await assert.rejects(pending,/Installation changed/);
+  configureNativeConnection({configured:false});
+});
+
+
+test('connection replacement during binary body preparation prevents native dispatch', async () => {
+  configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
+  let release!: () => void;
+  const body = new ReadableStream<Uint8Array>({start(controller) {release=()=>{controller.enqueue(Uint8Array.of(0,255));controller.close();};}});
+  let calls=0;
+  const transport=androidFetch(fetch,async()=>{calls++;return {status:204,headers:{},bodyBase64:''};},'https://localhost');
+  const request=new Request('https://localhost/api/media',{method:'POST',body,duplex:'half'} as RequestInit);
+  const pending=transport(request);
+  configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'new'});
+  release();
+  await assert.rejects(pending,/Installation changed/);
+  assert.equal(calls,0);
+  configureNativeConnection({configured:false});
 });

@@ -57,6 +57,23 @@ test('exported diagnostics redact credentials, private material and URL queries 
   for (const secret of ['hunter2','BearerSecret','querysecret','privatekey','opaque-enrollment']) assert(!output.includes(secret));
   assert.match(output, /Camera.java:42/);
 });
+test('standard authorization headers and quoted JSON credentials are redacted completely', () => {
+  const bearer = 'synthetic-short-session-token', nativeSecret = 'synthetic-short-native-secret';
+  const output = redactAndroidDiagnostics([
+    'at org.opentriage.Camera.take(Camera.java:42)',
+    `Authorization: Bearer ${bearer}`,
+    'Proxy-Authorization: Basic synthetic-basic-value',
+    'Cookie: open_triage_session=synthetic-cookie-one; open_triage_installation=synthetic-cookie-two',
+    JSON.stringify({ Authorization: `Bearer ${bearer}`, nativeSecret,
+      access_token: 'synthetic-escaped-"credential-value', csrfToken: 'synthetic-csrf-value' }),
+  ].join('\n'));
+  for (const secret of [bearer, nativeSecret, 'synthetic-basic-value', 'synthetic-cookie-one',
+    'synthetic-cookie-two', 'credential-value', 'synthetic-csrf-value']) {
+    assert(!output.includes(secret), `Diagnostic credential must be removed: ${secret}`);
+  }
+  assert.match(output, /Camera.java:42/);
+  assert.match(output, /nativeSecret/);
+});
 test('native runners capture before fixture teardown and CI preserves their report directory', async () => {
   for (const file of ['android-emulator-test.mjs', 'android-release-upgrade.mjs']) {
     const source = await readFile(new URL('../scripts/'+file, import.meta.url), 'utf8');

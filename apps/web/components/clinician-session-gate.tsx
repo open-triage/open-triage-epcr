@@ -1,5 +1,7 @@
 "use client";
 import { useAndroidBack } from "./use-android-back";
+
+import { AndroidInstallationAction } from "./android-installation-action";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
@@ -527,6 +529,7 @@ export function ClinicianSessionGate({ children }: {
             <button type="submit" disabled={submitting||lockingSession||transitionPending}>{submitting ? t("login.signingIn") : t("login.signIn")}</button>
             </>}
           </div>
+          <AndroidInstallationAction language={language} />
         </form>
       </main>
     );
@@ -561,6 +564,7 @@ export function ClinicianSessionGate({ children }: {
         <p className="eyebrow">{t("login.signedIn")}</p>
         <h1 id="no-workspace-heading">{t("login.noWorkspace")}</h1>
         <p>{t("login.noWorkspaceHelp")}</p>
+        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </section>
     </main>;
@@ -570,6 +574,7 @@ export function ClinicianSessionGate({ children }: {
     <div className="authenticated-shell admin-shell desktop-shell">
       <header className="session-bar">
         <span className="session-identity">{t("navigation.signedInAs", { name: authenticatedSession.user.displayName })}</span>
+        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       <main className="admin-shell">
@@ -619,6 +624,7 @@ export function ClinicianSessionGate({ children }: {
               onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           </div>
         </div>
+        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">

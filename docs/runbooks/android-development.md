@@ -249,6 +249,57 @@ Early browser tests cover pause/revocation, delayed permission results, native d
 
 The default emulator suite adds actual microphone denial/grant and a live WebView track, real MediaRecorder output, preview/Timeline/Stationary playback with advancing decoder time, paused reconnect with zero new API requests, and exact hashed mono-AAC after authorized upload. Saved offline audio joins the photo/text process-loss and ownership-isolation journey. A second independent fixture force-stops a live unfinished recorder after encrypted chunks are durable, revokes microphone permission while stopped, and requires explicit review of restored partial audio after authorized recovery. Physical microphone/speaker quality remains ticket 019.
 
+### Installation reassignment and interrupted confirmation
+
+Use **Change installation** from the APK login or session controls to scan or
+import another administrator-issued pairing artifact. Preview blocks old-context
+requests and locks readable work. Cancel returns to the exact original connection
+and its still-valid login; it cannot override changed or missing managed policy.
+Confirm settles the shared encrypted-write boundary and signs out locally before
+posting enrollment. Same-origin candidates carry installation authority only;
+a different origin receives an empty cookie jar. The existing server registry
+keeps the stable installation identity and immutable historical registrations for
+same-server reassignment. No clinician cookie is copied to a candidate.
+
+Before confirmation is sent, the native Keystore vault durably stores a random
+256-bit attempt secret, the candidate connection and the exact request. These
+values never enter WebView storage, pairing URLs or logs. If the response is lost
+or the process dies, **Retry confirmed pairing** repeats that exact native request.
+The server returns the same live registration and derived installation credential
+for at most 15 minutes after its original commit. It does not renew that interval,
+consume another code, rotate twice, create a personal session or revive a revoked
+or replaced registration. The vault promotes the credential and removes its
+journal in one encrypted commit. A definitive rejection of the first request clears its uncommitted journal so
+a fresh pairing code can be imported. Unresolved or policy-conflicting journals keep
+ordinary API calls blocked; contact the installation administrator if the retry
+window has elapsed. Initial enrollment and ordinary browser enrollment retain
+their existing authorization and expiry checks.
+
+Each native bridge request includes an opaque runtime connection context that
+changes on preview entry/cancel and promotion, including process restart. Old
+queued requests and late responses cannot cross the binding change. Newly stored
+protected ciphertext records also carry an opaque SHA-256 scope of their original server origin;
+background recovery never advertises their handles to another server. Existing
+unscoped ciphertext is retained. An authenticated legacy flat vault proves its
+sole original server; its immutable opaque legacy scope is preserved atomically
+through journal staging, promotion and future connection changes. Such records
+are automatically offered only at that original server. Without that native
+provenance, unscoped ciphertext is not automatically attributed to a new origin. An explicit report open can recover such a record only after an authorized
+server grant and successful authenticated decryption. Recovery still requires the
+original clinician's current valid login and the original recovery deadline.
+Reassignment and revocation do not rewrite report ownership, pinned versions or
+historical unit assignments.
+
+`npm run android:test` includes the real protected-work reassignment scenario:
+confirmed enrollment commits while the synthetic TLS fixture drops its response,
+the host kills the live app process, the restarted app retries its encrypted
+journal, and the inventory proves one rotation of the same installation identity.
+It verifies the exact pending ciphertext survives, then revokes the pairing and
+runs different-user denial and original-author recovery/synchronization. Synthetic
+fault controls exist only in the test API launcher. `npm run check:ci` also covers
+native preview/cancel, pending retry, origin-scoped handles and the existing
+managed-policy and browser enrollment races.
+
 ## Production signing and upgrade checks
 
 Production identity, custody, immutable artifact workflow and the real signed A/B

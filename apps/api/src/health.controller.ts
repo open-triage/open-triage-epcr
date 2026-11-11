@@ -1,6 +1,6 @@
 import { Controller, Get, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { ANDROID_API_PROTOCOL_VERSION } from "@open-triage/contracts/android-client-protocol";
+import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES } from "@open-triage/contracts/android-client-protocol";
 import type { HealthResponse } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 
@@ -12,7 +12,7 @@ export class HealthController {
 
   @Get()
   getHealth(): HealthResponse {
-    return { status: "ok", service: "open-triage-api", androidApiProtocol: ANDROID_API_PROTOCOL_VERSION };
+    return { status: "ok", service: "open-triage-api", androidApiProtocol: ANDROID_API_PROTOCOL_VERSION, androidApiCapabilities: ANDROID_API_CAPABILITIES };
   }
 
   /** Non-secret diagnostics for detecting stale worktrees and wrong local databases. */

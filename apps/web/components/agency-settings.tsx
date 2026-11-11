@@ -1,6 +1,7 @@
 "use client";
 
 import { EffectiveGroupPolicyFields,validEffectiveGroupPolicy } from "./effective-group-policy";
+import { AndroidReleasePanel } from "./android-release";
 import { useUnsavedChanges } from "./unsaved-changes";
 import { AdminText } from "../app/admin-localization";
 
@@ -181,6 +182,7 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
     <div className="section-heading"><h2 id={fieldId("agency-settings-heading")}>{creating ? t("admin.newAgency") : t("navigation.settings")}</h2></div>
     {error && <p className="admin-error" role="alert">{error}</p>}
     {notice && <p className="agency-settings-notice" role="status">{notice}</p>}
+    {!creating && <AndroidReleasePanel language={language} />}
     {!draft && !error && <p role="status">{t("settings.loading")}</p>}
     {draft && <form onSubmit={save} onChange={creation?.onChange}>
       {creation && <fieldset disabled={busy}>{creation.fields}</fieldset>}

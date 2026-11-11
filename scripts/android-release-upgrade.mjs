@@ -1,6 +1,6 @@
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { captureAndroidDisplay, restoreAndroidDisplay } from './android/display-state.mjs';
-import { isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync, fork } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -46,7 +46,8 @@ try {
   const health = await api(fixtures[0], await readFile(fixtures[0].caPath), 'health');
   assert.equal(health.status, 200);
   const serverAndroidApiProtocol = health.body.androidApiProtocol;
-  for (const descriptor of [a, b]) assert(isAndroidApiProtocolCompatible(descriptor.compatibility?.api, serverAndroidApiProtocol), 'A/B client range must support the real server API protocol');
+  const serverAndroidApiCapabilities = health.body.androidApiCapabilities ?? [];
+  for (const descriptor of [a, b]) assert(isAndroidReleaseCompatible(descriptor, serverAndroidApiProtocol, serverAndroidApiCapabilities), 'A/B client must support the real server protocol and capabilities');
   // Only initial synthetic setup is reset. A-to-B itself never clears/uninstalls data.
   const previousFixture = spawnSync(adb, ['-s', serial, 'shell', 'pm', 'path', a.applicationId], { encoding: 'utf8' });
   if (previousFixture.status === 0 && previousFixture.stdout.includes('package:')) run(adb, ['-s', serial, 'uninstall', a.applicationId]);
@@ -67,7 +68,7 @@ try {
       assert.notEqual(rejected.status, 0, 'Ordinary package installation must reject downgrade');
       assert.match(rejected.stdout + rejected.stderr, /INSTALL_FAILED_VERSION_DOWNGRADE/);
     } });
-  const evidence = { schemaVersion: 1, status: 'passed', serverAndroidApiProtocol, releaseA: a, releaseB: b, androidApi: execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'], { encoding: 'utf8' }).trim(), assertions: requiredUpgradeAssertions, deviceScope: 'isolated Android emulator; physical/MDM rollout remains separate' };
+  const evidence = { schemaVersion: 1, status: 'passed', serverAndroidApiProtocol, serverAndroidApiCapabilities, releaseA: a, releaseB: b, androidApi: execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'], { encoding: 'utf8' }).trim(), assertions: requiredUpgradeAssertions, deviceScope: 'isolated Android emulator; physical/MDM rollout remains separate' };
   await writeFile(join(bDirectory, 'upgrade-evidence.json'), JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });
   policy({});
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');

@@ -3062,5 +3062,19 @@
   "noteUi.capture.androidCameraUnavailable": "The camera is unavailable. Check Android app permissions and the device, then try again. Text notes remain available.",
   "noteUi.capture.androidMicrophoneUnavailable": "The microphone is unavailable. Check Android app permissions and the device, then try again. Text notes remain available.",
   "noteUi.androidAudioTransferLimit": "This recording is too large to transfer on this device. Cancel and record a shorter note.",
-  "noteUi.audioDiscardFailed": "The recording could not be discarded. Try again."
+  "noteUi.audioDiscardFailed": "The recording could not be discarded. Try again.",
+  "androidRelease.title": "Android application",
+  "androidRelease.refresh": "Refresh release",
+  "androidRelease.verifying": "Verifying APK availability…",
+  "androidRelease.not-selected": "No Android release is approved for this installation.",
+  "androidRelease.unverified": "The selected Android release is not verified.",
+  "androidRelease.incompatible": "No compatible approved Android release is available.",
+  "androidRelease.unavailable": "The Android download is unavailable. Try again.",
+  "androidRelease.version": "Version",
+  "androidRelease.url": "Versioned URL",
+  "androidRelease.digest": "SHA-256",
+  "androidRelease.download": "Download APK",
+  "android.changeInstallation": "Change installation",
+  "android.retryPairing": "Retry confirmed pairing",
+  "android.returnInstallation": "Return to current installation"
 }
