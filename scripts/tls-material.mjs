@@ -31,16 +31,26 @@ export function publicCertificates(pem) {
 }
 
 /** Commands never echo PEM, private keys, rendered Secrets, or child stderr. */
-export function privateCommand(command, args, { input, timeoutMs = 30_000 } = {}) {
+export function privateCommand(command, args, { input, timeoutMs = 30_000, killGraceMs = 2_000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let size = 0;
-    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs);
+    let killTimer;
+    const clearTimers = () => { clearTimeout(timer); clearTimeout(killTimer); };
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => {
+        child.kill('SIGKILL');
+        // Also settle when an inherited pipe remains open in a credential helper.
+        child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy();
+        clearTimers(); reject(new Error(`${command} timed out. No private material was printed.`));
+      }, killGraceMs);
+    }, timeoutMs);
     child.stdout.on('data', chunk => { size += chunk.length; if (size > MAX_PEM) child.kill('SIGTERM'); });
     child.stderr.resume();
     child.stdin.on('error', () => {});
-    child.once('error', () => { clearTimeout(timer); reject(new Error(`Cannot run ${command}. Install the documented operator prerequisites.`)); });
-    child.once('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`${command} validation or application failed. No private material was printed.`)); });
+    child.once('error', () => { clearTimers(); reject(new Error(`Cannot run ${command}. Install the documented operator prerequisites.`)); });
+    child.once('close', code => { clearTimers(); code === 0 ? resolve() : reject(new Error(`${command} validation or application failed. No private material was printed.`)); });
     child.stdin.end(input);
   });
 }

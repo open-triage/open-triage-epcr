@@ -5,13 +5,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import https from 'node:https';
 import { once } from 'node:events';
+import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { createTlsFixtures } from '../scripts/android/tls-fixtures.mjs';
-import { publicCertificates, readTlsFile, validateTlsMaterial, verifyApplicationConnection } from '../scripts/tls-material.mjs';
+import { privateCommand, publicCertificates, readTlsFile, validateTlsMaterial, verifyApplicationConnection } from '../scripts/tls-material.mjs';
 import { provisionServerTls, tlsOptions } from '../scripts/provision-server-tls.mjs';
+import { installTlsFixtureControl } from '../scripts/android/tls-fixture-control.mjs';
 
 let directory, fixtures;
 before(async () => { directory = await mkdtemp(join(tmpdir(), 'android-tls-test-')); fixtures = await createTlsFixtures(directory); });
 after(async () => { await rm(directory, { recursive: true, force: true }); });
+
+test('operator subprocess timeout kills a SIGTERM-resistant child and never exposes its streams', { timeout: 5000 }, async () => {
+  const started = Date.now();
+  await assert.rejects(privateCommand(process.execPath, ['-e', "process.on('SIGTERM',()=>{});process.stdout.write('SYNTHETIC-PRIVATE-OUTPUT');process.stderr.write('SYNTHETIC-PRIVATE-ERROR');setInterval(()=>{},1000)"],
+    { input: 'SYNTHETIC-PRIVATE-INPUT', timeoutMs: 200, killGraceMs: 50 }), error => !error.message.includes('SYNTHETIC-PRIVATE') && /timed out|failed/.test(error.message));
+  assert(Date.now() - started < 3000);
+});
 
 test('operator validation checks matching key, every SAN, server purpose, chain and validity without printing material', async () => {
   const good = await validateTlsMaterial(fixtures.first);
@@ -77,4 +87,40 @@ test('provisioning uses existing TLS Secret with validated bytes on stdin and ex
   await chmod(key, 0o600); const link = join(directory, 'key-link'); await symlink(key, link); await assert.rejects(readTlsFile(link, true));
   for (const argv of [[], ['--cert', certificate, '--key', key, '--hosts', 'localhost'], ['--cert', certificate, '--key', key, '--hosts', 'localhost', '--ca', ca, '--system-ca'],
     ['--cert', certificate, '--key', key, '--hosts', 'localhost', '--ca', ca, '--apply']]) assert.throws(() => tlsOptions(argv));
+});
+
+test('explicit system trust exports an empty pairing CA and names the Android platform trust requirement', async () => {
+  const certificate = join(directory, 'system-chain.pem'), key = join(directory, 'system-private.key'), ca = join(directory, 'test-host-platform-roots.pem'), output = join(directory, 'system-pairing-ca.pem');
+  await writeFile(certificate, fixtures.first.certificate); await writeFile(key, fixtures.first.privateKey, { mode: 0o600 }); await writeFile(ca, fixtures.first.ca);
+  const previous = process.env.SSL_CERT_FILE;
+  try {
+    // Supply only this test process's synthetic OpenSSL platform root, not app CA material.
+    process.env.SSL_CERT_FILE = ca;
+    const logs = [];
+    await provisionServerTls(tlsOptions(['--cert', certificate, '--key', key, '--hosts', 'localhost', '--system-ca', '--pairing-ca-out', output]),
+      { execute: async () => assert.fail('read-only validation must not invoke kubectl'), log: { info: message => logs.push(message) } });
+    assert.equal(await readFile(output, 'utf8'), '');
+    assert(logs.some(message => message.includes('Android platform roots') && message.includes('empty')));
+  } finally { if (previous === undefined) delete process.env.SSL_CERT_FILE; else process.env.SSL_CERT_FILE = previous; }
+});
+
+test('synthetic TLS control accepts only predeclared IPC variants and discloses no path or material', async () => {
+  const channel = new EventEmitter(), reads = [], contexts = [], replies = [];
+  channel.send = message => { replies.push(message); channel.emit('reply', message); };
+  const remove = installTlsFixtureControl({ setSecureContext: context => contexts.push(context) }, { approved: { keyPath: 'private-predeclared-key', certPath: 'public-predeclared-chain' } }, channel,
+    async path => { reads.push(path); return Buffer.from(path); }, () => 17);
+  try {
+    const rejected = once(channel, 'reply');
+    channel.emit('message', { type: 'android-fixture-tls', requestId: randomUUID(), variant: 'attacker', keyPath: 'outside-key', certPath: 'outside-chain' });
+    await rejected;
+    assert.equal(reads.length, 0); assert.equal(contexts.length, 0); assert.equal(replies[0].changed, false);
+    const accepted = once(channel, 'reply');
+    channel.emit('message', { type: 'android-fixture-tls', requestId: randomUUID(), variant: 'approved', keyPath: 'outside-key' });
+    await accepted;
+    assert.deepEqual(reads, ['private-predeclared-key', 'public-predeclared-chain']); assert.equal(contexts.length, 1);
+    assert.equal(replies[1].changed, true); assert(!JSON.stringify(replies).includes('predeclared'));
+    const observed = once(channel, 'reply');
+    channel.emit('message', { type: 'android-fixture-tls-observe', requestId: randomUUID() }); await observed;
+    assert.equal(replies[2].acceptedRequests, 17); assert.equal(contexts.length, 1);
+  } finally { remove(); }
 });

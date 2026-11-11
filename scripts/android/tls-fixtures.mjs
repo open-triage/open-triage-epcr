@@ -28,7 +28,8 @@ export async function createTlsFixtures(directory) {
   for (const name of ['first', 'renewed', 'replacement', 'wrong-host', 'wrong-purpose']) material[name] = {
     certificate: await readFile(file(`server-${name}.pem`), 'utf8'), privateKey: await readFile(file(`server-${name}.key`), 'utf8'),
     ca: await readFile(file(name === 'replacement' ? 'replacement.pem' : 'old.pem'), 'utf8'), hosts: ['localhost', '127.0.0.1', '10.0.2.2'],
+    keyPath: file(`server-${name}.key`), certPath: file(`server-${name}.pem`), caPath: file(name === 'replacement' ? 'replacement.pem' : 'old.pem'),
   };
-  material.expired = { ...material.first, certificate: await readFile(file('server-expired.pem'), 'utf8') };
+  material.expired = { ...material.first, certificate: await readFile(file('server-expired.pem'), 'utf8'), certPath: file('server-expired.pem') };
   return material;
 }

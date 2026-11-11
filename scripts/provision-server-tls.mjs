@@ -32,6 +32,7 @@ export async function provisionServerTls(options, { execute = privateCommand, lo
   }
   if (options['--check-url']) await verifyApplicationConnection(options['--check-url'], material);
   log.info(`TLS validated for ${material.hosts.join(', ')}; certificate SHA-256 ${material.fingerprint}; expires ${material.expiresAt}.`);
+  log.info(material.ca ? 'Pairing trust: supplied public CA bundle.' : 'Pairing trust: Android platform roots; the exported CA file is empty. Verify platform trust on the intended Android devices.');
   if (!options['--apply']) log.info('No cluster resources changed.');
   return { fingerprint: material.fingerprint, expiresAt: material.expiresAt };
 }

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { readFile } from 'node:fs/promises';
+import { installTlsFixtureControl } from './tls-fixture-control.mjs';
 const fixture = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const runtimeDatabase = new URL(fixture.databaseUrl);
 runtimeDatabase.searchParams.set('options', '-c role=open_triage_api_runtime');
@@ -26,7 +27,9 @@ if (databaseIdentity.effective_role !== 'open_triage_api_runtime') throw new Err
 // A bounded fixture-only barrier makes lifecycle/policy races deterministic.
 // This file is a synthetic API launcher, never the production API entry point.
 const managementHolds = new Map();
+let acceptedRequests = 0;
 app.use((request, response, next) => {
+  acceptedRequests++;
   const url = new URL(request.url, fixture.origin), id = url.searchParams.get('requestId');
   if (!/^[a-f0-9-]{36}$/.test(id ?? '')) return next();
   if (url.pathname === '/api/__android-managed-hold' && managementHolds.size < 128) {
@@ -43,6 +46,7 @@ app.use((request, response, next) => {
 });
 app.setGlobalPrefix('api'); app.use(agencyContextMiddleware); app.use(securityHeaders); app.useGlobalFilters(new PlatformErrorFilter());
 await app.listen(fixture.port, '0.0.0.0');
+installTlsFixtureControl(app.getHttpServer(), fixture.tlsVariants, process, readFile, () => acceptedRequests);
 process.send?.({ ready: true });
 console.log(`Synthetic Android fixture ready on port ${fixture.port}`);
 process.on('SIGTERM', async () => { await app.close(); process.exit(0); });
