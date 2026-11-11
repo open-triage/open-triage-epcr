@@ -33,11 +33,13 @@ import { ValidationAuthoringService } from "./validation-authoring.service.js";
 import { AgencySettingsService } from "./agency-settings.service.js";
 import { OrganizationsController } from "./organizations.controller.js";
 import { OrganizationsService } from "./organizations.service.js";
+import { AndroidReleaseController } from "./android-release.controller.js";
+import { AndroidReleaseService } from "./android-release.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
-  controllers: [DestinationController, HospitalHistoryController, CosController, HospitalController, AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
-  providers: [DestinationService, HospitalHistoryService, CosService, HospitalService, AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
+  controllers: [AndroidReleaseController, DestinationController, HospitalHistoryController, CosController, HospitalController, AuditController, InstallationEnrollmentController, UnitsController, AdminController, FormPublicationController, OrganizationsController],
+  providers: [AndroidReleaseService, DestinationService, HospitalHistoryService, CosService, HospitalService, AuditService, InstallationEnrollmentService, UnitsService, CanonicalPackageService, AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
     AgencySettingsService, OrganizationsService],

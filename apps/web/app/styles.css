@@ -30,7 +30,7 @@ body { margin: 0; min-width: 320px; }
 .not-found-page { display: grid; min-height: 100dvh; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
 .not-found-page h1, .not-found-page p { margin: 0; }
 /* Components set button layout; appearance and interaction states are shared. */
-button {
+button, a.button-link {
   --button-accent: var(--green);
   --button-accent-hover: var(--green-dark);
   --button-background: var(--inactive-button);
@@ -50,7 +50,7 @@ button {
   touch-action: manipulation;
 }
 @media (hover: hover) {
-  button:hover:not(:disabled) { border-color: var(--button-accent-hover); color: var(--button-hover-color); background: var(--button-hover-background); }
+  button:hover:not(:disabled), a.button-link:hover { border-color: var(--button-accent-hover); color: var(--button-hover-color); background: var(--button-hover-background); }
 }
 button:disabled { opacity: .65; cursor: not-allowed; }
 button:is(.active, .is-active, .is-selected, [aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"]) { box-shadow: inset 0 0 0 2px #fff; }
@@ -60,7 +60,8 @@ button:is(.button-danger, .remove-entry-button, .delete-record-action, .stationa
   --button-accent-hover: color-mix(in srgb, var(--destructive) 80%, #000);
 }
 /* Action roles and selection share one hierarchy in every workspace. */
-button:is(.button-primary, [type="submit"], .catalog-primary-action, .active, .is-active, .is-selected, [aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], [aria-current="location"]) {
+button:is(.button-primary, [type="submit"], .catalog-primary-action, .active, .is-active, .is-selected, [aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], [aria-current="location"]),
+a.button-link:is(.button-primary, [type="submit"], .catalog-primary-action, .active, .is-active, .is-selected, [aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], [aria-current="location"]) {
   --button-background: var(--button-accent);
   --button-color: var(--accent-contrast);
   --button-hover-background: var(--button-accent-hover);
@@ -576,7 +577,7 @@ fieldset { min-inline-size: 0; }
 .warning-count { color: #664600; background: #fff0bd; }
 .zero-count { visibility: hidden; }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
-:where(button, input, select, textarea):focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+:where(button, a.button-link, input, select, textarea):focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
 .content-panel { background: var(--paper); }
 .stationary-scalar-occurrences { display: grid; gap: 8px; }
 .stationary-scalar-occurrence { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; }
@@ -1488,3 +1489,13 @@ fieldset { min-inline-size: 0; }
 .cos-destination-directory > .admin-table-scroll { margin-inline: 18px; padding-inline: 0; }
 
 .android-managed-connection { margin-block: 0 12px; color: var(--muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
+
+/* Download links use the shared action hierarchy and native link semantics. */
+a.button-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.android-release-section { margin: 16px 18px 24px; max-width: 864px; min-width: 0; }
+.android-release-section .section-heading { flex-wrap: wrap; gap: 8px; padding: 0 0 8px; border-radius: 0; background: transparent; }
+.android-release-section h3 { margin: 0; }
+.admin-configuration .android-release-metadata { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0 0 12px; padding: 0; }
+.admin-configuration .android-release-metadata > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; border: 0; border-radius: 0; padding: 0; background: transparent; }
+.android-release-metadata dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .admin-configuration .android-release-metadata > div { grid-template-columns: minmax(0, 1fr); gap: 2px; } }

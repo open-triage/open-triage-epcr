@@ -76,6 +76,11 @@ Never bypass a TLS warning, disable verification or assume app pairing installed
 a browser certificate. IT must supply a supported external browser and the
 provider's ordinary interactive login/approved method configuration.
 
+Future APK descriptors require `native-oidc-return-v1` alongside the merged
+`native-enrollment-attempt-v1`. The API health contract advertises these
+implemented capabilities; compatible earlier immutable APK descriptors keep
+their original requirements.
+
 ## Validation
 
 Run `npm run check:ci` and `npm run android:test`. The default Android harness

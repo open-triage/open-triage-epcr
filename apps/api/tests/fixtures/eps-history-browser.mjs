@@ -3,6 +3,7 @@ import {createServer} from 'node:http';
 import {readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {clinicalFormConfiguration} from '../../dist/forms/clinical-form-configuration.js';
+import {observeJsonResponse} from './response-observer.mjs';
 
 /** Real workspace polling consumes authoritative imports and drives the real
  * EPS availability/cache gate and source-lineage warning. No synthetic refresh. */
@@ -65,10 +66,23 @@ export async function epsHistoryBrowser({database,query,sessions,configuration,a
    await page.getByLabel('Identity',{exact:true}).filter({hasText:'different-current-identity'}).waitFor({timeout:15000});
    const warning=page.getByRole('alert').filter({hasText:sv?'Patientidentifieraren skiljer sig':'The patient identifier differs'});await warning.first().waitFor({timeout:15000});
    if(await page.getByRole('dialog').isVisible())await page.getByRole('button',{name:sv?'Stäng':'Close',exact:true}).click();
-   const noMatch=page.waitForResponse(async response=>new URL(response.url()).pathname.endsWith('/eps')&&response.ok()&&(await response.json()).status==='no-match');
-   await page.getByRole('button',{name:'Use unknown identity',exact:true}).click();await noMatch;assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
-   const missing=page.waitForResponse(async response=>new URL(response.url()).pathname.endsWith('/eps')&&response.ok()&&(await response.json()).status==='missing');
-   await page.getByRole('button',{name:'Clear identity',exact:true}).click();await missing;assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
+   for(const [action,identifier,status] of [['Use unknown identity','no-summary-id','no-match'],['Clear identity','','missing']]){
+    let expectedBinding;
+    await observeJsonResponse(page,{label:`EPS history ${status}`,matchesRequest:request=>request.method()==='GET'&&new URL(request.url()).origin===origin&&new URL(request.url()).pathname.endsWith('/eps'),
+     action:()=>page.getByRole('button',{name:action,exact:true}).click(),
+     scope:async signal=>{
+      const deadline=Date.now()+15000;
+      while(Date.now()<deadline){
+       signal.throwIfAborted();
+       const active=await drafts.active(token,report.id);
+       const saved=active.resource?.document?.groups.flatMap(group=>group.instances.flatMap(instance=>instance.elements)).find(element=>element.id==='ePatient.01')?.values[0]?.value??'';
+       if(saved===identifier){expectedBinding=(await service.context(token,report.id)).binding;return request=>new URL(request.url()).searchParams.get('binding')===expectedBinding;}
+       await new Promise(resolve=>setTimeout(resolve,25));
+      }
+      throw new Error('EPS fixture did not persist the requested identity');
+     },verify:body=>{assert.equal(body.status,status);assert.equal(body.context?.binding,expectedBinding);}});
+    assert.equal(await button.isDisabled(),true);await warning.first().waitFor();
+   }
    const lineage=await imports.history(token,report.id);assert.equal(lineage.inconsistent,true);assert.ok(lineage.items.some(item=>item.source.includes('2020-05-12')));assert.deepEqual(errors,[]);
    await page.screenshot({path:`/tmp/eps007-identity-${language}.png`});
   }catch(error){await page.screenshot({path:'/tmp/eps007-failure.png'});await writeFile('/tmp/eps007-failure.html',await page.content());throw error;}finally{await context.close();await query('rollback to savepoint eps_history_browser');await query('release savepoint eps_history_browser');}
