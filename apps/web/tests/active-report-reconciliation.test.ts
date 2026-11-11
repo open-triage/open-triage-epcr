@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { EncounterDocument } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
-import { pendingDraftTargets, reconcileActiveReportDocument } from "../app/active-report-reconciliation";
+import { queuedDraftTargets, pendingDraftTargets, reconcileActiveReportDocument } from "../app/active-report-reconciliation";
 import { encounterEvents } from "../app/canonical-events";
-import { encounterDocumentToDraftMutations, stableDraftId } from "../app/draft-report";
+import { draftMutationDelta, encounterDocumentToDraftMutations, stableDraftId } from "../app/draft-report";
 import { editNonRepeatingScalarValue } from "../app/stationary-non-repeating";
 import { removeScalarOccurrence } from "../app/stationary-scalar";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
@@ -143,4 +143,53 @@ test("target-aware reconciliation keeps a pending occurrence deletion during a s
   assert.equal(values.find(({ id }) => id === "ePatient.03"), undefined);
   const lastName = values.find(({ id }) => id === "ePatient.02")!.values[0]!;
   assert.equal(lastName.kind === "scalar" ? lastName.value : null, "Server last name");
+});
+
+
+for (const operation of ["edit", "delete"] as const) test(`recovered sparse ${operation} targets survive an already optimistic baseline and disjoint server update`, () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const instance = baseline.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!;
+  const occurrence = (elementId: string) => instance.elements.find(({ id }) => id === elementId)!.values[0]!.occurrenceId;
+  const edited = operation === "edit"
+    ? editNonRepeatingScalarValue(baseline, { groupId: "ePatient.PatientNameGroup", elementId: "ePatient.03", occurrenceId: occurrence("ePatient.03") }, "Retained offline first name", () => "unused")
+    : removeScalarOccurrence(baseline, "ePatient.PatientNameGroup", instance.instanceId, "ePatient.03", occurrence("ePatient.03"));
+  const inbound = editNonRepeatingScalarValue(baseline, { groupId: "ePatient.PatientNameGroup", elementId: "ePatient.02", occurrenceId: occurrence("ePatient.02") }, "New server last name", () => "unused");
+  assert(edited.ok && inbound.ok);
+  const accepted = encounterDocumentToDraftMutations(reportId, baseline);
+  const recovered = encounterDocumentToDraftMutations(reportId, edited.document, accepted);
+  const queued = draftMutationDelta(recovered, accepted);
+  // Recovery's cached document already includes the pending command. That does
+  // not acknowledge its explicit targets or permit the server to replace them.
+  const server = encounterDocumentToDraftMutations(reportId, inbound.document);
+  // Some older commands include unchanged parent context. It must not make the
+  // whole group authoritative over an unrelated incoming server field.
+  const targets = queuedDraftTargets([{...queued, groups: accepted.groups}], server);
+  assert(targets.occurrenceIds.size > 0);
+  const merged = reconcileActiveReportDocument(reportId, edited.document, inbound.document, true, targets);
+  const elements = merged.groups.find(({id}) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements;
+  const first = elements.find(({id}) => id === "ePatient.03")?.values[0];
+  assert.equal(first?.kind === "scalar" ? first.value : undefined, operation === "edit" ? "Retained offline first name" : undefined);
+  const last = elements.find(({id}) => id === "ePatient.02")!.values[0]!;
+  assert.equal(last.kind === "scalar" ? last.value : undefined, "New server last name");
+});
+
+test("newer unqueued edits reverting a queued value retain authority against the optimistic baseline", () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const elements = baseline.groups.find(({id}) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements;
+  const occurrence = (id: string) => elements.find(element => element.id === id)!.values[0]!.occurrenceId;
+  const queuedEdit = editNonRepeatingScalarValue(baseline, {groupId:"ePatient.PatientNameGroup",elementId:"ePatient.03",occurrenceId:occurrence("ePatient.03")}, "Queued first name", () => "unused");
+  const inbound = editNonRepeatingScalarValue(baseline, {groupId:"ePatient.PatientNameGroup",elementId:"ePatient.02",occurrenceId:occurrence("ePatient.02")}, "New server last name", () => "unused");
+  assert(queuedEdit.ok && inbound.ok);
+  const accepted = encounterDocumentToDraftMutations(reportId, baseline);
+  const optimistic = encounterDocumentToDraftMutations(reportId, queuedEdit.document, accepted);
+  // The clinician changed the queued value back to the original while its
+  // acknowledgement was pending. Compare this new edit with queued state.
+  const localDelta = draftMutationDelta(encounterDocumentToDraftMutations(reportId, baseline, optimistic), optimistic);
+  const targets = pendingDraftTargets(localDelta, optimistic);
+  assert(targets.occurrenceIds.size > 0);
+  const merged = reconcileActiveReportDocument(reportId, baseline, inbound.document, true, targets);
+  const mergedElements = merged.groups.find(({id}) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements;
+  assert.deepEqual(mergedElements.find(({id}) => id === "ePatient.03"), elements.find(({id}) => id === "ePatient.03"));
+  const last = mergedElements.find(({id}) => id === "ePatient.02")!.values[0]!;
+  assert.equal(last.kind === "scalar" ? last.value : undefined, "New server last name");
 });
