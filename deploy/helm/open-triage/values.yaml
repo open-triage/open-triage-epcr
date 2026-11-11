@@ -29,6 +29,7 @@ api:
     capabilities: { drop: [ALL] }
   host: api.epcr.example.com
   trustProxyHops: 1
+  androidApprovedRelease: ""
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }

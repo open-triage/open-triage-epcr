@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import path from 'node:path';
+import {observeJsonResponse} from './response-observer.mjs';
 export async function epsBrowser({service,token,reportId,organizationId,userId,change,setBroken}){
  const {build}=await import('esbuild'),{chromium}=await import('@playwright/test');
  const web=path.resolve(new URL('../../../web/',import.meta.url).pathname);
@@ -46,8 +47,12 @@ export async function epsBrowser({service,token,reportId,organizationId,userId,c
    await change('200207252388');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'delayed-andrea'})));await started;
    await change('194302096997');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'current-arne'})));await page.waitForFunction(()=>document.querySelector('.eps-control > button')?.disabled===false);release();
    await button.click();await page.getByRole('dialog').waitFor();assert.match(await page.getByRole('dialog').innerText(),/Arne/);assert.doesNotMatch(await page.getByRole('dialog').innerText(),/Andrea/);await close.click();
-   const noMatch=page.waitForResponse(async response=>new URL(response.url()).pathname.endsWith('/eps')&&response.ok()&&(await response.json()).status==='no-match');
-   await change('unknown');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'unknown'})));await noMatch;assert.equal(await button.isDisabled(),true);
+   let expectedBinding;
+   await observeJsonResponse(page,{label:'EPS unknown identity',matchesRequest:request=>request.method()==='GET'&&new URL(request.url()).origin===origin&&new URL(request.url()).pathname.endsWith('/eps'),
+    action:async()=>{await change('unknown');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('eps-fixture',{detail:'unknown'})));},
+    scope:async()=>{expectedBinding=(await service.context(token,reportId)).binding;return request=>new URL(request.url()).searchParams.get('binding')===expectedBinding;},
+    verify:body=>{assert.equal(body.status,'no-match');assert.equal(body.context?.binding,expectedBinding);}});
+   assert.equal(await button.isDisabled(),true);
    await context.close();
   }
  }finally{await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));}

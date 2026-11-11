@@ -22,6 +22,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install controlled browser for the complete preflight
+        run: npx playwright install --with-deps chromium
       - run: npm run check:ci
   release:
     needs: preflight

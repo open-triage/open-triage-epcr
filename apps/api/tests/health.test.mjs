@@ -38,7 +38,7 @@ test("public production health advertises the shared Android protocol independen
   try {
     for (const source of ["a".repeat(40), "b".repeat(40)]) {
       process.env.OPEN_TRIAGE_BUILD_SHA = source;
-      assert.deepEqual(controller.getHealth(), { status: "ok", service: "open-triage-api", androidApiProtocol: 1 });
+      assert.deepEqual(controller.getHealth(), { status: "ok", service: "open-triage-api", androidApiProtocol: 1, androidApiCapabilities: [] });
     }
   } finally {
     if (previous === undefined) delete process.env.OPEN_TRIAGE_BUILD_SHA;
