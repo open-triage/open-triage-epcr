@@ -1,7 +1,7 @@
 # Android connection development
 
-Ticket 001 supplies a development APK with the shared static web UI, import-based
-vehicle pairing and ordinary local sign-in. It uses Capacitor 8.6.0 and requires
+Tickets 001–002 supply a development APK with the shared static web UI, import or
+camera QR vehicle pairing and ordinary local sign-in. It uses Capacitor 8.6.0 and requires
 Android 13 (API 33) or newer. This is a development identity
 `org.opentriage.development`, signed with the developer's Android debug key;
 it is not the production release/signing identity from ticket 013.
@@ -44,7 +44,10 @@ migrated installations, fictional administrators/clinicians and a short-lived
 private test CA. It starts the real Nest APIs over HTTPS and installs the same
 APK against each fixture. Instrumentation drives the shared file-input,
 confirmation, local sign-in, assigned-calls and logout UI, then checks retained
-pairing. The harness checks inventory and rejection of the consumed code, and
+pairing. It repeats the journey through the scanner plugin, using actual QR pixels
+and the camera's QR-only decoder while substituting the camera frame result. This
+also exercises the real Android camera permission denial, cancellation and retry.
+The harness checks exactly one inventory addition per confirmed attempt and rejection of the consumed code, and
 removes its container/fixtures afterward. It never reads `.env.local` or modifies
 the developer's ordinary database/accounts. `--skip-build` reuses already built
 artifacts for iteration. The Android GitHub workflow runs the same commands on
@@ -72,6 +75,67 @@ preview and download do not consume it. A failed preview does not change an
 active connection. The first slice permits importing only into an unconfigured
 APK; device reassignment is implemented in ticket 005.
 
+## Camera pairing
+
+After supplying public CA material in the unit's existing Devices dialog, choose
+**Show Android pairing QR**. In a fresh APK, choose **Scan vehicle pairing QR**
+and allow camera access. The decoded file enters the same destination preview and
+explicit confirmation as import. The browser/PWA enrollment QR and link remain
+available for their existing workflow; Android does not navigate to arbitrary
+URLs found by its scanner.
+
+Admin displays only the selected QR image. **Show Android pairing QR** replaces
+the browser image; **Show browser/PWA QR** switches back, while the browser link
+remains available. This prevents a camera from preferring an unrelated browser QR
+in the same frame. A changed trust value or target invalidates pending image renders.
+
+The QR contains the complete version-1 pairing JSON, including the public CA.
+There is no unauthenticated bootstrap download. QR data is limited to 2,048 UTF-8
+bytes, encoded at error correction M with a four-module quiet zone and a 512-pixel
+source image. A representative RSA public-CA fixture is 1,340 bytes (QR version
+30); the 2 KiB limit remains below QR 40-M byte capacity. Large chains remain
+available through the 64 KiB import path. Admin rejects oversized QR generation
+and clears any displayed QR when its CA text changes, so old trust material is
+not silently reused. Keep the screen large enough and free from glare when
+scanning; validate real print/screen/device conditions in the checklist below.
+
+Camera frames are decoded in memory by pinned ZXing Android Embedded 4.3.0 with
+ZXing core 3.5.4. Dense trust payloads can defeat finder search in one orientation;
+the production decoder rotates actual cropped grayscale pixels through the four
+orientations while retaining normal finder detection and error correction. Native
+regressions cover independent payloads, all QR masks, practical image scales and
+non-square YUV crops, so this category fails before emulator acceptance.
+Scanning pauses when its activity pauses. Denial, cancellation, invalid
+codes and unavailable cameras return to setup without consuming a code or changing
+connection state. File import remains available when camera access is denied.
+
+### Physical scanning checklist for ticket 019
+
+Use synthetic accounts and record device, Android/WebView version, APK digest,
+test environment, pass/fail and relevant non-secret evidence for each item.
+Automated image/permission/plugin tests do not establish physical-camera acceptance.
+
+- [ ] On the selected phone and tablet, install the same APK, display Admin's
+  Android QR with a private-CA server and scan from another screen. Verify server,
+  organization and unit in preview before explicitly naming/confirming enrollment.
+- [ ] Repeat with a platform-trusted HTTPS server. Verify no Android Settings CA
+  installation or server URL entry is needed for either path.
+- [ ] Deny camera permission, retry, deny permanently, and revoke it in app
+  settings. Verify localized states, usable file import and no enrollment side effect.
+- [ ] Cancel with the scanner button and Android Back. Rotate, background/resume,
+  and terminate/reopen the app before confirmation. Verify camera release and no
+  inventory addition, lost authorization consumption or unintended confirmation.
+- [ ] Scan then cancel preview and import the same still-valid file; repeat in
+  the opposite order. Confirm once and verify exactly one new inventory entry.
+- [ ] Exercise distant/close framing, phone/tablet orientation, enlarged text,
+  glare, low light and a representative near-limit QR. Reject malformed,
+  oversized, expired and consumed codes; keep import available for larger CA chains.
+- [ ] Scan a browser enrollment QR, a different installation's code, and codes
+  with an untrusted/expired/wrong-host TLS context. Verify rejection without
+  redirecting credentials or changing active provisioning.
+- [ ] Complete local sign-in, assigned calls and logout after pairing. Verify
+  enrollment remains in inventory and clinician logout retains the device pairing.
+
 ## Connection and protection boundaries
 
 The bundled UI stays at `https://localhost`; Capacitor serves packaged assets.
@@ -89,8 +153,8 @@ are not returned to JavaScript or stored in localStorage; their vault uses
 Android Keystore AES-GCM. Clinician logout clears the session cookie and retains
 the installation cookie. Android backup and cleartext HTTP are disabled.
 
-This slice validates JSON/local-authentication traffic only. Camera scanning,
-protected offline reports, managed configuration, OIDC, cross-agency handoff,
+These slices validate pairing, scanning and JSON/local-authentication traffic.
+Protected offline reports, managed configuration, OIDC, cross-agency handoff,
 media, native downloads and comprehensive navigation each have following tickets.
 Native redirects are rejected until an explicit supported return flow is added.
 Emulator results do not substitute for the signing, actual MDM or physical-device

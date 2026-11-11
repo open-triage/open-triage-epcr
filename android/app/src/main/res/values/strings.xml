@@ -1,7 +1,9 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <string name="pairing_scanner_title">Scan vehicle pairing QR</string>
+    <string name="pairing_scanner_cancel">Cancel</string>
     <string name="app_name">OpenTriage Development</string>
     <string name="title_activity_main">OpenTriage Development</string>
-    <string name="package_name">org.opentriage.development</string>
-    <string name="custom_url_scheme">org.opentriage.development</string>
+    <string name="package_name" translatable="false">org.opentriage.development</string>
+    <string name="custom_url_scheme" translatable="false">org.opentriage.development</string>
 </resources>

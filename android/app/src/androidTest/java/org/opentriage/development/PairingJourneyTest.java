@@ -16,14 +16,14 @@ import org.junit.runner.RunWith;
 /** Runs the actual bundled React UI against the real synthetic API, not mocked browser requests. */
 @RunWith(AndroidJUnit4.class)
 public class PairingJourneyTest {
-    private ActivityScenario<MainActivity> activity;
-    private String evaluate(String script) throws Exception {
+    protected ActivityScenario<MainActivity> activity;
+    protected String evaluate(String script) throws Exception {
         AtomicReference<String> value = new AtomicReference<>(); CountDownLatch done = new CountDownLatch(1);
         activity.onActivity(screen -> screen.getBridge().getWebView().evaluateJavascript(script, result -> { value.set(result); done.countDown(); }));
         assertTrue("WebView evaluation timed out", done.await(15, TimeUnit.SECONDS));
         return value.get();
     }
-    private void waitFor(String expression) throws Exception {
+    protected void waitFor(String expression) throws Exception {
         long end = System.currentTimeMillis() + 45000;
         while (System.currentTimeMillis() < end) {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
@@ -31,7 +31,7 @@ public class PairingJourneyTest {
         }
         fail("UI condition failed: " + expression + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
-    private void importFile(String artifact) throws Exception {
+    protected void importFile(String artifact) throws Exception {
         evaluate("(()=>{const input=document.querySelector('input[type=file]');const files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()");
     }
     private void rejected(String artifact) throws Exception {
