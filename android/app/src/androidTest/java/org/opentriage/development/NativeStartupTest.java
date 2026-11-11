@@ -36,14 +36,16 @@ public class NativeStartupTest {
             var evidence=new android.os.Bundle();evidence.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));
             if("1".equals(InstrumentationRegistry.getArguments().getString("fixtureFontProfile"))) {
                 String providers;
-                try(var output=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("dumpsys -t 5 activity providers com.google.android.gms/.fonts.provider.FontsProvider"))) {
+                try(var output=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("dumpsys -t 5 activity providers"))) {
                     providers=new String(output.readNBytes(262144),java.nio.charset.StandardCharsets.UTF_8);
                 }
                 assertTrue("Provider evidence must be bounded and complete",providers.length()<262144);
                 assertTrue("The provider probe must return an actual ActivityManager dump",providers.contains("ACTIVITY MANAGER CONTENT PROVIDERS"));
-                boolean bound=providers.contains(android.os.Process.myPid()+":"+context.getPackageName());
-                evidence.putString("opentriage_gms_font_provider_bound",String.valueOf(bound));
-                assertFalse("The scoped Chromium109 fixture must not retain the dying GMS font provider",bound);
+                var dependency=FontProviderConnections.inspect(providers,android.os.Process.myPid(),context.getPackageName());
+                evidence.putString("opentriage_gms_font_provider_bound",String.valueOf(dependency.bound()));
+                evidence.putString("opentriage_gms_font_provider_records",dependency.records());
+                InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);
+                assertFalse("The scoped Chromium109 fixture must not retain the dying GMS font provider",dependency.bound());
             }
             InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);
         }
