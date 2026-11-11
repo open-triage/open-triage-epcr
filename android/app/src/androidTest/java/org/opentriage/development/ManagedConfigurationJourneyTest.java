@@ -138,7 +138,7 @@ public class ManagedConfigurationJourneyTest {
             waitFor("document.querySelector('[role=alert]').textContent.includes('changed')");
             requestStatus("/api/installations/current"); assertEquals("0", evaluate("window.__managedResult.status"));
             policy(new JSONObject(original.toString()).put("publicCaPem", ""));
-            waitFor("document.querySelector('[role=alert]').textContent.includes('changed')");
+            waitFor("document.querySelector('[role=alert]').textContent.includes('changed') && document.querySelector('.android-managed-connection').textContent.includes(" + JSONObject.quote(artifact.getString("origin")) + ")");
             assertEquals("Blocked policy transitions must preserve encrypted credentials", savedVault,
                 InstrumentationRegistry.getInstrumentation().getTargetContext().getSharedPreferences("connection-v1", Context.MODE_PRIVATE).getString("encrypted", null));
             policy(original);
