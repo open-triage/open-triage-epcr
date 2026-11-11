@@ -40,6 +40,11 @@ public class ReportRecoveryJourneyTest {
         assertEquals("The actual input must be editable", "true", evaluate("(()=>{const input=" + expression + ";if(!input || input.matches(':disabled') || input.readOnly)return false;input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()"));
     }
     private void click(String label) throws Exception {
+        if (label.equals("Add photo note") || label.equals("Add audio note")) {
+            // Durable discard is asynchronous. A real user cannot activate a
+            // quick action through the previous modal's backdrop.
+            waitFor("!document.querySelector('[role=dialog], [role=alertdialog]')");
+        }
         String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && (button.textContent.trim()===" + JSONObject.quote(label) + " || button.getAttribute('aria-label')===" + JSONObject.quote(label) + "))";
         waitFor(button + " && !(" + button + ").disabled");
         if (label.equals("Save & close")) {
@@ -210,6 +215,7 @@ public class ReportRecoveryJourneyTest {
         waitFor("window.__nativeActive===false"); connection(true); Thread.sleep(1200);
         assertEquals("Paused reconnect must not start audio or other API drains: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
         activity.moveToState(Lifecycle.State.RESUMED); waitFor("window.__nativeActive!==false"); verifyCanonicalAudio("ANDROID-AUDIO-RESUME-SYNTHETIC");
+        waitFor("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))");
         connection(false); click("Stationary"); waitFor(FIELD);
     }
     private void stageRetainedAudio() throws Exception {
@@ -245,6 +251,7 @@ public class ReportRecoveryJourneyTest {
     }
     private void verifyRecoveredAudio() throws Exception {
         observeAudio(); verifyCanonicalAudio("ANDROID-AUDIO-SYNTHETIC"); click("Mobile"); playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");
+        assertEquals("An already acknowledged audio note remains ready after recovery", "true", evaluate("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))"));
         click("Stationary"); evaluate("(()=>{const button=document.querySelector('.timeline-toggle-action');if(button?.getAttribute('aria-expanded')==='false')button.click()})()");
         waitFor("document.querySelector('.stationary-timeline-sidebar')"); playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");
         if ("1".equals(InstrumentationRegistry.getArguments().getString("unsavedAudio"))) {
