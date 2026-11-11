@@ -1111,12 +1111,30 @@ for (const navigation of ["button", "android-back"] as const) test(`${navigation
   await context.setOffline(true);
   await page.evaluate(() => {
     const put = IDBObjectStore.prototype.put; let hold = true;
+    const gates = new WeakMap<IDBTransaction, { held: boolean; listener: IDBTransaction["oncomplete"] }>();
     IDBObjectStore.prototype.put = function(...args) {
       if (this.name === "encrypted-reports" && hold) {
-        hold = false; const transaction = this.transaction;
-        Object.defineProperty(transaction, "oncomplete", { configurable: true, set(listener: (event: Event) => void) {
-          transaction.addEventListener("complete", event => Object.assign(window, { protectedWriteHeld: true, releaseProtectedWrite: () => listener.call(transaction, event) }));
-        } });
+        const incoming = args[0] as { localRecordId: string; ciphertextRevision: number };
+        const transaction = this.transaction;
+        // Read before this put in the same transaction: receipt/deadline writes
+        // keep the stored revision and must not impersonate a new encrypted edit.
+        const previous = this.get(incoming.localRecordId);
+        let gate = gates.get(transaction);
+        if (!gate) {
+          gate = { held: false, listener: transaction.oncomplete }; gates.set(transaction, gate);
+          const state = gate; transaction.oncomplete = null;
+          Object.defineProperty(transaction, "oncomplete", { configurable: true, get: () => state.listener,
+            set: listener => { state.listener = listener; } });
+          transaction.addEventListener("complete", event => {
+            const listener = state.listener;
+            if (state.held) Object.assign(window, { protectedWriteHeld: true, releaseProtectedWrite: () => listener?.call(transaction, event) });
+            else listener?.call(transaction, event);
+          });
+        }
+        const state = gate;
+        previous.addEventListener("success", () => {
+          if (hold && incoming.ciphertextRevision > (previous.result?.ciphertextRevision ?? 0)) { hold = false; state.held = true; }
+        });
       }
       return put.apply(this, args);
     };
