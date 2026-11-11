@@ -35,7 +35,10 @@
     "check:ci": "node scripts/check-ci.mjs",
     "check:workflows": "node scripts/check-workflows.mjs",
     "android:build": "node scripts/android-build.mjs",
-    "android:test": "node scripts/android-emulator-test.mjs"
+    "android:test": "node scripts/android-emulator-test.mjs",
+    "android:release": "node scripts/android-release.mjs",
+    "android:test:upgrade": "node scripts/android-release-upgrade.mjs",
+    "android:validate:release": "node scripts/android-release-validation.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "8.6.0",

@@ -49,3 +49,19 @@ test('Android browser regressions are included in the full deployment preflight'
   assert(androidSuites.length > 0);
   for (const file of androidSuites) assert(deployment.includes(JSON.stringify(file)), `${file}: include Android browser regression in npm run check:ci`);
 });
+
+test('production publication is serialized, gated by preflight and protected environment, and uploads no instrumentation', async () => {
+  const workflow = yaml.load(await readFile(new URL('android-release.yml', workflows), 'utf8'));
+  assert.deepEqual(workflow.on.push.tags, ['android-v*']);
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  assert.equal(workflow.jobs.release.environment, 'android-release');
+  assert.equal(workflow.jobs.release.needs, 'preflight');
+  assert(workflow.jobs.preflight.steps.some(step => step.run === 'npm run check:ci'));
+  const emulator = workflow.jobs.release.steps.find(step => step.uses?.startsWith('reactivecircus/android-emulator-runner@'));
+  assert.equal(emulator.with.script, 'node scripts/android-release-candidate.mjs');
+  assert.equal(String(emulator.with['api-level']), '33');
+  assert(!workflow.jobs.release.steps.some(step => step.uses?.startsWith('actions/upload-artifact@')));
+  const publication = await readFile(new URL('../scripts/android-release-publish.mjs', import.meta.url), 'utf8');
+  assert(!publication.includes('androidTest.apk'));
+  assert.match(publication, /published\.immutable, true/);
+});

@@ -236,3 +236,12 @@ subscription with media draining. They start no new traffic during a paused
 reconnect and refresh once per reader after resume without another connectivity
 event. The early browser journey covers all three readers as well as delayed
 permission denial and cancelled capture callbacks.
+
+## Production signing and upgrade checks
+
+Production identity, custody, immutable artifact workflow and the real signed A/B
+upgrade acceptance are documented in [Android releases](android-release.md).
+Run `npm run android:validate:release` after `android:build` to catch release-only
+build/signature regressions locally; the Android PR workflow runs this same early
+check with a disposable key. Permanent-key distribution requires the separate
+protected release workflow and actual signed upgrade evidence.
