@@ -50,3 +50,15 @@ test('native HEAD has no body even when the native response includes bytes', asy
   const response = await androidFetch(fetch, async () => ({ status: 200, headers: {}, bodyBase64: btoa('ignored') }), 'https://localhost')('/api/test', { method: 'HEAD' });
   assert.equal(response.body, null);
 });
+
+test('default-size media transfers through bridge bytes and declared oversize fails before native dispatch', async () => {
+  const bytes = new Uint8Array(10 * 1024 * 1024); bytes.fill(255); bytes[1] = 216;
+  let calls = 0;
+  const transport = androidFetch(fetch, async request => {
+    calls++;
+    return { status: 200, headers: { 'content-type': 'image/jpeg' }, bodyBase64: request.bodyBase64! };
+  }, 'https://localhost');
+  assert.deepEqual(new Uint8Array(await (await transport('/api/media', { method: 'POST', body: bytes })).arrayBuffer()), bytes);
+  await assert.rejects(transport('/api/media', { method: 'POST', headers: { 'content-length': String(16 * 1024 * 1024 + 1) }, body: 'small' }), /Oversized/);
+  assert.equal(calls, 1);
+});

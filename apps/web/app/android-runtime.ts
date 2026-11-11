@@ -22,7 +22,8 @@ export function installAndroidTransport(): void {
   window.fetch = androidFetch(browserFetch, options => AndroidConnection.request(options), window.location.origin);
 }
 
-const MAX_NATIVE_BODY_BYTES = 64 * 1024 * 1024;
+// Bound bridge copies while supporting a default 10 MiB photo in its JSON command.
+export const MAX_NATIVE_BODY_BYTES = 16 * 1024 * 1024;
 function encodeBytes(bytes: Uint8Array): string {
   if (bytes.length > MAX_NATIVE_BODY_BYTES) throw new Error("Oversized native request");
   let binary = "";
@@ -46,6 +47,8 @@ export function androidFetch(browserFetch: typeof fetch, nativeRequest: Connecti
     if (effective.signal.aborted) throw effective.signal.reason;
     const headers: Record<string, string> = {};
     effective.headers.forEach((value, name) => { headers[name] = value; });
+    const declaredLength = Number(effective.headers.get("content-length"));
+    if (declaredLength > MAX_NATIVE_BODY_BYTES) throw new Error("Oversized native request");
     const result = await nativeRequest({ path: target.pathname + target.search, method: effective.method, headers,
       ...(!["GET", "HEAD"].includes(effective.method) ? { bodyBase64: encodeBytes(new Uint8Array(await effective.arrayBuffer())) } : {}) });
     if (effective.signal.aborted) throw effective.signal.reason;

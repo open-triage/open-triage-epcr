@@ -2,6 +2,7 @@
 import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
+import { isAndroidRuntime, MAX_NATIVE_BODY_BYTES } from "../app/android-runtime";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible } from "../app/application-foreground";
 import { PlatformRequestError } from "../app/platform-errors";
 
@@ -112,6 +113,9 @@ export function PhotoNoteDialog({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [foreground, setForeground] = useState(() => applicationVisible());
   const cameraGeneration = useRef(0);
+  const cameraRequestPending = useRef(false);
+  const cameraPermissionBlocked = useRef(false);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
   const mounted = useRef(true);
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -122,8 +126,9 @@ export function PhotoNoteDialog({
 
   useEffect(() => {
     mounted.current = true;
+    const generation = cameraGeneration;
     const changed = () => {
-      cameraGeneration.current++;
+      generation.current++;
       stream.current?.getTracks().forEach(track => track.stop());
       stream.current = null;
       setForeground(applicationVisible());
@@ -132,7 +137,7 @@ export function PhotoNoteDialog({
     document.addEventListener("visibilitychange", changed);
     return () => {
       mounted.current = false;
-      cameraGeneration.current++;
+      generation.current++;
       window.removeEventListener(APPLICATION_FOREGROUND_EVENT, changed);
       document.removeEventListener("visibilitychange", changed);
     };
@@ -167,17 +172,24 @@ export function PhotoNoteDialog({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (mode !== "camera" || !foreground) return;
+    if (mode !== "camera" || !foreground || cameraRequestPending.current || cameraPermissionBlocked.current) return;
     let active = true;
     const generation = ++cameraGeneration.current;
     async function startCamera() {
       stream.current?.getTracks().forEach((track) => track.stop());
       const unavailable = browserMediaCapturePreflight("camera", undefined, language);
       if (unavailable) { setCameraError(unavailable); return; }
+      cameraRequestPending.current = true;
+      let reacquire = false;
       try {
         const next = await navigator.mediaDevices.getUserMedia(cameraRequestConstraints(selectedDeviceId));
-        if (!active || generation !== cameraGeneration.current) { next.getTracks().forEach((track) => track.stop()); return; }
+        if (!active || generation !== cameraGeneration.current) { next.getTracks().forEach((track) => track.stop()); reacquire = true; return; }
         stream.current = next;
+        next.getVideoTracks().forEach(track => track.addEventListener("ended", () => {
+          if (active && generation === cameraGeneration.current && applicationVisible()) {
+            setCameraError(mediaCaptureErrorMessage("camera", new DOMException("Camera ended", "NotReadableError"), language));
+          }
+        }));
         if (video.current) { video.current.srcObject = next; await video.current.play(); }
         const cameras = (await navigator.mediaDevices.enumerateDevices()).filter(({ kind }) => kind === "videoinput");
         if (!active || generation !== cameraGeneration.current) return;
@@ -186,11 +198,21 @@ export function PhotoNoteDialog({
         setDeviceIds(ids);
         setDeviceIndex(Math.max(0, ids.indexOf(activeDeviceId ?? "")));
         setCameraError(null);
-      } catch (error) { if (active && generation === cameraGeneration.current) setCameraError(mediaCaptureErrorMessage("camera", error, language)); }
+      } catch (error) {
+        const denied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
+        if (mounted.current && denied) {
+          // Permission dialogs pause/resume Android. Preserve denial instead of automatically prompting again.
+          cameraPermissionBlocked.current = true;
+          setCameraError(mediaCaptureErrorMessage("camera", error, language));
+        } else if (active && generation === cameraGeneration.current) setCameraError(mediaCaptureErrorMessage("camera", error, language));
+      } finally {
+        cameraRequestPending.current = false;
+        if (reacquire && mounted.current && applicationVisible()) setCameraAttempt(value => value + 1);
+      }
     }
     void startCamera();
     return () => { active = false; stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null; };
-  }, [mode, selectedDeviceId, language, foreground]);
+  }, [mode, selectedDeviceId, language, foreground, cameraAttempt]);
 
   async function takePhoto() {
     if (!video.current || !foreground) return;
@@ -206,7 +228,7 @@ export function PhotoNoteDialog({
       if (!mounted.current || generation !== cameraGeneration.current) return;
       setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: cameraQuarterTurns, capturedAt, capturedUtcOffsetMinutes });
       setMode("preview");
-    } catch (error) { setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.frame.could.not.be.captured")); }
+    } catch (error) { if (mounted.current && generation === cameraGeneration.current) setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.frame.could.not.be.captured")); }
   }
 
   function discard() {
@@ -252,6 +274,10 @@ export function PhotoNoteDialog({
           effectiveAllowanceBytes: mediaPolicy.reportMediaAllowanceBytes,
           effectiveImageLimitBytes: mediaPolicy.imageMediaLimitBytes,
         };
+        if (isAndroidRuntime() && new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_NATIVE_BODY_BYTES) {
+          setCameraError(t("noteUi.androidPhotoTransferLimit"));
+          return;
+        }
         if (protectedStorageActive(reportId)) {
           const localNote: ReportPhotoNote = {
             id: command.noteId, reportId, type: "photo", caption: validation.caption,

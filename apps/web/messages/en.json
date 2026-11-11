@@ -577,6 +577,7 @@
   "noteUi.audioConnection": "The recording could not be saved. Check your connection and try again.",
   "noteUi.photoNormalize": "Image normalization is unavailable on this device.",
   "noteUi.photoWaitPreview": "Wait for the live camera preview before taking a photo.",
+  "noteUi.androidPhotoTransferLimit": "This photo is too large to transfer on this device. Discard and retake it.",
   "noteUi.photoCaptureUnavailable": "Camera capture is unavailable on this device.",
   "noteUi.photoEncode": "The captured frame could not be encoded.",
   "platform.error.auth.invalidCredentials": "The username or password is incorrect.",

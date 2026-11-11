@@ -48,9 +48,15 @@ test("live camera and rotation preview remain accessible without exposing librar
   await expect(dialog.locator(".camera-control-row > button").nth(1)).toHaveAccessibleName("Cycle camera");
   await expect(dialog.locator(".camera-control-row > button").nth(2)).toHaveAccessibleName("Rotate clockwise 90°");
   await expect(dialog.locator(".camera-capture-row > button")).toHaveCount(1);
-  await expect(dialog.getByRole("button", { name: "Take photo" })).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await dialog.getByRole("button", { name: "Take photo" }).evaluate(button => button.blur());
+  await page.mouse.move(0, 0);
+  const inactiveBackground = await page.evaluate(() => {
+    const probe = document.createElement("span"); probe.style.backgroundColor = "var(--inactive-button)";
+    document.body.append(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
+  });
+  await expect(dialog.getByRole("button", { name: "Take photo" })).toHaveCSS("background-color", inactiveBackground);
   await expect(dialog.getByRole("button", { name: "Take photo" })).toHaveCSS("border-color", "rgb(0, 120, 58)");
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCSS("background-color", inactiveBackground);
   await dialog.getByRole("button", { name: "Rotate clockwise 90°" }).click();
   await expect(dialog.getByLabel("Live camera preview")).toHaveAttribute("style", /rotate\(90deg\)/);
   const cameraFrameBounds = await dialog.locator(".camera-live-frame").boundingBox();

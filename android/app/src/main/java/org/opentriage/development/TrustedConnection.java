@@ -24,8 +24,8 @@ import javax.net.ssl.TrustManagerFactory;
 /** One approved HTTPS origin, one cookie jar and no redirects. Never uses WebView cookies. */
 final class TrustedConnection {
     static final int MAX_ARTIFACT = 65536;
-    // Match the API parser ceiling, including JSON/Base64 media commands.
-    static final int MAX_BODY = 64 * 1024 * 1024;
+    // Bound bridge copies; supports default 10 MiB images in JSON/Base64 commands.
+    static final int MAX_BODY = 16 * 1024 * 1024;
     final String origin;
     final String caPem;
     private final javax.net.ssl.SSLSocketFactory socketFactory;
@@ -164,6 +164,7 @@ final class TrustedConnection {
         try {
             if (body != null) {
                 connection.setDoOutput(true);
+                connection.setFixedLengthStreamingMode(body.length);
                 try (var output = connection.getOutputStream()) { output.write(body); }
             }
             int status = connection.getResponseCode();
@@ -184,6 +185,7 @@ final class TrustedConnection {
                 String value = connection.getHeaderField(name);
                 if (value != null) responseHeaders.put(name, value);
             }
+            if (connection.getContentLengthLong() > MAX_BODY && !method.equals("HEAD") && !Set.of(204, 205, 304).contains(status)) throw new IllegalStateException("Oversized response");
             InputStream stream = Set.of(204, 205, 304).contains(status) || method.equals("HEAD") ? null
                 : status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] bytes = stream == null ? new byte[0] : readBounded(stream);
