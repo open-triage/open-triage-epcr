@@ -118,6 +118,7 @@ public class ReportRecoveryJourneyTest {
         assertFalse("Photo bytes never enter localStorage", evaluate("JSON.stringify({...localStorage})").contains("data:image"));
     }
     private void stageSyntheticPhoto(String caption) throws Exception {
+        waitFor("(()=>{const video=document.querySelector('.photo-note-dialog video');const capture=document.querySelector('.camera-capture-button');return video?.readyState>=2 && video.currentTime>0 && !video.paused && capture && !capture.disabled})()");
         // Substitute only the hardware frame source. Capture, normalization, staging and API calls stay production.
         evaluate("(()=>{const video=document.querySelector('.photo-note-dialog video');const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;const context=canvas.getContext('2d');context.fillStyle='#275d38';context.fillRect(0,0,640,480);context.fillStyle='#eee';context.fillRect(100,100,230,180);window.__syntheticPhotoStream=canvas.captureStream(5);video.srcObject=window.__syntheticPhotoStream;video.play()})()");
         waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth===640");
