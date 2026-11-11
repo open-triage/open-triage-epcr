@@ -161,6 +161,13 @@ fieldset { min-inline-size: 0; }
 .authenticated-shell .safety-notice { top: 48px; }
 .authenticated-shell .quick-actions { top: 86px; }
 .mobile-shell .session-bar { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+/* The native pairing action is an additional control, not another identity column. */
+.session-bar:has(> .session-account):has(> [data-change-installation]) { grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; }
+.mobile-shell .session-bar:has(> [data-change-installation]) { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+.mobile-shell .session-bar:has(> [data-change-installation]) > .session-account { grid-column: 3 / -1; grid-row: 1; }
+.mobile-shell .session-bar:has(> .session-account) > [data-change-installation] { grid-column: 1 / 4; grid-row: 3; min-width: 0; padding-inline: 8px; overflow-wrap: anywhere; }
+.mobile-shell .session-bar:has(> [data-change-installation]):has(> .session-account) > button:last-child { grid-column: 4; grid-row: 3; }
+
 .mobile-shell .transient-notice { max-width: min(calc(100vw - 24px), 456px); }
 .mobile-shell .presentation-selector-scroll { grid-column: 1 / -1; grid-row: 2; width: 100%; }
 .mobile-shell .presentation-selector button { padding: 3px; }
@@ -533,7 +540,7 @@ fieldset { min-inline-size: 0; }
 .admin-preview-error { max-width: 720px; margin: 48px auto; padding: 20px; }
 .draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .mobile-presentation .draft-actions { justify-content: space-between; margin: -2px 0 12px; }
-.draft-actions button { min-height: 44px; padding: 8px 14px; cursor: pointer; }
+.draft-actions button { min-height: 44px; padding: 8px 14px; overflow-wrap: anywhere; cursor: pointer; }
 .sync-status { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 9px; border-radius: 999px; color: #195b3b; background: #e8f3ee; font-size: var(--text-caption); font-weight: 800; }
 .sync-saving { color: #624500; background: #fff3c4; }
 .sync-pending-sync, .sync-conflict { color: #8b251c; background: #fde7e4; }
@@ -649,6 +656,7 @@ fieldset { min-inline-size: 0; }
 .stationary-record-section .stationary-repeating-groups { margin: 14px; padding: 0; }
 .stationary-record-fields > :is(.custom-text-fields, .custom-coded-fields, .repeated-custom-fields, .custom-group-fields):not(:empty) { margin: 14px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; padding: 18px 20px 12px; }
+.section-heading > :is(h1, h2, h3) { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .section-heading h1 { margin: 2px 0 0; font-size: var(--text-heading); line-height: 1; letter-spacing: -.025em; }
 .section-heading > span { color: var(--muted); font-size: var(--text-caption); }
 .eyebrow { margin: 0; color: var(--green-dark); font-size: var(--text-caption); font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
@@ -804,6 +812,10 @@ fieldset { min-inline-size: 0; }
 .finish-help { margin: 9px 18px 0; color: var(--muted); font-size: var(--text-caption); text-align: right; }
 @media (max-width: 410px) { .vital-grid { grid-template-columns: 1fr; } }
 @media (max-width: 620px) {
+  .session-bar:has(> .session-account):has(> [data-change-installation]) { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .session-bar:has(> [data-change-installation]) > .session-account { grid-column: 3 / -1; grid-row: 1; }
+  .session-bar:has(> .session-account) > [data-change-installation] { grid-column: 1 / 4; grid-row: 3; min-width: 0; padding-inline: 8px; overflow-wrap: anywhere; }
+  .session-bar:has(> [data-change-installation]):has(> .session-account) > button:last-child { grid-column: 4; grid-row: 3; }
   .stationary-inline-group { margin-left: 0; }
   .session-bar { grid-template-columns: auto auto minmax(0, 1fr) auto; }
   .presentation-selector-scroll { grid-column: 1 / -1; grid-row: 2; width: 100%; }
@@ -833,6 +845,7 @@ fieldset { min-inline-size: 0; }
   .stationary-record-fields > :is(.custom-text-fields, .custom-coded-fields, .repeated-custom-fields, .custom-group-fields):not(:empty) { margin: 8px; }
 }
 @media (max-width: 370px) {
+  .session-bar:has(> .session-account):has(> [data-change-installation]) { padding-inline: 8px; column-gap: 4px; }
   .safety-notice { align-items: flex-start; flex-direction: column; gap: 1px; }
   .encounter-header { padding-inline: 16px; }
   .incident-line { align-items: stretch; flex-direction: column; }
