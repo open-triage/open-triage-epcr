@@ -133,6 +133,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   const chunkWrites = useRef<Promise<void>>(Promise.resolve());
   const chunkSequence = useRef(0);
   const startedAt = useRef(0);
+  const captureStartedAt = useRef(0);
   const elapsedRef = useRef(0);
   const interruptedRef = useRef(false);
   const holdingRef = useRef(false);
@@ -183,7 +184,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   const finishRecording = useCallback((interrupted = false) => {
     interruptedRef.current ||= interrupted;
     if (recorder.current?.state === "recording") {
-      elapsedRef.current = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Math.max(elapsedRef.current, Date.now() - startedAt.current));
+      elapsedRef.current = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Math.max(elapsedRef.current, performance.now() - captureStartedAt.current));
       recorder.current.stop();
     }
     // Stop hardware before waiting for encrypted chunk writes or playback cleanup.
@@ -300,9 +301,10 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
         const source = context.createMediaStreamSource(nextStream); const nextAnalyser = context.createAnalyser(); nextAnalyser.fftSize = 256;
         source.connect(nextAnalyser); analyser.current = nextAnalyser;
       }
+      captureStartedAt.current = performance.now();
       setMode("recording"); nextRecorder.start(1000);
       const sample = () => {
-        const nextElapsed = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Date.now() - startedAt.current);
+        const nextElapsed = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, performance.now() - captureStartedAt.current);
         elapsedRef.current = nextElapsed; setElapsed(nextElapsed);
         if (analyser.current) {
           const values = new Uint8Array(analyser.current.fftSize); analyser.current.getByteTimeDomainData(values);

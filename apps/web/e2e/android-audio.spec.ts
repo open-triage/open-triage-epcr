@@ -234,3 +234,21 @@ test("an audio upload already started before pause settles once instead of leavi
   await page.getByRole("button", { name: "Resume native", exact: true }).click();
   expect(requests).toBe(1);
 });
+
+
+test("wall-clock rollback cannot extend the five-minute recorder or reverse its elapsed display", async ({ page }) => {
+  const now = new Date('2026-11-11T10:00:00Z');
+  await page.clock.install({ time: now });
+  await harness(page);
+  await hold(page); await expect.poll(() => page.evaluate(() => (window as any).starts)).toBe(1);
+  await page.clock.runFor(1000);
+  await page.clock.setSystemTime(new Date(now.getTime() - 3_600_000));
+  await page.clock.runFor(1000);
+  await expect(page.locator('.audio-timer')).not.toHaveText(/0:00/);
+  await page.clock.fastForward(300_000);
+  await expect.poll(() => page.evaluate(() => (window as any).stops)).toBe(1);
+  await expect(page.getByRole('button', { name: 'Use recording', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).tracksStopped)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).saved)).toBe(0);
+  await page.keyboard.up('Space');
+});
