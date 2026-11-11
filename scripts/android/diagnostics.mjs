@@ -40,6 +40,9 @@ export function redactAndroidDiagnostics(output, secrets = []) {
   for (const secret of secrets) if (typeof secret === 'string' && secret.length > 3) output = output.split(secret).join('[redacted]');
   return output.replace(/-----BEGIN [^-]+-----[\s\S]*?-----END [^-]+-----/g, '[redacted PEM]')
     .replace(/(https?:\/\/[^\s?]+)\?[^\s]*/g, '$1?[redacted]')
+    .replace(/(["'][\w.-]*(?:password|authorization|cookie|token|secret|artifactBase64|caCertificateBase64)["']\s*:\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gi, '$1"[redacted]"')
+    .replace(/((?:authorization|proxy-authorization)\s*[=:]\s*)(?:Bearer|Basic)\s+[^\s"',;]+/gi, '$1[redacted]')
+    .replace(/(open_triage_(?:session|installation|oidc_[A-Za-z0-9_]+)\s*=\s*)[^;\s,"']+/gi, '$1[redacted]')
     .replace(/((?:password|authorization|cookie|token|secret|artifactBase64|caCertificateBase64)\s*[=:]\s*)[^\s,;]+/gi, '$1[redacted]')
     .replace(/[A-Za-z0-9+/_=-]{100,}/g, '[redacted opaque value]');
 }

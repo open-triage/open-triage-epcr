@@ -157,13 +157,27 @@ public class ReportRecoveryJourneyTest {
     }
     private void tapElement(String expression) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").disabled");
-        evaluate("(" + expression + ").scrollIntoView({block:'center',inline:'center'})");
-        JSONObject rectangle = new JSONObject(evaluate("(()=>{const rectangle=(" + expression + ").getBoundingClientRect();return{x:rectangle.x+rectangle.width/2,y:rectangle.y+rectangle.height/2,width:innerWidth}})()"));
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        var ime = new java.util.concurrent.atomic.AtomicBoolean();
+        activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); });
+        if (ime.get()) {
+            assertTrue("Dismiss the visible keyboard before touching a media control", device.pressBack());
+            long deadline=System.currentTimeMillis()+5000;
+            do { Thread.sleep(100); activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); }); } while(ime.get()&&System.currentTimeMillis()<deadline);
+            assertFalse("Keyboard must be gone before screen coordinate conversion",ime.get());
+        }
+        evaluate("window.__tapReady=false;(" + expression + ").scrollIntoView({block:'center',inline:'center',behavior:'instant'});requestAnimationFrame(()=>requestAnimationFrame(()=>window.__tapReady=true))");
+        waitFor("window.__tapReady");
+        JSONObject rectangle = new JSONObject(evaluate("(()=>{const element=(" + expression + ");const rectangle=element.getBoundingClientRect();const x=rectangle.x+rectangle.width/2,y=rectangle.y+rectangle.height/2;const viewport=visualViewport;const hit=document.elementFromPoint(x,y);window.__lastTrustedTap={x,y,width:innerWidth,height:innerHeight,offsetX:viewport?.offsetLeft??0,offsetY:viewport?.offsetTop??0,viewportWidth:viewport?.width??innerWidth,hit:hit?.tagName,hitClass:hit?.className,targetHit:element===hit||element.contains(hit)};window.__trustedMediaClick=false;element.addEventListener('click',event=>{window.__trustedMediaClick=event.isTrusted},{once:true,capture:true});return{x:x-(viewport?.offsetLeft??0),y:y-(viewport?.offsetTop??0),width:viewport?.width??innerWidth}})()"));
+        assertEquals("DOM hit testing must reach the selected media control: "+evaluate("JSON.stringify(window.__lastTrustedTap)"),"true",evaluate("window.__lastTrustedTap.targetHit"));
         int[] origin = new int[2]; var width = new java.util.concurrent.atomic.AtomicInteger();
         activity.onActivity(screen -> { var web = screen.getBridge().getWebView(); web.getLocationOnScreen(origin); width.set(web.getWidth()); });
         double scale = width.get() / rectangle.getDouble("width");
-        assertTrue("Trusted input reaches the actual shared media control", androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).click(
+        assertTrue("Trusted input reaches the actual shared media control", device.click(
             origin[0] + (int)Math.round(rectangle.getDouble("x") * scale), origin[1] + (int)Math.round(rectangle.getDouble("y") * scale)));
+        long deadline=System.currentTimeMillis()+5000;
+        while(!"true".equals(evaluate("window.__trustedMediaClick"))&&System.currentTimeMillis()<deadline)Thread.sleep(100);
+        assertEquals("A genuine trusted click must reach the exact selected control: "+evaluate("JSON.stringify(window.__lastTrustedTap)"),"true",evaluate("window.__trustedMediaClick"));
     }
     private void beginAudioHold() throws Exception {
         waitFor("document.querySelector('.audio-hold-button') && !document.querySelector('.audio-hold-button').disabled && window.__nativeActive!==false && document.visibilityState==='visible'");
