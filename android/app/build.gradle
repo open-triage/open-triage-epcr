@@ -29,6 +29,10 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    sourceSets {
+        test.java.srcDir "src/sharedTest/java"
+        androidTest.java.srcDir "src/sharedTest/java"
+    }
     testOptions {
         unitTests.all {
             // JDK HttpURLConnection filters Origin; Android uses its own implementation.

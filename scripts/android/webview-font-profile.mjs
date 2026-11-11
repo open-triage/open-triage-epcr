@@ -44,13 +44,11 @@ export async function withWebViewFontProfile({adb,serial,root,applicationId='org
   let changed=false,failure,result;
   const verifyForPid=async pid=>{
     assert(/^[1-9]\d*$/.test(String(pid)),'An actual startup PID is required');
-    const logs=await text(['logcat','-d',`--pid=${pid}`,'-s','WebViewCommandLine:V','*:S']);
+    const raw=await text(['logcat','-d',`--pid=${pid}`,'-s','chromium:I','cr_WebViewCommandLine:V','WebViewCommandLine:V','*:S']);
+    const logs=raw.split('\n').filter(line=>line.includes('WebViewCommandLine')).join('\n');
     const reports=join(root,'android/app/build/reports/android-font-profile');await mkdir(reports,{recursive:true});
     await writeFile(join(reports,'effective-flags.txt'),logs+'\n');
-    assert.doesNotMatch(logs,/--(?:ignore-certificate-errors(?:-spki-list)?|disable-web-security|allow-insecure-localhost|unsafely-treat-insecure-origin-as-secure)(?:[=\s]|$)/,'Effective fixture must not bypass origin or TLS security');
-    assert.match(logs,/--webview-verbose-logging/,'WebView must report the effective fixture command line');
-    const switches=[...logs.matchAll(/--disable-features=([^\s"']+)/g)].map(match=>match[1]);
-    assert(switches.some(value=>{const features=value.split(',');return WEBVIEW_FONT_FEATURES.split(',').every(feature=>features.includes(feature));}),'The running WebView must confirm both optional font features are disabled');
+    assertEffectiveFontFlags(logs);
     console.log(`PASS Chromium109 optional-font profile effective in startup PID ${pid}`);
   };
   try {
@@ -77,4 +75,12 @@ export async function withWebViewFontProfile({adb,serial,root,applicationId='org
   if(failure)throw failure;
   console.log('PASS scoped WebView font profile restored original flag bytes/mode/absence');
   return result;
+}
+
+/** Chromium109 logs native key/value switch rows; some builds log a CLI string. */
+export function assertEffectiveFontFlags(logs) {
+  assert.doesNotMatch(logs,/--(?:ignore-certificate-errors(?:-spki-list)?|disable-web-security|allow-insecure-localhost|unsafely-treat-insecure-origin-as-secure)(?:[=\s]|$)|WebViewCommandLine ['"](?:ignore-certificate-errors(?:-spki-list)?|disable-web-security|allow-insecure-localhost|unsafely-treat-insecure-origin-as-secure)['"]:/,'Effective fixture must not bypass origin or TLS security');
+  assert.match(logs,/(?:--webview-verbose-logging|WebViewCommandLine ['"]webview-verbose-logging['"]:)/,'WebView must report the effective fixture command line');
+  const switches=[...logs.matchAll(/--disable-features=([^\s"']+)|WebViewCommandLine ['"]disable-features['"]:\s*['"]([^'"]*)['"]/g)].map(match=>match[1]??match[2]);
+  assert(switches.some(value=>{const features=value.split(',');return WEBVIEW_FONT_FEATURES.split(',').every(feature=>features.includes(feature));}),'The running WebView must confirm both optional font features are disabled');
 }
