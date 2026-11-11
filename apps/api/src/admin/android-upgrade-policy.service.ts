@@ -8,7 +8,7 @@ import { evaluateAndroidUpgrade, parseAndroidReleaseLifecycle, parseAndroidUpgra
 import { parseAndroidReleaseDescriptor, approvedAndroidReleaseUrl } from "@open-triage/contracts/android-release";
 import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES } from "@open-triage/contracts/android-client-protocol";
 import catalog from "@open-triage/contracts/config/android-releases.json";
-import lifecycle from "@open-triage/contracts/config/android-release-lifecycle.json";
+import defaultLifecycle from "@open-triage/contracts/config/android-release-lifecycle.json";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { AndroidReleaseService, ANDROID_RELEASE_CATALOG } from "./android-release.service.js";
 import { InstallationEnrollmentService } from "./installation-enrollment.service.js";
@@ -29,7 +29,7 @@ export class AndroidUpgradePolicyService {
     private readonly sessions: ClinicianSessionService, private readonly releases: AndroidReleaseService,
     private readonly enrollment: InstallationEnrollmentService,
     @Optional() @Inject(ANDROID_RELEASE_CATALOG) private readonly approved: unknown = catalog,
-    @Optional() @Inject(ANDROID_RELEASE_LIFECYCLE) private readonly lifecycle: unknown = lifecycle) {}
+    @Optional() @Inject(ANDROID_RELEASE_LIFECYCLE) private readonly lifecycle: unknown = defaultLifecycle) {}
 
   private async administrator(token: string, manager = this.database.manager) {
     const session = await this.sessions.getAuthenticated(token, new Date(), false, manager);

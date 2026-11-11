@@ -87,7 +87,7 @@ grace or replacement availability.
 `GET /api/android/compatibility?versionCode=<installed-version-code>` returns
 `compatible`, `approaching-upgrade`, or `upgrade-required`, with a reason,
 server time, effective deadline or null, policy revision, grace days, and a verified
-compatible replacement route when available. Unknown versions and unsupported
+compatible replacement route with a higher version code when available. Unknown versions and unsupported
 contracts return `upgrade-required` without a grace deadline. A supported release
 without an effective retirement remains `compatible`.
 
@@ -103,6 +103,11 @@ contract and preserves encrypted drafts and their independent recovery deadlines
 This policy endpoint does not itself discard work or extend recovery deadlines.
 
 ## Validation
+
+An early API unit check boots the actual Android providers through Nest with all
+optional catalog, lifecycle and fetch overrides omitted. This exercises production
+constructor defaults before database integration. Foundation HTTP fixtures retain
+bootstrap exceptions as named test failures instead of terminating the whole file.
 
 `npm run check:ci` runs the shared evaluator tests, localized Super-admin browser
 journey, and real PostgreSQL policy/authorization/HTTP integration suite. The

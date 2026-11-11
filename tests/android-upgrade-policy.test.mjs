@@ -21,6 +21,8 @@ test('grace cannot restore unsupported protocol or capabilities and unknown vers
   const value=evaluateAndroidUpgrade({...input,releases,graceDays:365});assert.equal(value.status,'upgrade-required');assert.equal(value.reason,'unsupported');assert.equal(value.deadline,null);
  }
  assert.equal(evaluateAndroidUpgrade({...input,versionCode:9876}).reason,'unknown-release');
+ assert.equal(evaluateAndroidUpgrade({...input,versionCode:9876}).replacement,null,'A lower version cannot be a usable Android upgrade');
+ assert.equal(evaluateAndroidUpgrade({...input,versionCode:2}).replacement,null,'The installed version is not its own upgrade');
 });
 test('retirement requires exact approved compatible replacement; no selected, unavailable or wrong replacement starts a deadline',()=>{
  for(const update of [{status:'unavailable',reason:'not-selected'},{status:'unavailable',reason:'unavailable'},{...replacement,tag:'unselected-release'}, {...replacement,descriptor:{...replacement.descriptor,compatibility:{...replacement.descriptor.compatibility,requiredCapabilities:['missing-v1']}}}]){

@@ -24,7 +24,7 @@ export function evaluateAndroidUpgrade({ versionCode, releases, retirements, gra
   const now = Date.parse(serverTime);
   if (!Number.isFinite(now)) throw new Error("Invalid Android policy server time");
   const release = releases.find(entry => entry.descriptor.versionCode === versionCode);
-  const update = replacement?.status === "available" && isAndroidReleaseCompatible(replacement.descriptor, serverProtocol, serverCapabilities)
+  const update = replacement?.status === "available" && replacement.descriptor.versionCode > versionCode && isAndroidReleaseCompatible(replacement.descriptor, serverProtocol, serverCapabilities)
     ? { tag: replacement.tag, versionCode: replacement.descriptor.versionCode, versionName: replacement.descriptor.versionName, downloadUrl: replacement.downloadUrl, apkSha256: replacement.descriptor.apkSha256 } : null;
   const base = { versionCode, serverTime, deadline: null, replacement: update };
   if (!release) return { ...base, status: "upgrade-required", reason: "unknown-release" };
