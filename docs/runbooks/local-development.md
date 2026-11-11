@@ -281,3 +281,12 @@ The API development command uses Nest to recompile API sources and Node watch mo
 to reload imported workspace libraries after they are rebuilt. Rebuild contracts
 with `npm run build -w @open-triage/contracts` after changing their source; the
 running API then reloads those exports instead of retaining a stale module cache.
+
+## Android development checks
+
+For changes to the Android package, provisioning or shared native transport, also
+run `npm run android:build` and `npm run android:test` before sending an implementation
+PR. The latter uses two disposable synthetic installations and a booted Android 13+
+emulator. Toolchain prerequisites and manual pairing are documented in
+[Android connection development](android-development.md). These supplement
+`npm run check:ci`; browser checks alone do not establish Android acceptance.

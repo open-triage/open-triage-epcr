@@ -1,3 +1,4 @@
+import { AndroidRuntimeGate } from "../components/android-runtime-gate";
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "../components/service-worker-registration";
 import "./styles.css";
@@ -19,7 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        {children}
+        <AndroidRuntimeGate>{children}</AndroidRuntimeGate>
         <ServiceWorkerRegistration />
       </body>
     </html>

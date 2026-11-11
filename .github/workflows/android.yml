@@ -1,0 +1,53 @@
+name: Verify Android connection journey
+
+on:
+  pull_request:
+    branches: [main, feature/android_app]
+  push:
+    branches: [feature/android_app]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-13:
+    name: Android 13 / bundled UI and private CA
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - run: npm ci
+      - name: Build and validate bundled development APK
+        run: npm run android:build
+      - name: Build real synthetic API
+        run: npm run build -w @open-triage/api
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: npm run android:test -- --skip-build
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-development-validation
+          path: |
+            android/app/build/reports/
+            android/app/build/outputs/apk/debug/app-debug.apk

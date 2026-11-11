@@ -78,7 +78,7 @@ for(const language of ['en','sv'])test(`${language} administrator inventory and 
  await page.route('**/api/admin/units/unit/installations',route=>route.fulfill({json:{items:[{id:'1',name:'Cab browser'},{id:'2',name:'Rear PWA'}],nextCursor:null}}));
  await page.route('**/api/admin/units/unit/enrollment',route=>{
  expect(route.request().headers()['x-csrf-token']).toBe('csrf');
- return route.fulfill({json:{token:'A'.repeat(43),origin:'http://127.0.0.1:3109',expiresAt:'2026-10-13T17:00:00Z'}});
+ return route.fulfill({json:{token:'A'.repeat(43),origin:'https://agency.example.test',expiresAt:new Date(Date.now()+240000).toISOString()}});
  });
  await page.goto(`/__enroll?admin=1&language=${language}`);
  const trigger=page.getByRole('button',{name:t('Devices','Enheter'),exact:true});
@@ -89,7 +89,21 @@ for(const language of ['en','sv'])test(`${language} administrator inventory and 
  await issue.focus();await issue.press('Enter');
  await expect(dialog.getByRole('img')).toBeVisible();
  expect(await dialog.getByRole('img').getAttribute('src')).toMatch(/^data:image\/png;base64,/);
- await expect(dialog.getByRole('textbox')).toHaveValue('http://127.0.0.1:3109/enroll/#code='+'A'.repeat(43));
+ await expect(dialog.getByLabel(t('Enrollment link — open in the intended installation','Kopplingslänk — öppna i avsedd installation'))).toHaveValue('https://agency.example.test/enroll/#code='+'A'.repeat(43));
+ const ca=await readFile(path.resolve(__dirname,'../../../android/app/src/test/resources/tls/ca.pem'),'utf8');
+ const caField=dialog.getByLabel(t('Public CA certificates (PEM, optional)','Publika CA-certifikat (PEM, valfritt)'));
+ await caField.fill("-----BEGIN PRIVATE KEY-----");
+ await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
+ await expect(dialog.getByRole('alert')).toBeVisible();
+ await caField.fill(ca);
+ const downloaded=page.waitForEvent('download');
+ await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
+ const download=await downloaded,stream=await download.createReadStream();
+ const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
+ const artifact=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+ expect(artifact).toMatchObject({version:1,origin:'https://agency.example.test',token:'A'.repeat(43),caPem:ca});
+ expect(Object.keys(artifact).sort()).toEqual(['caPem','expiresAt','origin','token','version']);
+ expect(download.suggestedFilename()).toBe('open-triage-pairing.json');
  await dialog.getByRole('button',{name:t('Close','Stäng'),exact:true}).scrollIntoViewIfNeeded();
  await expect(dialog.getByRole('button',{name:t('Close','Stäng'),exact:true})).toBeInViewport();
  await page.screenshot({path:testInfo.outputPath(`inventory-${language}-mobile.png`)});
