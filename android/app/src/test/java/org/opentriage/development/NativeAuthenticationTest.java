@@ -13,12 +13,25 @@ public class NativeAuthenticationTest {
         assertThrows(IllegalArgumentException.class, () -> NativeAuthentication.validateStart(origin, start, "short"));
     }
     @Test public void interruptedHandoffRemainsBoundToConnectionAndPolicy() throws Exception {
-        JSONObject pending = new JSONObject().put("secret", "a".repeat(43)).put("origin", "https://installation.test").put("trust", NativeAuthentication.connectionIdentity("https://installation.test", "ROOT1")).put("context", "policy-v1");
-        assertTrue(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", "policy-v1"));
-        assertFalse(NativeAuthentication.contextMatches(pending, "https://other.test", "ROOT1", "policy-v1"));
-        assertFalse(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", "policy-v2"));
-        assertFalse(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT2", "policy-v1"));
+        JSONObject pending = new JSONObject().put("secret", "a".repeat(43)).put("origin", "https://installation.test").put("trust", NativeAuthentication.connectionIdentity("https://installation.test", "ROOT1")).put("context", "policy-v1").put("installation", "installation-a");
+        assertTrue(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", "policy-v1", "installation-a"));
+        assertFalse(NativeAuthentication.contextMatches(pending, "https://other.test", "ROOT1", "policy-v1", "installation-a"));
+        assertFalse(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", "policy-v2", "installation-a"));
+        assertFalse(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT2", "policy-v1", "installation-a"));
+        assertFalse(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", "policy-v1", "installation-b"));
         pending.remove("context");
-        assertTrue(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", null));
+        assertTrue(NativeAuthentication.contextMatches(pending, "https://installation.test", "ROOT1", null, "installation-a"));
+    }
+    @Test public void installationBindingSurvivesRestartButNotReplacementOrExpiry() throws Exception {
+        JSONObject saved = new JSONObject("{\"cookies\":[{\"name\":\"open_triage_installation\",\"value\":\"stable-installation-token\",\"expires\":2000},{\"name\":\"open_triage_session\",\"value\":\"personal-login-a\",\"expires\":2000}]}");
+        String identity = NativeAuthentication.installationIdentity(saved, 1000);
+        assertEquals(identity, NativeAuthentication.installationIdentity(new JSONObject(saved.toString()), 1000));
+        saved.getJSONArray("cookies").getJSONObject(1).put("value", "personal-login-b");
+        assertEquals(identity, NativeAuthentication.installationIdentity(saved, 1000));
+        saved.getJSONArray("cookies").getJSONObject(0).put("value", "replacement-installation-token");
+        assertNotEquals(identity, NativeAuthentication.installationIdentity(saved, 1000));
+        assertThrows(IllegalStateException.class, () -> NativeAuthentication.installationIdentity(saved, 2000));
+        saved.getJSONArray("cookies").getJSONObject(0).put("value", "");
+        assertThrows(IllegalStateException.class, () -> NativeAuthentication.installationIdentity(saved, 1000));
     }
 }

@@ -90,5 +90,47 @@ integration('runtime PostgreSQL reassignment races rotate authority, demand fres
  assert.match(mixed.find(result=>result.status==='rejected').reason.message,/expired|invalid|used/);
  const stillLive=await run(undefined,()=>service.current(zoneMoved.credential)).catch(()=>null);
  assert.equal(!!stillLive,mixed[1].status==='fulfilled');
+ // Native journal recovery: a committed response can be lost before vault promotion.
+ const nativeOriginal=secret(),attempt=secret(),nativeCode=await issue(fromUnit);
+ const nativeBody={...body(nativeCode.token),attempt};
+ const nativeConsume=(input=nativeBody,credential=nativeOriginal)=>run(credential,()=>service.consume(input,credential));
+ const nativeFirst=await nativeConsume();
+ const receiptBefore=(await admin.query('select consumed_at,expires_at from app_identity.unit_enrollment where token_sha256=$1',[digest(nativeCode.token)])).rows[0];
+ const repeated=await Promise.all([nativeConsume(),nativeConsume()]);
+ for(const receipt of repeated)assert.deepEqual(receipt,nativeFirst,'Lost initial reply retries return the same credential/binding');
+ assert.deepEqual((await admin.query('select consumed_at,expires_at from app_identity.unit_enrollment where token_sha256=$1',[digest(nativeCode.token)])).rows[0],receiptBefore);
+ for(const input of [{...nativeBody,attempt:secret()},{...nativeBody,name:'changed'},{...nativeBody,reassign:true}])await assert.rejects(nativeConsume(input),/attempt.*unavailable/i);
+ await assert.rejects(nativeConsume(nativeBody,secret()),/attempt.*unavailable/i);
+ await assert.rejects(run(nativeOriginal,()=>service.consume(body(nativeCode.token),nativeOriginal)),/expired|invalid|used/);
+ const nativeMoveCode=await issue(toUnit),moveAttempt=secret();
+ const nativeMoveBody={...body(nativeMoveCode.token,true),attempt:moveAttempt};
+ const nativeSession=await login(nativeFirst.credential);
+ const move=()=>run(nativeFirst.credential,()=>service.consume(nativeMoveBody,nativeFirst.credential,nativeSession.sessionToken));
+ const movedNative=await move(); // Simulate discarded HTTP reply; journal still holds the old credential.
+ const afterLost=await move();assert.deepEqual(afterLost,movedNative);
+ assert.equal(movedNative.installation.installationId,nativeFirst.installation.installationId);
+ await assert.rejects(run(movedNative.credential,()=>sessions.getAuthenticated(nativeSession.sessionToken)),/session has ended/);
+ assert.equal((await admin.query('select count(*) n from app_identity.installation_registration where installation_identity_id=$1',[nativeFirst.installation.installationId])).rows[0].n,'2');
+ assert.equal((await admin.query('select count(*) n from app_identity.installation_event where installation_id=$1 and event_type=\'installation-reassigned\'',[nativeFirst.installation.id])).rows[0].n,'1');
+ await assert.rejects(nativeConsume(),/attempt.*unavailable/i,'Older journal cannot revive reassigned binding');
+ await run(undefined,()=>service.revoke('admin',toUnit,movedNative.installation.id));
+ await assert.rejects(move(),/attempt.*unavailable/i,'Revoked result is never redelivered');
+ const expiredCode=await issue(fromUnit),expiredBody={...body(expiredCode.token),attempt:secret()},expiredOriginal=secret();
+ await run(expiredOriginal,()=>service.consume(expiredBody,expiredOriginal));
+ // Expiry is checked again after a waiter acquires current unit authority.
+ await admin.query('begin');await admin.query('select id from app_identity.operational_unit where id=$1 for update',[fromUnit]);
+ const waitingRetry=run(expiredOriginal,()=>service.consume(expiredBody,expiredOriginal));
+ const waitingDenied=assert.rejects(waitingRetry,/attempt.*unavailable/i); waitingDenied.catch(()=>{});
+ let blocked=false;
+ for(let n=0;n<100;n++){
+ await admin.query('select pg_stat_clear_snapshot()');
+ const {rows}=await admin.query("select 1 from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%for share of u%'");
+ if(rows.length){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
+ }
+ assert(blocked,'The retry must genuinely wait for locked unit authority');
+ await admin.query("update app_identity.unit_enrollment set consumed_at=clock_timestamp()-interval '16 minutes' where token_sha256=$1",[digest(expiredCode.token)]);
+ await admin.query('commit');await waitingDenied;
+
+ await assert.rejects(run(expiredOriginal,()=>service.consume(expiredBody,expiredOriginal)),/attempt.*unavailable/i);
  }finally{await admin.query('rollback');await db.destroy();await admin.end();}
 });

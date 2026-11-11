@@ -56,6 +56,26 @@ public class OidcJourneyTest extends PairingJourneyTest {
         }
         fail("The trusted external browser must reach the controlled TLS provider without an SSL exception");
     }
+    private void previewCancellationPreservesAuthentication() throws Exception {
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        var vault=new ConnectionVault(context);
+        JSONObject original=vault.pendingAuthentication();
+        String credentials=vault.read().saved().toString();
+        evaluate("window.__replacementAuth=null;(async()=>{const bridge=window.Capacitor.Plugins.OpenTriageConnection;await bridge.beginReplacement();const outcome=await bridge.finishAuthentication();let denied=false;try{await bridge.beginAuthentication({purpose:'login'});}catch{denied=true;}await bridge.cancel();window.__replacementAuth={outcome:outcome.outcome,denied};})().catch(()=>window.__replacementAuth={failed:true})");
+        waitFor("window.__replacementAuth!==null");
+        assertEquals("A replacement preview cannot redeem an old browser return", "\"idle\"",evaluate("window.__replacementAuth.outcome"));
+        assertEquals("A replacement preview cannot start authentication traffic", "true",evaluate("window.__replacementAuth.denied"));
+        JSONObject retained=vault.pendingAuthentication();
+        assertTrue("Cancelling an unconfirmed preview preserves the exact pending return", original==null?retained==null:retained!=null&&original.toString().equals(retained.toString()));
+        assertTrue("Cancelling an unconfirmed preview preserves original personal and installation authority",credentials.equals(vault.read().saved().toString()));
+        // Normal pairing UI installs the returned connection epoch. This direct
+        // boundary regression reloads the real UI to install that same state.
+        String previousTimeOrigin=evaluate("performance.timeOrigin");
+        evaluate("window.__beforeAuthPreviewReload=true");
+        activity.onActivity(screen->screen.getBridge().getWebView().reload());
+        waitFor("window.__beforeAuthPreviewReload===undefined && performance.timeOrigin!=="+previousTimeOrigin);
+        waitFor("document.querySelector('.session-identity') || "+ORGANIZATION_LOGIN);
+    }
     private void pairIfNeeded() throws Exception {
         var arguments = InstrumentationRegistry.getArguments();
         String encoded = arguments.getString("artifactBase64");
@@ -77,10 +97,10 @@ public class OidcJourneyTest extends PairingJourneyTest {
             assertTrue("Reconnect must restore the real API before the revoked outgoing session can be assessed",reachable);
         }
         activity = ActivityScenario.launch(MainActivity.class);
-        String sessionStatus=null,observedUser=null;
+        String sessionStatus=null,observedUser=null,openedReportId=null;
         try {
             if(phase.equals("pending")){
-                waitFor("document.querySelector('.session-identity')");click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+                waitFor("document.querySelector('.session-identity')");click("Reopen report");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId==="+JSONObject.quote(args.getString("reportId")));
                 if(!"true".equals(evaluate("Boolean(document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]'))")))click("Stationary");
                 waitFor("document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]') && !document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]').matches(':disabled')");
                 for(String command:new String[]{"svc wifi disable","svc data disable"}){
@@ -121,6 +141,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 if ("true".equals(evaluate("Boolean(document.querySelector('.session-identity'))"))) click("Log out");
                 click("Sign in with your organization");
                 provider(false);
+                if(expected.equals("pending"))previewCancellationPreservesAuthentication();
                 var cookiesAfterBegin = new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).read().saved().getJSONArray("cookies");
                 for(int i=0;i<cookiesAfterBegin.length();i++)assertNotEquals("Native initial login clears outgoing cookies rather than storing a tombstone", "open_triage_session", cookiesAfterBegin.getJSONObject(i).getString("name"));
             }
@@ -151,7 +172,14 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 sessionStatus=evaluate("window.__oidc.status");observedUser=evaluate("window.__oidc.session.user.id");
                 String protectedPhase=args.getString("protected", "");
                 if(protectedPhase.equals("create")) {
-                    click("Open call");waitFor("document.querySelector('.encounter-header')");
+                    String issuedExpiry=evaluate("window.__oidc.session.expiresAt");
+                    previewCancellationPreservesAuthentication();
+                    String action=args.getString("openAction"),callNumber=args.getString("callNumber");
+                    assertTrue("The host selects fresh versus existing report explicitly", "Open call".equals(action)||"Reopen report".equals(action));
+                    String button="Array.from(document.querySelectorAll('.assigned-call-card')).find(card=>card.querySelector('strong')?.textContent==="+JSONObject.quote(callNumber)+")?.querySelector('button')";
+                    waitFor(button+" && !("+button+").disabled && ("+button+").textContent.trim()==="+JSONObject.quote(action));
+                    evaluate("("+button+").click()");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId");
+                    openedReportId=evaluate("document.querySelector('.active-report-notice').dataset.reportId");
                     if(!"true".equals(evaluate("Boolean(document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]'))")))click("Stationary");
                     waitFor("document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]')");
                     input("[data-element-id=\"ePatient.03\"] input[type=text]", "ANDROID-OIDC-PROTECTED");
@@ -160,7 +188,6 @@ public class OidcJourneyTest extends PairingJourneyTest {
                     android.os.Bundle evidence=new android.os.Bundle();evidence.putString("retained_sha256",retainedDigest());InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);
                     // Simulate abrupt stop between durable issued-cookie storage
                     // and deletion of its now-consumed pending return slot.
-                    String issuedExpiry=evaluate("window.__oidc.session.expiresAt");
                     assertNotNull(interruptedReturn);new ConnectionVault(targetContext).pendingAuthentication(interruptedReturn);
                     activity.recreate();waitFor("document.querySelector('.session-identity')");
                     long cleanupDeadline=System.currentTimeMillis()+15000;
@@ -191,7 +218,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 waitFor("window.__noSession!==null");assertEquals("401",evaluate("window.__noSession"));
                 sessionStatus=evaluate("window.__noSession");observedUser="null";
             }
-            android.os.Bundle outcomeEvidence=new android.os.Bundle();outcomeEvidence.putString("oidc_session_status",sessionStatus);outcomeEvidence.putString("oidc_session_user",observedUser);InstrumentationRegistry.getInstrumentation().sendStatus(0,outcomeEvidence);
+            android.os.Bundle outcomeEvidence=new android.os.Bundle();outcomeEvidence.putString("oidc_session_status",sessionStatus);if(openedReportId!=null)outcomeEvidence.putString("oidc_report_id",openedReportId);outcomeEvidence.putString("oidc_session_user",observedUser);InstrumentationRegistry.getInstrumentation().sendStatus(0,outcomeEvidence);
             assertEquals("No browser/native credentials may enter persistent setup", "true", evaluate("!JSON.stringify(localStorage).match(/nativeSecret|open_triage_session|open_triage_installation|fictional-access-token/)&&!document.cookie.includes('open_triage_session')"));
             assertNull("The external browser session must never enter WebView cookies", android.webkit.CookieManager.getInstance().getCookie(args.getString("apiOrigin") + "/api"));
         } catch(Exception|AssertionError error) {

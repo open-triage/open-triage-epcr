@@ -16,8 +16,18 @@ final class NativeAuthentication {
         byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest((origin + "\n" + caPem).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
     }
-    static boolean contextMatches(JSONObject pending, String origin, String caPem, String context) throws Exception {
+    static String installationIdentity(JSONObject saved, long now) throws Exception {
+        var cookies = saved.getJSONArray("cookies");
+        for (int i = 0; i < cookies.length(); i++) {
+            var cookie = cookies.getJSONObject(i);
+            if (cookie.getString("name").equals("open_triage_installation") && cookie.getLong("expires") > now && !cookie.getString("value").isEmpty())
+                return connectionIdentity("installation", cookie.getString("value"));
+        }
+        throw new IllegalStateException("Live installation required");
+    }
+    static boolean contextMatches(JSONObject pending, String origin, String caPem, String context, String installation) throws Exception {
         return pending.getString("origin").equals(origin) && pending.getString("trust").equals(connectionIdentity(origin, caPem)) &&
-            Objects.equals(pending.optString("context", null), context);
+            Objects.equals(pending.optString("context", null), context) && installation != null &&
+            installation.equals(pending.optString("installation", null));
     }
 }

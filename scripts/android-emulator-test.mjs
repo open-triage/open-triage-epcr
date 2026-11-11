@@ -1,3 +1,4 @@
+import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -10,13 +11,14 @@ import { fixtureApi as api } from './android/fixture-client.mjs';
 import { runOidcJourney } from './android/oidc-journey.mjs';
 import { runManagedJourneys } from './android/managed-journey.mjs';
 import { seedReportFixture } from './android/report-fixture.mjs';
+import { runReassignmentTransition } from './android/reassignment-journey.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
 const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-android-${randomUUID()}`;
 const adb = join(process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? '', 'platform-tools/adb');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554', children = [];
-let ownsContainer = false;
+let ownsContainer = false, fixtures;
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
   if (result.error) throw result.error;
@@ -26,11 +28,13 @@ try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
   if (!process.argv.includes('--skip-build')) { run('npm', ['run', 'android:build']); run('npm', ['run', 'build', '-w', '@open-triage/api']); }
   const fixturesArgument = process.argv.indexOf('--fixtures');
-  let fixtures;
   if (fixturesArgument !== -1) fixtures = JSON.parse(await readFile(process.argv[fixturesArgument + 1], 'utf8'));
   else { ownsContainer = true; fixtures = await prepareFixtures(root, directory, run, docker, container); }
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/debug/app-debug.apk')]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]);
+  run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
+  const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
@@ -62,7 +66,7 @@ try {
   }
   if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
   else {
-    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api });
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
     await runManagedJourneys({root, fixtures, run, api, adb, serial});
   }
   if (!process.argv.includes('--external-apis')) {
@@ -70,6 +74,9 @@ try {
     await new Promise(resolve => { secondApi.once('exit', resolve); secondApi.kill('SIGTERM'); });
     await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
   } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
+} catch (error) {
+  if (error?.androidFailureCaptured) throw error;
+  await preserveAndroidFailure(error, {root,adb,serial,secrets:(fixtures??[]).flatMap(fixture=>[fixture.administratorPassword,fixture.clinicianPassword])});
 } finally {
   for (const child of children) child.kill('SIGTERM');
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });

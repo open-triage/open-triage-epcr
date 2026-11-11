@@ -50,7 +50,14 @@ ordinary public session and CSRF material through `/api/sessions/current`.
 A browser cancellation leaves login available; a new login replaces the pending
 native return. Local login/logout removes it. Network loss retains the encrypted
 return until its original expiry, allowing restart after process termination.
-The pending return is also bound to the exact approved origin and CA identity.
+The pending return is also bound to the exact approved origin, CA identity and
+stable live installation credential. Personal login changes and process restart
+preserve that binding; replacement pairing or installation expiry invalidates it.
+An unconfirmed replacement preview pauses authentication traffic without discarding
+the original login or pending return, so cancellation can resume the original
+context. Confirmed pending enrollment blocks authentication until its durable
+journal resolves. Delayed authentication outcomes cannot navigate a newer
+connection context.
 Managed policy checks apply before and after every native request and before
 browser launch; changed/blocked policy cannot revive an old connection. Losing
 native return storage requires a new login, not a provider/session-cookie import.
@@ -88,7 +95,11 @@ The service/browser suite additionally rejects wrong/missing installations,
 wrong redemption/correlation/origin, replay, cancellation, expired/revoked
 sessions, changed provider policy and withdrawn recovery authority.
 `npm run android:test -- --skip-build --oidc-only` runs the same real OIDC and
-clinical-work journey with fresh fixtures for focused iteration. The default
+clinical-work journey with fresh fixtures for focused iteration. Default
+acceptance reopens the exact report previously created by the protected-work
+journey and uses its actual revision baseline; focused acceptance opens the
+fresh assigned call. Both require an actual API-acknowledged online marker
+before producing offline unacknowledged ciphertext. The default
 command retains all preceding acceptance journeys. `--skip-oidc` is only for focused `--external-apis` diagnostics; default/CI
 acceptance includes OIDC. Synthetic emulator acceptance does not establish real
 regional provider or physical-device acceptance: record those in ticket 019.

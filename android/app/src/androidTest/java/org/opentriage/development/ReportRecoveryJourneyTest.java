@@ -133,8 +133,7 @@ public class ReportRecoveryJourneyTest {
     private void prepare() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64", ""), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
-        waitFor("document.querySelector('input[type=file]')");
-        evaluate("(()=>{const input=document.querySelector('input[type=file]'),files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
         waitFor("document.querySelector('input[type=checkbox]')");
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Synthetic recovery ambulance");
         evaluate("document.querySelector('input[type=checkbox]').click()");
@@ -240,6 +239,63 @@ public class ReportRecoveryJourneyTest {
         waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'"); serverValue(RETAINED);
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
     }
+    private void reassignWithLostResponse() throws Exception {
+        var args = InstrumentationRegistry.getArguments();
+        waitFor("document.querySelector('[data-change-installation]')");
+        evaluate("document.querySelector('[data-change-installation]').click()");
+        JSONObject expiring = new JSONObject(new String(android.util.Base64.decode(args.getString("expiredArtifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8));
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, expiring.toString());
+        waitFor("document.querySelector('input[type=checkbox]')");
+        var fault = new TrustedConnection(expiring.getString("origin"), expiring.getString("caPem"));
+        var expired = fault.request("/api/__android-enrollment-expire", "POST", new JSONObject().put("content-type", "application/json"), new JSONObject().put("token", expiring.getString("token")).toString());
+        assertTrue(new JSONObject(expired.body()).getBoolean("expired"));
+        setInput("document.querySelector('input[maxlength=\"100\"]')", "Expired preview");
+        evaluate("document.querySelector('input[type=checkbox]').click()");waitFor("!document.querySelector('button[type=submit]').disabled");
+        evaluate("document.querySelector('form').requestSubmit()");
+        waitFor("document.querySelector('input[type=file]') && document.querySelector('[role=alert]')");
+        assertNull("Definitively rejected first request must allow a fresh code", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        var armed = fault.request("/api/__android-enrollment-drop-arm", "POST", new JSONObject().put("content-type", "application/json"), "{}");
+        assertTrue(new JSONObject(armed.body()).getBoolean("armed"));
+        String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
+        waitFor("document.querySelector('input[type=checkbox]')");
+        setInput("document.querySelector('input[maxlength=\"100\"]')", "Reassigned Android installation");
+        evaluate("document.querySelector('input[type=checkbox]').click()");
+        waitFor("!document.querySelector('button[type=submit]').disabled");
+        evaluate("document.querySelector('form').requestSubmit()");
+        waitFor("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Retry confirmed pairing')");
+        assertEquals("No personal UI may remain after confirmed transition", "null", evaluate("document.querySelector('.session-identity')"));
+        var vault = new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        JSONObject pending = vault.pending(); assertNotNull("Reply loss must retain the encrypted native journal", pending);
+        assertEquals(43, pending.getJSONObject("body").getString("attempt").length());
+        var candidateCookies = pending.getJSONObject("candidate").getJSONArray("cookies");
+        for (int i=0;i<candidateCookies.length();i++) assertNotEquals("Candidate must never reuse personal authentication", "open_triage_session", candidateCookies.getJSONObject(i).getString("name"));
+        assertFalse("Journal secret cannot be readable in WebView storage", evaluate("JSON.stringify({...localStorage})").contains(pending.getJSONObject("body").getString("attempt")));
+        records(); assertEquals(args.getString("retainedSha256"), retainedDigest());
+        var ready = new android.os.Bundle(); ready.putString("opentriage_phase", "ready-for-process-kill");
+        InstrumentationRegistry.getInstrumentation().sendStatus(2, ready);
+        Thread.sleep(600000); fail("Host must kill the process holding the unacknowledged journal");
+    }
+    private void resumeReassignment() throws Exception {
+        var args = InstrumentationRegistry.getArguments();
+        waitFor("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Retry confirmed pairing')");
+        var vault=new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        assertNotNull(vault.pending());
+        String journal=vault.pending().toString();
+        evaluate("window.__pendingAuthentication=null;(async()=>{const bridge=window.Capacitor.Plugins.OpenTriageConnection;const outcome=await bridge.finishAuthentication();let denied=false;try{await bridge.beginAuthentication({purpose:'login'});}catch{denied=true;}window.__pendingAuthentication={outcome:outcome.outcome,denied};})().catch(()=>window.__pendingAuthentication={failed:true})");
+        waitFor("window.__pendingAuthentication!==null");
+        assertEquals("Confirmed pending enrollment cannot redeem a browser return", "\"idle\"",evaluate("window.__pendingAuthentication.outcome"));
+        assertEquals("Confirmed pending enrollment cannot begin authentication", "true",evaluate("window.__pendingAuthentication.denied"));
+        assertTrue("Authentication attempts preserve the exact enrollment journal",journal.equals(vault.pending().toString()));
+        click("Retry confirmed pairing"); waitFor("document.querySelector('input[name=username]')");
+        assertNull("Promotion and journal removal commit atomically", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        assertEquals("Existing personal evidence is not restored by retried pairing", "null", evaluate("document.querySelector('.session-identity')"));
+        evaluate("window.__binding=null;fetch('/api/installations/current').then(response=>response.json()).then(value=>window.__binding=value)");
+        waitFor("window.__binding?.enrolled");
+        assertEquals(JSONObject.quote(args.getString("unitId")), evaluate("window.__binding.installation.unitId"));
+        assertEquals(JSONObject.quote(args.getString("installationId")), evaluate("window.__binding.installation.installationId"));
+        records(); assertEquals("Reassignment and process loss preserve exact eligible encrypted work", args.getString("retainedSha256"), retainedDigest());
+    }
     @Test public void realProcessRecovery() throws Exception {
         String phase = InstrumentationRegistry.getArguments().getString("phase", "");
         if (phase.equals("offline")) {
@@ -251,6 +307,8 @@ public class ReportRecoveryJourneyTest {
         switch (phase) {
             case "prepare": prepare(); break;
             case "offline": offlineRestart(); activity.close(); break;
+            case "reassign": reassignWithLostResponse(); break;
+            case "resume-reassignment": resumeReassignment(); activity.close(); break;
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
             default: fail("Host must supply a recovery phase");

@@ -21,6 +21,9 @@ public class OpenTriageConnectionPlugin extends Plugin {
     private JSONObject pairing;
     private ConnectionVault vault;
     private boolean loaded;
+    private volatile JSONObject pendingEnrollment;
+    private volatile boolean replacing;
+    private volatile String connectionContext = java.util.UUID.randomUUID().toString();
     private ManagedConfiguration management;
     private BroadcastReceiver restrictionReceiver;
     private final ManagedPolicyRevision revisions = new ManagedPolicyRevision();
@@ -29,7 +32,7 @@ public class OpenTriageConnectionPlugin extends Plugin {
     private volatile boolean destroyed;
     private void initialize() throws Exception {
         if (!loaded) {
-            vault = new ConnectionVault(getContext()); active = vault.read();
+            vault = new ConnectionVault(getContext()); active = vault.read(); pendingEnrollment = vault.pending();
             if (management == null) management = new ManagedConfiguration(getContext());
             sampledPolicy(); loaded = true;
         }
@@ -47,14 +50,14 @@ public class OpenTriageConnectionPlugin extends Plugin {
             try {
                 var observed = sampledPolicy(); // Observe changes even while a request occupies the connection executor.
                 TrustedConnection retained = active;
-                var effectiveObserved = observed.forConnection(retained);
+                var effectiveObserved = pairingPolicy(observed, retained);
                 // A blocked policy must lock readable UI immediately, not wait behind an in-flight HTTP request.
                 if (effectiveObserved.blocked() && !destroyed) notifyListeners("configurationChanged", statePayload(effectiveObserved, retained));
                 if (destroyed) return;
                 executor.execute(() -> {
                     if (destroyed) return;
                     try {
-                        initialize(); var effective = policy();
+                        initialize(); var effective = pairingPolicy(sampledPolicy(), active);
                         if (effective.blocked() || candidate != null && effective.managed() && !effective.matches(candidate)) { candidate = null; pairing = null; }
                         if (!destroyed) notifyListeners("configurationChanged", connectionState());
                     } catch (Exception ignored) {
@@ -71,15 +74,18 @@ public class OpenTriageConnectionPlugin extends Plugin {
         }
     }
     @Override protected void handleOnResume() { refreshManagement(); super.handleOnResume(); }
+    private ManagedConnectionPolicy.State pairingPolicy(ManagedConnectionPolicy.State raw, TrustedConnection retained) throws Exception { return replacing || pendingEnrollment != null ? raw : raw.forConnection(retained); }
     private ManagedConnectionPolicy.State policy() throws Exception { return sampledPolicy().forConnection(active); }
     private JSObject connectionState() throws Exception {
         TrustedConnection retained = active;
-        return statePayload(sampledPolicy().forConnection(retained), retained);
+        return statePayload(pairingPolicy(sampledPolicy(), retained), retained);
     }
-    private JSObject statePayload(ManagedConnectionPolicy.State policy, TrustedConnection retained) {
-        JSObject result = new JSObject(); result.put("configured", retained != null && !policy.blocked());
+    private JSObject statePayload(ManagedConnectionPolicy.State policy, TrustedConnection retained) throws Exception {
+        JSObject result = new JSObject(); result.put("configured", retained != null && !policy.blocked() && pendingEnrollment == null && !replacing);
+        result.put("connectionContext", connectionContext); result.put("replacementPending", pendingEnrollment != null);
         result.put("managed", policy.managed()); result.put("managedStatus", policy.status()); result.put("blocked", policy.blocked());
-        if (retained != null) result.put("origin", retained.origin);
+        if (retained != null) { result.put("origin", retained.origin); result.put("storageScope", NativeConnectionIdentity.storageScope(retained.origin)); }
+        if (vault != null) { String legacyScope = vault.legacyStorageScope(); if (legacyScope != null) result.put("legacyStorageScope", legacyScope); }
         if (policy.origin() != null) result.put("managedOrigin", policy.origin());
         if (policy.context() != null) result.put("managedContext", policy.context());
         return result;
@@ -88,6 +94,18 @@ public class OpenTriageConnectionPlugin extends Plugin {
         var policy = policy();
         if (policy.blocked()) throw new ManagedFailure("MANAGED_BLOCKED");
         if (policy.managed() && !policy.matches(connection)) throw new ManagedFailure("MANAGED_CONFLICT");
+    }
+    private void allowedCandidate(TrustedConnection connection) throws Exception {
+        var policy = sampledPolicy();
+        if (policy.blocked()) throw new ManagedFailure("MANAGED_BLOCKED");
+        if (policy.managed() && !policy.matches(connection)) throw new ManagedFailure("MANAGED_CONFLICT");
+    }
+    private TrustedConnection.Reply candidateRequest(TrustedConnection connection, String path, String method, JSONObject headers, String body) throws Exception {
+        allowedCandidate(connection); long generation = revisions.current();
+        var reply = connection.request(path, method, headers, body);
+        allowedCandidate(connection);
+        if (destroyed || Thread.currentThread().isInterrupted() || generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
+        return reply;
     }
     private TrustedConnection.Reply managedRequest(TrustedConnection connection, String path, String method, JSONObject headers, String body) throws Exception {
         allowed(connection);
@@ -124,44 +142,75 @@ public class OpenTriageConnectionPlugin extends Plugin {
         return connectionState();
     }); }
     @PluginMethod public void preview(PluginCall call) { execute(call, () -> {
-        if (active != null) throw new IllegalStateException("Use installation reassignment");
+        if (pendingEnrollment != null || active != null && !replacing) throw new IllegalStateException("Use installation reassignment");
         candidate = null; pairing = null;
         JSONObject artifact = TrustedConnection.artifact(call.getString("artifact", ""), System.currentTimeMillis());
-        TrustedConnection next = new TrustedConnection(artifact.getString("origin"), artifact.getString("caPem"));
-        allowed(next);
+        TrustedConnection next = active == null ? new TrustedConnection(artifact.getString("origin"), artifact.getString("caPem")) : active.enrollmentCandidate(artifact.getString("origin"), artifact.getString("caPem"));
+        allowedCandidate(next);
         long generation = revisions.current();
-        TrustedConnection.Reply current = managedRequest(next, "/api/installations/current", "GET", new JSONObject(), null);
+        TrustedConnection.Reply current = candidateRequest(next, "/api/installations/current", "GET", new JSONObject(), null);
         if (current.status() != 200) throw new IllegalStateException("Connection failed");
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
-        TrustedConnection.Reply response = managedRequest(next, "/api/installations/preview", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), new JSONObject().put("token", artifact.getString("token")).toString());
+        TrustedConnection.Reply response = candidateRequest(next, "/api/installations/preview", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), new JSONObject().put("token", artifact.getString("token")).toString());
         if (response.status() != 201 && response.status() != 200) throw new IllegalStateException("Pairing rejected");
-        allowed(next);
+        allowedCandidate(next);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
         JSONObject preview = new JSONObject(response.body());
         JSObject result = new JSObject(); result.put("origin", next.origin);
         for (String key : new String[]{"organizationName", "unitName", "callSign"}) result.put(key, preview.getString(key));
         candidate = next; pairing = artifact;
+        pairing.put("reassign", new JSONObject(current.body()).optBoolean("enrolled", false));
         return result;
     }); }
     @PluginMethod public void confirm(PluginCall call) { execute(call, () -> {
-        if (active != null || candidate == null || pairing == null || !Boolean.TRUE.equals(call.getBoolean("confirmInstallation"))) throw new IllegalStateException("Confirmation required");
-        TrustedConnection.artifact(pairing.toString(), System.currentTimeMillis());
+        if (pendingEnrollment != null || active != null && !replacing || candidate == null || pairing == null || !Boolean.TRUE.equals(call.getBoolean("confirmInstallation"))) throw new IllegalStateException("Confirmation required");
+        JSONObject artifact = new JSONObject(pairing.toString()); artifact.remove("reassign");
+        TrustedConnection.artifact(artifact.toString(), System.currentTimeMillis());
         String name = call.getString("name", "").trim();
         if (name.isEmpty() || name.length() > 100 || name.matches("(?s).*[\\x00-\\x1f\\x7f].*")) throw new IllegalArgumentException("Installation name required");
-        allowed(candidate);
-        long generation = revisions.current();
-        JSONObject body = new JSONObject().put("token", pairing.getString("token")).put("name", name).put("confirmInstallation", true);
-        var response = managedRequest(candidate, "/api/installations/enroll", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), body.toString());
-        if (response.status() != 201 && response.status() != 200) throw new IllegalStateException("Pairing rejected");
-        if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
-        allowed(candidate);
-        if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
-        vault.write(candidate); active = candidate; candidate = null; pairing = null;
-        JSObject result = new JSObject(); result.put("configured", true); return result;
+        allowedCandidate(candidate);
+        byte[] secret = new byte[32]; new java.security.SecureRandom().nextBytes(secret);
+        String attempt = android.util.Base64.encodeToString(secret, android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING);
+        JSONObject body = new JSONObject().put("token", pairing.getString("token")).put("name", name).put("confirmInstallation", true).put("attempt", attempt);
+        if (pairing.optBoolean("reassign")) body.put("reassign", true);
+        JSONObject prepared = new JSONObject().put("candidate", candidate.saved()).put("body", body).put("createdAt", System.currentTimeMillis());
+        TrustedConnection retained = active == null ? null : active.enrollmentCandidate(active.origin, active.caPem);
+        vault.stage(retained, prepared); active = retained; pendingEnrollment = prepared; connectionContext = java.util.UUID.randomUUID().toString();
+        vault.pendingAuthentication(null);
+        return finishEnrollment(true);
     }); }
-    @PluginMethod public void cancel(PluginCall call) { execute(call, () -> { candidate = null; pairing = null; return new JSObject(); }); }
+    private JSObject finishEnrollment(boolean firstRequest) throws Exception {
+        if (pendingEnrollment == null) throw new IllegalStateException("No pending enrollment");
+        TrustedConnection next = TrustedConnection.restore(pendingEnrollment.getJSONObject("candidate"));
+        allowedCandidate(next); long generation = revisions.current();
+        var response = candidateRequest(next, "/api/installations/enroll", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), pendingEnrollment.getJSONObject("body").toString());
+        if (response.status() != 201 && response.status() != 200) {
+            // An explicit rejection of the first request cannot have committed
+            // this attempt. Network ambiguity or a resumed attempt stays locked.
+            if (firstRequest && response.status() >= 400 && response.status() < 500) {
+                vault.promote(active); pendingEnrollment = null; candidate = null; pairing = null;
+            }
+            throw new IllegalStateException("Pairing rejected");
+        }
+        allowedCandidate(next);
+        if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
+        // The credential and journal removal share one encrypted durable commit.
+        vault.promote(next); active = next; pendingEnrollment = null; replacing = false; candidate = null; pairing = null;
+        connectionContext = java.util.UUID.randomUUID().toString();
+        return connectionState();
+    }
+    @PluginMethod public void resumeEnrollment(PluginCall call) { execute(call, () -> finishEnrollment(false)); }
+    @PluginMethod public void beginReplacement(PluginCall call) { execute(call, () -> {
+        if (pendingEnrollment != null) throw new IllegalStateException("Resolve the pending enrollment first");
+        // Shared UI has settled encrypted writers before this native boundary.
+        replacing = true; candidate = null; pairing = null; connectionContext = java.util.UUID.randomUUID().toString();
+        return connectionState();
+    }); }
+    @PluginMethod public void cancel(PluginCall call) { execute(call, () -> { if (pendingEnrollment != null) throw new IllegalStateException("Resolve confirmed enrollment first"); candidate = null; pairing = null; replacing = false; connectionContext = java.util.UUID.randomUUID().toString(); return connectionState(); }); }
     @PluginMethod public void request(PluginCall call) { execute(call, () -> {
-        if (active == null) throw new IllegalStateException("Pairing required");
+        if (active == null || pendingEnrollment != null || replacing) throw new IllegalStateException("Pairing required");
+        String requestedContext = call.getString("connectionContext");
+        if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
         allowed(active);
         long generation = revisions.current();
         String path = call.getString("path", "");
@@ -170,14 +219,16 @@ public class OpenTriageConnectionPlugin extends Plugin {
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         allowed(active);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
+        if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
         vault.write(active);
         JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("body", response.body()); return result;
     }); }
     @PluginMethod public void beginAuthentication(PluginCall call) { execute(call, () -> {
-        if (active == null) throw new IllegalStateException("Pairing required");
+        if (active == null || pendingEnrollment != null || replacing) throw new IllegalStateException("Pairing required");
         allowed(active);
         String purpose = call.getString("purpose", "");
         if (!purpose.equals("login") && !purpose.equals("switch")) throw new IllegalArgumentException("Invalid login purpose");
+        String installation = NativeAuthentication.installationIdentity(active.saved(), System.currentTimeMillis());
         // Discard an older native return before beginning a new explicit login.
         vault.pendingAuthentication(null);
         JSONObject headers = new JSONObject().put("content-type", "application/json").put("x-personal-authentication", "1");
@@ -191,7 +242,8 @@ public class OpenTriageConnectionPlugin extends Plugin {
         allowed(active);
         long revision = revisions.current();
         vault.pendingAuthentication(new JSONObject().put("secret", secret).put("origin", active.origin)
-            .put("trust", NativeAuthentication.connectionIdentity(active.origin, active.caPem)).put("context", policy().context()));
+            .put("trust", NativeAuthentication.connectionIdentity(active.origin, active.caPem)).put("context", policy().context())
+            .put("installation", installation));
         // The external browser owns provider pages; none inherits the Capacitor bridge.
         var launched = new java.util.concurrent.CountDownLatch(1);
         var failure = new java.util.concurrent.atomic.AtomicReference<Exception>();
@@ -211,10 +263,18 @@ public class OpenTriageConnectionPlugin extends Plugin {
         return new JSObject();
     }); }
     @PluginMethod public void finishAuthentication(PluginCall call) { execute(call, () -> {
-        JSONObject pending = vault.pendingAuthentication();
         JSObject result = new JSObject(); result.put("outcome", "idle");
+        // Preview cancellation preserves the original return; confirmed replacement
+        // cannot send or redeem authentication traffic under outgoing authority.
+        if (pendingEnrollment != null || replacing) return result;
+        JSONObject pending = vault.pendingAuthentication();
         if (pending == null) return result;
-        if (active == null || !NativeAuthentication.contextMatches(pending, active.origin, active.caPem, policy().context())) {
+        String installation = null;
+        if (active != null) {
+            try { installation = NativeAuthentication.installationIdentity(active.saved(), System.currentTimeMillis()); }
+            catch (IllegalStateException expiredInstallation) { /* Old returns cannot revive an expired enrollment. */ }
+        }
+        if (active == null || !NativeAuthentication.contextMatches(pending, active.origin, active.caPem, policy().context(), installation)) {
             vault.pendingAuthentication(null); return result;
         }
         var reply = managedRequest(active, "/api/sessions/oidc/native/finish", "POST", new JSONObject().put("content-type", "application/json").put("x-personal-authentication", "1"),

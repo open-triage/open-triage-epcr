@@ -1,3 +1,4 @@
+import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync, fork } from 'node:child_process';
@@ -68,6 +69,8 @@ try {
   await writeFile(join(bDirectory, 'upgrade-evidence.json'), JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });
   policy({});
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');
+} catch (error) {
+  await preserveAndroidFailure(error, {root,adb,serial,applicationId:'org.opentriage.android'});
 } finally {
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });
   for (const child of children) child.kill('SIGTERM');

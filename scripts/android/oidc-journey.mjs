@@ -6,7 +6,9 @@ import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {DataSource} from 'typeorm';
 import {runInstrumentation} from './instrumentation.mjs';
+import {captureAndroidFailure} from './diagnostics.mjs';
 import {assertNativeAuthenticationOutcome} from './authentication-outcome.mjs';
+import {oidcReportContext} from './oidc-report-context.mjs';
 
 /** Actual external-browser trust is installed independently through the test-only DPC. */
 export async function runOidcJourney({root,fixture,adb,serial,api}) {
@@ -58,16 +60,22 @@ export async function runOidcJourney({root,fixture,adb,serial,api}) {
     const [pendingDelivery]=await db.query("select count(*)::int count from app_identity.oidc_personal_transaction where result='pending' and native_delivered_at is not null");assert.equal(pendingDelivery.count,1,'Unknown identity return must actually settle its native transaction');
     const [pending]=await db.query("select id from app_identity.regional_identity_request where group_id=$1 and subject='android-unknown'",[group]);assert(pending,'Unknown identity must await ordinary approval');
     await db.query('update app_identity.regional_identity_request set linked_user_id=$2,linked_by=$3,linked_at=clock_timestamp() where id=$1',[pending.id,fixture.clinician.userId,fixture.administrator.userId]);
-    const protectedOutput=await instrument('login',{userId:fixture.clinician.userId,protected:'create'});
+    const callNumber=`ANDROID-OFFLINE-${fixture.index}`;
+    const reportContext=oidcReportContext(await db.query('select assignment.call_number,assignment.report_id,report.documenting_user_id,report.revision from clinical.call_assignment assignment left join clinical.report report on report.id=assignment.report_id where assignment.organization_id=$1 and assignment.call_number=$2',[fixture.organizationId,callNumber]),{callNumber,userId:fixture.clinician.userId});
+    const protectedOutput=await instrument('login',{userId:fixture.clinician.userId,protected:'create',openAction:reportContext.openAction,callNumber});
     let retainedSha256=/retained_sha256=([a-f0-9]{64})/.exec(protectedOutput)?.[1];assert(retainedSha256,'The native OIDC session must retain actual encrypted clinical work');
     // Age current login proof without expiring the session. Native recovery uses
     // the unchanged login, never a five-minute proof or another provider round-trip.
     await db.query("update app_identity.app_session set personally_authenticated_at=clock_timestamp()-interval '6 minutes' where user_id=$1 and revoked_at is null",[fixture.clinician.userId]);
-    const [report]=await db.query('select id from clinical.report where documenting_user_id=$1 order by created_at desc limit 1',[fixture.clinician.userId]);
-    assert(report,'The native OIDC clinical journey must create its real report');
+    const [report]=await db.query('select report.id,report.revision from clinical.report report join clinical.call_assignment assignment on assignment.report_id=report.id where report.documenting_user_id=$1 and assignment.call_number=$2',[fixture.clinician.userId,callNumber]);
+    assert(report,'The native OIDC clinical journey must use its real seeded report');
+    assert.equal(JSON.parse(/oidc_report_id=([^\r\n]+)/.exec(protectedOutput)?.[1]??'null'),report.id,'The actual rendered report must be the fixture report acknowledged by the API');
+    if(reportContext.reportId)assert.equal(report.id,reportContext.reportId,'Default acceptance reuses the same report rather than creating a substitute');
     const firstName=async()=> (await db.query("select value_text from clinical.element_occurrence where report_id=$1 and element_id='ePatient.03' and tombstoned_at is null",[report.id]))[0]?.value_text;
     for(let i=0;i<150&&await firstName()!=='ANDROID-OIDC-PROTECTED';i++)await new Promise(resolve=>setTimeout(resolve,100));
     assert.equal(await firstName(),'ANDROID-OIDC-PROTECTED','The online setup edit must be actually acknowledged before testing pending work');
+    const [acknowledged]=await db.query('select revision from clinical.report where id=$1',[report.id]);
+    if(reportContext.baselineRevision!==null)assert(Number(acknowledged.revision)>reportContext.baselineRevision,'The OIDC marker must advance the existing report from its actual baseline');
     const [before]=await db.query('select recovery_deadline from offline_recovery.report_key_envelope where report_id=$1',[report.id]);
     await instrument('recovery',{reportId:report.id});
     const [after]=await db.query('select recovery_deadline from offline_recovery.report_key_envelope where report_id=$1',[report.id]);assert.equal(after.recovery_deadline.toISOString(),before.recovery_deadline.toISOString());
@@ -112,6 +120,8 @@ export async function runOidcJourney({root,fixture,adb,serial,api}) {
     const [afterPins]=await db.query('select form_version_id,catalog_release_id,validation_version_id from clinical.report where id=$1',[report.id]);assert.deepEqual(afterPins,pins);
     console.log('PASS actual native OIDC: independently trusted system browser, unknown/approved identity, shared-device user switching, native session cookie isolation, >5-minute current-login recovery/deadline and abrupt process-loss return');
   } catch(error) {
+    try { await captureAndroidFailure({root,adb,serial,secrets:[fixture.administratorPassword,fixture.clinicianPassword]});error.androidFailureCaptured=true; }
+    catch { console.error('OIDC native diagnostics unavailable; original failure retained'); }
     const states=await db.query(`select purpose,result,native_started_at is not null started,completed_at is not null completed,
       native_delivered_at is not null delivered from app_identity.oidc_personal_transaction order by created_at`);
     console.log('Synthetic OIDC failure',JSON.stringify({name:error?.name,message:error?.code==='ERR_ASSERTION'?error.message:'Fixture operation failed'}));

@@ -43,8 +43,31 @@ final class ConnectionVault {
         JSONObject envelope = new JSONObject().put("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)).put("body", Base64.encodeToString(encrypted, Base64.NO_WRAP));
         if (!preferences.edit().putString(slot, envelope.toString()).commit()) throw new IllegalStateException("Connection storage unavailable");
     }
-    TrustedConnection read() throws Exception { JSONObject value = readJson("encrypted"); return value == null ? null : TrustedConnection.restore(value); }
-    void write(TrustedConnection connection) throws Exception { writeJson("encrypted", connection.saved()); }
+    TrustedConnection read() throws Exception {
+        var saved = readJson("encrypted"); return saved == null || !saved.has("connection") && !saved.has("origin") ? null : TrustedConnection.restore(saved.has("connection") ? saved.getJSONObject("connection") : saved);
+    }
+    JSONObject pending() throws Exception { var saved = readJson("encrypted"); return saved == null ? null : saved.optJSONObject("enrollment"); }
+    String legacyStorageScope() throws Exception {
+        JSONObject state = readJson("encrypted");
+        if (state == null) return null;
+        // The authenticated pre-transition vault had exactly one possible server.
+        if (state.has("origin")) return NativeConnectionIdentity.storageScope(TrustedConnection.restore(state).origin);
+        if (!state.has("legacyStorageScope")) return null;
+        String scope = state.getString("legacyStorageScope");
+        if (!scope.matches("[A-Za-z0-9_-]{43}") || !java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(java.util.Base64.getUrlDecoder().decode(scope)).equals(scope)) throw new IllegalStateException("Invalid legacy storage proof");
+        return scope;
+    }
+    void write(TrustedConnection connection) throws Exception { writeState(connection, pending()); }
+    void stage(TrustedConnection connection, JSONObject enrollment) throws Exception { writeState(connection, enrollment); }
+    void promote(TrustedConnection connection) throws Exception { writeState(connection, null); }
+    private void writeState(TrustedConnection connection, JSONObject enrollment) throws Exception {
+        JSONObject state = new JSONObject();
+        String legacyScope = legacyStorageScope();
+        if (legacyScope != null) state.put("legacyStorageScope", legacyScope);
+        if (connection != null) state.put("connection", connection.saved());
+        if (enrollment != null) state.put("enrollment", enrollment);
+        writeJson("encrypted", state);
+    }
     JSONObject pendingAuthentication() throws Exception { return readJson("oidc-return"); }
     void pendingAuthentication(JSONObject value) throws Exception { writeJson("oidc-return", value); }
 }
