@@ -1,4 +1,5 @@
 {
+  "navigation.discardChanges": "Du har osparade ändringar. Lämna och kasta ändringarna? Välj Avbryt för att stanna och spara.",
   "platform.error.calls.newJobConnectionRequired": "Du måste vara ansluten för att skapa eller öppna ett uppdrag. Anslut och försök igen.",
   "platform.error.admin.oidcInvalid": "Ogiltigt OIDC-fält: {field}.",
   "platform.error.admin.oidcStale": "OIDC-utkastet har ändrats. Läs om och granska innan du sparar.",

@@ -10,6 +10,8 @@ async function harness(page: Page, { deferred = false, bytes = 32, language = "e
       import React from 'react';import {createRoot} from 'react-dom/client';import {Capacitor} from '@capacitor/core';
       import {AudioNoteDialog,AuthorizedAudioButton,cancelActiveAudioCapture} from './components/audio-note';
       import {setNativeForeground} from './app/application-foreground';
+      import {handleAndroidBack} from './app/android-navigation';
+      window.androidBack=()=>handleAndroidBack(async()=>{throw new Error('An open recorder must consume Back')});
       import {prepareProtectedReport,protectedAudioPreview,protectedStorageActive,startProtectedAudioPreview,stageProtectedAudioChunk,finishProtectedAudioPreview,updateProtectedAudioPreview,removeProtectedAudioPreview,applyProtectedAuthorityResponse} from './app/protected-clinical-storage';
       Capacitor.isNativePlatform=()=>true;Capacitor.getPlatform=()=>'android';
       window.starts=0;window.stops=0;window.requests=0;window.tracksStopped=0;window.plays=0;window.pauses=0;window.saved=0;
@@ -41,6 +43,22 @@ async function hold(page: Page) {
   const button = page.getByRole("button", { name: "Hold to record", exact: true });
   await button.focus(); await page.keyboard.down("Space");
 }
+
+test("Android Back enters the real recorder capture guard before any modal cancellation", async ({ page }) => {
+  await harness(page, { protectedAudio: true });
+  await hold(page);
+  await expect.poll(() => page.evaluate(() => (window as any).starts)).toBe(1);
+  await page.waitForTimeout(300);
+  await page.evaluate(() => (window as any).androidBack());
+  await expect(page.getByText(/Recording interrupted/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use interrupted recording", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).tracksStopped)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).previewExists())).toBe(true);
+  await page.keyboard.up("Space");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).previewExists())).toBe(false);
+});
 
 test("native pause stops microphone tracks immediately and requires an explicit interrupted preview choice", async ({ page }) => {
   await harness(page);

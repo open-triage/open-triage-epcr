@@ -1,4 +1,5 @@
 "use client";
+import { useAndroidBack } from "./use-android-back";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
@@ -478,6 +479,13 @@ export function ClinicianSessionGate({ children }: {
     setPresentationMode(mode);
     return true;
   }
+
+  useAndroidBack(() => {
+    if (activeReport || openingCall) return true;
+    if (!session || presentationMode === "mobile" || !hasClinicalMode(session.capabilities)) return false;
+    selectPresentationMode("mobile");
+    return true;
+  });
 
   const sessionEnded = useCallback(() => {
     void lockAndEndLocalSession(t("login.sessionEnded"));

@@ -163,6 +163,61 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.audio-hold-button') && !document.querySelector('.audio-hold-button').disabled && window.__nativeActive!==false && document.visibilityState==='visible'");
         evaluate("setTimeout(()=>document.querySelector('.audio-hold-button').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true})),0)");
     }
+    private void navigationChecks() throws Exception {
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        String originalFont = device.executeShellCommand("settings get system font_scale").trim();
+        if (!originalFont.matches("[0-9]+(?:\\.[0-9]+)?")) originalFont = "1.0";
+        String size = device.executeShellCommand("wm size");
+        var override = java.util.regex.Pattern.compile("Override size: (\\d+x\\d+)").matcher(size);
+        String originalSize = override.find() ? override.group(1) : "reset";
+        evaluate("window.__navigationRealm=true;window.__navigationTimeOrigin=performance.timeOrigin");
+        try {
+            device.setOrientationLeft();
+            waitFor("innerWidth>innerHeight");
+            assertEquals(JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
+            device.setOrientationNatural(); waitFor("innerHeight>innerWidth");
+            device.executeShellCommand("settings put system font_scale 1.5");
+            long end = System.currentTimeMillis() + 20000;
+            var zoom = new java.util.concurrent.atomic.AtomicInteger();
+            do { activity.onActivity(screen -> zoom.set(screen.getBridge().getWebView().getSettings().getTextZoom()));
+                if (zoom.get() == 150) break; Thread.sleep(150);
+            } while (System.currentTimeMillis() < end);
+            assertEquals("System accessibility text size reaches the actual WebView", 150, zoom.get());
+            waitFor("document.documentElement.scrollWidth<=innerWidth+1");
+            tapElement(FIELD);
+            var keyboard = new java.util.concurrent.atomic.AtomicBoolean();
+            end = System.currentTimeMillis() + 20000;
+            do { activity.onActivity(screen -> { var insets=androidx.core.view.ViewCompat.getRootWindowInsets(screen.getWindow().getDecorView());keyboard.set(insets!=null&&insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())); });
+                if (keyboard.get()) break; Thread.sleep(150);
+            } while (System.currentTimeMillis() < end);
+            assertTrue("A trusted touch opens the real Android keyboard", keyboard.get());
+            String keyboardHeight = evaluate("innerHeight");
+            device.pressBack();
+            waitFor("innerHeight>" + keyboardHeight);
+            assertEquals("IME Back keeps the current report and edit", JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
+            device.executeShellCommand("wm size 1600x2560");
+            waitFor("innerWidth>=600");
+            waitFor("document.documentElement.scrollWidth<=innerWidth+1");
+            assertEquals("Rotation, text scale and tablet resize retain the same clinical JS realm", "true", evaluate("window.__navigationRealm && performance.timeOrigin===window.__navigationTimeOrigin"));
+            device.executeShellCommand("wm size " + originalSize);
+            device.executeShellCommand("settings put system font_scale " + originalFont);
+            waitFor("(" + FIELD + ")?.value==='ANDROID-CONNECTED-SYNTHETIC'");
+            // Back uses the shared durable Save & close path, then reopens under the valid login.
+            device.pressBack(); waitFor("!document.querySelector('.encounter-header')");
+            device.pressBack(); waitFor("document.querySelector('.presentation-selector button[aria-pressed=true]')?.textContent==='Mobile'");
+            device.pressBack(); waitFor("window.__nativeActive===false");
+            String packageName = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageName();
+            device.executeShellCommand("am start -n " + packageName + "/org.opentriage.development.MainActivity");
+            waitFor("window.__nativeActive===true && window.__navigationRealm && performance.timeOrigin===window.__navigationTimeOrigin");
+            click("Stationary");
+            click("Reopen report"); waitFor("(" + FIELD + ")?.value==='ANDROID-CONNECTED-SYNTHETIC'");
+            assertEquals("No reauthentication prompt is introduced by native navigation", "true", evaluate("!document.querySelector('.report-reauthentication') && !document.querySelector('input[type=password]')"));
+        } finally {
+            device.executeShellCommand("wm size " + originalSize);
+            device.executeShellCommand("settings put system font_scale " + originalFont);
+            device.setOrientationNatural(); device.unfreezeRotation();
+        }
+    }
     private void endAudioHold() throws Exception {
         evaluate("document.querySelector('.audio-hold-button')?.dispatchEvent(new KeyboardEvent('keyup',{key:' ',bubbles:true}))");
     }
@@ -221,6 +276,13 @@ public class ReportRecoveryJourneyTest {
     private void startUnfinishedAudio() throws Exception {
         records(); evaluate("window.__audioBeforeCiphertext=window.__retained[0].ciphertextRevision");
         click("Mobile"); click("Add audio note"); beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
+        waitFor("window.__audioChunkCount>0");
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack();
+        waitFor("document.querySelector('.audio-note-dialog .audio-preview') && document.querySelector('.audio-note-dialog').innerText.includes('Recording interrupted')");
+        assertEquals("Hardware Back stops the recorder and keeps an explicit unfinished-media decision", "true", evaluate("window.__lastAudioRecorder.state!=='recording' && window.__audioHardwareTracks.every(track=>track.readyState==='ended') && document.querySelector('.audio-note-dialog').innerText.includes('Use interrupted recording')"));
+        click("Cancel"); waitFor("!document.querySelector('.audio-note-dialog')");
+        records(); evaluate("window.__audioBeforeCiphertext=window.__retained[0].ciphertextRevision");
+        click("Add audio note"); beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
         waitFor("window.__audioChunkCount>0");
         long end = System.currentTimeMillis() + 30000;
         boolean durable = false;
@@ -351,6 +413,7 @@ public class ReportRecoveryJourneyTest {
         click("Stationary"); waitFor(FIELD);
         setInput(FIELD, "ANDROID-CONNECTED-SYNTHETIC");
         serverValue("ANDROID-CONNECTED-SYNTHETIC"); records();
+        navigationChecks();
         assertEquals("1", evaluate("window.__retained.length"));
         assertEquals("true", evaluate("!JSON.stringify({...localStorage}).includes('ANDROID-CONNECTED') && !JSON.stringify(window.__retained).includes('ANDROID-CONNECTED')"));
         connection(false); setInput(FIELD, "ANDROID-RECONNECTED-SYNTHETIC");

@@ -10,6 +10,25 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /** OS lifecycle only; never persists or emits clinical content or credentials. */
 @CapacitorPlugin(name = "OpenTriageLifecycle")
 public class OpenTriageLifecyclePlugin extends Plugin {
+    @Override public void load() {
+        getActivity().runOnUiThread(() -> getActivity().getOnBackPressedDispatcher().addCallback(
+            getActivity(), new androidx.activity.OnBackPressedCallback(true) {
+                @Override public void handleOnBackPressed() {
+                    var view = getActivity().getWindow().getDecorView();
+                    var insets = androidx.core.view.ViewCompat.getRootWindowInsets(view);
+                    if (insets != null && insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())) {
+                        androidx.core.view.WindowCompat.getInsetsController(getActivity().getWindow(), view)
+                            .hide(androidx.core.view.WindowInsetsCompat.Type.ime());
+                        return;
+                    }
+                    // No history navigation or retained Back events across identity changes.
+                    notifyListeners("back", new JSObject());
+                }
+            }));
+    }
+    @PluginMethod public void background(PluginCall call) {
+        getActivity().runOnUiThread(() -> { getActivity().moveTaskToBack(true); call.resolve(); });
+    }
     private void changed(boolean active) {
         JSObject event = new JSObject(); event.put("active", active);
         notifyListeners("foreground", event, true);

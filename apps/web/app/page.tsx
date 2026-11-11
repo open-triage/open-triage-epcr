@@ -2,6 +2,8 @@
 import { foregroundNetworkAllowed } from "./application-foreground";
 import { useNativeForeground } from "../components/use-native-foreground";
 import {SignedReportPdfPreview} from '../components/signed-report-pdf-preview';
+import { useAndroidBack } from "../components/use-android-back";
+import { confirmDiscardChanges } from "../components/unsaved-changes";
 
 import { CosIssueSettings } from "../components/cos-issue-settings";
 import { applyCosPatientComparison, cosIssueElement, cosIssueIsWarning } from "./cos-signing-actions";
@@ -177,6 +179,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
   const [noteStatusMessage, setNoteStatusMessage] = useState<string | null>(null);
   const [closeError, setCloseError] = useState(false);
+  const closingReport = useRef(false);
+  const workspaceMounted = useRef(true);
+  useEffect(() => {
+    workspaceMounted.current = true;
+    return () => { workspaceMounted.current = false; };
+  }, []);
+  const [closePending, setClosePending] = useState(false);
   const [stationaryTimelineOpen, setStationaryTimelineOpen] = useState(false);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
@@ -519,11 +528,15 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (event.defaultPrevented) return;
         event.preventDefault();
+        if (noteSaving) return;
         if (confirmingNoteDelete) {
           setConfirmingNoteDelete(false);
           return;
         }
+        if ((event as KeyboardEvent & { androidBack?: boolean }).androidBack &&
+          activeDialog !== "audio" && activeDialog !== "photo" && !confirmDiscardChanges(true)) return;
         closeActiveDialog();
         return;
       }
@@ -546,7 +559,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, presentationMode, stationaryTimelineOpen]);
+  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, noteSaving, presentationMode, stationaryTimelineOpen]);
 
   function rememberTrigger(element: HTMLElement) {
     returnFocus.current = element;
@@ -931,6 +944,27 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 
   const readDraftRevision=useCallback(()=>revisionRef.current,[revisionRef]);
 
+  async function saveAndClose() {
+    if (closingReport.current) return;
+    if (report && hasPendingProtectedMedia(report.id) && !window.confirm(t("mobile.mediaCloseWarning"))) return;
+    closingReport.current = true;
+    setClosePending(true);
+    setCloseError(false);
+    try {
+      await flushSave();
+      if (report) await flushProtectedReport(report.id, { retryFailed: true });
+      if (workspaceMounted.current) onSaveAndClose();
+    } catch { setCloseError(true); }
+    finally { closingReport.current = false; if (workspaceMounted.current) setClosePending(false); }
+  }
+
+  useAndroidBack(async () => {
+    if (stationaryTimelineOpen) { setStationaryTimelineOpen(false); return true; }
+    if (shell.view !== "timeline") { dispatch({ type: "view-selected", view: "timeline" }); return true; }
+    await saveAndClose();
+    return true;
+  }, 10);
+
   const integrations = (epsBinding || cosBinding || cosSigning) ? <section className="review-group" aria-labelledby="signing-integrations-heading">
     <h2 id="signing-integrations-heading">{t("mobile.integrations")}</h2>
     <>{epsBinding?<EpsSigningCheckbox result={epsChecklist} summary={report?<EpsOutgoingPreview key={JSON.stringify([report.id,epsBinding,syncStatus,report.revision])} reportId={report.id} binding={epsBinding} language={language} disabled={signing||!online||syncStatus!=="Saved"}/>:null} language={language} checked={exportEps} disabled={signing||cosBusy} onChange={setExportEps}/>:null}
@@ -985,14 +1019,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               void flushSave();
             }
           }}>{shell.view === "review" ? t("mobile.returnRecord") : t("mobile.reviewSign")}</button>}
-          <button type="button" onClick={async () => {
-            if (report && hasPendingProtectedMedia(report.id) && !window.confirm(t("mobile.mediaCloseWarning"))) return;
-            setCloseError(false);
-            await flushSave();
-            try { if (report) await flushProtectedReport(report.id, { retryFailed: true }); }
-            catch { setCloseError(true); return; }
-            onSaveAndClose();
-          }}>{t("mobile.saveClose")}</button>
+          <button type="button" disabled={closePending} onClick={() => void saveAndClose()}>{t("mobile.saveClose")}</button>
         </div>}
       </header>
 

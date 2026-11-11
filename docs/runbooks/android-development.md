@@ -261,3 +261,56 @@ protected release workflow and actual signed upgrade evidence.
 Android validation failures preserve bounded crash/runtime logs, application exit reasons, app memory and WebView version under `android/app/build/reports/android-failure/` before fixture/emulator teardown. These synthetic-emulator reports are included in the PR artifact for seven days. The collector excludes command arguments, screenshots, app files and bugreports; it redacts credential fields, known fixture secrets, URL queries, PEM blocks and long opaque values. Probe timeouts or collection failures never replace the original failing result, and instrumentation is never retried automatically.
 
 Camera discovery records the active device without reopening its stream. Only an explicit camera cycle requests another device; duplicate native/document visibility notifications leave an already foregrounded stream running. Browser lifecycle coverage checks this before native acceptance.
+
+## Shared Android navigation and layout
+
+Android Back dismisses the system keyboard first. With a shared dialog open it
+sends Escape through that dialog's React subtree, preserving recording,
+permission, deletion and save guards. An unfinished recording stops into its
+explicit Use/Cancel preview. Unsaved clinical entry dialogs require a discard
+decision. Saving photo/text dialogs consume Back until their operation settles.
+Back from review/checklist/sidebar returns to the current report; Back from the
+report uses the same single-flight Save & close operation as its button. Failed
+protected persistence keeps the editor open. At the call directory, Back returns
+from a permitted alternate mode to Mobile, then backgrounds the existing task.
+It never traverses WebView history or restores another identity's old page.
+
+The first permitted clinical entry defaults to Mobile; the shared saved mode,
+agency appearance and language apply on later entries. Android configuration
+changes retain the current WebView realm, including an unfinished editor, while
+system text scale updates WebView text zoom. Capacitor's system-bar/cutout insets
+and explicit `adjustResize` keep the keyboard and system controls outside the
+application viewport. The browser uses its existing responsive UI and the
+`resizes-content` viewport policy. Long localized shared section headings wrap.
+
+The early path remains `npm run check:ci`, `npm run android:build`, then
+`npm run android:test -- --skip-build`. The browser preflight covers Back modal
+capture, unmounted identity handlers, repeated Back during a held encrypted
+write, unsaved-entry confirmation, and English/Swedish Admin settings on phone,
+short enlarged-text and tablet layouts with accessibility checks. The native
+report journey adds trusted-touch keyboard entry, hardware Back, real rotation,
+150% system text size and an actual emulator tablet resize. It checks the same
+JS realm and persisted field, then Back/reopen under the existing valid login.
+It restores the emulator's previous font scale and display override in `finally`.
+The audio process-loss fixture first exercises hardware Back into an interrupted
+preview, explicitly cancels it, and starts a fresh live recorder before process
+termination. Existing foreground assignment/sync and bundled-UI checks still run.
+
+For slice 019, repeat on an actual supported phone and tablet using fictional
+reports and the intended agency palette/language. Record device/OS/WebView/APK
+versions and evidence for each result:
+
+| Check | Expected evidence |
+| --- | --- |
+| Open an old call under a current login | Existing session opens it without another authentication prompt. |
+| Edit a field, rotate both ways, resize/split screen | Same value and report remain; server acknowledgement or encrypted pending revision proves persistence. |
+| Keyboard in a clinical dialog and long Admin settings | First Back hides the keyboard; Save/Cancel stay reachable by scrolling, with focus visible. |
+| Back during recording, preview, deletion and a slow save | Recording stops into explicit choice; cancellation/deletion/save use their ordinary guards and settle once. |
+| Back from a report and reopen | Exact saved/pending value returns; persistence failure leaves the editor open. |
+| Largest supported text size, display cutout and gesture/three-button navigation | Text remains readable and all required controls reachable in portrait/landscape and English/Swedish. |
+| Background/foreground and a server web deployment | Assignments and eligible sync refresh; the APK keeps its bundled UI and current navigation. |
+| User/agency switch, expired or revoked session | Old identity/history cannot reappear; ordinary current authorization remains enforced. |
+
+Emulator and browser results do not establish physical keyboard, cutout, OEM
+Back gestures, microphone or tablet acceptance. Store those slice-019 results
+separately from automated evidence.
