@@ -1,3 +1,4 @@
+import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { captureAndroidDisplay, restoreAndroidDisplay } from './android/display-state.mjs';
 import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
@@ -77,7 +78,7 @@ try {
 } finally {
   restoreAndroidDisplay(restoreDisplay);
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });
-  for (const child of children) child.kill('SIGTERM');
+  await stopFixtureChildren(children);
   spawnSync(process.env.DOCKER_COMMAND ?? 'docker', ['rm', '--force', container], { stdio: 'inherit' });
   await rm(directory, { recursive: true, force: true });
 }

@@ -1,3 +1,4 @@
+import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { captureAndroidDisplay, restoreAndroidDisplay } from './android/display-state.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
@@ -74,7 +75,7 @@ try {
   await preserveAndroidFailure(error, { root, adb, serial, secrets: (fixtures ?? []).flatMap(fixture => [fixture.administratorPassword, fixture.clinicianPassword]) });
 } finally {
   restoreAndroidDisplay(restoreDisplay);
-  for (const child of children) child.kill('SIGTERM');
+  await stopFixtureChildren(children);
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
   await rm(directory, { recursive: true, force: true });
 }
