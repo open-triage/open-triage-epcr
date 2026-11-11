@@ -68,6 +68,7 @@ import { advanceCachedReportRevision, nextDraftChange } from "./offline-reports"
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { sameJsonValue } from "./json-values";
+import { MediaReadInterruptedError } from "./media-response";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { populateSyntheticRecord } from "./populate-synthetic-record";
 import { stationarySectionForGroup } from "./stationary-record";
@@ -207,8 +208,21 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     };
   }, [presentationMode]);
   const mediaUploadActive = useRef(false);
+  const mediaRetryAt = useRef(0);
+  const mediaRetryTimer = useRef<number | null>(null);
   const [photoQueueVersion, setPhotoQueueVersion] = useState(0);
   const [audioQueueVersion, setAudioQueueVersion] = useState(0);
+  const deferMediaRetry = useCallback(() => {
+    if (mediaRetryTimer.current !== null) return;
+    mediaRetryAt.current = performance.now() + 1000;
+    mediaRetryTimer.current = window.setTimeout(() => {
+      mediaRetryTimer.current = null;
+      mediaRetryAt.current = 0;
+      setPhotoQueueVersion(version => version + 1);
+      setAudioQueueVersion(version => version + 1);
+    }, 1000);
+  }, []);
+  useEffect(() => () => { if (mediaRetryTimer.current !== null) window.clearTimeout(mediaRetryTimer.current); }, []);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const pcrNumber = useMemo(() => reportNumber(encounter.document), [encounter.document]);
@@ -318,7 +332,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, [report]);
 
   useEffect(() => {
-    if (!report || !restored || !online || !foreground || mediaUploadActive.current) return;
+    if (!report || !restored || !online || !foreground || mediaUploadActive.current || mediaRetryAt.current > performance.now()) return;
     const pending = protectedPhotoEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
@@ -337,8 +351,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
           if (!foregroundNetworkAllowed()) break;
           try {
-            const response = await createReportPhotoNote(sessionRequestToken(session), report.id, attemptCommand);
-            revisionRef.current = response.revision;
+            const response = entry.serverRevision === undefined
+              ? await createReportPhotoNote(sessionRequestToken(session), report.id, attemptCommand)
+              : { revision: entry.serverRevision, note: { ...entry.note, persistenceState: "ready" as const } };
+            revisionRef.current = Math.max(revisionRef.current, response.revision);
             advanceCachedReportRevision(window.localStorage, report.id, response.revision);
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
               serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
@@ -355,7 +371,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
           } catch (error) {
             const message = error instanceof Error ? error.message : "The photo upload failed.";
-            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            const resumable = error instanceof MediaReadInterruptedError || message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            if (resumable) deferMediaRetry();
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current, failure: message,
               note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
             if (message === "session") onSessionEnded();
@@ -369,9 +386,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       }
     })();
     return () => { active = false; };
-  }, [audioQueueVersion, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, deferMediaRetry, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
-    if (!report || !restored || !online || !foreground || mediaUploadActive.current) return;
+    if (!report || !restored || !online || !foreground || mediaUploadActive.current || mediaRetryAt.current > performance.now()) return;
     const pending = protectedAudioEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
@@ -388,8 +405,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
           if (!foregroundNetworkAllowed()) break;
           try {
-            const response = await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand);
-            revisionRef.current = response.revision;
+            const response = entry.serverRevision === undefined
+              ? await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand)
+              : { revision: entry.serverRevision, note: { ...entry.note, persistenceState: "ready" as const } };
+            revisionRef.current = Math.max(revisionRef.current, response.revision);
             advanceCachedReportRevision(window.localStorage, report.id, response.revision);
             await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
               serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
@@ -405,7 +424,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
           } catch (error) {
             const message = error instanceof Error ? error.message : "The audio upload failed.";
-            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            const resumable = error instanceof MediaReadInterruptedError || message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            if (resumable) deferMediaRetry();
             await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current, failure: message,
               note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
             if (message === "session") onSessionEnded();
@@ -419,7 +439,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       }
     })();
     return () => { active = false; };
-  }, [audioQueueVersion, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, deferMediaRetry, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
     queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
   }, [session.user.id]);

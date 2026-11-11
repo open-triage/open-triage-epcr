@@ -33,13 +33,18 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
         assertEquals("The actual input must be editable", "true", evaluate("(()=>{const input=" + expression + ";if(!input || input.matches(':disabled') || input.readOnly)return false;input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()"));
     }
     private void click(String label) throws Exception {
+        if (label.equals("Add photo note") || label.equals("Add audio note")) {
+            // Durable discard is asynchronous. A real user cannot activate a
+            // quick action through the previous modal's backdrop.
+            waitFor("!document.querySelector('[role=dialog], [role=alertdialog]')");
+        }
         String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && (button.textContent.trim()===" + JSONObject.quote(label) + " || button.getAttribute('aria-label')===" + JSONObject.quote(label) + "))";
         waitFor(button + " && !(" + button + ").disabled");
         if (label.equals("Save & close")) {
@@ -118,6 +123,7 @@ public class ReportRecoveryJourneyTest {
         assertFalse("Photo bytes never enter localStorage", evaluate("JSON.stringify({...localStorage})").contains("data:image"));
     }
     private void stageSyntheticPhoto(String caption) throws Exception {
+        waitFor("(()=>{const video=document.querySelector('.photo-note-dialog video');const capture=document.querySelector('.camera-capture-button');return video?.readyState>=2 && video.currentTime>0 && !video.paused && capture && !capture.disabled})()");
         // Substitute only the hardware frame source. Capture, normalization, staging and API calls stay production.
         evaluate("(()=>{const video=document.querySelector('.photo-note-dialog video');const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;const context=canvas.getContext('2d');context.fillStyle='#275d38';context.fillRect(0,0,640,480);context.fillStyle='#eee';context.fillRect(100,100,230,180);window.__syntheticPhotoStream=canvas.captureStream(5);video.srcObject=window.__syntheticPhotoStream;video.play()})()");
         waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth===640");
@@ -151,13 +157,27 @@ public class ReportRecoveryJourneyTest {
     }
     private void tapElement(String expression) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").disabled");
-        evaluate("(" + expression + ").scrollIntoView({block:'center',inline:'center'})");
-        JSONObject rectangle = new JSONObject(evaluate("(()=>{const rectangle=(" + expression + ").getBoundingClientRect();return{x:rectangle.x+rectangle.width/2,y:rectangle.y+rectangle.height/2,width:innerWidth}})()"));
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        var ime = new java.util.concurrent.atomic.AtomicBoolean();
+        activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); });
+        if (ime.get()) {
+            assertTrue("Dismiss the visible keyboard before touching a media control", device.pressBack());
+            long deadline=System.currentTimeMillis()+5000;
+            do { Thread.sleep(100); activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); }); } while(ime.get()&&System.currentTimeMillis()<deadline);
+            assertFalse("Keyboard must be gone before screen coordinate conversion",ime.get());
+        }
+        evaluate("window.__tapReady=false;(" + expression + ").scrollIntoView({block:'end',inline:'nearest',behavior:'instant'});requestAnimationFrame(()=>requestAnimationFrame(()=>window.__tapReady=true))");
+        waitFor("window.__tapReady");
+        JSONObject rectangle = new JSONObject(evaluate("(()=>{const element=(" + expression + ");const rectangle=element.getBoundingClientRect();const x=rectangle.x+rectangle.width/2,y=rectangle.y+rectangle.height/2;const viewport=visualViewport;const hit=document.elementFromPoint(x,y);window.__lastTrustedTap={x,y,width:innerWidth,height:innerHeight,offsetX:viewport?.offsetLeft??0,offsetY:viewport?.offsetTop??0,viewportWidth:viewport?.width??innerWidth,hit:hit?.tagName,hitClass:hit?.className,targetHit:element===hit||element.contains(hit)};window.__trustedMediaClick=false;element.addEventListener('click',event=>{window.__trustedMediaClick=event.isTrusted},{once:true,capture:true});return{x:x-(viewport?.offsetLeft??0),y:y-(viewport?.offsetTop??0),width:viewport?.width??innerWidth}})()"));
+        assertEquals("DOM hit testing must reach the selected media control: "+evaluate("JSON.stringify(window.__lastTrustedTap)"),"true",evaluate("window.__lastTrustedTap.targetHit"));
         int[] origin = new int[2]; var width = new java.util.concurrent.atomic.AtomicInteger();
         activity.onActivity(screen -> { var web = screen.getBridge().getWebView(); web.getLocationOnScreen(origin); width.set(web.getWidth()); });
         double scale = width.get() / rectangle.getDouble("width");
-        assertTrue("Trusted input reaches the actual shared media control", androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).click(
+        assertTrue("Trusted input reaches the actual shared media control", device.click(
             origin[0] + (int)Math.round(rectangle.getDouble("x") * scale), origin[1] + (int)Math.round(rectangle.getDouble("y") * scale)));
+        long deadline=System.currentTimeMillis()+5000;
+        while(!"true".equals(evaluate("window.__trustedMediaClick"))&&System.currentTimeMillis()<deadline)Thread.sleep(100);
+        assertEquals("A genuine trusted click must reach the exact selected control: "+evaluate("JSON.stringify(window.__lastTrustedTap)"),"true",evaluate("window.__trustedMediaClick"));
     }
     private void beginAudioHold() throws Exception {
         waitFor("document.querySelector('.audio-hold-button') && !document.querySelector('.audio-hold-button').disabled && window.__nativeActive!==false && document.visibilityState==='visible'");
@@ -274,6 +294,7 @@ public class ReportRecoveryJourneyTest {
         waitFor("window.__nativeActive===false"); connection(true); Thread.sleep(1200);
         assertEquals("Paused reconnect must not start audio or other API drains: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
         activity.moveToState(Lifecycle.State.RESUMED); waitFor("window.__nativeActive!==false"); verifyCanonicalAudio("ANDROID-AUDIO-RESUME-SYNTHETIC");
+        waitFor("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))");
         connection(false); click("Stationary"); waitFor(FIELD);
     }
     private void stageRetainedAudio() throws Exception {
@@ -309,13 +330,15 @@ public class ReportRecoveryJourneyTest {
     }
     private void playTimelineAudio(String caption) throws Exception {
         String button = "Array.from(document.querySelectorAll('.audio-note-event')).find(row=>row.textContent.includes(" + JSONObject.quote(caption) + "))?.querySelector('.timeline-audio-action')";
-        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && !window.__lastPlayedAudio.paused");
+        evaluate("window.__lastPlayedAudio=null");
+        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && !window.__lastPlayedAudio.error && (!window.__lastPlayedAudio.paused || window.__lastPlayedAudio.ended)");
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
         assertEquals("Authorized audio playback stops on native pause", "true", evaluate("window.__lastPlayedAudio.paused"));
         activity.moveToState(Lifecycle.State.RESUMED); assertEquals("Playback does not restart without a user action", "true", evaluate("window.__lastPlayedAudio.paused"));
     }
     private void verifyRecoveredAudio() throws Exception {
         observeAudio(); verifyCanonicalAudio("ANDROID-AUDIO-SYNTHETIC"); click("Mobile"); playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");
+        assertEquals("An already acknowledged audio note remains ready after recovery", "true", evaluate("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))"));
         click("Stationary"); evaluate("(()=>{const button=document.querySelector('.timeline-toggle-action');if(button?.getAttribute('aria-expanded')==='false')button.click()})()");
         waitFor("document.querySelector('.stationary-timeline-sidebar')"); playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");
         if ("1".equals(InstrumentationRegistry.getArguments().getString("unsavedAudio"))) {

@@ -4,6 +4,51 @@ import path from "node:path";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
+import { createHash } from "node:crypto";
+
+for (const kind of ['audio', 'photo'] as const) for (const interruption of ['stream', 'radio'] as const) test(`${kind} verification interrupted by ${interruption} loss retries without permanently failing the saved note`, async ({ page }) => {
+  const reportId = demoOpenAssignment.report.id, noteId = '92000000-0000-4000-8000-000000000001';
+  const bytes = Buffer.from('synthetic canonical transport fixture'), sha256 = createHash('sha256').update(bytes).digest('hex');
+  const capturedAt = new Date().toISOString(), contentType = kind === 'audio' ? 'audio/mp4' : 'image/jpeg';
+  const session = { csrfToken: 'synthetic-csrf', user: { id: demoOpenAssignment.report.documentingUserId, displayName: 'Synthetic clinician' }, organization: { id: '32000000-0000-4000-8000-000000000001', name: 'Synthetic agency' }, capabilities: ['clinical:document'], workspaceAvailable: true, startedAt: capturedAt, expiresAt: '2099-01-01T00:00:00Z' };
+  const note = { id: noteId, reportId, type: kind, caption: 'SYNTHETIC-TRANSPORT', capturedAt, capturedUtcOffsetMinutes: 0, author: session.user, serverReceivedAt: capturedAt, updatedAt: capturedAt, persistenceState: 'saved-on-device', contentType, byteSize: bytes.length, sha256, durationMilliseconds: 1000, width: 1, height: 1 };
+  const command = { commandId: '93000000-0000-4000-8000-000000000001', expectedRevision: demoOpenAssignment.report.revision, noteId, capturedAt, capturedUtcOffsetMinutes: 0, caption: note.caption, sourceContentType: 'audio/webm', sourceBase64: bytes.toString('base64'), canonicalBase64: bytes.toString('base64'), contentType, sha256, width: 1, height: 1, settingsRevision: 1, effectiveAllowanceBytes: 1000000, effectiveImageLimitBytes: 1000000 };
+  const bundle = await build({ bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic', define: { 'process.env': JSON.stringify({ NEXT_PUBLIC_API_URL: 'same-origin' }) }, stdin: { resolveDir: path.resolve(__dirname, '..'), loader: 'tsx', contents: `
+    import React from 'react';import {createRoot} from 'react-dom/client';import Home from './app/page';
+    import {stageProtectedAudio,stageProtectedPhoto,protectedAudioEntries,protectedPhotoEntries} from './app/protected-clinical-storage';
+    window.stageMedia=()=>${kind === 'audio' ? 'stageProtectedAudio' : 'stageProtectedPhoto'}(${JSON.stringify(reportId)},${JSON.stringify({note,command})});
+    window.mediaState=()=>${kind === 'audio' ? 'protectedAudioEntries' : 'protectedPhotoEntries'}(${JSON.stringify(reportId)})[0]?.note.persistenceState;
+    const originalFetch=window.fetch.bind(window);let interrupt=true;window.fetch=async(...args)=>{const response=await originalFetch(...args);if(interrupt&&/\\/(content|image)$/.test(String(args[0]))){interrupt=false;if(${JSON.stringify(interruption)}==='radio'){Object.defineProperty(navigator,'onLine',{configurable:true,value:false});window.dispatchEvent(new Event('offline'));Object.defineProperty(navigator,'onLine',{configurable:true,value:true});window.dispatchEvent(new Event('online'));throw new TypeError('Interrupted native response')}return new Response(new ReadableStream({start(controller){controller.error(new TypeError('Interrupted response stream'))}}),{status:response.status,headers:response.headers})}return response};
+    createRoot(document.getElementById('root')).render(<Home/>);` } });
+  await page.addInitScript(stored => localStorage.setItem('open-triage.clinician-session.v1', JSON.stringify(stored)), session);
+  await page.route('**/__media-radio-loss', route => route.fulfill({contentType:'text/html',body:`<html><body><div id="root"></div><script>${bundle.outputFiles[0]!.text}</script></body></html>`}));
+  let reads = 0, uploads = 0;
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url()).pathname;
+    if (url === '/api/installation') return route.fulfill({json:{settings:productionSettings}});
+    if (url === '/api/sessions/current') return route.fulfill({json:session});
+    if (url === '/api/calls/assigned') return route.fulfill({json:demoAssignedCalls});
+    if (url === '/api/reports/open') return route.fulfill({json:{openCalls:[{...demoOpenAssignment.report,reportId,callNumber:'SYNTHETIC-MEDIA',lastSavedAt:capturedAt,syncStatus:'saved',validationErrorCount:0}],completedReportIds:[],refreshedAt:capturedAt}});
+    if (/\/calls\/[^/]+\/open$/.test(url)) { return route.fulfill({json:demoOpenAssignment}); }
+    if (url.endsWith('/protected-key-envelope')) return route.fulfill({json:{schemaVersion:1,recoveryHandle:route.request().postDataJSON().recoveryHandle,recoveryDeadline:'2099-01-01T00:00:00Z',wrappingKeyVersion:1}});
+    if (url.endsWith('/protected-ciphertext-receipt')) return route.fulfill({json:{schemaVersion:1,recoveryDeadline:'2099-01-01T00:00:00Z'}});
+    if (url.endsWith('/protected-ciphertext-checkpoint')) return route.fulfill({json:route.request().postDataJSON()});
+    if (url.endsWith(kind === 'audio' ? '/audio' : '/photos')) { uploads++; return route.fulfill({json:{reportId,revision:2,note:{...note,persistenceState:'ready'}}}); }
+    if (url.endsWith(kind === 'audio' ? '/content' : '/image')) {
+      reads++;
+      return route.fulfill({contentType,body:bytes});
+    }
+    if (url.endsWith('/active')) return route.fulfill({status:304});
+    return route.fulfill({status:404,json:{}});
+  });
+  await page.goto('/__media-radio-loss');
+  await page.getByRole('button',{name:'Open call',exact:true}).first().click();
+  await expect(page.locator('.sync-status')).toHaveText('Saved');
+  await page.evaluate(() => (window as unknown as {stageMedia:()=>Promise<void>}).stageMedia());
+  await expect.poll(() => page.evaluate(() => (window as unknown as {mediaState:()=>string}).mediaState())).toBe('ready');
+  expect(reads).toBeGreaterThanOrEqual(2);
+  expect(uploads).toBe(1);
+});
 
 test("native pause stops visible polling and resume refreshes once without overlapping requests", async ({ page }) => {
   const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
