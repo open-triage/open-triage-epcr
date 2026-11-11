@@ -366,6 +366,8 @@ public class ReportRecoveryJourneyTest {
             assertFalse("The real API must be unreachable before offline Activity launch", apiReachable());
         }
         activity = ActivityScenario.launch(MainActivity.class);
+        var startup=new android.os.Bundle();startup.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));
+        InstrumentationRegistry.getInstrumentation().sendStatus(0,startup);
         activity.onActivity(screen -> assertTrue("Prevent Android task snapshots and captures", (screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0));
         switch (phase) {
             case "prepare": prepare(); break;

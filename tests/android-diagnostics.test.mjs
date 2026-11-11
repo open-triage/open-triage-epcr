@@ -19,12 +19,14 @@ for (const category of ['instrumentation process crash', 'nonzero adb exit', 'in
           if (args.includes('meminfo')) throw Object.assign(new Error('probe failed'), { code: 'ETIMEDOUT' });
           return { stdout: `FATAL EXCEPTION: main\njava.lang.IllegalStateException: synthetic\n${'x'.repeat(300000)}` };
         } }), error => error === original);
-      assert.equal(calls.length, 5);
+      assert.equal(calls.length, 7);
       const directory = join(root, 'android/app/build/reports/android-failure');
       assert((await readFile(join(directory, 'crash.txt'))).length <= 262144);
       assert.match(await readFile(join(directory, 'crash.txt'), 'utf8'), /FATAL EXCEPTION/);
       assert.match(await readFile(join(directory, 'memory.txt'), 'utf8'), /ETIMEDOUT/);
       assert(calls.some(args => args.includes('exit-info')));
+      assert(calls.some(args => args.includes('exit-info') && args.includes('com.google.android.gms')));
+      assert(calls.some(args => args.includes('PackageInstaller:I')));
       assert(calls.every(args => !args.includes('bugreport') && !args.includes('run-as')));
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -43,7 +45,7 @@ test('crashed instrumentation output, nonzero child and timeout collect evidence
       assert(original, 'Every instrumentation failure must remain a failure');
       await assert.rejects(preserveAndroidFailure(original, { root, adb: 'fake-adb', serial: 'synthetic',
         executeCommand: async () => { collected++; return {stdout: 'synthetic crash evidence'}; } }), error => error === original);
-      assert.equal(collected, 5);
+      assert.equal(collected, 7);
       assert.match(await readFile(join(root, 'android/app/build/reports/android-failure/crash.txt'), 'utf8'), /crash evidence/);
     } finally { await rm(root, {recursive: true, force: true}); }
   }
