@@ -15,19 +15,20 @@ export function UnitInstallations({unitId,unitName,csrfToken,language}:{unitId:s
  const [qr,setQr]=useState<string|null>(null),[link,setLink]=useState<string|null>(null),[expires,setExpires]=useState<string|null>(null);
  const [caPem,setCaPem]=useState("");
  const [androidQr,setAndroidQr]=useState<string|null>(null),[qrError,setQrError]=useState<string|null>(null);
+ const [qrTarget,setQrTarget]=useState<"browser"|"android">("browser");
  const [code,setCode]=useState<{token:string;origin:string;expiresAt:string}|null>(null);
  const [confirming,setConfirming]=useState<InstallationSummary|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState(false);
  const qrGeneration=useRef(0);
  function clearAndroidQr(){qrGeneration.current++;setAndroidQr(null);setQrError(null);}
  async function showAndroidQr(){
- if(!code)return;const generation=++qrGeneration.current;setBusy(true);setAndroidQr(null);setQrError(null);
+ if(!code)return;const generation=++qrGeneration.current;setQrTarget("android");setBusy(true);setAndroidQr(null);setQrError(null);
  try{const encoded=createAndroidPairing(code,caPem);parseAndroidPairingQr(encoded);const image=await QRCode.toDataURL(encoded,{width:512,margin:4,errorCorrectionLevel:"M"});if(generation===qrGeneration.current)setAndroidQr(image);}
  catch(reason){if(generation===qrGeneration.current)setQrError(reason instanceof PairingQrError && reason.code==="QR_TOO_LARGE"?"android.qrTooLarge":"android.pairingFailed");}
  finally{setBusy(false);}
  }
- async function load(next?:string){setBusy(true);try{const page=await loadUnitInstallations(unitId,next);setItems(page.items);setCursor(page.nextCursor);setError(false);}catch(reason){if(listAccessRemoved(reason)){setItems([]);setCursor(null);setQr(null);setLink(null);setCode(null);setCaPem("");clearAndroidQr();setExpires(null);}setError(true);}finally{setBusy(false);}}
- function close(){dialog.current?.close();setLink(null);setQr(null);setExpires(null);setCode(null);setCaPem("");clearAndroidQr();setConfirming(null);trigger.current?.focus();}
+ async function load(next?:string){setBusy(true);try{const page=await loadUnitInstallations(unitId,next);setItems(page.items);setCursor(page.nextCursor);setError(false);}catch(reason){if(listAccessRemoved(reason)){setItems([]);setCursor(null);setQr(null);setLink(null);setCode(null);setCaPem("");clearAndroidQr();setQrTarget("browser");setExpires(null);}setError(true);}finally{setBusy(false);}}
+ function close(){dialog.current?.close();setLink(null);setQr(null);setExpires(null);setCode(null);setCaPem("");clearAndroidQr();setQrTarget("browser");setConfirming(null);trigger.current?.focus();}
  return <><button ref={trigger} type="button" onClick={()=>{dialog.current?.showModal();void load();}}>{resolveMessage(language,"admin.unitDevices")}</button>
  <dialog ref={dialog} className="unit-dialog" aria-label={`${resolveMessage(language,"admin.unitDevices")} ${unitName}`} onCancel={e=>{e.preventDefault();close();}}>
  <h3>{unitName}: {resolveMessage(language,"admin.unitDevices")}</h3>
@@ -44,14 +45,17 @@ export function UnitInstallations({unitId,unitName,csrfToken,language}:{unitId:s
  const url=`${code.origin}${process.env.NEXT_PUBLIC_BASE_PATH??""}/enroll/#code=${encodeURIComponent(code.token)}`;
  const image=await QRCode.toDataURL(url,{width:240,margin:2});
  if(generation!==qrGeneration.current)return;
- setCode(code);setLink(url);setExpires(code.expiresAt);setAndroidQr(null);setQrError(null);setQr(image);setError(false);
+ setCode(code);setLink(url);setExpires(code.expiresAt);setAndroidQr(null);setQrError(null);setQrTarget("browser");setQr(image);setError(false);
  }catch{if(generation===qrGeneration.current)setError(true);}finally{setBusy(false);}}}>{t("Issue five-minute QR code","Utfärda femminuters QR-kod")}</button>
  {code&&<><label>{resolveMessage(language,"android.publicCa")}<textarea maxLength={48000} value={caPem} onChange={e=>{setCaPem(e.target.value);clearAndroidQr();}} /></label>
  <button type="button" disabled={busy} onClick={()=>{try{const blob=new Blob([createAndroidPairing(code,caPem)],{type:"application/json"});const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;anchor.download="open-triage-pairing.json";anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setError(false);}catch{setError(true);}}}>{resolveMessage(language,"android.downloadPairing")}</button></>}
- {code&&<><button type="button" disabled={busy} onClick={()=>void showAndroidQr()}>{resolveMessage(language,"android.showPairingQr")}</button>
+ {code&&<><div className="admin-role-editor-actions">
+ <button type="button" aria-pressed={qrTarget==="browser"} className={qrTarget==="browser"?"button-primary":undefined} onClick={()=>{clearAndroidQr();setQrTarget("browser");}}>{resolveMessage(language,"enrollment.showBrowserQr")}</button>
+ <button type="button" aria-pressed={qrTarget==="android"} className={qrTarget==="android"?"button-primary":undefined} disabled={busy} onClick={()=>void showAndroidQr()}>{resolveMessage(language,"android.showPairingQr")}</button>
+ </div>
  {qrError&&<p role="alert" className="admin-error">{resolveMessage(language,qrError)}</p>}
- {androidQr&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"android.pairingQrAlt")}</figcaption><Image unoptimized src={androidQr} alt={resolveMessage(language,"android.pairingQrAlt")} width={512} height={512}/></figure>}</>}
- {qr&&link&&<><figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"enrollment.browserQrTitle")}</figcaption><Image unoptimized src={qr} alt={t("Single-use enrollment QR code","QR-kod för engångskoppling")} width={240} height={240}/></figure><p>{t("Expires","Giltig till")} {expires}</p>
+ {qrTarget==="android"&&androidQr&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"android.pairingQrAlt")}</figcaption><Image unoptimized src={androidQr} alt={resolveMessage(language,"android.pairingQrAlt")} width={512} height={512}/></figure>}</>}
+ {qr&&link&&<>{qrTarget==="browser"&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"enrollment.browserQrTitle")}</figcaption><Image unoptimized src={qr} alt={t("Single-use enrollment QR code","QR-kod för engångskoppling")} width={240} height={240}/></figure>}<p>{t("Expires","Giltig till")} {expires}</p>
  <label>{t("Enrollment link — open in the intended installation","Kopplingslänk — öppna i avsedd installation")}<input readOnly value={link} onFocus={e=>e.target.select()}/></label></>}
  <button type="button" onClick={close}>{t("Close","Stäng")}</button>
  </dialog></>;
