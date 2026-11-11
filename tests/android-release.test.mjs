@@ -61,6 +61,8 @@ test('merged enrollment attempt implementation is advertised and required by fut
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-attempt-v1'));
   assert(ANDROID_API_CAPABILITIES.includes('native-enrollment-outcome-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-outcome-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('android-upgrade-policy-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-policy-v1'));
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
 

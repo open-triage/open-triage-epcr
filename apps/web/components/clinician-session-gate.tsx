@@ -39,7 +39,7 @@ import { switchAgency } from "../app/agencies";
 import { availableUiLanguages, resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
-import { OrganizationManagement } from "./organization-management";
+import { SuperAdminWorkspace } from "./super-admin-workspace";
 import { AdminShell } from "./admin-shell";
 import { useNativeForeground } from "./use-native-foreground";
 import { useVisiblePolling } from "./use-visible-polling";
@@ -571,7 +571,7 @@ export function ClinicianSessionGate({ children }: {
       </header>
       <main className="admin-shell">
         <header className="admin-heading"><h1>{t("navigation.superAdmin")}</h1></header>
-        <div className="admin-panel"><OrganizationManagement session={authenticatedSession} language={language} onOpenAgency={changeAgency} /></div>
+        <div className="admin-panel"><SuperAdminWorkspace session={authenticatedSession} language={language} onOpenAgency={changeAgency} /></div>
       </main>
     </div>
   </UnsavedChangesContext.Provider>;

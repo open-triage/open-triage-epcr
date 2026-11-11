@@ -1512,3 +1512,23 @@ a.button-link { display: inline-flex; align-items: center; justify-content: cent
 .admin-configuration .android-release-metadata > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; border: 0; border-radius: 0; padding: 0; background: transparent; }
 .android-release-metadata dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .admin-configuration .android-release-metadata > div { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+.android-upgrade-policy .android-upgrade-table { max-width: 100%; overflow-x: auto; }
+.android-upgrade-table table { width: 100%; border-collapse: collapse; }
+.android-upgrade-table caption { text-align: left; font-weight: 800; padding: 8px 0; }
+.android-upgrade-table :is(th,td) { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.android-upgrade-table small { display: block; }
+.android-upgrade-preview { border-left: 3px solid var(--green); padding-left: 12px; }
+.android-upgrade-policy .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.android-upgrade-policy .form-actions button { min-height: 44px; padding: 8px 14px; }
+
+.super-admin-workspace, .android-upgrade-policy, .android-upgrade-policy form, .android-upgrade-table { min-width: 0; }
+.super-admin-workspace .review-tabs button { min-height: 44px; padding: 8px 14px; }
+.android-upgrade-policy form { width: 100%; }
+
+.android-upgrade-policy form { grid-template-columns: minmax(0, 1fr); }
+.android-upgrade-preview { min-width: 0; }
+
+.android-upgrade-table table { table-layout: fixed; }
+.android-upgrade-table :is(th, td) { overflow-wrap: anywhere; }
+.android-upgrade-table th:first-child { width: 20%; }

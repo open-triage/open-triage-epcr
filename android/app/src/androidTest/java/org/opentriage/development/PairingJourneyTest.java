@@ -66,6 +66,13 @@ public class PairingJourneyTest {
             waitFor("!document.querySelector('button[type=submit]').disabled");
             evaluate("document.querySelector('form').requestSubmit()");
             waitFor("document.querySelector('input[name=username]')");
+            long installedVersion = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageManager()
+                .getPackageInfo(InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageName(), 0).getLongVersionCode();
+            evaluate("window.__androidPolicy=null;fetch('/api/android/compatibility?versionCode=" + installedVersion + "').then(async response=>window.__androidPolicy={status:response.status,body:await response.json()}).catch(()=>window.__androidPolicy={status:0})");
+            waitFor("window.__androidPolicy");
+            assertEquals("Paired native cookie must authorize policy before personal login", "200", evaluate("window.__androidPolicy.status"));
+            assertEquals("true", evaluate("window.__androidPolicy.body.status==='compatible' && window.__androidPolicy.body.graceDays===90 && window.__androidPolicy.body.policyRevision===1 && window.__androidPolicy.body.deadline===null"));
+            assertEquals("Policy cannot reveal privileged administration data", "true", evaluate("!('updatedBy' in window.__androidPolicy.body) && !('actorId' in window.__androidPolicy.body) && !('clients' in window.__androidPolicy.body)"));
             setInput("input[name=username]", username); setInput("input[name=password]", password);
             evaluate("document.querySelector('.login-sign-in').requestSubmit()");
             waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
