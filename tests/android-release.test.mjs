@@ -56,8 +56,8 @@ test('publication requires acceptance evidence for every native extension requir
   validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities: ['native-enrollment-attempt-v1'] }, preflight, identity);
 });
 
-test('merged enrollment attempt implementation is advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1']);
+test('merged enrollment and upgrade policy implementations are advertised and required by future APK descriptors', () => {
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1']);
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });

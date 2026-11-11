@@ -19,7 +19,7 @@ import { ReviewSettingsPanel, type ReviewSettingsSection } from "./review-settin
 import { LoadingStatus } from "./loading-status";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { AdminLanguageContext, AdminText, useAdminText } from "../app/admin-localization";
-import { OrganizationManagement } from "./organization-management";
+import { SuperAdminWorkspace } from "./super-admin-workspace";
 
 type AdminPanel = "Hospital integrations" | "Auditing" | "Shift schedules" | "Units" | "Authentication" | "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings" | "Review settings" | "Super-admin";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
@@ -134,7 +134,7 @@ function AuthorizedAdminShell({ session, language, online, reviewSettingsSection
       <button type="button" onClick={() => setContextRefresh((value) => value + 1)}>{t("list.retry")}</button></>}
     {!context && !error && <LoadingStatus className="admin-loading">{t("navigation.loadingConfiguration")}</LoadingStatus>}
     {context && mounted("Super-admin") && (session.installationOwner || session.installationSuperadmin) && onOpenAgency &&
-      <div hidden={activePanel !== "Super-admin"}><OrganizationManagement active={activePanel === "Super-admin"} session={session} language={language} onOpenAgency={onOpenAgency} /></div>}
+      <div hidden={activePanel !== "Super-admin"}><SuperAdminWorkspace active={activePanel === "Super-admin"} session={session} language={language} onOpenAgency={onOpenAgency} /></div>}
     {context && mounted("Shift schedules") && <div hidden={activePanel !== "Shift schedules"}><SchedulesPanel csrfToken={session.csrfToken ?? ""} canManage={context.capabilities.includes("settings:write")} language={language} /></div>}
     {context && mounted("Units") && <div hidden={activePanel !== "Units"}><UnitsPanel csrfToken={session.csrfToken ?? ""} canManage={context.capabilities.includes("settings:write")} language={language} /></div>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
