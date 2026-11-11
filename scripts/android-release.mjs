@@ -1,3 +1,4 @@
+import { verifyNativeStartup } from './android/native-startup.mjs';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -35,6 +36,7 @@ writeFileSync(join(root, 'android/app/src/main/assets/capacitor.config.json'), J
 const tasks = [':app:testReleaseUnitTest', ':app:lintRelease', ':app:assembleRelease'];
 if (env.ANDROID_RELEASE_INSTRUMENTATION === '1') tasks.push(':app:assembleReleaseAndroidTest');
 run('./gradlew', ['--no-daemon', ...tasks], join(root, 'android'));
+verifyNativeStartup(root, 'release');
 const source = join(root, 'android/app/build/outputs/apk/release/app-release.apk');
 const signature = verifyApkSignature(sdk, source, env);
 const metadata = execFileSync(join(tools, 'aapt'), ['dump', 'badging', source], { env, encoding: 'utf8' });
