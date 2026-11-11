@@ -49,3 +49,29 @@ test('Android browser regressions are included in the full deployment preflight'
   assert(androidSuites.length > 0);
   for (const file of androidSuites) assert(deployment.includes(JSON.stringify(file)), `${file}: include Android browser regression in npm run check:ci`);
 });
+
+test('the default native acceptance runs external-browser OIDC after private-CA pairing and protected-work recovery', async () => {
+  const journey = await readFile(new URL('../scripts/android-emulator-test.mjs', import.meta.url), 'utf8');
+  assert.match(journey, /import \{ runOidcJourney \} from '\.\/android\/oidc-journey\.mjs'/);
+  assert(journey.indexOf('await runOidcJourney(') > journey.indexOf('await runReportRecoveryJourney('));
+  const oidc = await readFile(new URL('../scripts/android/oidc-journey.mjs', import.meta.url), 'utf8');
+  assert.match(oidc, /certificate\(false\)/);
+  assert.match(oidc, /certificate\(true\)/);
+  assert.match(oidc, /force-stop/);
+  assert.match(oidc, /instrument\('resume'/);
+});
+
+test('Android acceptance loads its harness before any API compilation is available', async () => {
+  const {build} = await import('esbuild');
+  const {resolve} = await import('node:path');
+  await build({entryPoints: [new URL('../scripts/android-emulator-test.mjs', import.meta.url).pathname],
+    bundle: true, write: false, platform: 'node', format: 'esm', packages: 'external',
+    plugins: [{name: 'cold-android-harness', setup(builder) {
+      builder.onResolve({filter: /.*/}, args => {
+        // Deferred fixture modules run after the harness's ordinary API build.
+        if (args.kind === 'dynamic-import') return {path: args.path, external: true};
+        if (resolve(args.resolveDir, args.path).includes('/apps/api/dist/'))
+          throw new Error('Android harness eagerly requires an API compilation before it can build that API');
+      });
+    }}], logLevel: 'silent'});
+});

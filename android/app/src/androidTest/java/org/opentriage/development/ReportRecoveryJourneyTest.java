@@ -37,7 +37,7 @@ public class ReportRecoveryJourneyTest {
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
-        assertEquals("The actual input must be editable", "true", evaluate("(()=>{const input=" + expression + ";if(!input || input.matches(':disabled') || input.readOnly)return false;input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()"));
+        assertEquals("The actual input must be editable", "true", evaluate(WebViewTestInput.change(expression,value)));
     }
     private void click(String label) throws Exception {
         String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && button.textContent.trim()===" + JSONObject.quote(label) + ")";

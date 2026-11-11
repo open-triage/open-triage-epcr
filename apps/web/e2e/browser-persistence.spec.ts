@@ -1012,19 +1012,33 @@ for (const staleOnline of [false, true]) test(`connection loss during a cipherte
 for (const bodyResult of ["disconnect", "malformed"] as const) test(`ciphertext receipt body ${bodyResult} preserves its storage and authority boundary`, async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page);
+  // Include baseline checkpoints deliberately. Only the intercepted receipt's
+  // revision is forbidden; an earlier successful receipt may settle while the
+  // form becomes editable and must not be miscounted as failed-body authority.
+  const checkpoints: number[] = [];
+  let baselineHeld = false, holdNext = false, releaseBaseline!: () => void;
+  const baseline = new Promise<void>(resolve => { releaseBaseline = resolve; });
+  page.once("close", () => releaseBaseline());
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, async route => {
+    if (holdNext) { holdNext = false; baselineHeld = true; await baseline; }
+    checkpoints.push(Number(route.request().postDataJSON().ciphertextRevision));
+    return route.fulfill({ json: route.request().postDataJSON() });
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Stationary", exact: true }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
   await expect(firstName).toBeEnabled();
-  let checkpoints = 0;
-  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, route => { checkpoints++; return route.fulfill({ json: route.request().postDataJSON() }); });
+  holdNext = true;
+  await firstName.fill("VALID EARLIER RECEIPT"); await firstName.press("Tab");
+  await expect.poll(() => baselineHeld).toBe(true);
   await page.evaluate(() => {
     const original = window.fetch;
     (window as unknown as { receiptBody?: ReadableStreamDefaultController<Uint8Array> }).receiptBody = undefined;
     window.fetch = (input, init) => {
       const url = typeof input === "string" ? input : input instanceof Request ? input.url : input.href;
       if (!url.endsWith("/protected-ciphertext-receipt")) return original(input, init);
+      (window as unknown as { receiptRevision: number }).receiptRevision = Number(JSON.parse(String(init?.body)).ciphertextRevision);
       return Promise.resolve(new Response(new ReadableStream<Uint8Array>({ start(controller) {
         (window as unknown as { receiptBody: ReadableStreamDefaultController<Uint8Array> }).receiptBody = controller;
         controller.enqueue(new TextEncoder().encode('{"schemaVersion":1'));
@@ -1032,7 +1046,10 @@ for (const bodyResult of ["disconnect", "malformed"] as const) test(`ciphertext 
     };
   });
   await firstName.fill("STREAMED RECEIPT"); await firstName.press("Tab");
+  releaseBaseline();
   await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { receiptBody?: unknown }).receiptBody))).toBe(true);
+  const receiptRevision = await page.evaluate(() => (window as unknown as {receiptRevision: number}).receiptRevision);
+  expect(receiptRevision).toBeGreaterThan(0);
   await context.setOffline(true);
   await page.evaluate(result => {
     const controller = (window as unknown as { receiptBody: ReadableStreamDefaultController<Uint8Array> }).receiptBody;
@@ -1048,7 +1065,8 @@ for (const bodyResult of ["disconnect", "malformed"] as const) test(`ciphertext 
     await expect.poll(async () => { const [record] = await encryptedRecords(page); return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision)); }).toBe(true);
     await expect(page.locator(".safety-notice").filter({ hasText: "Protected storage failed while offline" })).toHaveCount(0);
   }
-  expect(checkpoints).toBe(0);
+  expect(checkpoints.some(revision => revision < receiptRevision)).toBe(true);
+  expect(checkpoints.filter(revision => revision >= receiptRevision)).toEqual([]);
 });
 
 for (const status of [401, 403]) test(`reopening cannot use a cached report after authoritative HTTP ${status}`, async ({ page }) => {

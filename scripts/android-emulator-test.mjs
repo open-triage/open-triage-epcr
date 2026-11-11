@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { prepareFixtures } from './android/fixtures.mjs';
 import { fixtureApi as api } from './android/fixture-client.mjs';
+import { runOidcJourney } from './android/oidc-journey.mjs';
 import { runManagedJourneys } from './android/managed-journey.mjs';
+import { seedReportFixture } from './android/report-fixture.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
@@ -32,11 +34,11 @@ try {
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
-      const child = fork(fileURLToPath(new URL('./android/fixture-api.mjs', import.meta.url)), [file], { cwd: root, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }); children.push(child);
+      const child = fork(fileURLToPath(new URL('./android/fixture-api.mjs', import.meta.url)), [file], { cwd: root, env: {...process.env,NODE_EXTRA_CA_CERTS:fixture.caPath}, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }); children.push(child);
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  if (!process.argv.includes('--report-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (!process.argv.includes('--report-only') && !process.argv.includes('--oidc-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');
@@ -58,8 +60,16 @@ try {
     assert.equal(replay.status, 401, 'Confirmed enrollment authorization must reject replay');
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api });
-  await runManagedJourneys({root, fixtures, run, api, adb, serial});
+  if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
+  else {
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api });
+    await runManagedJourneys({root, fixtures, run, api, adb, serial});
+  }
+  if (!process.argv.includes('--external-apis')) {
+    const secondApi = children[1];
+    await new Promise(resolve => { secondApi.once('exit', resolve); secondApi.kill('SIGTERM'); });
+    await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
+  } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
 } finally {
   for (const child of children) child.kill('SIGTERM');
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });

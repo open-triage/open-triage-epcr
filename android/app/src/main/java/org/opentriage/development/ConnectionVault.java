@@ -25,21 +25,26 @@ final class ConnectionVault {
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
         return generator.generateKey();
     }
-    TrustedConnection read() throws Exception {
-        String encoded = preferences.getString("encrypted", null);
+    private JSONObject readJson(String slot) throws Exception {
+        String encoded = preferences.getString(slot, null);
         if (encoded == null) return null;
         JSONObject envelope = new JSONObject(encoded);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)));
-        cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
+        cipher.updateAAD((slot.equals("encrypted") ? ALIAS : ALIAS + ":" + slot).getBytes(StandardCharsets.UTF_8));
         byte[] plain = cipher.doFinal(Base64.decode(envelope.getString("body"), Base64.NO_WRAP));
-        return TrustedConnection.restore(new JSONObject(new String(plain, StandardCharsets.UTF_8)));
+        return new JSONObject(new String(plain, StandardCharsets.UTF_8));
     }
-    void write(TrustedConnection connection) throws Exception {
+    private void writeJson(String slot, JSONObject value) throws Exception {
+        if (value == null) { if (!preferences.edit().remove(slot).commit()) throw new IllegalStateException("Storage unavailable"); return; }
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
-        cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
-        byte[] encrypted = cipher.doFinal(connection.saved().toString().getBytes(StandardCharsets.UTF_8));
+        cipher.updateAAD((slot.equals("encrypted") ? ALIAS : ALIAS + ":" + slot).getBytes(StandardCharsets.UTF_8));
+        byte[] encrypted = cipher.doFinal(value.toString().getBytes(StandardCharsets.UTF_8));
         JSONObject envelope = new JSONObject().put("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)).put("body", Base64.encodeToString(encrypted, Base64.NO_WRAP));
-        if (!preferences.edit().putString("encrypted", envelope.toString()).commit()) throw new IllegalStateException("Connection storage unavailable");
+        if (!preferences.edit().putString(slot, envelope.toString()).commit()) throw new IllegalStateException("Connection storage unavailable");
     }
+    TrustedConnection read() throws Exception { JSONObject value = readJson("encrypted"); return value == null ? null : TrustedConnection.restore(value); }
+    void write(TrustedConnection connection) throws Exception { writeJson("encrypted", connection.saved()); }
+    JSONObject pendingAuthentication() throws Exception { return readJson("oidc-return"); }
+    void pendingAuthentication(JSONObject value) throws Exception { writeJson("oidc-return", value); }
 }

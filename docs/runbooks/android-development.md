@@ -156,10 +156,11 @@ are not returned to JavaScript or stored in localStorage; their vault uses
 Android Keystore AES-GCM. Clinician logout clears the session cookie and retains
 the installation cookie. Android backup and cleartext HTTP are disabled.
 
-These slices validate pairing, scanning and JSON/local-authentication traffic.
-Protected offline reports, managed configuration, OIDC, cross-agency handoff,
-media, native downloads and comprehensive navigation each have following tickets.
-Native redirects are rejected until an explicit supported return flow is added.
+These slices validate pairing, scanning, protected work, managed settings and
+local/OIDC authentication. See [Android authentication](android-authentication.md)
+for the external-browser/native return strategy and independent browser CA
+prerequisites. Generic API redirects remain rejected. Cross-agency handoff,
+media, native downloads and comprehensive navigation have following tickets.
 Emulator results do not substitute for the signing, actual MDM or physical-device
 acceptance checkpoints in tickets 013 and 017–019.
 

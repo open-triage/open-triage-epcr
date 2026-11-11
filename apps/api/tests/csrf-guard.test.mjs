@@ -58,3 +58,16 @@ test('SSO unlink requires a valid cookie CSRF proof',async()=>{
  for(const proof of [undefined,'forged',['valid']])await assert.rejects(guard.canActivate(context({method:'POST',url:'/api/admin/users/user/sso/unlink',headers:{cookie:`${SESSION_COOKIE}=session`,'x-csrf-token':proof}})),/CSRF denied/);
  assert.equal(await guard.canActivate(context({method:'POST',url:'/api/admin/users/user/sso/unlink',headers:{cookie:`${SESSION_COOKIE}=session`,'x-csrf-token':'valid'}})),true);
 });
+
+test('native login and secret redemption require their exact non-simple intent without exempting other cookie mutations',async()=>{
+ const proofs=[];const guard=new CsrfGuard({assertCsrf:async(...args)=>{proofs.push(args);throw Error('CSRF required');}});
+ for(const path of ['/api/sessions/oidc/native/login','/api/sessions/oidc/native/finish']){
+  for(const cookie of ['',`${SESSION_COOKIE}=`,`${SESSION_COOKIE}=expired`,`${SESSION_COOKIE}=live`]){
+   assert.equal(await guard.canActivate(context({method:'POST',url:path,headers:{cookie,'x-personal-authentication':'1'}})),true);
+  }
+  for(const intent of [undefined,'0',['1']])await assert.rejects(guard.canActivate(context({method:'POST',url:path,headers:{cookie:`${SESSION_COOKIE}=live`,'x-personal-authentication':intent}})),/CSRF required/);
+ }
+ for(const path of ['/api/sessions/current','/api/reports/one','/api/sessions/oidc/native/finish/extra','/api/sessions/oidc/native/login?redirect=other'])
+  await assert.rejects(guard.canActivate(context({method:'POST',url:path,headers:{cookie:`${SESSION_COOKIE}=live`,'x-personal-authentication':'1'}})),/CSRF required/);
+ assert(proofs.length>0);
+});
