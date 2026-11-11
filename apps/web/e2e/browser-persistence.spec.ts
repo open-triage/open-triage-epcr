@@ -32,7 +32,7 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
   let recoveryHandle = existing?.recoveryHandle ?? "";
   let reportKeyBase64 = existing?.reportKeyBase64 ?? "";
   let grantConsumed = false;
-  let reauthenticated = false;
+  let reauthenticationRequests = 0;
   let currentSession = session;
   await page.addInitScript(({ stored, persistentStorage }) => {
     Object.defineProperties(navigator.storage, {
@@ -54,11 +54,9 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
     currentSession = command.username === "other" ? otherSession : session;
     return route.fulfill({ headers: { "cache-control": "no-store, private" }, json: currentSession });
   });
-  await page.route("**/api/sessions/reauthenticate", async (route) => {
-    const command = route.request().postDataJSON() as { currentPassword?: string };
-    if (!command.currentPassword) return route.fulfill({ status: 401 });
-    reauthenticated = true;
-    return route.fulfill({ json: { reauthenticatedUntil: "2099-09-17T12:05:00.000Z" } });
+  await page.route("**/api/sessions/reauthenticate", (route) => {
+    reauthenticationRequests += 1;
+    return route.fulfill({ status: 500 });
   });
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: {
     assignedCalls: currentSession.user.id === session.user.id ? [assignedCall] : [],
@@ -122,7 +120,6 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
     report: openedAssignment.report,
   } }));
   await page.route(`**/api/reports/${reportId}/recovery-grants`, (route) => {
-    if (restarted && !reauthenticated) return route.fulfill({ status: 428 });
     return route.fulfill({
       status: 201,
       headers: { "cache-control": "no-store, private", pragma: "no-cache" },
@@ -154,6 +151,7 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
   return {
     restart: () => { restarted = true; },
     recovery: () => ({ recoveryHandle, reportKeyBase64 }),
+    reauthenticationRequests: () => reauthenticationRequests,
   };
 }
 
@@ -481,10 +479,7 @@ test("a second browser recovers its own offline copy without replacing the first
     await second.goto(page.url());
     await expect(second.getByRole("heading", { name: "Open reports" })).toBeVisible();
     await second.getByRole("button", { name: "Reopen report" }).click();
-    await expect(second.getByText("Confirm your identity to recover protected work from this browser.")).toBeVisible();
-    await expect(second.getByLabel("Current password")).toBeFocused();
-    await second.getByLabel("Current password").fill("current-password");
-    await second.getByRole("button", { name: "Confirm and recover" }).click();
+    await expect(second.locator("input[type=password]")).toHaveCount(0);
     await expect(second.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
     await expect.poll(async () => (await encryptedRecords(second)).length).toBe(1);
     const adopted = (await encryptedRecords(second))[0]!;
@@ -505,8 +500,8 @@ test("a second browser recovers its own offline copy without replacing the first
   }
 });
 
-for (const needsReauthentication of [false, true]) {
-  test(`opening an assigned call adopts an existing browser's key${needsReauthentication ? " after reauthentication" : ""}`, async ({ page, browser }) => {
+for (const restartedBrowser of [false, true]) {
+  test(`opening an assigned call adopts an existing browser's key${restartedBrowser ? " after restart using the current login" : ""}`, async ({ page, browser }) => {
     test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
     const first = await installRoutes(page);
     await page.goto("/");
@@ -517,28 +512,21 @@ for (const needsReauthentication of [false, true]) {
     try {
       const second = await otherContext.newPage();
       const routes = await installRoutes(second, true, first.recovery());
-      if (needsReauthentication) routes.restart();
+      if (restartedBrowser) routes.restart();
       let registrations = 0;
       await second.route(`**/api/reports/${reportId}/protected-key-envelope`, route => {
         registrations += 1;
         return route.fulfill({ status: 409 });
       });
       // Opening consumes the assignment. Polling must not remove the card that
-      // is still asking for credentials to finish opening its protected report.
+      // is still preparing the protected report using its current login.
       await second.route("**/api/calls/assigned", route => route.fulfill({ json: {
         assignedCalls: registrations === 0 ? [assignedCall] : [], canceledAssignmentIds: [],
       } }));
       await second.goto(page.url());
       await second.getByRole("button", { name: "Open call", exact: true }).click();
-      if (needsReauthentication) {
-        await expect(second.getByLabel("Current password")).toBeFocused();
-        await second.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-        await expect(second.getByLabel("Current password")).toBeVisible();
-        await expect(second.getByLabel("Current password")).toBeFocused();
-        await second.screenshot({ path: test.info().outputPath("assigned-call-reauthentication.png"), fullPage: true });
-        await second.getByLabel("Current password").fill("current-password");
-        await second.getByRole("button", { name: "Confirm and recover" }).click();
-      }
+      await expect(second.locator('input[type=password]')).toHaveCount(0);
+      expect(routes.reauthenticationRequests()).toBe(0);
       await expect(second.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
       await expect(second.getByText("Offline storage unavailable", { exact: true })).toHaveCount(0);
       await expect.poll(async () => (await encryptedRecords(second)).length).toBe(1);
@@ -546,7 +534,7 @@ for (const needsReauthentication of [false, true]) {
       expect(adopted.checkpointScope).toBe("browser");
       expect(adopted.localRecordId).not.toBe(original.localRecordId);
       expect(adopted.recoveryHandle).toBe(original.recoveryHandle);
-      expect(registrations).toBe(needsReauthentication ? 2 : 1);
+      expect(registrations).toBe(1);
       expect((await encryptedRecords(page))[0]!.localRecordId).toBe(original.localRecordId);
     } finally { await otherContext.close(); }
   });
@@ -749,12 +737,10 @@ test("one online-opened report remains editable through connection loss using on
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
-  await expect(page.getByText("Confirm your identity to recover protected work from this browser.")).toBeVisible();
-  await expect(page.getByLabel("Current password")).toBeFocused();
-  await page.getByLabel("Current password").fill("current-password");
-  await page.getByRole("button", { name: "Confirm and recover" }).click();
+  await expect(page.locator("input[type=password]")).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("ENCRYPTED-OFFLINE-RECOVERY");
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  expect(controls.reauthenticationRequests()).toBe(0);
 });
 
 test("an offline audio note survives close and resumes one verified upload after reconnect", async ({ page, context }) => {
@@ -957,4 +943,126 @@ test("logout locks pending ciphertext, reveals nothing to another user, and lets
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("Retained-original");
+});
+
+
+test("stationary editing locks after offline storage failure and preserves the prior pending ciphertext", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  await context.setOffline(true);
+  await firstName.fill("RETAINED PENDING");
+  await firstName.press("Tab");
+  await expect.poll(async () => {
+    const [record] = await encryptedRecords(page);
+    return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision));
+  }).toBe(true);
+  const before = await encryptedRecords(page);
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(...args) {
+      if (this.name === "encrypted-reports") throw new DOMException("Synthetic disk failure", "UnknownError");
+      return put.apply(this, args);
+    };
+  });
+  await firstName.fill("UNSAVED FAILURE");
+  await firstName.press("Tab");
+  await expect(page.locator(".safety-notice")).toContainText("Protected storage failed while offline");
+  await expect(firstName).toBeDisabled();
+  expect(await encryptedRecords(page)).toEqual(before);
+});
+
+for (const staleOnline of [false, true]) test(`connection loss during a ciphertext receipt preserves storage with stale online ${staleOnline}`, async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  let waiting = false, release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, async route => {
+    waiting = true; await held; await route.abort("internetdisconnected");
+  });
+  await firstName.fill("RECEIPT IN FLIGHT"); await firstName.press("Tab");
+  await expect.poll(() => waiting).toBe(true);
+  if (staleOnline) {
+    const failed = page.waitForEvent("requestfailed", request => request.url().endsWith("/protected-ciphertext-receipt"));
+    release(); await failed;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(await page.evaluate(() => navigator.onLine)).toBe(true);
+    await expect(page.locator(".safety-notice").filter({ hasText: "This browser cannot preserve offline changes" })).toHaveCount(0);
+    await context.setOffline(true);
+  } else { await context.setOffline(true); release(); }
+  await expect(page.locator(".safety-notice").filter({ hasText: "Protected storage failed while offline" })).toHaveCount(0);
+  await firstName.fill("CONTINUED OFFLINE"); await firstName.press("Tab");
+  await expect.poll(async () => {
+    const [record] = await encryptedRecords(page);
+    return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision));
+  }).toBe(true);
+  await expect(firstName).toBeEnabled();
+  await expect(firstName).toHaveValue("CONTINUED OFFLINE");
+});
+
+for (const bodyResult of ["disconnect", "malformed"] as const) test(`ciphertext receipt body ${bodyResult} preserves its storage and authority boundary`, async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  let checkpoints = 0;
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, route => { checkpoints++; return route.fulfill({ json: route.request().postDataJSON() }); });
+  await page.evaluate(() => {
+    const original = window.fetch;
+    (window as unknown as { receiptBody?: ReadableStreamDefaultController<Uint8Array> }).receiptBody = undefined;
+    window.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : input.href;
+      if (!url.endsWith("/protected-ciphertext-receipt")) return original(input, init);
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({ start(controller) {
+        (window as unknown as { receiptBody: ReadableStreamDefaultController<Uint8Array> }).receiptBody = controller;
+        controller.enqueue(new TextEncoder().encode('{"schemaVersion":1'));
+      } }), { status: 201, headers: { "content-type": "application/json" } }));
+    };
+  });
+  await firstName.fill("STREAMED RECEIPT"); await firstName.press("Tab");
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { receiptBody?: unknown }).receiptBody))).toBe(true);
+  await context.setOffline(true);
+  await page.evaluate(result => {
+    const controller = (window as unknown as { receiptBody: ReadableStreamDefaultController<Uint8Array> }).receiptBody;
+    if (result === "disconnect") controller.error(new TypeError("Synthetic response connection terminated"));
+    else controller.close();
+  }, bodyResult);
+  if (bodyResult === "malformed") {
+    await expect(page.locator(".safety-notice")).toContainText("Protected storage failed while offline");
+    await expect(firstName).toBeDisabled();
+  } else {
+    await expect(firstName).toBeEnabled();
+    await firstName.fill("CONTINUED STREAM LOSS"); await firstName.press("Tab");
+    await expect.poll(async () => { const [record] = await encryptedRecords(page); return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision)); }).toBe(true);
+    await expect(page.locator(".safety-notice").filter({ hasText: "Protected storage failed while offline" })).toHaveCount(0);
+  }
+  expect(checkpoints).toBe(0);
+});
+
+for (const status of [401, 403]) test(`reopening cannot use a cached report after authoritative HTTP ${status}`, async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page.getByRole("button", { name: "Reopen report" })).toBeVisible();
+  await page.route(`**/api/reports/${reportId}/reopen`, route => route.fulfill({ status, json: { message: "Clinical access was withdrawn" } }));
+  await page.getByRole("button", { name: "Reopen report" }).click();
+  if (status === 401) await expect(page.getByLabel("Username", { exact: true })).toBeVisible();
+  else await expect(page.locator(".open-reports .assignment-error")).toBeVisible();
+  await expect(page.locator(".encounter-header")).toHaveCount(0);
+  await expect(page.locator(".report-reauthentication")).toHaveCount(0);
 });

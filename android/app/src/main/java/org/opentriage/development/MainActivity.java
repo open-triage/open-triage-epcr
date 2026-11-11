@@ -8,7 +8,11 @@ import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
+        // Clinical text must not become an OS-persisted recents thumbnail or screen capture.
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         registerPlugin(OpenTriageConnectionPlugin.class);
+        registerPlugin(OpenTriageScannerPlugin.class);
+        registerPlugin(OpenTriageLifecyclePlugin.class);
         super.onCreate(state);
         // CapacitorCookies installs a global handler even when JS patching is disabled.
         // It would copy native credentials into the WebView cookie store. Own them solely in the vault.

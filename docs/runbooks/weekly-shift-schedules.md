@@ -22,8 +22,8 @@ cap under a group lock; existing schedules remain readable and editable at capac
   (Stockholm 02:30 becomes 03:30). The same rule handles date-line gaps.
 - If gap normalization makes two events coincide, retain the shortest grace.
   Overlapping grace windows remain separate. A future new-job decision must check
-  each checkpoint's own authentication threshold; an early window does not
-  replace the active shift's requirement. Grace is elapsed time before the event.
+  the current session, enrollment and schedule selection. Checkpoints and grace
+  do not require another authentication. Grace is elapsed time before the event.
 - Exact checkpoint instants activate the incoming shift. Grace begins inclusively
   and ends at its checkpoint; zero grace has no early window.
 
@@ -90,4 +90,13 @@ session, grace threshold, device enrollment or authorization deadline.
 Unit evaluations expose `activeVersion` and `nextVersion` in addition to the
 actual active checkpoint (which can still belong to an older version). This
 lets clients show the incoming revision without conflating it with the current
-authentication requirement. The persisted projection carries the same fields.
+shift. The persisted projection carries the same fields.
+
+## Current login authorizes work
+
+An active authenticated login is sufficient to open assigned calls, create a
+patient report and reopen eligible older reports. Shift boundaries and grace
+windows do not display password, OIDC or clinician-confirmation prompts. Every
+request still verifies session expiry/revocation, current capabilities, agency,
+unit enrollment and required schedule selection. Existing session and protected
+recovery deadlines do not extend when an action succeeds.

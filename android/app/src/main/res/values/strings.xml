@@ -3,6 +3,8 @@
     <string name="managed_version">Configuration version</string>
     <string name="managed_origin">Server HTTPS origin</string>
     <string name="managed_ca">Public CA certificates (PEM)</string>
+    <string name="pairing_scanner_title">Scan vehicle pairing QR</string>
+    <string name="pairing_scanner_cancel">Cancel</string>
     <string name="app_name">OpenTriage Development</string>
     <string name="title_activity_main">OpenTriage Development</string>
     <string name="package_name" translatable="false">org.opentriage.development</string>

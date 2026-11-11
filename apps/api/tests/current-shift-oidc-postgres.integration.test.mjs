@@ -19,7 +19,7 @@ process.env.PATIENT_KEY_VERSION ??= '1';
 process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32,0x31).toString('base64');
 const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw Error('DATABASE_URL required');
-integration('current-shift gates use conservative signed OIDC proof through real browser redirects and this device session',async()=>{
+integration('valid local and OIDC login crosses shift and grace boundaries without repeated authentication',async()=>{
  const name=`shift_${randomUUID().replaceAll('-','')}`,admin=new pg.Client({connectionString:process.env.DATABASE_URL});await admin.connect();await admin.query(`create database ${name}`);
  const url=new URL(process.env.DATABASE_URL);url.pathname=`/${name}`;
  const owner=new DataSource({type:'postgres',url:url.toString()}),runtimeUrl=new URL(url);runtimeUrl.searchParams.set('options','-c role=open_triage_api_runtime');
@@ -87,7 +87,7 @@ integration('current-shift gates use conservative signed OIDC proof through real
    res.setHeader('content-type','application/json');res.end(JSON.stringify(answer));
   }catch(error){res.writeHead(500).end(JSON.stringify({error:String(error)}));}});});control.listen(0,'127.0.0.1');await once(control,'listening');
   const result=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/current-shift-oidc-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,DATABASE_URL:runtimeUrl.toString(),OIDC_CREDENTIAL_KEYS_JSON:keys,NODE_EXTRA_CA_CERTS:fixture.certificate,SHIFT_CONTROL_URL:`http://127.0.0.1:${control.address().port}`,SHIFT_CHECKPOINT:checkpoint.toISOString(),SHIFT_INCOMING:incoming.toISOString()},timeout:180000,maxBuffer:1024*1024}).catch(e=>{throw Error(e.stderr||e.stdout||e.message);});
-  assert.match(result.stdout,/"shiftOidc":true/);assert.match(result.stdout,/"crossing":true/);assert.match(result.stdout,/"graceContinue":true/);assert.match(result.stdout,/"graceSwitch":true/);
+  assert.match(result.stdout,/"shiftOidc":true/);assert.match(result.stdout,/"crossing":true/);assert.match(result.stdout,/"currentLogin":true/);assert.match(result.stdout,/"ownershipSwitch":true/);
  }finally{
   if(previousKeys===undefined)delete process.env.OIDC_CREDENTIAL_KEYS_JSON;else process.env.OIDC_CREDENTIAL_KEYS_JSON=previousKeys;
   if(control){control.closeAllConnections();await new Promise(resolve=>control.close(resolve));}await fixture?.close();if(owner.isInitialized)await owner.destroy();

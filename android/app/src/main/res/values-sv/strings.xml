@@ -5,4 +5,6 @@
     <string name="managed_version">Konfigurationsversion</string>
     <string name="managed_origin">Serverns HTTPS-ursprung</string>
     <string name="managed_ca">Publika CA-certifikat (PEM)</string>
+    <string name="pairing_scanner_title">Skanna QR-kod för fordonskoppling</string>
+    <string name="pairing_scanner_cancel">Avbryt</string>
 </resources>

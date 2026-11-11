@@ -46,6 +46,7 @@ import { repairRecreatedCanonicalEvents } from "./canonical-events";
 import { DEMO_CLEAR_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
+import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "./application-foreground";
 import { recordFeedbackInteraction } from "./feedback-telemetry";
 import { markProtectedReportCompleted, offlineEditingAvailable, protectedStorageStatus, subscribeProtectedStorageStatus } from "./protected-clinical-storage";
 
@@ -191,7 +192,7 @@ export function useReportWorkspace({
       }
       // Connectivity can change while an earlier command is awaiting acknowledgement.
       // Preserve newly queued work until the online retry resumes this drain.
-      if (!navigator.onLine) {
+      if (!navigator.onLine || !foregroundNetworkAllowed()) {
         setSyncStatus("Pending sync");
         return;
       }
@@ -355,7 +356,11 @@ export function useReportWorkspace({
   useEffect(() => {
     const retry = () => { if (report) void flushSave(); };
     window.addEventListener("online", retry);
-    return () => window.removeEventListener("online", retry);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, retry);
+    return () => {
+      window.removeEventListener("online", retry);
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, retry);
+    };
   }, [flushSave, report]);
 
   useEffect(() => () => {
@@ -379,7 +384,7 @@ export function useReportWorkspace({
     let stopped = false;
     let polling = false;
     const poll = async () => {
-      if (stopped || polling || document.visibilityState !== "visible" || activeSave.current) return;
+      if (stopped || polling || !applicationVisible() || activeSave.current) return;
       polling = true;
       let retryRecoveredChange = false;
       const previousEtag = activeEtag.current;
@@ -486,21 +491,23 @@ export function useReportWorkspace({
     };
     const startOrPause = () => {
       if (pollTimer !== null) window.clearInterval(pollTimer);
-      pollTimer = document.visibilityState === "visible"
+      pollTimer = applicationVisible()
         ? window.setInterval(() => void poll(), ACTIVE_REPORT_POLL_INTERVAL_MS)
         : null;
     };
     const visibilityChanged = () => {
-      if (document.visibilityState === "visible") void poll();
+      if (applicationVisible()) void poll();
       startOrPause();
     };
     void poll();
     startOrPause();
     document.addEventListener("visibilitychange", visibilityChanged);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, visibilityChanged);
     return () => {
       stopped = true;
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, visibilityChanged);
     };
   }, [completeReport, reconciliationRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
 

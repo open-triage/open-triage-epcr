@@ -30,7 +30,7 @@ final class TrustedConnection {
     private final javax.net.ssl.SSLSocketFactory socketFactory;
     private final Map<String, SavedCookie> cookies = new HashMap<>();
     private static final Set<String> COOKIE_NAMES = Set.of("open_triage_session", "open_triage_installation");
-    private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "if-match");
+    private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "x-job-confirmation", "if-match", "if-none-match");
     record SavedCookie(String value, long expires) {}
     record Reply(int status, JSONObject headers, String body) {}
 
@@ -159,7 +159,7 @@ final class TrustedConnection {
                 try (var output = connection.getOutputStream()) { output.write(body.getBytes(StandardCharsets.UTF_8)); }
             }
             int status = connection.getResponseCode();
-            if (status >= 300 && status < 400) throw new IllegalStateException("Redirect requires explicit platform flow");
+            if (status >= 300 && status < 400 && status != 304) throw new IllegalStateException("Redirect requires explicit platform flow");
             for (var header : connection.getHeaderFields().entrySet()) {
                 if (header.getKey() != null && header.getKey().equalsIgnoreCase("Set-Cookie")) {
                     for (String raw : header.getValue()) for (HttpCookie cookie : HttpCookie.parse(raw)) {
@@ -176,7 +176,8 @@ final class TrustedConnection {
                 String value = connection.getHeaderField(name);
                 if (value != null) responseHeaders.put(name, value);
             }
-            InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            InputStream stream = Set.of(204, 205, 304).contains(status) || method.equals("HEAD") ? null
+                : status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] bytes = stream == null ? new byte[0] : readBounded(stream);
             return new Reply(status, responseHeaders, new String(bytes, StandardCharsets.UTF_8));
         } finally { connection.disconnect(); }

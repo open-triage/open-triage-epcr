@@ -7,6 +7,7 @@ import {
   cacheOpenCallSummary,
   cacheLocalReportDocument,
   cacheOpenedReport,
+  cacheReopenedReport,
   cachedOpenCalls,
   cachedOpenReports,
   cachedReopenResponse,
@@ -469,4 +470,27 @@ test("reopening refreshes destination recommendations without replacing pinned f
   const removed = cacheOpenedReport(storage, session, initial, "CALL-51");
   assert.equal(removed.report.clinicalForm!.catalogFields["eDisposition.01"]!.recommendations, undefined);
   assert.equal(config.catalogFields["eDisposition.01"].name, "Pinned destination");
+});
+
+test("late reopen and directory responses cannot replace a recovered edit after its queue was acknowledged", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  const edited = { ...structuredClone(opened.report.document), groups: [] };
+  cacheLocalReportDocument(storage, opened.report.id, edited);
+  queueDraftChange(storage, opened.report.id, command("recovered-edit", 4));
+  acceptDraftChange(storage, opened.report.id, "recovered-edit", { id: opened.report.id, revision: 5, status: "draft" });
+  assert.equal(queuedDraftChanges(storage, opened.report.id).length, 0);
+  for (const refresh of [
+    () => cacheOpenedReport(storage, session, opened, "CALL-51"),
+    () => cacheReopenedReport(storage, session, { callNumber: "CALL-51", report: opened.report }),
+    () => cacheOpenCallSummary(storage, session, { reportId: opened.report.id, callNumber: "CALL-51",
+      formVersionId: opened.report.formVersionId, catalogReleaseId: opened.report.catalogReleaseId,
+      revision: 4, lastSavedAt: "2026-09-03T12:00:00Z", validationErrorCount: 0, syncStatus: "saved" }),
+  ]) {
+    refresh();
+    const cached = cachedReopenResponse(storage, session.user.id, opened.report.id)!;
+    assert.equal(cached.report.revision, 5);
+    assert.deepEqual(cached.report.document, edited);
+    assert.equal(queuedDraftChanges(storage, opened.report.id).length, 0);
+  }
 });
