@@ -244,3 +244,12 @@ runs different-user denial and original-author recovery/synchronization. Synthet
 fault controls exist only in the test API launcher. `npm run check:ci` also covers
 native preview/cancel, pending retry, origin-scoped handles and the existing
 managed-policy and browser enrollment races.
+
+## Production signing and upgrade checks
+
+Production identity, custody, immutable artifact workflow and the real signed A/B
+upgrade acceptance are documented in [Android releases](android-release.md).
+Run `npm run android:validate:release` after `android:build` to catch release-only
+build/signature regressions locally; the Android PR workflow runs this same early
+check with a disposable key. Permanent-key distribution requires the separate
+protected release workflow and actual signed upgrade evidence.

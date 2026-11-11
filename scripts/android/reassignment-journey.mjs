@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
 
 /** Continue the real protected-work scenario with a committed enrollment reply loss. */
-export async function runReassignmentTransition({fixture,report,adb,serial,run,api,db,ca,adminHeaders,retainedSha256,prepareUntilKilled,instrument}) {
+export async function runReassignmentTransition({fixture,report,applicationId='org.opentriage.development',adb,serial,run,api,db,ca,adminHeaders,retainedSha256,prepareUntilKilled,instrument}) {
   const {rows:[before]}=await db.query(`select id,installation_identity_id,credential_sha256 from app_identity.installation_registration where unit_id=$1 and revoked_at is null order by enrolled_at desc limit 1`,[fixture.unitId]);
   assert(before);
   const unitId=randomUUID();
@@ -14,14 +14,14 @@ export async function runReassignmentTransition({fixture,report,adb,serial,run,a
   const artifact={version:1,...issued.body,caPem:ca.toString('utf8')};
   const expiring=await api(fixture,ca,`admin/units/${unitId}/enrollment`,'POST',{},adminHeaders);assert.equal(expiring.status,201);
   const expiredArtifact={version:1,...expiring.body,caPem:ca.toString('utf8')};
-  run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);
+  run(adb,['-s',serial,'shell','am','force-stop',applicationId]);
   for(const radio of ['wifi','data'])run(adb,['-s',serial,'shell','svc',radio,'enable']);
   const pending=prepareUntilKilled('reassign',{artifactBase64:Buffer.from(JSON.stringify(artifact)).toString('base64'),expiredArtifactBase64:Buffer.from(JSON.stringify(expiredArtifact)).toString('base64'),retainedSha256});
   try{
     await pending.ready;
-    const live=execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim();assert(live);
-    run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);
-    assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');
+    const live=execFileSync(adb,['-s',serial,'shell','pidof',applicationId],{encoding:'utf8'}).trim();assert(live);
+    run(adb,['-s',serial,'shell','am','force-stop',applicationId]);
+    assert.equal(spawnSync(adb,['-s',serial,'shell','pidof',applicationId],{encoding:'utf8'}).stdout.trim(),'');
     await pending.closed;
     const released=await api(fixture,ca,'__android-enrollment-drop-release','POST',{},adminHeaders);assert.equal(released.body.released,true);
     instrument('resume-reassignment',fixture.clinician.username,fixture.clinicianPassword,{unitId,installationId:before.installation_identity_id,retainedSha256});

@@ -5,7 +5,7 @@ import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
-export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, hooks = {} }) {
+export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, hooks = {} }) {
   const report = await seedReportFixture(root, fixture, run); let ca = await readFile(fixture.caPath);
   const administrator = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
   assert.equal(administrator.status, 201);
@@ -17,8 +17,8 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const artifact = { version: 1, ...issued.body, caPem: ca.toString('utf8') };
   const argumentsFor = (phase, username, password, extra = {}) => {
     const args = ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.ReportRecoveryJourneyTest'];
-    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, ...extra })) args.push('-e', key, String(value));
-    args.push('org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner');
+    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', ...extra })) args.push('-e', key, String(value));
+    args.push(`${applicationId}.test/androidx.test.runner.AndroidJUnitRunner`);
     return args;
   };
   const instrument = (phase, username, password, extra = {}) => {
@@ -53,7 +53,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const db = new pg.Client({ connectionString: fixture.databaseUrl }); await db.connect();
   let preparation;
   try {
-    run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
+    run(adb, ['-s', serial, 'shell', 'pm', 'clear', applicationId]);
     preparation = prepareUntilKilled(); await preparation.ready;
     const { rows: [opened] } = await db.query(`select r.id,r.revision,r.form_version_id,r.catalog_release_id,r.validation_version_id,
       envelope.recovery_deadline,envelope.wrapping_key_version,envelope.ciphertext_revision from clinical.call_assignment assignment
@@ -66,16 +66,17 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     const firstName = async () => (await db.query(`select value_text from clinical.element_occurrence
       where report_id=$1 and element_id=$2 and tombstoned_at is null`, [opened.id, report.elementId])).rows[0]?.value_text;
     assert.equal(await firstName(), 'ANDROID-RECONNECTED-SYNTHETIC', 'Only the reconnected edit reached the server before process loss');
-    await hooks.beforeProcessKill?.({ root, fixture, report, opened, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, prepareUntilKilled, instrument });
-    const livePid = execFileSync(adb, ['-s', serial, 'shell', 'pidof', 'org.opentriage.development'], { encoding: 'utf8' }).trim();
+    await hooks.beforeProcessKill?.({ root, fixture, report, opened, applicationId, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, prepareUntilKilled, instrument });
+    const livePid = execFileSync(adb, ['-s', serial, 'shell', 'pidof', applicationId], { encoding: 'utf8' }).trim();
     assert(livePid, 'The prepared clinical application must still be running before process termination');
-    run(adb, ['-s', serial, 'shell', 'am', 'force-stop', 'org.opentriage.development']);
-    const remaining = spawnSync(adb, ['-s', serial, 'shell', 'pidof', 'org.opentriage.development'], { encoding: 'utf8' });
+    run(adb, ['-s', serial, 'shell', 'am', 'force-stop', applicationId]);
+    const remaining = spawnSync(adb, ['-s', serial, 'shell', 'pidof', applicationId], { encoding: 'utf8' });
     assert.equal(remaining.stdout.trim(), '', 'Host force-stop must actually terminate the live application process');
     let closeTimedOut = false;
     const closeTimeout = setTimeout(() => { closeTimedOut = true; preparation.child.kill('SIGTERM'); }, 30000);
     await preparation.closed; clearTimeout(closeTimeout);
     assert.equal(closeTimedOut, false, 'Instrumentation must report termination after the host kills its live process');
+    if (afterProcessStop) await afterProcessStop();
     console.log('PASS abrupt process termination: all preparation assertions completed with a live clinical Activity before host force-stop');
     run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'disable']); run(adb, ['-s', serial, 'shell', 'svc', 'data', 'disable']);
     const offlineResult = instrument('offline', fixture.clinician.username, fixture.clinicianPassword, { reportId: opened.id });
@@ -92,9 +93,9 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       const revoked = await api(fixture, ca, `admin/users/${fixture.clinician.userId}/sessions/${session.id}`, 'DELETE', {}, adminHeaders);
       assert.equal(revoked.status, 200, JSON.stringify(revoked.body)); assert.equal(revoked.body.revoked, true);
     }
-    await hooks.beforeReconnect?.({ root, fixture, report, opened, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, adminHeaders, retainedSha256, prepareUntilKilled, instrument });
+    await hooks.beforeReconnect?.({ root, fixture, report, opened, applicationId, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, adminHeaders, retainedSha256, prepareUntilKilled, instrument });
     // A second real termination separates offline relaunch from restored connectivity.
-    run(adb, ['-s', serial, 'shell', 'am', 'force-stop', 'org.opentriage.development']);
+    run(adb, ['-s', serial, 'shell', 'am', 'force-stop', applicationId]);
     run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'enable']); run(adb, ['-s', serial, 'shell', 'svc', 'data', 'enable']);
     instrument('other', report.secondClinician.username, report.secondClinicianPassword, { reportId: opened.id, retainedSha256 });
     assert.equal(await firstName(), 'ANDROID-RECONNECTED-SYNTHETIC', 'Session withdrawal and another clinician must not synchronize the pending work');
