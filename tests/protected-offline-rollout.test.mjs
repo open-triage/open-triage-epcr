@@ -83,7 +83,7 @@ function assertOpaqueProtectedEnvelope(source) {
   const parsed = ts.createSourceFile("storage.ts", source, ts.ScriptTarget.Latest, true);
   const envelope = parsed.statements.find(statement => ts.isInterfaceDeclaration(statement) && statement.name.text === "ProtectedClinicalRecord");
   assert.ok(envelope, "protected envelope must be declared explicitly");
-  const allowed = new Set(["localRecordId", "schemaVersion", "algorithm", "recoveryHandle", "checkpointScope", "recoveryDeadline", "ciphertextRevision", "synchronizedRevision", "updatedAt", "nonce", "ciphertext"]);
+  const allowed = new Set(["localRecordId", "nativeScope", "schemaVersion", "algorithm", "recoveryHandle", "checkpointScope", "recoveryDeadline", "ciphertextRevision", "synchronizedRevision", "updatedAt", "nonce", "ciphertext"]);
   for (const member of envelope.members) assert.ok(member.name && allowed.has(member.name.getText(parsed)),
     "the cleartext IndexedDB envelope must contain only reviewed opaque metadata");
 }
@@ -91,7 +91,7 @@ function assertOpaqueProtectedEnvelope(source) {
 test("envelope guard distinguishes encrypted payload identity from cleartext clinical labels", () => {
   const source = 'interface ProtectedClinicalRecord { readonly ciphertext: ArrayBuffer; } interface EncryptedPayload { readonly reportId: string; readonly patientId: string; }';
   assertOpaqueProtectedEnvelope(source);
-  for (const field of ["reportId", "patientId", "organizationId", "userId", "summary"]) {
+  for (const field of ["reportId", "patientId", "organizationId", "userId", "summary", "nativeOrigin", "serverOrigin"]) {
     assert.throws(() => assertOpaqueProtectedEnvelope(source.replace('readonly ciphertext', `readonly ${field}: string; readonly ciphertext`)), /opaque metadata/);
   }
 });

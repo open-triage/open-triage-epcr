@@ -31,3 +31,17 @@ test("runtime identity details are unavailable in production", async () => {
     else process.env.NODE_ENV = previous;
   }
 });
+
+test("public production health advertises the shared Android protocol independently of deployment provenance", () => {
+  const controller = new HealthController({ query: async () => { throw new Error("must not query"); } });
+  const previous = process.env.OPEN_TRIAGE_BUILD_SHA;
+  try {
+    for (const source of ["a".repeat(40), "b".repeat(40)]) {
+      process.env.OPEN_TRIAGE_BUILD_SHA = source;
+      assert.deepEqual(controller.getHealth(), { status: "ok", service: "open-triage-api", androidApiProtocol: 1 });
+    }
+  } finally {
+    if (previous === undefined) delete process.env.OPEN_TRIAGE_BUILD_SHA;
+    else process.env.OPEN_TRIAGE_BUILD_SHA = previous;
+  }
+});

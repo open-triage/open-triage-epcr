@@ -25,7 +25,7 @@ final class ConnectionVault {
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
         return generator.generateKey();
     }
-    TrustedConnection read() throws Exception {
+    private JSONObject readState() throws Exception {
         String encoded = preferences.getString("encrypted", null);
         if (encoded == null) return null;
         JSONObject envelope = new JSONObject(encoded);
@@ -33,12 +33,34 @@ final class ConnectionVault {
         cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)));
         cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
         byte[] plain = cipher.doFinal(Base64.decode(envelope.getString("body"), Base64.NO_WRAP));
-        return TrustedConnection.restore(new JSONObject(new String(plain, StandardCharsets.UTF_8)));
+        return new JSONObject(new String(plain, StandardCharsets.UTF_8));
     }
-    void write(TrustedConnection connection) throws Exception {
+    TrustedConnection read() throws Exception {
+        var saved = readState(); return saved == null || !saved.has("connection") && !saved.has("origin") ? null : TrustedConnection.restore(saved.has("connection") ? saved.getJSONObject("connection") : saved);
+    }
+    JSONObject pending() throws Exception { var saved = readState(); return saved == null ? null : saved.optJSONObject("enrollment"); }
+    String legacyStorageScope() throws Exception {
+        JSONObject state = readState();
+        if (state == null) return null;
+        // The authenticated pre-transition vault had exactly one possible server.
+        if (state.has("origin")) return NativeConnectionIdentity.storageScope(TrustedConnection.restore(state).origin);
+        if (!state.has("legacyStorageScope")) return null;
+        String scope = state.getString("legacyStorageScope");
+        if (!scope.matches("[A-Za-z0-9_-]{43}") || !java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(java.util.Base64.getUrlDecoder().decode(scope)).equals(scope)) throw new IllegalStateException("Invalid legacy storage proof");
+        return scope;
+    }
+    void write(TrustedConnection connection) throws Exception { writeState(connection, pending()); }
+    void stage(TrustedConnection connection, JSONObject enrollment) throws Exception { writeState(connection, enrollment); }
+    void promote(TrustedConnection connection) throws Exception { writeState(connection, null); }
+    private void writeState(TrustedConnection connection, JSONObject enrollment) throws Exception {
+        JSONObject state = new JSONObject();
+        String legacyScope = legacyStorageScope();
+        if (legacyScope != null) state.put("legacyStorageScope", legacyScope);
+        if (connection != null) state.put("connection", connection.saved());
+        if (enrollment != null) state.put("enrollment", enrollment);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
         cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
-        byte[] encrypted = cipher.doFinal(connection.saved().toString().getBytes(StandardCharsets.UTF_8));
+        byte[] encrypted = cipher.doFinal(state.toString().getBytes(StandardCharsets.UTF_8));
         JSONObject envelope = new JSONObject().put("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)).put("body", Base64.encodeToString(encrypted, Base64.NO_WRAP));
         if (!preferences.edit().putString("encrypted", envelope.toString()).commit()) throw new IllegalStateException("Connection storage unavailable");
     }
