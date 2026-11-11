@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateReleaseInputs, validateUpgrade, verifyApkMetadata } from '../scripts/android/release-contract.mjs';
+import { validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
 const inputs = { ANDROID_KEYSTORE_PATH: '/protected/key.p12', ANDROID_KEYSTORE_PASSWORD: 'synthetic', ANDROID_KEY_PASSWORD: 'synthetic', ANDROID_KEY_ALIAS: 'synthetic', ANDROID_CERTIFICATE_SHA256: 'ab'.repeat(32), ANDROID_VERSION_CODE: '2', ANDROID_VERSION_NAME: '0.1.0-rc.2' };
 const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificateSha256: 'ab'.repeat(32), apkSha256: 'a'.repeat(64) };
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
@@ -21,4 +21,15 @@ test('APK verification checks real package metadata, release flag and certificat
   for (const altered of [metadata.replace('org.opentriage.android', 'org.opentriage.development'), metadata.replace("versionCode='2'", "versionCode='1'"), metadata.replace('rc.2', 'rc.1'), metadata + '\napplication-debuggable']) assert.throws(() => verifyApkMetadata(altered, signature, expected));
   assert.throws(() => verifyApkMetadata(metadata, signature.replace('ab', 'cd'), expected));
   assert.throws(() => verifyApkMetadata(metadata, signature + '\nSigner #2 certificate SHA-256 digest: ' + 'ab'.repeat(32), expected));
+});
+
+ test('publication rejects incomplete acceptance, mismatched descriptors and unverified preflight', () => {
+  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33 };
+  const evidence = { status: 'passed', releaseA: { ...a, sourceCommit: descriptor.sourceCommit, minAndroidApi: 33 }, releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
+  const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit };
+  const identity = { applicationId: b.applicationId, certificateSha256: b.certificateSha256 };
+  validatePublicationEvidence(descriptor, evidence, preflight, identity);
+  for (const missing of requiredUpgradeAssertions) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, assertions: evidence.assertions.filter(value => value !== missing) }, preflight, identity), /Missing upgrade acceptance/);
+  for (const altered of [{ status: 'failed' }, { androidApi: '32' }, { releaseB: { ...descriptor, uiSha256: 'tampered' } }]) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, ...altered }, preflight, identity));
+  for (const altered of [{ status: 'failed' }, { command: 'npm test' }, { sourceCommit: 'b'.repeat(40) }]) assert.throws(() => validatePublicationEvidence(descriptor, evidence, { ...preflight, ...altered }, identity));
 });

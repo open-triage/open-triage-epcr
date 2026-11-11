@@ -9,6 +9,7 @@ import { validateReleaseInputs, validateUpgrade, verifyApkMetadata, compatibilit
 
 const root = resolve(import.meta.dirname, '..'), env = { ...process.env, ANDROID_PRODUCTION_RELEASE: '1' };
 const identity = validateReleaseInputs(env);
+assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(), '', 'Release builds require a clean committed source tree');
 const selected = JSON.parse(readFileSync(join(root, 'docs/releases/android/signing-identity.json'), 'utf8'));
 assert.equal(identity.certificateSha256, selected.certificateSha256, 'Signing configuration must match the selected permanent production identity'); // Fail before expensive build or touching output.
 const output = resolve(env.ANDROID_RELEASE_OUTPUT ?? join(root, '.local/android-releases', `${identity.versionCode}`));

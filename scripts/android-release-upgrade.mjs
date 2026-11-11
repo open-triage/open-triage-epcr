@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { prepareFixtures } from './android/fixtures.mjs';
 import { fixtureApi as api } from './android/fixture-client.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
-import { validateUpgrade, verifyApkMetadata } from './android/release-contract.mjs';
+import { validateUpgrade, verifyApkMetadata, requiredUpgradeAssertions } from './android/release-contract.mjs';
 const root = resolve(import.meta.dirname, '..');
 const [aDirectory, bDirectory] = process.argv.slice(2).map(value => resolve(value));
 assert(aDirectory && bDirectory, 'Supply release A and B artifact directories');
@@ -55,7 +55,7 @@ try {
       assert.notEqual(rejected.status, 0, 'Ordinary package installation must reject downgrade');
       assert.match(rejected.stdout + rejected.stderr, /INSTALL_FAILED_VERSION_DOWNGRADE/);
     } });
-  const evidence = { schemaVersion: 1, status: 'passed', releaseA: a, releaseB: b, androidApi: execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'], { encoding: 'utf8' }).trim(), assertions: ['in-place-install-r', 'downgrade-rejected', 'same-uid', 'keystore-connection-ca-enrollment', 'managed-policy', 'presentation-preference', 'exact-pending-ciphertext', 'offline-no-plaintext', 'other-clinician-denied', 'original-clinician-recovery-sync', 'pinned-versions-and-deadline', 'packaged-ui-no-service-worker'], deviceScope: 'isolated Android emulator; physical/MDM rollout remains separate' };
+  const evidence = { schemaVersion: 1, status: 'passed', releaseA: a, releaseB: b, androidApi: execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'], { encoding: 'utf8' }).trim(), assertions: requiredUpgradeAssertions, deviceScope: 'isolated Android emulator; physical/MDM rollout remains separate' };
   await writeFile(join(bDirectory, 'upgrade-evidence.json'), JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });
   policy({});
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');
