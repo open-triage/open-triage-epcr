@@ -105,15 +105,25 @@ for(const language of ['en','sv'])test(`${language} administrator inventory and 
  expect(Object.keys(artifact).sort()).toEqual(['caPem','expiresAt','origin','token','version']);
  expect(download.suggestedFilename()).toBe('open-triage-pairing.json');
  const showAndroidQr=dialog.getByRole('button',{name:t('Show Android pairing QR','Visa QR-kod för Android-koppling'),exact:true});
+ const showBrowserQr=dialog.getByRole('button',{name:t('Show browser/PWA QR','Visa QR-kod för webbläsare/PWA'),exact:true});
  const androidQr=dialog.getByRole('img',{name:t('Android vehicle-pairing QR code','QR-kod för Android-fordonskoppling'),exact:true});
+ const browserQr=dialog.getByRole('img',{name:t('Single-use enrollment QR code','QR-kod för engångskoppling'),exact:true});
  await showAndroidQr.click();await expect(androidQr).toBeVisible();
+ await expect(dialog.getByRole('img')).toHaveCount(1);await expect(browserQr).toHaveCount(0);
+ await expect(showAndroidQr).toHaveAttribute('aria-pressed','true');
  expect(await androidQr.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+ await showBrowserQr.focus();await showBrowserQr.press('Enter');
+ await expect(showBrowserQr).toBeFocused();await expect(showBrowserQr).toHaveAttribute('aria-pressed','true');
+ await expect(browserQr).toBeVisible();await expect(androidQr).toHaveCount(0);await expect(dialog.getByRole('img')).toHaveCount(1);
+ await showAndroidQr.click();await expect(androidQr).toBeVisible();await expect(dialog.getByRole('img')).toHaveCount(1);
  // A CA change removes stale QR trust material. Larger trust chains retain file import.
  await caField.fill(ca.repeat(2));await expect(androidQr).toHaveCount(0);
  await showAndroidQr.click();
  await expect(dialog.getByText(t('Pairing data is too large for QR. Use the pairing file.','Kopplingsdata är för stora för QR. Använd kopplingsfilen.'),{exact:true})).toBeVisible();
  await expect(androidQr).toHaveCount(0);
- await expect(dialog.getByRole('img',{name:t('Single-use enrollment QR code','QR-kod för engångskoppling'),exact:true})).toBeVisible();
+ await expect(dialog.getByRole('img')).toHaveCount(0);
+ await expect(dialog.getByLabel(t('Enrollment link — open in the intended installation','Kopplingslänk — öppna i avsedd installation'))).toHaveValue('https://agency.example.test/enroll/#code='+'A'.repeat(43));
+ await showBrowserQr.click();await expect(browserQr).toBeVisible();await expect(dialog.getByRole('img')).toHaveCount(1);
  const largeDownloaded=page.waitForEvent('download');
  await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
  expect((await largeDownloaded).suggestedFilename()).toBe('open-triage-pairing.json');
@@ -126,7 +136,17 @@ for(const language of ['en','sv'])test(`${language} administrator inventory and 
   field.dispatchEvent(new Event('input',{bubbles:true}));
  });
  await expect(showAndroidQr).toBeEnabled();await expect(caField).toHaveValue(ca+' ');await expect(androidQr).toHaveCount(0);
+ await caField.fill(ca);
+ // Selecting the browser target also invalidates a pending Android render.
+ await showAndroidQr.evaluate(button=>{
+  (button as HTMLButtonElement).click();
+  const other=Array.from(button.closest('dialog')!.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')).find(candidate=>candidate!==button)!;
+  other.click();
+ });
+ await expect(showAndroidQr).toBeEnabled();await expect(showBrowserQr).toHaveAttribute('aria-pressed','true');
+ await expect(browserQr).toBeVisible();await expect(androidQr).toHaveCount(0);await expect(dialog.getByRole('img')).toHaveCount(1);
  await caField.fill(ca);await showAndroidQr.click();await expect(androidQr).toBeVisible();
+ await expect(dialog.getByRole('img')).toHaveCount(1);
  await dialog.getByRole('button',{name:t('Close','Stäng'),exact:true}).scrollIntoViewIfNeeded();
  await expect(dialog.getByRole('button',{name:t('Close','Stäng'),exact:true})).toBeInViewport();
  await page.screenshot({path:testInfo.outputPath(`inventory-${language}-mobile.png`)});

@@ -3043,5 +3043,6 @@
   "android.scannerFailed": "Kameran är inte tillgänglig. Försök igen eller importera kopplingsfilen.",
   "android.invalidQr": "Ogiltig kopplingskod. Skanna en ny kod eller importera kopplingsfilen.",
   "android.qrTooLarge": "Kopplingsdata är för stora för QR. Använd kopplingsfilen.",
-  "enrollment.browserQrTitle": "QR-kod för webbläsare/PWA"
+  "enrollment.browserQrTitle": "QR-kod för webbläsare/PWA",
+  "enrollment.showBrowserQr": "Visa QR-kod för webbläsare/PWA"
 }

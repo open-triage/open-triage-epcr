@@ -84,6 +84,11 @@ explicit confirmation as import. The browser/PWA enrollment QR and link remain
 available for their existing workflow; Android does not navigate to arbitrary
 URLs found by its scanner.
 
+Admin displays only the selected QR image. **Show Android pairing QR** replaces
+the browser image; **Show browser/PWA QR** switches back, while the browser link
+remains available. This prevents a camera from preferring an unrelated browser QR
+in the same frame. A changed trust value or target invalidates pending image renders.
+
 The QR contains the complete version-1 pairing JSON, including the public CA.
 There is no unauthenticated bootstrap download. QR data is limited to 2,048 UTF-8
 bytes, encoded at error correction M with a four-module quiet zone and a 512-pixel
