@@ -81,6 +81,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     console.log('PASS abrupt process termination: all preparation assertions completed with a live clinical Activity before host force-stop');
     run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'disable']); run(adb, ['-s', serial, 'shell', 'svc', 'data', 'disable']);
     const offlineResult = instrument('offline', fixture.clinician.username, fixture.clinicianPassword, { reportId: opened.id });
+    if(hooks.afterOfflineStartup)await hooks.afterOfflineStartup(offlineResult);
     const retainedSha256 = /retained_sha256=([a-f0-9]{64})/.exec(offlineResult)?.[1];
     assert(retainedSha256, 'Offline relaunch must publish only an opaque digest of its retained encrypted record');
     await hooks.beforeSessionWithdrawal?.({ root, fixture, report, opened, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, retainedSha256 });

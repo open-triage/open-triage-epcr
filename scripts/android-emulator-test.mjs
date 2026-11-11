@@ -1,3 +1,4 @@
+import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
@@ -26,6 +27,7 @@ function run(command, args, env = process.env) {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed (${result.status ?? result.signal})`);
 }
+await withWebViewFontProfile({adb,serial,root},async fontProfile=>{
 try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
   if (!process.argv.includes('--skip-build')) { run('npm', ['run', 'android:build']); run('npm', ['run', 'build', '-w', '@open-triage/api']); }
@@ -41,8 +43,9 @@ try {
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
   const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(2 tests\)/, 'Actual Keystore legacy provenance and expired-trust migration');
-  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
-  console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed native startup excludes remote font providers');
+  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed app initializer and scoped WebView font profile');
+  await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
@@ -82,5 +85,5 @@ try {
 } finally {
   await stopFixtureChildren(children);
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
-  await rm(directory, { recursive: true, force: true });
 }
+}).finally(()=>rm(directory,{recursive:true,force:true}));
