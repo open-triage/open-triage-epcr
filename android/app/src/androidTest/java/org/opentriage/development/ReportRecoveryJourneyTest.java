@@ -33,7 +33,7 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
@@ -244,7 +244,7 @@ public class ReportRecoveryJourneyTest {
     }
     private void playTimelineAudio(String caption) throws Exception {
         String button = "Array.from(document.querySelectorAll('.audio-note-event')).find(row=>row.textContent.includes(" + JSONObject.quote(caption) + "))?.querySelector('.timeline-audio-action')";
-        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && !window.__lastPlayedAudio.paused");
+        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && (!window.__lastPlayedAudio.paused || window.__lastPlayedAudio.ended)");
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
         assertEquals("Authorized audio playback stops on native pause", "true", evaluate("window.__lastPlayedAudio.paused"));
         activity.moveToState(Lifecycle.State.RESUMED); assertEquals("Playback does not restart without a user action", "true", evaluate("window.__lastPlayedAudio.paused"));
