@@ -75,3 +75,11 @@ test('Android audio declares optional microphone access and keeps real saved/unf
   assert.match(runner, /fixture: fixtures\[0\][^\n]*audio: true/);
   assert.match(runner, /fixture: fixtures\[1\][^\n]*audio: true[^\n]*unsavedAudio: true/);
 });
+
+test('Android declares every permission requested by the installed WebView media bridge', async () => {
+  const bridge = await readFile(new URL('../node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/BridgeWebChromeClient.java', import.meta.url), 'utf8');
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  const permissions = [...bridge.matchAll(/permissionList\.add\(Manifest\.permission\.(\w+)\)/g)].map(match => match[1]);
+  assert(permissions.length > 0, 'Inspect the installed SDK media permission contract');
+  for (const permission of permissions) assert(manifest.includes(`android:name="android.permission.${permission}"`), `WebView media requires manifest permission ${permission}`);
+});
