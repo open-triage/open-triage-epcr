@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import https from 'node:https';
 import assert from 'node:assert/strict';
 import { prepareFixtures } from './android/fixtures.mjs';
+import { fixtureApi as api } from './android/fixture-client.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
 const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-android-${randomUUID()}`;
@@ -17,16 +17,6 @@ function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed (${result.status ?? result.signal})`);
-}
-function api(fixture, ca, path, method = 'GET', body, headers = {}) {
-  return new Promise((resolveRequest, reject) => {
-    const request = https.request({ hostname: '127.0.0.1', port: fixture.port, path: `/api/${path}`, method, ca,
-      headers: { Origin: fixture.origin, Host: new URL(fixture.origin).host, ...headers, ...(body ? { 'content-type': 'application/json' } : {}) } }, response => {
-      let encoded = ''; response.setEncoding('utf8'); response.on('data', chunk => { encoded += chunk; });
-      response.on('end', () => resolveRequest({ status: response.statusCode, headers: response.headers, body: encoded ? JSON.parse(encoded) : null }));
-    });
-    request.on('error', reject); if (body) request.write(JSON.stringify(body)); request.end();
-  });
 }
 try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
