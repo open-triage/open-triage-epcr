@@ -33,6 +33,8 @@ try {
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
   const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
+  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed native startup excludes remote font providers');
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
