@@ -26,7 +26,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     configureNativeConnection(state);
     currentState.current = state;
     setConnection(state); setReady(state.configured && !state.blocked);
-    if (previous?.managedContext !== state.managedContext || state.blocked) { setPreview(null); setConfirmed(false); setName(""); }
+    if (previous?.managedContext !== state.managedContext || state.blocked || previous?.replacementPending && !state.replacementPending) { setPreview(null); setConfirmed(false); setName(""); }
     if (state.blocked) {
       // Shared locking retains eligible ciphertext while removing readable work.
       void lockProtectedClinicalStorage().catch(() => { /* Native policy still denies requests. */ });

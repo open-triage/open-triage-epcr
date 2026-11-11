@@ -269,7 +269,7 @@ public class OpenTriageConnectionPlugin extends Plugin {
         String proved = readPendingOutcome(TrustedConnection.restore(pendingEnrollment.getJSONObject("candidate")));
         pendingOutcome = proved;
         if (!proved.equals("not-committed")) throw new EnrollmentFailure("ENROLLMENT_UNAVAILABLE");
-        vault.promote(active);pendingEnrollment = null;pendingOutcome = null;pendingTrustCandidate = null;pendingTrustArtifact = null;replacing = true;
+        vault.promote(active);pendingEnrollment = null;pendingOutcome = null;pendingTrustCandidate = null;pendingTrustArtifact = null;candidate = null;pairing = null;replacing = true;
         connectionContext = java.util.UUID.randomUUID().toString();return connectionState();
     }); }
     @PluginMethod public void resumeEnrollment(PluginCall call) { execute(call, () -> finishEnrollment(false)); }

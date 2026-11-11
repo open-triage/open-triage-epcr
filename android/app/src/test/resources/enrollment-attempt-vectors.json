@@ -69,6 +69,16 @@
       "originalCredential": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
       "binding": "[\"open-triage.native-enrollment.v1\",\"https://original.example\",\"CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws\",\"lone\\ud800surrogate\",true,\"CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk\"]",
       "credential": "7HEG_T4PRRbffqRmoiqaPeLZOn7u6hZwyByoW-oLInc"
+    },
+    {
+      "origin": "https://original.example",
+      "token": "CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws",
+      "name": "Literal </script> slash, \\ and \" quote",
+      "reassign": true,
+      "attempt": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+      "originalCredential": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+      "binding": "[\"open-triage.native-enrollment.v1\",\"https://original.example\",\"CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws\",\"Literal </script> slash, \\\\ and \\\" quote\",true,\"CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk\"]",
+      "credential": "F_FXQcGY6POMYrVynnicdFfAN_9LlDe5qdpc_slkHsQ"
     }
   ]
 }

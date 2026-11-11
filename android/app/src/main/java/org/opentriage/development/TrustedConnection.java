@@ -226,7 +226,7 @@ final class TrustedConnection {
             JSONObject cookie = retained.getJSONArray("cookies").getJSONObject(index);
             if (cookie.getString("name").equals("open_triage_installation")) safe.put(cookie);
         }
-        return restore(retained.put("cookies", safe));
+        return restore(retained.put("cookies", safe), clock);
     }
 
     JSONObject saved() throws Exception {

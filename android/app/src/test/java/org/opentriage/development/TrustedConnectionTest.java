@@ -47,6 +47,9 @@ public class TrustedConnectionTest {
         var loadedAfterExpiry = TrustedConnection.restore(saved, clock::get);
         assertEquals(saved.toString(), loadedAfterExpiry.saved().toString());
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedAfterExpiry.request("/api/current", "GET", new JSONObject(), null));
+        var retained = loadedAfterExpiry.installationOnly();
+        assertEquals(saved.getString("caPem"), retained.caPem);
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.request("/api/current", "GET", new JSONObject(), null));
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> new TrustedConnection("https://localhost", ca(), clock::get));
         assertThrows(Exception.class, () -> TrustedConnection.restore(saved.put("caPem", "broken public trust"), clock::get));
     }
