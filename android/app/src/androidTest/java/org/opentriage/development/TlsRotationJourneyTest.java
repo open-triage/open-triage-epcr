@@ -70,9 +70,28 @@ public class TlsRotationJourneyTest {
         for(String radio:new String[]{"wifi","data"})try(var descriptor=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("svc "+radio+" "+(enabled?"enable":"disable"));var stream=new java.io.FileInputStream(descriptor.getFileDescriptor())){stream.readAllBytes();}
         waitFor(enabled?"navigator.onLine":"!navigator.onLine");
     }
+    private void awaitFixtureNetwork(String origin) throws Exception {
+        var target=java.net.URI.create(origin);
+        var networks=context().getSystemService(android.net.ConnectivityManager.class);
+        long deadline=android.os.SystemClock.elapsedRealtime()+45000;
+        while(android.os.SystemClock.elapsedRealtime()<deadline) {
+            var capabilities=networks.getNetworkCapabilities(networks.getActiveNetwork());
+            if(capabilities!=null&&capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                // Probe only routing/listener readiness. No TLS, cookies, API request,
+                // trust update or Activity can run before the single strict proof.
+                try(var socket=new java.net.Socket()) {
+                    socket.connect(new java.net.InetSocketAddress(target.getHost(),target.getPort()==-1?443:target.getPort()),250);
+                    return;
+                } catch(java.io.IOException notYetReachable) { /* Radio enable is asynchronous. */ }
+            }
+            Thread.sleep(100);
+        }
+        fail("Synthetic fixture network did not reconnect before the TLS proof");
+    }
     @Test public void certificateRotationPreservesProtectedWork() throws Exception {
         var args=InstrumentationRegistry.getArguments();String phase=args.getString("tlsPhase","");
         var vault=new ConnectionVault(context());
+        if(phase.equals("renewal-proof")||phase.equals("failure"))awaitFixtureNetwork(vault.read().origin);
         if(phase.equals("renewal-proof")) {
             var connection=vault.read();var saved=context().getSharedPreferences("tls-journey-v1",Context.MODE_PRIVATE);
             assertEquals(saved.getInt("uid",-1),context().getApplicationInfo().uid);
