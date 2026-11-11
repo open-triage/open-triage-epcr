@@ -1,4 +1,5 @@
 "use client";
+import { foregroundNetworkAllowed } from "../app/application-foreground";
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse, ProductionJobAccess } from "@open-triage/contracts";
 import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
@@ -67,7 +68,7 @@ export function AssignedCalls({
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
 
   const refresh = useCallback(async () => {
-    if (paused || openingRef.current) return;
+    if (paused || openingRef.current || !foregroundNetworkAllowed()) return;
     const epoch = refreshEpoch.current;
     try {
       const response = await fetchAssignedCalls();
@@ -90,7 +91,7 @@ export function AssignedCalls({
   }, [paused, suppressedCallNumbers, t]);
 
   const open = useCallback(async (call: AssignedCall) => {
-    if (openingRef.current) return;
+    if (openingRef.current || !foregroundNetworkAllowed()) return;
     openingRef.current = true;
     setReturningFocus(false);
     refreshEpoch.current += 1;

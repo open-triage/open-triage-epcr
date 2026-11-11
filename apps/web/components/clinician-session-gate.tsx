@@ -1,4 +1,5 @@
 "use client";
+import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
@@ -242,7 +243,7 @@ export function ClinicianSessionGate({ children }: {
     const loadedSession = loadClinicianSession(window.localStorage);
     const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
     const load = async () => {
-      if (inFlight || resolved) return;
+      if (inFlight || resolved || !foregroundNetworkAllowed()) return;
       inFlight = true;
       try {
         const handoff=await resumeAgencyHandoff();
@@ -288,10 +289,12 @@ export function ClinicianSessionGate({ children }: {
     const reconnect = () => void load();
     const retry = window.setInterval(reconnect, 5_000);
     window.addEventListener("online", reconnect);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
     return () => {
       current = false;
       window.clearInterval(retry);
       window.removeEventListener("online", reconnect);
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
     };
   }, []);
 
@@ -324,7 +327,14 @@ export function ClinicianSessionGate({ children }: {
     let current = true;
     let inFlight = false;
     const reassess = async () => {
-      if (!current || inFlight || !navigator.onLine) return;
+      if (!current || inFlight || !foregroundNetworkAllowed()) return;
+      // Android may suspend timers while paused. Enforce the original local
+      // deadline before consulting connectivity or waiting for server proof.
+      if (Date.parse(authenticatedSession.expiresAt) <= Date.now()) {
+        await lockAndEndLocalSession(t("login.sessionExpired"));
+        return;
+      }
+      if (!navigator.onLine) return;
       inFlight = true;
       try {
         const live = await authenticateRestartedClinicianSession(authenticatedSession);
@@ -335,10 +345,11 @@ export function ClinicianSessionGate({ children }: {
       } catch { /* Connection failure does not extend the existing local deadline. */ }
       finally { inFlight = false; }
     };
-    const visible = () => { if (document.visibilityState === "visible") void reassess(); };
+    const visible = () => { if (applicationVisible()) void reassess(); };
     const interval = window.setInterval(() => void reassess(), 30_000);
     window.addEventListener("online", visible);
     window.addEventListener("focus", visible);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, visible);
     window.addEventListener("open-triage.authentication-policy-changed", visible);
     window.addEventListener("open-triage.production-workflow-changed", visible);
     document.addEventListener("visibilitychange", visible);
@@ -347,6 +358,7 @@ export function ClinicianSessionGate({ children }: {
       window.clearInterval(interval);
       window.removeEventListener("online", visible);
       window.removeEventListener("focus", visible);
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, visible);
       window.removeEventListener("open-triage.authentication-policy-changed", visible);
       window.removeEventListener("open-triage.production-workflow-changed", visible);
       document.removeEventListener("visibilitychange", visible);

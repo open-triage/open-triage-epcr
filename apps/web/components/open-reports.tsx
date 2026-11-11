@@ -1,4 +1,5 @@
 "use client";
+import { foregroundNetworkAllowed } from "../app/application-foreground";
 import { useNewJobConfirmation, NewJobCanceledError } from "./new-job-confirmation";
 import { useRecoveryFormFocus } from "./use-recovery-form-focus";
 import { useReturnFocus } from "./use-return-focus";
@@ -114,12 +115,13 @@ export function OpenReports({
   }, []);
 
   const syncCachedReports = useCallback(async () => {
-    if (pausedRef.current || activeReportId || syncingCachedReports.current) return;
+    if (pausedRef.current || activeReportId || syncingCachedReports.current || !foregroundNetworkAllowed()) return;
     syncingCachedReports.current = true;
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
       for (const cached of cachedOpenReportSummaries(window.localStorage, session.user.id)) {
         while (true) {
+          if (!foregroundNetworkAllowed()) break;
           const queued = nextDraftChange(window.localStorage, cached.reportId);
           if (!queued) break;
           markDraftChangeAttempted(window.localStorage, cached.reportId, queued.command.commandId);
@@ -153,7 +155,7 @@ export function OpenReports({
   }, [activeReportId, csrfToken, onSessionEnded, session.user.id]);
 
   const refresh = useCallback(async () => {
-    if (pausedRef.current || refreshing.current) return;
+    if (pausedRef.current || refreshing.current || !foregroundNetworkAllowed()) return;
     const epoch = pauseEpoch.current;
     refreshing.current = true;
     let directoryLoaded = false;
@@ -189,7 +191,7 @@ export function OpenReports({
       const pendingHandles = completedReportIds.length ? await pendingProtectedRecoveryHandles() : new Set<string>();
       let recoveredCompletedWork = false;
       for (const reportId of completedReportIds) {
-        if (pausedRef.current || pauseEpoch.current !== epoch) return;
+        if (pausedRef.current || pauseEpoch.current !== epoch || !foregroundNetworkAllowed()) return;
         if (!pendingHandles.size) break;
         if (!recoveryReauthentication.current.shouldAttempt(reportId)) continue;
         if (cachedOpenReportSummaries(window.localStorage, session.user.id).some((cached) => cached.reportId === reportId)) continue;

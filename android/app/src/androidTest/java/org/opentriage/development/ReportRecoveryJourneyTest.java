@@ -1,0 +1,169 @@
+package org.opentriage.development;
+
+import static org.junit.Assert.*;
+import android.os.ParcelFileDescriptor;
+import android.view.WindowManager;
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.lifecycle.Lifecycle;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+/** The host force-stops the real application process between the four phases. */
+@RunWith(AndroidJUnit4.class)
+public class ReportRecoveryJourneyTest {
+    private ActivityScenario<MainActivity> activity;
+    private static final String RETAINED = "ANDROID-RETAINED-SYNTHETIC";
+    private static final String FIELD = "document.querySelector('[data-element-id=\"ePatient.03\"] input[type=\"text\"]')";
+    private String evaluate(String script) throws Exception {
+        AtomicReference<String> value = new AtomicReference<>(); CountDownLatch done = new CountDownLatch(1);
+        activity.onActivity(screen -> screen.getBridge().getWebView().evaluateJavascript(script, result -> { value.set(result); done.countDown(); }));
+        assertTrue("WebView evaluation timed out", done.await(20, TimeUnit.SECONDS));
+        return value.get();
+    }
+    private void waitFor(String expression) throws Exception {
+        long end = System.currentTimeMillis() + 90000;
+        while (System.currentTimeMillis() < end) {
+            if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
+            Thread.sleep(150);
+        }
+        fail("UI condition failed: " + expression + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+    }
+    private void setInput(String expression, String value) throws Exception {
+        evaluate("(()=>{const input=" + expression + ";input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()");
+    }
+    private void click(String label) throws Exception {
+        String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && button.textContent.trim()===" + JSONObject.quote(label) + ")";
+        waitFor(button + " && !(" + button + ").disabled"); evaluate("(" + button + ").click()");
+    }
+    private void connection(boolean connected) throws Exception {
+        for (String command : new String[]{"svc wifi " + (connected ? "enable" : "disable"), "svc data " + (connected ? "enable" : "disable")}) {
+            try (var result = new ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))) { result.readAllBytes(); }
+        }
+        waitFor(connected ? "navigator.onLine" : "!navigator.onLine");
+    }
+    private void records() throws Exception {
+        evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[];};request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('encrypted-reports')){window.__retained=[];db.close();return;}const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
+        waitFor("window.__retained!==null");
+    }
+    private void signIn(String username, String password) throws Exception {
+        waitFor("document.querySelector('input[name=username]')");
+        setInput("document.querySelector('input[name=username]')", username); setInput("document.querySelector('input[name=password]')", password);
+        evaluate("document.querySelector('.login-sign-in').requestSubmit()");
+        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+    }
+    private void serverValue(String expected) throws Exception {
+        evaluate("window.__serverVerified=null;(async()=>{for(let i=0;i<30;i++){try{const response=await fetch('/api/reports/'+window.__reportId,{cache:'no-store'});if(response.ok && (await response.text()).includes(" + JSONObject.quote(expected) + ")){window.__serverVerified=true;return}}catch{}await new Promise(resolve=>setTimeout(resolve,500))}window.__serverVerified=false})()");
+        waitFor("window.__serverVerified!==null"); assertEquals("true", evaluate("window.__serverVerified"));
+        waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
+    }
+    private void prepare() throws Exception {
+        var args = InstrumentationRegistry.getArguments();
+        String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64", ""), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
+        waitFor("document.querySelector('input[type=file]')");
+        evaluate("(()=>{const input=document.querySelector('input[type=file]'),files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        waitFor("document.querySelector('input[type=checkbox]')");
+        setInput("document.querySelector('input[maxlength=\"100\"]')", "Synthetic recovery ambulance");
+        evaluate("document.querySelector('input[type=checkbox]').click()");
+        waitFor("!document.querySelector('button[type=submit]').disabled"); evaluate("document.querySelector('form').requestSubmit()");
+        signIn(args.getString("username"), args.getString("password"));
+        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive)window.__backgroundRequests++;if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+        activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
+        waitFor("window.__nativeEvents.includes(false) && window.__nativeEvents.includes(true) && window.__assignedReads>0");
+        assertEquals("No new API drains while the native activity is paused", "0", evaluate("window.__backgroundRequests"));
+        assertEquals("Actual Android runtime supplies protected-storage primitives", "true", evaluate("Boolean(crypto.subtle && indexedDB && navigator.locks?.request && navigator.storage)"));
+        // Missing primitives retain online-only editing without an unprotected clinical copy.
+        evaluate("window.__locks=navigator.locks;Object.defineProperty(navigator,'locks',{configurable:true,value:undefined})");
+        click("Open call"); waitFor("document.querySelector('.encounter-header')");
+        evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
+        waitFor("document.body.innerText.includes('Offline storage unavailable')");
+        records(); assertEquals("0", evaluate("window.__retained.length"));
+        click("Save & close");
+        evaluate("Object.defineProperty(navigator,'locks',{configurable:true,value:window.__locks});Object.defineProperty(navigator.storage,'persisted',{configurable:true,value:async()=>false});Object.defineProperty(navigator.storage,'persist',{configurable:true,value:async()=>false})");
+        click("Reopen report"); waitFor("document.body.innerText.includes('Best-effort offline storage')");
+        click("Stationary"); waitFor(FIELD);
+        setInput(FIELD, "ANDROID-CONNECTED-SYNTHETIC");
+        serverValue("ANDROID-CONNECTED-SYNTHETIC"); records();
+        assertEquals("1", evaluate("window.__retained.length"));
+        assertEquals("true", evaluate("!JSON.stringify({...localStorage}).includes('ANDROID-CONNECTED') && !JSON.stringify(window.__retained).includes('ANDROID-CONNECTED')"));
+        connection(false); setInput(FIELD, "ANDROID-RECONNECTED-SYNTHETIC");
+        waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
+        connection(true); serverValue("ANDROID-RECONNECTED-SYNTHETIC");
+        assertEquals(JSONObject.quote("ANDROID-RECONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
+        connection(false); setInput(FIELD, RETAINED);
+        waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'"); Thread.sleep(500);
+        records(); assertEquals("true", evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"));
+        String reportId = evaluate("window.__reportId");
+        assertFalse("Local metadata must not identify the report", evaluate("JSON.stringify(window.__retained)").contains(reportId.substring(1, reportId.length() - 1)));
+        assertFalse(evaluate("JSON.stringify(window.__retained)").contains(RETAINED));
+        evaluate("window.__beforeStorageFailure=JSON.stringify(window.__retained);window.__put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.name==='encrypted-reports')throw new DOMException('Synthetic storage failure','QuotaExceededError');return window.__put.apply(this,args)}");
+        setInput(FIELD, "ANDROID-WRITE-FAILURE");
+        waitFor("document.body.innerText.includes('Protected storage failed while offline')"); waitFor("(" + FIELD + ").matches(':disabled')");
+        records(); assertEquals("true", evaluate("JSON.stringify(window.__retained)===window.__beforeStorageFailure"));
+        // The test runner must not finish/close the Activity before abrupt process loss.
+        assertEquals("true", evaluate("Boolean(document.querySelector('.encounter-header'))"));
+        var ready = new android.os.Bundle(); ready.putString("opentriage_phase", "ready-for-process-kill");
+        InstrumentationRegistry.getInstrumentation().sendStatus(2, ready);
+        Thread.sleep(600000);
+        fail("The host must force-stop the prepared live process");
+    }
+    private void offlineRestart() throws Exception {
+        waitFor("document.body.innerText.includes('Reconnect to continue') || document.body.innerText.includes('Unable to')");
+        String body = evaluate("document.body.innerText"); assertFalse(body.contains(RETAINED)); assertFalse(body.contains(InstrumentationRegistry.getArguments().getString("callNumber")));
+        assertEquals("null", evaluate("document.querySelector('.encounter-header')"));
+        records(); assertEquals("1", evaluate("window.__retained.length"));
+        assertEquals("true", evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"));
+        assertFalse(evaluate("JSON.stringify(window.__retained)").contains(RETAINED));
+        assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
+        assertFalse(evaluate("JSON.stringify(window.__retained)").contains(InstrumentationRegistry.getArguments().getString("reportId")));
+        assertFalse(evaluate("JSON.stringify({...localStorage})").contains(InstrumentationRegistry.getArguments().getString("reportId")));
+        assertFalse(evaluate("JSON.stringify({...localStorage})").contains(InstrumentationRegistry.getArguments().getString("callNumber")));
+        assertEquals("true", evaluate("!Object.keys(window.__retained[0]).some(key=>/^(reportId|callNumber|ownerUserId|reportKey|reportKeyBase64|dataKey|key)$/.test(key))"));
+        // Next phase begins at sign-in, before an old cookie can trigger authorized automatic recovery.
+        evaluate("localStorage.removeItem('open-triage.clinician-session.v1')");
+    }
+    private void differentClinician() throws Exception {
+        var args = InstrumentationRegistry.getArguments(); signIn(args.getString("username"), args.getString("password"));
+        assertFalse(evaluate("document.body.innerText").contains(args.getString("callNumber")));
+        String reportId = args.getString("reportId");
+        evaluate("window.__denial=null;(()=>{const session=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));fetch('/api/reports/" + reportId + "/recovery-grants',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})}).then(response=>{window.__denial=response.status})})()");
+        waitFor("window.__denial!==null"); assertEquals("404", evaluate("window.__denial"));
+        records(); assertEquals("1", evaluate("window.__retained.length"));
+        click("Log out"); waitFor("document.querySelector('input[name=username]')");
+    }
+    private void recover() throws Exception {
+        var args = InstrumentationRegistry.getArguments(); signIn(args.getString("username"), args.getString("password"));
+        click("Reopen report"); waitFor("document.querySelector('.encounter-header')");
+        evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
+        if (!"true".equals(evaluate("Boolean(" + FIELD + ")"))) click("Stationary");
+        waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'"); serverValue(RETAINED);
+        assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
+    }
+    @Test public void realProcessRecovery() throws Exception {
+        String phase = InstrumentationRegistry.getArguments().getString("phase", "");
+        if (phase.equals("offline")) {
+            // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
+            var endpoint = java.net.URI.create(InstrumentationRegistry.getArguments().getString("apiOrigin"));
+            boolean unreachable = false;
+            try (var socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress(endpoint.getHost(), endpoint.getPort()), 2000);
+            } catch (java.io.IOException expectedConnectionLoss) { unreachable = true; }
+            assertTrue("The real API must be unreachable before offline Activity launch", unreachable);
+        }
+        activity = ActivityScenario.launch(MainActivity.class);
+        activity.onActivity(screen -> assertTrue("Prevent Android task snapshots and captures", (screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0));
+        switch (phase) {
+            case "prepare": prepare(); break;
+            case "offline": offlineRestart(); activity.close(); break;
+            case "other": differentClinician(); activity.close(); break;
+            case "recover": recover(); activity.close(); break;
+            default: fail("Host must supply a recovery phase");
+        }
+    }
+}

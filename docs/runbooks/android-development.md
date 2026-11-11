@@ -154,3 +154,30 @@ media, native downloads and comprehensive navigation each have following tickets
 Native redirects are rejected until an explicit supported return flow is added.
 Emulator results do not substitute for the signing, actual MDM or physical-device
 acceptance checkpoints in tickets 013 and 017–019.
+
+## Protected work and foreground lifecycle
+
+The native lifecycle adapter supplements WebView visibility. Assigned/open-report
+refresh, report polling and queued text saves pause when the Activity pauses and
+refresh or drain on resume. Already-started requests may settle; there is no
+background service or promise of screen-locked synchronization. Shared browser
+polling and authorization behavior remains in place.
+
+Android uses the same Web Crypto, IndexedDB, Web Locks and storage-persistence
+checks as the browser. Denied persistence is best-effort encrypted storage;
+missing primitives are online-only, and an offline write failure pauses editing
+without evicting pending ciphertext. No native report-key or plaintext report
+store is introduced. The Android window uses `FLAG_SECURE` to exclude clinical
+content from screenshots, screen recording and recents task snapshots. Application
+backup and device-transfer exclusions remain enabled.
+
+`npm run android:test` also seeds a published first-name form and real assigned
+call using the committed catalog. The protected-work journey checks actual
+Activity pause/resume, primitive and persistence fallback, radio disconnection,
+reconnect synchronization, write failure, and host-issued `am force-stop` between
+phases. Offline relaunch exposes neither retained labels nor content. A second
+clinician is denied the original recovery grant; the original clinician recovers
+and synchronizes the encrypted pending edit online, retaining its original
+report/form/catalog/validation pins and recovery deadline. API fixture startup
+asserts that its explicit synthetic wrapping key is used, so a development fallback
+cannot silently substitute for recovery configuration.

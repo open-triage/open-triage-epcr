@@ -44,17 +44,24 @@ public class TrustedConnectionTest {
                 try (var socket = server.accept()) {
                     socket.setSoTimeout(3000);
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
-                    String path = reader.readLine().split(" ")[1], originHeader = "null", cookieHeader = "null", line;
+                    String path = reader.readLine().split(" ")[1], originHeader = "null", cookieHeader = "null", jobHeader = "null", conditionalHeader = "null", line;
                     while ((line = reader.readLine()) != null && !line.isEmpty()) {
                         if (line.toLowerCase().startsWith("origin: ")) originHeader = line.substring(8);
                         if (line.toLowerCase().startsWith("cookie: ")) cookieHeader = line.substring(8);
+                        if (line.toLowerCase().startsWith("x-job-confirmation: ")) jobHeader = line.substring(20);
+                        if (line.toLowerCase().startsWith("if-none-match: ")) conditionalHeader = line.substring(15);
                     }
                     String extra = "", status = "200 OK";
                     if (path.endsWith("pair")) extra = "Set-Cookie: open_triage_installation=installation-secret; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600\r\n";
                     if (path.endsWith("login")) extra = "Set-Cookie: open_triage_session=clinician-secret; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600\r\n";
                     if (path.endsWith("logout")) extra = "Set-Cookie: open_triage_session=; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n";
                     if (path.endsWith("redirect")) { extra = "Location: https://attacker.test/api/leak\r\n"; status = "302 Found"; }
-                    byte[] body = (originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
+                    if (path.endsWith("conditional")) {
+                        extra = "ETag: \"revision-1\"\r\n";
+                        if (conditionalHeader.equals("\"revision-1\"")) status = "304 Not Modified";
+                    }
+                    byte[] body = (path.endsWith("confirmed-job") ? jobHeader : originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
+                    if (status.startsWith("304")) body = new byte[0];
                     String head = "HTTP/1.1 " + status + "\r\n" + extra + "Content-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
                     socket.getOutputStream().write(head.getBytes(StandardCharsets.US_ASCII)); socket.getOutputStream().write(body); socket.getOutputStream().flush();
                 } catch (Exception expectedHandshakeOrShutdown) { /* Rejected TLS clients do not terminate the test listener. */ }
@@ -65,6 +72,10 @@ public class TrustedConnectionTest {
             String origin = "https://localhost:" + server.getLocalPort();
             var first = new TrustedConnection(origin, ca());
             assertEquals(origin + "|null", first.request("/api/pair", "GET", new JSONObject(), null).body());
+            assertEquals("a".repeat(43), first.request("/api/confirmed-job", "POST", new JSONObject().put("X-Job-Confirmation", "a".repeat(43)), "{}").body());
+            assertEquals("\"revision-1\"", first.request("/api/conditional", "GET", new JSONObject(), null).headers().getString("ETag"));
+            var unchanged = first.request("/api/conditional", "GET", new JSONObject().put("If-None-Match", "\"revision-1\""), null);
+            assertEquals(304, unchanged.status()); assertEquals("", unchanged.body());
             first.request("/api/login", "POST", new JSONObject(), "{}");
             assertTrue(first.request("/api/current", "GET", new JSONObject(), null).body().contains("clinician-secret"));
             assertEquals(origin + "|null", new TrustedConnection(origin, ca()).request("/api/current", "GET", new JSONObject(), null).body());
@@ -73,7 +84,9 @@ public class TrustedConnectionTest {
             String after = restored.request("/api/current", "GET", new JSONObject(), null).body();
             assertTrue(after.contains("installation-secret")); assertFalse(after.contains("clinician-secret"));
             assertThrows(Exception.class, () -> restored.request("/api/redirect", "GET", new JSONObject(), null));
-            assertThrows(Exception.class, () -> restored.request("/api/current", "GET", new JSONObject().put("Origin", "https://attacker.test"), null));
+            for (String forbidden : new String[]{"Origin", "Cookie", "Authorization"}) {
+                assertThrows(Exception.class, () -> restored.request("/api/current", "GET", new JSONObject().put(forbidden, "unapproved"), null));
+            }
             assertThrows(Exception.class, () -> new TrustedConnection(origin, "").request("/api/current", "GET", new JSONObject(), null));
             assertThrows(Exception.class, () -> new TrustedConnection(origin.replace("localhost", "127.0.0.1"), ca()).request("/api/current", "GET", new JSONObject(), null));
         } finally { server.close(); worker.join(3000); }
