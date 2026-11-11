@@ -8,7 +8,7 @@ async function bundle(contents: string, native = false) {
       export const Capacitor={isNativePlatform:()=>true,getPlatform:()=> 'android'};
       export const registerPlugin=name=>name==='OpenTriageConnection'?{
       state:async()=>window.fixture.state,addListener:async()=>({remove:async()=>{}}),
-      beginReplacement:async()=>{window.fixture.begun++;return window.fixture.state={configured:false,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'replacement'}},
+      beginReplacement:async()=>{window.fixture.begun++;if(window.fixture.holdReplacement)await new Promise(resolve=>{window.fixture.releaseReplacement=()=>{window.fixture.holdReplacement=false;resolve()}});return window.fixture.state={configured:false,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'replacement'}},
       preview:async()=>({origin:'https://original.example',organizationName:'Agency',unitName:'New unit',callSign:'NEW'}),
       confirm:async()=>{window.fixture.state={...window.fixture.state,replacementPending:true};throw Error('Response lost')},
       resumeEnrollment:async()=>window.fixture.state={configured:true,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'promoted'},cancel:async()=>{window.fixture.state={configured:true,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'cancelled'}}
@@ -23,9 +23,14 @@ test('native replacement settles current identity and resumes only the already c
   await page.route('**/__native-reassignment-script',r=>r.fulfill({contentType:'text/javascript',body:script}));
   await page.route('**/__native-reassignment',r=>r.fulfill({contentType:'text/html',body:'<html><body><div id="root"></div><script>window.fixture={begun:0,state:{configured:true,origin:"https://original.example",storageScope:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",connectionContext:"original"}}</script><script src="/__native-reassignment-script"></script></body></html>'}));
   await page.goto('/__native-reassignment');
+  await page.evaluate(()=>{(window as unknown as {fixture:{holdReplacement:boolean}}).fixture.holdReplacement=true;});
   await page.getByRole('button',{name:'Change installation'}).click();
   await expect(page.locator('[data-clinical]')).toHaveCount(0);
+  // Appearance is not readiness: native replacement and encrypted locking are still settling.
+  await expect(page.locator('input[type=file]')).toBeDisabled();
   expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('old personal identity');
+  await page.evaluate(()=>{(window as unknown as {fixture:{releaseReplacement:()=>void}}).fixture.releaseReplacement();});
+  await expect(page.locator('input[type=file]')).toBeEnabled();
   await page.getByRole('button',{name:'Return to current installation'}).click();
   await expect(page.locator('[data-clinical]')).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('old personal identity');

@@ -133,8 +133,7 @@ public class ReportRecoveryJourneyTest {
     private void prepare() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64", ""), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
-        waitFor("document.querySelector('input[type=file]')");
-        evaluate("(()=>{const input=document.querySelector('input[type=file]'),files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
         waitFor("document.querySelector('input[type=checkbox]')");
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Synthetic recovery ambulance");
         evaluate("document.querySelector('input[type=checkbox]').click()");
@@ -244,9 +243,8 @@ public class ReportRecoveryJourneyTest {
         var args = InstrumentationRegistry.getArguments();
         waitFor("document.querySelector('[data-change-installation]')");
         evaluate("document.querySelector('[data-change-installation]').click()");
-        waitFor("document.querySelector('input[type=file]')");
         JSONObject expiring = new JSONObject(new String(android.util.Base64.decode(args.getString("expiredArtifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8));
-        evaluate("(()=>{const input=document.querySelector('input[type=file]');const files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(expiring.toString()) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, expiring.toString());
         waitFor("document.querySelector('input[type=checkbox]')");
         var fault = new TrustedConnection(expiring.getString("origin"), expiring.getString("caPem"));
         var expired = fault.request("/api/__android-enrollment-expire", "POST", new JSONObject().put("content-type", "application/json"), new JSONObject().put("token", expiring.getString("token")).toString());
@@ -259,7 +257,7 @@ public class ReportRecoveryJourneyTest {
         var armed = fault.request("/api/__android-enrollment-drop-arm", "POST", new JSONObject().put("content-type", "application/json"), "{}");
         assertTrue(new JSONObject(armed.body()).getBoolean("armed"));
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
-        evaluate("(()=>{const input=document.querySelector('input[type=file]');const files=new DataTransfer();files.items.add(new File([" + JSONObject.quote(artifact) + "],'pairing.json',{type:'application/json'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()");
+        AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
         waitFor("document.querySelector('input[type=checkbox]')");
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Reassigned Android installation");
         evaluate("document.querySelector('input[type=checkbox]').click()");
