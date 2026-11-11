@@ -1,5 +1,6 @@
 import { platformRequestError } from "./platform-errors";
 import { approvedMediaApiPath } from "./media-api-path";
+import { readMediaResponse } from "./media-response";
 import type {
   CreateReportPhotoNoteCommand,
   DeleteReportPhotoNoteResponse,
@@ -48,8 +49,6 @@ export function deleteReportPhotoNote(csrfToken: string, reportId: string, noteI
 
 export async function fetchReportPhoto(reportId: string, noteId: string, contentPath?: string): Promise<Blob> {
   const path = approvedMediaApiPath(contentPath ?? `/api/reports/${reportId}/photos/${noteId}/image`, "photo");
-  const response = await fetch(browserRouteUrl(path), browserRequestInit({ redirect: "error" }));
-  if (!response.ok) throw await platformRequestError(response);
-  if (response.headers.get("content-type") !== "image/jpeg") throw new Error("The photo response was not a canonical JPEG.");
-  return response.blob();
+  return readMediaResponse(() => fetch(browserRouteUrl(path), browserRequestInit({ redirect: "error" })),
+    "image/jpeg", "The photo response was not a canonical JPEG.");
 }

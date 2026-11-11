@@ -249,6 +249,19 @@ Early browser tests cover pause/revocation, delayed permission results, native d
 
 The default emulator suite adds actual microphone denial/grant and a live WebView track, real MediaRecorder output, preview/Timeline/Stationary playback with advancing decoder time, paused reconnect with zero new API requests, and exact hashed mono-AAC after authorized upload. Saved offline audio joins the photo/text process-loss and ownership-isolation journey. A second independent fixture force-stops a live unfinished recorder after encrypted chunks are durable, revokes microphone permission while stopped, and requires explicit review of restored partial audio after authorized recovery. Physical microphone/speaker quality remains ticket 019.
 
+The manifest includes both `RECORD_AUDIO` and Capacitor's required normal
+`MODIFY_AUDIO_SETTINGS` permission. Early checks compare all installed WebView
+media permission requests with the manifest. An interrupted canonical response
+stream or brief radio loss keeps photo/audio verification retryable, even if
+connectivity returns before rejection. Retries wait at least one second, respect
+native foreground state, and read the acknowledged server copy without uploading
+it again. URL, redirect, HTTP authorization and canonical MIME failures retain
+their existing rejection boundaries.
+
+A future release using live WebM capture must declare and require the server
+capability `audio-webm-live-v1` through the release compatibility contract before
+distribution. Existing immutable release candidates are unchanged by this slice.
+
 ## Production signing and upgrade checks
 
 Production identity, custody, immutable artifact workflow and the real signed A/B
