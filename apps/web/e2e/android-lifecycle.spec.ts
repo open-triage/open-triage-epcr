@@ -114,7 +114,7 @@ test("photo camera releases on native pause, resumes, and stops a late permissio
       import {setNativeForeground} from './app/application-foreground';
       window.requests=0;window.stopped=0;window.resolveCamera=null;window.deferCamera=false;
       navigator.mediaDevices.getUserMedia=async()=>{window.requests++;if(window.deferCamera)return new Promise((resolve,reject)=>{window.resolveCamera=resolve;window.rejectCamera=reject});return stream()};
-      navigator.mediaDevices.enumerateDevices=async()=>[];
+      navigator.mediaDevices.enumerateDevices=async()=>[{kind:'videoinput',deviceId:'synthetic-camera'}];
       function stream(){const canvas=document.createElement('canvas');canvas.width=64;canvas.height=48;const result=canvas.captureStream(5);for(const track of result.getTracks()){const stop=track.stop.bind(track);track.stop=()=>{window.stopped++;stop()}}return result}
       window.finishCamera=()=>window.resolveCamera(stream());
       function App(){const[open,setOpen]=React.useState(true);return <>
@@ -128,6 +128,11 @@ test("photo camera releases on native pause, resumes, and stops a late permissio
   await page.route("**/__photo-lifecycle", route => route.fulfill({ contentType: "text/html", body: `<html><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
   await page.goto("/__photo-lifecycle");
   await expect.poll(() => page.evaluate(() => (window as any).requests)).toBe(1);
+  await expect.poll(() => page.evaluate(() => document.querySelector('video')?.srcObject && (document.querySelector('video')!.srcObject as MediaStream).getTracks()[0]?.readyState)).toBe('live');
+  await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('open-triage.foreground-changed')); });
+  await expect.poll(() => page.evaluate(() => (window as any).requests)).toBe(1);
+  expect(await page.evaluate(() => (document.querySelector('video')!.srcObject as MediaStream).getTracks()[0]!.readyState)).toBe('live');
+  expect(await page.evaluate(() => (window as any).stopped)).toBe(0);
   await page.getByRole('button', { name: 'Pause native activity' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).stopped)).toBeGreaterThanOrEqual(1);
   await page.getByRole('button', { name: 'Resume native activity' }).click();
