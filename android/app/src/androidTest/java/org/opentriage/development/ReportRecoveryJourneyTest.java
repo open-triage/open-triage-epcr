@@ -158,6 +158,12 @@ public class ReportRecoveryJourneyTest {
     private void tapElement(String expression) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").disabled");
         var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        // This status notice intentionally stays until an outside user interaction.
+        // Dismiss it normally before testing the underlying control's trusted touch.
+        if ("true".equals(evaluate("!!document.querySelector('.active-report-notice')"))) {
+            assertTrue("A genuine keyboard interaction dismisses the active report notice", device.pressKeyCode(android.view.KeyEvent.KEYCODE_TAB));
+            waitFor("!document.querySelector('.active-report-notice')");
+        }
         var ime = new java.util.concurrent.atomic.AtomicBoolean();
         activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); });
         if (ime.get()) {
