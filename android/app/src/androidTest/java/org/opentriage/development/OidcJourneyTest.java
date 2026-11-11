@@ -58,6 +58,15 @@ public class OidcJourneyTest extends PairingJourneyTest {
     }
     private void previewCancellationPreservesAuthentication() throws Exception {
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        var device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        boolean restoreBrowser="com.android.chrome".equals(device.getCurrentPackageName());
+        if (restoreBrowser) {
+            context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            long foregroundDeadline=System.currentTimeMillis()+10000;
+            while (!context.getPackageName().equals(device.getCurrentPackageName()) && System.currentTimeMillis()<foregroundDeadline) Thread.sleep(100);
+            assertEquals("Preview cancellation runs in the actual foreground APK",context.getPackageName(),device.getCurrentPackageName());
+            waitFor("document.visibilityState==='visible'");
+        }
         var vault=new ConnectionVault(context);
         JSONObject original=vault.pendingAuthentication();
         String credentials=vault.read().saved().toString();
@@ -75,6 +84,10 @@ public class OidcJourneyTest extends PairingJourneyTest {
         activity.onActivity(screen->screen.getBridge().getWebView().reload());
         waitFor("window.__beforeAuthPreviewReload===undefined && performance.timeOrigin!=="+previousTimeOrigin);
         waitFor("document.querySelector('.session-identity') || "+ORGANIZATION_LOGIN);
+        if (restoreBrowser) {
+            context.startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage("com.android.chrome").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            provider(false);
+        }
     }
     private void pairIfNeeded() throws Exception {
         var arguments = InstrumentationRegistry.getArguments();
