@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OpenTriage</string>
+    <string name="title_activity_main">OpenTriage</string>
+    <string name="package_name" translatable="false">org.opentriage.android</string>
+    <string name="custom_url_scheme" translatable="false">org.opentriage.android</string>
+</resources>

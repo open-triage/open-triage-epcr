@@ -1,14 +1,27 @@
 apply plugin: 'com.android.application'
 
+def productionRelease = System.getenv('ANDROID_PRODUCTION_RELEASE') == '1'
+def releaseCode = System.getenv('ANDROID_VERSION_CODE') ?: ''
+def releaseName = System.getenv('ANDROID_VERSION_NAME') ?: ''
+if (productionRelease && (!(releaseCode ==~ /[1-9][0-9]{0,9}/) || releaseCode.toLong() > 2100000000 || !(releaseName ==~ /[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?/))) {
+    throw new GradleException('A production build requires a positive Android version code and semantic version name')
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') } && !productionRelease) {
+        throw new GradleException('Release builds must use npm run android:release with production identity and signing inputs')
+    }
+}
+
 android {
     namespace = "org.opentriage.development"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "org.opentriage.development"
+        applicationId productionRelease ? "org.opentriage.android" : "org.opentriage.development"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0-development"
+        versionCode productionRelease ? releaseCode.toInteger() : 1
+        versionName productionRelease ? releaseName : "0.1.0-development"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -22,11 +35,32 @@ android {
             systemProperty "sun.net.http.allowRestrictedHeaders", "true"
         }
     }
+    if (productionRelease) {
+        signingConfigs {
+            production {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_PATH') ?: '')
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+        if (System.getenv('ANDROID_RELEASE_INSTRUMENTATION') == '1') testBuildType 'release'
+    }
     buildTypes {
         release {
+            if (productionRelease) signingConfig signingConfigs.production
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+// Disable the actual debug variant instead of matching task names: production
+// tasks such as stripReleaseDebugSymbols legitimately contain the word Debug.
+androidComponents {
+    beforeVariants(selector().withBuildType("debug")) { variant ->
+        if (productionRelease) variant.enable = false
     }
 }
 

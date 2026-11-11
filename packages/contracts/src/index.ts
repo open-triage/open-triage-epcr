@@ -4,6 +4,7 @@ export { filterValidationRuleLibrary } from "./validation-rule-library.js";
 export interface HealthResponse {
   status: "ok";
   service: "open-triage-api";
+  androidApiProtocol: number;
 }
 
 export {
