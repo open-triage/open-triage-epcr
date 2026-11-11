@@ -57,6 +57,8 @@ integration('installation upgrade policy persists once across agencies with live
   // Changed lifecycle or artifact availability invalidates a previously reviewed proposal.
   lifecycle.retirements[0].supersededAt='2026-01-02T00:00:00.000Z';await assert.rejects(service.update(ownerSession.sessionToken,{graceDays:100,expectedRevision:1,previewToken:preview.previewToken}),status(409));lifecycle.retirements[0].supersededAt='2026-01-01T00:00:00.000Z';
   delete process.env.ANDROID_APPROVED_RELEASE;await assert.rejects(service.update(ownerSession.sessionToken,{graceDays:100,expectedRevision:1,previewToken:preview.previewToken}),status(409));process.env.ANDROID_APPROVED_RELEASE=current.tag;
+  process.env.ANDROID_APPROVED_RELEASE='unapproved-selection-a';const unavailablePreview=await service.preview(ownerSession.sessionToken,{graceDays:100,expectedRevision:1});
+  process.env.ANDROID_APPROVED_RELEASE='unapproved-selection-b';await assert.rejects(service.update(ownerSession.sessionToken,{graceDays:100,expectedRevision:1,previewToken:unavailablePreview.previewToken}),status(409));process.env.ANDROID_APPROVED_RELEASE=current.tag;
   const saved=await service.update(superSession.sessionToken,{graceDays:100,expectedRevision:1,previewToken:preview.previewToken});assert.equal(saved.policy.revision,2);assert.equal(saved.policy.graceDays,100);
   await assert.rejects(service.update(ownerSession.sessionToken,{graceDays:100,expectedRevision:1,previewToken:preview.previewToken}),status(409));
   const recreated=new AndroidUpgradePolicyService(db,sessions,release,enrollment,approved,lifecycle);assert.deepEqual((await recreated.read(ownerSession.sessionToken)).policy,saved.policy);

@@ -64,7 +64,7 @@ export class AndroidUpgradePolicyService {
   }
   private previewProof(policy: AndroidUpgradePolicy, days: number, inputs: Awaited<ReturnType<AndroidUpgradePolicyService["inputs"]>>) {
     return createHash("sha256").update(JSON.stringify({ revision: policy.revision, days, records: inputs.records, retirements: inputs.retirements,
-      replacement: inputs.replacement, protocol: ANDROID_API_PROTOCOL_VERSION, capabilities: ANDROID_API_CAPABILITIES })).digest("hex");
+      selection: inputs.selection, replacement: inputs.replacement, protocol: ANDROID_API_PROTOCOL_VERSION, capabilities: ANDROID_API_CAPABILITIES })).digest("hex");
   }
   private view(policy: AndroidUpgradePolicy, inputs: Awaited<ReturnType<AndroidUpgradePolicyService["inputs"]>>, serverTime: string): AndroidUpgradePolicyView {
     return { policy, serverTime, clients: inputs.records.map(entry => this.evaluate(inputs, policy.graceDays, serverTime, entry.descriptor.versionCode)) };
