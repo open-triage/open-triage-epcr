@@ -244,7 +244,8 @@ public class ReportRecoveryJourneyTest {
     }
     private void playTimelineAudio(String caption) throws Exception {
         String button = "Array.from(document.querySelectorAll('.audio-note-event')).find(row=>row.textContent.includes(" + JSONObject.quote(caption) + "))?.querySelector('.timeline-audio-action')";
-        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && (!window.__lastPlayedAudio.paused || window.__lastPlayedAudio.ended)");
+        evaluate("window.__lastPlayedAudio=null");
+        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && !window.__lastPlayedAudio.error && (!window.__lastPlayedAudio.paused || window.__lastPlayedAudio.ended)");
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
         assertEquals("Authorized audio playback stops on native pause", "true", evaluate("window.__lastPlayedAudio.paused"));
         activity.moveToState(Lifecycle.State.RESUMED); assertEquals("Playback does not restart without a user action", "true", evaluate("window.__lastPlayedAudio.paused"));
