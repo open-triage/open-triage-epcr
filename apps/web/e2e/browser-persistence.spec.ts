@@ -1122,3 +1122,66 @@ test("Save and close retries a failed receipt without requiring another clinical
   await page.getByRole("button", { name: "Save & close", exact: true }).click();
   await expect(page.locator(".encounter-header")).toHaveCount(0);
 });
+
+test("the initial stale server poll cannot reverse a recovered queued edit already present in its cached document", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  const controls = await installRoutes(page);
+  await page.clock.install();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  let connected = false;
+  await page.route("**/api/**", route => connected ? route.fallback() : route.abort("internetdisconnected"));
+  await context.setOffline(true);
+  await firstName.fill("RECOVERED DURABLE"); await firstName.press("Tab");
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  await page.getByRole("button", { name: "Save & close", exact: true }).click();
+  await expect(page.locator(".encounter-header")).toHaveCount(0);
+  const [pendingRecord] = await encryptedRecords(page);
+  expect(Number(pendingRecord!.ciphertextRevision)).toBeGreaterThan(Number(pendingRecord!.synchronizedRevision));
+  let pollStarted = false, saveStarted = false, staleDelivered = false;
+  let releasePoll!: () => void, releaseSave!: () => void;
+  const heldPoll = new Promise<void>(resolve => { releasePoll = resolve; });
+  const heldSave = new Promise<void>(resolve => { releaseSave = resolve; });
+  const writes: boolean[] = [];
+  await page.route(`**/api/reports/${reportId}/active`, async route => {
+    if (!connected) return route.abort("internetdisconnected");
+    if (staleDelivered) return route.fulfill({ status: 304 });
+    pollStarted = true; await heldPoll; staleDelivered = true;
+    return route.fulfill({ json: { reportId, reportRevision: openedAssignment.report.revision, dispatchRevision: 0,
+      document: openedAssignment.report.document, dispatchConflicts: [], dispatchCancellation: null,
+      mediaPolicy: { settingsRevision: 1, reportMediaAllowanceBytes: 10485760, imageMediaLimitBytes: 1048576 } } });
+  });
+  await page.route(`**/api/reports/${reportId}/draft-changes`, async route => {
+    if (!connected) return route.abort("internetdisconnected");
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    writes.push(JSON.stringify(command).includes("RECOVERED DURABLE")); saveStarted = true;
+    if (writes.length === 1) await heldSave;
+    return route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+  });
+  controls.restart();
+  // Destroy the old runtime before restoring the shell's network; API routes stay unreachable.
+  await page.goto("about:blank");
+  await context.setOffline(false);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".session-loading [role=alert]")).toBeVisible();
+  connected = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByRole("button", { name: "Reopen report", exact: true })).toBeVisible();
+  try {
+    await page.getByRole("button", { name: "Reopen report", exact: true }).click();
+    await expect.poll(() => ({ pollStarted, saveStarted })).toEqual({ pollStarted: true, saveStarted: true });
+    const received = page.waitForResponse(response => response.url().endsWith(`/reports/${reportId}/active`) && response.status() === 200);
+    releasePoll(); await (await received).finished();
+    // Let the fetched resource and its React render settle, with the real save still held.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(firstName).toHaveValue("RECOVERED DURABLE");
+    releaseSave();
+    await expect(page.locator(".sync-status")).toHaveText("Saved");
+    await page.clock.runFor(2000);
+    await expect(firstName).toHaveValue("RECOVERED DURABLE");
+    expect(writes, "acknowledging recovered work must not enqueue an old-shell reverse edit").toEqual([true]);
+  } finally { releasePoll(); releaseSave(); }
+});

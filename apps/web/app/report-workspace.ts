@@ -39,7 +39,7 @@ import {
   queuedDraftChanges,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
-import { pendingDraftTargets, reconcileActiveReportDocument } from "./active-report-reconciliation";
+import { queuedDraftTargets, pendingDraftTargets, reconcileActiveReportDocument } from "./active-report-reconciliation";
 import type { PresentationMode } from "./presentation-mode";
 import { bundledEncounterDefinition, type ShellAction, type ShellState } from "./standard-encounter";
 import { repairRecreatedCanonicalEvents } from "./canonical-events";
@@ -407,17 +407,14 @@ export function useReportWorkspace({
         const hasUnqueuedChanges = localDelta.groups.length > 0 || localDelta.occurrences.length > 0;
         const hasPending = pending.length > 0 || hasUnqueuedChanges;
         setSyncStatus((current) => reconciledDraftSyncStatus(current, hasPending));
-        const queuedTargets = queued ? pendingDraftTargets({
-          groups: pending.flatMap(({ command }) => command.groups),
-          occurrences: pending.flatMap(({ command }) => command.occurrences),
-        }, persistedDraft.current) : undefined;
-        const localTargets = hasUnqueuedChanges ? pendingDraftTargets(localDelta, persistedDraft.current) : undefined;
+        const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document, undefined, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
+        const queuedTargets = queued ? queuedDraftTargets(pending.map(({ command }) => command), serverDraft) : undefined;
+        const localTargets = hasUnqueuedChanges ? pendingDraftTargets(localDelta, optimisticDraft) : undefined;
         const targets = hasPending ? {
           groupIds: new Set([...(queuedTargets?.groupIds ?? []), ...(localTargets?.groupIds ?? [])]),
           occurrenceIds: new Set([...(queuedTargets?.occurrenceIds ?? []), ...(localTargets?.occurrenceIds ?? [])]),
         } : undefined;
         let merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
-        const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document, undefined, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
         revision.current = response.resource.reportRevision;
         if (queued) {
           if (recoverConflictingQueue.current) {
