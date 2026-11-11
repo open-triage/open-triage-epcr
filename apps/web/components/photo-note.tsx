@@ -2,6 +2,8 @@
 import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
+import { isAndroidRuntime, MAX_NATIVE_BODY_BYTES } from "../app/android-runtime";
+import { APPLICATION_FOREGROUND_EVENT, applicationVisible } from "../app/application-foreground";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -108,13 +110,42 @@ export function PhotoNoteDialog({
   const [caption, setCaption] = useState(note?.caption ?? "");
   const [deviceIds, setDeviceIds] = useState<ReadonlyArray<string>>([]);
   const [deviceIndex, setDeviceIndex] = useState(0);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [foreground, setForeground] = useState(() => applicationVisible());
+  const cameraGeneration = useRef(0);
+  const cameraRequestPending = useRef(false);
+  const cameraPermissionBlocked = useRef(false);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
+  const mounted = useRef(true);
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mode, setMode] = useState<"camera" | "preview" | "viewer">(note ? "viewer" : "camera");
   const validation = normalizePhotoCaption(caption, language);
-  const selectedDeviceId = deviceIds[deviceIndex];
   const previewUrl = capture?.previewUrl;
+
+  useEffect(() => {
+    mounted.current = true;
+    const generation = cameraGeneration;
+    let visible = applicationVisible();
+    const changed = () => {
+      const nextVisible = applicationVisible();
+      if (visible === nextVisible) return;
+      visible = nextVisible;
+      generation.current++;
+      stream.current?.getTracks().forEach(track => track.stop());
+      stream.current = null;
+      setForeground(nextVisible);
+    };
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, changed);
+    document.addEventListener("visibilitychange", changed);
+    return () => {
+      mounted.current = false;
+      generation.current++;
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, changed);
+      document.removeEventListener("visibilitychange", changed);
+    };
+  }, []);
 
   useEffect(() => {
     if (confirmingDelete) keepAfterDelete.current?.focus();
@@ -145,41 +176,63 @@ export function PhotoNoteDialog({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (mode !== "camera") return;
+    if (mode !== "camera" || !foreground || cameraRequestPending.current || cameraPermissionBlocked.current) return;
     let active = true;
+    const generation = ++cameraGeneration.current;
     async function startCamera() {
       stream.current?.getTracks().forEach((track) => track.stop());
       const unavailable = browserMediaCapturePreflight("camera", undefined, language);
       if (unavailable) { setCameraError(unavailable); return; }
+      cameraRequestPending.current = true;
+      let reacquire = false;
       try {
         const next = await navigator.mediaDevices.getUserMedia(cameraRequestConstraints(selectedDeviceId));
-        if (!active) { next.getTracks().forEach((track) => track.stop()); return; }
+        if (!active || generation !== cameraGeneration.current) { next.getTracks().forEach((track) => track.stop()); reacquire = true; return; }
         stream.current = next;
+        next.getVideoTracks().forEach(track => track.addEventListener("ended", () => {
+          if (active && generation === cameraGeneration.current && applicationVisible()) {
+            setCameraError(mediaCaptureErrorMessage("camera", new DOMException("Camera ended", "NotReadableError"), language));
+          }
+        }));
         if (video.current) { video.current.srcObject = next; await video.current.play(); }
         const cameras = (await navigator.mediaDevices.enumerateDevices()).filter(({ kind }) => kind === "videoinput");
+        if (!active || generation !== cameraGeneration.current) return;
         const ids = cameras.map(({ deviceId }) => deviceId).filter(Boolean);
         const activeDeviceId = next.getVideoTracks()[0]?.getSettings().deviceId;
         setDeviceIds(ids);
         setDeviceIndex(Math.max(0, ids.indexOf(activeDeviceId ?? "")));
         setCameraError(null);
-      } catch (error) { setCameraError(mediaCaptureErrorMessage("camera", error, language)); }
+      } catch (error) {
+        const denied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
+        if (mounted.current && denied) {
+          // Permission dialogs pause/resume Android. Preserve denial instead of automatically prompting again.
+          cameraPermissionBlocked.current = true;
+          setCameraError(mediaCaptureErrorMessage("camera", error, language));
+        } else if (active && generation === cameraGeneration.current) setCameraError(mediaCaptureErrorMessage("camera", error, language));
+      } finally {
+        cameraRequestPending.current = false;
+        if (reacquire && mounted.current && applicationVisible()) setCameraAttempt(value => value + 1);
+      }
     }
     void startCamera();
     return () => { active = false; stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null; };
-  }, [mode, selectedDeviceId, language]);
+  }, [mode, selectedDeviceId, language, foreground, cameraAttempt]);
 
   async function takePhoto() {
-    if (!video.current) return;
+    if (!video.current || !foreground) return;
+    const generation = cameraGeneration.current;
     try {
       const blob = await captureVideoFrame(video.current);
+      if (!mounted.current || generation !== cameraGeneration.current) return;
       stream.current?.getTracks().forEach((track) => track.stop());
       const capturedAt = new Date().toISOString();
       const capturedUtcOffsetMinutes = -new Date().getTimezoneOffset();
       await stageProtectedPhotoPreview(reportId, { sourceBase64: await blobBase64(blob), contentType: "image/png",
         capturedAt, capturedUtcOffsetMinutes, quarterTurns: cameraQuarterTurns, caption });
+      if (!mounted.current || generation !== cameraGeneration.current) return;
       setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: cameraQuarterTurns, capturedAt, capturedUtcOffsetMinutes });
       setMode("preview");
-    } catch (error) { setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.frame.could.not.be.captured")); }
+    } catch (error) { if (mounted.current && generation === cameraGeneration.current) setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.frame.could.not.be.captured")); }
   }
 
   function discard() {
@@ -225,6 +278,10 @@ export function PhotoNoteDialog({
           effectiveAllowanceBytes: mediaPolicy.reportMediaAllowanceBytes,
           effectiveImageLimitBytes: mediaPolicy.imageMediaLimitBytes,
         };
+        if (isAndroidRuntime() && new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_NATIVE_BODY_BYTES) {
+          setCameraError(t("noteUi.androidPhotoTransferLimit"));
+          return;
+        }
         if (protectedStorageActive(reportId)) {
           const localNote: ReportPhotoNote = {
             id: command.noteId, reportId, type: "photo", caption: validation.caption,
@@ -309,7 +366,7 @@ export function PhotoNoteDialog({
               <button className="camera-rotate-button" type="button" aria-label={t("noteUi.rotate.counterclockwise.90")} title={t("noteUi.rotate.counterclockwise")}
                 onClick={() => setCameraQuarterTurns((value) => value - 1)}><RotateCameraIcon clockwise={false} /></button>
               <button className="camera-cycle-button" type="button" aria-label={t("noteUi.cycle.camera")} disabled={deviceIds.length <= 1}
-                onClick={() => setDeviceIndex((index) => (index + 1) % deviceIds.length)}>{t("noteUi.cycle.camera")}</button>
+                onClick={() => { const index = (deviceIndex + 1) % deviceIds.length; setDeviceIndex(index); setSelectedDeviceId(deviceIds[index]); }}>{t("noteUi.cycle.camera")}</button>
               <button className="camera-rotate-button" type="button" aria-label={t("noteUi.rotate.clockwise.90")} title={t("noteUi.rotate.clockwise")}
                 onClick={() => setCameraQuarterTurns((value) => value + 1)}><RotateCameraIcon clockwise /></button>
             </div>

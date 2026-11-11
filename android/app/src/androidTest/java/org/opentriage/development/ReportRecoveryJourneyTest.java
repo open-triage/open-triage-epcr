@@ -40,8 +40,15 @@ public class ReportRecoveryJourneyTest {
         assertEquals("The actual input must be editable", "true", evaluate(WebViewTestInput.change(expression,value)));
     }
     private void click(String label) throws Exception {
-        String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && button.textContent.trim()===" + JSONObject.quote(label) + ")";
-        waitFor(button + " && !(" + button + ").disabled"); evaluate("(" + button + ").click()");
+        String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && (button.textContent.trim()===" + JSONObject.quote(label) + " || button.getAttribute('aria-label')===" + JSONObject.quote(label) + "))";
+        waitFor(button + " && !(" + button + ").disabled");
+        if (label.equals("Save & close")) {
+            evaluate("setTimeout(()=>(" + button + ").click(),0)");
+            var confirmation = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
+                androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("OK")), 2000);
+            if (confirmation != null) confirmation.click();
+        } else if (label.equals("Add photo note")) evaluate("setTimeout(()=>(" + button + ").click(),0)");
+        else evaluate("(" + button + ").click()");
     }
     private void connection(boolean connected) throws Exception {
         for (String command : new String[]{"svc wifi " + (connected ? "enable" : "disable"), "svc data " + (connected ? "enable" : "disable")}) {
@@ -77,6 +84,61 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__serverVerified=null;(async()=>{for(let i=0;i<30;i++){try{const response=await fetch('/api/reports/'+window.__reportId,{cache:'no-store'});if(response.ok && (await response.text()).includes(" + JSONObject.quote(expected) + ")){window.__serverVerified=true;return}}catch{}await new Promise(resolve=>setTimeout(resolve,500))}window.__serverVerified=false})()");
         waitFor("window.__serverVerified!==null"); assertEquals("true", evaluate("window.__serverVerified"));
         waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
+    }
+    private void photoOfflineCapture() throws Exception {
+        click("Mobile");
+        click("Add photo note");
+        var denied = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
+            androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res(java.util.regex.Pattern.compile(".*:id/permission_deny_button"))), 15000);
+        assertNotNull("Shared photo camera requests actual Android permission", denied); denied.click();
+        waitFor("document.querySelector('.photo-note-dialog [role=alert]')");
+        click("Cancel");
+        click("Add photo note");
+        var granted = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
+            androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res(java.util.regex.Pattern.compile(".*:id/permission_allow_foreground_only_button"))), 15000);
+        assertNotNull("Retry must permit actual camera permission grant", granted); granted.click();
+        // Prove granted permission reaches the real WebView camera before substituting synthetic pixels.
+        waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
+        activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
+        assertEquals("Native pause stops the actual camera track", "true", evaluate("Array.from(document.querySelector('.photo-note-dialog video').srcObject.getTracks()).every(track=>track.readyState==='ended')"));
+        activity.moveToState(Lifecycle.State.RESUMED);
+        waitFor("Array.from(document.querySelector('.photo-note-dialog video')?.srcObject?.getTracks()??[]).some(track=>track.readyState==='live')");
+        stageSyntheticPhoto("ANDROID-PHOTO-RESUME-SYNTHETIC");
+        evaluate("window.__backgroundRequests=0;window.__backgroundPaths=[]");
+        activity.moveToState(Lifecycle.State.CREATED);
+        waitFor("window.__nativeActive===false");
+        connection(true); Thread.sleep(1200);
+        assertEquals("Paused reconnect must not start new API traffic: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
+        activity.moveToState(Lifecycle.State.RESUMED);
+        verifyCanonicalPhoto("ANDROID-PHOTO-RESUME-SYNTHETIC");
+        connection(false); click("Mobile"); click("Add photo note");
+        waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
+        stageSyntheticPhoto("ANDROID-PHOTO-SYNTHETIC");
+        records(); assertFalse("Photo caption is encrypted at rest", evaluate("JSON.stringify(window.__retained)").contains("ANDROID-PHOTO-SYNTHETIC"));
+        assertFalse("Photo bytes never enter localStorage", evaluate("JSON.stringify({...localStorage})").contains("data:image"));
+    }
+    private void stageSyntheticPhoto(String caption) throws Exception {
+        waitFor("(()=>{const video=document.querySelector('.photo-note-dialog video');const capture=document.querySelector('.camera-capture-button');return video?.readyState>=2 && video.currentTime>0 && !video.paused && capture && !capture.disabled})()");
+        // Substitute only the hardware frame source. Capture, normalization, staging and API calls stay production.
+        evaluate("(()=>{const video=document.querySelector('.photo-note-dialog video');const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;const context=canvas.getContext('2d');context.fillStyle='#275d38';context.fillRect(0,0,640,480);context.fillStyle='#eee';context.fillRect(100,100,230,180);window.__syntheticPhotoStream=canvas.captureStream(5);video.srcObject=window.__syntheticPhotoStream;video.play()})()");
+        waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth===640");
+        click("Take photo"); waitFor("document.querySelector('.photo-note-dialog img')?.naturalWidth>0");
+        evaluate("window.__syntheticPhotoStream.getTracks().forEach(track=>track.stop())");
+        evaluate("(()=>{const input=document.querySelector('#report-photo-caption');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input," + JSONObject.quote(caption) + ");input.dispatchEvent(new Event('input',{bubbles:true}))})()");
+        click("Use photo"); waitFor("!document.querySelector('.photo-note-dialog') && document.body.innerText.includes(" + JSONObject.quote(caption) + ")");
+        click("Stationary"); waitFor(FIELD);
+    }
+    private void verifyCanonicalPhoto(String caption) throws Exception {
+        evaluate("window.__photoVerified=null;(async()=>{for(let attempt=0;attempt<80;attempt++){try{const report=await (await fetch('/api/reports/'+window.__reportId)).json();const find=value=>{if(!value||typeof value!=='object')return null;if(value.type==='photo'&&value.caption===" + JSONObject.quote(caption) + ")return value;for(const item of Object.values(value)){const found=find(item);if(found)return found}return null};const note=find(report);if(note?.persistenceState==='ready'){const response=await fetch('/api/reports/'+window.__reportId+'/photos/'+note.id+'/image');if(!response.ok)throw Error('image');const bytes=new Uint8Array(await response.arrayBuffer());const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),value=>value.toString(16).padStart(2,'0')).join('');if(hash!==note.sha256||bytes[0]!==255||bytes[1]!==216)throw Error('bytes');const blob=new Blob([bytes],{type:'image/jpeg'});const image=await createImageBitmap(blob);if(image.width!==640||image.height!==480)throw Error('dimensions');image.close();window.__photoVerified=true;return}}catch{}await new Promise(resolve=>setTimeout(resolve,500))}window.__photoVerified=false})()");
+        waitFor("window.__photoVerified!==null"); assertEquals("Recovered photo uploads and returns exact authenticated JPEG bytes", "true", evaluate("window.__photoVerified"));
+    }
+    private void verifyRecoveredPhoto() throws Exception {
+        verifyCanonicalPhoto("ANDROID-PHOTO-SYNTHETIC");
+        click("Mobile");
+        waitFor("Array.from(document.querySelectorAll('.photo-note-event')).some(row=>row.textContent.includes('ANDROID-PHOTO-SYNTHETIC')&&row.querySelector('.photo-thumbnail')?.naturalWidth===640)");
+        evaluate("Array.from(document.querySelectorAll('.photo-note-event')).find(row=>row.textContent.includes('ANDROID-PHOTO-SYNTHETIC')).querySelector('button').click()");
+        waitFor("document.querySelector('.photo-viewer-image')?.naturalWidth===640");
+        click("Cancel"); click("Stationary"); waitFor(FIELD);
     }
     private String connectionIdentity() throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -152,7 +214,7 @@ public class ReportRecoveryJourneyTest {
             assertFalse("Remote web deployment cannot replace APK UI after reload", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
             assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
         }
-        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive)window.__backgroundRequests++;if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;window.__backgroundPaths?.push(url)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("window.__nativeEvents.includes(false) && window.__nativeEvents.includes(true) && window.__assignedReads>0");
         assertEquals("No new API drains while the native activity is paused", "0", evaluate("window.__backgroundRequests"));
@@ -175,7 +237,7 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
         connection(true); serverValue("ANDROID-RECONNECTED-SYNTHETIC");
         assertEquals(JSONObject.quote("ANDROID-RECONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
-        connection(false); records();
+        connection(false); photoOfflineCapture(); records();
         evaluate("window.__beforeRetainedRevision=window.__retained[0].ciphertextRevision");
         setInput(FIELD, RETAINED);
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
@@ -237,6 +299,7 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
         if (!"true".equals(evaluate("Boolean(" + FIELD + ")"))) click("Stationary");
         waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'"); serverValue(RETAINED);
+        verifyRecoveredPhoto();
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
     }
     private void reassignWithLostResponse() throws Exception {

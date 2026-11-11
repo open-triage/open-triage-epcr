@@ -24,7 +24,8 @@ import javax.net.ssl.TrustManagerFactory;
 /** One approved HTTPS origin, one cookie jar and no redirects. Never uses WebView cookies. */
 final class TrustedConnection {
     static final int MAX_ARTIFACT = 65536;
-    static final int MAX_BODY = 4 * 1024 * 1024;
+    // Bound bridge copies; supports default 10 MiB images in JSON/Base64 commands.
+    static final int MAX_BODY = 16 * 1024 * 1024;
     final String origin;
     final String caPem;
     private final javax.net.ssl.SSLSocketFactory socketFactory;
@@ -32,7 +33,10 @@ final class TrustedConnection {
     private static final Set<String> COOKIE_NAMES = Set.of("open_triage_session", "open_triage_installation");
     private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "x-job-confirmation", "if-match", "if-none-match");
     record SavedCookie(String value, long expires) {}
-    record Reply(int status, JSONObject headers, String body) {}
+    record Reply(int status, JSONObject headers, byte[] bytes) {
+        String body() { return new String(bytes, StandardCharsets.UTF_8); }
+        String bodyBase64() { return java.util.Base64.getEncoder().encodeToString(bytes); }
+    }
 
     TrustedConnection(String origin, String caPem) throws Exception {
         URI uri = URI.create(origin);
@@ -162,9 +166,13 @@ final class TrustedConnection {
     }
 
     Reply request(String path, String method, JSONObject headers, String body) throws Exception {
+        return requestBytes(path, method, headers, body == null ? null : body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    Reply requestBytes(String path, String method, JSONObject headers, byte[] body) throws Exception {
         requestPath(path);
         if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD").contains(method) ||
-                body != null && body.getBytes(StandardCharsets.UTF_8).length > MAX_BODY) throw new IllegalArgumentException("Invalid request");
+                body != null && body.length > MAX_BODY) throw new IllegalArgumentException("Invalid request");
         HttpsURLConnection connection = (HttpsURLConnection) URI.create(origin + path).toURL().openConnection();
         connection.setSSLSocketFactory(socketFactory);
         // Keep platform hostname verification. Do not install a permissive HostnameVerifier.
@@ -187,7 +195,8 @@ final class TrustedConnection {
         try {
             if (body != null) {
                 connection.setDoOutput(true);
-                try (var output = connection.getOutputStream()) { output.write(body.getBytes(StandardCharsets.UTF_8)); }
+                connection.setFixedLengthStreamingMode(body.length);
+                try (var output = connection.getOutputStream()) { output.write(body); }
             }
             int status = connection.getResponseCode();
             if (status >= 300 && status < 400 && status != 304) throw new IllegalStateException("Redirect requires explicit platform flow");
@@ -207,11 +216,20 @@ final class TrustedConnection {
                 String value = connection.getHeaderField(name);
                 if (value != null) responseHeaders.put(name, value);
             }
+            if (connection.getContentLengthLong() > MAX_BODY && !method.equals("HEAD") && !Set.of(204, 205, 304).contains(status)) throw new IllegalStateException("Oversized response");
             InputStream stream = Set.of(204, 205, 304).contains(status) || method.equals("HEAD") ? null
                 : status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] bytes = stream == null ? new byte[0] : readBounded(stream);
-            return new Reply(status, responseHeaders, new String(bytes, StandardCharsets.UTF_8));
+            return new Reply(status, responseHeaders, bytes);
         } finally { connection.disconnect(); }
+    }
+
+    static byte[] decodeRequestBody(String encoded) {
+        if (encoded == null) return null;
+        if (encoded.length() > ((long) MAX_BODY + 2) / 3 * 4) throw new IllegalArgumentException("Oversized request");
+        byte[] bytes = java.util.Base64.getDecoder().decode(encoded);
+        if (bytes.length > MAX_BODY) throw new IllegalArgumentException("Oversized request");
+        return bytes;
     }
 
     private static byte[] readBounded(InputStream stream) throws Exception {

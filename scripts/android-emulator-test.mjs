@@ -1,4 +1,4 @@
-import { stopFixtureChildren } from './android/fixture-processes.mjs';
+import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -74,7 +74,7 @@ try {
   }
   if (!process.argv.includes('--external-apis')) {
     const secondApi = children[1];
-    await new Promise(resolve => { secondApi.once('exit', resolve); secondApi.kill('SIGTERM'); });
+    await stopFixtureChild(secondApi);
     await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
   } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
 } catch (error) {
