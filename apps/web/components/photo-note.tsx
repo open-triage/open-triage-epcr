@@ -110,6 +110,7 @@ export function PhotoNoteDialog({
   const [caption, setCaption] = useState(note?.caption ?? "");
   const [deviceIds, setDeviceIds] = useState<ReadonlyArray<string>>([]);
   const [deviceIndex, setDeviceIndex] = useState(0);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [foreground, setForeground] = useState(() => applicationVisible());
   const cameraGeneration = useRef(0);
@@ -121,17 +122,20 @@ export function PhotoNoteDialog({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mode, setMode] = useState<"camera" | "preview" | "viewer">(note ? "viewer" : "camera");
   const validation = normalizePhotoCaption(caption, language);
-  const selectedDeviceId = deviceIds[deviceIndex];
   const previewUrl = capture?.previewUrl;
 
   useEffect(() => {
     mounted.current = true;
     const generation = cameraGeneration;
+    let visible = applicationVisible();
     const changed = () => {
+      const nextVisible = applicationVisible();
+      if (visible === nextVisible) return;
+      visible = nextVisible;
       generation.current++;
       stream.current?.getTracks().forEach(track => track.stop());
       stream.current = null;
-      setForeground(applicationVisible());
+      setForeground(nextVisible);
     };
     window.addEventListener(APPLICATION_FOREGROUND_EVENT, changed);
     document.addEventListener("visibilitychange", changed);
@@ -362,7 +366,7 @@ export function PhotoNoteDialog({
               <button className="camera-rotate-button" type="button" aria-label={t("noteUi.rotate.counterclockwise.90")} title={t("noteUi.rotate.counterclockwise")}
                 onClick={() => setCameraQuarterTurns((value) => value - 1)}><RotateCameraIcon clockwise={false} /></button>
               <button className="camera-cycle-button" type="button" aria-label={t("noteUi.cycle.camera")} disabled={deviceIds.length <= 1}
-                onClick={() => setDeviceIndex((index) => (index + 1) % deviceIds.length)}>{t("noteUi.cycle.camera")}</button>
+                onClick={() => { const index = (deviceIndex + 1) % deviceIds.length; setDeviceIndex(index); setSelectedDeviceId(deviceIds[index]); }}>{t("noteUi.cycle.camera")}</button>
               <button className="camera-rotate-button" type="button" aria-label={t("noteUi.rotate.clockwise.90")} title={t("noteUi.rotate.clockwise")}
                 onClick={() => setCameraQuarterTurns((value) => value + 1)}><RotateCameraIcon clockwise /></button>
             </div>
