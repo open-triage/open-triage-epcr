@@ -39,8 +39,16 @@
     "./config/*.json": "./config/*.json",
     "./examples/dispatch/*.json": "./examples/dispatch/*.json",
     "./android-client-protocol": {
-      "types": "./android-client-protocol.d.ts",
+      "types": "./android-client-protocol.d.mts",
       "default": "./android-client-protocol.mjs"
+    },
+    "./android-artifact": {
+      "types": "./android-artifact.d.ts",
+      "default": "./android-artifact.mjs"
+    },
+    "./android-release": {
+      "types": "./android-release.d.mts",
+      "default": "./android-release.mjs"
     }
   },
   "scripts": {

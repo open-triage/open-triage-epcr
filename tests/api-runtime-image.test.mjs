@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { assembleContractRuntime, smokeContractRuntime } from "../scripts/lib/contracts-runtime.mjs";
 import test from "node:test";
 
 const dockerfilePath = new URL("../deploy/docker/api.Dockerfile", import.meta.url);
@@ -68,11 +72,20 @@ test("the pruned runtime explicitly retains approved database operations and the
     "seed-install-definitions.mjs",
     "COPY packages/database/scripts/lib packages/database/scripts/lib",
     "packages/contracts/examples/dispatch",
-    "packages/contracts/runtime-node.cjs",
-    "packages/contracts/runtime-node-check.cjs",
+    "packages/contracts/*.cjs",
   ]) {
     assert.ok(dockerfile.includes(asset), `runtime is missing ${asset}`);
   }
+});
+
+test("every declared contract runtime export imports from the actual Docker COPY layout", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "opentriage-contract-runtime-"));
+  try {
+    const { entries } = await assembleContractRuntime(fileURLToPath(new URL("../", import.meta.url)), directory);
+    assert(entries.some(entry => entry.specifier.endsWith("/android-client-protocol")));
+    assert(entries.some(entry => entry.specifier.endsWith("/android-artifact")));
+    assert.match(smokeContractRuntime(directory, entries), /Imported \d+ packaged contract exports/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test("CI boots and inspects the pruned image before it can pass the deployment gate", async () => {

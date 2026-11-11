@@ -58,6 +58,8 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: OFFLINE_RECOVERY_SECRET_BASE64 } }
             - name: PORT
               value: "3001"
+            - name: ANDROID_APPROVED_RELEASE
+              value: {{ .Values.api.androidApprovedRelease | default "" | quote }}
             - name: AUTH_TRUST_PROXY_HOPS
               value: {{ .Values.api.trustProxyHops | quote }}
             - name: AGENCY_BASE_DOMAIN
