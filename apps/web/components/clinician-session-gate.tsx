@@ -14,14 +14,11 @@ import {
   createClinicianSession,
   endClinicianSession,
   authenticateRestartedClinicianSession,
-  reauthenticateClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
   sessionRequestToken
 } from "../app/clinician-session";
 import { beginPersonalClinicianSession,completePersonalClinicianSession,organizationLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
-import { NewJobConfirmationProvider } from "./new-job-confirmation";
-import { PersonalAuthenticationContext } from "./personal-authentication";
 import { LanguageSelector } from "./language-selector";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
@@ -398,14 +395,6 @@ export function ClinicianSessionGate({ children }: {
     finally{setSubmitting(false);}
   }
 
-  async function authenticateTemporaryOrganization() {
-    if(!authenticatedSession||submitting||lockingSession)return;
-    setSubmitting(true);setMessage(null);
-    try {await reauthenticateClinicianSession("",sessionRequestToken(authenticatedSession),true);}
-    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
-    finally{setSubmitting(false);}
-  }
-
   async function replacePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!authenticatedSession) return;
@@ -538,7 +527,7 @@ export function ClinicianSessionGate({ children }: {
       <h1 id="temporary-organization-heading">{t("login.temporaryOrganizationAuthentication")}</h1>
       <p>{t("login.temporaryOrganizationAuthenticationHelp")}</p>
       {message && <p className="login-message" role="status">{message}</p>}
-      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void authenticateTemporaryOrganization()}>{t("login.organizationSignIn")}</button>
+      <button type="button" disabled={submitting||lockingSession||transitionPending} onClick={()=>void personalLogin()}>{t("login.organizationSignIn")}</button>
       <button type="button" disabled={submitting||lockingSession} onClick={requestLogout}>{t("navigation.logOut")}</button>
     </section></main>;
   }
@@ -580,10 +569,7 @@ export function ClinicianSessionGate({ children }: {
     </div>
   </UnsavedChangesContext.Provider>;
 
-  const nextAuthenticationSource = (session as ClinicianSession & { nextAuthenticationSource?: "local" | "oidc" }).nextAuthenticationSource ?? session.authenticationSource ?? "local";
   return (
-    <NewJobConfirmationProvider language={language} onLogout={requestLogout}>
-    <PersonalAuthenticationContext.Provider value={nextAuthenticationSource}>
     <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
@@ -705,7 +691,5 @@ export function ClinicianSessionGate({ children }: {
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>
     </UnsavedChangesContext.Provider>
-    </PersonalAuthenticationContext.Provider>
-    </NewJobConfirmationProvider>
   );
 }

@@ -10,7 +10,7 @@ owner/superadmin recovery remains independent and local.
 
 An administrator activates the exact saved draft after its latest real diagnostic
 login succeeds. Activation binds that test to unchanged inspected discovery and
-requires recent personal authentication plus an installation-approved proof contract.
+requires the current authenticated session plus an installation-approved proof contract.
 The active version and the group's inherited `oidc` mode change atomically with audit;
 failed/stale activation keeps the prior policy. Draft tests remain identity evidence
 only and never grant clinical access or fresh personal proof. An unavailable provider cannot enable password reauthentication or password
@@ -84,17 +84,12 @@ conventional OIDC does not need an invented custom claim.
 - Fresh login and explicit user switch establish a new maximum session duration
   from the effective group policy. Activity, reminder acknowledgment and background
   requests preserve both that deadline and the existing personal-proof timestamp.
-- Same-user sensitive-action reauthentication updates only the initiating session's
-  recent proof. It preserves that session's expiry and records the latest identity,
-  provider revision and contract separately from immutable issuance provenance.
-  A proof in another browser/device/session cannot satisfy its gate.
-- The header and new-job reminder offer **Log out**, which ends the application
-  session and returns to sign-in without starting provider authentication. The
-  retained protocol-level switch operation revokes the outgoing session and clears its
-  cookie. Cancellation, provider failure, pending review and a no-role incoming
-  account cannot restore outgoing authority. A validated wrong subject during
-  sensitive reauthentication also becomes a safe switch; a pending identity revokes
-  the outgoing session, and a linked identity receives its own replacement session.
+- The current valid login authorizes application actions throughout its fixed
+  lifetime. Recovery, administrative actions and shift changes do not request
+  repeated passwords, OIDC authentication or clinician confirmation. Normal
+  role, owner, enrollment and agency authorization still applies.
+- Logout followed by login performs an explicit user switch. The outgoing
+  session is revoked and the linked identity receives its own new session.
 - Every callback consumes its transaction atomically before network exchange. The
   final commit rechecks the exact active revision, inspected metadata, approved
   contract, registered origin, expiry and current user/device authority. Later
@@ -133,19 +128,11 @@ proof. Its recovery/current-session view displays the organization sign-in compl
 while ordinary authority reads still deny it. The resulting same-user OIDC
 replacement retains the temporary session's original fixed deadline.
 
-The next required personal proof
-(sensitive administration, recovery, or a stale shift checkpoint) follows live group
-policy, independently of the historical `authenticationSource`. The session's
-`nextAuthenticationSource` describes that effective path. A recent local proof cannot
-satisfy a required SSO proof, including direct database recovery-grant/consume calls.
-An IdP outage blocks that proof without password fallback.
-
-Same-user local-to-SSO reauthentication creates a replacement session with immutable
-OIDC provenance and the exact prior `expires_at`; it revokes the superseded local
-token. It never stamps OIDC metadata into a local row or renews its lifetime. A wrong
-subject follows safe switching with its own identity/session and cannot recover the
-outgoing clinician's reports. Already-OIDC same-user proof updates latest proof
-metadata while preserving immutable issuance provenance and fixed expiry.
+Existing valid sessions retain access allowed by their live authority; a
+provider policy change does not introduce a repeated action-authentication prompt.
+Initial login and explicit user switching still validate the configured provider
+and approved claim contract. Temporary sessions limited to completing account
+setup cannot enter clinical or Admin work before that initial login completes.
 
 Installation owner and superadmin local recovery remain independent. The only demo
 exception is the immutable demonstration fixture ID in its exact demonstration
@@ -162,10 +149,10 @@ version locks follow a consistent order. Network exchanges complete outside thes
 short transactions. Starting a diagnostic or personal flow clears the other flow's
 callback correlation cookie so an abandoned attempt cannot steal recovery testing.
 
-Protected recovery uses the shared source/authority boundary and sensitive-action
-control. A fresh local or approved OIDC reauthentication unlocks only the same
-clinician's eligible report through a one-use grant; ordinary login and activity
-cannot advance recovery proof. Ciphertext deadlines never renew on login or pairing.
+Protected recovery uses the current authenticated session and releases only
+the original clinician's eligible report through a one-use grant. No extra
+password or OIDC proof is requested. Login, activity and pairing cannot extend
+protected recovery deadlines.
 See [protected storage](../protected-offline-clinical-storage.md).
 
 Controlled TLS-provider, real PostgreSQL runtime and proxy-browser regressions are
