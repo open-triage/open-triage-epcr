@@ -2,6 +2,7 @@
 import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
+import { APPLICATION_FOREGROUND_EVENT, applicationVisible } from "../app/application-foreground";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -109,12 +110,33 @@ export function PhotoNoteDialog({
   const [deviceIds, setDeviceIds] = useState<ReadonlyArray<string>>([]);
   const [deviceIndex, setDeviceIndex] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [foreground, setForeground] = useState(() => applicationVisible());
+  const cameraGeneration = useRef(0);
+  const mounted = useRef(true);
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mode, setMode] = useState<"camera" | "preview" | "viewer">(note ? "viewer" : "camera");
   const validation = normalizePhotoCaption(caption, language);
   const selectedDeviceId = deviceIds[deviceIndex];
   const previewUrl = capture?.previewUrl;
+
+  useEffect(() => {
+    mounted.current = true;
+    const changed = () => {
+      cameraGeneration.current++;
+      stream.current?.getTracks().forEach(track => track.stop());
+      stream.current = null;
+      setForeground(applicationVisible());
+    };
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, changed);
+    document.addEventListener("visibilitychange", changed);
+    return () => {
+      mounted.current = false;
+      cameraGeneration.current++;
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, changed);
+      document.removeEventListener("visibilitychange", changed);
+    };
+  }, []);
 
   useEffect(() => {
     if (confirmingDelete) keepAfterDelete.current?.focus();
@@ -145,38 +167,43 @@ export function PhotoNoteDialog({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (mode !== "camera") return;
+    if (mode !== "camera" || !foreground) return;
     let active = true;
+    const generation = ++cameraGeneration.current;
     async function startCamera() {
       stream.current?.getTracks().forEach((track) => track.stop());
       const unavailable = browserMediaCapturePreflight("camera", undefined, language);
       if (unavailable) { setCameraError(unavailable); return; }
       try {
         const next = await navigator.mediaDevices.getUserMedia(cameraRequestConstraints(selectedDeviceId));
-        if (!active) { next.getTracks().forEach((track) => track.stop()); return; }
+        if (!active || generation !== cameraGeneration.current) { next.getTracks().forEach((track) => track.stop()); return; }
         stream.current = next;
         if (video.current) { video.current.srcObject = next; await video.current.play(); }
         const cameras = (await navigator.mediaDevices.enumerateDevices()).filter(({ kind }) => kind === "videoinput");
+        if (!active || generation !== cameraGeneration.current) return;
         const ids = cameras.map(({ deviceId }) => deviceId).filter(Boolean);
         const activeDeviceId = next.getVideoTracks()[0]?.getSettings().deviceId;
         setDeviceIds(ids);
         setDeviceIndex(Math.max(0, ids.indexOf(activeDeviceId ?? "")));
         setCameraError(null);
-      } catch (error) { setCameraError(mediaCaptureErrorMessage("camera", error, language)); }
+      } catch (error) { if (active && generation === cameraGeneration.current) setCameraError(mediaCaptureErrorMessage("camera", error, language)); }
     }
     void startCamera();
     return () => { active = false; stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null; };
-  }, [mode, selectedDeviceId, language]);
+  }, [mode, selectedDeviceId, language, foreground]);
 
   async function takePhoto() {
-    if (!video.current) return;
+    if (!video.current || !foreground) return;
+    const generation = cameraGeneration.current;
     try {
       const blob = await captureVideoFrame(video.current);
+      if (!mounted.current || generation !== cameraGeneration.current) return;
       stream.current?.getTracks().forEach((track) => track.stop());
       const capturedAt = new Date().toISOString();
       const capturedUtcOffsetMinutes = -new Date().getTimezoneOffset();
       await stageProtectedPhotoPreview(reportId, { sourceBase64: await blobBase64(blob), contentType: "image/png",
         capturedAt, capturedUtcOffsetMinutes, quarterTurns: cameraQuarterTurns, caption });
+      if (!mounted.current || generation !== cameraGeneration.current) return;
       setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: cameraQuarterTurns, capturedAt, capturedUtcOffsetMinutes });
       setMode("preview");
     } catch (error) { setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.frame.could.not.be.captured")); }

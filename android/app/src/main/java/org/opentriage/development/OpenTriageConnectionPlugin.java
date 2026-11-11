@@ -70,10 +70,10 @@ public class OpenTriageConnectionPlugin extends Plugin {
     @PluginMethod public void cancel(PluginCall call) { execute(call, () -> { candidate = null; pairing = null; return new JSObject(); }); }
     @PluginMethod public void request(PluginCall call) { execute(call, () -> {
         if (active == null) throw new IllegalStateException("Pairing required");
-        var response = active.request(call.getString("path", ""), call.getString("method", "GET"), call.getObject("headers", new JSObject()), call.getString("body"));
+        var response = active.requestBytes(call.getString("path", ""), call.getString("method", "GET"), call.getObject("headers", new JSObject()), TrustedConnection.decodeRequestBody(call.getString("bodyBase64")));
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         vault.write(active);
-        JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("body", response.body()); return result;
+        JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("bodyBase64", response.bodyBase64()); return result;
     }); }
     @Override protected void handleOnDestroy() { destroyed = true; executor.shutdownNow(); super.handleOnDestroy(); }
 }

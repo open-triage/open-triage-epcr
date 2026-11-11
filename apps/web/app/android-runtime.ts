@@ -1,13 +1,13 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
-export type NativeResponse = { status: number; headers: Record<string, string>; body: string };
+export type NativeResponse = { status: number; headers: Record<string, string>; bodyBase64: string };
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
 type ConnectionPlugin = {
   state(): Promise<{ configured: boolean; origin?: string }>;
   preview(options: { artifact: string }): Promise<PairingPreview>;
   confirm(options: { name: string; confirmInstallation: true }): Promise<{ configured: true }>;
   cancel(): Promise<void>;
-  request(options: { path: string; method: string; headers: Record<string, string>; body?: string }): Promise<NativeResponse>;
+  request(options: { path: string; method: string; headers: Record<string, string>; bodyBase64?: string }): Promise<NativeResponse>;
 };
 export const AndroidConnection = registerPlugin<ConnectionPlugin>("OpenTriageConnection");
 export const isAndroidRuntime = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
@@ -18,6 +18,20 @@ export function installAndroidTransport(): void {
   installed = true;
   const browserFetch = window.fetch.bind(window);
   window.fetch = androidFetch(browserFetch, options => AndroidConnection.request(options), window.location.origin);
+}
+
+const MAX_NATIVE_BODY_BYTES = 64 * 1024 * 1024;
+function encodeBytes(bytes: Uint8Array): string {
+  if (bytes.length > MAX_NATIVE_BODY_BYTES) throw new Error("Oversized native request");
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
+}
+function decodeBytes(encoded: string): Uint8Array<ArrayBuffer> {
+  if (encoded.length > Math.ceil(MAX_NATIVE_BODY_BYTES / 3) * 4) throw new Error("Oversized native response");
+  const binary = atob(encoded);
+  if (binary.length > MAX_NATIVE_BODY_BYTES) throw new Error("Oversized native response");
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
 
 export function androidFetch(browserFetch: typeof fetch, nativeRequest: ConnectionPlugin["request"], localOrigin: string): typeof fetch {
@@ -31,8 +45,8 @@ export function androidFetch(browserFetch: typeof fetch, nativeRequest: Connecti
     const headers: Record<string, string> = {};
     effective.headers.forEach((value, name) => { headers[name] = value; });
     const result = await nativeRequest({ path: target.pathname + target.search, method: effective.method, headers,
-      ...(!["GET", "HEAD"].includes(effective.method) ? { body: await effective.text() } : {}) });
+      ...(!["GET", "HEAD"].includes(effective.method) ? { bodyBase64: encodeBytes(new Uint8Array(await effective.arrayBuffer())) } : {}) });
     if (effective.signal.aborted) throw effective.signal.reason;
-    return new Response([204, 205, 304].includes(result.status) ? null : result.body, { status: result.status, headers: result.headers });
+    return new Response(effective.method === "HEAD" || [204, 205, 304].includes(result.status) ? null : decodeBytes(result.bodyBase64), { status: result.status, headers: result.headers });
   };
 }
