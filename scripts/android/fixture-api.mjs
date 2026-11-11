@@ -25,6 +25,30 @@ const [databaseIdentity] = await app.get(DataSource).query('select current_user 
 if (databaseIdentity.effective_role !== 'open_triage_api_runtime') throw new Error('Synthetic API must use the restricted runtime role');
 // A bounded fixture-only barrier makes lifecycle/policy races deterministic.
 // This file is a synthetic API launcher, never the production API entry point.
+let dropEnrollmentReplies = false;
+app.use((request, response, next) => {
+  if (request.url === '/api/__android-enrollment-expire' && request.method === 'POST') {
+    let input=''; request.on('data',chunk=>{input+=chunk;if(input.length>1024)request.destroy();});
+    request.on('end',()=>{void(async()=>{
+      const {token}=JSON.parse(input); if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))return response.status(400).json({expired:false});
+      const {createHash}=await import('node:crypto');
+      const rows=await app.get(DataSource).query(`update app_identity.unit_enrollment set issued_at=clock_timestamp()-interval '10 minutes',expires_at=clock_timestamp()-interval '1 minute' where token_sha256=$1 and consumed_at is null returning id`,[createHash('sha256').update(token).digest('hex')]);
+      response.json({expired:(Array.isArray(rows[0])?rows[0]:rows).length===1});
+    })().catch(()=>response.status(400).json({expired:false}));}); return;
+  }
+  if (request.url === '/api/__android-enrollment-drop-arm' && request.method === 'POST') {
+    dropEnrollmentReplies = true; return response.json({armed: true});
+  }
+  if (request.url === '/api/__android-enrollment-drop-release' && request.method === 'POST') { dropEnrollmentReplies=false; return response.json({released:true}); }
+  if (request.url === '/api/installations/enroll' && request.method === 'POST' && dropEnrollmentReplies) {
+    const end = response.end;
+    response.end = function(...args) {
+      if (this.statusCode >= 200 && this.statusCode < 300) { request.socket.destroy(); return this; }
+      return end.apply(this, args);
+    };
+  }
+  next();
+});
 const managementHolds = new Map();
 app.use((request, response, next) => {
   const url = new URL(request.url, fixture.origin), id = url.searchParams.get('requestId');

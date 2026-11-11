@@ -109,4 +109,14 @@ public class TrustedConnectionTest {
             }
         } finally { server.close(); worker.join(3000); }
     }
+    @Test public void replacementCandidatesNeverCopyPersonalOrForeignOriginAuthority() throws Exception {
+        var cookies = new org.json.JSONArray().put(new JSONObject().put("name", "open_triage_installation").put("value", "installation-only").put("expires", Long.MAX_VALUE))
+            .put(new JSONObject().put("name", "open_triage_session").put("value", "personal-never-copied").put("expires", Long.MAX_VALUE));
+        var original = TrustedConnection.restore(new JSONObject().put("origin", "https://original.example").put("caPem", "").put("cookies", cookies));
+        var same = original.enrollmentCandidate("https://original.example", ca()).saved().getJSONArray("cookies");
+        assertEquals(1, same.length()); assertEquals("open_triage_installation", same.getJSONObject(0).getString("name"));
+        assertEquals(0, original.enrollmentCandidate("https://different.example", ca()).saved().getJSONArray("cookies").length());
+        assertEquals("Original jar unchanged until explicit lock transition", 2, original.saved().getJSONArray("cookies").length());
+    }
+
 }

@@ -3054,5 +3054,8 @@
   "android.managed.invalid": "Managed settings are invalid. Contact IT.",
   "android.managed.changed": "The managed connection changed. Contact IT to restore or reassign this installation.",
   "android.managed.unavailable": "Managed settings are unavailable. Contact IT.",
-  "android.managed.conflict": "Pairing conflicts with the managed connection."
+  "android.managed.conflict": "Pairing conflicts with the managed connection.",
+  "android.changeInstallation": "Change installation",
+  "android.retryPairing": "Retry confirmed pairing",
+  "android.returnInstallation": "Return to current installation"
 }

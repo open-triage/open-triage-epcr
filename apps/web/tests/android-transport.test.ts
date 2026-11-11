@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { androidFetch } from '../app/android-runtime';
+import { androidFetch, configureNativeConnection } from '../app/android-runtime';
 test('shared API requests preserve CSRF/agency/body through the native connection and surface HTTP failures', async () => {
   let received: unknown;
   const transport = androidFetch(async () => { throw new Error('API escaped the native boundary'); }, async options => {
@@ -30,4 +30,15 @@ test('native transport preserves Request inputs and explicit JSON bodies', async
   const transport = androidFetch(fetch, async request => { body = request.body; return { status: 200, headers: {}, body: '{}' }; }, 'https://localhost');
   await transport(new Request('https://localhost/api/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"username":"synthetic"}' }));
   assert.equal(body, '{"username":"synthetic"}');
+});
+
+test('a delayed native reply cannot revive the previous installation context', async () => {
+  configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
+  let release!: (value:{status:number;headers:Record<string,string>;body:string})=>void;
+  const transport=androidFetch(fetch,async options=>{assert.equal(options.connectionContext,'old');return new Promise(resolve=>{release=resolve;});},'https://localhost');
+  const pending=transport('/api/sessions/current');
+  configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'new'});
+  release({status:200,headers:{},body:'old context'});
+  await assert.rejects(pending,/Installation changed/);
+  configureNativeConnection({configured:false});
 });
