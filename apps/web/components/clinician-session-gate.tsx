@@ -41,6 +41,7 @@ import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { OrganizationManagement } from "./organization-management";
 import { AdminShell } from "./admin-shell";
+import { useNativeForeground } from "./use-native-foreground";
 import { useVisiblePolling } from "./use-visible-polling";
 import { ReviewShell } from "./review-shell";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "../app/browser-api";
@@ -122,6 +123,7 @@ export function ClinicianSessionGate({ children }: {
   const [modeMessage, setModeMessage] = useState<string | null>(null);
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
+  const foreground = useNativeForeground();
   const attentionSessionKey = session ? `${session.organization.id}:${session.user.id}:${session.capabilities?.join(",")}` : "";
   const [storedReviewAttention, setStoredReviewAttention] = useState<{
     key: string; value: ReviewAttentionResponse } | null>(null);
@@ -137,7 +139,7 @@ export function ClinicianSessionGate({ children }: {
     setReviewAttentionRevision((value) => value + 1);
   }, [attentionSessionKey]);
   useEffect(() => {
-    if (!online || !session || !hasReviewMode(session.capabilities)) return;
+    if (!online || !foreground || !session || !hasReviewMode(session.capabilities)) return;
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/attention?dataset=${reviewAttentionDataset}`);
     const load = () => {
@@ -150,9 +152,9 @@ export function ClinicianSessionGate({ children }: {
     };
     load();
     return () => controller.abort();
-  }, [session, online, attentionSessionKey, reviewAttentionDataset, reviewAttentionRevision]);
+  }, [session, online, foreground, attentionSessionKey, reviewAttentionDataset, reviewAttentionRevision]);
   useVisiblePolling(() => setReviewAttentionRevision((value) => value + 1), 30_000,
-    online && !!session && hasReviewMode(session.capabilities), attentionSessionKey, false);
+    online && foreground && !!session && hasReviewMode(session.capabilities), attentionSessionKey, false);
   const [generatedAssignmentId, setGeneratedAssignmentId] = useState<string | null>(null);
   const [logoutWarning, setLogoutWarning] = useState<ProtectedLogoutSummary | null>(null);
   const [lockingSession, setLockingSession] = useState(false);

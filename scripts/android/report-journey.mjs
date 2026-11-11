@@ -1,3 +1,4 @@
+import { captureAndroidFailure } from './diagnostics.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -133,6 +134,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     assert.equal(after.recovery_deadline.toISOString(), after.expected_deadline.toISOString(), 'Only the synchronized retained edit receipt advances the deadline under the established policy and report expiry');
     console.log('PASS protected work: actual Android primitives/fallbacks, offline edits, foreground reconnect, retained ciphertext after process kill, different-user denial, online recovery, pinned versions and policy-bound deadline');
   } catch (error) {
+    try { await captureAndroidFailure({ root, adb, serial, applicationId, secrets: [fixture.administratorPassword, fixture.clinicianPassword, report.secondClinicianPassword, issued.body.token] }); } catch { console.error('Android recovery diagnostics unavailable'); }
     const diagnostics = (await db.query(`select r.id,r.revision,envelope.ciphertext_revision,envelope.recovery_deadline,
       (select value_text from clinical.element_occurrence where report_id=r.id and element_id=$2 and tombstoned_at is null limit 1) first_name
       from clinical.call_assignment assignment join clinical.report r on r.id=assignment.report_id

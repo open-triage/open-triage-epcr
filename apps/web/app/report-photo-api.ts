@@ -46,7 +46,14 @@ export function deleteReportPhotoNote(csrfToken: string, reportId: string, noteI
 }
 
 export async function fetchReportPhoto(reportId: string, noteId: string, contentPath?: string): Promise<Blob> {
-  const response = await fetch(browserRouteUrl(contentPath ?? `/api/reports/${reportId}/photos/${noteId}/image`), browserRequestInit());
+  const path = contentPath ?? `/api/reports/${reportId}/photos/${noteId}/image`;
+  // Media locations are API paths, never server-provided credential destinations.
+  const parsed = new URL(path, "https://local.invalid");
+  if (!path.startsWith("/api/") || path.includes("\\") || parsed.origin !== "https://local.invalid" || parsed.hash ||
+      parsed.pathname !== path.split("?")[0] || decodeURIComponent(parsed.pathname).split("/").some(segment => segment === "." || segment === "..")) {
+    throw new Error("Unapproved photo location");
+  }
+  const response = await fetch(browserRouteUrl(path), browserRequestInit({ redirect: "error" }));
   if (!response.ok) throw await platformRequestError(response);
   if (response.headers.get("content-type") !== "image/jpeg") throw new Error("The photo response was not a canonical JPEG.");
   return response.blob();

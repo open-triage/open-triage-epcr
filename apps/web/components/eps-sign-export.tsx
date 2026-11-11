@@ -2,19 +2,22 @@
 import {useEffect,useState,type ReactNode} from 'react';
 import {browserRequestConfiguration,browserRequestInit,browserRouteUrl} from '../app/browser-api';
 import type {EpsDeliverySummary,EpsDeliveryIssue} from '../app/draft-report';
+import { foregroundNetworkAllowed } from '../app/application-foreground';
+import { useNativeForeground } from './use-native-foreground';
 import {resolveMessage} from '../app/localization';
 
 /** Activation only: no patient summary fetch is needed to offer export. */
 export function useEpsSigningActivation(reportId:string|undefined,csrfToken:string,integration:'eps'|'cos'='eps'){
  const key=JSON.stringify([reportId,csrfToken,integration]);
+ const foreground=useNativeForeground();
  const [value,setValue]=useState<{key:string;binding:string}|null>(null);
  useEffect(()=>{
-  if(!reportId||browserRequestConfiguration().mode==='static')return;
+  if(!reportId||!foreground||browserRequestConfiguration().mode==='static')return;
   let stopped=false;let timer:ReturnType<typeof setTimeout>;
   const controller=new AbortController();
   async function check(){
    try{
-    if(!navigator.onLine)return;
+    if(!navigator.onLine||!foregroundNetworkAllowed())return;
     const response=await fetch(browserRouteUrl(`/api/reports/${reportId}/${integration}/context`),browserRequestInit({signal:controller.signal}));
     if(!response.ok&&!([401,403,404].includes(response.status)))return;
     const context=response.ok?await response.json():null;
@@ -24,7 +27,7 @@ export function useEpsSigningActivation(reportId:string|undefined,csrfToken:stri
   }
   void check();
   return()=>{stopped=true;controller.abort();clearTimeout(timer);};
- },[key,reportId,integration]);
+ },[key,reportId,integration,foreground]);
  return value?.key===key?value.binding:null;
 }
 
