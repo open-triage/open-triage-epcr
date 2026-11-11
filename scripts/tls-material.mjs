@@ -81,27 +81,38 @@ export async function validateTlsMaterial({ certificate, privateKey, ca = '', ho
     fingerprint: leaf.fingerprint256.replaceAll(':', '').toLowerCase(), expiresAt: new Date(leaf.validTo).toISOString() };
 }
 
-export async function verifyApplicationConnection(url, material) {
+export async function verifyApplicationConnection(url, material, { timeoutMs = 10_000 } = {}) {
   const target = new URL(url);
   if (target.protocol !== 'https:' || target.username || target.password || target.hash || target.search || target.pathname !== '/api/health' ||
       !material.hosts.includes(target.hostname)) throw new Error('Health verification requires https://<validated-host>/api/health.');
   await new Promise((resolve, reject) => {
-    const fail = () => reject(new Error('Verified application connection failed. Check ingress rollout, certificate chain, hostname and API readiness.'));
-    const request = https.get(target, { ...(material.ca ? { ca: material.ca } : {}), rejectUnauthorized: true, agent: false, timeout: 10_000 }, response => {
+    let request, settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (error) { request?.destroy(); reject(error); } else resolve();
+    };
+    const fail = () => finish(new Error('Verified application connection failed. Check ingress rollout, certificate chain, hostname and API readiness.'));
+    // A socket inactivity timeout alone lets a slow response extend this operation forever.
+    const deadline = setTimeout(fail, timeoutMs);
+    try { request = https.get(target, { ...(material.ca ? { ca: material.ca } : {}), rejectUnauthorized: true, agent: false, timeout: timeoutMs }, response => {
       const peer = response.socket.getPeerCertificate();
       let body = '', size = 0;
-      response.on('data', chunk => { size += chunk.length; if (size > 16384) response.destroy(); else body += chunk; });
+      response.on('data', chunk => { size += chunk.length; if (size > 16384) fail(); else body += chunk; });
       response.on('error', fail);
+      response.on('aborted', fail);
+      response.on('close', () => { if (!response.complete) fail(); });
       response.on('end', () => {
         try {
           const health = JSON.parse(body);
-          if (response.statusCode !== 200 || health.status !== 'ok' || health.service !== 'open-triage-api' ||
+          if (!response.complete || size > 16384 || response.statusCode !== 200 || health.status !== 'ok' || health.service !== 'open-triage-api' ||
               peer.fingerprint256?.replaceAll(':', '').toLowerCase() !== material.fingerprint) return fail();
-          resolve();
+          finish();
         } catch { fail(); }
       });
-    });
-    request.on('timeout', () => request.destroy());
+    }); } catch { fail(); return; }
+    request.on('timeout', fail);
     request.on('error', fail);
   });
 }

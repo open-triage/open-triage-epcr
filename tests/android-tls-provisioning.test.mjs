@@ -75,6 +75,31 @@ test('same CA renewal and explicit overlapping/new CA trust work while unauthori
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
+test('health verification rejects oversized and incomplete bodies and bounds a continuously active response', { timeout: 5000 }, async () => {
+  const material = await validateTlsMaterial(fixtures.first);
+  const health = JSON.stringify({ status: 'ok', service: 'open-triage-api' });
+  for (const kind of ['oversized', 'incomplete', 'slow']) {
+    let interval;
+    const server = https.createServer({ key: fixtures.first.privateKey, cert: fixtures.first.certificate }, (_req, res) => {
+      if (kind === 'oversized') return res.end(health + ' '.repeat(20_000));
+      if (kind === 'incomplete') {
+        res.setHeader('content-length', Buffer.byteLength(health) + 100);
+        res.write(health);
+        return setTimeout(() => res.destroy(), 20);
+      }
+      res.write(health);
+      interval = setInterval(() => res.write(' '), 10);
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    try {
+      await assert.rejects(verifyApplicationConnection(`https://127.0.0.1:${server.address().port}/api/health`, material, { timeoutMs: 200 }), /Verified application connection failed/);
+    } finally {
+      clearInterval(interval);
+      server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    }
+  }
+});
+
 test('provisioning uses existing TLS Secret with validated bytes on stdin and exports public CA only', async () => {
   const certificate = join(directory, 'operator-chain.pem'), key = join(directory, 'operator-private.key'), ca = join(directory, 'operator-ca.pem'), output = join(directory, 'pairing-public.pem');
   await writeFile(certificate, fixtures.first.certificate); await writeFile(key, fixtures.first.privateKey, { mode: 0o600 }); await writeFile(ca, fixtures.first.ca);
