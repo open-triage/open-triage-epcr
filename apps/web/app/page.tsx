@@ -1,4 +1,6 @@
 "use client";
+import { foregroundNetworkAllowed } from "./application-foreground";
+import { useNativeForeground } from "../components/use-native-foreground";
 import {SignedReportPdfPreview} from '../components/signed-report-pdf-preview';
 
 import { CosIssueSettings } from "../components/cos-issue-settings";
@@ -12,7 +14,7 @@ import { ExceptionalValueMenu } from "../components/exceptional-value-menu";
 import { DialogCancelButton, DialogRemoveButton } from "../components/documentation-dialog-buttons";
 import { enabledMobileOptions, mobileDisplayDefinition } from "./mobile-localization";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import {EpsOutgoingPreview} from '../components/eps-outgoing-preview';
 import {EpsSigningCheckbox,EpsDeliveryStatus,useEpsSigningActivation,useSigningExportSelection} from '../components/eps-sign-export';
 import { MedicationDialog } from "../components/medication-dialog";
@@ -162,6 +164,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [signError, setSignError] = useState<string | null>(null);
   const [populateError, setPopulateError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
+  const foreground = useNativeForeground();
   const [navigationMessage, setNavigationMessage] = useState<string | null>(null);
   const [reportNotes, setReportNotes] = useState<ReadonlyArray<ReportNote>>(report?.notes ?? []);
   const [textNoteDraft, setTextNoteDraft] = useState<TextNoteDraft | null>(null);
@@ -306,7 +309,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, [report]);
 
   useEffect(() => {
-    if (!report || !restored || !online || mediaUploadActive.current) return;
+    if (!report || !restored || !online || !foreground || mediaUploadActive.current) return;
     const pending = protectedPhotoEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
@@ -314,7 +317,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     void (async () => {
       try {
         await flushSave();
-        while (active && navigator.onLine) {
+        while (active && navigator.onLine && foregroundNetworkAllowed()) {
           const entry = protectedPhotoEntries(report.id).find(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
           if (!entry) break;
           const attemptCommand = entry.attempted ? entry.command : {
@@ -323,12 +326,14 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
             command: attemptCommand, attempted: true,
             note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
+          if (!foregroundNetworkAllowed()) break;
           try {
             const response = await createReportPhotoNote(sessionRequestToken(session), report.id, attemptCommand);
             revisionRef.current = response.revision;
             advanceCachedReportRevision(window.localStorage, report.id, response.revision);
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
               serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
+            if (!foregroundNetworkAllowed()) break;
             const verified = await fetchReportPhoto(report.id, entry.note.id);
             const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await verified.arrayBuffer()))]
               .map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -355,9 +360,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       }
     })();
     return () => { active = false; };
-  }, [audioQueueVersion, flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
-    if (!report || !restored || !online || mediaUploadActive.current) return;
+    if (!report || !restored || !online || !foreground || mediaUploadActive.current) return;
     const pending = protectedAudioEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
@@ -365,19 +370,21 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     void (async () => {
       try {
         await flushSave();
-        while (active && navigator.onLine) {
+        while (active && navigator.onLine && foregroundNetworkAllowed()) {
           const entry = protectedAudioEntries(report.id).find(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
           if (!entry) break;
           const attemptCommand = entry.attempted ? entry.command : { ...entry.command, expectedRevision: revisionRef.current };
           await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
             command: attemptCommand, attempted: true,
             note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
+          if (!foregroundNetworkAllowed()) break;
           try {
             const response = await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand);
             revisionRef.current = response.revision;
             advanceCachedReportRevision(window.localStorage, report.id, response.revision);
             await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
               serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
+            if (!foregroundNetworkAllowed()) break;
             const verified = await fetchReportAudio(report.id, entry.note.id);
             const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await verified.arrayBuffer()))]
               .map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -403,7 +410,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       }
     })();
     return () => { active = false; };
-  }, [audioQueueVersion, flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
     queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
   }, [session.user.id]);
@@ -750,11 +757,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   };
 
   const signingReportId=report?.id;
+  const completeSigningWorkspace=useEffectEvent(completeWorkspaceReport);
   useEffect(()=>{
     if(!signingReportId)return;
     let active=true,polling=false;
     const check=async()=>{
-      if(polling||signingInFlight.current)return;
+      if(polling||signingInFlight.current||!foregroundNetworkAllowed())return;
       polling=true;const epoch=signingEpoch.current;
       try{
         const status=await readSigningStatus(signingReportId);
@@ -762,7 +770,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         setEpsDelivery({reportId:signingReportId,value:status.epsDelivery});
         setCosSigning(status.status==='awaiting-cos'?status:null);
         if(status.status==='signed'){
-          completeWorkspaceReport();
+          completeSigningWorkspace();
         }
       }catch{/* Keep the draft and last known delivery state when offline. */}
       finally{polling=false;}
@@ -770,7 +778,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     void check();
     const timer=window.setInterval(()=>void check(),3000);
     return ()=>{active=false;window.clearInterval(timer);};
-  },[signingReportId,completeWorkspaceReport]);
+  },[signingReportId,foreground]);
 
   async function signRecord(acknowledgeCos=cosAcknowledgement===cosAcknowledgementKey) {
     if (!report || !canFinish || signing) return;

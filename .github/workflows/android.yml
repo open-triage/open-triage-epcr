@@ -51,10 +51,12 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back emulated
           disable-animations: true
           script: npm run android:test -- --skip-build
-      - uses: actions/upload-artifact@v7
+      - name: Preserve native failure evidence and build reports
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-development-validation
+          retention-days: 7
           path: |
             android/app/build/reports/
             android/app/build/outputs/apk/debug/app-debug.apk

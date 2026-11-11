@@ -117,9 +117,12 @@ public class OpenTriageConnectionPlugin extends Plugin {
         return reply;
     }
     private TrustedConnection.Reply managedRequest(TrustedConnection connection, String path, String method, JSONObject headers, String body) throws Exception {
+        return managedRequestBytes(connection, path, method, headers, body == null ? null : body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+    private TrustedConnection.Reply managedRequestBytes(TrustedConnection connection, String path, String method, JSONObject headers, byte[] body) throws Exception {
         allowed(connection);
         long generation = revisions.current();
-        var reply = connection.request(path, method, headers, body);
+        var reply = connection.requestBytes(path, method, headers, body);
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         allowed(connection);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
@@ -286,13 +289,13 @@ public class OpenTriageConnectionPlugin extends Plugin {
         if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
         allowed(active);
         long generation = revisions.current();
-        var response = managedRequest(active, call.getString("path", ""), call.getString("method", "GET"), call.getObject("headers", new JSObject()), call.getString("body"));
+        var response = managedRequestBytes(active, call.getString("path", ""), call.getString("method", "GET"), call.getObject("headers", new JSObject()), TrustedConnection.decodeRequestBody(call.getString("bodyBase64")));
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         allowed(active);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
         if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
         vault.write(active);
-        JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("body", response.body()); return result;
+        JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("bodyBase64", response.bodyBase64()); return result;
     }); }
     @Override protected void handleOnDestroy() {
         destroyed = true;

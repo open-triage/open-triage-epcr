@@ -44,12 +44,16 @@ public class TrustedConnectionTest {
         // A process kept alive across expiry and one restarted afterwards both fail before IO.
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> valid.request("/api/current", "GET", new JSONObject(), null));
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedWhileValid.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> valid.requestBytes("/api/media", "POST", new JSONObject(), new byte[]{0, (byte) 255}));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedWhileValid.requestBytes("/api/current", "GET", new JSONObject(), null));
         var loadedAfterExpiry = TrustedConnection.restore(saved, clock::get);
         assertEquals(saved.toString(), loadedAfterExpiry.saved().toString());
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedAfterExpiry.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedAfterExpiry.requestBytes("/api/current", "GET", new JSONObject(), null));
         var retained = loadedAfterExpiry.installationOnly();
         assertEquals(saved.getString("caPem"), retained.caPem);
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.requestBytes("/api/current", "GET", new JSONObject(), null));
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> new TrustedConnection("https://localhost", ca(), clock::get));
         assertThrows(Exception.class, () -> TrustedConnection.restore(saved.put("caPem", "broken public trust"), clock::get));
     }
@@ -135,6 +139,51 @@ public class TrustedConnectionTest {
             }
         } finally { server.close(); worker.join(3000); }
     }
+    @Test public void binaryRequestAndResponseRemainExactOverRealTls() throws Exception {
+        KeyStore store = KeyStore.getInstance("PKCS12");
+        try (var file = getClass().getResourceAsStream("/tls/server.p12")) { store.load(file, "synthetic-only".toCharArray()); }
+        KeyManagerFactory km = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()); km.init(store, "synthetic-only".toCharArray());
+        SSLContext tls = SSLContext.getInstance("TLS"); tls.init(km.getKeyManagers(), null, null);
+        byte[] payload = new byte[10 * 1024 * 1024];
+        byte[] invalidUtf8 = new byte[]{0, (byte) 255, (byte) 254, (byte) 128, (byte) 195, 40, 13, 10};
+        for (int index = 0; index < payload.length; index++) payload[index] = invalidUtf8[index % invalidUtf8.length];
+        try (SSLServerSocket server = (SSLServerSocket) tls.getServerSocketFactory().createServerSocket(0)) {
+            var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+            Thread worker = new Thread(() -> {
+                for (int attempt = 0; attempt < 3; attempt++) try (var socket = server.accept()) {
+                    socket.setSoTimeout(10000);
+                    var input = socket.getInputStream();
+                    var head = new java.io.ByteArrayOutputStream();
+                    while (!head.toString(StandardCharsets.US_ASCII).endsWith("\r\n\r\n")) {
+                        int value = input.read(); if (value < 0 || head.size() > 32768) throw new AssertionError("Invalid headers"); head.write(value);
+                    }
+                    String headers = head.toString(StandardCharsets.US_ASCII);
+                    if (!headers.startsWith("POST")) {
+                        socket.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Length: " + (TrustedConnection.MAX_BODY + 1) + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                        socket.getOutputStream().flush(); continue;
+                    }
+                    var length = java.util.regex.Pattern.compile("(?im)^Content-Length: (\\d+)").matcher(headers);
+                    assertTrue("Explicit request length", length.find());
+                    assertArrayEquals(payload, input.readNBytes(Integer.parseInt(length.group(1))));
+                    socket.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: " + payload.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                    socket.getOutputStream().write(payload); socket.getOutputStream().flush();
+                } catch (Throwable error) { failure.set(error); }
+            });
+            worker.setDaemon(true); worker.start();
+            var connection = new TrustedConnection("https://localhost:" + server.getLocalPort(), ca());
+            var reply = connection.requestBytes("/api/media", "POST", new JSONObject().put("Content-Type", "application/octet-stream"), payload);
+            assertThrows(IllegalStateException.class, () -> connection.request("/api/oversized", "GET", new JSONObject(), null));
+            assertEquals(0, connection.request("/api/representation", "HEAD", new JSONObject(), null).bytes().length);
+            worker.join(7000); assertFalse(worker.isAlive());
+            if (failure.get() != null) throw new AssertionError(failure.get());
+            assertEquals("image/jpeg", reply.headers().getString("Content-Type"));
+            assertArrayEquals(payload, reply.bytes());
+            assertArrayEquals(payload, TrustedConnection.decodeRequestBody(reply.bodyBase64()));
+            assertThrows(IllegalArgumentException.class, () -> TrustedConnection.decodeRequestBody("%%%"));
+            assertThrows(IllegalArgumentException.class, () -> connection.requestBytes("/api/media", "POST", new JSONObject(), new byte[TrustedConnection.MAX_BODY + 1]));
+        }
+    }
+
     @Test public void replacementCandidatesNeverCopyPersonalOrForeignOriginAuthority() throws Exception {
         var cookies = new org.json.JSONArray().put(new JSONObject().put("name", "open_triage_installation").put("value", "installation-only").put("expires", Long.MAX_VALUE))
             .put(new JSONObject().put("name", "open_triage_session").put("value", "personal-never-copied").put("expires", Long.MAX_VALUE));

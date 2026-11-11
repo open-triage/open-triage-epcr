@@ -11,7 +11,7 @@ for (const language of ['en', 'sv']) test(`TLS failure keeps the mounted clinica
       import{AndroidTlsNotice}from'./components/android-tls-notice';
       import{androidFetch}from'./app/android-runtime';
       function Workspace(){const[value,setValue]=useState('');useEffect(()=>{window.mounts=(window.mounts||0)+1},[]);return <label>Clinical edit<input value={value} onChange={event=>setValue(event.target.value)}/></label>}
-      const transport=androidFetch(window.fetch,async()=>{if(window.bridgeError)throw window.bridgeError;return{status:200,headers:{},body:'{}'}},location.origin);
+      const transport=androidFetch(window.fetch,async()=>{if(window.bridgeError)throw window.bridgeError;return{status:200,headers:{},bodyBase64:btoa('{}')}},location.origin);
       window.tlsFailed=async error=>{window.bridgeError=error;try{await transport('/api/health')}catch{}};
       window.connectionRecovered=async()=>{window.bridgeError=null;await transport('/api/health')};
       createRoot(document.getElementById('root')).render(<><AndroidTlsNotice/><Workspace/></>);` } });
