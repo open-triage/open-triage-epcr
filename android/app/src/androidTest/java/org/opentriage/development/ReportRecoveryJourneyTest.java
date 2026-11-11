@@ -174,6 +174,7 @@ public class ReportRecoveryJourneyTest {
         try {
             device.setOrientationLeft();
             waitFor("innerWidth>innerHeight");
+            closeControlReachable();
             assertEquals(JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
             device.setOrientationNatural(); waitFor("innerHeight>innerWidth");
             device.executeShellCommand("settings put system font_scale 1.5");
@@ -191,6 +192,8 @@ public class ReportRecoveryJourneyTest {
                 if (keyboard.get()) break; Thread.sleep(150);
             } while (System.currentTimeMillis() < end);
             assertTrue("A trusted touch opens the real Android keyboard", keyboard.get());
+            device.waitForIdle(1000);
+            closeControlReachable();
             String keyboardHeight = evaluate("innerHeight");
             device.pressBack();
             waitFor("innerHeight>" + keyboardHeight);
@@ -198,6 +201,7 @@ public class ReportRecoveryJourneyTest {
             device.executeShellCommand("wm size 1600x2560");
             waitFor("innerWidth>=600");
             waitFor("document.documentElement.scrollWidth<=innerWidth+1");
+            closeControlReachable();
             assertEquals("Rotation, text scale and tablet resize retain the same clinical JS realm", "true", evaluate("window.__navigationRealm && performance.timeOrigin===window.__navigationTimeOrigin"));
             device.executeShellCommand("wm size " + originalSize);
             device.executeShellCommand("settings put system font_scale " + originalFont);
@@ -217,6 +221,11 @@ public class ReportRecoveryJourneyTest {
             device.executeShellCommand("settings put system font_scale " + originalFont);
             device.setOrientationNatural(); device.unfreezeRotation();
         }
+    }
+    private void closeControlReachable() throws Exception {
+        String control = "Array.from(document.querySelectorAll('.draft-actions button')).find(button=>button.textContent==='Save & close')";
+        evaluate("(" + control + ").scrollIntoView({block:'center',inline:'center'})");
+        waitFor("(()=>{const button=" + control + ";const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()");
     }
     private void endAudioHold() throws Exception {
         evaluate("document.querySelector('.audio-hold-button')?.dispatchEvent(new KeyboardEvent('keyup',{key:' ',bubbles:true}))");
@@ -413,7 +422,8 @@ public class ReportRecoveryJourneyTest {
         click("Stationary"); waitFor(FIELD);
         setInput(FIELD, "ANDROID-CONNECTED-SYNTHETIC");
         serverValue("ANDROID-CONNECTED-SYNTHETIC"); records();
-        navigationChecks();
+        // Release A may predate navigation support; its pending-work upgrade remains valid.
+        if (!"1".equals(args.getString("upgrade"))) navigationChecks();
         assertEquals("1", evaluate("window.__retained.length"));
         assertEquals("true", evaluate("!JSON.stringify({...localStorage}).includes('ANDROID-CONNECTED') && !JSON.stringify(window.__retained).includes('ANDROID-CONNECTED')"));
         connection(false); setInput(FIELD, "ANDROID-RECONNECTED-SYNTHETIC");

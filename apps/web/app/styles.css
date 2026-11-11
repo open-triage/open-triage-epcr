@@ -532,7 +532,7 @@ fieldset { min-inline-size: 0; }
 .admin-preview-error { max-width: 720px; margin: 48px auto; padding: 20px; }
 .draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .mobile-presentation .draft-actions { justify-content: space-between; margin: -2px 0 12px; }
-.draft-actions button { min-height: 44px; padding: 8px 14px; cursor: pointer; }
+.draft-actions button { min-height: 44px; padding: 8px 14px; overflow-wrap: anywhere; cursor: pointer; }
 .sync-status { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 9px; border-radius: 999px; color: #195b3b; background: #e8f3ee; font-size: var(--text-caption); font-weight: 800; }
 .sync-saving { color: #624500; background: #fff3c4; }
 .sync-pending-sync, .sync-conflict { color: #8b251c; background: #fde7e4; }

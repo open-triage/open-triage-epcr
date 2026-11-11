@@ -282,6 +282,8 @@ system text scale updates WebView text zoom. Capacitor's system-bar/cutout inset
 and explicit `adjustResize` keep the keyboard and system controls outside the
 application viewport. The browser uses its existing responsive UI and the
 `resizes-content` viewport policy. Long localized shared section headings wrap.
+At short viewport heights, the shared clinical headers and action bars scroll
+with the page so a keyboard or enlarged text cannot pin Save & close off-screen.
 
 The early path remains `npm run check:ci`, `npm run android:build`, then
 `npm run android:test -- --skip-build`. The browser preflight covers Back modal
@@ -291,7 +293,13 @@ short enlarged-text and tablet layouts with accessibility checks. The native
 report journey adds trusted-touch keyboard entry, hardware Back, real rotation,
 150% system text size and an actual emulator tablet resize. It checks the same
 JS realm and persisted field, then Back/reopen under the existing valid login.
-It restores the emulator's previous font scale and display override in `finally`.
+The native checks restore display changes in Java `finally`; both host entry
+points also capture the exact previous display override, font scale and rotation
+settings and restore them in their outer `finally`, including after an Android
+process crash. Early tests verify default/unset and custom values and all-setting
+restore attempts when an individual command fails. Native checks measure the
+Save & close bounds and hit target in landscape, with the keyboard open and on
+the tablet-sized display.
 The audio process-loss fixture first exercises hardware Back into an interrupted
 preview, explicitly cancels it, and starts a fresh live recorder before process
 termination. Existing foreground assignment/sync and bundled-UI checks still run.

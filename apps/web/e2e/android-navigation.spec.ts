@@ -2,6 +2,30 @@ import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 import path from "node:path";
 
+test("a failed lifecycle initialization cannot leave duplicate Back or foreground callbacks on retry", async ({ page }) => {
+  const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser",
+    plugins: [{ name: "synthetic-native-bridge", setup(build) {
+      build.onResolve({ filter: /^@capacitor\/core$/ }, () => ({ path: "bridge", namespace: "synthetic-native-bridge" }));
+      build.onLoad({ filter: /.*/, namespace: "synthetic-native-bridge" }, () => ({ contents: `export const registerPlugin=()=>new Proxy({},{get:(_,key)=>(...args)=>window.testLifecycle[key](...args)});export const Capacitor={isNativePlatform:()=>true,getPlatform:()=>'android'};` }));
+    } }],
+    stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "ts", contents: `
+      import {installAndroidLifecycle} from './app/android-lifecycle';import {foregroundNetworkAllowed} from './app/application-foreground';
+      let failed=true;window.callbacks=[];window.interrupts=0;
+      window.testLifecycle={addListener:async(event,callback)=>{window.callbacks.push({event,callback});return{remove:async()=>{throw new Error('Synthetic remove failure')}}},state:async()=>{if(failed){failed=false;throw new Error('Synthetic native state failure')}return{active:true}},background:async()=>{throw new Error('Modal must consume Back')}};
+      document.querySelector('button').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();window.interrupts++}});
+      window.emit=event=>window.callbacks.filter(entry=>entry.event===event).forEach(entry=>entry.callback({active:false}));
+      window.foregroundAllowed=foregroundNetworkAllowed;
+      (async()=>{try{await installAndroidLifecycle()}catch{}await installAndroidLifecycle();window.ready=true})();` } });
+  await page.route("**/__lifecycle-retry", route => route.fulfill({ contentType: "text/html", body: `<html><body><section role="dialog" aria-label="Unfinished recording"><button>Capture</button></section><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
+  await page.goto("/__lifecycle-retry");
+  await expect.poll(() => page.evaluate(() => (window as any).ready)).toBe(true);
+  await page.evaluate(() => (window as any).callbacks.find((entry: any) => entry.event === "foreground").callback({active:false}));
+  expect(await page.evaluate(() => (window as any).foregroundAllowed())).toBe(true);
+  // Exactly one current listener may interrupt the modal, even if native removal failed.
+  await page.evaluate(() => (window as any).emit("back"));
+  expect(await page.evaluate(() => (window as any).interrupts)).toBe(1);
+});
+
 test("Back respects modal capture, async boundaries and unmounted identity scopes", async ({ page }) => {
   const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
     stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `

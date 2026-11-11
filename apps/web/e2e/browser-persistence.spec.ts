@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { build } from "esbuild";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
@@ -1087,14 +1088,15 @@ for (const status of [401, 403]) test(`reopening cannot use a cached report afte
   await expect(page.locator(".report-reauthentication")).toHaveCount(0);
 });
 
-for (const navigation of ["button", "android-back"] as const) test(`${navigation} awaits the protected IndexedDB completion before unmounting offline work`, async ({ page, context }) => {
+for (const navigation of ["button", "android-back"] as const) test(`${navigation} awaits the protected IndexedDB completion before unmounting offline work`, async ({ page, context }, testInfo) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page);
   if (navigation === "android-back") {
+    const css = await readFile(path.resolve(__dirname, "../app/styles.css"), "utf8") + await readFile(path.resolve(__dirname, "../app/session-layout.css"), "utf8");
     const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
       define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: "same-origin", NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "false" }) },
       stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `import React from 'react';import {createRoot} from 'react-dom/client';import Home from './app/page';import {handleAndroidBack} from './app/android-navigation';window.androidBack=()=>handleAndroidBack(async()=>{window.didBackground=true});createRoot(document.getElementById('root')).render(<Home/>);` } });
-    await page.route("**/__android-back", route => route.fulfill({ contentType: "text/html", body: `<html><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
+    await page.route("**/__android-back", route => route.fulfill({ contentType: "text/html", body: `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
   }
   await page.goto(navigation === "button" ? "/" : "/__android-back");
   await page.getByRole("button", { name: "Stationary", exact: true }).click();
@@ -1128,6 +1130,14 @@ for (const navigation of ["button", "android-back"] as const) test(`${navigation
   await page.getByRole("button", { name: "Reopen report", exact: true }).click();
   await expect(firstName).toHaveValue("CLOSE DURABILITY");
   if (navigation === "android-back") {
+    await page.setViewportSize({ width: 320, height: 440 });
+    await page.addStyleTag({ content: ":root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}" });
+    const close = page.getByRole("button", { name: "Save & close", exact: true });
+    await close.scrollIntoViewIfNeeded();
+    await expect(close).toBeInViewport({ ratio: 1 });
+    expect(await page.locator(".draft-actions button").evaluateAll(buttons => buttons.every(button => button.scrollWidth <= button.clientWidth + 1))).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("clinical-short-large-text.png") });
+    expect(await close.evaluate(element => { const r = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)); })).toBe(true);
     await page.getByRole("button", { name: "Mobile", exact: true }).click();
     await page.getByRole("button", { name: "Text note", exact: true }).click();
     const summary = page.getByLabel("Note text", { exact: true });

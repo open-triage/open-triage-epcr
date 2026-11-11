@@ -35,3 +35,15 @@
 .authenticated-shell.mobile-shell .quick-actions {
   top: calc(var(--session-bar-height, 98px) + var(--clinical-demo-banner-height, 0px));
 }
+
+/* Keyboards, landscape and enlarged text can make the pinned bars taller than
+   the usable viewport. Let every control scroll into view in that space. */
+@media (max-height: 540px) {
+  .authenticated-shell :is(.session-bar, .clinical-demo-banner, .encounter-header,
+    .quick-actions, .stationary-record-section-heading, .stationary-section-rail,
+    .form-editor-toolbar) { position: static; }
+  .authenticated-shell :is(.encounter-header, .stationary-record-section) { scroll-margin-top: 8px; }
+  .authenticated-shell .stationary-section-rail { max-height: none; }
+  .authenticated-shell .stationary-presentation .draft-actions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
+  .authenticated-shell .workspace-sidebar { top: 0; }
+}
