@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
@@ -129,6 +129,24 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     assert.equal(after.validation_version_id, opened.validation_version_id);
     assert.equal(after.recovery_deadline.toISOString(), after.expected_deadline.toISOString(), 'Only the synchronized retained edit receipt advances the deadline under the established policy and report expiry');
     console.log('PASS protected work: actual Android primitives/fallbacks, offline edits, foreground reconnect, retained ciphertext after process kill, different-user denial, online recovery, pinned versions and policy-bound deadline');
+  } catch (error) {
+    const diagnostics = (await db.query(`select r.id,r.revision,envelope.ciphertext_revision,envelope.recovery_deadline,
+      (select value_text from clinical.element_occurrence where report_id=r.id and element_id=$2 and tombstoned_at is null limit 1) first_name
+      from clinical.call_assignment assignment join clinical.report r on r.id=assignment.report_id
+      left join offline_recovery.report_key_envelope envelope on envelope.report_id=r.id where assignment.id=$1`, [report.assignmentId, report.elementId])).rows;
+    console.log('Synthetic recovery database diagnostics', JSON.stringify(diagnostics));
+    if (process.env.ANDROID_RECOVERY_DEBUG_PAUSE === '1') {
+      const debugFile = '/tmp/android-003-recovery-debug.json', releaseFile = '/tmp/android-003-recovery-debug.release';
+      await rm(releaseFile, { force: true });
+      await writeFile(debugFile, JSON.stringify({ databaseUrl: fixture.databaseUrl, assignmentId: report.assignmentId, reportId: diagnostics[0]?.id }));
+      console.log('Synthetic recovery fixtures held for up to 180 seconds; inspect /tmp/android-003-recovery-debug.json and create /tmp/android-003-recovery-debug.release to finish cleanup.');
+      for (let attempt = 0; attempt < 180; attempt++) {
+        try { await readFile(releaseFile); break; } catch { /* Wait only for the local diagnostic release file. */ }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      await rm(debugFile, { force: true }); await rm(releaseFile, { force: true });
+    }
+    throw error;
   } finally {
     preparation?.child.kill('SIGTERM');
     run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'enable']); run(adb, ['-s', serial, 'shell', 'svc', 'data', 'enable']);

@@ -1066,3 +1066,59 @@ for (const status of [401, 403]) test(`reopening cannot use a cached report afte
   await expect(page.locator(".encounter-header")).toHaveCount(0);
   await expect(page.locator(".report-reauthentication")).toHaveCount(0);
 });
+
+test("Save and close awaits the protected IndexedDB completion before unmounting offline work", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  await context.setOffline(true);
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put; let hold = true;
+    IDBObjectStore.prototype.put = function(...args) {
+      if (this.name === "encrypted-reports" && hold) {
+        hold = false; const transaction = this.transaction;
+        Object.defineProperty(transaction, "oncomplete", { configurable: true, set(listener: (event: Event) => void) {
+          transaction.addEventListener("complete", event => Object.assign(window, { protectedWriteHeld: true, releaseProtectedWrite: () => listener.call(transaction, event) }));
+        } });
+      }
+      return put.apply(this, args);
+    };
+  });
+  await firstName.fill("CLOSE DURABILITY"); await firstName.press("Tab");
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { protectedWriteHeld?: boolean }).protectedWriteHeld))).toBe(true);
+  await page.getByRole("button", { name: "Save & close", exact: true }).click();
+  await expect(page.locator(".encounter-header")).toBeVisible();
+  await page.evaluate(() => (window as unknown as { releaseProtectedWrite(): void }).releaseProtectedWrite());
+  await expect(page.locator(".encounter-header")).toHaveCount(0);
+  await page.getByRole("button", { name: "Reopen report", exact: true }).click();
+  await expect(firstName).toHaveValue("CLOSE DURABILITY");
+});
+
+test("Save and close retries a failed receipt without requiring another clinical edit", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  let fail = true, attempts = 0;
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, route => {
+    attempts++;
+    return fail ? route.abort("failed") : route.fulfill({ json: { schemaVersion: 1, recoveryDeadline: "2099-09-18T12:00:00.000Z" } });
+  });
+  await firstName.fill("RETRY CLOSE"); await firstName.press("Tab");
+  await expect.poll(() => attempts).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Save & close", exact: true }).click();
+  await expect(page.getByText("Protected storage could not finish. Keep the report open and retry.", { exact: true })).toBeVisible();
+  await expect(page.locator(".encounter-header")).toBeVisible();
+  await expect(firstName).toBeEnabled();
+  fail = false;
+  await page.getByRole("button", { name: "Save & close", exact: true }).click();
+  await expect(page.locator(".encounter-header")).toHaveCount(0);
+});

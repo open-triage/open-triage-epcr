@@ -211,6 +211,16 @@ export class LatestProtectedWriteQueue<T> {
     await this.drainThrough(this.heldTarget ?? this.requested);
   }
 
+  /** An explicit close retries one settled failure and drains edits arriving while it waits. */
+  async flushLatest(): Promise<void> {
+    if (this.failed) { this.failed = null; this.running = null; }
+    while (true) {
+      const target = this.requested;
+      await this.drainThrough(target);
+      if (this.requested === target) return;
+    }
+  }
+
   async holdAfterFlush(): Promise<() => void> {
     if (this.held) throw new Error("Protected persistence is already held for completion");
     this.held = true;
@@ -282,13 +292,6 @@ export type RecoveredProtectedPayload = {
   readonly audioQueue?: ReadonlyArray<ProtectedAudioQueueEntry>;
   readonly audioPreview?: ProtectedAudioPreview;
 };
-
-export class RecoveryReauthenticationRequiredError extends Error {
-  constructor() {
-    super("Confirm your password to recover this protected report.");
-    this.name = "RecoveryReauthenticationRequiredError";
-  }
-}
 
 const contexts = new Map<string, RuntimeContext>();
 const statuses = new Map<string, ProtectedStorageStatus>();
@@ -1243,9 +1246,10 @@ export function updateProtectedShellState(reportId: string, shellState: unknown)
 
 export function protectedShellState(reportId: string): unknown { return contexts.get(reportId)?.payload.shellState; }
 
-export async function flushProtectedReport(reportId: string): Promise<void> {
+export async function flushProtectedReport(reportId: string, options: { readonly retryFailed?: boolean } = {}): Promise<void> {
   const context = contexts.get(reportId);
-  await context?.writer.flush();
+  if (options.retryFailed) await context?.writer.flushLatest();
+  else await context?.writer.flush();
   if (context?.failure) throw context.failure;
 }
 

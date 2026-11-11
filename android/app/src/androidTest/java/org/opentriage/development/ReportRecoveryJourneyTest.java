@@ -36,7 +36,8 @@ public class ReportRecoveryJourneyTest {
         fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
-        evaluate("(()=>{const input=" + expression + ";input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()");
+        waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
+        assertEquals("The actual input must be editable", "true", evaluate("(()=>{const input=" + expression + ";if(!input || input.matches(':disabled') || input.readOnly)return false;input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()"));
     }
     private void click(String label) throws Exception {
         String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && button.textContent.trim()===" + JSONObject.quote(label) + ")";
@@ -110,15 +111,19 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
         connection(true); serverValue("ANDROID-RECONNECTED-SYNTHETIC");
         assertEquals(JSONObject.quote("ANDROID-RECONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
-        connection(false); setInput(FIELD, RETAINED);
+        connection(false); records();
+        evaluate("window.__beforeRetainedRevision=window.__retained[0].ciphertextRevision");
+        setInput(FIELD, RETAINED);
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
-        long retainedDeadline = System.currentTimeMillis() + 15000;
-        do {
-            records();
-            if ("true".equals(evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"))) break;
-            Thread.sleep(150);
-        } while (System.currentTimeMillis() < retainedDeadline);
-        assertEquals("Pending edits must reach encrypted storage: " + evaluate("JSON.stringify(window.__retained.map(({ciphertextRevision,synchronizedRevision})=>({ciphertextRevision,synchronizedRevision})))"), "true", evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"));
+        // Exercise the real application durability boundary before injecting disk failure.
+        click("Save & close"); waitFor("!document.querySelector('.encounter-header')");
+        records();
+        assertEquals("The retained edit must have its own durable pending ciphertext", "true", evaluate("window.__retained[0].ciphertextRevision>window.__beforeRetainedRevision && window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"));
+        click("Reopen report"); waitFor("document.querySelector('.encounter-header')");
+        if (!"true".equals(evaluate("Boolean(" + FIELD + ")"))) click("Stationary");
+        waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'");
+        // Reopening locally must still show the exact retained value before process loss.
+        records();
         String reportId = evaluate("window.__reportId");
         assertFalse("Local metadata must not identify the report", evaluate("JSON.stringify(window.__retained)").contains(reportId.substring(1, reportId.length() - 1)));
         assertFalse(evaluate("JSON.stringify(window.__retained)").contains(RETAINED));

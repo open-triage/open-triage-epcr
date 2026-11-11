@@ -190,28 +190,52 @@ try{
  await control({proofAvailable:true});
  await authenticate('fictional-alpha');alphaToken=await token();
  const switchReport='91200000-0000-4000-8000-000000000002';
- await context.route(`**/api/reports/${switchReport}/protected-key-envelope`,route=>route.fulfill({json:{schemaVersion:1,recoveryHandle:route.request().postDataJSON().recoveryHandle,recoveryDeadline:deadline,wrappingKeyVersion:1}}));
+ let switchHandle;
+ await context.route(`**/api/reports/${switchReport}/protected-key-envelope`,route=>{switchHandle=route.request().postDataJSON().recoveryHandle;return route.fulfill({json:{schemaVersion:1,recoveryHandle:switchHandle,recoveryDeadline:deadline,wrappingKeyVersion:1}});});
  await context.route(`**/api/reports/${switchReport}/protected-ciphertext-receipt`,route=>route.fulfill({json:{schemaVersion:1,recoveryDeadline:deadline}}));
- let holdCheckpoint=false,checkpointSettled=false,checkpointStarted,releaseCheckpoint;
+ let checkpointStarted,releaseCheckpoint,checkpointCancelled=false;
  const checkpointReady=new Promise(resolve=>{checkpointStarted=resolve;});
  const checkpointRelease=new Promise(resolve=>{releaseCheckpoint=resolve;});
- await context.route(`**/api/reports/${switchReport}/protected-ciphertext-checkpoint`,async route=>{if(holdCheckpoint){checkpointStarted();await checkpointRelease;}await route.fulfill({json:route.request().postDataJSON()});if(holdCheckpoint)checkpointSettled=true;});
- await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));if(!await fixture.prepareProtectedReport(s.csrfToken,id))throw Error('Protected switch fixture unavailable');},switchReport);
- holdCheckpoint=true;
- await page.evaluate(id=>fixture.updateProtectedReport(id,{note:'PENDING SWITCH WORK'}),switchReport);
- // Begin while the network checkpoint is actually in flight; direct protocol
- // invocation has no browser click delay to establish that precondition.
+ const observeCancellation=request=>{if(request.url().endsWith(`/reports/${switchReport}/protected-ciphertext-checkpoint`))checkpointCancelled=true;};
+ page.on('requestfailed',observeCancellation);
+ await context.route(`**/api/reports/${switchReport}/protected-ciphertext-checkpoint`,async route=>{checkpointStarted();await checkpointRelease;try{await route.fulfill({json:route.request().postDataJSON()});}catch(error){if(!checkpointCancelled)throw error;}});
+ await page.evaluate(async id=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));if(!await fixture.prepareProtectedReport(s.csrfToken,id))throw Error('Protected switch fixture unavailable');fixture.updateProtectedReport(id,{note:'Checkpoint snapshot'});},switchReport);
  await checkpointReady;
- let beginObserved=false;
- await context.route('**/api/sessions/oidc/login',async route=>{beginObserved=true;assert.equal(checkpointSettled,true,'begin must follow the settled checkpoint');assert.equal((await sessions.getAuthenticated(alphaToken)).user.id,process.env.OIDC_ALPHA);await route.continue();});
+ // Hold a real local encryption completion behind the canceled remote checkpoint.
+ // Switching must settle this pending ciphertext even when the remote request is
+ // intentionally aborted; waiting for the remote response would strand logout.
+ await page.evaluate(id=>{
+  const encrypt=crypto.subtle.encrypt.bind(crypto.subtle);let hold=true;
+  crypto.subtle.encrypt=async(...args)=>{const result=await encrypt(...args);if(!hold)return result;hold=false;return new Promise(resolve=>{window.switchEncryptionHeld=true;window.releaseSwitchEncryption=()=>{window.switchEncryptionReleased=true;resolve(result);};});};
+  fixture.updateProtectedReport(id,{queuedChanges:[{command:{note:'PRIVATE PENDING SWITCH WORK'},attempted:false}]});
+ },switchReport);
+ const protectedSnapshot=()=>page.evaluate(handle=>new Promise((resolve,reject)=>{
+  const request=indexedDB.open('open-triage-protected-clinical-v1');request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onerror=()=>{db.close();reject(query.error);};query.onsuccess=()=>{const row=query.result.find(record=>record.recoveryHandle===handle);db.close();resolve(row?{revision:row.ciphertextRevision,synchronized:row.synchronizedRevision,ciphertext:[...new Uint8Array(row.ciphertext)]}:null);};};
+ }),switchHandle);
+ const beforeLocalWrite=await protectedSnapshot();assert(beforeLocalWrite);
+ let beginObserved=false,settledSnapshot;
+ await context.route('**/api/sessions/oidc/login',async route=>{
+  beginObserved=true;
+  assert.equal(await page.evaluate(()=>window.switchEncryptionReleased),true,'switch redirect must follow real local encryption settlement');
+  settledSnapshot=await protectedSnapshot();
+  assert(settledSnapshot.revision>beforeLocalWrite.revision,'new ciphertext must commit to IndexedDB before outgoing authority is withdrawn');
+  assert(settledSnapshot.revision>settledSnapshot.synchronized,'the outgoing pending ciphertext must remain retained');
+  assert.equal((await sessions.getAuthenticated(alphaToken)).user.id,process.env.OIDC_ALPHA);
+  await route.continue();
+ });
  await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));void fixture.beginPersonalClinicianSession('switch',s.csrfToken).catch(()=>{});});
- await checkpointReady;assert.equal(beginObserved,false,'switch must not revoke authority while the protected checkpoint is pending');
+ await expect.poll(()=>page.evaluate(()=>window.switchEncryptionHeld===true)).toBe(true);
+ await expect.poll(()=>checkpointCancelled).toBe(true);
+ assert.equal(beginObserved,false,'switch must not revoke authority while a local encrypted write is pending');
+ assert.deepEqual(await protectedSnapshot(),beforeLocalWrite,'held encryption cannot replace the prior committed ciphertext');
  assert.equal((await sessions.getAuthenticated(alphaToken)).user.id,process.env.OIDC_ALPHA);
- releaseCheckpoint();
+ await page.evaluate(()=>window.releaseSwitchEncryption());
  await expect(page.getByRole('link',{name:'Continue fictional provider login'})).toBeVisible();
  assert.equal(beginObserved,true);
+ releaseCheckpoint();page.off('requestfailed',observeCancellation);
  await context.unroute('**/api/sessions/oidc/login');
  assert.equal(await token(),undefined);await assert.rejects(sessions.getAuthenticated(alphaToken));
+ assert(settledSnapshot.ciphertext.length>0);assert(!Buffer.from(settledSnapshot.ciphertext).includes(Buffer.from('PRIVATE PENDING SWITCH WORK')));
 
  // Cancellation cannot restore the outgoing app cookie.
  const pendingUrl=new URL(page.url());const canceled=new URL(pendingUrl.searchParams.get('redirect_uri'));canceled.searchParams.set('state',pendingUrl.searchParams.get('state'));canceled.searchParams.set('error','access_denied');await page.goto(canceled.href);await expect(page.getByText(/Personal authentication failed/)).toBeVisible();assert.equal((await current()).status,401);

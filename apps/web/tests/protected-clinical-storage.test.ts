@@ -375,3 +375,27 @@ test("EPS cache binds user, agency, report and local patient document inside enc
   assert.equal(new TextDecoder().decode(encrypted.ciphertext).includes("PRIVATE EPS"), false);
   assert.deepEqual(await decryptProtectedPayload(key, { schemaVersion: 1, recoveryHandle: "opaque-eps", ciphertextRevision: 1, ...encrypted }), payload);
 });
+
+test("explicit close retries a settled persistence failure once and waits for newer edits", async () => {
+  const first = deferred(), latest = deferred();
+  let failing = true, finished = false;
+  const writes: number[] = [];
+  const queue = new LatestProtectedWriteQueue<number>(async value => {
+    writes.push(value);
+    if (failing) throw new Error("receipt unavailable");
+    await (value === 1 ? first.promise : latest.promise);
+  });
+  queue.request(1);
+  await assert.rejects(queue.flush(), /receipt unavailable/);
+  failing = false;
+  const closing = queue.flushLatest().then(() => { finished = true; });
+  queue.request(2);
+  first.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(writes, [1, 1, 2]);
+  assert.equal(finished, false, "a later edit must remain inside the close durability boundary");
+  latest.resolve(); await closing;
+  assert.equal(finished, true);
+  await queue.flushLatest();
+  assert.deepEqual(writes, [1, 1, 2], "successful close does not issue another write or receipt");
+});

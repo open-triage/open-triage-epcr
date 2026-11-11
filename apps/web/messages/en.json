@@ -176,6 +176,7 @@
   "mobile.pcrNumber": "PCR number",
   "mobile.incident": "Incident",
   "mobile.location": "Location",
+  "mobile.protectedBeforeClose": "Protected storage could not finish. Keep the report open and retry.",
   "mobile.saveClose": "Save & close",
   "mobile.mediaCloseWarning": "Media uploads may pause after closing. Saved-on-device photos and audio will resume while the app is open or in your next authenticated session. Save and close anyway?",
   "mobile.quickDocumentation": "Quick documentation",
