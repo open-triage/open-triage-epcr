@@ -242,7 +242,9 @@ public class OpenTriageConnectionPlugin extends Plugin {
         new TrustedConnection(artifact.getString("origin"), artifact.getString("caPem"));
         TrustedConnection proposed = TrustedConnection.restore(new JSONObject(original.toString()).put("caPem", artifact.getString("caPem")));
         allowedCandidate(proposed);
-        TrustedConnection probe = TrustedConnection.restore(proposed.saved());
+        // Before explicit trust confirmation, send only the fresh artifact's
+        // bootstrap authority, never the original pending installation cookie.
+        TrustedConnection probe = new TrustedConnection(proposed.origin, proposed.caPem);
         var response = candidateRequest(probe, "/api/installations/current", "GET", new JSONObject(), null);
         if (response.status() != 200) throw new IllegalStateException("Connection failed");
         var fresh = candidateRequest(probe, "/api/installations/preview", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), new JSONObject().put("token", artifact.getString("token")).toString());

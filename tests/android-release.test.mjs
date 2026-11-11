@@ -57,7 +57,17 @@ test('publication requires acceptance evidence for every native extension requir
 });
 
 test('merged enrollment attempt implementation is advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1']);
+  assert(ANDROID_API_CAPABILITIES.includes('native-enrollment-attempt-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-attempt-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('native-enrollment-outcome-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-outcome-v1'));
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
+});
+
+test('future immutable-outcome clients cannot publish against an attempt-only server',()=>{
+  const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
+  const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:['native-enrollment-attempt-v1'],releaseA:{...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions]};
+  const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
+  assert.throws(()=>validatePublicationEvidence(descriptor,evidence,preflight,identity),/protocol and capabilities/);
+  validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);
 });
