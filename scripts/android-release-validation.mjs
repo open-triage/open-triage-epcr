@@ -18,5 +18,8 @@ try {
   const signature = execFileSync(join(tools, 'apksigner'), ['verify', '--print-certs', apk], { encoding: 'utf8' });
   const certificateSha256 = /Signer #1 certificate SHA-256 digest: ([a-f0-9]+)/.exec(signature)[1];
   verifyApkMetadata(execFileSync(join(tools, 'aapt'), ['dump', 'badging', apk], { encoding: 'utf8' }), signature, { applicationId: 'org.opentriage.android', versionCode: 2, versionName: '0.0.0-validation', certificateSha256 });
+  const refused = spawnSync('./gradlew', ['--no-daemon', ':app:assembleDebug'], { cwd: join(root, 'android'), env, encoding: 'utf8' });
+  assert.notEqual(refused.status, 0, 'Production configuration must not expose a debug APK variant');
+  assert.match(refused.stdout + refused.stderr, /assembleDebug.*not found|Cannot locate tasks.*assembleDebug/s);
   console.log('PASS disposable-key production build/signature regression; this is not permanent signing or device acceptance');
 } finally { await rmSync(directory, { recursive: true, force: true }); }

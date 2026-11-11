@@ -11,9 +11,6 @@ gradle.taskGraph.whenReady { graph ->
     if (graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') } && !productionRelease) {
         throw new GradleException('Release builds must use npm run android:release with production identity and signing inputs')
     }
-    if (productionRelease && graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('debug') }) {
-        throw new GradleException('Production signing inputs must not be used for debug tasks')
-    }
 }
 
 android {
@@ -56,6 +53,14 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+// Disable the actual debug variant instead of matching task names: production
+// tasks such as stripReleaseDebugSymbols legitimately contain the word Debug.
+androidComponents {
+    beforeVariants(selector().withBuildType("debug")) { variant ->
+        if (productionRelease) variant.enable = false
     }
 }
 
