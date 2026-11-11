@@ -1,3 +1,4 @@
+import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync, fork } from 'node:child_process';
@@ -71,7 +72,7 @@ try {
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');
 } finally {
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });
-  for (const child of children) child.kill('SIGTERM');
+  await stopFixtureChildren(children);
   spawnSync(process.env.DOCKER_COMMAND ?? 'docker', ['rm', '--force', container], { stdio: 'inherit' });
   await rm(directory, { recursive: true, force: true });
 }

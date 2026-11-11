@@ -1,3 +1,4 @@
+import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -67,7 +68,7 @@ try {
   await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
   await runManagedJourneys({root, fixtures, run, api, adb, serial});
 } finally {
-  for (const child of children) child.kill('SIGTERM');
+  await stopFixtureChildren(children);
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
   await rm(directory, { recursive: true, force: true });
 }
