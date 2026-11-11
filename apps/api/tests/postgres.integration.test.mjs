@@ -1265,7 +1265,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Publication API', 'UTC')", [organizationId]);
   await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Publisher')", [userId, organizationId]);
 
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
   app.get(ClinicianSessionService).requireCapability = async () => ({
     user: { id: userId, displayName: "Publisher" }, organization: { id: organizationId, name: "Publication API" },
     startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
@@ -1477,7 +1477,7 @@ integrationTest("the idempotent demo installation authenticates with its exact r
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -1643,7 +1643,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     (organization_id,validation_version_id,form_version_id,activated_by,change_note)
     values ($1,$2,$3,$4,'Draft API fixture')`, [organizationId, validationVersionId, formVersionId, userId]);
 
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
   const integrationAccessToken = randomBytes(32).toString("base64url");
   const clinicianSessions = app.get(ClinicianSessionService);
   clinicianSessions.get = (token) => {

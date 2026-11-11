@@ -7,8 +7,12 @@ export function assertNoRemoteFontInitializer(manifest) {
   assert.match(manifest,/<manifest\b/,'Validate the actual merged Android manifest');
   assert.doesNotMatch(manifest,/androidx\.emoji2\.text\.EmojiCompatInitializer/,'The generic APK must not auto-bind a downloadable font provider');
 }
-export function verifyNativeStartup(root,variant) {
+export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
   assert(['debug','release'].includes(variant));
   const task=variant==='debug'?'processDebugManifest':'processReleaseManifest';
   assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/merged_manifests',variant,task,'AndroidManifest.xml'),'utf8'));
+  if(instrumentation) {
+    const testTask=variant==='debug'?'processDebugAndroidTestManifest':'processReleaseAndroidTestManifest';
+    assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/packaged_manifests',`${variant}AndroidTest`,testTask,'AndroidManifest.xml'),'utf8'));
+  }
 }

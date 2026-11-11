@@ -107,3 +107,7 @@ capabilities for future artifacts. Before adding a catalog entry, verify its rea
 descriptor, artifact, signature and upgrade acceptance against a server that
 advertises all requirements. Never rewrite an immutable older descriptor to add
 requirements retrospectively.
+
+Installation-wide retirement and grace policy is managed separately in
+[Android upgrades](android-upgrades.md). Agency download permission does not grant
+that policy authority.

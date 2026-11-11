@@ -24,5 +24,5 @@ if (process.argv.includes('--native-only')) {
 const config = JSON.parse(readFileSync(resolve(root, 'android/app/src/main/assets/capacitor.config.json'), 'utf8'));
 if (config.server?.url || config.server?.cleartext || config.webDir !== 'apps/web/out' || config.appId !== 'org.opentriage.development') throw new Error('Android development build must use the generic bundled UI and development identity.');
 run('./gradlew', ['--no-daemon', ':app:testDebugUnitTest', ':app:lintDebug', ':app:assembleDebug', ':app:assembleDebugAndroidTest', ':management-test-controller:lintDebug', ':management-test-controller:assembleDebug'], resolve(root, 'android'));
-verifyNativeStartup(root, 'debug');
+verifyNativeStartup(root, 'debug', {instrumentation:true});
 console.log('Development APK: android/app/build/outputs/apk/debug/app-debug.apk');

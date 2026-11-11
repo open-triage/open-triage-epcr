@@ -1,3 +1,4 @@
+import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import { verifyApkSignature } from './android/apk-signature.mjs';
@@ -74,7 +75,7 @@ try {
   await preserveAndroidFailure(error, { root, adb, serial, applicationId: 'org.opentriage.android' });
 } finally {
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });
-  for (const child of children) child.kill('SIGTERM');
+  await stopFixtureChildren(children);
   spawnSync(process.env.DOCKER_COMMAND ?? 'docker', ['rm', '--force', container], { stdio: 'inherit' });
   await rm(directory, { recursive: true, force: true });
 }

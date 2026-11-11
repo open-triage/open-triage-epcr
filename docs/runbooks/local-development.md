@@ -300,3 +300,7 @@ ordinary page creation and clicks. All browser cases and their existing timeouts
 remain enabled. On an idle machine, an explicit Playwright `--workers` argument
 can opt into greater parallelism. Reserve the documented browser server port
 before running another full suite.
+
+The Android upgrade-policy contract and its focused server/native checks are
+documented in [Android upgrades](android-upgrades.md). The full preflight includes
+the policy's actual PostgreSQL authorization and localized browser journey.
