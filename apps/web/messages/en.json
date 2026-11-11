@@ -3065,5 +3065,8 @@
   "androidRelease.version": "Version",
   "androidRelease.url": "Versioned URL",
   "androidRelease.digest": "SHA-256",
-  "androidRelease.download": "Download APK"
+  "androidRelease.download": "Download APK",
+  "android.changeInstallation": "Change installation",
+  "android.retryPairing": "Retry confirmed pairing",
+  "android.returnInstallation": "Return to current installation"
 }

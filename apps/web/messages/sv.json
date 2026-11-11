@@ -3063,5 +3063,8 @@
   "androidRelease.version": "Version",
   "androidRelease.url": "Versionsbunden URL",
   "androidRelease.digest": "SHA-256",
-  "androidRelease.download": "Hämta APK"
+  "androidRelease.download": "Hämta APK",
+  "android.changeInstallation": "Byt installation",
+  "android.retryPairing": "Försök slutföra bekräftad koppling",
+  "android.returnInstallation": "Återgå till nuvarande installation"
 }

@@ -1,7 +1,7 @@
-import { ANDROID_API_PROTOCOL_VERSION, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES, ANDROID_CLIENT_REQUIRED_CAPABILITIES, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
+import { compatibility, validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
 const inputs = { ANDROID_KEYSTORE_PATH: '/protected/key.p12', ANDROID_KEYSTORE_PASSWORD: 'synthetic', ANDROID_KEY_PASSWORD: 'synthetic', ANDROID_KEY_ALIAS: 'synthetic', ANDROID_CERTIFICATE_SHA256: 'ab'.repeat(32), ANDROID_VERSION_CODE: '2', ANDROID_VERSION_NAME: '0.1.0-rc.2' };
 const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificateSha256: 'ab'.repeat(32), apkSha256: 'a'.repeat(64) };
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
@@ -54,4 +54,10 @@ test('publication requires acceptance evidence for every native extension requir
     assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities }, preflight, identity), /protocol and capabilities/);
   }
   validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities: ['native-enrollment-attempt-v1'] }, preflight, identity);
+});
+
+test('merged enrollment attempt implementation is advertised and required by future APK descriptors', () => {
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1']);
+  assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
