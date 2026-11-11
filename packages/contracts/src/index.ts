@@ -1,10 +1,12 @@
 export { SUPPORTED_UI_LANGUAGES, isSupportedUiLanguage } from "./ui-languages.generated.js";
 export { filterValidationRuleLibrary } from "./validation-rule-library.js";
+export { parseAndroidReleaseDescriptor, isAndroidReleaseCompatible, approvedAndroidReleaseUrl, type AndroidReleaseDescriptor, type AndroidReleaseAvailability } from "./android-release.js";
 
 export interface HealthResponse {
   status: "ok";
   service: "open-triage-api";
   androidApiProtocol: number;
+  androidApiCapabilities: readonly string[];
 }
 
 export {

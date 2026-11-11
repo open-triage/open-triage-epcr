@@ -12,3 +12,6 @@ defines/*/local
 
 deploy/installations
 .worktrees
+
+# Local build/test material and downloaded artifacts are never image inputs.
+.local

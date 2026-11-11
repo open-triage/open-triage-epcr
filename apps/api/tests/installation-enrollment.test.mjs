@@ -45,3 +45,20 @@ test('reassignment accepts only explicit confirmation and clears clinician cooki
  assert.equal(writes[0][0],'open_triage_installation');assert.equal(writes[0][1],'B'.repeat(43));
  assert.deepEqual(cleared,[['open_triage_session',{httpOnly:true,secure:true,sameSite:'strict',path:'/api'}]]);
 });
+
+ test('native enrollment attempt is a canonical 256-bit secret and mutation fields stay closed',()=>{
+ const attempt=randomBytes(32).toString('base64url');
+ assert.equal(enrollmentInput({token,name:'Native',confirmInstallation:true,attempt},true).attempt,attempt);
+ for(const value of ['',null,42,'A'.repeat(42),'A'.repeat(44),'_'.repeat(43)])assert.throws(()=>enrollmentInput({token,name:'Native',confirmInstallation:true,attempt:value},true));
+ assert.throws(()=>enrollmentInput({token,attempt},false));
+ });
+
+test('native retry credential binds every mutation field with an unambiguous domain-separated tuple',async()=>{
+ const {enrollmentAttemptBinding,enrollmentAttemptCredential}=await import('../dist/admin/enrollment-attempt.js');
+ const attempt=randomBytes(32).toString('base64url');
+ const values=['https://original.example',token,'Ambulance — 1',true,randomBytes(32).toString('base64url')];
+ const derive=tuple=>enrollmentAttemptCredential(attempt,enrollmentAttemptBinding(...tuple));
+ const expected=derive(values);assert.match(expected,/^[A-Za-z0-9_-]{43}$/);assert.equal(derive(values),expected);
+ for(let index=0;index<values.length;index++){const changed=[...values];changed[index]=index===3?false:changed[index]+'x';assert.notEqual(derive(changed),expected);}
+ assert.notEqual(enrollmentAttemptCredential(randomBytes(32).toString('base64url'),enrollmentAttemptBinding(...values)),expected);
+});
