@@ -3,7 +3,7 @@ import test from 'node:test';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {withWebViewFontProfile,WEBVIEW_FONT_FLAG_FILE,WEBVIEW_FONT_FLAGS} from '../scripts/android/webview-font-profile.mjs';
+import {assertEffectiveFontFlags,withWebViewFontProfile,WEBVIEW_FONT_FLAG_FILE,WEBVIEW_FONT_FLAGS} from '../scripts/android/webview-font-profile.mjs';
 
 function fakeAdb(options={}) {
   const state={bytes:options.original===undefined?undefined:Buffer.from(options.original),mode:options.mode??'640',calls:[],stops:0};
@@ -17,7 +17,7 @@ function fakeAdb(options={}) {
       if(options.failRestore&&args[1].endsWith('/original'))throw Error('restore push failed');
       if(options.failWrite&&args[1].endsWith('/profile'))throw Error('partial write failed');
     } else if(args[0]==='exec-out')value=state.bytes??absent();
-    else if(args[0]==='logcat')value=options.noEffectiveFlags?'WebViewCommandLine: no matching switches':`WebViewCommandLine: ${WEBVIEW_FONT_FLAGS}${options.unsafeEffectiveFlags?' --ignore-certificate-errors':''}`;
+    else if(args[0]==='logcat')value=options.noEffectiveFlags?'WebViewCommandLine: no matching switches':`WebViewCommandLine: ${WEBVIEW_FONT_FLAGS.trim()}${options.unsafeEffectiveFlags?' --ignore-certificate-errors':''}`;
     else if(args[1]==='getprop')value=args[2]==='ro.kernel.qemu'?(options.qemu??'1'):(options.build??'userdebug');
     else if(args[1]==='dumpsys')value=`Current WebView package (name, version): (com.google.android.webview, ${options.version??'109.0.5414.123'})`;
     else if(args[1]==='test') {
@@ -91,3 +91,11 @@ test('fresh emulator without an installed/running clinical APK can scope and res
 test('an unexpected effective TLS/origin bypass is rejected and original flags restored',()=>scoped({unsafeEffectiveFlags:true},async({state},run)=>{
  await assert.rejects(run(profile=>profile.verifyForPid(1234)),/must not bypass origin or TLS/);assert.equal(state.bytes,undefined);
 }));
+
+test('effective proof accepts actual Chromium109 native switch rows and rejects missing/conflicting values',()=>{
+ const native="11-11 23:43:15.644 10332 10378 I chromium: [INFO:aw_contents_statics.cc(139)] WebViewCommandLine 'disable-features': 'PrefetchAndroidFonts,GMSCoreEmoji,Vulkan'\n11-11 23:43:15.644 10332 10378 I chromium: [INFO:aw_contents_statics.cc(139)] WebViewCommandLine 'webview-verbose-logging': ''";
+ assertEffectiveFontFlags(native);
+ assert.throws(()=>assertEffectiveFontFlags(native.replace('PrefetchAndroidFonts,','')),/both optional/);
+ assert.throws(()=>assertEffectiveFontFlags(native.replace('disable-features','enable-features')),/both optional/);
+ assert.throws(()=>assertEffectiveFontFlags(native+"\nWebViewCommandLine 'ignore-certificate-errors-spki-list': 'hash'"),/must not bypass origin or TLS/);
+});
