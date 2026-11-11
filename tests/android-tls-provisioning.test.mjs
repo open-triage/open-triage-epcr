@@ -11,10 +11,18 @@ import { createTlsFixtures } from '../scripts/android/tls-fixtures.mjs';
 import { privateCommand, publicCertificates, readTlsFile, validateTlsMaterial, verifyApplicationConnection } from '../scripts/tls-material.mjs';
 import { provisionServerTls, tlsOptions } from '../scripts/provision-server-tls.mjs';
 import { installTlsFixtureControl } from '../scripts/android/tls-fixture-control.mjs';
+import { redactAndroidDiagnostics } from '../scripts/android/diagnostics.mjs';
 
 let directory, fixtures;
 before(async () => { directory = await mkdtemp(join(tmpdir(), 'android-tls-test-')); fixtures = await createTlsFixtures(directory); });
 after(async () => { await rm(directory, { recursive: true, force: true }); });
+
+test('TLS instrumentation keeps opaque evidence while removing credentials and supplied artifact arguments',()=>{
+  const digest='a'.repeat(64),artifact='synthetic-fresh-pairing-artifact';
+  const output=redactAndroidDiagnostics(`pending_token_sha256=${digest}\npending_intent_sha256=${digest}\nAuthorization: Bearer synthetic-native-secret\n${artifact}`, [artifact]);
+  assert(output.includes(`pending_token_sha256=${digest}`));assert(output.includes(`pending_intent_sha256=${digest}`));
+  assert(!output.includes('synthetic-native-secret'));assert(!output.includes(artifact));
+});
 
 test('operator subprocess timeout kills a SIGTERM-resistant child and never exposes its streams', { timeout: 5000 }, async () => {
   const started = Date.now();

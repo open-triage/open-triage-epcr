@@ -39,7 +39,8 @@ test('native replacement settles current identity and resumes only the already c
   await page.locator('input[type=file]').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
   await page.getByRole('textbox').fill('New installation');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
   await expect(page.getByRole('button',{name:'Retry confirmed pairing'})).toBeVisible();
-  await expect(page.locator('input[type=file],input[type=checkbox],[data-clinical]')).toHaveCount(0);
+  await expect(page.locator('input[type=checkbox],[data-clinical]')).toHaveCount(0);
+  await expect(page.getByLabel('Update pending server trust')).toBeVisible();
   await page.getByRole('button',{name:'Retry confirmed pairing'}).click();
   await expect(page.locator('[data-clinical]')).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();

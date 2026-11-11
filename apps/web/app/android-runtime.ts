@@ -1,13 +1,17 @@
 import { setNativeStorageScope } from "./native-storage-context";
+import { nativeTlsFailure, publishNativeTlsStatus } from "./android-connection-failure";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
 export type NativeResponse = { status: number; headers: Record<string, string>; body: string };
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
-export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; storageScope?: string; legacyStorageScope?: string };
+export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; pendingOrigin?: string; pendingOutcome?: string; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
   state(): Promise<AndroidConnectionState>;
   beginReplacement(): Promise<AndroidConnectionState>;
   resumeEnrollment(): Promise<AndroidConnectionState>;
+  previewPendingTrust(options: { artifact: string }): Promise<{ origin: string; trustFingerprint: string }>;
+  confirmPendingTrust(options: { confirmTrust: true }): Promise<AndroidConnectionState>;
+  abandonUncommittedEnrollment(options: { confirmAbandon: true }): Promise<AndroidConnectionState>;
   addListener(event: "configurationChanged", listener: (state: AndroidConnectionState) => void): Promise<PluginListenerHandle>;
   preview(options: { artifact: string }): Promise<PairingPreview>;
   confirm(options: { name: string; confirmInstallation: true }): Promise<{ configured: true }>;
@@ -41,10 +45,19 @@ export function androidFetch(browserFetch: typeof fetch, nativeRequest: Connecti
     const headers: Record<string, string> = {};
     effective.headers.forEach((value, name) => { headers[name] = value; });
     const expectedContext = connectionContext;
-    const result = await nativeRequest({ ...(expectedContext ? {connectionContext: expectedContext} : {}), path: target.pathname + target.search, method: effective.method, headers,
-      ...(!["GET", "HEAD"].includes(effective.method) ? { body: await effective.text() } : {}) });
+    let result: NativeResponse;
+    try {
+      result = await nativeRequest({ ...(expectedContext ? {connectionContext: expectedContext} : {}), path: target.pathname + target.search, method: effective.method, headers,
+        ...(!["GET", "HEAD"].includes(effective.method) ? { body: await effective.text() } : {}) });
+    } catch (error) {
+      if (effective.signal.aborted) throw effective.signal.reason;
+      if (expectedContext !== connectionContext) throw new Error("Installation changed");
+      if (nativeTlsFailure(error)) publishNativeTlsStatus(true);
+      throw error;
+    }
     if (effective.signal.aborted) throw effective.signal.reason;
     if (expectedContext !== connectionContext) throw new Error("Installation changed");
+    publishNativeTlsStatus(false);
     return new Response([204, 205, 304].includes(result.status) ? null : result.body, { status: result.status, headers: result.headers });
   };
 }

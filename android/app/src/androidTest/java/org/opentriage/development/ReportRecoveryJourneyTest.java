@@ -198,6 +198,7 @@ public class ReportRecoveryJourneyTest {
         // The test runner must not finish/close the Activity before abrupt process loss.
         assertEquals("true", evaluate("Boolean(document.querySelector('.encounter-header'))"));
         snapshotUpgrade();
+        if ("1".equals(args.getString("tlsChecks"))) TlsRotationJourneyTest.snapshotIdentity();
         var ready = new android.os.Bundle(); ready.putString("opentriage_phase", "ready-for-process-kill");
         InstrumentationRegistry.getInstrumentation().sendStatus(2, ready);
         Thread.sleep(600000);

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 /** Synthetic fixture IPC only. No application HTTP endpoint can replace trust. */
-export function installTlsFixtureControl(server, variants, channel = process, read = readFile, requestCount = () => 0) {
+export function installTlsFixtureControl(server, variants, channel = process, read = readFile, requestCount = () => 0, applied = () => {}) {
   if (!variants) return () => {};
   const changed = async message => {
     if (!['android-fixture-tls', 'android-fixture-tls-observe'].includes(message?.type) || !/^[a-f0-9-]{36}$/.test(message.requestId ?? '')) return;
@@ -12,7 +12,7 @@ export function installTlsFixtureControl(server, variants, channel = process, re
       if (selected) {
         // Paths and bytes come only from the launcher's predeclared synthetic fixture.
         const [key, cert] = await Promise.all([read(selected.keyPath), read(selected.certPath)]);
-        server.setSecureContext({ key, cert }); reply.changed = true;
+        server.setSecureContext({ key, cert }); applied(selected); reply.changed = true;
       }
     } catch { /* Return only a category, never certificate/key or filesystem details. */ }
     reply.acceptedRequests = requestCount();

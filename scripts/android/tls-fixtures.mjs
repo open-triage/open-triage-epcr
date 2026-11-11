@@ -24,6 +24,10 @@ export async function createTlsFixtures(directory) {
   await writeFile(file('expired.cnf'), `[ca]\ndefault_ca=issuer\n[issuer]\ndatabase=${file('index.txt')}\nserial=${file('serial')}\nnew_certs_dir=${directory}\ncertificate=${file('old.pem')}\nprivate_key=${file('old.key')}\ndefault_md=sha256\npolicy=policy\n[policy]\ncommonName=supplied\n[server]\nsubjectAltName=DNS:localhost,IP:127.0.0.1,IP:10.0.2.2\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n`);
   run(['ca', '-batch', '-notext', '-config', file('expired.cnf'), '-startdate', '20200101000000Z', '-enddate', '20200102000000Z',
     '-in', file('server-first.csr'), '-out', file('server-expired.pem'), '-extensions', 'server']);
+  await writeFile(file('expired-ca.cnf'), (await readFile(file('expired.cnf'), 'utf8')) + '\n[authority]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n');
+  run(['req','-new','-key',file('server-renewed.key'),'-out',file('expired-ca.csr'),'-subj','/CN=OpenTriage synthetic expired CA']);
+  run(['ca', '-batch', '-notext', '-config', file('expired-ca.cnf'), '-startdate', '20200101000000Z', '-enddate', '20200102000000Z',
+    '-in', file('expired-ca.csr'), '-out', file('expired-ca.pem'), '-extensions', 'authority']);
   const material = {};
   for (const name of ['first', 'renewed', 'replacement', 'wrong-host', 'wrong-purpose']) material[name] = {
     certificate: await readFile(file(`server-${name}.pem`), 'utf8'), privateKey: await readFile(file(`server-${name}.key`), 'utf8'),
@@ -31,5 +35,6 @@ export async function createTlsFixtures(directory) {
     keyPath: file(`server-${name}.key`), certPath: file(`server-${name}.pem`), caPath: file(name === 'replacement' ? 'replacement.pem' : 'old.pem'),
   };
   material.expired = { ...material.first, certificate: await readFile(file('server-expired.pem'), 'utf8'), certPath: file('server-expired.pem') };
+  material.expiredTrustCa = await readFile(file('expired-ca.pem'), 'utf8');
   return material;
 }

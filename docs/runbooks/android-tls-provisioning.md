@@ -131,6 +131,45 @@ An approved origin change isolates old cookies, requests and local records from
 the new server. See [managed configuration](android-managed-configuration.md)
 and [protected-work recovery](android-development.md).
 
+## An interrupted confirmation is already pending
+
+Do not replace an ambiguous, confirmed enrollment with another installation
+intent. The app retains its encrypted native journal: the original server origin,
+body, code, attempt secret, installation cookie and creation time stay unchanged.
+The attempt secret and cookies never enter JavaScript, URLs or exported diagnostics.
+
+If server trust changes before the reply can be recovered, use **Update pending
+server trust** and supply a fresh pairing file obtained through the independently
+approved Admin connection. Its server origin must match the pending origin. The
+app verifies the fresh file against that server and asks for explicit certificate
+trust confirmation. This updates only public CA material; it does not consume the
+fresh code, select its unit, replace the pending code/body, copy a personal login,
+or extend any lifetime. Managed devices require the exact authoritative current
+origin/CA policy; missing or invalid management still blocks the operation.
+
+**Retry confirmed pairing** first derives the exact result installation credential
+from the immutable original intent and checks it against the approved HTTPS
+server. Only a live enrolled result can be promoted. This issues no credential or
+registration and keeps the original client lifetime cap. It also recovers a reply
+which was lost more than 15 minutes ago; the server's POST retry window remains
+15 minutes and is never extended. Java and server canonicalization share checked
+vectors, including Unicode whitespace and JSON escaping.
+
+When no live result can be proved, the read-only enrollment outcome endpoint
+serializes against ordinary consumption and checks expiry after its row lock.
+Only a definitely expired, never-consumed code enables **Use a new pairing code**.
+That explicit action rechecks the proof before removing the failed journal and
+retains all protected clinical records. Unknown, pruned, mismatched or revoked
+results stay locked as recovery material; a missing endpoint or connection error
+never acts as permission to reset them. Contact IT for those cases. Do not delete
+app data or an ambiguous journal to make a new pairing appear successful.
+
+APKs containing this recovery flow require the server capability
+`native-enrollment-outcome-v1` as well as the ordinary
+`native-enrollment-attempt-v1` contract. A protocol number alone does not imply
+that a server implements either optional capability. Existing immutable APK
+descriptors keep their original requirements.
+
 ## Application trust and external identity
 
 The supplied CA is scoped to the app's native connection and approved API origin.
@@ -150,11 +189,15 @@ and `npm run check:ci`. It uses runtime-generated synthetic keys and real local
 HTTPS to verify key/chain/SAN/purpose/expiry rejection, renewal, explicit overlap,
 untrusted replacement, secret-safe installation and operator file permissions.
 Native JVM checks cover CA expiry during a process lifetime and after restart.
+Native/server vectors and real PostgreSQL tests cover immutable result derivation,
+aged retries, unconsumed expiry, competing consumption and revoked result denial.
 Run `npm run android:build` and the full `npm run android:test -- --skip-build`
 with the documented isolated emulator prerequisites before publishing changes.
 Record the same-APK renewal, manual/managed replacement, failed/interrupted change
 and retained-work results. Emulator evidence does not replace the real Intune,
 Headwind/MDMesh or physical phone/tablet checkpoints.
+`npm run android:test -- --skip-build --tls-only` is a focused diagnostic run;
+it does not replace the complete default suite before publication.
 
 Chain verification follows [OpenSSL verification options](https://docs.openssl.org/3.0/man1/openssl-verification-options/)
 and Node's [standard TLS server identity checks](https://nodejs.org/api/tls.html#tlscheckserveridentityhostname-cert).

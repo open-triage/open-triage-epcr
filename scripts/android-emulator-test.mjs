@@ -1,6 +1,6 @@
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,11 +10,14 @@ import { fixtureApi as api } from './android/fixture-client.mjs';
 import { runManagedJourneys } from './android/managed-journey.mjs';
 import { runReassignmentTransition } from './android/reassignment-journey.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
+import { createTlsFixtures } from './android/tls-fixtures.mjs';
+import { runTlsJourney } from './android/tls-journey.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
 const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-android-${randomUUID()}`;
 const adb = join(process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? '', 'platform-tools/adb');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554', children = [];
+const tlsOnly=process.argv.includes('--tls-only');
 let ownsContainer = false;
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
@@ -28,11 +31,15 @@ try {
   let fixtures;
   if (fixturesArgument !== -1) fixtures = JSON.parse(await readFile(process.argv[fixturesArgument + 1], 'utf8'));
   else { ownsContainer = true; fixtures = await prepareFixtures(root, directory, run, docker, container); }
+  const tlsDirectory=join(directory,'tls-rotation');await mkdir(tlsDirectory,{mode:0o700});
+  const tlsMaterial=await createTlsFixtures(tlsDirectory);
+  fixtures[1].tlsVariants={baseline:{keyPath:fixtures[1].keyPath,certPath:fixtures[1].certPath},...Object.fromEntries(Object.entries(tlsMaterial).filter(([,value])=>typeof value==='object').map(([name,value])=>[name,{keyPath:value.keyPath,certPath:value.certPath}]))};
+  fixtures[1].tlsVariants['replacement-outcome-missing']={keyPath:tlsMaterial.replacement.keyPath,certPath:tlsMaterial.replacement.certPath,outcomeAvailable:false};
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/debug/app-debug.apk')]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]);
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
-  const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
-  console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
+  const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(legacyVault); assert.match(legacyVault, /OK \(2 tests\)/, 'Actual Keystore legacy provenance and expired-trust migration');
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
@@ -40,7 +47,7 @@ try {
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  if (!process.argv.includes('--report-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (!tlsOnly && !process.argv.includes('--report-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');
@@ -62,8 +69,11 @@ try {
     assert.equal(replay.status, 401, 'Confirmed enrollment authorization must reject replay');
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
-  await runManagedJourneys({root, fixtures, run, api, adb, serial});
+  if(!tlsOnly) {
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
+    await runManagedJourneys({root, fixtures, run, api, adb, serial});
+  }
+  await runTlsJourney({root,fixture:fixtures[1],material:tlsMaterial,child:children[1],run,api,adb,serial});
 } finally {
   for (const child of children) child.kill('SIGTERM');
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });

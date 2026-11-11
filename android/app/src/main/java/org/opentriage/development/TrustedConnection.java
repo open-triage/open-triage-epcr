@@ -220,6 +220,14 @@ final class TrustedConnection {
         if (origin.equals(nextOrigin) && cookies.containsKey("open_triage_installation")) next.cookies.put("open_triage_installation", cookies.get("open_triage_installation"));
         return next;
     }
+    TrustedConnection installationOnly() throws Exception {
+        JSONObject retained = saved(); JSONArray safe = new JSONArray();
+        for (int index = 0; index < retained.getJSONArray("cookies").length(); index++) {
+            JSONObject cookie = retained.getJSONArray("cookies").getJSONObject(index);
+            if (cookie.getString("name").equals("open_triage_installation")) safe.put(cookie);
+        }
+        return restore(retained.put("cookies", safe));
+    }
 
     JSONObject saved() throws Exception {
         JSONArray savedCookies = new JSONArray();

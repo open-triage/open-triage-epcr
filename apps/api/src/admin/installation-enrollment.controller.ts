@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { sessionToken, clearSessionCookie, type SessionCookieResponse } from "../sessions/clinician-session.controller.js";
 import { InstallationEnrollmentService } from "./installation-enrollment.service.js";
 import { INSTALLATION_COOKIE, installationCredential } from "../sessions/installation-session.js";
@@ -27,6 +27,12 @@ export class InstallationEnrollmentController {
  @Post("installations/preview")
  @Header("Cache-Control","no-store, private")
  preview(@Body() body:unknown) {return this.enrollment.preview(body);}
+ @Post("installations/enrollment-outcome")
+ @Header("Cache-Control","no-store, private")
+ outcome(@Body() body:unknown,@Req() req:RequestLike,@Headers("x-installation-enrollment") bootstrap?:string) {
+ if(bootstrap!=="1")throw new UnauthorizedException("Enrollment attempt is unavailable");
+ return this.enrollment.outcome(body,installationCredential(req.headers.cookie));
+ }
  @Post("installations/enroll")
  @Header("Cache-Control","no-store, private")
  async enroll(@Body() body:unknown,@Req() req:RequestLike,@Res({passthrough:true}) response:SessionCookieResponse) {

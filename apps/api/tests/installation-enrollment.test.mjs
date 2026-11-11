@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { enrollmentInput } from '../dist/admin/installation-enrollment.service.js';
 import { installationCredential,InstallationEnrollmentController } from '../dist/admin/installation-enrollment.controller.js';
 import { CsrfGuard } from '../dist/sessions/csrf.guard.js';
@@ -15,12 +16,19 @@ test('only exact independent bootstrap POSTs with non-simple enrollment header b
  let checks=0;
  const guard=new CsrfGuard({assertCsrf:async()=>{checks++;throw new Error('stale clinician cookie');}});
  const context=request=>({switchToHttp:()=>({getRequest:()=>request})});
- for(const path of ['/api/installations/preview','/api/installations/enroll'])
+ for(const path of ['/api/installations/preview','/api/installations/enroll','/api/installations/enrollment-outcome'])
  assert.equal(await guard.canActivate(context({method:'POST',originalUrl:path,headers:{cookie:'open_triage_session=stale','x-installation-enrollment':'1'}})),true);
  assert.equal(checks,0);
- for(const path of ['/api/installations/enroll/extra','/api/admin/units/x/enrollment','/api/sessions/reauthenticate'])
+ for(const path of ['/api/installations/enroll/extra','/api/installations/enrollment-outcome/extra','/api/admin/units/x/enrollment','/api/sessions/reauthenticate'])
  await assert.rejects(guard.canActivate(context({method:'POST',originalUrl:path,headers:{cookie:'open_triage_session=stale','x-installation-enrollment':'1'}})),/stale/);
  await assert.rejects(guard.canActivate(context({method:'POST',originalUrl:'/api/installations/enroll',headers:{cookie:'open_triage_session=stale'}})),/stale/);
+});
+
+test('native outcome uses the original installation cookie and non-simple header without issuing cookies',async()=>{
+ const body={token,attempt:randomBytes(32).toString('base64url')},controller=new InstallationEnrollmentController({outcome:async(value,credential)=>{assert.equal(value,body);assert.equal(credential,token);return {status:'not-committed'};}});
+ const request={headers:{cookie:`open_triage_installation=${token}`}};
+ assert.throws(()=>controller.outcome(body,request),/unavailable/);
+ assert.deepEqual(await controller.outcome(body,request,'1'),{status:'not-committed'});
 });
 test('independent HttpOnly installation cookie never returns its credential and survives clinician logout',async()=>{
  const writes=[];const installation={id:'i',name:'Browser'};
@@ -61,4 +69,10 @@ test('native retry credential binds every mutation field with an unambiguous dom
  const expected=derive(values);assert.match(expected,/^[A-Za-z0-9_-]{43}$/);assert.equal(derive(values),expected);
  for(let index=0;index<values.length;index++){const changed=[...values];changed[index]=index===3?false:changed[index]+'x';assert.notEqual(derive(changed),expected);}
  assert.notEqual(enrollmentAttemptCredential(randomBytes(32).toString('base64url'),enrollmentAttemptBinding(...values)),expected);
+});
+
+test('native result recovery shares canonical vectors with Java including Unicode whitespace and JSON escaping',async()=>{
+ const {enrollmentAttemptBinding,enrollmentAttemptCredential}=await import('../dist/admin/enrollment-attempt.js');
+ const {vectors}=JSON.parse(await readFile(new URL('../../../android/app/src/test/resources/enrollment-attempt-vectors.json',import.meta.url),'utf8'));
+ for(const item of vectors){const binding=enrollmentAttemptBinding(item.origin,item.token,item.name.trim(),item.reassign,item.originalCredential);assert.equal(binding,item.binding);assert.equal(enrollmentAttemptCredential(item.attempt,binding),item.credential);}
 });

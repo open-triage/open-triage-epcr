@@ -9,10 +9,11 @@ for (const language of ['en', 'sv']) test(`TLS failure keeps the mounted clinica
     stdin: { resolveDir: path.resolve(__dirname, '..'), loader: 'tsx', contents: `
       import React,{useEffect,useState} from 'react';import{createRoot}from'react-dom/client';
       import{AndroidTlsNotice}from'./components/android-tls-notice';
-      import{nativeTlsFailure,publishNativeTlsStatus}from'./app/android-connection-failure';
+      import{androidFetch}from'./app/android-runtime';
       function Workspace(){const[value,setValue]=useState('');useEffect(()=>{window.mounts=(window.mounts||0)+1},[]);return <label>Clinical edit<input value={value} onChange={event=>setValue(event.target.value)}/></label>}
-      window.tlsFailed=error=>{if(nativeTlsFailure(error))publishNativeTlsStatus(true)};
-      window.connectionRecovered=()=>publishNativeTlsStatus(false);
+      const transport=androidFetch(window.fetch,async()=>{if(window.bridgeError)throw window.bridgeError;return{status:200,headers:{},body:'{}'}},location.origin);
+      window.tlsFailed=async error=>{window.bridgeError=error;try{await transport('/api/health')}catch{}};
+      window.connectionRecovered=async()=>{window.bridgeError=null;await transport('/api/health')};
       createRoot(document.getElementById('root')).render(<><AndroidTlsNotice/><Workspace/></>);` } });
   await page.route('**/__tls-connection', route => route.fulfill({ contentType: 'text/html', body: `<html lang="${language}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
   await page.goto('/__tls-connection');
