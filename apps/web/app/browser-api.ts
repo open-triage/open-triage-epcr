@@ -1,3 +1,5 @@
+import { isAndroidRuntime } from "./android-runtime";
+
 export type BrowserRequestConfiguration = Readonly<{
   mode: "server" | "static";
   apiBaseUrl: string | null;
@@ -34,10 +36,11 @@ export function browserRequestConfiguration(
   environment: Record<string, string | undefined> = publicBrowserEnvironment(),
 ): BrowserRequestConfiguration {
   const hostname = typeof window === "undefined" ? "" : window.location?.hostname ?? "";
-  const staticMode = environment.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true";
+  const native = isAndroidRuntime();
+  const staticMode = !native && environment.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true";
   return {
     mode: staticMode ? "static" : "server",
-    apiBaseUrl: staticMode
+    apiBaseUrl: native ? "" : staticMode
       ? null
       : !environment.NEXT_PUBLIC_API_URL || environment.NEXT_PUBLIC_API_URL === "same-origin" ? ""
         : localAgencyApiUrl(withoutTrailingSlash(environment.NEXT_PUBLIC_API_URL), hostname),

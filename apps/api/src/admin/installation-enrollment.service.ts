@@ -36,7 +36,7 @@ export class InstallationEnrollmentService {
  await manager.query(`select id from app_identity.organization
  where id=$1 or id=(select parent_organization_id from app_identity.organization where id=$1)
  order by id for share`,[organizationId]);
- const [unit] = await manager.query(`select u.id,u.name,u.call_sign as "callSign" from app_identity.operational_unit u
+ const [unit] = await manager.query(`select u.id,u.name,u.call_sign as "callSign",a.name as "organizationName" from app_identity.operational_unit u
  join app_identity.organization a on a.id=u.organization_id join app_identity.organization g on g.id=coalesce(a.parent_organization_id,a.id)
  where u.organization_id=$1 and u.id=$2 and (not $3::boolean or u.active) and a.active and g.active for share of u`,[organizationId,unitId,requireActive]);
  if (!unit) throw new NotFoundException("Active unit not found in this agency");
@@ -92,7 +92,7 @@ export class InstallationEnrollmentService {
  return this.database.transaction(async manager=>{
  const row=await this.code(manager,token,false);
  const unit=await this.unit(manager,row.organization_id,row.unit_id);
- return {unitName:unit.name,callSign:unit.callSign};
+ return {unitName:unit.name,callSign:unit.callSign,organizationName:unit.organizationName};
  });
  }
  async consume(input: unknown, existingCredential?: string, existingSession?: string) {

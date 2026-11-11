@@ -3031,5 +3031,11 @@
   "epsSubmission.issue.configurationChanged": "The EPS configuration changed. Build with the current mapping.",
   "epsSubmission.issue.credentialUnavailable": "The EPS credential is unavailable.",
   "epsSubmission.signingPending": "Sending EPS — the record remains unsigned.",
-  "epsSubmission.draftChanged": "Draft changed — submit the corrected version."
+  "epsSubmission.draftChanged": "Draft changed — submit the corrected version.",
+  "android.pairingTitle": "Pair Android installation",
+  "android.importPairing": "Import vehicle pairing file",
+  "android.pairingFailed": "Pairing failed. Check the file, server connection and certificate, or request a new code.",
+  "android.cancel": "Cancel",
+  "android.publicCa": "Public CA certificates (PEM, optional)",
+  "android.downloadPairing": "Download Android pairing file"
 }

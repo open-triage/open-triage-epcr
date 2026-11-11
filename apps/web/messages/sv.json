@@ -3029,5 +3029,11 @@
   "epsSubmission.issue.configurationChanged": "EPS-inställningarna har ändrats. Skapa med aktuell mappning.",
   "epsSubmission.issue.credentialUnavailable": "EPS-inloggningsuppgifterna är inte tillgängliga.",
   "epsSubmission.signingPending": "Skickar EPS — journalen är fortfarande osignerad.",
-  "epsSubmission.draftChanged": "Utkastet har ändrats — skicka den korrigerade versionen."
+  "epsSubmission.draftChanged": "Utkastet har ändrats — skicka den korrigerade versionen.",
+  "android.pairingTitle": "Koppla Android-installation",
+  "android.importPairing": "Importera fil för fordonskoppling",
+  "android.pairingFailed": "Kopplingen misslyckades. Kontrollera fil, serveranslutning och certifikat eller begär en ny kod.",
+  "android.cancel": "Avbryt",
+  "android.publicCa": "Publika CA-certifikat (PEM, valfritt)",
+  "android.downloadPairing": "Hämta Android-kopplingsfil"
 }
