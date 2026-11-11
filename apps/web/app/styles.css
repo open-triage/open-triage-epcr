@@ -1212,6 +1212,8 @@ fieldset { min-inline-size: 0; }
 :is(.unit-dialog, .audit-dialog) { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--green); border-radius: 8px; color: var(--text-color); background: var(--surface, white); }
 :is(.unit-dialog, .audit-dialog)::backdrop { background: rgb(12 18 14 / 48%); }
 .unit-dialog > h3 { margin: 0 0 12px; }
+.unit-pairing-qr { margin: 12px 0; }
+.unit-pairing-qr img { display: block; max-width: 100%; height: auto; }
 .unit-dialog > form { display: grid; gap: 12px; }
 .unit-dialog > form > label, .unit-dialog > form > p { margin: 0; }
 :where(.unit-dialog, .installation-enrollment) label { display: grid; gap: 7px; margin: 12px 0; }

@@ -9,6 +9,7 @@ import com.getcapacitor.BridgeWebViewClient;
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
         registerPlugin(OpenTriageConnectionPlugin.class);
+        registerPlugin(OpenTriageScannerPlugin.class);
         super.onCreate(state);
         // CapacitorCookies installs a global handler even when JS patching is disabled.
         // It would copy native credentials into the WebView cookie store. Own them solely in the vault.

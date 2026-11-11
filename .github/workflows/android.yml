@@ -44,6 +44,7 @@ jobs:
           api-level: 33
           arch: x86_64
           target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back emulated
           disable-animations: true
           script: npm run android:test -- --skip-build
       - uses: actions/upload-artifact@v7

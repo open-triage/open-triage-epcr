@@ -104,11 +104,51 @@ for(const language of ['en','sv'])test(`${language} administrator inventory and 
  expect(artifact).toMatchObject({version:1,origin:'https://agency.example.test',token:'A'.repeat(43),caPem:ca});
  expect(Object.keys(artifact).sort()).toEqual(['caPem','expiresAt','origin','token','version']);
  expect(download.suggestedFilename()).toBe('open-triage-pairing.json');
+ const showAndroidQr=dialog.getByRole('button',{name:t('Show Android pairing QR','Visa QR-kod för Android-koppling'),exact:true});
+ const androidQr=dialog.getByRole('img',{name:t('Android vehicle-pairing QR code','QR-kod för Android-fordonskoppling'),exact:true});
+ await showAndroidQr.click();await expect(androidQr).toBeVisible();
+ expect(await androidQr.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+ // A CA change removes stale QR trust material. Larger trust chains retain file import.
+ await caField.fill(ca.repeat(2));await expect(androidQr).toHaveCount(0);
+ await showAndroidQr.click();
+ await expect(dialog.getByText(t('Pairing data is too large for QR. Use the pairing file.','Kopplingsdata är för stora för QR. Använd kopplingsfilen.'),{exact:true})).toBeVisible();
+ await expect(androidQr).toHaveCount(0);
+ await expect(dialog.getByRole('img',{name:t('Single-use enrollment QR code','QR-kod för engångskoppling'),exact:true})).toBeVisible();
+ const largeDownloaded=page.waitForEvent('download');
+ await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
+ expect((await largeDownloaded).suggestedFilename()).toBe('open-triage-pairing.json');
+ await caField.fill(ca);
+ // A queued image render must not restore the old trust snapshot after an edit.
+ await showAndroidQr.evaluate(button=>{
+  (button as HTMLButtonElement).click();
+  const field=button.closest('dialog')!.querySelector('textarea')!;
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(field,field.value+' ');
+  field.dispatchEvent(new Event('input',{bubbles:true}));
+ });
+ await expect(showAndroidQr).toBeEnabled();await expect(caField).toHaveValue(ca+' ');await expect(androidQr).toHaveCount(0);
+ await caField.fill(ca);await showAndroidQr.click();await expect(androidQr).toBeVisible();
  await dialog.getByRole('button',{name:t('Close','Stäng'),exact:true}).scrollIntoViewIfNeeded();
  await expect(dialog.getByRole('button',{name:t('Close','Stäng'),exact:true})).toBeInViewport();
  await page.screenshot({path:testInfo.outputPath(`inventory-${language}-mobile.png`)});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();await expect(trigger).toBeFocused();
+});
+
+test('closed Admin pairing dialog cannot restore a delayed browser or Android QR authorization',async({page})=>{
+ let release:()=>void=()=>{};const pending=new Promise<void>(resolve=>{release=resolve;});
+ await page.route('**/__enroll-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+ await page.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html><body><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
+ await page.route('**/api/admin/units/unit/installations',route=>route.fulfill({json:{items:[],nextCursor:null}}));
+ let issued=false;await page.route('**/api/admin/units/unit/enrollment',async route=>{issued=true;await pending;await route.fulfill({json:{token:'A'.repeat(43),origin:'https://agency.example.test',expiresAt:new Date(Date.now()+240000).toISOString()}});});
+ await page.goto('/__enroll?admin=1&language=en');await page.getByRole('button',{name:'Devices',exact:true}).click();
+ const dialog=page.getByRole('dialog'),issuedResponse=page.waitForResponse('**/api/admin/units/unit/enrollment');await dialog.getByRole('button',{name:'Issue five-minute QR code',exact:true}).click();
+ await expect.poll(()=>issued).toBe(true);await dialog.getByRole('button',{name:'Close',exact:true}).click();release();
+ await (await issuedResponse).finished();
+ await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+ await page.getByRole('button',{name:'Devices',exact:true}).click();
+ await expect(dialog.getByRole('button',{name:'Issue five-minute QR code',exact:true})).toBeEnabled();
+ await expect(dialog.getByRole('img')).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:'Download Android pairing file',exact:true})).toHaveCount(0);
 });
 
 test('concurrent tabs bootstrap one HttpOnly installation authority; a separate browser context stays independent',async({context,browser})=>{
