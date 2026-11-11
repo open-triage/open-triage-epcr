@@ -30,6 +30,8 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
       - run: npm ci
+      - name: Verify Android fixture and workflow contracts
+        run: node --test tests/android-*.test.mjs
       - name: Build and validate bundled development APK
         run: npm run android:build
       - name: Build real synthetic API

@@ -147,4 +147,22 @@ public class ManagedConfigurationJourneyTest {
             activity.recreate(); waitFor("document.querySelector('input[name=username]')");
         } finally { activity.close(); policy(new JSONObject()); }
     }
+    @Test public void missingPolicyRemainsLockedAfterProcessRestart() throws Exception {
+        // The host runner force-stops the actual app between the main journey and this phase.
+        // App data is retained: only a persisted management marker and encrypted enrollment can restore state.
+        var arguments = InstrumentationRegistry.getArguments();
+        JSONObject artifact = new JSONObject(new String(Base64.decode(arguments.getString("artifactBase64", ""), Base64.NO_WRAP), StandardCharsets.UTF_8));
+        activity = ActivityScenario.launch(MainActivity.class);
+        try {
+            waitFor("document.querySelector('[role=alert]') && document.querySelector('[role=alert]').textContent.includes('missing')");
+            assertEquals("Restart cannot turn removed managed settings into manual setup", "null", evaluate("document.querySelector('input[type=file]')"));
+            assertEquals("null", evaluate("document.querySelector('input[name=username]')"));
+            assertNotNull(InstrumentationRegistry.getInstrumentation().getTargetContext().getSharedPreferences("connection-v1", Context.MODE_PRIVATE).getString("encrypted", null));
+            policy(config(artifact));
+            waitFor("document.querySelector('input[name=username]')");
+            requestStatus("/api/installations/current");
+            assertEquals("Encrypted enrollment survives a real app process restart", "true", evaluate("window.__managedResult.body.enrolled"));
+            assertEquals("true", evaluate("window.__managedResult.body.installation.name==='Managed emulator ambulance'"));
+        } finally { activity.close(); policy(new JSONObject()); }
+    }
 }

@@ -113,7 +113,8 @@ The runner makes only the controller the emulator's device owner with
 `adb shell dpm set-device-owner org.opentriage.managementtest/.AdminReceiver`.
 Real `DevicePolicyManager` delivery exercises locked settings, matching pairing
 without clinician privileges, override rejection, pending/malformed/removed
-policies, server/CA changes, retained encrypted enrollment and activity restart.
+policies, server/CA changes, retained encrypted enrollment and actual process
+termination/relaunch as well as activity restart.
 The owner is removed afterward. The controller is never packaged into or
 distributed with the clinical APK or installed on ordinary devices by the app.
 
