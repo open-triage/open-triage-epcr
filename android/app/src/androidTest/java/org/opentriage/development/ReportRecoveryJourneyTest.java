@@ -78,6 +78,48 @@ public class ReportRecoveryJourneyTest {
         waitFor("window.__serverVerified!==null"); assertEquals("true", evaluate("window.__serverVerified"));
         waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
     }
+    private String connectionIdentity() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSONObject saved = new ConnectionVault(context).read().saved();
+        String installation = null;
+        for (int i = 0; i < saved.getJSONArray("cookies").length(); i++) {
+            JSONObject cookie = saved.getJSONArray("cookies").getJSONObject(i);
+            if (cookie.getString("name").equals("open_triage_installation")) installation = cookie.getString("value");
+        }
+        assertNotNull("Real enrolled installation cookie survives", installation);
+        byte[] hash = java.security.MessageDigest.getInstance("SHA-256").digest(
+            (saved.getString("origin") + "\n" + saved.getString("caPem") + "\n" + installation).getBytes(StandardCharsets.UTF_8));
+        var encoded = new StringBuilder();
+        for (byte value : hash) encoded.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
+        return encoded.toString();
+    }
+    private void snapshotUpgrade() throws Exception {
+        if (!"1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) return;
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertEquals("Production identity must be installed", "org.opentriage.android", context.getPackageName());
+        assertEquals("Stationary preference was set by the real UI", JSONObject.quote("stationary"), evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
+        assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
+        var editor = context.getSharedPreferences("release-upgrade-acceptance", android.content.Context.MODE_PRIVATE).edit();
+        editor.putString("connection", connectionIdentity()).putString("ciphertext", retainedDigest()).putInt("uid", context.getApplicationInfo().uid)
+            .putString("presentation", evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
+        assertTrue(editor.commit());
+    }
+    private void verifyUpgrade() throws Exception {
+        if (!"1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) return;
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        var previous = context.getSharedPreferences("release-upgrade-acceptance", android.content.Context.MODE_PRIVATE);
+        assertEquals("In-place update retains Android UID", previous.getInt("uid", -1), context.getApplicationInfo().uid);
+        assertEquals("Connection, CA and exact enrollment remain decryptable with the original Keystore key", previous.getString("connection", "missing"), connectionIdentity());
+        assertEquals("Pending ciphertext bytes and all its metadata survive exactly", previous.getString("ciphertext", "missing"), retainedDigest());
+        assertEquals("Presentation preference survives", previous.getString("presentation", "missing"), evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
+        assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
+        var restrictions = context.getSystemService(android.content.RestrictionsManager.class).getApplicationRestrictions();
+        assertEquals(1, restrictions.getInt("configurationVersion"));
+        var connection = new ConnectionVault(context).read().saved();
+        assertEquals(connection.getString("origin"), restrictions.getString("serverOrigin"));
+        assertEquals(connection.getString("caPem"), restrictions.getString("publicCaPem"));
+        assertFalse("Clinical app remains an ordinary managed application", context.getSystemService(android.app.admin.DevicePolicyManager.class).isDeviceOwnerApp(context.getPackageName()));
+    }
     private void prepare() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64", ""), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
@@ -88,6 +130,14 @@ public class ReportRecoveryJourneyTest {
         evaluate("document.querySelector('input[type=checkbox]').click()");
         waitFor("!document.querySelector('button[type=submit]').disabled"); evaluate("document.querySelector('form').requestSubmit()");
         signIn(args.getString("username"), args.getString("password"));
+        if ("1".equals(args.getString("upgrade"))) {
+            evaluate("window.__deployment=null;fetch('/api/__android-web-deployment',{method:'POST'}).then(response=>response.json()).then(value=>window.__deployment=value)");
+            waitFor("window.__deployment?.revision===2");
+            activity.onActivity(screen -> screen.getBridge().getWebView().reload());
+            waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+            assertFalse("Remote web deployment cannot replace APK UI after reload", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
+            assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
+        }
         evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive)window.__backgroundRequests++;if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("window.__nativeEvents.includes(false) && window.__nativeEvents.includes(true) && window.__assignedReads>0");
@@ -133,6 +183,7 @@ public class ReportRecoveryJourneyTest {
         records(); assertEquals("true", evaluate("JSON.stringify(window.__retained)===window.__beforeStorageFailure"));
         // The test runner must not finish/close the Activity before abrupt process loss.
         assertEquals("true", evaluate("Boolean(document.querySelector('.encounter-header'))"));
+        snapshotUpgrade();
         var ready = new android.os.Bundle(); ready.putString("opentriage_phase", "ready-for-process-kill");
         InstrumentationRegistry.getInstrumentation().sendStatus(2, ready);
         Thread.sleep(600000);
@@ -150,6 +201,7 @@ public class ReportRecoveryJourneyTest {
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(InstrumentationRegistry.getArguments().getString("reportId")));
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(InstrumentationRegistry.getArguments().getString("callNumber")));
         assertEquals("true", evaluate("!Object.keys(window.__retained[0]).some(key=>/^(reportId|callNumber|ownerUserId|reportKey|reportKeyBase64|dataKey|key)$/.test(key))"));
+        verifyUpgrade();
         var retained = new android.os.Bundle(); retained.putString("retained_sha256", retainedDigest());
         InstrumentationRegistry.getInstrumentation().addResults(retained);
         // The host revokes the old session before reconnect; no native vault changes.

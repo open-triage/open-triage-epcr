@@ -1,0 +1,8 @@
+{
+  "applicationId": "org.opentriage.android",
+  "certificateSha256": "2103f9a5fd4b17b113666165b86d52fad495d4e07b1507b18ee66a487a552a3a",
+  "environment": "android-release",
+  "backupDirectory": "/home/eleph/.local/share/opentriage/android-signing",
+  "custodian": "open-triage organization release maintainers",
+  "artifactDestination": "GitHub Releases in open-triage/open-triage-epcr"
+}
