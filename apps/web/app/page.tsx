@@ -84,7 +84,7 @@ import { EncounterTimeline } from "../components/encounter-timeline";
 import { WorkspaceSidebar } from "../components/workspace-sidebar";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
-import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
+import { AudioNoteDialog, cancelActiveAudioCapture, stopActiveAudio } from "../components/audio-note";
 import { createReportPhotoNote, fetchReportPhoto } from "./report-photo-api";
 import { createReportAudioNote, fetchReportAudio } from "./report-audio-api";
 import { blobToBase64 } from "./report-audio-notes";
@@ -481,7 +481,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, []);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "audio") { setAudioDialog(null); setNoteError(null); stopActiveAudio(); }
+    if (activeDialog === "audio") { void cancelActiveAudioCapture().then(discarded => {
+      if (discarded) { setAudioDialog(null); setNoteError(null); stopActiveAudio(); }
+    }); }
     else if (activeDialog === "photo") { setPhotoDialog(null); setNoteError(null); }
     else if (activeDialog === "note") {
       setTextNoteDraft(null);

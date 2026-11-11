@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from "./android-runtime";
 import { resolveErrorMessage, type AgencyLanguage } from "./localization";
 export type MediaCaptureKind = "camera" | "microphone";
 
@@ -27,6 +28,7 @@ export function mediaCapturePreflightMessage(kind: MediaCaptureKind, environment
 export function mediaCaptureErrorMessage(kind: MediaCaptureKind, error: unknown, language: AgencyLanguage = "en"): string {
   const labels = LABELS[kind];
   if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
+    if (isAndroidRuntime()) return resolveErrorMessage(language, null, kind === "camera" ? "noteUi.capture.androidCameraAccessBlocked" : "noteUi.capture.androidMicrophoneAccessBlocked");
     return resolveErrorMessage(language, `${labels.label} access is blocked. Allow ${labels.device} access for this site in browser settings, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraAccessBlocked" : "noteUi.capture.microphoneAccessBlocked");
   }
   if (error instanceof DOMException && error.name === "NotFoundError") {
@@ -35,6 +37,7 @@ export function mediaCaptureErrorMessage(kind: MediaCaptureKind, error: unknown,
   if (error instanceof DOMException && (error.name === "NotReadableError" || error.name === "AbortError")) {
     return resolveErrorMessage(language, `The ${labels.device} is busy or unavailable. Close other apps using it, check the device, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraBusyOrUnavailable" : "noteUi.capture.microphoneBusyOrUnavailable");
   }
+  if (isAndroidRuntime()) return resolveErrorMessage(language, null, kind === "camera" ? "noteUi.capture.androidCameraUnavailable" : "noteUi.capture.androidMicrophoneUnavailable");
   return resolveErrorMessage(language, `The ${labels.device} is unavailable. Check browser site permissions and the device, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraUnavailable" : "noteUi.capture.microphoneUnavailable");
 }
 

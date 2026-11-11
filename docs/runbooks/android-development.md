@@ -237,6 +237,18 @@ reconnect and refresh once per reader after resume without another connectivity
 event. The early browser journey covers all three readers as well as delayed
 permission denial and cancelled capture callbacks.
 
+## Audio notes
+
+The generic APK declares optional microphone hardware and requests Android microphone permission only when the clinician explicitly holds Record. Denial uses localized Android app-settings guidance; browser users retain browser-site guidance. Native pause, hidden pages, revoked tracks and withdrawn protected authority stop hardware tracks immediately. A permission grant that arrives after cancellation or pause cannot start a hidden recorder. Preview and authorized timeline/Stationary playback also stop on native pause, and an authorized download finishing after cancellation cannot start audio.
+
+Recordings use the shared five-minute, 64 kbit/s capture and existing mono-AAC normalization, protected encrypted time slices, explicit interrupted-preview choice, queued upload and retry. The nominal capture is approximately 2.4 MB before JSON/Base64 overhead. Android validates the exact 16 MiB command limit before staging an upload; abnormal oversized capture stays an unsaved preview with localized shorter-recording guidance. No native audio file, plaintext clinical cache or backup is created. Blob playback URLs exist only in memory and are revoked on stop. Both photo and audio locations use the same approved API-path guard and reject redirects.
+
+Encrypted previews carry a capture ID so callbacks from a discarded recorder cannot alter a new preview, even when timestamps are identical. Cancel waits for durable preview removal; Escape during recording first stops into an interrupted preview, while Cancel/Escape of that preview discards it. Existing encrypted previews without capture IDs remain readable and explicitly discardable. No recovery or reopening action requires renewed authentication while the login remains valid.
+
+Early browser tests cover pause/revocation, delayed permission results, native denial in both languages, delayed playback, exact wire-size rejection, held-write cancellation and old-callback isolation. API tests contain real Chromium MediaRecorder WebM/MP4 synthetic tones and run actual FFmpeg normalization/full decode. Duration-less WebM uses a bounded decoded-duration probe; a real duration-less recording over five minutes must fail rather than be silently truncated. Use ordinary `npm ci` to install the pinned FFmpeg executable; an installation made with `--ignore-scripts` needs `npm rebuild ffmpeg-static` before real audio validation.
+
+The default emulator suite adds actual microphone denial/grant and a live WebView track, real MediaRecorder output, preview/Timeline/Stationary playback with advancing decoder time, paused reconnect with zero new API requests, and exact hashed mono-AAC after authorized upload. Saved offline audio joins the photo/text process-loss and ownership-isolation journey. A second independent fixture force-stops a live unfinished recorder after encrypted chunks are durable, revokes microphone permission while stopped, and requires explicit review of restored partial audio after authorized recovery. Physical microphone/speaker quality remains ticket 019.
+
 ## Production signing and upgrade checks
 
 Production identity, custody, immutable artifact workflow and the real signed A/B

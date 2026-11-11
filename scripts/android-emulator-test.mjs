@@ -58,7 +58,9 @@ try {
     assert.equal(replay.status, 401, 'Confirmed enrollment authorization must reject replay');
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api });
+  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true });
+  // A separate real process-loss run preserves incomplete encrypted recorder slices.
+  await runReportRecoveryJourney({ root, fixture: fixtures[1], adb, serial, run, api, audio: true, unsavedAudio: true });
   await runManagedJourneys({root, fixtures, run, api, adb, serial});
 } finally {
   for (const child of children) child.kill('SIGTERM');

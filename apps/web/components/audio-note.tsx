@@ -3,6 +3,9 @@ import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
 import { PlatformRequestError } from "../app/platform-errors";
+import { isAndroidRuntime, MAX_NATIVE_BODY_BYTES } from "../app/android-runtime";
+import { applicationVisible } from "../app/application-foreground";
+import { observeMediaInterruption } from "../app/media-interruption";
 
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
 
@@ -25,6 +28,8 @@ import {
   stageProtectedAudio,
   stageProtectedAudioChunk,
   startProtectedAudioPreview,
+  subscribeProtectedStorageStatus,
+  type ProtectedAudioPreviewIdentity,
   updateProtectedAudio,
   updateProtectedAudioPreview,
 } from "../app/protected-clinical-storage";
@@ -32,12 +37,18 @@ import { browserMediaCapturePreflight, mediaCaptureErrorMessage } from "../app/m
 
 const PLAYBACK_EVENT = "open-triage-audio-playback";
 let activeAudio: { key: string; element: HTMLAudioElement; url: string } | null = null;
+let playbackGeneration = 0;
+let cancelActiveCapture: (() => Promise<boolean>) | null = null;
+
+/** Explicit dialog cancellation discards its unsaved encrypted preview as well. */
+export function cancelActiveAudioCapture(): Promise<boolean> { return cancelActiveCapture?.() ?? Promise.resolve(true); }
 
 function announcePlayback(key: string | null) {
   window.dispatchEvent(new CustomEvent(PLAYBACK_EVENT, { detail: key }));
 }
 
 export function stopActiveAudio() {
+  playbackGeneration++;
   if (!activeAudio) return;
   activeAudio.element.pause();
   URL.revokeObjectURL(activeAudio.url);
@@ -54,27 +65,43 @@ export function AuthorizedAudioButton({ reportId, noteId, label, className, lang
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
   useEffect(() => {
+    mounted.current = true;
     const update = (event: Event) => setPlaying((event as CustomEvent<string | null>).detail === key);
+    const remove = observeMediaInterruption(() => { stopActiveAudio(); setLoading(false); });
     window.addEventListener(PLAYBACK_EVENT, update);
-    return () => window.removeEventListener(PLAYBACK_EVENT, update);
+    return () => {
+      mounted.current = false;
+      remove(); window.removeEventListener(PLAYBACK_EVENT, update);
+      if (activeAudio?.key === key) stopActiveAudio();
+      else playbackGeneration++; // Invalidate an unfinished authorized download.
+    };
   }, [key]);
 
   async function toggle() {
     if (activeAudio?.key === key) { stopActiveAudio(); return; }
+    if (!applicationVisible()) return;
     setLoading(true); setError(null); stopActiveAudio();
+    const generation = playbackGeneration;
     try {
       const blob = (contentPath ? null : protectedAudioBlob(reportId, noteId)) ?? await fetchReportAudio(reportId, noteId, contentPath);
+      if (!mounted.current || generation !== playbackGeneration || !applicationVisible()) return;
       const url = URL.createObjectURL(blob);
       const element = new Audio(url);
       element.preload = "auto";
-      element.addEventListener("ended", stopActiveAudio, { once: true });
-      element.addEventListener("error", stopActiveAudio, { once: true });
+      const ended = () => { if (activeAudio?.element === element) stopActiveAudio(); };
+      element.addEventListener("ended", ended, { once: true });
+      element.addEventListener("error", ended, { once: true });
       activeAudio = { key, element, url };
       await element.play();
+      if (!mounted.current || generation !== playbackGeneration || !applicationVisible()) {
+        element.pause(); if (activeAudio?.element === element) stopActiveAudio(); return;
+      }
       announcePlayback(key);
-    } catch { stopActiveAudio(); setError(t("noteUi.audio.unavailable")); }
-    finally { setLoading(false); }
+    } catch {
+      if (mounted.current && generation === playbackGeneration) { stopActiveAudio(); setError(t("noteUi.audio.unavailable")); }
+    } finally { if (mounted.current) setLoading(false); }
   }
 
   return <span className="audio-playback-control"><button className={className} type="button" aria-label={playing ? t("noteUi.pause.audio.note") : label ?? t("noteUi.play.audio.note")}
@@ -95,6 +122,11 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   readonly onSessionEnded: () => void;
 }) {
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
+  const mounted = useRef(true);
+  const generation = useRef(0);
+  const discarded = useRef(false);
+  const previewIdentity = useRef<ProtectedAudioPreviewIdentity | null>(null);
+  const protectedAtStart = useRef(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -137,7 +169,8 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     const preview = protectedAudioPreview(reportId);
     const blob = protectedAudioPreviewBlob(reportId);
     if (!preview) return;
-    if (!blob || !preview.chunks.length) { void removeProtectedAudioPreview(reportId); return; }
+    previewIdentity.current = { captureId: preview.captureId, capturedAt: preview.capturedAt };
+    if (!blob || !preview.chunks.length) { void removeProtectedAudioPreview(reportId, previewIdentity.current); return; }
     queueMicrotask(() => {
       setCapture({ blob, previewUrl: URL.createObjectURL(blob), capturedAt: preview.capturedAt,
         capturedUtcOffsetMinutes: preview.capturedUtcOffsetMinutes, durationMilliseconds: preview.durationMilliseconds,
@@ -149,40 +182,66 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
 
   const finishRecording = useCallback((interrupted = false) => {
     interruptedRef.current ||= interrupted;
-    if (recorder.current?.state === "recording") recorder.current.stop();
+    if (recorder.current?.state === "recording") {
+      elapsedRef.current = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Math.max(elapsedRef.current, Date.now() - startedAt.current));
+      recorder.current.stop();
+    }
+    // Stop hardware before waiting for encrypted chunk writes or playback cleanup.
+    stream.current?.getTracks().forEach(track => track.stop()); stream.current = null;
+    cancelAnimationFrame(animation.current);
+    void audioContext.current?.close().catch(() => undefined); audioContext.current = null; analyser.current = null;
   }, []);
 
   useEffect(() => {
-    if (mode !== "recording") return;
-    const interrupt = () => { if (document.visibilityState !== "visible") finishRecording(true); };
-    const pageHide = () => finishRecording(true);
-    document.addEventListener("visibilitychange", interrupt);
-    window.addEventListener("pagehide", pageHide);
-    return () => { document.removeEventListener("visibilitychange", interrupt); window.removeEventListener("pagehide", pageHide); };
-  }, [finishRecording, mode]);
+    mounted.current = true;
+    const interrupt = () => {
+      holdingRef.current = false; generation.current++;
+      finishRecording(true); stopActiveAudio();
+    };
+    const cancel = async () => {
+      discarded.current = true;
+      interrupt();
+      const identity = previewIdentity.current;
+      if (!identity) return mounted.current;
+      setSaving(true);
+      try {
+        // Later callbacks carry their old capture ID and cannot repopulate this preview.
+        await removeProtectedAudioPreview(reportId, identity);
+        return mounted.current;
+      } catch {
+        discarded.current = false;
+        if (mounted.current) setError(resolveMessage(language, "noteUi.audioDiscardFailed"));
+        return false;
+      } finally { if (mounted.current) setSaving(false); }
+    };
+    if (!note) cancelActiveCapture = cancel;
+    const remove = observeMediaInterruption(interrupt);
+    const removeStatus = subscribeProtectedStorageStatus(changedReportId => {
+      if (changedReportId === reportId && protectedAtStart.current && !protectedStorageActive(reportId)) interrupt();
+    });
+    return () => {
+      mounted.current = false;
+      if (cancelActiveCapture === cancel) cancelActiveCapture = null;
+      remove(); removeStatus(); interrupt();
+    };
+  }, [finishRecording, language, note, reportId]);
 
-  useEffect(() => () => {
-    holdingRef.current = false;
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    stream.current?.getTracks().forEach((track) => track.stop());
-    audioContext.current?.close().catch(() => undefined);
-    cancelAnimationFrame(animation.current);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    stopActiveAudio();
-  }, [previewUrl]);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   async function startRecording() {
-    if (startingRef.current || recorder.current?.state === "recording") return;
+    if (startingRef.current || recorder.current?.state === "recording" || !applicationVisible()) return;
     if (!recorderSupport || captureUnavailable) {
       setError(captureUnavailable ?? t("noteUi.audioUnsupported"));
       return;
     }
-    startingRef.current = true;
+    startingRef.current = true; stopActiveAudio();
+    const attempt = ++generation.current; discarded.current = false; previewIdentity.current = null;
+    protectedAtStart.current = protectedStorageActive(reportId);
     setError(null); setCapture(null); setElapsed(0); elapsedRef.current = 0; interruptedRef.current = false;
     chunks.current = []; chunkWrites.current = Promise.resolve(); chunkSequence.current = 0;
     try {
       const nextStream = await navigator.mediaDevices.getUserMedia(audioCaptureConstraints());
-      if (!holdingRef.current) {
+      if (!holdingRef.current || !mounted.current || attempt !== generation.current || !applicationVisible()) {
         nextStream.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -191,44 +250,49 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       const nextRecorder = new MediaRecorder(nextStream, { mimeType: recorderSupport.recorderType, audioBitsPerSecond: 64_000 });
       recorder.current = nextRecorder;
       startedAt.current = Date.now();
-      if (protectedStorageActive(reportId)) await startProtectedAudioPreview(reportId, {
+      const identity = { captureId: crypto.randomUUID(), capturedAt: new Date(startedAt.current).toISOString() };
+      previewIdentity.current = identity;
+      if (protectedStorageActive(reportId)) await startProtectedAudioPreview(reportId, { ...identity,
         recorderContentType: recorderSupport.recorderType, sourceContentType: recorderSupport.sourceContentType,
-        capturedAt: new Date(startedAt.current).toISOString(), capturedUtcOffsetMinutes: -new Date(startedAt.current).getTimezoneOffset(),
+        capturedUtcOffsetMinutes: -new Date(startedAt.current).getTimezoneOffset(),
         durationMilliseconds: 0, caption, interrupted: true, complete: false,
       });
-      if (!holdingRef.current) {
+      if (!holdingRef.current || !mounted.current || attempt !== generation.current || !applicationVisible()) {
         nextStream.getTracks().forEach((track) => track.stop()); stream.current = null;
-        await removeProtectedAudioPreview(reportId);
+        await removeProtectedAudioPreview(reportId, identity);
         return;
       }
       nextRecorder.addEventListener("dataavailable", (event) => {
-        if (!event.data.size) return;
+        if (!event.data.size || discarded.current) return;
         chunks.current.push(event.data);
         if (!protectedStorageActive(reportId)) return;
         const sequence = chunkSequence.current++;
         const duration = Math.max(1, elapsedRef.current);
         chunkWrites.current = chunkWrites.current.then(async () => stageProtectedAudioChunk(reportId,
-          { sequence, sourceBase64: await blobToBase64(event.data) }, duration));
+          { sequence, sourceBase64: await blobToBase64(event.data) }, duration, identity));
       });
       nextRecorder.addEventListener("stop", () => { void (async () => {
         const durationMilliseconds = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Math.max(1, elapsedRef.current));
-        await chunkWrites.current;
-        const blob = new Blob(chunks.current, { type: recorderSupport.recorderType });
-        nextStream.getTracks().forEach((track) => track.stop()); stream.current = null;
+        nextStream.getTracks().forEach(track => track.stop()); stream.current = null;
         cancelAnimationFrame(animation.current); void audioContext.current?.close(); audioContext.current = null;
+        await chunkWrites.current;
+        if (discarded.current) { await removeProtectedAudioPreview(reportId, identity); return; }
+        const blob = new Blob(chunks.current, { type: recorderSupport.recorderType });
         if (!blob.size || durationMilliseconds < 250) {
-          await removeProtectedAudioPreview(reportId);
-          setMode("ready"); setError(t("noteUi.no.usable.speech.was.captured.try.again")); return;
+          await removeProtectedAudioPreview(reportId, identity);
+          if (mounted.current) { setMode("ready"); setError(t("noteUi.no.usable.speech.was.captured.try.again")); } return;
         }
         await finishProtectedAudioPreview(reportId, { durationMilliseconds,
-          interrupted: interruptedRef.current, complete: true });
+          interrupted: interruptedRef.current, complete: true }, identity);
+        if (!mounted.current || discarded.current) return;
         setCapture({ blob, previewUrl: URL.createObjectURL(blob), capturedAt: new Date(startedAt.current).toISOString(),
           capturedUtcOffsetMinutes: -new Date(startedAt.current).getTimezoneOffset(), durationMilliseconds,
           sourceContentType: recorderSupport.sourceContentType, interrupted: interruptedRef.current });
         setMode("preview");
-      })().catch((caught) => {
-        setMode("ready");
-        setError(caught instanceof Error ? caught.message : t("noteUi.the.interrupted.recording.could.not.be.protected"));
+      })().catch(() => {
+        if (mounted.current && !discarded.current) {
+          setMode("ready"); setError(t("noteUi.the.interrupted.recording.could.not.be.protected"));
+        }
       }); }, { once: true });
       const Context = window.AudioContext || window.webkitAudioContext;
       if (Context) {
@@ -250,8 +314,8 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       animation.current = requestAnimationFrame(sample);
     } catch (caught) {
       stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null;
-      await removeProtectedAudioPreview(reportId);
-      setMode("ready"); setError(mediaCaptureErrorMessage("microphone", caught, language));
+      if (previewIdentity.current) await removeProtectedAudioPreview(reportId, previewIdentity.current);
+      if (mounted.current && !discarded.current) { setMode("ready"); setError(mediaCaptureErrorMessage("microphone", caught, language)); }
     } finally { startingRef.current = false; }
   }
 
@@ -269,6 +333,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   async function save() {
     if (saving || validation.error) return;
     setSaving(true); setError(null);
+    const current = () => mounted.current && !discarded.current;
     try {
       if (note) {
         if (note.persistenceState !== "ready") {
@@ -276,24 +341,29 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
             command: { ...entry.command, caption: validation.caption },
             note: { ...entry.note, caption: validation.caption, updatedAt: new Date().toISOString() },
           }));
-          onQueued({ ...note, caption: validation.caption, updatedAt: new Date().toISOString() });
+          if (current()) onQueued({ ...note, caption: validation.caption, updatedAt: new Date().toISOString() });
           return;
         }
         const response = await updateReportAudioCaption(csrfToken, reportId, note.id, { commandId: crypto.randomUUID(), expectedRevision: revision, caption: validation.caption });
         if (protectedAudioEntries(reportId).some(({ note: candidate }) => candidate.id === note.id)) {
           await updateProtectedAudio(reportId, note.id, (entry) => ({ ...entry, note: response.note }));
         }
-        onSaved(response.note, response.revision);
+        if (current()) onSaved(response.note, response.revision);
       } else {
         if (!capture) return;
         const sourceBase64 = await blobToBase64(capture.blob);
+        if (!current() || !applicationVisible()) return;
         const command: CreateReportAudioNoteCommand = { commandId: crypto.randomUUID(), expectedRevision: revision,
           noteId: crypto.randomUUID(), capturedAt: capture.capturedAt, capturedUtcOffsetMinutes: capture.capturedUtcOffsetMinutes,
           caption: validation.caption, sourceContentType: capture.sourceContentType, sourceBase64,
           settingsRevision: mediaPolicy.settingsRevision, effectiveAllowanceBytes: mediaPolicy.reportMediaAllowanceBytes };
+        if (isAndroidRuntime() && new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_NATIVE_BODY_BYTES) {
+          setError(t("noteUi.androidAudioTransferLimit")); return;
+        }
         if (protectedStorageActive(reportId)) {
           const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await capture.blob.arrayBuffer()))]
             .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+          if (!current() || !applicationVisible()) return;
           const localNote: ReportAudioNote = {
             id: command.noteId, reportId, type: "audio", caption: validation.caption,
             capturedAt: command.capturedAt, capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes,
@@ -302,16 +372,17 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
             sha256: digest, durationMilliseconds: capture.durationMilliseconds,
           };
           await stageProtectedAudio(reportId, { note: localNote, command });
-          onQueued(localNote);
+          if (current()) onQueued(localNote);
         } else {
           const response = await createReportAudioNote(csrfToken, reportId, command);
-          onSaved(response.note, response.revision);
+          if (current()) onSaved(response.note, response.revision);
         }
       }
     } catch (caught) {
+      if (!current()) return;
       if (caught instanceof Error && caught.message === "session") onSessionEnded();
       else setError(caught instanceof PlatformRequestError ? caught.message : resolveErrorMessage(language, caught instanceof Error ? caught.message : null, "noteUi.the.recording.could.not.be.saved"));
-    } finally { setSaving(false); }
+    } finally { if (mounted.current) setSaving(false); }
   }
 
   async function remove() {
@@ -354,6 +425,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     role={confirmingDelete ? "alertdialog" : "dialog"} aria-modal="true" aria-labelledby="audio-dialog-title"
     aria-describedby={confirmingDelete ? "audio-delete-description" : "audio-purpose-description"} onKeyDownCapture={(event) => {
       if (event.key !== "Escape") return;
+      if (saving) { event.preventDefault(); event.stopPropagation(); return; }
       if (confirmingDelete) { event.preventDefault(); event.stopPropagation(); cancelDelete(); }
       else if (mode === "recording") { event.preventDefault(); event.stopPropagation(); holdingRef.current = false; finishRecording(true); }
     }}>
@@ -383,13 +455,13 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       {mode === "preview" && capture && <div className="audio-preview"><p role={capture.interrupted ? "alert" : "status"}>{capture.interrupted ? t("noteUi.recording.interrupted.review.it.then.explicitly.use.or.discard.it") : t("noteUi.capturedDuration", { duration: formatAudioDuration(capture.durationMilliseconds) })}</p>
         <PreviewAudioButton source={capture.previewUrl} language={language} /></div>}
       {mode === "viewer" && note && <div className="audio-preview"><AuthorizedAudioButton reportId={reportId} noteId={note.id} language={language} label={t("noteUi.play.complete.audio.note")} />
-        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured <LocalDateTime value={note.capturedAt} /> · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
+        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · {t("mobile.noteCaptured")} <LocalDateTime value={note.capturedAt} /> · {note.author.displayName} · {t(`noteUi.state.${note.persistenceState}`)}</p>
         {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>{t("noteUi.retry.upload")}</button>}</div>}
       {(mode === "preview" || mode === "viewer") && <><label htmlFor="report-audio-caption">{t("noteUi.audioCaption")} <small>{t("noteUi.optional")}</small></label>
         <textarea id="report-audio-caption" rows={3} maxLength={REPORT_AUDIO_CAPTION_MAX_CHARACTERS} value={caption}
           aria-invalid={Boolean(validation.error || error)} aria-describedby="report-audio-caption-count report-audio-error"
           onChange={(event) => { const value = event.target.value; setCaption(value); setError(null);
-            if (capture && protectedStorageActive(reportId)) updateProtectedAudioPreview(reportId, { caption: value }); }} />
+            if (capture && protectedStorageActive(reportId)) updateProtectedAudioPreview(reportId, { caption: value }, previewIdentity.current ?? undefined); }} />
         <small id="report-audio-caption-count">{t("noteUi.captionCount", { count: validation.characterCount.toLocaleString(language === "sv" ? "sv-SE" : "en-US"), max: REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") })}</small></>}
       <p id="report-audio-error" className="finish-help" role={validation.error || error ? "alert" : captureUnavailable ? "status" : undefined}>{validation.error ?? error ?? captureUnavailable}</p>
       <div className="note-dialog-actions"><DialogCancelButton language={language} disabled={saving || mode === "recording"} onClick={onClose} />
@@ -401,11 +473,31 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
 
 function PreviewAudioButton({ source, language }: { readonly source: string; readonly language: AgencyLanguage }) {
   const t = (key: string) => resolveMessage(language, key);
-  const audio = useRef<HTMLAudioElement>(null); const [playing, setPlaying] = useState(false);
-  useEffect(() => () => audio.current?.pause(), []);
+  const audio = useRef<HTMLAudioElement>(null);
+  const generation = useRef(0);
+  const [playing, setPlaying] = useState(false);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const element = audio.current, token = generation;
+    const pause = () => { token.current++; element?.pause(); setPlaying(false); };
+    const remove = observeMediaInterruption(pause);
+    return () => { token.current++; remove(); element?.pause(); };
+  }, [source]);
+  async function toggle() {
+    const element = audio.current;
+    if (!element || !applicationVisible()) return;
+    if (!element.paused) { generation.current++; element.pause(); setPlaying(false); return; }
+    stopActiveAudio(); setError(false);
+    const attempt = ++generation.current;
+    try {
+      await element.play();
+      if (attempt !== generation.current || !applicationVisible()) { element.pause(); return; }
+      setPlaying(true);
+    } catch { if (attempt === generation.current) { setPlaying(false); setError(true); } }
+  }
   return <><audio ref={audio} src={source} preload="metadata" onEnded={() => setPlaying(false)} />
-    <button type="button" aria-pressed={playing} onClick={() => { const element = audio.current; if (!element) return;
-      if (element.paused) { stopActiveAudio(); void element.play(); setPlaying(true); } else { element.pause(); setPlaying(false); } }}>{playing ? t("noteUi.pause.preview") : t("noteUi.play.preview")}</button></>;
+    <button type="button" aria-pressed={playing} onClick={() => void toggle()}>{playing ? t("noteUi.pause.preview") : t("noteUi.play.preview")}</button>
+    {error && <small role="alert">{t("noteUi.audio.unavailable")}</small>}</>;
 }
 
 declare global { interface Window { webkitAudioContext?: typeof AudioContext } }

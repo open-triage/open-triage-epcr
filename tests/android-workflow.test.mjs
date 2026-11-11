@@ -65,3 +65,13 @@ test('production publication is serialized, gated by preflight and protected env
   assert(!publication.includes('androidTest.apk'));
   assert.match(publication, /published\.immutable, true/);
 });
+
+
+test('Android audio declares optional microphone access and keeps real saved/unfinished media acceptance in the default journey', async () => {
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.RECORD_AUDIO"\s*\/>/);
+  assert.match(manifest, /<uses-feature\s+android:name="android\.hardware\.microphone"\s+android:required="false"\s*\/>/);
+  const runner = await readFile(new URL('../scripts/android-emulator-test.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /fixture: fixtures\[0\][^\n]*audio: true/);
+  assert.match(runner, /fixture: fixtures\[1\][^\n]*audio: true[^\n]*unsavedAudio: true/);
+});

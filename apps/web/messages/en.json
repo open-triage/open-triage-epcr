@@ -456,7 +456,7 @@
   "noteUi.recording.spoken.observation": "Recording spoken observation",
   "noteUi.interrupted.recording.choose.use.or.discard": "Interrupted recording — choose Use or Cancel",
   "noteUi.review.recording": "Review recording",
-  "noteUi.live.microphone": "Live microphone",
+  "noteUi.live.microphone": "Microphone",
   "noteUi.for.spoken.clinical.observations.only.this.is.not.a.diagnostic.sound.recorder.and.it.": "For spoken clinical observations only. This is not a diagnostic-sound recorder and it does not transcribe speech.",
   "noteUi.press.and.hold.to.record.for.up.to.5.00.recording.stops.if.this.page.is.hidden": "Press and hold to record for up to 5:00. Recording stops if this page is hidden.",
   "noteUi.recording.release.to.stop": "Recording — release to stop",
@@ -3055,5 +3055,11 @@
   "android.managed.invalid": "Managed settings are invalid. Contact IT.",
   "android.managed.changed": "The managed connection changed. Contact IT to restore or reassign this installation.",
   "android.managed.unavailable": "Managed settings are unavailable. Contact IT.",
-  "android.managed.conflict": "Pairing conflicts with the managed connection."
+  "android.managed.conflict": "Pairing conflicts with the managed connection.",
+  "noteUi.capture.androidCameraAccessBlocked": "Camera access is blocked. Allow camera access in Android app settings, then try again. Text notes remain available.",
+  "noteUi.capture.androidMicrophoneAccessBlocked": "Microphone access is blocked. Allow microphone access in Android app settings, then try again. Text notes remain available.",
+  "noteUi.capture.androidCameraUnavailable": "The camera is unavailable. Check Android app permissions and the device, then try again. Text notes remain available.",
+  "noteUi.capture.androidMicrophoneUnavailable": "The microphone is unavailable. Check Android app permissions and the device, then try again. Text notes remain available.",
+  "noteUi.androidAudioTransferLimit": "This recording is too large to transfer on this device. Cancel and record a shorter note.",
+  "noteUi.audioDiscardFailed": "The recording could not be discarded. Try again."
 }

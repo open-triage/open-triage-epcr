@@ -48,6 +48,8 @@ export interface ProtectedAudioChunk {
   readonly sourceBase64: string;
 }
 export interface ProtectedAudioPreview {
+  /** Encrypted recording identity fences callbacks from a discarded capture. */
+  readonly captureId?: string;
   readonly chunks: ReadonlyArray<ProtectedAudioChunk>;
   readonly recorderContentType: string;
   readonly sourceContentType: ReportAudioSourceContentType;
@@ -57,6 +59,13 @@ export interface ProtectedAudioPreview {
   readonly caption: string;
   readonly interrupted: boolean;
   readonly complete: boolean;
+}
+export type ProtectedAudioPreviewIdentity = Pick<ProtectedAudioPreview, "captureId" | "capturedAt">;
+
+function matchingAudioPreview(preview: ProtectedAudioPreview | undefined, expected?: ProtectedAudioPreviewIdentity): boolean {
+  return Boolean(preview && (!expected || (expected.captureId !== undefined
+    ? preview.captureId === expected.captureId
+    : preview.captureId === undefined && preview.capturedAt === expected.capturedAt)));
 }
 
 export interface ProtectedEpsScope {
@@ -457,9 +466,9 @@ export async function startProtectedAudioPreview(reportId: string,
 }
 
 export async function stageProtectedAudioChunk(reportId: string, chunk: ProtectedAudioChunk,
-  durationMilliseconds: number): Promise<void> {
+  durationMilliseconds: number, expected?: ProtectedAudioPreviewIdentity): Promise<void> {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview,
     durationMilliseconds, chunks: [...context.payload.audioPreview.chunks.filter(({ sequence }) => sequence !== chunk.sequence), chunk] } };
   queuePersist(reportId);
@@ -467,24 +476,24 @@ export async function stageProtectedAudioChunk(reportId: string, chunk: Protecte
 }
 
 export async function finishProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview,
-  "durationMilliseconds" | "interrupted" | "complete">): Promise<void> {
+  "durationMilliseconds" | "interrupted" | "complete">, expected?: ProtectedAudioPreviewIdentity): Promise<void> {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview, ...changes } };
   queuePersist(reportId);
   await context.writer.flush();
 }
 
-export function updateProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview, "caption">): void {
+export function updateProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview, "caption">, expected?: ProtectedAudioPreviewIdentity): void {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview, ...changes } };
   queuePersist(reportId);
 }
 
-export async function removeProtectedAudioPreview(reportId: string): Promise<void> {
+export async function removeProtectedAudioPreview(reportId: string, expected?: ProtectedAudioPreviewIdentity): Promise<void> {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   const { audioPreview: _preview, ...payload } = context.payload;
   context.payload = payload;
   queuePersist(reportId);
