@@ -73,7 +73,7 @@ import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
-import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAudioEntries, protectedPhotoEntries,
+import { flushProtectedReport, hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAudioEntries, protectedPhotoEntries,
   subscribeProtectedAudio, subscribeProtectedPhotos, updateProtectedAudio, updateProtectedPhoto } from "./protected-clinical-storage";
 import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote,
   type NoteReadinessBlocker } from "./report-text-notes";
@@ -173,6 +173,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [noteError, setNoteError] = useState<string | null>(null);
   const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
   const [noteStatusMessage, setNoteStatusMessage] = useState<string | null>(null);
+  const [closeError, setCloseError] = useState(false);
   const [stationaryTimelineOpen, setStationaryTimelineOpen] = useState(false);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
@@ -933,6 +934,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || signing || cosBusy || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
+      {closeError && <p className="safety-notice" role="alert">{t("mobile.protectedBeforeClose")}</p>}
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {cosBusy&&<aside className="safety-notice" role="status">{t(epsBusy?"epsSubmission.signingPending":"cosSigning.pending")}</aside>}
       {populateError && <aside className="safety-notice" role="alert">{populateError}</aside>}
@@ -975,7 +977,11 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           }}>{shell.view === "review" ? t("mobile.returnRecord") : t("mobile.reviewSign")}</button>}
           <button type="button" onClick={async () => {
             if (report && hasPendingProtectedMedia(report.id) && !window.confirm(t("mobile.mediaCloseWarning"))) return;
-            await flushSave(); onSaveAndClose();
+            setCloseError(false);
+            await flushSave();
+            try { if (report) await flushProtectedReport(report.id, { retryFailed: true }); }
+            catch { setCloseError(true); return; }
+            onSaveAndClose();
           }}>{t("mobile.saveClose")}</button>
         </div>}
       </header>

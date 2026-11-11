@@ -179,8 +179,8 @@ backup and device-transfer exclusions remain enabled.
 `npm run android:test` also seeds a published first-name form and real assigned
 call using the committed catalog. The protected-work journey checks actual
 Activity pause/resume, primitive and persistence fallback, radio disconnection,
-reconnect synchronization, write failure, and host-issued `am force-stop` between
-phases. Offline relaunch exposes neither retained labels nor content. A second
+reconnect synchronization, durable offline Save & close/reopen, write failure,
+and host-issued `am force-stop` between phases. Offline relaunch exposes neither retained labels nor content. A second
 clinician is denied the original recovery grant; the original clinician recovers
 and synchronizes the encrypted pending edit online, retaining its original
 report/form/catalog/validation pins. Restart, another clinician and authenticated

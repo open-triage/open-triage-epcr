@@ -175,6 +175,7 @@
   "mobile.pcrNumber": "Journalnummer",
   "mobile.incident": "Händelse",
   "mobile.location": "Plats",
+  "mobile.protectedBeforeClose": "Den skyddade lagringen kunde inte slutföras. Behåll journalen öppen och försök igen.",
   "mobile.saveClose": "Spara och stäng",
   "mobile.mediaCloseWarning": "Medieuppladdningar kan pausas när du stänger. Bilder och ljud som sparats på enheten återupptas när appen är öppen eller under nästa inloggade arbetspass. Spara och stäng ändå?",
   "mobile.quickDocumentation": "Snabbdokumentation",

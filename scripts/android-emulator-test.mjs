@@ -35,7 +35,7 @@ try {
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (!process.argv.includes('--report-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');

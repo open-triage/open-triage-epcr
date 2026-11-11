@@ -6,6 +6,15 @@
 > Android and MDM testing scope were accepted during the design discussion.
 > No Android implementation or deployment acceptance is claimed by this document.
 
+> **Current owner decision — 2026-11-11:** Remove all repeated reauthentication
+> and identity-confirmation prompts across browser and Android. Trust the valid
+> current login for authorized actions, reopening old calls and protected-work
+> recovery. Retain initial login, explicit user switching, session expiry and
+> revocation, current authorization, ownership and recovery deadlines. This
+> supersedes historical reauthentication/fresh-proof/shift-confirmation wording
+> below and in linked slices; historical story numbers and ticket titles remain
+> for traceability.
+
 IT needs an installable Android application that its mobile device management
 (MDM) system can distribute to ambulance devices. OpenTriage currently runs as a
 web application. Maintaining a second clinical interface would duplicate work
@@ -223,8 +232,10 @@ behind these boundaries and share application logic wherever the platform permit
   Secure, HttpOnly, SameSite=Strict session and installation cookies, agency-host
   checks, CSRF checks and enrollment-origin binding require an explicit native
   integration. Setting an API base URL alone does not establish compatibility.
-- Preserve server authorization, session expiry, revocation, shift checks, local
-  sign-in, configured OIDC flows, reauthentication and authorized agency handoffs.
+- Preserve server authorization, session expiry, revocation, local sign-in,
+  configured OIDC flows, explicit user switching and authorized agency handoffs.
+  Trust the current valid login without repeated reauthentication or identity
+  confirmation, including shift/new-job and protected-recovery actions.
   Keep provider tokens and protected session credentials out of JavaScript-readable
   persistent configuration. Do not weaken browser protections for the wrapper.
 - Apply the trusted connection consistently to authentication, ordinary API calls,
@@ -326,7 +337,7 @@ transport or operating system changes behavior.
 | Provisioning and enrollment | One QR/import configures and pairs an initially unconfigured APK with an internal-CA server; explicit confirmation; existing five-minute expiry, single use and replay rejection; wrong agency/unit, malformed payload and interrupted setup; inventory, revoke and reassign. |
 | Managed configuration | Standard restriction delivery, initial configuration, managed-value locking, conflicting QR, startup/resume changes, incomplete configuration and configuration continuity across APK updates. |
 | TLS and transport | Public and private CA connections; invalid chain, wrong hostname and expired certificate rejection; authenticated first-connection bootstrap; CA renewal/replacement; no credential forwarding to unapproved origins; API, authentication, media and downloads all use the intended trust. |
-| Authentication and isolation | Local and configured OIDC sign-in, reauthentication, logout, expiry, shift checks and agency handoff; installation identity survives clinician logout; reassignment locks prior work; cross-server/agency data and credential isolation. |
+| Authentication and isolation | Local and configured OIDC sign-in, explicit user switching, logout, expiry and agency handoff; current-login recovery without repeated reauthentication or shift/new-job confirmation; installation identity survives clinician logout; reassignment locks prior work; cross-server/agency data and credential isolation. |
 | Protected work | Offline continuation, reconnect synchronization, real process termination/relaunch, no readable retained clinical content before recovery, authorized online recovery, storage failure, session loss and late-work handling. |
 | Release distribution | Repeatable Android build, release-signature verification, application/version identity, immutable artifact digest, correct Admin download authorization and compatible-release selection. |
 | Compatibility and updates | Default/configured grace period, Super-admin-only mutation, cross-agency consistency, invalid policy rejection, deadline evaluation, new-work gating and in-place upgrade with retained provisioning and encrypted drafts. |
@@ -339,7 +350,7 @@ transport or operating system changes behavior.
 - Reuse the existing enrollment, reassignment, revocation and installation-session
   suites for the unit and clinician identity boundaries.
 - Use the protected clinical-storage unit tests and recovery-transition browser
-  tests as prior art for encrypted retention, reauthentication and pending work.
+  tests as prior art for encrypted retention, current-login recovery and pending work.
 - Use the existing personal OIDC, session startup, agency-header and shift tests
   for authentication parity. Existing media and stationary accessibility coverage
   supplies shared photo/audio and layout expectations.
