@@ -178,6 +178,10 @@ reconnect synchronization, write failure, and host-issued `am force-stop` betwee
 phases. Offline relaunch exposes neither retained labels nor content. A second
 clinician is denied the original recovery grant; the original clinician recovers
 and synchronizes the encrypted pending edit online, retaining its original
-report/form/catalog/validation pins and recovery deadline. API fixture startup
+report/form/catalog/validation pins. Restart, another clinician and authenticated
+key restoration preserve the prior deadline; synchronizing the actual pending
+edit follows the existing encrypted-write policy window and report expiry cap.
+Unchanged browser recovery is separately checked to produce no new receipt or
+deadline. API fixture startup
 asserts that its explicit synthetic wrapping key is used, so a development fallback
 cannot silently substitute for recovery configuration.

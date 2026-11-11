@@ -958,3 +958,109 @@ test("logout locks pending ciphertext, reveals nothing to another user, and lets
   await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("Retained-original");
 });
+
+
+test("stationary editing locks after offline storage failure and preserves the prior pending ciphertext", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  await context.setOffline(true);
+  await firstName.fill("RETAINED PENDING");
+  await firstName.press("Tab");
+  await expect.poll(async () => {
+    const [record] = await encryptedRecords(page);
+    return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision));
+  }).toBe(true);
+  const before = await encryptedRecords(page);
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(...args) {
+      if (this.name === "encrypted-reports") throw new DOMException("Synthetic disk failure", "UnknownError");
+      return put.apply(this, args);
+    };
+  });
+  await firstName.fill("UNSAVED FAILURE");
+  await firstName.press("Tab");
+  await expect(page.locator(".safety-notice")).toContainText("Protected storage failed while offline");
+  await expect(firstName).toBeDisabled();
+  expect(await encryptedRecords(page)).toEqual(before);
+});
+
+for (const staleOnline of [false, true]) test(`connection loss during a ciphertext receipt preserves storage with stale online ${staleOnline}`, async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  let waiting = false, release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, async route => {
+    waiting = true; await held; await route.abort("internetdisconnected");
+  });
+  await firstName.fill("RECEIPT IN FLIGHT"); await firstName.press("Tab");
+  await expect.poll(() => waiting).toBe(true);
+  if (staleOnline) {
+    const failed = page.waitForEvent("requestfailed", request => request.url().endsWith("/protected-ciphertext-receipt"));
+    release(); await failed;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(await page.evaluate(() => navigator.onLine)).toBe(true);
+    await expect(page.locator(".safety-notice").filter({ hasText: "This browser cannot preserve offline changes" })).toHaveCount(0);
+    await context.setOffline(true);
+  } else { await context.setOffline(true); release(); }
+  await expect(page.locator(".safety-notice").filter({ hasText: "Protected storage failed while offline" })).toHaveCount(0);
+  await firstName.fill("CONTINUED OFFLINE"); await firstName.press("Tab");
+  await expect.poll(async () => {
+    const [record] = await encryptedRecords(page);
+    return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision));
+  }).toBe(true);
+  await expect(firstName).toBeEnabled();
+  await expect(firstName).toHaveValue("CONTINUED OFFLINE");
+});
+
+for (const bodyResult of ["disconnect", "malformed"] as const) test(`ciphertext receipt body ${bodyResult} preserves its storage and authority boundary`, async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
+  await expect(firstName).toBeEnabled();
+  let checkpoints = 0;
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, route => { checkpoints++; return route.fulfill({ json: route.request().postDataJSON() }); });
+  await page.evaluate(() => {
+    const original = window.fetch;
+    (window as unknown as { receiptBody?: ReadableStreamDefaultController<Uint8Array> }).receiptBody = undefined;
+    window.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : input.href;
+      if (!url.endsWith("/protected-ciphertext-receipt")) return original(input, init);
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({ start(controller) {
+        (window as unknown as { receiptBody: ReadableStreamDefaultController<Uint8Array> }).receiptBody = controller;
+        controller.enqueue(new TextEncoder().encode('{"schemaVersion":1'));
+      } }), { status: 201, headers: { "content-type": "application/json" } }));
+    };
+  });
+  await firstName.fill("STREAMED RECEIPT"); await firstName.press("Tab");
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { receiptBody?: unknown }).receiptBody))).toBe(true);
+  await context.setOffline(true);
+  await page.evaluate(result => {
+    const controller = (window as unknown as { receiptBody: ReadableStreamDefaultController<Uint8Array> }).receiptBody;
+    if (result === "disconnect") controller.error(new TypeError("Synthetic response connection terminated"));
+    else controller.close();
+  }, bodyResult);
+  if (bodyResult === "malformed") {
+    await expect(page.locator(".safety-notice")).toContainText("Protected storage failed while offline");
+    await expect(firstName).toBeDisabled();
+  } else {
+    await expect(firstName).toBeEnabled();
+    await firstName.fill("CONTINUED STREAM LOSS"); await firstName.press("Tab");
+    await expect.poll(async () => { const [record] = await encryptedRecords(page); return Boolean(record && Number(record.ciphertextRevision) > Number(record.synchronizedRevision)); }).toBe(true);
+    await expect(page.locator(".safety-notice").filter({ hasText: "Protected storage failed while offline" })).toHaveCount(0);
+  }
+  expect(checkpoints).toBe(0);
+});

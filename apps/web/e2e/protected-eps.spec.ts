@@ -12,18 +12,18 @@ test.beforeAll(async () => {
   script = (await build({ bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic', define: { 'process.env': JSON.stringify({ NEXT_PUBLIC_API_URL: 'same-origin' }) }, stdin: { resolveDir: path.resolve(__dirname, '..'), loader: 'tsx', contents: `
 import React,{useState} from 'react';import{createRoot}from'react-dom/client';
 import{PatientSummaryButton}from'./components/patient-summary';
-import{prepareProtectedReport,flushProtectedReport,lockProtectedClinicalStorage,protectedEps,protectedEpsPatientMapping,updateProtectedReport,recoverProtectedReport,updateProtectedShellState,protectedShellState,applyProtectedAuthorityResponse}from'./app/protected-clinical-storage';
+import{prepareProtectedReport,flushProtectedReport,protectedStorageStatus,lockProtectedClinicalStorage,protectedEps,protectedEpsPatientMapping,updateProtectedReport,recoverProtectedReport,updateProtectedShellState,protectedShellState,applyProtectedAuthorityResponse}from'./app/protected-clinical-storage';
 import{patientSummaryDocumentKey}from'./app/patient-summary-identity';
 const form={definition:{sections:[{fields:[{source:{kind:'nemsis',elementId:'ePatient.01'}}]}]},catalogFields:{'ePatient.01':{generation:{base:'string',definition:{valueSource:{kind:'scalar'}}}}}};
 const encounterDocument=(patient,other='')=>JSON.stringify({groups:[{instances:[{elements:[{id:'ePatient.01',values:[{kind:'scalar',value:patient}]},{id:'other',values:[{kind:'scalar',value:other}]}]}]}]});
 function Fixture(){const [scope,setScope]=useState({reportId:'report',organizationId:'agency',userId:'clinician',documentKey:encounterDocument('patient-A')});
-Object.assign(window,{prepare:()=>prepareProtectedReport('csrf','report'),prepareOther:()=>prepareProtectedReport('csrf','other-report'),lockReport:()=>applyProtectedAuthorityResponse('report',{status:403}),flush:()=>flushProtectedReport('report'),lock:lockProtectedClinicalStorage,shell:()=>protectedShellState('report'),pending:()=>{updateProtectedShellState('report',{marker:'pending'});updateProtectedReport('report',{report:{id:'report'},queuedChanges:[{command:{note:'pending'}}]});return flushProtectedReport('report');},recover:()=>recoverProtectedReport('csrf','report'),change:next=>setScope({...next,documentKey:encounterDocument(next.documentKey)}),edit:()=>setScope({...scope,documentKey:encounterDocument('patient-A','new unrelated vitals')}),cache:()=>protectedEps({...scope,documentKey:patientSummaryDocumentKey(scope.documentKey,protectedEpsPatientMapping(scope),form)})});
+Object.assign(window,{storageStatus:()=>protectedStorageStatus('report'),prepare:()=>prepareProtectedReport('csrf','report'),prepareOther:()=>prepareProtectedReport('csrf','other-report'),lockReport:()=>applyProtectedAuthorityResponse('report',{status:403}),flush:()=>flushProtectedReport('report'),lock:lockProtectedClinicalStorage,shell:()=>protectedShellState('report'),pending:()=>{updateProtectedShellState('report',{marker:'pending'});updateProtectedReport('report',{report:{id:'report'},queuedChanges:[{command:{note:'pending'}}]});return flushProtectedReport('report');},recover:()=>recoverProtectedReport('csrf','report'),change:next=>setScope({...next,documentKey:encounterDocument(next.documentKey)}),edit:()=>setScope({...scope,documentKey:encounterDocument('patient-A','new unrelated vitals')}),cache:()=>protectedEps({...scope,documentKey:patientSummaryDocumentKey(scope.documentKey,protectedEpsPatientMapping(scope),form)})});
 return <PatientSummaryButton csrfToken="fixture-csrf" {...scope} form={form} ready language={document.documentElement.lang}/>;}
 createRoot(document.getElementById('root')).render(<Fixture/>);` } })).outputFiles[0]!.text;
 });
 const source = { title: 'Fictional patient summary', patient: 'PRIVATE ANDREA', source: 'Fictional source', authors: ['Fictional clinician'], date: '2026-01-02', findings: [], clinicalSections: [{ title: 'Allergies', content: 'PRIVATE ALLERGY' }], sections: [] };
 const binding = { reportId: 'report', organizationId: 'agency', binding: 'patient-A-config-1', configurationRevision: 1, mappingId: 'map', mappingRevision: 1, mappingSha256: 'digest', patientIdentifier: { field: { kind: 'nemsis', elementId: 'ePatient.01' }, namespace: 'urn:fixture', aliases: [] } };
-type Fixture = { prepare(): Promise<boolean>; prepareOther(): Promise<boolean>; lockReport(): void; flush(): Promise<void>; lock(): Promise<void>; pending(): Promise<void>; shell(): unknown; recover(): Promise<unknown>; cache(): unknown; edit(): void; change(scope: unknown): void };
+type Fixture = { storageStatus(): { mode: string }; prepare(): Promise<boolean>; prepareOther(): Promise<boolean>; lockReport(): void; flush(): Promise<void>; lock(): Promise<void>; pending(): Promise<void>; shell(): unknown; recover(): Promise<unknown>; cache(): unknown; edit(): void; change(scope: unknown): void };
 for (const language of ['en', 'sv']) test(`protected EPS open, offline, refresh and expiry at ${language}`, async ({ page, context }) => {
   await page.clock.install();
   let count = 0, deny = false, unavailable = false;
@@ -231,4 +231,69 @@ test('EPS controls and warnings appear only after activation and disappear on de
  await button.click();await expect(page.getByRole('dialog')).toBeVisible();
  active=false;await page.clock.runFor(16000);
  await expect(page.locator('.eps-control')).toHaveCount(0);
+});
+
+test('unchanged protected recovery restores pending ciphertext without a new receipt or deadline', async ({ page, context }) => {
+  let recoveryHandle = '', reportKeyBase64 = '', receipts = 0;
+  const deadline = '2099-01-01T00:00:00.000Z';
+  await page.route('**/__recovery-baseline', route => route.fulfill({ contentType: 'text/html', body: '<html lang="en"><body><div id="root"></div><script src="/__eps-script"></script></body></html>' }));
+  await page.route('**/__eps-script', route => route.fulfill({ contentType: 'text/javascript', body: script }));
+  await page.route('**/api/reports/report/**', route => {
+    const url = new URL(route.request().url()).pathname;
+    if (url.endsWith('/protected-key-envelope')) {
+      ({ recoveryHandle, reportKeyBase64 } = route.request().postDataJSON());
+      return route.fulfill({ json: { schemaVersion: 1, recoveryHandle, recoveryDeadline: deadline, wrappingKeyVersion: 1 } });
+    }
+    if (url.endsWith('/recovery-grants')) return route.fulfill({ json: { schemaVersion: 1, envelopeVersion: 1, recoveryHandle, grant: 'synthetic-only', expiresAt: deadline, reportStatus: 'draft' } });
+    if (url.endsWith('/recovery-grants/consume')) return route.fulfill({ json: { reportKeyBase64, wrappingKeyVersion: 1 } });
+    if (url.endsWith('/protected-ciphertext-receipt')) receipts++;
+    return route.fulfill({ json: { schemaVersion: 1, recoveryDeadline: deadline } });
+  });
+  await page.goto('/__recovery-baseline');
+  await expect.poll(() => page.evaluate(() => typeof (window as unknown as Fixture).prepare)).toBe('function');
+  expect(await page.evaluate(() => (window as unknown as Fixture).prepare())).toBe(true);
+  await context.setOffline(true);
+  await page.evaluate(() => (window as unknown as Fixture).pending());
+  const records = () => page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('open-triage-protected-clinical-v1'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    try { return await new Promise<unknown[]>((resolve, reject) => {
+      const request = db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();
+      request.onsuccess = () => resolve(request.result.map(record => ({ ...record, nonce: [...new Uint8Array(record.nonce)], ciphertext: [...new Uint8Array(record.ciphertext)] })));
+      request.onerror = () => reject(request.error);
+    }); } finally { db.close(); }
+  });
+  const before = await records(); expect(before).toHaveLength(1);
+  await page.evaluate(() => (window as unknown as Fixture).lock());
+  await context.setOffline(false);
+  const restored = await page.evaluate(() => (window as unknown as Fixture).recover()) as { report?: { queuedChanges?: unknown[] } };
+  expect(restored.report?.queuedChanges).toHaveLength(1);
+  await page.evaluate(() => (window as unknown as Fixture).flush());
+  expect(receipts).toBe(0);
+  expect(await records()).toEqual(before);
+});
+
+
+test('online receipt transport failure blocks flush without declaring encrypted disk storage unavailable', async ({ page, context }) => {
+  let receipts = 0;
+  await page.route('**/__receipt-flush', route => route.fulfill({ contentType: 'text/html', body: '<html lang="en"><body><div id="root"></div><script src="/__eps-script"></script></body></html>' }));
+  await page.route('**/__eps-script', route => route.fulfill({ contentType: 'text/javascript', body: script }));
+  await page.route('**/api/reports/report/**', route => {
+    if (route.request().url().endsWith('/protected-key-envelope')) return route.fulfill({ json: { schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle, recoveryDeadline: '2099-01-01T00:00:00Z', wrappingKeyVersion: 1 } });
+    if (route.request().url().endsWith('/protected-ciphertext-receipt')) { receipts++; return route.abort('failed'); }
+    return route.fulfill({ json: null });
+  });
+  await page.goto('/__receipt-flush');
+  await expect.poll(() => page.evaluate(() => typeof (window as unknown as Fixture).prepare)).toBe('function');
+  expect(await page.evaluate(() => (window as unknown as Fixture).prepare())).toBe(true);
+  const initialFailure = await page.evaluate(async () => { try { await (window as unknown as Fixture).pending(); return false; } catch { return true; } });
+  expect(initialFailure).toBe(true);
+  expect(await page.evaluate(() => navigator.onLine)).toBe(true);
+  expect(['active', 'best-effort']).toContain(await page.evaluate(() => (window as unknown as Fixture).storageStatus().mode));
+  const retryFailure = await page.evaluate(async () => { try { await (window as unknown as Fixture).flush(); return false; } catch { return true; } });
+  expect(retryFailure).toBe(true); expect(receipts).toBe(1);
+  await context.setOffline(true);
+  await page.evaluate(() => (window as unknown as Fixture).pending());
+  await page.evaluate(() => (window as unknown as Fixture).flush());
+  expect(['active', 'best-effort']).toContain(await page.evaluate(() => (window as unknown as Fixture).storageStatus().mode));
+  expect(receipts).toBe(1);
 });

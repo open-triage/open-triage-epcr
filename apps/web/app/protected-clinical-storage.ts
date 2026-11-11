@@ -790,6 +790,8 @@ export async function restoreProtectedRecord<T>(key: CryptoKey, record: Protecte
     : { status: "incompatible", reason: "Protected clinical data was preserved in its original authenticated envelope." };
 }
 
+class ProtectedReceiptTransportError extends Error {}
+
 async function persist(reportId: string, payload: ProtectedClinicalPayload): Promise<void> {
   const context = contexts.get(reportId);
   if (!context) return;
@@ -833,10 +835,12 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   // Retrying must use a new revision, not overwrite authenticated ciphertext.
   context.revision = revision;
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
+  let receiptRecorded = false;
   if (url && navigator.onLine && !context.locking) {
     const receiptRequest = new AbortController();
     context.receiptRequest = receiptRequest;
-    let response: Response;
+    const digest = await ciphertextSha256(encrypted.ciphertext);
+    let response: Response | undefined;
     try {
       response = await fetch(url, browserRequestInit({
         method: "POST",
@@ -846,34 +850,53 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
           recoveryHandle: context.envelope.recoveryHandle,
           ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
           ciphertextRevision: revision,
-          ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
+          ciphertextSha256: digest,
           ...(context.recoveryInitialization && !payloadHasPendingWork(payload) ? { preserveRecoveryDeadline: true } : {}),
         }),
         signal: receiptRequest.signal,
       }));
+    } catch (error) {
+      // The encrypted revision already committed. Losing connectivity while its
+      // receipt is in flight must not turn a successful disk write into a storage
+      // failure. Retain the original deadline and continue encrypted offline work;
+      // online failures and lifecycle cancellation still propagate to the caller.
+      if (context.locking || contexts.get(reportId) !== context) throw error;
+      if (navigator.onLine) throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its server receipt");
     } finally {
       if (context.receiptRequest === receiptRequest) context.receiptRequest = null;
     }
-    if (applyProtectedAuthorityResponse(reportId, response)) {
-      throw new Error("Clinical authorization changed; protected editing is locked");
+    if (response) {
+      if (applyProtectedAuthorityResponse(reportId, response)) {
+        throw new Error("Clinical authorization changed; protected editing is locked");
+      }
+      if (response.status === 404 || response.status === 410) {
+        contexts.delete(reportId);
+        statuses.delete(reportId);
+        context.releaseLock();
+        await deleteRecords([context.localRecordId]);
+        throw new Error("Protected report recovery is unavailable");
+      }
+      if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
+      let receipt: ProtectedCiphertextReceipt | undefined;
+      try { receipt = await response.json() as ProtectedCiphertextReceipt; }
+      catch (error) {
+        // Browser response bodies can still be streaming after headers arrive.
+        // Malformed JSON remains an error even if connectivity also changes.
+        if (!(error instanceof TypeError) || context.locking || contexts.get(reportId) !== context) throw error;
+        if (navigator.onLine) throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its complete server receipt");
+      }
+      if (receipt) {
+        context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
+        await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
+        receiptRecorded = true;
+      }
     }
-    if (response.status === 404 || response.status === 410) {
-      contexts.delete(reportId);
-      statuses.delete(reportId);
-      context.releaseLock();
-      await deleteRecords([context.localRecordId]);
-      throw new Error("Protected report recovery is unavailable");
-    }
-    if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
-    const receipt = await response.json() as ProtectedCiphertextReceipt;
-    context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
-    await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
   }
   context.recoveryInitialization = false;
   context.synchronizedRevision = synchronizedRevision;
   context.failure = null;
   publishStatus(reportId, writableStorageStatus(context));
-  if (context.synchronizedRevision >= revision) {
+  if (receiptRecorded && context.synchronizedRevision >= revision) {
     // The server accepts a checkpoint only for its latest receipt. Keep the
     // writer held until this checkpoint settles so the next receipt cannot
     // advance that revision while this request is in flight.
@@ -914,8 +937,8 @@ function createProtectedWriter(reportId: string, context: RuntimeContext, persis
       await persist(reportId, payload);
     } catch (error) {
       context.failure = error instanceof Error ? error : new Error("Protected clinical persistence failed");
-      if (contexts.get(reportId) === context) {
-        publishStatus(reportId, {
+      if (contexts.get(reportId) === context && !context.locking) {
+        publishStatus(reportId, error instanceof ProtectedReceiptTransportError ? writableStorageStatus(context) : {
           mode: navigator.onLine ? "online-only" : "read-only",
           explanation: navigator.onLine
             ? "This browser cannot preserve offline changes. Server saves remain available while connected."

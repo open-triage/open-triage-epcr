@@ -1017,6 +1017,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       {presentationMode === "stationary" && (
         <div className="stationary-record-workspace" hidden={shell.view === "review"}>
           <StationaryRecord
+            readOnly={editingBlocked}
             language={language}
             document={encounter.document}
             findings={actionableStationaryFindings(configuredStationaryFindings.filter((finding): finding is StationaryValidationFinding => !("eventType" in finding)))}

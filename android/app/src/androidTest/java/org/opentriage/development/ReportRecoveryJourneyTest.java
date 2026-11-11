@@ -47,10 +47,24 @@ public class ReportRecoveryJourneyTest {
             try (var result = new ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))) { result.readAllBytes(); }
         }
         waitFor(connected ? "navigator.onLine" : "!navigator.onLine");
+        assertEquals("Radio transitions must affect the actual API transport", connected, apiReachable());
+    }
+    private boolean apiReachable() {
+        var endpoint = java.net.URI.create(InstrumentationRegistry.getArguments().getString("apiOrigin"));
+        try (var socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(endpoint.getHost(), endpoint.getPort()), 2000);
+            return true;
+        } catch (java.io.IOException connectionLoss) { return false; }
     }
     private void records() throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[];};request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('encrypted-reports')){window.__retained=[];db.close();return;}const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
         waitFor("window.__retained!==null");
+    }
+    private String retainedDigest() throws Exception {
+        byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(evaluate("JSON.stringify(window.__retained)").getBytes(StandardCharsets.UTF_8));
+        var encoded = new StringBuilder();
+        for (byte value : digest) encoded.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
+        return encoded.toString();
     }
     private void signIn(String username, String password) throws Exception {
         waitFor("document.querySelector('input[name=username]')");
@@ -82,11 +96,11 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__locks=navigator.locks;Object.defineProperty(navigator,'locks',{configurable:true,value:undefined})");
         click("Open call"); waitFor("document.querySelector('.encounter-header')");
         evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
-        waitFor("document.body.innerText.includes('Offline storage unavailable')");
+        waitFor("document.body.innerText.toLowerCase().includes('offline storage unavailable')");
         records(); assertEquals("0", evaluate("window.__retained.length"));
         click("Save & close");
         evaluate("Object.defineProperty(navigator,'locks',{configurable:true,value:window.__locks});Object.defineProperty(navigator.storage,'persisted',{configurable:true,value:async()=>false});Object.defineProperty(navigator.storage,'persist',{configurable:true,value:async()=>false})");
-        click("Reopen report"); waitFor("document.body.innerText.includes('Best-effort offline storage')");
+        click("Reopen report"); waitFor("document.body.innerText.toLowerCase().includes('best-effort offline storage')");
         click("Stationary"); waitFor(FIELD);
         setInput(FIELD, "ANDROID-CONNECTED-SYNTHETIC");
         serverValue("ANDROID-CONNECTED-SYNTHETIC"); records();
@@ -97,14 +111,20 @@ public class ReportRecoveryJourneyTest {
         connection(true); serverValue("ANDROID-RECONNECTED-SYNTHETIC");
         assertEquals(JSONObject.quote("ANDROID-RECONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
         connection(false); setInput(FIELD, RETAINED);
-        waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'"); Thread.sleep(500);
-        records(); assertEquals("true", evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"));
+        waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
+        long retainedDeadline = System.currentTimeMillis() + 15000;
+        do {
+            records();
+            if ("true".equals(evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"))) break;
+            Thread.sleep(150);
+        } while (System.currentTimeMillis() < retainedDeadline);
+        assertEquals("Pending edits must reach encrypted storage: " + evaluate("JSON.stringify(window.__retained.map(({ciphertextRevision,synchronizedRevision})=>({ciphertextRevision,synchronizedRevision})))"), "true", evaluate("window.__retained[0].ciphertextRevision>window.__retained[0].synchronizedRevision"));
         String reportId = evaluate("window.__reportId");
         assertFalse("Local metadata must not identify the report", evaluate("JSON.stringify(window.__retained)").contains(reportId.substring(1, reportId.length() - 1)));
         assertFalse(evaluate("JSON.stringify(window.__retained)").contains(RETAINED));
         evaluate("window.__beforeStorageFailure=JSON.stringify(window.__retained);window.__put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.name==='encrypted-reports')throw new DOMException('Synthetic storage failure','QuotaExceededError');return window.__put.apply(this,args)}");
         setInput(FIELD, "ANDROID-WRITE-FAILURE");
-        waitFor("document.body.innerText.includes('Protected storage failed while offline')"); waitFor("(" + FIELD + ").matches(':disabled')");
+        waitFor("document.body.innerText.includes('Protected storage failed while offline')"); waitFor("!(" + FIELD + ") || (" + FIELD + ").matches(':disabled') || (" + FIELD + ").readOnly");
         records(); assertEquals("true", evaluate("JSON.stringify(window.__retained)===window.__beforeStorageFailure"));
         // The test runner must not finish/close the Activity before abrupt process loss.
         assertEquals("true", evaluate("Boolean(document.querySelector('.encounter-header'))"));
@@ -125,7 +145,9 @@ public class ReportRecoveryJourneyTest {
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(InstrumentationRegistry.getArguments().getString("reportId")));
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(InstrumentationRegistry.getArguments().getString("callNumber")));
         assertEquals("true", evaluate("!Object.keys(window.__retained[0]).some(key=>/^(reportId|callNumber|ownerUserId|reportKey|reportKeyBase64|dataKey|key)$/.test(key))"));
-        // Next phase begins at sign-in, before an old cookie can trigger authorized automatic recovery.
+        var retained = new android.os.Bundle(); retained.putString("retained_sha256", retainedDigest());
+        InstrumentationRegistry.getInstrumentation().addResults(retained);
+        // The host revokes the old session before reconnect; no native vault changes.
         evaluate("localStorage.removeItem('open-triage.clinician-session.v1')");
     }
     private void differentClinician() throws Exception {
@@ -135,6 +157,7 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__denial=null;(()=>{const session=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));fetch('/api/reports/" + reportId + "/recovery-grants',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})}).then(response=>{window.__denial=response.status})})()");
         waitFor("window.__denial!==null"); assertEquals("404", evaluate("window.__denial"));
         records(); assertEquals("1", evaluate("window.__retained.length"));
+        assertEquals("Another clinician must preserve the exact retained ciphertext", args.getString("retainedSha256"), retainedDigest());
         click("Log out"); waitFor("document.querySelector('input[name=username]')");
     }
     private void recover() throws Exception {
@@ -149,12 +172,7 @@ public class ReportRecoveryJourneyTest {
         String phase = InstrumentationRegistry.getArguments().getString("phase", "");
         if (phase.equals("offline")) {
             // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
-            var endpoint = java.net.URI.create(InstrumentationRegistry.getArguments().getString("apiOrigin"));
-            boolean unreachable = false;
-            try (var socket = new java.net.Socket()) {
-                socket.connect(new java.net.InetSocketAddress(endpoint.getHost(), endpoint.getPort()), 2000);
-            } catch (java.io.IOException expectedConnectionLoss) { unreachable = true; }
-            assertTrue("The real API must be unreachable before offline Activity launch", unreachable);
+            assertFalse("The real API must be unreachable before offline Activity launch", apiReachable());
         }
         activity = ActivityScenario.launch(MainActivity.class);
         activity.onActivity(screen -> assertTrue("Prevent Android task snapshots and captures", (screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0));
