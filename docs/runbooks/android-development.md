@@ -254,3 +254,10 @@ Run `npm run android:validate:release` after `android:build` to catch release-on
 build/signature regressions locally; the Android PR workflow runs this same early
 check with a disposable key. Permanent-key distribution requires the separate
 protected release workflow and actual signed upgrade evidence.
+
+
+Android validation failures preserve bounded crash/runtime logs, application exit reasons, app memory and WebView version under `android/app/build/reports/android-failure/` before fixture/emulator teardown. These synthetic-emulator reports are included in the PR artifact for seven days. The collector excludes command arguments, screenshots, app files and bugreports; it redacts credential fields, known fixture secrets, URL queries, PEM blocks and long opaque values. Probe timeouts or collection failures never replace the original failing result, and instrumentation is never retried automatically.
+
+Camera discovery records the active device without reopening its stream. Only an explicit camera cycle requests another device; duplicate native/document visibility notifications leave an already foregrounded stream running. Browser lifecycle coverage checks this before native acceptance.
+
+The generic APK uses platform and WebView fonts. Its manifest removes only AndroidX EmojiCompat's automatic downloadable-font initializer; other local Startup components remain. A hosted process death was traced to Android killing the clinical PID after its Google Play Services font provider died. Both debug and production builds check their actual merged manifests before device execution, and the installed native startup test verifies remote emoji initialization stays disabled. See [Android's initializer configuration](https://developer.android.com/reference/androidx/emoji2/text/EmojiCompatInitializer).
