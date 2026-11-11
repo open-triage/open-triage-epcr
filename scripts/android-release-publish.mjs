@@ -12,6 +12,7 @@ const folder = resolve(folderArgument), descriptor = JSON.parse(readFileSync(joi
 const evidence = JSON.parse(readFileSync(resolve(evidenceArgument))), preflight = JSON.parse(readFileSync(resolve(preflightArgument)));
 const identity = JSON.parse(readFileSync(join(root, 'docs/releases/android/signing-identity.json')));
 validatePublicationEvidence(descriptor, evidence, preflight, identity);
+assert([`android-v${descriptor.versionCode}-${descriptor.versionName}`, `android-candidate-${descriptor.versionCode}-${descriptor.versionName}`].includes(tag), 'Release tag must match the verified Android code and version name');
 const apk = join(folder, descriptor.artifact), sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
 assert.equal(createHash('sha256').update(readFileSync(apk)).digest('hex'), descriptor.apkSha256);
 verifyApkMetadata(execFileSync(join(sdk, 'build-tools/36.0.0/aapt'), ['dump', 'badging', apk], { encoding: 'utf8' }), verifyApkSignature(sdk, apk), descriptor);
