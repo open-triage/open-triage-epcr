@@ -577,7 +577,14 @@ public class ReportRecoveryJourneyTest {
         evaluate("Array.from(document.querySelectorAll('.review-report-toolbar button')).find(button=>button.textContent.startsWith('Timeline')).click()");
         waitFor("document.querySelector('.review-timeline-sidebar .photo-thumbnail')?.naturalWidth===640");
         if(audioEnabled()){observeAudio();playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");}
+        evaluate("window.__pdfFailureArmed=null;fetch('/api/__android-pdf-download-fail?reportId='+"+JSONObject.quote(reportId)+",{method:'POST'}).then(response=>response.json()).then(value=>window.__pdfFailureArmed=value.armed)");
+        waitFor("window.__pdfFailureArmed===true");
         click("Inspect signed PDF");
+        waitFor("document.querySelector('.signed-report-pdf-dialog [role=alert]')?.textContent.includes('The signed PDF could not be loaded')");
+        assertEquals("Native failure preserves localized shared Retry without leaking raw fixture/server prose","false",evaluate("document.querySelector('.signed-report-pdf-dialog').textContent.includes('fixture.download-unavailable')"));
+        var rejectedFiles=NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf"));
+        assertTrue("A denied/failed native PDF response leaves no private preview",rejectedFiles==null||rejectedFiles.length==0);
+        click("Retry");
         var device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         assertNotNull("The authorized immutable signed report traverses the configured native TLS/cookie connection into the actual renderer",device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"))),15000));
         device.pressBack();waitFor("document.querySelector('[data-native-pdf-controls]')");
