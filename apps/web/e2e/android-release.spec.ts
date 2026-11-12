@@ -3,16 +3,13 @@ import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import catalog from '@open-triage/contracts/config/android-releases.json';
+import {syntheticApprovedAndroidRelease} from '../../../tests/helpers/android-release-fixtures.mjs';
 import { DEFAULT_AGENCY_APPEARANCE } from '@open-triage/contracts';
 
 let script:string, css:string;
 const bytes=Buffer.from('synthetic immutable browser download bytes');
-const sha=createHash('sha256').update(bytes).digest('hex');
-const descriptor={...catalog.releases[0]!.descriptor,apkSha256:sha,apkBytes:bytes.length,
-  artifact:`opentriage-0.1.0-rc.2-2-${sha}.apk`};
-const url=`https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-2-0.1.0-rc.2/${descriptor.artifact}`;
-const available={status:'available',tag:'android-candidate-2-0.1.0-rc.2',downloadUrl:url,descriptor};
+const available=syntheticApprovedAndroidRelease(bytes);
+const {descriptor,downloadUrl:url}=available,sha=descriptor.apkSha256;
 test.beforeAll(async()=>{
  css=await readFile(path.resolve(__dirname,'../app/styles.css'),'utf8');
  const result=await build({bundle:true,write:false,jsx:'automatic',format:'iife',platform:'browser',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`
@@ -40,7 +37,7 @@ for(const language of ['en','sv'])test(`${language} read-only Admin downloads im
  await page.goto(`/__android-release?language=${language}&readonly=1`);
  const section=page.getByRole('region',{name:t('Android application','Android-applikation')});
  const link=section.getByRole('link',{name:t('Download APK','Hämta APK')});
- await expect(link).toHaveAttribute('href',url);await expect(link).toHaveAttribute('target','_blank');await expect(section).toContainText('0.1.0-rc.2 (2)');await expect(section).toContainText(sha);
+ await expect(link).toHaveAttribute('href',url);await expect(link).toHaveAttribute('target','_blank');await expect(section).toContainText(`${descriptor.versionName} (${descriptor.versionCode})`);await expect(section).toContainText(sha);
  await expect(page.getByRole('button',{name:t('Save','Spara'),exact:true})).toHaveCount(0);
  await expect(page.getByLabel(t('Brand text','Varumärkestext'),{exact:true})).toBeDisabled();
  for(const width of [390,1200]){

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import legacy from './fixtures/android-published-legacy-releases.json' with {type:'json'};
+import {latestApprovedAndroidRelease,syntheticApprovedAndroidRelease} from './helpers/android-release-fixtures.mjs';
 import { approvedAndroidReleaseUrl, parseAndroidReleaseDescriptor } from '@open-triage/contracts/android-release';
 
 test('every approved catalog entry preserves the owned signing identity and immutable versioned artifact URL',async()=>{
@@ -17,6 +19,23 @@ test('every approved catalog entry preserves the owned signing identity and immu
   assert.equal(descriptor.applicationId,identity.applicationId);assert.equal(descriptor.certificateSha256,identity.certificateSha256);
   assert.equal(entry.downloadUrl,approvedAndroidReleaseUrl(entry.tag,descriptor));
   assert(!codes.has(descriptor.versionCode)&&!tags.has(entry.tag),'Catalog identities must be unambiguous');codes.add(descriptor.versionCode);tags.add(entry.tag);
+ }
+});
+
+test('published historical releases retain their exact descriptors, digests and locations as the catalog grows',()=>{
+ assert.deepEqual(catalog.signingIdentity,legacy.signingIdentity);
+ assert.deepEqual(catalog.releases.filter(entry=>[1,2].includes(entry.descriptor.versionCode)),legacy.releases);
+});
+
+test('shared release fixtures use the current committed version and preserve its capability contract',()=>{
+ const selected=latestApprovedAndroidRelease();
+ assert.equal(selected.descriptor.versionCode,Math.max(...catalog.releases.map(entry=>entry.descriptor.versionCode)));
+ for(const entry of catalog.releases){
+  const fixture=syntheticApprovedAndroidRelease(Buffer.from('synthetic catalog transport bytes'),entry);
+  assert.equal(fixture.tag,entry.tag);assert.equal(fixture.descriptor.versionCode,entry.descriptor.versionCode);
+  assert.equal(fixture.descriptor.versionName,entry.descriptor.versionName);
+  assert.deepEqual(fixture.descriptor.compatibility,entry.descriptor.compatibility);
+  assert.equal(fixture.downloadUrl,approvedAndroidReleaseUrl(entry.tag,parseAndroidReleaseDescriptor(fixture.descriptor)));
  }
 });
 
