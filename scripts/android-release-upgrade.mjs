@@ -1,3 +1,4 @@
+import {adbShellArguments} from './android/instrumentation.mjs';
 import {upgradePreparationProfile,upgradePreparationReceipt,upgradeProbeCallNumber} from './android/upgrade-policy-fixture.mjs';
 import {assertUpgradeHarnessSource,assertFreshUpgradeTarget} from './android/upgrade-harness-source.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
@@ -72,7 +73,7 @@ try {
   policy(restrictions);
   let incomingAssignment, upgradeReport;
   const policyInstrument=(version,expectedStatus,legacy=false)=>{
-    const output=execFileSync(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.UpgradePolicyTransportTest','-e','expectedVersion',String(version),'-e','assignmentId',incomingAssignment,'-e','expectedStatus',String(expectedStatus),'-e','legacy',legacy?'1':'0',`${a.applicationId}.test/androidx.test.runner.AndroidJUnitRunner`],{cwd:root,encoding:'utf8',timeout:120000});
+    const output=execFileSync(adb,adbShellArguments(['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.UpgradePolicyTransportTest','-e','expectedVersion',String(version),'-e','assignmentId',incomingAssignment,'-e','expectedStatus',String(expectedStatus),'-e','legacy',legacy?'1':'0',`${a.applicationId}.test/androidx.test.runner.AndroidJUnitRunner`]),{cwd:root,encoding:'utf8',timeout:120000});
     console.log(output);assert.match(output,/OK \(1 test\)/,'Real installed APK transport must enforce retirement without launching or modifying the pending WebView');
   };
   await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true, preparationProfile, upgradeReceipt,
@@ -112,7 +113,7 @@ try {
       assert(unchanged.includes(`versionCode=${a.versionCode} `),'Abandoned staged upgrade must leave original APK installed');
       assert.equal(/userId=(\d+)/.exec(unchanged)?.[1],originalUid,'Interrupted staging preserves A UID');
       run(adb,['-s',serial,'shell','svc','wifi','disable']);run(adb,['-s',serial,'shell','svc','data','disable']);
-      const retained=execFileSync(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.ReportRecoveryJourneyTest','-e','phase','offline','-e','upgrade','1','-e','apiOrigin',fixtures[0].origin,'-e','reportId',upgradeReport.id,'-e','callNumber',upgradeReport.callNumber,`${a.applicationId}.test/androidx.test.runner.AndroidJUnitRunner`],{cwd:root,encoding:'utf8',timeout:120000});
+      const retained=execFileSync(adb,adbShellArguments(['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.ReportRecoveryJourneyTest','-e','phase','offline','-e','upgrade','1','-e','apiOrigin',fixtures[0].origin,'-e','reportId',upgradeReport.id,'-e','callNumber',upgradeReport.callNumber,`${a.applicationId}.test/androidx.test.runner.AndroidJUnitRunner`]),{cwd:root,encoding:'utf8',timeout:120000});
       console.log(retained);assert.match(retained,/OK \(1 test\)/,'Original A retains exact encrypted ciphertext, Keystore/CA/enrollment/managed settings and presentation after interrupted staging');
       assert.match(retained,/retained_sha256=[a-f0-9]{64}/,'The original A must report its actual opaque retained record digest');
       run(adb,['-s',serial,'shell','am','force-stop',a.applicationId]);

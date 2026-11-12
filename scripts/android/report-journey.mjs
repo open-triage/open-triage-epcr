@@ -1,3 +1,4 @@
+import {adbShellArguments} from './instrumentation.mjs';
 import {decodeUpgradePreparationReceipt} from './upgrade-policy-fixture.mjs';
 import { captureAndroidFailure } from './diagnostics.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -26,14 +27,14 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   };
   const instrument = (phase, username, password, extra = {}) => {
     const args = argumentsFor(phase, username, password, extra);
-    const result = execFileSync(adb, args, { cwd: root, encoding: 'utf8', timeout: 600000 });
+    const result = execFileSync(adb, adbShellArguments(args), { cwd: root, encoding: 'utf8', timeout: 600000 });
     console.log(result); assert.match(result, /OK \(1 test\)/, `Android protected-work phase ${phase}`);
     return result;
   };
   const prepareUntilKilled = (phase = 'prepare', extra = {}) => {
     const args = argumentsFor(phase, fixture.clinician.username, fixture.clinicianPassword,
       { artifactBase64: Buffer.from(JSON.stringify(artifact)).toString('base64'), ...extra });
-    const child = spawn(adb, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(adb, adbShellArguments(args), { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '', announced = false, readyResolve, readyReject, closedResolve;
     const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
     const closed = new Promise(resolve => { closedResolve = resolve; });
