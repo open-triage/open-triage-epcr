@@ -1,6 +1,7 @@
 import type { AuthenticatedSession } from "@open-triage/contracts";
 import { foregroundNetworkAllowed, APPLICATION_FOREGROUND_EVENT } from "./application-foreground";
 import { setNativeStorageScope } from "./native-storage-context";
+import { INSTALLATION_TRANSITION_KEY } from "./installation-transition-generation";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
 export type NativeResponse = { status: number; headers: Record<string, string>; bodyBase64: string };
@@ -16,6 +17,7 @@ type ConnectionPlugin = {
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;
+  reconcileTransition(options: { connectionContext: string; purpose:"enrollment"|"logout" }): Promise<AndroidConnectionState>;
   beginReplacement(): Promise<AndroidConnectionState>;
   resumeEnrollment(): Promise<AndroidConnectionState>;
   addListener(event: "configurationChanged", listener: (state: AndroidConnectionState) => void): Promise<PluginListenerHandle>;
@@ -85,9 +87,10 @@ export async function pollAndroidAuthenticationReturn(
   finish: ConnectionPlugin["finishAuthentication"] = () => AndroidConnection.finishAuthentication(),
   redirect: (path: string) => void = path => window.location.assign(path),
 ): Promise<void> {
+  if(typeof window!=="undefined"&&window.localStorage?.getItem(INSTALLATION_TRANSITION_KEY))return;
   const expectedContext = connectionContext;
   const {outcome} = await finish();
-  if (expectedContext !== connectionContext) return;
+  if (expectedContext !== connectionContext || typeof window!=="undefined"&&window.localStorage?.getItem(INSTALLATION_TRANSITION_KEY)) return;
   if (["succeeded", "pending", "denied", "failed"].includes(outcome))
     redirect(`/?authentication=${outcome === "succeeded" ? "completed" : outcome}`);
 }

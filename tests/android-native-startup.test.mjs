@@ -27,10 +27,4 @@ for(const variant of ['debug','release']) test(`${variant} checks the separate i
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
-test('installed startup requires both initializer and WebView lifecycle acceptance cases',()=>{
-  assert.equal(nativeStartupClasses.length,2);
-  assert.doesNotThrow(()=>assertNativeStartupInstrumentation('Time: 3.3\n\nOK (2 tests)\n'));
-  for(const output of ['OK (1 test)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 2, Failures: 1\n']) {
-    assert.throws(()=>assertNativeStartupInstrumentation(output),/must both pass/);
-  }
-});
+test('all three installed startup classes must pass, with no partial or failed completion',()=>{assert.equal(nativeStartupClasses.length,3);assert.doesNotThrow(()=>assertNativeStartupInstrumentation('Time: 3.3\n\nOK (3 tests)\n'));for(const output of ['OK (1 test)\n','OK (2 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 3, Failures: 1\n','FAILURES!!!\nOK (3 tests)\n'])assert.throws(()=>assertNativeStartupInstrumentation(output),/must pass/);});
