@@ -85,7 +85,12 @@ public class AgencyHandoffJourneyTest {
                 assertEquals(200,fault.request("/api/__android-agency-write-outage","POST",new JSONObject().put("content-type","application/json"),new JSONObject().put("reportId",reportId).put("enabled",true).toString()).status());
                 set(FIELD,"ANDROID-AGENCY-PENDING");waitFor("document.querySelector('.sync-status')?.textContent!=='Saved'");Thread.sleep(1200);click("Save & close");waitFor("!document.querySelector('.encounter-header')");
                 logout(true);login(args.getString("superuser"),args.getString("superuserPassword"));
-                evaluate("window.__otherReport=null;fetch('/api/reports/"+reportId+"').then(r=>window.__otherReport=r.status)");waitFor("window.__otherReport!==null");assertEquals("Another administrator must not read the original clinician's report","404",evaluate("window.__otherReport"));
+                // Probe the real private transport without presenting a deliberate
+                // permission denial as a clinician UI session-expiry response.
+                var nonclinical=vault().read();String beforeDenied=NativeAgencyHandoff.sessionIdentity(nonclinical);
+                var forbidden=nonclinical.request("/api/reports/"+reportId,"GET",new JSONObject(),null);
+                assertEquals("Installation identity cannot read another clinician report",404,forbidden.status());
+                assertFalse(forbidden.body().contains("ANDROID-AGENCY-ORIGINAL"));assertFalse(new JSONObject(forbidden.body()).has("report"));assertEquals(beforeDenied,NativeAgencyHandoff.sessionIdentity(nonclinical));current();assertEquals(beforeDenied,NativeAgencyHandoff.sessionIdentity(vault().read()));
                 status("retained_sha256",records());status("source_cookie_sha256",NativeAgencyHandoff.sessionIdentity(vault().read()));bundled();
             } else if(phase.equals("bad-ca")||phase.equals("managed-denied")){
                 waitFor("document.querySelector('.session-identity')");String cookie=NativeAgencyHandoff.sessionIdentity(vault().read());String before=records();select(args.getString("targetAgency"));waitFor("document.querySelector('.admin-entry-blocked[role=alert]')");

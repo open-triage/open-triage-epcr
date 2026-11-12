@@ -15,7 +15,7 @@ integration('only agency-less installation superusers transfer sessions through 
  const previousOrigin=process.env.WEB_ORIGIN;process.env.WEB_ORIGIN='http://localhost:3000';
  try{
   const query=async(sql,args)=>(await client.query(sql,args)).rows,manager={query};
-  let serial=0;const database={manager,query,transaction:async work=>{const savepoint=`handoff_${++serial}`;await client.query(`savepoint ${savepoint}`);try{const result=await work(manager);await client.query(`release savepoint ${savepoint}`);return result;}catch(e){await client.query(`rollback to savepoint ${savepoint}`);throw e;}}};
+  let serial=0;const database={manager,query,transaction:async(first,second)=>{const work=typeof first==='function'?first:second;const savepoint=`handoff_${++serial}`;await client.query(`savepoint ${savepoint}`);try{const result=await work(manager);await client.query(`release savepoint ${savepoint}`);return result;}catch(e){await client.query(`rollback to savepoint ${savepoint}`);throw e;}}};
   const source=randomUUID(),target=randomUUID(),user=randomUUID(),ordinary=randomUUID(),boundAdmin=randomUUID(),targetPerson=randomUUID(),name='h'+randomUUID().slice(0,8),password='Handoff test password 42!';
   const sourceOrigin=`http://${name}s.localhost:3000`,targetOrigin=`http://${name}t.localhost:3000`;
   await query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Handoff source',$2,'UTC'),($3,'Handoff target',$4,'UTC')",[source,new URL(sourceOrigin).hostname,target,new URL(targetOrigin).hostname]);
@@ -27,6 +27,8 @@ integration('only agency-less installation superusers transfer sessions through 
   await query("insert into app_identity.app_user(id,organization_id,display_name,account_scope) values($1,$2,'Destination person','agency')",[targetPerson,target]);
   await query("insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='clinician'",[source,ordinary,user]);
   for(const id of [user,ordinary,boundAdmin,targetPerson])await query('insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password) values($1,$2,$3,false)',[id,name+id.slice(0,8),await createPasswordVerifier(password)]);
+  const {seedProtectedRecoveryReports}=await import('./fixtures/protected-recovery-seed.mjs');await seedProtectedRecoveryReports({query},source,ordinary,boundAdmin);
+  const otherReport='91200000-0000-4000-8000-000000000001';assert.equal((await query('select documenting_user_id from clinical.report where id=$1',[otherReport]))[0].documenting_user_id,ordinary);
   await client.query('set local role open_triage_api_runtime');
   const directory=new AgencyDirectoryService(database),sessions=new ClinicianSessionService(database,directory),handoffs=new AgencyHandoffService(database,sessions,directory);
   const at=(origin,work)=>agencyRequest.run({origin},work);
@@ -103,7 +105,9 @@ integration('only agency-less installation superusers transfer sessions through 
   const {build}=await import('esbuild'),{chromium,expect}=await import('@playwright/test');
   const {fileURLToPath}=await import('node:url');
   const {localRouting}=await import('../../web/scripts/lib/local-routing.mjs');
-  class FixtureModule{};Module({controllers:[AgencyHandoffController],providers:[{provide:AgencyHandoffService,useValue:handoffs},{provide:APP_GUARD,useValue:new CsrfGuard(sessions)}]})(FixtureModule);
+  const {DraftReportController}=await import('../dist/reports/draft-report.controller.js'),{DraftReportService}=await import('../dist/reports/draft-report.service.js');
+  const reportProviders=Reflect.getMetadata('design:paramtypes',DraftReportController).map(type=>({provide:type,useValue:type===DraftReportService?new DraftReportService(database,sessions,{}):{}}));
+  class FixtureModule{};Module({controllers:[AgencyHandoffController,DraftReportController],providers:[...reportProviders,{provide:AgencyHandoffService,useValue:handoffs},{provide:APP_GUARD,useValue:new CsrfGuard(sessions)}]})(FixtureModule);
   const app=await NestFactory.create(FixtureModule,{logger:false});app.setGlobalPrefix('api');app.use(agencyContextMiddleware);app.useGlobalFilters(new PlatformErrorFilter());
   let proxy,browser;
   try{
@@ -118,6 +122,12 @@ integration('only agency-less installation superusers transfer sessions through 
    await context.addCookies([{name:'open_triage_session',value:browserSession.sessionToken,domain:new URL(browserSource).hostname,path:'/api',httpOnly:true,secure:true,sameSite:'Strict'}]);
    const page=await context.newPage();await page.goto(browserSource);await expect(page.locator('#result')).toHaveText('Ready');
    await page.evaluate(session=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(session)),browserSession.session);
+   assert.equal((await query('select count(*)::int n from app_identity.user_role_assignment where user_id=$1',[user]))[0].n,0,'Installation handoff identity must not receive agency clinical roles');
+   const deniedReport=await page.evaluate(async id=>{const result=await fetch('/api/reports/'+id);return{status:result.status,body:await result.json()};},otherReport);
+   assert.equal(deniedReport.status,404,'Existing author-scoped report lookup denies another identity without metadata leakage');
+   assert.equal(deniedReport.body.report,undefined);assert.equal(deniedReport.body.documentingUserId,undefined);
+   const stillCurrent=await page.evaluate(async csrf=>{const result=await fetch('/api/sessions/agency-handoff/current',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrf},body:'{}'});return{status:result.status,body:await result.json()};},browserSession.session.csrfToken);
+   assert.equal(stillCurrent.status,200);assert.equal(stillCurrent.body.user.id,user,'Forbidden clinical access cannot revoke the valid handoff login');
    await page.locator('#switch').click();await expect(page.locator('#result')).toHaveText('Handoff complete',{timeout:15000});
    assert.equal(new URL(page.url()).origin,browserTarget);assert.equal(new URL(page.url()).hash,'');
    const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')));
