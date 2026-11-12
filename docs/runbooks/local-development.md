@@ -264,6 +264,11 @@ OIDC draft transport regression tests use `openssl` to generate an ephemeral
 local TLS CA and bind a non-loopback network interface. Install OpenSSL before
 running `npm run check:ci`; the test CA is trusted only in its test child process.
 
+The root unit suite compiles and runs a small Java regression for native reply
+lifecycle races. Install JDK 21 or newer and set `JAVA_HOME`, or put `java` and
+`javac` on `PATH`, before running `npm run check:ci`. Full Android toolchain setup
+is documented in [Android connection development](android-development.md).
+
 The shared startup guard checks the Node runtime before local readiness, CI
 preflight, or API entry points load dependencies. Nest 12 uses ESM, so the compiled
 CommonJS API needs the default `require(esm)` support [enabled by default from Node 22.12.0](https://nodejs.org/en/blog/release/v22.12.0).

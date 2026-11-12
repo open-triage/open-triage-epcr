@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Capacitor } from "@capacitor/core";
 import { mediaCaptureErrorMessage, mediaCapturePreflightMessage } from "../app/media-capture-capability";
 
 test("insecure and unsupported capture explanations preserve the text-note path", () => {
@@ -19,4 +20,15 @@ test("permission and device failures give an actionable recovery while preservin
     /Connect or enable a microphone.*Text notes remain available/);
   assert.match(mediaCaptureErrorMessage("microphone", new DOMException("busy", "NotReadableError")),
     /Close other apps.*Text notes remain available/);
+});
+
+test("native camera and microphone denial direct users to localized Android app settings", context => {
+  context.mock.method(Capacitor, "isNativePlatform", () => true);
+  context.mock.method(Capacitor, "getPlatform", () => "android");
+  for (const kind of ["camera", "microphone"] as const) {
+    assert.match(mediaCaptureErrorMessage(kind, new DOMException("denied", "NotAllowedError")), /Android app settings/);
+    assert.doesNotMatch(mediaCaptureErrorMessage(kind, new DOMException("denied", "NotAllowedError")), /browser settings/);
+    assert.match(mediaCaptureErrorMessage(kind, new DOMException("denied", "SecurityError"), "sv"), /Android-appens inställningar/);
+    assert.match(mediaCaptureErrorMessage(kind, new Error("device")), /Android app permissions/);
+  }
 });

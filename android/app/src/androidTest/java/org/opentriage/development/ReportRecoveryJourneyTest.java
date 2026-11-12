@@ -33,13 +33,18 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
         assertEquals("The actual input must be editable", "true", evaluate(WebViewTestInput.change(expression,value)));
     }
     private void click(String label) throws Exception {
+        if (label.equals("Add photo note") || label.equals("Add audio note")) {
+            // Durable discard is asynchronous. A real user cannot activate a
+            // quick action through the previous modal's backdrop.
+            waitFor("!document.querySelector('[role=dialog], [role=alertdialog]')");
+        }
         String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && (button.textContent.trim()===" + JSONObject.quote(label) + " || button.getAttribute('aria-label')===" + JSONObject.quote(label) + "))";
         waitFor(button + " && !(" + button + ").disabled");
         if (label.equals("Save & close")) {
@@ -47,7 +52,7 @@ public class ReportRecoveryJourneyTest {
             var confirmation = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
                 androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("OK")), 2000);
             if (confirmation != null) confirmation.click();
-        } else if (label.equals("Add photo note")) evaluate("setTimeout(()=>(" + button + ").click(),0)");
+        } else if (label.equals("Add photo note") || label.equals("Add audio note")) evaluate("setTimeout(()=>(" + button + ").click(),0)");
         else evaluate("(" + button + ").click()");
     }
     private void connection(boolean connected) throws Exception {
@@ -55,14 +60,12 @@ public class ReportRecoveryJourneyTest {
             try (var result = new ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))) { result.readAllBytes(); }
         }
         waitFor(connected ? "navigator.onLine" : "!navigator.onLine");
-        assertEquals("Radio transitions must affect the actual API transport", connected, apiReachable());
-    }
-    private boolean apiReachable() {
-        var endpoint = java.net.URI.create(InstrumentationRegistry.getArguments().getString("apiOrigin"));
-        try (var socket = new java.net.Socket()) {
-            socket.connect(new java.net.InetSocketAddress(endpoint.getHost(), endpoint.getPort()), 2000);
-            return true;
-        } catch (java.io.IOException connectionLoss) { return false; }
+        AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
+            InstrumentationRegistry.getArguments().getString("apiOrigin"), () -> {
+                String value = evaluate("navigator.onLine");
+                if (!"true".equals(value) && !"false".equals(value)) throw new AssertionError("WebView network signal unavailable");
+                return Boolean.parseBoolean(value);
+            }, connected);
     }
     private void records() throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[];};request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('encrypted-reports')){window.__retained=[];db.close();return;}const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
@@ -143,6 +146,236 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.photo-viewer-image')?.naturalWidth===640");
         click("Cancel"); click("Stationary"); waitFor(FIELD);
     }
+    private boolean audioEnabled() { return "1".equals(InstrumentationRegistry.getArguments().getString("audio")); }
+    private void observeAudio() throws Exception {
+        evaluate("""
+            (()=>{if(window.__audioObserved)return;window.__audioObserved=true;window.__audioHardwareGranted=false;window.__audioPermissionPending=0;
+            const get=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+            navigator.mediaDevices.getUserMedia=async options=>{if(options.audio)window.__audioPermissionPending++;try{const stream=await get(options);if(options.audio){window.__audioHardwareTracks=stream.getAudioTracks();window.__audioHardwareGranted=window.__audioHardwareTracks.some(track=>track.readyState==='live')}return stream}finally{if(options.audio)window.__audioPermissionPending--}};
+            const start=MediaRecorder.prototype.start;MediaRecorder.prototype.start=function(...args){window.__lastAudioRecorder=this;window.__audioChunkCount=0;this.addEventListener('dataavailable',event=>{if(event.data.size)window.__audioChunkCount++});return start.apply(this,args)};
+            const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(...args){if(this.tagName==='AUDIO')window.__lastPlayedAudio=this;return play.apply(this,args)}})()
+            """);
+    }
+    private void tapElement(String expression) throws Exception {
+        waitFor("(" + expression + ") && !(" + expression + ").disabled");
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        // This status notice intentionally stays until an outside user interaction.
+        // Dismiss it normally before testing the underlying control's trusted touch.
+        if ("true".equals(evaluate("!!document.querySelector('.active-report-notice')"))) {
+            assertTrue("A genuine keyboard interaction dismisses the active report notice", device.pressKeyCode(android.view.KeyEvent.KEYCODE_TAB));
+            waitFor("!document.querySelector('.active-report-notice')");
+        }
+        var ime = new java.util.concurrent.atomic.AtomicBoolean();
+        activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); });
+        if (ime.get()) {
+            assertTrue("Dismiss the visible keyboard before touching a media control", device.pressBack());
+            long deadline=System.currentTimeMillis()+5000;
+            do { Thread.sleep(100); activity.onActivity(screen -> { var insets=screen.getBridge().getWebView().getRootWindowInsets();ime.set(insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime())); }); } while(ime.get()&&System.currentTimeMillis()<deadline);
+            assertFalse("Keyboard must be gone before screen coordinate conversion",ime.get());
+        }
+        evaluate("window.__tapReady=false;(" + expression + ").scrollIntoView({block:'end',inline:'nearest',behavior:'instant'});requestAnimationFrame(()=>requestAnimationFrame(()=>window.__tapReady=true))");
+        waitFor("window.__tapReady");
+        JSONObject rectangle = new JSONObject(evaluate("(()=>{const element=(" + expression + ");const rectangle=element.getBoundingClientRect();const x=rectangle.x+rectangle.width/2,y=rectangle.y+rectangle.height/2;const viewport=visualViewport;const hit=document.elementFromPoint(x,y);window.__lastTrustedTap={x,y,width:innerWidth,height:innerHeight,offsetX:viewport?.offsetLeft??0,offsetY:viewport?.offsetTop??0,viewportWidth:viewport?.width??innerWidth,hit:hit?.tagName,hitClass:hit?.className,targetHit:element===hit||element.contains(hit)};window.__trustedMediaClick=false;element.addEventListener('click',event=>{window.__trustedMediaClick=event.isTrusted},{once:true,capture:true});return{x:x-(viewport?.offsetLeft??0),y:y-(viewport?.offsetTop??0),width:viewport?.width??innerWidth}})()"));
+        assertEquals("DOM hit testing must reach the selected media control: "+evaluate("JSON.stringify(window.__lastTrustedTap)"),"true",evaluate("window.__lastTrustedTap.targetHit"));
+        int[] origin = new int[2]; var width = new java.util.concurrent.atomic.AtomicInteger();
+        activity.onActivity(screen -> { var web = screen.getBridge().getWebView(); web.getLocationOnScreen(origin); width.set(web.getWidth()); });
+        double scale = width.get() / rectangle.getDouble("width");
+        assertTrue("Trusted input reaches the actual shared media control", device.click(
+            origin[0] + (int)Math.round(rectangle.getDouble("x") * scale), origin[1] + (int)Math.round(rectangle.getDouble("y") * scale)));
+        long deadline=System.currentTimeMillis()+5000;
+        while(!"true".equals(evaluate("window.__trustedMediaClick"))&&System.currentTimeMillis()<deadline)Thread.sleep(100);
+        assertEquals("A genuine trusted click must reach the exact selected control: "+evaluate("JSON.stringify(window.__lastTrustedTap)"),"true",evaluate("window.__trustedMediaClick"));
+    }
+    private void beginAudioHold() throws Exception {
+        waitFor("document.querySelector('.audio-hold-button') && !document.querySelector('.audio-hold-button').disabled && window.__nativeActive!==false && document.visibilityState==='visible'");
+        evaluate("setTimeout(()=>document.querySelector('.audio-hold-button').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true})),0)");
+    }
+    private void navigationChecks() throws Exception {
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        String originalFont = device.executeShellCommand("settings get system font_scale").trim();
+        if (!originalFont.matches("[0-9]+(?:\\.[0-9]+)?")) originalFont = "1.0";
+        String size = device.executeShellCommand("wm size");
+        var override = java.util.regex.Pattern.compile("Override size: (\\d+x\\d+)").matcher(size);
+        String originalSize = override.find() ? override.group(1) : "reset";
+        evaluate("window.__navigationRealm=true;window.__navigationTimeOrigin=performance.timeOrigin");
+        try {
+            device.setOrientationLeft();
+            waitFor("innerWidth>innerHeight");
+            closeControlReachable();
+            assertEquals(JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
+            device.setOrientationNatural(); waitFor("innerHeight>innerWidth");
+            device.executeShellCommand("settings put system font_scale 1.5");
+            long end = System.currentTimeMillis() + 20000;
+            var zoom = new java.util.concurrent.atomic.AtomicInteger();
+            do { activity.onActivity(screen -> zoom.set(screen.getBridge().getWebView().getSettings().getTextZoom()));
+                if (zoom.get() == 150) break; Thread.sleep(150);
+            } while (System.currentTimeMillis() < end);
+            assertEquals("System accessibility text size reaches the actual WebView", 150, zoom.get());
+            waitFor("document.documentElement.scrollWidth<=innerWidth+1");
+            tapElement(FIELD);
+            var keyboard = new java.util.concurrent.atomic.AtomicBoolean();
+            end = System.currentTimeMillis() + 20000;
+            do { activity.onActivity(screen -> { var insets=androidx.core.view.ViewCompat.getRootWindowInsets(screen.getWindow().getDecorView());keyboard.set(insets!=null&&insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())); });
+                if (keyboard.get()) break; Thread.sleep(150);
+            } while (System.currentTimeMillis() < end);
+            assertTrue("A trusted touch opens the real Android keyboard", keyboard.get());
+            device.waitForIdle(1000);
+            closeControlReachable();
+            String keyboardHeight = evaluate("innerHeight");
+            device.pressBack();
+            waitFor("innerHeight>" + keyboardHeight);
+            assertEquals("IME Back keeps the current report and edit", JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
+            device.executeShellCommand("wm size 1600x2560");
+            waitFor("innerWidth>=600");
+            waitFor("document.documentElement.scrollWidth<=innerWidth+1");
+            closeControlReachable();
+            assertEquals("Rotation, text scale and tablet resize retain the same clinical JS realm", "true", evaluate("window.__navigationRealm && performance.timeOrigin===window.__navigationTimeOrigin"));
+            device.executeShellCommand("wm size " + originalSize);
+            device.executeShellCommand("settings put system font_scale " + originalFont);
+            waitFor("(" + FIELD + ")?.value==='ANDROID-CONNECTED-SYNTHETIC'");
+            // Back uses the shared durable Save & close path, then reopens under the valid login.
+            device.pressBack(); waitFor("!document.querySelector('.encounter-header')");
+            device.pressBack(); waitFor("document.querySelector('.presentation-selector button[aria-pressed=true]')?.textContent==='Mobile'");
+            device.pressBack(); waitFor("window.__nativeActive===false");
+            String packageName = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageName();
+            device.executeShellCommand("am start -n " + packageName + "/org.opentriage.development.MainActivity");
+            waitFor("window.__nativeActive===true && window.__navigationRealm && performance.timeOrigin===window.__navigationTimeOrigin");
+            click("Stationary");
+            click("Reopen report"); waitFor("(" + FIELD + ")?.value==='ANDROID-CONNECTED-SYNTHETIC'");
+            assertEquals("No reauthentication prompt is introduced by native navigation", "true", evaluate("!document.querySelector('.report-reauthentication') && !document.querySelector('input[type=password]')"));
+        } finally {
+            device.executeShellCommand("wm size " + originalSize);
+            device.executeShellCommand("settings put system font_scale " + originalFont);
+            device.setOrientationNatural(); device.unfreezeRotation();
+        }
+    }
+    private void closeControlReachable() throws Exception {
+        String control = "Array.from(document.querySelectorAll('.draft-actions button')).find(button=>button.textContent==='Save & close')";
+        evaluate("(" + control + ").scrollIntoView({block:'center',inline:'center'})");
+        waitFor("(()=>{const button=" + control + ";const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()");
+    }
+    private void endAudioHold() throws Exception {
+        evaluate("document.querySelector('.audio-hold-button')?.dispatchEvent(new KeyboardEvent('keyup',{key:' ',bubbles:true}))");
+    }
+    private void audioCaption(String caption) throws Exception {
+        waitFor("document.querySelector('#report-audio-caption')");
+        evaluate("(()=>{const input=document.querySelector('#report-audio-caption');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input," + JSONObject.quote(caption) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}))})()");
+    }
+    private void recordAudioPreview(boolean interrupted) throws Exception {
+        beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
+        assertEquals("Actual WebView microphone capture reaches a real live hardware track", "true", evaluate("window.__audioHardwareGranted && window.__audioHardwareTracks.some(track=>track.readyState==='live')"));
+        Thread.sleep(2200);
+        if (interrupted) { activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300); }
+        else endAudioHold();
+        waitFor("document.querySelector('.audio-note-dialog .audio-preview')");
+        assertEquals("No hidden recorder or microphone track remains after stopping", "true", evaluate("window.__lastAudioRecorder.state!=='recording' && window.__audioHardwareTracks.every(track=>track.readyState==='ended')"));
+        if (interrupted) { activity.moveToState(Lifecycle.State.RESUMED); waitFor("window.__nativeActive!==false && document.querySelector('.audio-note-dialog').innerText.includes('Recording interrupted')"); }
+    }
+    private void useAudioPreview(String caption, boolean interrupted) throws Exception {
+        audioCaption(caption); click(interrupted ? "Use interrupted recording" : "Use recording");
+        waitFor("!document.querySelector('.audio-note-dialog') && document.body.innerText.includes(" + JSONObject.quote(caption) + ")");
+    }
+    private void interruptOnlineAudio() throws Exception {
+        click("Add audio note"); beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
+        Thread.sleep(2200); records();
+        evaluate("window.__beforeOnlineAudioPause=window.__retained[0].ciphertextRevision;window.__backgroundRequests=0;window.__backgroundPaths=[]");
+        activity.moveToState(Lifecycle.State.CREATED); waitFor("window.__nativeActive===false");
+        waitFor("document.querySelector('.audio-note-dialog .audio-preview') && window.__audioHardwareTracks.every(track=>track.readyState==='ended')");
+        long deadline=System.currentTimeMillis()+30000; boolean durable=false;
+        while(System.currentTimeMillis()<deadline){records();if("true".equals(evaluate("window.__retained[0].ciphertextRevision>window.__beforeOnlineAudioPause"))){durable=true;break;}Thread.sleep(100);}
+        assertTrue("An online interrupted recorder commits encrypted local bytes while native-paused",durable);
+        Thread.sleep(1200);
+        assertEquals("Paused local audio durability starts no new API requests: "+evaluate("JSON.stringify(window.__backgroundPaths)"),"0",evaluate("window.__backgroundRequests"));
+        activity.moveToState(Lifecycle.State.RESUMED);
+        waitFor("window.__nativeActive!==false && document.querySelector('.audio-note-dialog').innerText.includes('Recording interrupted')");
+        click("Cancel");waitFor("!document.querySelector('.audio-note-dialog')");
+    }
+    private void audioOfflineCapture() throws Exception {
+        click("Mobile"); click("Add audio note"); observeAudio(); beginAudioHold();
+        var denied = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
+            androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res(java.util.regex.Pattern.compile(".*:id/permission_deny_button"))), 15000);
+        assertNotNull("Shared audio capture requests actual Android microphone permission", denied); denied.click();
+        waitFor("document.querySelector('.audio-note-dialog [role=alert]')?.textContent.includes('Android app settings')"); endAudioHold(); click("Cancel");
+        click("Add audio note"); beginAudioHold();
+        var granted = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(
+            androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res(java.util.regex.Pattern.compile(".*:id/permission_allow_foreground_only_button"))), 15000);
+        assertNotNull("Explicit retry permits actual microphone permission grant", granted); granted.click();
+        waitFor("window.__audioPermissionPending===0");
+        assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED,
+            InstrumentationRegistry.getInstrumentation().getTargetContext().checkSelfPermission(android.Manifest.permission.RECORD_AUDIO));
+        assertEquals("A late permission result releases any returned microphone tracks", "true", evaluate("(window.__audioHardwareTracks??[]).every(track=>track.readyState==='ended')"));
+        assertEquals("A permission result after native pause cannot secretly begin recording", "true", evaluate("!window.__lastAudioRecorder || window.__lastAudioRecorder.state!=='recording'"));
+        recordAudioPreview(false);
+        tapElement("Array.from(document.querySelectorAll('.audio-note-dialog button')).find(button=>button.textContent.trim()==='Play preview')");
+        waitFor("document.querySelector('.audio-preview audio').currentTime>0 && !document.querySelector('.audio-preview audio').paused");
+        activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
+        assertEquals("Native pause stops actual preview playback", "true", evaluate("document.querySelector('.audio-preview audio').paused"));
+        activity.moveToState(Lifecycle.State.RESUMED); waitFor("window.__nativeActive!==false");
+        useAudioPreview("ANDROID-AUDIO-RESUME-SYNTHETIC", false);
+        evaluate("window.__backgroundRequests=0;window.__backgroundPaths=[]"); activity.moveToState(Lifecycle.State.CREATED);
+        waitFor("window.__nativeActive===false"); connection(true); Thread.sleep(1200);
+        assertEquals("Paused reconnect must not start audio or other API drains: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
+        activity.moveToState(Lifecycle.State.RESUMED); waitFor("window.__nativeActive!==false"); verifyCanonicalAudio("ANDROID-AUDIO-RESUME-SYNTHETIC");
+        waitFor("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))");
+        interruptOnlineAudio();
+        connection(false); click("Stationary"); waitFor(FIELD);
+    }
+    private void stageRetainedAudio() throws Exception {
+        click("Mobile"); click("Add audio note"); recordAudioPreview(true); useAudioPreview("ANDROID-AUDIO-SYNTHETIC", true);
+        click("Stationary"); waitFor(FIELD); records();
+        assertFalse("Audio captions and source bytes remain encrypted at rest", evaluate("JSON.stringify(window.__retained)").contains("ANDROID-AUDIO"));
+        assertFalse("Audio never enters localStorage as plaintext", evaluate("JSON.stringify({...localStorage})").contains("audio/webm"));
+    }
+    private void startUnfinishedAudio() throws Exception {
+        records(); evaluate("window.__audioBeforeCiphertext=window.__retained[0].ciphertextRevision");
+        click("Mobile"); click("Add audio note"); beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
+        waitFor("window.__audioChunkCount>0");
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack();
+        waitFor("document.querySelector('.audio-note-dialog .audio-preview') && document.querySelector('.audio-note-dialog').innerText.includes('Recording interrupted')");
+        assertEquals("Hardware Back stops the recorder and keeps an explicit unfinished-media decision", "true", evaluate("window.__lastAudioRecorder.state!=='recording' && window.__audioHardwareTracks.every(track=>track.readyState==='ended') && document.querySelector('.audio-note-dialog').innerText.includes('Use interrupted recording')"));
+        click("Cancel"); waitFor("!document.querySelector('.audio-note-dialog')");
+        records(); evaluate("window.__audioBeforeCiphertext=window.__retained[0].ciphertextRevision");
+        click("Add audio note"); beginAudioHold(); waitFor("window.__lastAudioRecorder?.state==='recording'");
+        waitFor("window.__audioChunkCount>0");
+        long end = System.currentTimeMillis() + 30000;
+        boolean durable = false;
+        while (System.currentTimeMillis() < end) {
+            records(); if ("true".equals(evaluate("window.__retained[0].ciphertextRevision>=window.__audioBeforeCiphertext+2"))) { durable = true; break; }
+            Thread.sleep(150);
+        }
+        assertTrue("An unfinished recording has actual encrypted durable time slices before host process loss", durable);
+        assertEquals("The host must kill a genuinely live unsaved recorder", "recording", new org.json.JSONTokener(evaluate("window.__lastAudioRecorder.state")).nextValue());
+        assertEquals("Unsaved speech is not advertised as a saved audio note", "true", evaluate("!document.querySelector('.audio-note-dialog').innerText.includes('Saved on this device')"));
+    }
+    private void verifyCanonicalAudio(String caption) throws Exception {
+        evaluate("window.__audioVerified=null;(async()=>{for(let attempt=0;attempt<80;attempt++){try{const report=await(await fetch('/api/reports/'+window.__reportId)).json();const find=value=>{if(!value||typeof value!=='object')return null;if(value.type==='audio'&&value.caption===" + JSONObject.quote(caption) + ")return value;for(const item of Object.values(value)){const found=find(item);if(found)return found}return null};const note=find(report);if(note?.persistenceState==='ready'){const response=await fetch('/api/reports/'+window.__reportId+'/audio/'+note.id+'/content');if(!response.ok||response.headers.get('content-type')!=='audio/mp4')throw Error('audio');const bytes=new Uint8Array(await response.arrayBuffer());const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),value=>value.toString(16).padStart(2,'0')).join('');if(hash!==note.sha256||bytes.length!==note.byteSize||String.fromCharCode(...bytes.slice(4,8))!=='ftyp')throw Error('bytes');const context=new AudioContext();try{const decoded=await context.decodeAudioData(bytes.buffer.slice(0));if(decoded.numberOfChannels!==1||decoded.sampleRate<=0||decoded.duration<=0||decoded.duration>301)throw Error('decode')}finally{await context.close()}window.__audioVerified=true;return}}catch{}await new Promise(resolve=>setTimeout(resolve,500))}window.__audioVerified=false})()");
+        waitFor("window.__audioVerified!==null"); assertEquals("Actual upload and authorized playback return exact fully decoded mono AAC", "true", evaluate("window.__audioVerified"));
+    }
+    private void playTimelineAudio(String caption) throws Exception {
+        String button = "Array.from(document.querySelectorAll('.audio-note-event')).find(row=>row.textContent.includes(" + JSONObject.quote(caption) + "))?.querySelector('.timeline-audio-action')";
+        evaluate("window.__lastPlayedAudio=null");
+        tapElement(button); waitFor("window.__lastPlayedAudio?.currentTime>0 && !window.__lastPlayedAudio.error && (!window.__lastPlayedAudio.paused || window.__lastPlayedAudio.ended)");
+        activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
+        assertEquals("Authorized audio playback stops on native pause", "true", evaluate("window.__lastPlayedAudio.paused"));
+        activity.moveToState(Lifecycle.State.RESUMED); assertEquals("Playback does not restart without a user action", "true", evaluate("window.__lastPlayedAudio.paused"));
+    }
+    private void verifyRecoveredAudio() throws Exception {
+        observeAudio(); verifyCanonicalAudio("ANDROID-AUDIO-SYNTHETIC"); click("Mobile"); playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");
+        assertEquals("An already acknowledged audio note remains ready after recovery", "true", evaluate("Array.from(document.querySelectorAll('.audio-note-event')).some(row=>row.textContent.includes('ANDROID-AUDIO-RESUME-SYNTHETIC')&&row.textContent.includes('Ready'))"));
+        click("Stationary"); evaluate("(()=>{const button=document.querySelector('.timeline-toggle-action');if(button?.getAttribute('aria-expanded')==='false')button.click()})()");
+        waitFor("document.querySelector('.stationary-timeline-sidebar')"); playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");
+        if ("1".equals(InstrumentationRegistry.getArguments().getString("unsavedAudio"))) {
+            assertEquals("Revoked microphone permission does not prevent authorized retained playback or restart a recorder", android.content.pm.PackageManager.PERMISSION_DENIED,
+                InstrumentationRegistry.getInstrumentation().getTargetContext().checkSelfPermission(android.Manifest.permission.RECORD_AUDIO));
+            click("Mobile"); click("Add audio note"); waitFor("document.querySelector('.audio-note-dialog').innerText.includes('Recording interrupted')");
+            waitFor("document.querySelector('.audio-note-dialog button') && Array.from(document.querySelectorAll('.audio-note-dialog button')).some(button=>button.textContent.trim()==='Use interrupted recording')");
+            assertEquals("A restored incomplete recorder is never restarted automatically", "true", evaluate("!window.__lastAudioRecorder || window.__lastAudioRecorder.state!=='recording'"));
+            click("Cancel"); click("Add audio note"); waitFor("document.querySelector('.audio-hold-button')");
+            assertEquals("Explicit discard removes the restored partial preview", "null", evaluate("document.querySelector('.audio-preview')")); click("Cancel");
+            click("Stationary"); waitFor(FIELD);
+        }
+    }
+
     private String connectionIdentity() throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         JSONObject saved = new ConnectionVault(context).read().saved();
@@ -252,6 +485,8 @@ public class ReportRecoveryJourneyTest {
         click("Stationary"); waitFor(FIELD);
         setInput(FIELD, "ANDROID-CONNECTED-SYNTHETIC");
         serverValue("ANDROID-CONNECTED-SYNTHETIC"); records();
+        // Release A may predate navigation support; its pending-work upgrade remains valid.
+        if (!"1".equals(args.getString("upgrade"))) navigationChecks();
         assertEquals("1", evaluate("window.__retained.length"));
         assertEquals("true", evaluate("!JSON.stringify({...localStorage}).includes('ANDROID-CONNECTED') && !JSON.stringify(window.__retained).includes('ANDROID-CONNECTED')"));
         connection(false); setInput(FIELD, "ANDROID-RECONNECTED-SYNTHETIC");
@@ -263,7 +498,11 @@ public class ReportRecoveryJourneyTest {
         String historicalReceipt=HistoricalUpgradePreparation.prepareReceipt(args.getString("preparationProfile","current"),
             args.getString("upgradeReceipt",""),context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),
             args.getString("phase"),"1".equals(args.getString("upgrade")));
-        if (historicalReceipt.isEmpty()) photoOfflineCapture();
+        if (historicalReceipt.isEmpty()) {
+            if (audioEnabled()) audioOfflineCapture();
+            photoOfflineCapture();
+            if (audioEnabled()) stageRetainedAudio();
+        }
         else {
             var profile=new android.os.Bundle();profile.putString("opentriage_upgrade_preparation_profile","historical-a1-text-v1");
             InstrumentationRegistry.getInstrumentation().sendStatus(0,profile);
@@ -284,12 +523,15 @@ public class ReportRecoveryJourneyTest {
         String reportId = evaluate("window.__reportId");
         assertFalse("Local metadata must not identify the report", evaluate("JSON.stringify(window.__retained)").contains(reportId.substring(1, reportId.length() - 1)));
         assertFalse(evaluate("JSON.stringify(window.__retained)").contains(RETAINED));
+        if ("1".equals(args.getString("unsavedAudio"))) startUnfinishedAudio();
+        else {
         evaluate("window.__beforeStorageFailure=JSON.stringify(window.__retained);window.__put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.name==='encrypted-reports')throw new DOMException('Synthetic storage failure','QuotaExceededError');return window.__put.apply(this,args)}");
         setInput(FIELD, "ANDROID-WRITE-FAILURE");
         waitFor("document.body.innerText.includes('Protected storage failed while offline')"); waitFor("!(" + FIELD + ") || (" + FIELD + ").matches(':disabled') || (" + FIELD + ").readOnly");
         records(); assertEquals("true", evaluate("JSON.stringify(window.__retained)===window.__beforeStorageFailure"));
         // The test runner must not finish/close the Activity before abrupt process loss.
         assertEquals("true", evaluate("Boolean(document.querySelector('.encounter-header'))"));
+        }
         snapshotUpgrade();
         var ready = new android.os.Bundle(); ready.putString("opentriage_phase", "ready-for-process-kill");
         InstrumentationRegistry.getInstrumentation().sendStatus(2, ready);
@@ -330,7 +572,10 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
         if (!"true".equals(evaluate("Boolean(" + FIELD + ")"))) click("Stationary");
         waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'"); serverValue(RETAINED);
-        if (!historicalRecovery("recover")) verifyRecoveredPhoto();
+        if (!historicalRecovery("recover")) {
+            verifyRecoveredPhoto();
+            if (audioEnabled()) verifyRecoveredAudio();
+        }
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
     }
     private boolean historicalRecovery(String phase) throws Exception {
@@ -415,7 +660,12 @@ public class ReportRecoveryJourneyTest {
         String phase = InstrumentationRegistry.getArguments().getString("phase", "");
         if (phase.equals("offline")) {
             // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
-            assertFalse("The real API must be unreachable before offline Activity launch", apiReachable());
+            AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
+                InstrumentationRegistry.getArguments().getString("apiOrigin"), null, false);
+        }
+        if (phase.equals("reassign") || phase.equals("resume-reassignment")) {
+            AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
+                InstrumentationRegistry.getArguments().getString("apiOrigin"), null, true);
         }
         activity = ActivityScenario.launch(MainActivity.class);
         var startup=new android.os.Bundle();startup.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));

@@ -238,6 +238,40 @@ reconnect and refresh once per reader after resume without another connectivity
 event. The early browser journey covers all three readers as well as delayed
 permission denial and cancelled capture callbacks.
 
+## Audio notes
+
+The generic APK declares optional microphone hardware and requests Android microphone permission only when the clinician explicitly holds Record. Denial uses localized Android app-settings guidance; browser users retain browser-site guidance. Native pause, hidden pages, revoked tracks and withdrawn protected authority stop hardware tracks immediately. A permission grant that arrives after cancellation or pause cannot start a hidden recorder. Preview and authorized timeline/Stationary playback also stop on native pause, and an authorized download finishing after cancellation cannot start audio.
+
+Recordings use monotonic elapsed time for the shared five-minute limit (clock changes do not extend it), 64 kbit/s capture and existing mono-AAC normalization, protected encrypted time slices, explicit interrupted-preview choice, queued upload and retry. The nominal capture is approximately 2.4 MB before JSON/Base64 overhead. Android validates the exact 16 MiB command limit before staging an upload; abnormal oversized capture stays an unsaved preview with localized shorter-recording guidance. No native audio file, plaintext clinical cache or backup is created. Blob playback URLs exist only in memory and are revoked on stop. Both photo and audio locations use the same approved API-path guard and reject redirects.
+
+Encrypted previews carry a capture ID so callbacks from a discarded recorder cannot alter a new preview, even when timestamps are identical. Cancel waits for durable preview removal; Escape during recording first stops into an interrupted preview, while Cancel/Escape of that preview discards it. Existing encrypted previews without capture IDs remain readable and explicitly discardable. No recovery or reopening action requires renewed authentication while the login remains valid.
+
+Early browser tests cover pause/revocation, delayed permission results, native denial in both languages, delayed playback, exact wire-size rejection, held-write cancellation and old-callback isolation. API tests contain real Chromium MediaRecorder WebM/MP4 synthetic tones and run actual FFmpeg normalization/full decode. Duration-less WebM uses a bounded decoded-duration probe; a real duration-less recording over five minutes must fail rather than be silently truncated. Use ordinary `npm ci` to install the pinned FFmpeg executable; an installation made with `--ignore-scripts` needs `npm rebuild ffmpeg-static` before real audio validation.
+
+The default emulator suite adds actual microphone denial/grant and a live WebView track, real MediaRecorder output, preview/Timeline/Stationary playback with advancing decoder time, paused reconnect with zero new API requests, and exact hashed mono-AAC after authorized upload. Saved offline audio joins the photo/text process-loss and ownership-isolation journey. A second independent fixture force-stops a live unfinished recorder after encrypted chunks are durable, revokes microphone permission while stopped, and requires explicit review of restored partial audio after authorized recovery. Physical microphone/speaker quality remains ticket 019.
+
+The manifest includes both `RECORD_AUDIO` and Capacitor's required normal
+`MODIFY_AUDIO_SETTINGS` permission. Early checks compare all installed WebView
+media permission requests with the manifest. An interrupted canonical response
+stream or brief radio loss keeps photo/audio verification retryable, even if
+connectivity returns before rejection. Retries wait at least one second, respect
+native foreground state, and read the acknowledged server copy without uploading
+it again. URL, redirect, HTTP authorization and canonical MIME failures retain
+their existing rejection boundaries.
+
+Protected receipts and checkpoints obey the same foreground boundary. Pause does
+not block local encrypted durability behind an older network reply. Resume drains
+the latest committed revision and digest, without re-encrypting unchanged data or
+repeating an acknowledged receipt just to create its checkpoint. Expiry, withdrawn
+authorization and installation/session transitions keep their existing limits.
+Browser regressions include held receipt/checkpoint replies and context changes;
+the native journey interrupts a real online recorder and proves durable encrypted
+bytes with zero new API requests while paused.
+
+A future release using live WebM capture must declare and require the server
+capability `audio-webm-live-v1` through the release compatibility contract before
+distribution. Existing immutable release candidates are unchanged by this slice.
+
 ### Installation reassignment and interrupted confirmation
 
 Use **Change installation** from the APK login or session controls to scan or
@@ -302,6 +336,67 @@ protected release workflow and actual signed upgrade evidence.
 Android validation failures preserve bounded crash/runtime logs, application exit reasons, app memory and WebView version under `android/app/build/reports/android-failure/` before fixture/emulator teardown. These synthetic-emulator reports are included in the PR artifact for seven days. The collector excludes command arguments, screenshots, app files and bugreports; it redacts credential fields, known fixture secrets, URL queries, PEM blocks and long opaque values. Probe timeouts or collection failures never replace the original failing result, and instrumentation is never retried automatically.
 
 Camera discovery records the active device without reopening its stream. Only an explicit camera cycle requests another device; duplicate native/document visibility notifications leave an already foregrounded stream running. Browser lifecycle coverage checks this before native acceptance.
+
+## Shared Android navigation and layout
+
+Android Back dismisses the system keyboard first. With a shared dialog open it
+sends Escape through that dialog's React subtree, preserving recording,
+permission, deletion and save guards. An unfinished recording stops into its
+explicit Use/Cancel preview. Unsaved clinical entry dialogs require a discard
+decision. Saving photo/text dialogs consume Back until their operation settles.
+Back from review/checklist/sidebar returns to the current report; Back from the
+report uses the same single-flight Save & close operation as its button. Failed
+protected persistence keeps the editor open. At the call directory, Back returns
+from a permitted alternate mode to Mobile, then backgrounds the existing task.
+It never traverses WebView history or restores another identity's old page.
+
+The first permitted clinical entry defaults to Mobile; the shared saved mode,
+agency appearance and language apply on later entries. Android configuration
+changes retain the current WebView realm, including an unfinished editor, while
+system text scale updates WebView text zoom. Capacitor's system-bar/cutout insets
+and explicit `adjustResize` keep the keyboard and system controls outside the
+application viewport. The browser uses its existing responsive UI and the
+`resizes-content` viewport policy. Long localized shared section headings wrap.
+At short viewport heights, the shared clinical headers and action bars scroll
+with the page so a keyboard or enlarged text cannot pin Save & close off-screen.
+
+The early path remains `npm run check:ci`, `npm run android:build`, then
+`npm run android:test -- --skip-build`. The browser preflight covers Back modal
+capture, unmounted identity handlers, repeated Back during a held encrypted
+write, unsaved-entry confirmation, and English/Swedish Admin settings on phone,
+short enlarged-text and tablet layouts with accessibility checks. The native
+report journey adds trusted-touch keyboard entry, hardware Back, real rotation,
+150% system text size and an actual emulator tablet resize. It checks the same
+JS realm and persisted field, then Back/reopen under the existing valid login.
+The native checks restore display changes in Java `finally`; both host entry
+points also capture the exact previous display override, font scale and rotation
+settings and restore them in their outer `finally`, including after an Android
+process crash. Early tests verify default/unset and custom values and all-setting
+restore attempts when an individual command fails. Native checks measure the
+Save & close bounds and hit target in landscape, with the keyboard open and on
+the tablet-sized display.
+The audio process-loss fixture first exercises hardware Back into an interrupted
+preview, explicitly cancels it, and starts a fresh live recorder before process
+termination. Existing foreground assignment/sync and bundled-UI checks still run.
+
+For slice 019, repeat on an actual supported phone and tablet using fictional
+reports and the intended agency palette/language. Record device/OS/WebView/APK
+versions and evidence for each result:
+
+| Check | Expected evidence |
+| --- | --- |
+| Open an old call under a current login | Existing session opens it without another authentication prompt. |
+| Edit a field, rotate both ways, resize/split screen | Same value and report remain; server acknowledgement or encrypted pending revision proves persistence. |
+| Keyboard in a clinical dialog and long Admin settings | First Back hides the keyboard; Save/Cancel stay reachable by scrolling, with focus visible. |
+| Back during recording, preview, deletion and a slow save | Recording stops into explicit choice; cancellation/deletion/save use their ordinary guards and settle once. |
+| Back from a report and reopen | Exact saved/pending value returns; persistence failure leaves the editor open. |
+| Largest supported text size, display cutout and gesture/three-button navigation | Text remains readable and all required controls reachable in portrait/landscape and English/Swedish. |
+| Background/foreground and a server web deployment | Assignments and eligible sync refresh; the APK keeps its bundled UI and current navigation. |
+| User/agency switch, expired or revoked session | Old identity/history cannot reappear; ordinary current authorization remains enforced. |
+
+Emulator and browser results do not establish physical keyboard, cutout, OEM
+Back gestures, microphone or tablet acceptance. Store those slice-019 results
+separately from automated evidence.
 
 The APK manifest removes only AndroidX EmojiCompat's automatic downloadable-font initializer; other local Startup components remain. Both debug and production builds check the actual merged manifests, and the native startup test verifies that this app initializer stays disabled. This does not prevent the OS-selected WebView from independently fetching provider fonts. See [Android's initializer configuration](https://developer.android.com/reference/androidx/emoji2/text/EmojiCompatInitializer).
 

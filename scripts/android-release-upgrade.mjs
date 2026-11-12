@@ -3,6 +3,7 @@ import {assertUpgradeHarnessSource,assertFreshUpgradeTarget} from './android/upg
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
+import { captureAndroidDisplay, restoreAndroidDisplay } from './android/display-state.mjs';
 import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync, fork } from 'node:child_process';
@@ -44,9 +45,10 @@ for (const [directory, descriptor] of [[aDirectory, a], [bDirectory, b]]) {
 // Refuse before creating fixtures or changing the emulator's font profile.
 assertFreshUpgradeTarget(spawnSync(adb,['-s',serial,'shell','pm','path',a.applicationId],{encoding:'utf8'}));
 const directory = await mkdtemp(join(tmpdir(), 'open-triage-upgrade-')), container = `open-triage-upgrade-${randomUUID()}`;
-const children = []; let ownsController = false;
+const children = []; let ownsController = false, restoreDisplay;
 await withWebViewFontProfile({adb,serial,root,applicationId:a.applicationId},async fontProfile=>{
 try {
+  restoreDisplay = captureAndroidDisplay({ adb, serial });
   const fixtures = await prepareFixtures(root, directory, run, process.env.DOCKER_COMMAND ?? 'docker', container);
   for (const fixture of fixtures) {
     fixture.upgradeAcceptance={releaseA:a,releaseB:b,apkBPath:join(bDirectory,b.artifact)};
@@ -130,6 +132,7 @@ try {
 } catch (error) {
   await preserveAndroidFailure(error, {root,adb,serial,applicationId:'org.opentriage.android'});
 } finally {
+  restoreAndroidDisplay(restoreDisplay);
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });
   await stopFixtureChildren(children);
   spawnSync(process.env.DOCKER_COMMAND ?? 'docker', ['rm', '--force', container], { stdio: 'inherit' });

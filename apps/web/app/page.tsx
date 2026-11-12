@@ -2,6 +2,8 @@
 import { foregroundNetworkAllowed } from "./application-foreground";
 import { useNativeForeground } from "../components/use-native-foreground";
 import {SignedReportPdfPreview} from '../components/signed-report-pdf-preview';
+import { useAndroidBack } from "../components/use-android-back";
+import { confirmDiscardChanges } from "../components/unsaved-changes";
 
 import { CosIssueSettings } from "../components/cos-issue-settings";
 import { applyCosPatientComparison, cosIssueElement, cosIssueIsWarning } from "./cos-signing-actions";
@@ -66,6 +68,7 @@ import { advanceCachedReportRevision, nextDraftChange } from "./offline-reports"
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { sameJsonValue } from "./json-values";
+import { MediaReadInterruptedError } from "./media-response";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { populateSyntheticRecord } from "./populate-synthetic-record";
 import { stationarySectionForGroup } from "./stationary-record";
@@ -84,7 +87,7 @@ import { EncounterTimeline } from "../components/encounter-timeline";
 import { WorkspaceSidebar } from "../components/workspace-sidebar";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
-import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
+import { AudioNoteDialog, cancelActiveAudioCapture, stopActiveAudio } from "../components/audio-note";
 import { createReportPhotoNote, fetchReportPhoto } from "./report-photo-api";
 import { createReportAudioNote, fetchReportAudio } from "./report-audio-api";
 import { blobToBase64 } from "./report-audio-notes";
@@ -177,6 +180,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
   const [noteStatusMessage, setNoteStatusMessage] = useState<string | null>(null);
   const [closeError, setCloseError] = useState(false);
+  const closingReport = useRef(false);
+  const workspaceMounted = useRef(true);
+  useEffect(() => {
+    workspaceMounted.current = true;
+    return () => { workspaceMounted.current = false; };
+  }, []);
+  const [closePending, setClosePending] = useState(false);
   const [stationaryTimelineOpen, setStationaryTimelineOpen] = useState(false);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
@@ -198,8 +208,21 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     };
   }, [presentationMode]);
   const mediaUploadActive = useRef(false);
+  const mediaRetryAt = useRef(0);
+  const mediaRetryTimer = useRef<number | null>(null);
   const [photoQueueVersion, setPhotoQueueVersion] = useState(0);
   const [audioQueueVersion, setAudioQueueVersion] = useState(0);
+  const deferMediaRetry = useCallback(() => {
+    if (mediaRetryTimer.current !== null) return;
+    mediaRetryAt.current = performance.now() + 1000;
+    mediaRetryTimer.current = window.setTimeout(() => {
+      mediaRetryTimer.current = null;
+      mediaRetryAt.current = 0;
+      setPhotoQueueVersion(version => version + 1);
+      setAudioQueueVersion(version => version + 1);
+    }, 1000);
+  }, []);
+  useEffect(() => () => { if (mediaRetryTimer.current !== null) window.clearTimeout(mediaRetryTimer.current); }, []);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const pcrNumber = useMemo(() => reportNumber(encounter.document), [encounter.document]);
@@ -309,7 +332,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, [report]);
 
   useEffect(() => {
-    if (!report || !restored || !online || !foreground || mediaUploadActive.current) return;
+    if (!report || !restored || !online || !foreground || mediaUploadActive.current || mediaRetryAt.current > performance.now()) return;
     const pending = protectedPhotoEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
@@ -328,8 +351,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
           if (!foregroundNetworkAllowed()) break;
           try {
-            const response = await createReportPhotoNote(sessionRequestToken(session), report.id, attemptCommand);
-            revisionRef.current = response.revision;
+            const response = entry.serverRevision === undefined
+              ? await createReportPhotoNote(sessionRequestToken(session), report.id, attemptCommand)
+              : { revision: entry.serverRevision, note: { ...entry.note, persistenceState: "ready" as const } };
+            revisionRef.current = Math.max(revisionRef.current, response.revision);
             advanceCachedReportRevision(window.localStorage, report.id, response.revision);
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
               serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
@@ -346,7 +371,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
           } catch (error) {
             const message = error instanceof Error ? error.message : "The photo upload failed.";
-            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            const resumable = error instanceof MediaReadInterruptedError || message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            if (resumable) deferMediaRetry();
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current, failure: message,
               note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
             if (message === "session") onSessionEnded();
@@ -360,9 +386,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       }
     })();
     return () => { active = false; };
-  }, [audioQueueVersion, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, deferMediaRetry, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
-    if (!report || !restored || !online || !foreground || mediaUploadActive.current) return;
+    if (!report || !restored || !online || !foreground || mediaUploadActive.current || mediaRetryAt.current > performance.now()) return;
     const pending = protectedAudioEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
@@ -379,8 +405,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
           if (!foregroundNetworkAllowed()) break;
           try {
-            const response = await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand);
-            revisionRef.current = response.revision;
+            const response = entry.serverRevision === undefined
+              ? await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand)
+              : { revision: entry.serverRevision, note: { ...entry.note, persistenceState: "ready" as const } };
+            revisionRef.current = Math.max(revisionRef.current, response.revision);
             advanceCachedReportRevision(window.localStorage, report.id, response.revision);
             await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
               serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
@@ -396,7 +424,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
           } catch (error) {
             const message = error instanceof Error ? error.message : "The audio upload failed.";
-            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            const resumable = error instanceof MediaReadInterruptedError || message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            if (resumable) deferMediaRetry();
             await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current, failure: message,
               note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
             if (message === "session") onSessionEnded();
@@ -410,7 +439,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       }
     })();
     return () => { active = false; };
-  }, [audioQueueVersion, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, deferMediaRetry, flushSave, foreground, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
     queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
   }, [session.user.id]);
@@ -481,7 +510,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }, []);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "audio") { setAudioDialog(null); setNoteError(null); stopActiveAudio(); }
+    if (activeDialog === "audio") { void cancelActiveAudioCapture().then(discarded => {
+      if (discarded) { setAudioDialog(null); setNoteError(null); stopActiveAudio(); }
+    }); }
     else if (activeDialog === "photo") { setPhotoDialog(null); setNoteError(null); }
     else if (activeDialog === "note") {
       setTextNoteDraft(null);
@@ -517,11 +548,15 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (event.defaultPrevented) return;
         event.preventDefault();
+        if (noteSaving) return;
         if (confirmingNoteDelete) {
           setConfirmingNoteDelete(false);
           return;
         }
+        if ((event as KeyboardEvent & { androidBack?: boolean }).androidBack &&
+          activeDialog !== "audio" && activeDialog !== "photo" && !confirmDiscardChanges(true)) return;
         closeActiveDialog();
         return;
       }
@@ -544,7 +579,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, presentationMode, stationaryTimelineOpen]);
+  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, noteSaving, presentationMode, stationaryTimelineOpen]);
 
   function rememberTrigger(element: HTMLElement) {
     returnFocus.current = element;
@@ -929,6 +964,27 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 
   const readDraftRevision=useCallback(()=>revisionRef.current,[revisionRef]);
 
+  async function saveAndClose() {
+    if (closingReport.current) return;
+    if (report && hasPendingProtectedMedia(report.id) && !window.confirm(t("mobile.mediaCloseWarning"))) return;
+    closingReport.current = true;
+    setClosePending(true);
+    setCloseError(false);
+    try {
+      await flushSave();
+      if (report) await flushProtectedReport(report.id, { retryFailed: true });
+      if (workspaceMounted.current) onSaveAndClose();
+    } catch { setCloseError(true); }
+    finally { closingReport.current = false; if (workspaceMounted.current) setClosePending(false); }
+  }
+
+  useAndroidBack(async () => {
+    if (stationaryTimelineOpen) { setStationaryTimelineOpen(false); return true; }
+    if (shell.view !== "timeline") { dispatch({ type: "view-selected", view: "timeline" }); return true; }
+    await saveAndClose();
+    return true;
+  }, 10);
+
   const integrations = (epsBinding || cosBinding || cosSigning) ? <section className="review-group" aria-labelledby="signing-integrations-heading">
     <h2 id="signing-integrations-heading">{t("mobile.integrations")}</h2>
     <>{epsBinding?<EpsSigningCheckbox result={epsChecklist} summary={report?<EpsOutgoingPreview key={JSON.stringify([report.id,epsBinding,syncStatus,report.revision])} reportId={report.id} binding={epsBinding} language={language} disabled={signing||!online||syncStatus!=="Saved"}/>:null} language={language} checked={exportEps} disabled={signing||cosBusy} onChange={setExportEps}/>:null}
@@ -983,14 +1039,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               void flushSave();
             }
           }}>{shell.view === "review" ? t("mobile.returnRecord") : t("mobile.reviewSign")}</button>}
-          <button type="button" onClick={async () => {
-            if (report && hasPendingProtectedMedia(report.id) && !window.confirm(t("mobile.mediaCloseWarning"))) return;
-            setCloseError(false);
-            await flushSave();
-            try { if (report) await flushProtectedReport(report.id, { retryFailed: true }); }
-            catch { setCloseError(true); return; }
-            onSaveAndClose();
-          }}>{t("mobile.saveClose")}</button>
+          <button type="button" disabled={closePending} onClick={() => void saveAndClose()}>{t("mobile.saveClose")}</button>
         </div>}
       </header>
 

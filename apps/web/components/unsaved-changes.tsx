@@ -1,14 +1,13 @@
 "use client";
 
 import { createContext, useContext, useEffect, useId } from "react";
+import { resolveMessage } from "../app/localization";
 
 /** Only explicit-save editors register here; clinical autosave has its own recovery flow. */
 export const UnsavedChangesContext = createContext<Set<string> | null>(null);
 
 export function confirmDiscardChanges(dirty: boolean): boolean {
-  return !dirty || window.confirm(document.documentElement.lang === "sv"
-    ? "Du har osparade ändringar. Lämna och kasta ändringarna? Välj Avbryt för att stanna och spara."
-    : "You have unsaved changes. Leave and discard them? Choose Cancel to stay and save.");
+  return !dirty || window.confirm(resolveMessage(document.documentElement.lang, "navigation.discardChanges"));
 }
 
 export function useUnsavedChanges(dirty: boolean) {

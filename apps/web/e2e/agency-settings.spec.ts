@@ -3,6 +3,7 @@ import { DEFAULT_AGENCY_APPEARANCE } from '@open-triage/contracts';
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import AxeBuilder from '@axe-core/playwright';
 
 let script:string,css:string;
 test.beforeAll(async()=>{
@@ -16,7 +17,8 @@ test.beforeAll(async()=>{
       createRoot(document.getElementById('root')).render(<AgencySettingsPanel csrfToken="csrf" canWrite={params.get('readonly')!=='1'} language={params.get('language')}/>);
     `}});script=result.outputFiles[0]!.text;
 });
-for(const language of ['en','sv'])test(`${language} Demo unit selection saves, clears and survives a failed unit refresh on mobile`,async({page},testInfo)=>{
+for(const language of ['en','sv'])for(const layout of ['phone','short-large-text','tablet'])test(`${language} Demo unit selection saves, clears and survives a failed unit refresh on ${layout}`,async({page},testInfo)=>{
+  await page.setViewportSize(layout==='tablet'?{width:800,height:1024}:layout==='short-large-text'?{width:320,height:440}:{width:390,height:844});
   const t=(en:string,sv:string)=>language==='sv'?sv:en;
   let settings={organizationId:'agency',revision:1,language:'en',regionalFormat:null,timeZone:'UTC',demoUnitId:null as string|null,
     syntheticRetentionHours:24,reportMediaAllowanceBytes:52428800,imageMediaLimitBytes:10485760,
@@ -24,7 +26,7 @@ for(const language of ['en','sv'])test(`${language} Demo unit selection saves, c
     demographics:{versionId:'version',version:1,catalogReleaseId:'catalog',agencyUniqueStateId:'EMS',agencyNumber:'123',stateCode:'00',stateDisplay:null,stateCodeSystem:'ANSI-STATE',stateTerminologyVersion:null,effectiveFrom:'2026-10-17T00:00:00Z'},storageGrowthWarning:false,updatedAt:'2026-10-17T00:00:00Z'};
   let failUnits=true,saves=0;
   await page.route('**/__settings-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
-  await page.route('**/__settings?*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__settings-script"></script></body></html>`}));
+  await page.route('**/__settings?*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}${layout==='short-large-text'?':root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}':''}</style></head><body><div id="root"></div><script src="/__settings-script"></script></body></html>`}));
   await page.route('**/api/admin/agency-settings',route=>{
     if(route.request().method()==='PUT'){
       expect(route.request().headers()['x-csrf-token']).toBe('csrf');
@@ -49,8 +51,10 @@ for(const language of ['en','sv'])test(`${language} Demo unit selection saves, c
   await save.click();await expect.poll(()=>saves).toBe(1);await expect(save).toBeDisabled();
   await page.reload();await expect(select).toHaveValue('unit-b');
   await select.scrollIntoViewIfNeeded();await expect(select).toBeInViewport();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:testInfo.outputPath(`demo-default-${language}-mobile.png`)});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(node=>node.getClientRects().length&&node.getBoundingClientRect().right>innerWidth+1).map(node=>({tag:node.tagName,cls:node.className,width:node.getBoundingClientRect().width,text:node.textContent?.slice(0,60)}))))).toBe(true);
+  const accessibility=await new AxeBuilder({page}).include('.agency-settings').analyze();
+  expect(accessibility.violations.filter(({impact})=>impact==='serious'||impact==='critical')).toEqual([]);
+  await page.screenshot({path:testInfo.outputPath(`demo-default-${language}-${layout}.png`)});
   await select.selectOption('');await save.click();await expect.poll(()=>saves).toBe(2);
   expect(settings.demoUnitId).toBeNull();
   await page.goto(`/__settings?language=${language}&readonly=1`);await expect(select).toBeDisabled();

@@ -3,6 +3,7 @@ import { nativeStorageScope, nativeLegacyStorageScope } from "./native-storage-c
 import type { EpsLookup, CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 import { sameJsonValue } from "./json-values";
+import { APPLICATION_FOREGROUND_EVENT, applicationVisible } from "./application-foreground";
 
 /** An upgrade may read older supported envelopes, but must never replace
  * incompatible retained material with a new key or an empty protected record. */
@@ -65,6 +66,8 @@ export interface ProtectedAudioChunk {
   readonly sourceBase64: string;
 }
 export interface ProtectedAudioPreview {
+  /** Encrypted recording identity fences callbacks from a discarded capture. */
+  readonly captureId?: string;
   readonly chunks: ReadonlyArray<ProtectedAudioChunk>;
   readonly recorderContentType: string;
   readonly sourceContentType: ReportAudioSourceContentType;
@@ -74,6 +77,13 @@ export interface ProtectedAudioPreview {
   readonly caption: string;
   readonly interrupted: boolean;
   readonly complete: boolean;
+}
+export type ProtectedAudioPreviewIdentity = Pick<ProtectedAudioPreview, "captureId" | "capturedAt">;
+
+function matchingAudioPreview(preview: ProtectedAudioPreview | undefined, expected?: ProtectedAudioPreviewIdentity): boolean {
+  return Boolean(preview && (!expected || (expected.captureId !== undefined
+    ? preview.captureId === expected.captureId
+    : preview.captureId === undefined && preview.capturedAt === expected.capturedAt)));
 }
 
 export interface ProtectedEpsScope {
@@ -169,6 +179,15 @@ export function protectedRecordExpired(
   return !Number.isFinite(deadline) || deadline <= now.getTime();
 }
 
+type ProtectedMetadataTask = {
+  readonly revision: number;
+  readonly digest: string;
+  readonly synchronizedRevision: number;
+  readonly preserveRecoveryDeadline: boolean;
+  receiptRecorded: boolean;
+};
+type ProtectedMetadataDrain = { work: Promise<void>; lastTask?: ProtectedMetadataTask; paused: boolean };
+
 type RuntimeContext = {
   readonly key: CryptoKey;
   readonly localRecordId: string;
@@ -181,7 +200,8 @@ type RuntimeContext = {
   revision: number;
   synchronizedRevision: number;
   writer: LatestProtectedWriteQueue<ProtectedClinicalPayload>;
-  checkpointQueue: Promise<void>;
+  metadataDrain: ProtectedMetadataDrain | null;
+  pendingMetadata?: ProtectedMetadataTask;
   failure: Error | null;
   locking: boolean;
   receiptRequest: AbortController | null;
@@ -475,9 +495,9 @@ export async function startProtectedAudioPreview(reportId: string,
 }
 
 export async function stageProtectedAudioChunk(reportId: string, chunk: ProtectedAudioChunk,
-  durationMilliseconds: number): Promise<void> {
+  durationMilliseconds: number, expected?: ProtectedAudioPreviewIdentity): Promise<void> {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview,
     durationMilliseconds, chunks: [...context.payload.audioPreview.chunks.filter(({ sequence }) => sequence !== chunk.sequence), chunk] } };
   queuePersist(reportId);
@@ -485,24 +505,24 @@ export async function stageProtectedAudioChunk(reportId: string, chunk: Protecte
 }
 
 export async function finishProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview,
-  "durationMilliseconds" | "interrupted" | "complete">): Promise<void> {
+  "durationMilliseconds" | "interrupted" | "complete">, expected?: ProtectedAudioPreviewIdentity): Promise<void> {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview, ...changes } };
   queuePersist(reportId);
   await context.writer.flush();
 }
 
-export function updateProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview, "caption">): void {
+export function updateProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview, "caption">, expected?: ProtectedAudioPreviewIdentity): void {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview, ...changes } };
   queuePersist(reportId);
 }
 
-export async function removeProtectedAudioPreview(reportId: string): Promise<void> {
+export async function removeProtectedAudioPreview(reportId: string, expected?: ProtectedAudioPreviewIdentity): Promise<void> {
   const context = contexts.get(reportId);
-  if (!context?.payload.audioPreview) return;
+  if (!context?.payload.audioPreview || !matchingAudioPreview(context.payload.audioPreview, expected)) return;
   const { audioPreview: _preview, ...payload } = context.payload;
   context.payload = payload;
   queuePersist(reportId);
@@ -824,7 +844,8 @@ function cancelProtectedRequest<T>(request: Promise<T>, signal: AbortSignal): Pr
   });
 }
 
-class ProtectedReceiptTransportError extends Error {}
+class ProtectedMetadataError extends Error {}
+class ProtectedReceiptTransportError extends ProtectedMetadataError {}
 
 async function persist(reportId: string, payload: ProtectedClinicalPayload): Promise<void> {
   const context = contexts.get(reportId);
@@ -868,102 +889,173 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   // IndexedDB has committed this revision even if the following receipt fails.
   // Retrying must use a new revision, not overwrite authenticated ciphertext.
   context.revision = revision;
-  const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
-  let receiptRecorded = false;
-  const current = () => contexts.get(reportId) === context && !context.locking;
-  if (url && navigator.onLine && current()) {
-    const receiptRequest = new AbortController();
-    context.receiptRequest = receiptRequest;
-    try {
-      const digest = await ciphertextSha256(encrypted.ciphertext);
-      if (!current() || receiptRequest.signal.aborted) return;
-      let response: Response | undefined;
-      try {
-        response = await cancelProtectedRequest(fetch(url, browserRequestInit({
-          method: "POST",
-          headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
-          body: JSON.stringify({
-            schemaVersion: 1,
-            recoveryHandle: context.envelope.recoveryHandle,
-            ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
-            ciphertextRevision: revision,
-            ciphertextSha256: digest,
-            ...(context.recoveryInitialization && !payloadHasPendingWork(payload) ? { preserveRecoveryDeadline: true } : {}),
-          }),
-          signal: receiptRequest.signal,
-        })), receiptRequest.signal);
-      } catch (error) {
-        // Durable encryption succeeded independently of the remote receipt.
-        // Keep online flush/signing failed, without disabling offline storage.
-        if (!current() || receiptRequest.signal.aborted) return;
-        if (navigator.onLine) throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its server receipt");
-      }
-      if (!current() || receiptRequest.signal.aborted) return;
-      if (response) {
-        if (applyProtectedAuthorityResponse(reportId, response)) throw new Error("Clinical authorization changed; protected editing is locked");
-        if (response.status === 404 || response.status === 410) {
-          contexts.delete(reportId); statuses.delete(reportId); context.releaseLock();
-          await deleteRecords([context.localRecordId]);
-          throw new Error("Protected report recovery is unavailable");
-        }
-        if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
-        let receipt: ProtectedCiphertextReceipt | undefined;
-        try { receipt = await cancelProtectedRequest(response.json(), receiptRequest.signal) as ProtectedCiphertextReceipt; }
-        catch (error) {
-          if (!current() || receiptRequest.signal.aborted) return;
-          // A broken stream is transport loss; malformed JSON remains an error.
-          if (!(error instanceof TypeError)) throw error;
-          if (navigator.onLine) throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its complete server receipt");
-        }
-        if (!current() || receiptRequest.signal.aborted) return;
-        if (receipt) {
-          await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline, current);
-          if (!current() || receiptRequest.signal.aborted) return;
-          context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
-          receiptRecorded = true;
-        }
-      }
-    } finally {
-      // Keep cancellation effective until the body and deadline update settle.
-      if (context.receiptRequest === receiptRequest) context.receiptRequest = null;
-    }
-  }
-  if (!current()) return;
+  // Metadata is tied to this exact committed ciphertext, never a fresh resume
+  // encryption. Only the newest deferred revision needs a receipt/checkpoint.
+  context.synchronizedRevision = Math.max(context.synchronizedRevision, synchronizedRevision);
+  context.pendingMetadata = {
+    revision, digest: await ciphertextSha256(encrypted.ciphertext), synchronizedRevision,
+    preserveRecoveryDeadline: Boolean(context.recoveryInitialization && !payloadHasPendingWork(payload)),
+    receiptRecorded: false,
+  };
   context.recoveryInitialization = false;
-  context.synchronizedRevision = synchronizedRevision;
   context.failure = null;
-  publishStatus(reportId, writableStorageStatus(context));
-  if (receiptRecorded && context.synchronizedRevision >= revision) {
-    // The server accepts a checkpoint only for its latest receipt. Keep the
-    // writer held until this checkpoint settles so the next receipt cannot
-    // advance that revision while this request is in flight.
-    context.checkpointQueue = context.checkpointQueue.then(() =>
-      checkpointProtectedCiphertext(reportId, context, revision, encrypted.ciphertext));
-    await context.checkpointQueue;
-  }
+  if (!context.locking && protectedStorageStatus(reportId).mode !== "locked") publishStatus(reportId, writableStorageStatus(context));
+  if (metadataNetworkAllowed()) await whileMetadataForeground(drainProtectedMetadata(reportId, context));
 }
 
-async function checkpointProtectedCiphertext(reportId: string, context: RuntimeContext, revision: number, ciphertext: ArrayBuffer): Promise<void> {
+function metadataNetworkAllowed(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine &&
+    (typeof document === "undefined" || applicationVisible());
+}
+
+function metadataContextCurrent(reportId: string, context: RuntimeContext): boolean {
+  return contexts.get(reportId) === context && !context.locking;
+}
+
+function metadataEligible(reportId: string, context: RuntimeContext): boolean {
+  return metadataNetworkAllowed() && metadataContextCurrent(reportId, context) &&
+    !protectedRecordExpired(context.envelope) && protectedStorageStatus(reportId).mode !== "locked";
+}
+
+/** Pause releases the local writer, while a request already sent may settle. */
+function whileMetadataForeground(work: Promise<void>): Promise<void> {
+  if (!metadataNetworkAllowed()) { void work.catch(() => undefined); return Promise.resolve(); }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (failed = false, error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener(APPLICATION_FOREGROUND_EVENT, changed);
+      window.removeEventListener("offline", changed);
+      document.removeEventListener("visibilitychange", changed);
+      if (failed) reject(error); else resolve();
+    };
+    const changed = () => { if (!metadataNetworkAllowed()) finish(); };
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, changed);
+    window.addEventListener("offline", changed);
+    document.addEventListener("visibilitychange", changed);
+    work.then(() => finish(), error => finish(true, error));
+    changed();
+  });
+}
+
+async function drainProtectedMetadata(reportId: string, context: RuntimeContext): Promise<void> {
+  const running = context.metadataDrain;
+  if (running) {
+    await running.work;
+    // A write can commit while an older drain is settling. Await its distinct
+    // task, but do not hot-loop a checkpoint that just failed for this task.
+    if (context.pendingMetadata && metadataEligible(reportId, context) &&
+        (context.pendingMetadata !== running.lastTask || running.paused)) await drainProtectedMetadata(reportId, context);
+    return;
+  }
+  if (!context.pendingMetadata || !metadataEligible(reportId, context)) return;
+  const drain: ProtectedMetadataDrain = { work: Promise.resolve(), paused: false };
+  const work = Promise.resolve().then(async () => {
+    while (metadataEligible(reportId, context)) {
+      const task = context.pendingMetadata;
+      if (!task) break;
+      drain.lastTask = task;
+      if (!await registerProtectedMetadata(reportId, context, task)) break;
+      // An old in-flight response must not clear a newer durable write.
+      if (context.pendingMetadata === task) context.pendingMetadata = undefined;
+    }
+    drain.paused = !metadataNetworkAllowed();
+  }).catch(error => { throw error instanceof ProtectedMetadataError ? error : new ProtectedMetadataError(error instanceof Error ? error.message : "Protected ciphertext receipt could not be recorded"); });
+  drain.work = work;
+  context.metadataDrain = drain;
+  const settled = () => { if (context.metadataDrain === drain) context.metadataDrain = null; };
+  void work.then(settled, error => {
+    if (metadataContextCurrent(reportId, context) && (!context.failure || context.failure instanceof ProtectedMetadataError)) {
+      context.failure = error;
+      publishStatus(reportId, error instanceof ProtectedReceiptTransportError ? writableStorageStatus(context) : {
+        mode: navigator.onLine ? "online-only" : "read-only",
+        explanation: navigator.onLine
+          ? "This browser cannot preserve offline changes. Server saves remain available while connected."
+          : "Protected storage failed while offline. The current form is readable, but editing is paused until storage or connectivity recovers.",
+      });
+    }
+    settled();
+  });
+  await work;
+}
+
+async function registerProtectedMetadata(reportId: string, context: RuntimeContext, task: ProtectedMetadataTask): Promise<boolean> {
+  const current = () => metadataContextCurrent(reportId, context);
+  if (!task.receiptRecorded) {
+    const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
+    if (!url || !metadataEligible(reportId, context)) return false;
+    const request = new AbortController(); context.receiptRequest = request;
+    try {
+      let response: Response;
+      try {
+        response = await cancelProtectedRequest(fetch(url, browserRequestInit({
+          method: "POST", headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
+          body: JSON.stringify({ schemaVersion: 1, recoveryHandle: context.envelope.recoveryHandle,
+            ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
+            ciphertextRevision: task.revision, ciphertextSha256: task.digest,
+            ...(task.preserveRecoveryDeadline ? { preserveRecoveryDeadline: true } : {}) }),
+          signal: request.signal,
+        })), request.signal);
+      } catch {
+        if (!current() || request.signal.aborted) return false;
+        throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its server receipt");
+      }
+      if (!current() || request.signal.aborted) return false;
+      if (applyProtectedAuthorityResponse(reportId, response)) throw new Error("Clinical authorization changed; protected editing is locked");
+      if (response.status === 404 || response.status === 410) {
+        contexts.delete(reportId); statuses.delete(reportId); context.releaseLock();
+        await deleteRecords([context.localRecordId]);
+        throw new Error("Protected report recovery is unavailable");
+      }
+      if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
+      let receipt: ProtectedCiphertextReceipt;
+      try { receipt = await cancelProtectedRequest(response.json(), request.signal) as ProtectedCiphertextReceipt; }
+      catch (error) {
+        if (!current() || request.signal.aborted) return false;
+        if (!(error instanceof TypeError)) throw error;
+        throw new ProtectedReceiptTransportError("The committed protected revision is awaiting its complete server receipt");
+      }
+      if (!current() || request.signal.aborted) return false;
+      // A legitimate pre-pause acknowledgement can renew its ordinary policy
+      // window; it cannot affect another context or initiate a paused checkpoint.
+      await updateRecordDeadline(context.localRecordId, context.revision, receipt.recoveryDeadline, current);
+      if (!current() || request.signal.aborted) return false;
+      context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
+      task.receiptRecorded = true;
+      if (context.failure instanceof ProtectedMetadataError) {
+        context.failure = null;
+        publishStatus(reportId, writableStorageStatus(context));
+      }
+    } finally { if (context.receiptRequest === request) context.receiptRequest = null; }
+  }
+  if (!current()) return false;
+  if (context.pendingMetadata !== task) return true;
+  if (task.synchronizedRevision >= task.revision) {
+    if (!metadataEligible(reportId, context)) return false;
+    return checkpointProtectedCiphertext(reportId, context, task);
+  }
+  return true;
+}
+
+async function checkpointProtectedCiphertext(reportId: string, context: RuntimeContext, task: ProtectedMetadataTask): Promise<boolean> {
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-checkpoint`);
-  const current = () => !context.locking && contexts.get(reportId) === context;
-  if (!url || !current()) return;
+  const current = () => metadataContextCurrent(reportId, context);
+  if (!url || !metadataEligible(reportId, context)) return false;
   const request = new AbortController(); context.checkpointRequest = request;
   try {
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
-    if (!current() || request.signal.aborted) return;
-    const ciphertextSha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const response = await cancelProtectedRequest(fetch(url, browserRequestInit({
-      method: "POST",
-      headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
+      method: "POST", headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
       body: JSON.stringify({ schemaVersion: 1, recoveryHandle: context.envelope.recoveryHandle,
         ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
-        ciphertextRevision: revision, ciphertextSha256 }),
+        ciphertextRevision: task.revision, ciphertextSha256: task.digest }),
       signal: request.signal,
     })), request.signal);
-    if (!current() || request.signal.aborted) return;
-    if (applyProtectedAuthorityResponse(reportId, response)) return;
+    if (!current() || request.signal.aborted) return false;
+    if (applyProtectedAuthorityResponse(reportId, response)) return false;
     if (response.status === 409) publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
-  } catch { /* The local authenticated ciphertext remains authoritative until reconnect. */ }
+    return response.ok;
+  } catch { return false; /* The authenticated local ciphertext remains authoritative. */ }
   finally { if (context.checkpointRequest === request) context.checkpointRequest = null; }
 }
 
@@ -1109,7 +1201,7 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
     const context = { key, nativeScope: nativeStorageScope(), localRecordId: crypto.randomUUID(), checkpointScope: "report" as const, envelope, csrfToken,
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
-      checkpointQueue: Promise.resolve(),
+      metadataDrain: null,
       failure: null, locking: false, receiptRequest: null, checkpointRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
     context.writer = createProtectedWriter(reportId, context);
     contexts.set(reportId, context);
@@ -1224,7 +1316,7 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
       revision: record?.ciphertextRevision ?? 0,
       synchronizedRevision: record?.synchronizedRevision ?? 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
-      checkpointQueue: Promise.resolve(),
+      metadataDrain: null,
       failure: null,
       locking: false,
       receiptRequest: null,
@@ -1269,6 +1361,7 @@ export async function flushProtectedReport(reportId: string, options: { readonly
   const context = contexts.get(reportId);
   if (options.retryFailed) await context?.writer.flushLatest();
   else await context?.writer.flush();
+  if (context && metadataEligible(reportId, context)) await whileMetadataForeground(drainProtectedMetadata(reportId, context));
   if (context?.failure) throw context.failure;
 }
 
@@ -1276,11 +1369,23 @@ export async function holdProtectedReportForCompletion(reportId: string): Promis
   const context = contexts.get(reportId);
   if (!context) return () => undefined;
   const release = await context.writer.holdAfterFlush();
-  if (context.failure) {
+  try {
+    const authorized = () => metadataContextCurrent(reportId, context) && !protectedRecordExpired(context.envelope) && protectedStorageStatus(reportId).mode !== "locked";
+    if (!authorized()) throw new ProtectedMetadataError("Clinical authorization changed; protected editing is locked");
+    if (context.pendingMetadata) {
+      if (!metadataEligible(reportId, context)) throw new ProtectedReceiptTransportError("Protected ciphertext is awaiting foreground confirmation");
+      await whileMetadataForeground(drainProtectedMetadata(reportId, context));
+      if (!metadataNetworkAllowed() || context.pendingMetadata && !context.pendingMetadata.receiptRecorded) {
+        throw new ProtectedReceiptTransportError("Protected ciphertext is awaiting foreground confirmation");
+      }
+    }
+    if (!authorized()) throw new ProtectedMetadataError("Clinical authorization changed; protected editing is locked");
+    if (context.failure) throw context.failure;
+    return release;
+  } catch (error) {
     release();
-    throw context.failure;
+    throw error;
   }
-  return release;
 }
 
 export function removeProtectedReport(reportId: string): void {
@@ -1323,6 +1428,18 @@ function installProtectedCleanup(): void {
   });
   const timer = window.setInterval(cleanup, 15 * 60 * 1_000);
   window.addEventListener("pagehide", () => window.clearInterval(timer), { once: true });
+  const resumeMetadata = () => {
+    if (!metadataNetworkAllowed()) return;
+    for (const [reportId, context] of contexts) {
+      // Let pending local encryption settle before choosing its latest revision.
+      void context.writer.flush().then(() => {
+        if (metadataEligible(reportId, context)) return drainProtectedMetadata(reportId, context);
+      }).catch(() => undefined);
+    }
+  };
+  window.addEventListener(APPLICATION_FOREGROUND_EVENT, resumeMetadata);
+  window.addEventListener("online", resumeMetadata);
+  document.addEventListener("visibilitychange", resumeMetadata);
 }
 
 installProtectedCleanup();
