@@ -54,7 +54,21 @@ public class NativePdfSafTest {
             target.startActivity(new android.content.Intent().setComponent(component).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra("result",receiver).putExtra("token",token).putExtra("document",original).putExtra("name",name).putExtra("length",expected.length));
             var file=device.wait(Until.findObject(By.text(name)),10000);
-            assertNotNull("The genuine Open Document picker exposes only this exact synthetic export for user selection",file);file.click();
+            assertNotNull("The genuine Open Document picker exposes only this exact synthetic export for user selection",file);
+            // A long filename's accessibility TextView can extend beyond the
+            // current display. Select its real clickable document row instead
+            // of injecting a touch at an off-screen text midpoint.
+            String pickerPackage=file.getApplicationPackage();
+            assertNotEquals(target.getPackageName(),pickerPackage);
+            assertNotEquals(component.getPackageName(),pickerPackage);
+            var row=file;android.graphics.Rect visible=null;String geometry="";
+            for(int depth=0;row!=null&&depth<5;depth++,row=row.getParent()) {
+                var bounds=row.getVisibleBounds();geometry+=" depth="+depth+":"+bounds+":"+row.isClickable();
+                if(!pickerPackage.equals(row.getApplicationPackage())||!row.isEnabled()||!row.isClickable())continue;
+                if(bounds.intersect(0,0,device.getDisplayWidth(),device.getDisplayHeight())&&!bounds.isEmpty()){visible=bounds;break;}
+            }
+            assertNotNull("The exact synthetic document has an enabled clickable row inside the display;"+geometry,visible);
+            assertTrue("One genuine user selection reaches the visible document row",device.click(visible.centerX(),visible.centerY()));
             assertTrue("The separately granted document consumer must finish",done.await(15,java.util.concurrent.TimeUnit.SECONDS));
             var proof=result.get();assertNotNull(proof);
             assertEquals("The ResultReceiver belongs to the exact separate test component",component.flattenToShortString(),proof.getString("component"));
