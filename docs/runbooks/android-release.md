@@ -101,9 +101,11 @@ npm run build -w @open-triage/api
 npm run android:test:upgrade -- /path/to/release-A /path/to/release-B
 ```
 
-The harness rejects physical devices and resets only a prior synthetic production
-installation on the disposable emulator before installing/enrolling A. The real
-synthetic API/database and separate test DPC deliver a private CA,
+The harness requires a fresh isolated disposable emulator and rejects physical
+devices or any existing production-package installation before changing fixture
+state. It never uninstalls, clears, downgrades or copies an existing installation
+to prepare A. Preserve that emulator and its data; provision a separate fresh AVD
+when another clean baseline is needed. The real synthetic API/database and separate test DPC deliver a private CA,
 managed server and ordinary enrollment. A clinician creates a durable encrypted
 pending edit offline. After abrupt process termination the host installs B with
 `adb install -r`, without clearing/uninstalling/copying data, and confirms ordinary
@@ -114,8 +116,21 @@ clinician cannot recover it; the original clinician recovers and syncs it online
 Report pins and recovery deadline rules are checked. A real remote HTML deployment
 changes while A is running; reloading continues to show the packaged clinical UI
 at `https://localhost` with no service worker. B retains this packaged shell.
+The historical A1 preparation profile is limited to its exact published descriptor,
+APK digest, certificate, source, production package/version and preparation phase.
+It creates the retained clinical text supported by that original source; A1
+predates byte/photo transport and current lifecycle tests. The original text,
+exact ciphertext, UID, pins, identity and recovery-deadline checks still run.
+After those recovery assertions, signed B runs the full current photo capture,
+pause, offline-byte and canonical-media checks. Default/current preparations keep
+their full photo/lifecycle checks. A host-bound receipt records the exact A1
+artifact and installed B version; no other source or version can select this
+historical profile. Artifact/preflight source and test-harness source are recorded
+separately, and any later harness delta must be explicitly allowlisted as test-only.
+
 The result is `upgrade-evidence.json` beside B; failures never produce passing
-evidence. Fixtures and management owner are removed in cleanup.
+evidence. Preserve failed-run logs and source/APK hashes before fixing or rerunning.
+Fixtures and management owner are removed in cleanup.
 
 A preflight evidence JSON records `status: passed`, `command: npm run check:ci`,
 the exact tested `sourceCommit` and optional workflow run. Publish only after all
