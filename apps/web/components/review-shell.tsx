@@ -1,4 +1,5 @@
 "use client";
+import { useAndroidBack } from "./use-android-back";
 import { LocalDateTime } from "./local-date-time";
 import { ReviewMappingRepair } from "./review-mapping-repair";
 import { ReviewIdentifierCorrection } from "./review-identifier-correction";
@@ -460,6 +461,11 @@ export function ReviewShell({ session, language, online, attention, onAttentionR
     });
   };
   const closeFindings = () => { setFullFindingsOpen(false); document.getElementById("review-findings-toggle")?.focus(); };
+  useAndroidBack(() => {
+    if (!fullReportOpen) return false;
+    if (!commentBusy && confirmDiscardChanges(findingsDirty)) closeReport();
+    return true;
+  }, 10);
   return <main className="review-workspace" aria-label={t("navigation.review")}>
     {callWindow ? <header className="review-heading review-card">
       <h1 id="review-heading">{t("navigation.review")}</h1>
