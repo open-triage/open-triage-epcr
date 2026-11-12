@@ -3,7 +3,6 @@ import { isAndroidRuntime } from "../app/android-runtime";
 import { useAndroidBack } from "./use-android-back";
 
 import { AndroidInstallationAction } from "./android-installation-action";
-import { isAndroidRuntime } from "../app/android-runtime";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
