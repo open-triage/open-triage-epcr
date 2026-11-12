@@ -140,7 +140,7 @@ including when only its previously bound personal session accompanies the reques
 
 Immutable candidates 1 and 2 predate version declarations and native enrollment
 attempt receipts. Android's legacy `HttpURLConnection` agent is boundedly recognized
-as `Dalvik/... (Linux; U; Android ...)`; without newer native provenance or an
+as `Dalvik/... (Linux; U; Android ...)`, following [AOSP RuntimeInit](https://android.googlesource.com/platform/frameworks/base/+/android12-release/core/java/com/android/internal/os/RuntimeInit.java); without newer native provenance or an
 explicit declaration it is conservatively evaluated as the exact approved
 `android-candidate-1-0.1.0-rc.1` baseline. The server never assumes latest/current
 for an unreported version. Missing or incompatible baseline fails closed.
@@ -175,3 +175,8 @@ an explicit localized recovery-material notice. The original encrypted bytes sta
 unchanged and the report remains read-only; the runtime does not initialize a new
 key/envelope or replace that material with an empty current-schema record. Normal
 online recovery remains available for supported records under its original policy.
+
+Policy polling rechecks native foreground, cancellation and installation generation
+after the asynchronous installed-version read, immediately before HTTP dispatch.
+A delayed native callback cannot start a new request after the app pauses or its
+installation/session context changes.

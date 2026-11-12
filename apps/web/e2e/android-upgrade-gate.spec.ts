@@ -106,3 +106,25 @@ for(const language of ['en','sv'])test(`Android retirement gates new work withou
  expect(pageErrors).toEqual([]);expect(reauth).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:testInfo.outputPath(`upgrade-gate-${language}.png`)});
 });
+
+type PolicyRaceFixture = {start():void;pause():void;abort():void;changeContext():void;releaseVersion?():void;finished?:boolean;dispatches?:number};
+for(const action of ['pause','abort','context'] as const)test(`held native version cannot dispatch policy HTTP after ${action}`,async({page})=>{
+ const result=await build({bundle:true,write:false,format:'iife',platform:'browser',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin'})},plugins:[{name:'held-native-version',setup(builder){
+  builder.onResolve({filter:/android-runtime$/},()=>({path:'held-version',namespace:'held-version'}));
+  builder.onLoad({filter:/.*/,namespace:'held-version'},()=>({loader:'js',contents:'export const isAndroidRuntime=()=>false;export const AndroidConnection={version:()=>new Promise(resolve=>{window.releaseVersion=()=>resolve({versionCode:1})})};'}));
+ }}],stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'ts',contents:`
+  import{loadAndroidClientPolicy}from'./app/android-client-policy';import{setNativeForeground}from'./app/application-foreground';
+  const controller=new AbortController();let current=true;const originalFetch=window.fetch.bind(window);window.dispatches=0;
+  window.fetch=(...args)=>{window.dispatches++;return originalFetch(...args)};
+  Object.assign(window,{pause:()=>setNativeForeground(false),abort:()=>controller.abort(),changeContext:()=>{current=false},start:()=>{
+    void loadAndroidClientPolicy(controller.signal,()=>current).then(()=>window.finished=true,()=>window.finished=true);
+  }});`}});
+ await page.route('**/__upgrade-policy-race',route=>route.fulfill({contentType:'text/html',body:`<html><body><script>${result.outputFiles[0]!.text}</script></body></html>`}));
+ let reads=0;await page.route('**/api/android/compatibility?*',route=>{reads++;return route.fulfill({status:503,json:{}});});
+ await page.goto('/__upgrade-policy-race');await page.evaluate(()=>(window as unknown as PolicyRaceFixture).start());
+ await expect.poll(()=>page.evaluate(()=>typeof (window as unknown as PolicyRaceFixture).releaseVersion)).toBe('function');
+ await page.evaluate(action=>{const fixture=window as unknown as PolicyRaceFixture;if(action==='pause')fixture.pause();else if(action==='abort')fixture.abort();else fixture.changeContext();fixture.releaseVersion?.();},action);
+ await expect.poll(()=>page.evaluate(()=>(window as unknown as PolicyRaceFixture).finished)).toBe(true);
+ expect(reads,'No new policy HTTP request may begin after the native lifecycle or installation boundary changed').toBe(0);
+ expect(await page.evaluate(()=>(window as unknown as PolicyRaceFixture).dispatches),'Even an already-aborted fetch must not be newly scheduled after the boundary changed').toBe(0);
+});

@@ -1,11 +1,20 @@
 import type { AndroidUpgradeClientPolicy } from "@open-triage/contracts/android-upgrade-policy";
+import { applicationVisible } from "./application-foreground";
 import { AndroidConnection } from "./android-runtime";
 import { apiRequestUrl, browserRequestInit } from "./browser-api";
 import { platformRequestError } from "./platform-errors";
 
 /** Native package metadata is separate from the WebView's mutable presentation state. */
-export async function loadAndroidClientPolicy(signal: AbortSignal): Promise<AndroidUpgradeClientPolicy> {
+export async function loadAndroidClientPolicy(signal: AbortSignal, current: () => boolean = () => true): Promise<AndroidUpgradeClientPolicy> {
+  const mayDispatch = () => {
+    if (signal.aborted) throw signal.reason;
+    if (!applicationVisible() || !current()) throw new Error("android.policyOnlineRequired");
+  };
+  mayDispatch();
   const { versionCode } = await AndroidConnection.version();
+  // Native callbacks may wait behind another operation. React effect cleanup
+  // can lag the lifecycle/installation event, so guard the actual HTTP dispatch.
+  mayDispatch();
   if (!Number.isSafeInteger(versionCode) || versionCode < 1 || versionCode > 21e8) throw new Error("android.upgradeRequired");
   const url = apiRequestUrl(`/api/android/compatibility?versionCode=${versionCode}`);
   if (!url) throw new Error("android.policyOnlineRequired");

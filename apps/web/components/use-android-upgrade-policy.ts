@@ -29,7 +29,7 @@ export function useAndroidUpgradePolicy(scope: string, enabled: boolean) {
       try { return generation === authenticationInstallationGeneration(); }
       catch { return false; }
     };
-    void loadAndroidClientPolicy(controller.signal).then(policy => {
+    void loadAndroidClientPolicy(controller.signal, current).then(policy => {
       if (current()) setSnapshot({scope: contextualScope, policy});
     }).catch(() => {
       if (current()) setSnapshot({scope: contextualScope, policy: null});
