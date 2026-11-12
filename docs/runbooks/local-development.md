@@ -254,6 +254,12 @@ Playwright Chromium first (`npx playwright install chromium`). Docker must be
 running; on WSL without a Linux Docker client, use
 `DOCKER_COMMAND=docker.exe npm run check:ci`.
 
+Audio tests need executable FFmpeg and FFprobe. The preflight checks them before
+the suite starts, following the API's `FFMPEG_PATH`/`FFPROBE_PATH` overrides,
+system `PATH`, and bundled fallback. Run installation scripts when installing
+dependencies; if a bundled binary is missing, run
+`npm rebuild ffmpeg-static ffprobe-static` before retrying.
+
 This command does not load `.env.local` or use the development database. The
 browser unit suite tests unset, same-origin, and explicit API URL configurations.
 The disposable database is removed on completion, including test failure.
