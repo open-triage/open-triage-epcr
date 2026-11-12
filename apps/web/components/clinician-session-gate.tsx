@@ -1,4 +1,5 @@
 "use client";
+import { AndroidApkLink } from "./android-apk-link";
 import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
 import { useAndroidBack } from "./use-android-back";
 import { AndroidInstallationAction } from "./android-installation-action";
@@ -650,7 +651,7 @@ export function ClinicianSessionGate({ children }: {
         <span>{t(!androidUpgrade.policy ? "android.upgradeCheckRequired" : androidUpgrade.policy.status === "upgrade-required" ? "android.upgradeRequired" : "android.upgradeApproaching", {
           deadline: androidUpgrade.policy?.deadline ? new Intl.DateTimeFormat(language, {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"}).format(new Date(androidUpgrade.policy.deadline)) + " UTC" : ""
         })}</span>
-        {androidUpgrade.policy?.replacement && <a className="button-link" href={androidUpgrade.policy.replacement.downloadUrl} target="_blank" rel="noopener noreferrer">{t("android.downloadUpdate", { version: androidUpgrade.policy.replacement.versionName })}</a>}
+        {androidUpgrade.policy?.replacement && <AndroidApkLink className="button-link" verifiedUrl={androidUpgrade.policy.replacement.downloadUrl} unavailableMessage={t("android.apkDownloadUnavailable")}>{t("android.downloadUpdate", { version: androidUpgrade.policy.replacement.versionName })}</AndroidApkLink>}
       </aside>}
       {modeMessage && <p className="admin-entry-blocked" role="alert">{modeMessage}</p>}
         {shouldShowClinicalDemoBanner({ authenticated: true, capabilities: session.capabilities,

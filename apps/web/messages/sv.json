@@ -3145,6 +3145,8 @@
   "android.upgradeApproaching": "Uppdatera Android-appen före {deadline}.",
   "android.upgradeCheckRequired": "Anslut för att kontrollera Android-kompatibilitet innan du börjar med nytt arbete.",
   "android.downloadUpdate": "Hämta {version}",
+  "android.apkDownloadUnavailable": "Nedladdningen kan inte öppnas. Be din administratör att installera uppdateringen.",
+  "androidRelease.apkDownloadUnavailable": "Nedladdningen kan inte öppnas. Använd en webbläsare för att hämta APK-filen.",
   "platform.error.android.upgradeRequired": "Uppdatera Android-appen innan du börjar med nytt arbete. Pågående dokumentation och sparade utkast finns kvar.",
   "android.retainedIncompatible": "Det sparade utkastet använder ett inkompatibelt format. Dess krypterade data bevaras för återställning."
 }

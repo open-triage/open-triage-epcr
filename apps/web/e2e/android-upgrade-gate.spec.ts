@@ -13,7 +13,7 @@ test.beforeAll(async()=>{
  const result=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin',NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION:'false'})},plugins:[{name:'installed-version-boundary',setup(builder){
   // The policy hook and package-version bridge are the only mocked leaves;
   // Home, session gate, documentation and encrypted IndexedDB are real.
-  builder.onResolve({filter:/android-runtime$/},args=>/use-android-upgrade-policy|android-client-policy/.test(args.importer)?{path:'version',namespace:'installed-version'}:undefined);
+  builder.onResolve({filter:/android-runtime$/},args=>/use-android-upgrade-policy|android-client-policy|android-apk-link/.test(args.importer)?{path:'version',namespace:'installed-version'}:undefined);
   builder.onLoad({filter:/.*/,namespace:'installed-version'},()=>({loader:'js',contents:'export const isAndroidRuntime=()=>true;export const AndroidConnection={version:async()=>({versionCode:1})};'}));
  }}],stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:"import React from 'react';import {createRoot} from 'react-dom/client';import Home from './app/page';createRoot(document.getElementById('root')).render(<Home/>);"}});script=result.outputFiles[0]!.text;
 });
@@ -32,7 +32,7 @@ for(const language of ['en','sv'])test(`Android retirement gates new work withou
   if(url.pathname==='/api/android/compatibility'){
    policyReads++;expect(url.searchParams.get('versionCode')).toBe('1');
    if(holdPolicy){policyHeld=true;await new Promise<void>(resolve=>{releasePolicy=resolve;});}
-   return route.fulfill({json:{versionCode:1,status,reason:status==='compatible'?'supported':'retired',serverTime:'2026-11-01T00:00:00.000Z',deadline:status==='compatible'?null:'2026-11-02T00:00:00.000Z',replacement:status==='compatible'?null:{versionCode:2,versionName:'0.1.0-rc.2',tag:'android-candidate-2-0.1.0-rc.2',downloadUrl:'https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-2-0.1.0-rc.2/opentriage-update.apk',apkSha256:'a'.repeat(64)},policyRevision:1,graceDays:90}});
+   return route.fulfill({json:{versionCode:1,status,reason:status==='compatible'?'supported':'retired',serverTime:'2026-11-01T00:00:00.000Z',deadline:status==='compatible'?null:'2026-11-02T00:00:00.000Z',replacement:status==='compatible'?null:{versionCode:2,versionName:'0.1.0-rc.2',tag:'android-candidate-2-0.1.0-rc.2',downloadUrl:`https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-2-0.1.0-rc.2/opentriage-0.1.0-rc.2-2-${'a'.repeat(64)}.apk`,apkSha256:'a'.repeat(64)},policyRevision:1,graceDays:90}});
   }
   if(url.pathname==='/api/calls/assigned')return route.fulfill({json:demoAssignedCalls});
   if(url.pathname==='/api/reports/open')return route.fulfill({json:{openCalls:isOpen?[{reportId,callNumber:call.callNumber,lastSavedAt:new Date().toISOString(),syncStatus:'saved',validationErrorCount:0,revision:opened.report.revision,formVersionId:opened.report.formVersionId,catalogReleaseId:opened.report.catalogReleaseId}]:[],completedReportIds:[],refreshedAt:new Date().toISOString()}});
@@ -53,7 +53,7 @@ for(const language of ['en','sv'])test(`Android retirement gates new work withou
  if(language==='sv'){
   status='upgrade-required';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(open).toBeDisabled();await expect(page.getByRole('button',{name:'Ny patient',exact:true})).toBeDisabled();await expect(page.getByRole('status').filter({hasText:'Uppdatera Android-appen innan'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Hämta 0.1.0-rc.2'})).toHaveAttribute('href',/github.com\/open-triage/);
+  await expect(page.getByRole('link',{name:'Hämta 0.1.0-rc.2'})).toHaveAttribute('href',/github.com\/open-triage/);await expect(page.getByRole('link',{name:'Hämta 0.1.0-rc.2'})).not.toHaveAttribute('target');
  }else{
   await page.getByRole('group',{name:'Documentation presentation'}).getByRole('button',{name:'Stationary',exact:true}).click();
   await open.click();const firstName=page.getByRole('textbox',{name:'First Name',exact:true});await expect(firstName).toBeEnabled();
@@ -68,7 +68,7 @@ for(const language of ['en','sv'])test(`Android retirement gates new work withou
   await expect(firstName).toHaveAttribute('data-original-mounted-node','yes');await expect(firstName).toHaveValue('RETAINED THROUGH RETIREMENT');
   expect(await cipher(page)).toEqual(before);await expect(page.locator(".encounter-header")).toBeVisible();
   const saved=saves;await firstName.fill('CONTINUE EXISTING WORK');await firstName.press('Tab');await expect.poll(()=>saves).toBeGreaterThan(saved);
-  await expect(page.getByRole('link',{name:'Download 0.1.0-rc.2'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Download 0.1.0-rc.2'})).toBeVisible();await expect(page.getByRole('link',{name:'Download 0.1.0-rc.2'})).not.toHaveAttribute('target');
   // A future-format encrypted record must remain explicit recovery material,
   // never be consumed/replaced by the newly installed runtime's key setup.
   await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('open-triage-protected-clinical-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});try{await new Promise<void>((resolve,reject)=>{const tx=db.transaction('encrypted-reports','readwrite'),store=tx.objectStore('encrypted-reports'),read=store.getAll();read.onsuccess=()=>{for(const row of read.result)store.put({...row,schemaVersion:99});};tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}finally{db.close();}});

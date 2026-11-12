@@ -1,8 +1,19 @@
+import { approvedAndroidReleaseUrl } from "@open-triage/contracts/android-release";
 import type { AndroidUpgradeClientPolicy } from "@open-triage/contracts/android-upgrade-policy";
 import { applicationVisible } from "./application-foreground";
 import { AndroidConnection } from "./android-runtime";
 import { apiRequestUrl, browserRequestInit } from "./browser-api";
 import { platformRequestError } from "./platform-errors";
+
+export function validatedUpgradeDownload(replacement: NonNullable<AndroidUpgradeClientPolicy["replacement"]>, installedVersion: number): string {
+  if (!/^[a-f0-9]{64}$/.test(replacement.apkSha256) || typeof replacement.versionName !== "string" || replacement.versionName.length > 100 ||
+      !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(replacement.versionName) || !Number.isSafeInteger(replacement.versionCode) ||
+      replacement.versionCode <= installedVersion || replacement.versionCode > 21e8) throw new Error("android.policyOnlineRequired");
+  const descriptor = { versionCode: replacement.versionCode, versionName: replacement.versionName,
+    artifact: `opentriage-${replacement.versionName}-${replacement.versionCode}-${replacement.apkSha256}.apk` };
+  if (replacement.downloadUrl !== approvedAndroidReleaseUrl(replacement.tag, descriptor)) throw new Error("android.policyOnlineRequired");
+  return replacement.downloadUrl;
+}
 
 /** Native package metadata is separate from the WebView's mutable presentation state. */
 export async function loadAndroidClientPolicy(signal: AbortSignal, current: () => boolean = () => true): Promise<AndroidUpgradeClientPolicy> {
@@ -25,12 +36,6 @@ export async function loadAndroidClientPolicy(signal: AbortSignal, current: () =
       !Number.isFinite(Date.parse(value.serverTime)) || !Number.isSafeInteger(value.policyRevision) || value.policyRevision < 1 ||
       !Number.isInteger(value.graceDays) || value.graceDays < 0 || value.graceDays > 365 || value.deadline !== null && !Number.isFinite(Date.parse(value.deadline)))
     throw new Error("android.policyOnlineRequired");
-  if (value.replacement) {
-    const url = new URL(value.replacement.downloadUrl);
-    if (url.origin !== "https://github.com" || !url.pathname.startsWith("/open-triage/open-triage-epcr/releases/download/") || url.username || url.password || url.search || url.hash ||
-        !/^[a-f0-9]{64}$/.test(value.replacement.apkSha256) || typeof value.replacement.versionName !== "string" || value.replacement.versionName.length > 100 ||
-        !Number.isSafeInteger(value.replacement.versionCode) || value.replacement.versionCode <= versionCode)
-      throw new Error("android.policyOnlineRequired");
-  }
+  if (value.replacement) validatedUpgradeDownload(value.replacement, versionCode);
   return value;
 }
