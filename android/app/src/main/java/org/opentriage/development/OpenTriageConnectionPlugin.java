@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import com.getcapacitor.JSObject;
-import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
@@ -14,7 +13,7 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 @CapacitorPlugin(name = "OpenTriageConnection")
-public class OpenTriageConnectionPlugin extends Plugin {
+public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile TrustedConnection active;
     private TrustedConnection candidate;
@@ -37,7 +36,8 @@ public class OpenTriageConnectionPlugin extends Plugin {
             sampledPolicy(); loaded = true;
         }
     }
-    @Override public void load() {
+    @Override protected void onReplyRealmReady() {
+        super.onReplyRealmReady();
         management = new ManagedConfiguration(getContext());
         restrictionReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) { refreshManagement(); }
@@ -125,19 +125,19 @@ public class OpenTriageConnectionPlugin extends Plugin {
     }
     private interface Operation { JSObject run() throws Exception; }
     private void execute(PluginCall call, Operation operation) {
-        getActivity().runOnUiThread(() -> {
+        withReplyRealm(call, () -> {
             String url = getBridge().getWebView().getUrl();
-            if (url == null || !url.startsWith("https://localhost/")) { call.reject("Unapproved UI origin", "CONNECTION_FAILED"); return; }
+            if (url == null || !url.startsWith("https://localhost/")) { rejectCall(call, "Unapproved UI origin", "CONNECTION_FAILED"); return; }
             executor.execute(() -> {
                 try {
                     if (destroyed) throw new IllegalStateException("Runtime closed");
-                    initialize(); call.resolve(operation.run());
+                    initialize(); resolveCall(call, operation.run());
                 }
                 catch (ManagedFailure error) {
                     try { if (!destroyed) notifyListeners("configurationChanged", connectionState()); } catch (Exception ignored) { /* The request already fails closed. */ }
-                    call.reject("Managed connection requires attention", error.code);
+                    rejectCall(call, "Managed connection requires attention", error.code);
                 }
-                catch (Exception error) { call.reject("Connection or pairing failed", "CONNECTION_FAILED"); }
+                catch (Exception error) { rejectCall(call, "Connection or pairing failed", "CONNECTION_FAILED"); }
             });
         });
     }
@@ -250,7 +250,7 @@ public class OpenTriageConnectionPlugin extends Plugin {
         // The external browser owns provider pages; none inherits the Capacitor bridge.
         var launched = new java.util.concurrent.CountDownLatch(1);
         var failure = new java.util.concurrent.atomic.AtomicReference<Exception>();
-        getActivity().runOnUiThread(() -> {
+        withReplyRealm(call, () -> {
             try {
                 allowed(active);
                 if (destroyed || revision != revisions.current()) throw new IllegalStateException("Policy changed");
@@ -292,6 +292,7 @@ public class OpenTriageConnectionPlugin extends Plugin {
         result.put("outcome", outcome); return result;
     }); }
     @Override protected void handleOnDestroy() {
+        closeReplies();
         destroyed = true;
         if (restrictionReceiver != null) getContext().unregisterReceiver(restrictionReceiver);
         policyObserver.shutdownNow(); executor.shutdownNow(); super.handleOnDestroy();
