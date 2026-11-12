@@ -1,4 +1,5 @@
 import {adbShellArguments} from './instrumentation.mjs';
+import {observeNativePdfCalls} from './pdf-native-observer.mjs';
 import {decodeUpgradePreparationReceipt} from './upgrade-policy-fixture.mjs';
 import { captureAndroidFailure } from './diagnostics.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -22,7 +23,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const artifact = { version: 1, ...issued.body, caPem: ca.toString('utf8') };
   const argumentsFor = (phase, username, password, extra = {}) => {
     const args = ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.ReportRecoveryJourneyTest'];
-    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', audio: audio ? '1' : '0', unsavedAudio: unsavedAudio ? '1' : '0', preparationProfile: phase==='prepare'?preparationProfile:'current', originPreparationProfile: preparationProfile, upgradeReceipt, ...extra })) args.push('-e', key, String(value));
+    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', audio: audio ? '1' : '0', unsavedAudio: unsavedAudio ? '1' : '0', preparationProfile: phase==='prepare'?preparationProfile:'current', originPreparationProfile: preparationProfile, upgradeReceipt, ...(phase==='sign-review'?{nativePdfObserverBase64:Buffer.from(observeNativePdfCalls.toString()).toString('base64')}:{}), ...extra })) args.push('-e', key, String(value));
     args.push(`${applicationId}.test/androidx.test.runner.AndroidJUnitRunner`);
     return args;
   };

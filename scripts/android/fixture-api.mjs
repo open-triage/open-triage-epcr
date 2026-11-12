@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { readFile } from 'node:fs/promises';
 import { installTlsFixtureControl } from './tls-fixture-control.mjs';
 import { pdfServerCompatibilityFixture } from './pdf-server-compatibility-fixture.mjs';
+import { pdfDownloadFixture } from './pdf-download-fixture.mjs';
 const fixture = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const runtimeDatabase = new URL(fixture.databaseUrl);
 runtimeDatabase.searchParams.set('options', '-c role=open_triage_api_runtime');
@@ -48,8 +49,8 @@ let acceptedRequests = 0;
 let outcomeAvailable = true;
 let dropEnrollmentReplies = false;
 const pdfMediaHolds = new Set();
-const pdfDownloadFailures = new Set();
 app.use(pdfServerCompatibilityFixture());
+app.use(pdfDownloadFixture());
 if(upgradeAcceptance) app.use((request,response,next)=>{
   if(request.url==='/api/__android-upgrade-policy/retire' && request.method==='POST') {
     upgradeAcceptance.retire();return response.json({retired:true});
@@ -60,14 +61,6 @@ if(upgradeAcceptance) app.use((request,response,next)=>{
 app.use((request, response, next) => {
   acceptedRequests++;
   const mediaControl = new URL(request.url,fixture.origin);
-  if(mediaControl.pathname==='/api/__android-pdf-download-fail'&&request.method==='POST') {
-    const id=mediaControl.searchParams.get('reportId');
-    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id??''))return response.status(400).json({armed:false});
-    if(!pdfDownloadFailures.has(id)&&pdfDownloadFailures.size>=4)return response.status(503).json({armed:false});
-    pdfDownloadFailures.add(id);return response.json({armed:true});
-  }
-  const signedPdf=/^\/api\/review\/reports\/([a-f0-9-]{36})\/snapshots\/[a-f0-9-]{36}\/pdf$/.exec(mediaControl.pathname);
-  if(request.method==='GET'&&signedPdf&&pdfDownloadFailures.delete(signedPdf[1]))return response.status(503).set('Cache-Control','no-store').json({code:'fixture.download-unavailable'});
   if (mediaControl.pathname === '/api/__android-pdf-media-hold' && request.method === 'POST') {
     const id=mediaControl.searchParams.get('reportId');
     if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id??''))return response.status(400).json({held:false});

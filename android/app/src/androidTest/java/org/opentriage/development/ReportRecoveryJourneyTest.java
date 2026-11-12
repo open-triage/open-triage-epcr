@@ -579,6 +579,12 @@ public class ReportRecoveryJourneyTest {
         }
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
     }
+    private String pdfBoundaryEvidence() throws Exception {
+        evaluate("window.__pdfBoundaryStats=null;fetch('/api/__android-pdf-download-fail?reportId='+"+JSONObject.quote(InstrumentationRegistry.getArguments().getString("reportId"))+ ").then(response=>response.json()).then(value=>window.__pdfBoundaryStats=value).catch(()=>window.__pdfBoundaryStats={unavailable:true})");
+        waitFor("Boolean(window.__pdfBoundaryStats)");
+        String proof=evaluate("JSON.stringify({native:window.__nativePdfObservation?{total:window.__nativePdfObservation.total,closes:window.__nativePdfObservation.closes,calls:window.__nativePdfObservation.calls}:null,server:window.__pdfBoundaryStats,modal:document.querySelector('.signed-report-pdf-dialog')?.textContent.slice(0,320),configured:window.__reviewNative?.configured,platform:window.Capacitor?.getPlatform?.()})");
+        var evidence=new android.os.Bundle();evidence.putString("opentriage_pdf_boundary",proof);InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);return proof;
+    }
     private void signReview() throws Exception {
         String reportId=InstrumentationRegistry.getArguments().getString("reportId");
         waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
@@ -621,19 +627,27 @@ public class ReportRecoveryJourneyTest {
         evaluate("Array.from(document.querySelectorAll('.review-report-toolbar button')).find(button=>button.textContent.startsWith('Timeline')).click()");
         waitFor("document.querySelector('.review-timeline-sidebar .photo-thumbnail')?.naturalWidth===640");
         if(audioEnabled()){observeAudio();playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");}
+        String observerBase64=InstrumentationRegistry.getArguments().getString("nativePdfObserverBase64");assertNotNull(observerBase64);assertTrue(observerBase64.length()<16384);
+        String observer=new String(java.util.Base64.getDecoder().decode(observerBase64),java.nio.charset.StandardCharsets.UTF_8);
+        evaluate("window.__nativePdfObservation=("+observer+")(window.Capacitor)");
         evaluate("window.__pdfFailureArmed=null;fetch('/api/__android-pdf-download-fail?reportId='+"+JSONObject.quote(reportId)+",{method:'POST'}).then(response=>response.json()).then(value=>window.__pdfFailureArmed=value.armed)");
         waitFor("window.__pdfFailureArmed===true");
         click("Inspect signed PDF");
         waitFor("document.querySelector('.signed-report-pdf-dialog [role=alert]')?.textContent.includes('The signed PDF could not be loaded')");
         assertEquals("Native failure preserves localized shared Retry without leaking raw fixture/server prose","false",evaluate("document.querySelector('.signed-report-pdf-dialog').textContent.includes('fixture.download-unavailable')"));
+        String firstBoundary=pdfBoundaryEvidence();
+        assertEquals("The registered application plugin actually traverses the observed nativePromise boundary: "+firstBoundary,"1",evaluate("window.__nativePdfObservation.total"));
+        assertEquals("The first failed open consumed exactly the armed server PDF503 before user Retry: "+firstBoundary,"true",evaluate("window.__pdfBoundaryStats.requests===1 && window.__pdfBoundaryStats.failures===1 && !window.__pdfBoundaryStats.armed && window.__pdfBoundaryStats.statuses.length===1 && window.__pdfBoundaryStats.statuses[0]===503 && window.__nativePdfObservation.calls[0].settled && window.__nativePdfObservation.calls[0].status===503"));
         var rejectedFiles=NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf"));
         assertTrue("A denied/failed native PDF response leaves no private preview",rejectedFiles==null||rejectedFiles.length==0);
         click("Retry");
         var device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
-        assertNotNull("The authorized immutable signed report traverses the configured native TLS/cookie connection into the actual renderer",device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"))),15000));
+        var rendered=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"))),15000);
+        if(rendered==null)pdfBoundaryEvidence();
+        assertNotNull("The authorized immutable signed report traverses the configured native TLS/cookie connection into the actual renderer",rendered);
         device.pressBack();waitFor("document.querySelector('[data-native-pdf-controls]')");
         assertEquals("Native signed PDF viewing leaves no browser blob/iframe path","false",evaluate("!!document.querySelector('.signed-report-pdf-dialog iframe')"));
-        click("Close");
+        click("Close");evaluate("window.__nativePdfObservation.restore()");
     }
     private void deniedPdf() throws Exception {
         var args=InstrumentationRegistry.getArguments();
