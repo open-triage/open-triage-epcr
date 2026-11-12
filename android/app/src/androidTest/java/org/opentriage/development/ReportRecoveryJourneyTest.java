@@ -33,7 +33,7 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({url:location.href,platform:window.Capacitor?.getPlatform?.(),nativePromise:typeof window.Capacitor?.nativePromise,reviewNative:window.__reviewNative,timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
@@ -608,7 +608,13 @@ public class ReportRecoveryJourneyTest {
         } finally {
             evaluate("fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=0',{method:'POST'})");
         }
+        evaluate("window.__reviewNative=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__reviewNative=state)");waitFor("Boolean(window.__reviewNative)");
+        String nativeContext=(String)new org.json.JSONTokener(evaluate("window.__reviewNative.connectionContext")).nextValue();
         activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+reportId+"&dataset=synthetic&language=en"));
+        waitFor("location.pathname==='/review-call/' && window.Capacitor?.getPlatform?.()==='android' && Boolean(window.Capacitor?.nativePromise)");
+        evaluate("window.__reviewNative=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__reviewNative=state)");waitFor("Boolean(window.__reviewNative)");
+        assertEquals("Full Review navigation keeps the actual configured native installation","true",evaluate("window.__reviewNative.configured"));
+        assertEquals(nativeContext,new org.json.JSONTokener(evaluate("window.__reviewNative.connectionContext")).nextValue());
         waitFor("document.querySelector('#review-full-report') && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')");
         assertEquals("Signed Review is still under the valid logged-in principal","false",evaluate("!!document.querySelector('input[name=password]')"));
         evaluate("Array.from(document.querySelectorAll('.review-report-toolbar button')).find(button=>button.textContent.startsWith('Timeline')).click()");
