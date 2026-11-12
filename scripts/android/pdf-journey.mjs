@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {adbShellArguments} from './instrumentation.mjs';
 import {startLiveInstrumentation} from './live-instrumentation.mjs';
+import {nativeStartupArguments} from './native-startup.mjs';
 
 export function assertNativePdfInstrumentation(output) {
   assert.match(output,/(?:^|\n)OK \(6 tests\)(?:\r?\n|$)/,'All native PDF rendering/retry, remote-authority lifetime and background cleanup cases must pass');
@@ -29,7 +30,7 @@ export async function runNativePdfJourney({root,adb,serial,applicationId='org.op
     let timedOut=false;
     const timer=setTimeout(()=>{timedOut=true;preparation.child.kill('SIGTERM');},15000);
     const closed=await preparation.closed;clearTimeout(timer);console.log(closed.output);assert.equal(timedOut,false,'Killed instrumentation must exit promptly');
-    const after=execFileSync(adb,instrument('org.opentriage.development.NativePdfColdProcessTest,org.opentriage.development.NativeStartupTest',['-e','phase','verify','-e','fixtureFontProfile','1']),{cwd:root,encoding:'utf8',timeout:120000});
+    const after=execFileSync(adb,adbShellArguments(nativeStartupArguments({serial,applicationId,classes:['org.opentriage.development.NativePdfColdProcessTest','org.opentriage.development.NativeStartupTest'],extras:{phase:'verify'}})),{cwd:root,encoding:'utf8',timeout:120000});
     console.log(after);assert.match(after,/(?:^|\n)OK \(2 tests\)(?:\r?\n|$)/);assert.match(after,/INSTRUMENTATION_CODE: -1(?:\r?\n|$)/);assert.doesNotMatch(after,/FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=/);assert.match(after,/opentriage_pdf_cold_cleanup=true/);
     await verifyFontPid(/opentriage_startup_pid=(\d+)/.exec(after)?.[1]);
     console.log('PASS native PDF: real rendering, secure private pages, expiry/context/background cleanup and cold-process stale-byte/handle rejection');
