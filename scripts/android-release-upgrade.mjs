@@ -1,5 +1,5 @@
-import {upgradePreparationProfile,upgradePreparationReceipt} from './android/upgrade-policy-fixture.mjs';
-import {assertUpgradeHarnessSource} from './android/upgrade-harness-source.mjs';
+import {upgradePreparationProfile,upgradePreparationReceipt,upgradeProbeCallNumber} from './android/upgrade-policy-fixture.mjs';
+import {assertUpgradeHarnessSource,assertFreshUpgradeTarget} from './android/upgrade-harness-source.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
@@ -41,6 +41,8 @@ for (const [directory, descriptor] of [[aDirectory, a], [bDirectory, b]]) {
   verifyApkMetadata(execFileSync(join(sdk, 'build-tools/36.0.0/aapt'), ['dump', 'badging', file], { encoding: 'utf8' }),
     verifyApkSignature(sdk, file), descriptor);
 }
+// Refuse before creating fixtures or changing the emulator's font profile.
+assertFreshUpgradeTarget(spawnSync(adb,['-s',serial,'shell','pm','path',a.applicationId],{encoding:'utf8'}));
 const directory = await mkdtemp(join(tmpdir(), 'open-triage-upgrade-')), container = `open-triage-upgrade-${randomUUID()}`;
 const children = []; let ownsController = false;
 await withWebViewFontProfile({adb,serial,root,applicationId:a.applicationId},async fontProfile=>{
@@ -57,9 +59,8 @@ try {
   const serverAndroidApiProtocol = health.body.androidApiProtocol;
   const serverAndroidApiCapabilities = health.body.androidApiCapabilities ?? [];
   for (const descriptor of [a, b]) assert(isAndroidReleaseCompatible(descriptor, serverAndroidApiProtocol, serverAndroidApiCapabilities), 'A/B client must support the real server protocol and capabilities');
-  // Only initial synthetic setup is reset. A-to-B itself never clears/uninstalls data.
-  const previousFixture = spawnSync(adb, ['-s', serial, 'shell', 'pm', 'path', a.applicationId], { encoding: 'utf8' });
-  if (previousFixture.status === 0 && previousFixture.stdout.includes('package:')) run(adb, ['-s', serial, 'uninstall', a.applicationId]);
+  // Fresh-target guard already proved there is no existing production installation.
+  // A-to-B never clears or uninstalls data.
   run(adb, ['-s', serial, 'install', '-r', join(aDirectory, a.artifact)]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk')]);
   run(adb, ['-s', serial, 'install', '-t', '-r', join(root, 'android/management-test-controller/build/outputs/apk/debug/management-test-controller-debug.apk')]);
@@ -81,8 +82,8 @@ try {
       incomingAssignment=randomUUID();const incident=randomUUID();
       await db.query(`insert into clinical.incident(id,organization_id,synthetic) select $1,organization_id,synthetic from clinical.incident where id=$2`,[incident,report.incidentId]);
       await db.query(`insert into clinical.call_assignment(id,organization_id,unit_id,incident_id,call_number,dispatched_at,dispatch_reason,chief_complaint,synthetic,synthetic_generated_by,expires_at)
-        select $1,organization_id,unit_id,$2,call_number||'-UPGRADE',dispatched_at,dispatch_reason,chief_complaint,synthetic,synthetic_generated_by,expires_at
-        from clinical.call_assignment where id=$3`,[incomingAssignment,incident,report.assignmentId]);
+        select $1,organization_id,unit_id,$2,$4,dispatched_at,dispatch_reason,chief_complaint,synthetic,synthetic_generated_by,expires_at
+        from clinical.call_assignment where id=$3`,[incomingAssignment,incident,report.assignmentId,upgradeProbeCallNumber(incomingAssignment,report.callNumber)]);
       const retired=await api(fixtures[0],ca,'__android-upgrade-policy/retire','POST');assert.equal(retired.status,200);assert.equal(retired.body.retired,true);
     }},
     afterProcessStop: async () => {

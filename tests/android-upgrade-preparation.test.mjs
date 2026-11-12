@@ -5,8 +5,8 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
-import {upgradePreparationProfile,upgradePreparationReceipt,decodeUpgradePreparationReceipt} from '../scripts/android/upgrade-policy-fixture.mjs';
-import {assertUpgradeHarnessSource} from '../scripts/android/upgrade-harness-source.mjs';
+import {upgradePreparationProfile,upgradePreparationReceipt,decodeUpgradePreparationReceipt,upgradeProbeCallNumber} from '../scripts/android/upgrade-policy-fixture.mjs';
+import {assertUpgradeHarnessSource,assertFreshUpgradeTarget} from '../scripts/android/upgrade-harness-source.mjs';
 test('historical preparation binds the complete immutable published A1 descriptor',()=>{
  const a=structuredClone(catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
  assert.equal(upgradePreparationProfile(a),'historical-a1-text-v1');
@@ -24,6 +24,18 @@ test('historical receipt survives the actual adb-shell argument parsing category
  const fields=decodeUpgradePreparationReceipt(value);assert.equal(fields.length,8);
  for(const invalid of [value+'=',value+'|sh','a/b',Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify(fields)+' ').toString('base64url')])assert.throws(()=>decodeUpgradePreparationReceipt(invalid));
  for(let index=0;index<8;index++){const changed=[...fields];changed[index]='invalid';assert.throws(()=>decodeUpgradePreparationReceipt(Buffer.from(JSON.stringify(changed)).toString('base64url')));}
+});
+test('public new-work probe identifiers stay independent of private retained call identifiers',()=>{
+ const id='12000000-0000-4000-8000-000000000001',retained='ANDROID-RECOVERY-13000000-0000-4000-8000-000000000001';
+ assert.equal((retained+'-UPGRADE').includes(retained),true,'Original fixture collision reproduces the privacy assertion failure');
+ const probe=upgradeProbeCallNumber(id,retained);assert.equal(probe.includes(retained),false);assert(probe.includes(id));
+ assert.throws(()=>upgradeProbeCallNumber(id,'UPGRADE-PROBE'),/Independent probe/);
+ assert.throws(()=>upgradeProbeCallNumber('invalid',retained));
+});
+test('upgrade driver refuses existing or unknown production state before any fixture mutation',()=>{
+ assertFreshUpgradeTarget({status:1,stdout:'',stderr:''});
+ assert.throws(()=>assertFreshUpgradeTarget({status:0,stdout:'package:/data/app/org.opentriage.android/base.apk\n',stderr:''}),/Refusing/);
+ for(const invalid of [{status:0,stdout:'',stderr:''},{status:2,stdout:'',stderr:''},{status:1,stdout:'',stderr:'device offline'},{status:null,signal:'SIGTERM',stdout:'',stderr:''},{status:1,error:new Error('spawn failed'),stdout:'',stderr:''}])assert.throws(()=>assertFreshUpgradeTarget(invalid));
 });
 test('separate harness provenance rejects all production and unknown path changes',()=>{
  const artifactSource='a'.repeat(40),testSource='b'.repeat(40);

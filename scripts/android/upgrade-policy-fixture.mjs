@@ -58,3 +58,12 @@ export function upgradePreparationReceipt(a,b) {
  const fields=[profile,createHash('sha256').update(JSON.stringify(approved)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256,String(b.versionCode),b.sourceCommit,b.apkSha256];
  const receipt=Buffer.from(JSON.stringify(fields),'utf8').toString('base64url');decodeUpgradePreparationReceipt(receipt);return receipt;
 }
+
+/** Public probe work must never embed identifiers from retained private work. */
+export function upgradeProbeCallNumber(assignmentId,retainedCallNumber) {
+ assert.match(assignmentId,/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+ assert.equal(typeof retainedCallNumber,'string');assert(retainedCallNumber.length>0);
+ const value=`UPGRADE-PROBE-${assignmentId}`;
+ assert(!value.includes(retainedCallNumber),'Independent probe must not expose the retained call identifier');
+ return value;
+}
