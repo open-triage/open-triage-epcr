@@ -216,3 +216,24 @@ the missing class. Rebuild and verify the actual instrumentation APK after such
 a retry; do not accept an old APK because compilation or signing exited zero.
 Preserve the failed observation, identify the affected task inputs and outputs,
 and avoid disabling incremental compilation across the whole project.
+
+Observe persisted Android policy using `canonicalAndroidManagedPolicy` and
+`androidManagedPolicyFingerprint` from `managed-policy-observation.mjs`. Keep the
+configured Headwind payload unchanged. Android 13's restriction reader applies
+Java `String.trim()` to scalar persisted text: only outer characters at or below
+U+0020 are removed, with String/Integer/Boolean types retained. The helper models
+that representation without changing internal PEM lines or certificate content.
+It rejects unsupported values rather than coercing them. The existing native
+JSONArray observer also escapes forward slashes; its typed sorted-row fingerprint
+must use that encoding rather than ordinary Node JSON bytes. See Android's
+[restriction reader](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-13.0.0_r63/services/core/java/com/android/server/pm/UserManagerService.java#5184)
+and [JSONStringer string encoding](https://android.googlesource.com/platform/libcore/+/41407f7afb0a83dd4e71ff6e7a242923566ab7f3/json/src/main/java/org/json/JSONStringer.java#306).
+
+The first resumed operator run failed at the initial fingerprint expectation
+before clinical Activity, pairing or enrollment. A later read-only exact typed
+observation passed for the current delivered policy with only its outer CA
+newline trimmed; its native fingerprint matched the trimmed, slash-escaped
+encoding. That establishes this observation boundary, not clinical acceptance.
+The failed run and earlier source proofs remain separate. Never make changed
+certificate material or a String configuration version equivalent to the intended
+Integer policy, and do not use this observer helper to change certificate trust.
