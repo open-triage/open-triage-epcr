@@ -33,10 +33,22 @@ public class NativePdfSafTest {
         String token=java.util.UUID.randomUUID().toString();var done=new java.util.concurrent.CountDownLatch(1);
         var result=new java.util.concurrent.atomic.AtomicReference<android.os.Bundle>();var code=new AtomicInteger();
         var accepting=new java.util.concurrent.atomic.AtomicBoolean(true);
-        var receiver=new android.os.ResultReceiver(new android.os.Handler(android.os.Looper.getMainLooper())) {
-            @Override protected void onReceiveResult(int value,android.os.Bundle data){if(accepting.get()&&data!=null&&token.equals(data.getString("token"))){code.set(value);result.set(data);done.countDown();}}
-        };
         var component=new android.content.ComponentName(instrumentation.getContext().getPackageName(),NativePdfSafDocumentActivity.class.getName());
+        var receiver=new android.os.ResultReceiver(new android.os.Handler(android.os.Looper.getMainLooper())) {
+            @Override protected void onReceiveResult(int value,android.os.Bundle data){
+                if(!accepting.get()||data==null||!token.equals(data.getString("token")))return;
+                if(value==android.app.Activity.RESULT_FIRST_USER) {
+                    if(component.flattenToShortString().equals(data.getString("component"))&&data.getInt("consumerUid")==instrumentation.getContext().getApplicationInfo().uid) {
+                        var evidence=new android.os.Bundle();var predicates=new org.json.JSONObject();
+                        try {for(String key:new String[]{"contentUri","readFlag","writeFlag","sameAuthority","sameHint","sameDocumentId"})predicates.put(key,data.getBoolean(key));predicates.put("grantFlags",data.getInt("grantFlags"));}
+                        catch(org.json.JSONException unavailable){throw new AssertionError(unavailable);}
+                        evidence.putString("opentriage_pdf_user_grant_progress",data.getString("progressStage"));evidence.putString("opentriage_pdf_user_grant_predicates",predicates.toString());instrumentation.sendStatus(0,evidence);
+                    }
+                    return;
+                }
+                code.set(value);result.set(data);done.countDown();
+            }
+        };
         boolean completed=false;Throwable primary=null;
         try {
             target.startActivity(new android.content.Intent().setComponent(component).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -48,7 +60,7 @@ public class NativePdfSafTest {
             assertEquals("The ResultReceiver belongs to the exact separate test component",component.flattenToShortString(),proof.getString("component"));
             assertEquals(instrumentation.getContext().getApplicationInfo().uid,proof.getInt("consumerUid"));
             var evidence=new android.os.Bundle();for(String key:new String[]{"primaryFailure","cleanupFailure","sha256"})evidence.putString("opentriage_pdf_user_grant_"+key,proof.getString(key,"missing"));
-            var predicates=new org.json.JSONObject();for(String key:new String[]{"contentUri","readFlag","writeFlag","readPermission","writePermission","sameAuthority","sameHint","sameDocumentId","metadataReadable","nameMatches","sizeMatches"})predicates.put(key,proof.getBoolean(key));
+            var predicates=new org.json.JSONObject();for(String key:new String[]{"contentUri","readFlag","writeFlag","readPermission","writePermission","sameAuthority","sameHint","sameDocumentId","metadataReadable","nameMatches","sizeMatches"})predicates.put(key,proof.containsKey(key)?proof.getBoolean(key):org.json.JSONObject.NULL);
             predicates.put("grantFlags",proof.getInt("grantFlags"));evidence.putString("opentriage_pdf_user_grant_predicates",predicates.toString());
             evidence.putInt("opentriage_pdf_user_grant_bytes",proof.getInt("length"));evidence.putBoolean("opentriage_pdf_user_grant_deleted",proof.getBoolean("deleted"));instrumentation.sendStatus(0,evidence);
             assertEquals("Primary document verification failure (cleanup is independent): "+proof.getString("cleanupFailure")+"; predicates="+predicates,"",proof.getString("primaryFailure","missing"));

@@ -59,14 +59,17 @@ public final class NativePdfSafDocumentActivity extends Activity {
             result.putBoolean("sameAuthority",expectedUri.getAuthority().equals(selected.getAuthority()));result.putBoolean("sameHint",expectedUri.equals(selected));
             boolean sameId=false;try {sameId=DocumentsContract.getDocumentId(expectedUri).equals(DocumentsContract.getDocumentId(selected));}catch(IllegalArgumentException notDocument){ /* Report the failed predicate without reading bytes. */ }
             result.putBoolean("sameDocumentId",sameId);
+            // Deliver pure predicates before any provider/system permission RPC,
+            // so diagnostics cannot hide the first failing identity condition.
+            var progress=new Bundle(result);progress.putString("token",token);progress.putString("progressStage","pure-identity");receiver.send(RESULT_FIRST_USER,progress);
+            if((flags&grants)!=grants || !"content".equals(selected.getScheme()) || !expectedUri.getAuthority().equals(selected.getAuthority())
+                || !DocumentsContract.getDocumentId(expectedUri).equals(DocumentsContract.getDocumentId(selected)))throw new IllegalArgumentException("Unexpected selected document");
             boolean readPermission=checkUriPermission(selected,android.os.Process.myPid(),android.os.Process.myUid(),Intent.FLAG_GRANT_READ_URI_PERMISSION)==android.content.pm.PackageManager.PERMISSION_GRANTED;
             result.putBoolean("readPermission",readPermission);
             result.putBoolean("writePermission",checkUriPermission(selected,android.os.Process.myPid(),android.os.Process.myUid(),Intent.FLAG_GRANT_WRITE_URI_PERMISSION)==android.content.pm.PackageManager.PERMISSION_GRANTED);
             if(content&&readPermission)try(var diagnostic=getContentResolver().query(selected,new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE},null,null,null)) {
                 if(diagnostic!=null&&diagnostic.moveToFirst()){result.putBoolean("metadataReadable",true);result.putBoolean("nameMatches",expectedName.equals(diagnostic.getString(0)));result.putBoolean("sizeMatches",!diagnostic.isNull(1)&&diagnostic.getLong(1)==expectedLength);}
             }catch(Exception unavailable){result.putBoolean("metadataReadable",false);}
-            if((flags&grants)!=grants || !"content".equals(selected.getScheme()) || !expectedUri.getAuthority().equals(selected.getAuthority())
-                || !DocumentsContract.getDocumentId(expectedUri).equals(DocumentsContract.getDocumentId(selected)))throw new IllegalArgumentException("Unexpected selected document");
             stage="metadata";
             try(var cursor=getContentResolver().query(selected,new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE},null,null,null)) {
                 if(cursor==null||!cursor.moveToFirst()||!expectedName.equals(cursor.getString(0)))throw new IllegalArgumentException("Unexpected document metadata");
