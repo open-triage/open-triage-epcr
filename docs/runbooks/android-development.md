@@ -238,6 +238,40 @@ reconnect and refresh once per reader after resume without another connectivity
 event. The early browser journey covers all three readers as well as delayed
 permission denial and cancelled capture callbacks.
 
+## Audio notes
+
+The generic APK declares optional microphone hardware and requests Android microphone permission only when the clinician explicitly holds Record. Denial uses localized Android app-settings guidance; browser users retain browser-site guidance. Native pause, hidden pages, revoked tracks and withdrawn protected authority stop hardware tracks immediately. A permission grant that arrives after cancellation or pause cannot start a hidden recorder. Preview and authorized timeline/Stationary playback also stop on native pause, and an authorized download finishing after cancellation cannot start audio.
+
+Recordings use monotonic elapsed time for the shared five-minute limit (clock changes do not extend it), 64 kbit/s capture and existing mono-AAC normalization, protected encrypted time slices, explicit interrupted-preview choice, queued upload and retry. The nominal capture is approximately 2.4 MB before JSON/Base64 overhead. Android validates the exact 16 MiB command limit before staging an upload; abnormal oversized capture stays an unsaved preview with localized shorter-recording guidance. No native audio file, plaintext clinical cache or backup is created. Blob playback URLs exist only in memory and are revoked on stop. Both photo and audio locations use the same approved API-path guard and reject redirects.
+
+Encrypted previews carry a capture ID so callbacks from a discarded recorder cannot alter a new preview, even when timestamps are identical. Cancel waits for durable preview removal; Escape during recording first stops into an interrupted preview, while Cancel/Escape of that preview discards it. Existing encrypted previews without capture IDs remain readable and explicitly discardable. No recovery or reopening action requires renewed authentication while the login remains valid.
+
+Early browser tests cover pause/revocation, delayed permission results, native denial in both languages, delayed playback, exact wire-size rejection, held-write cancellation and old-callback isolation. API tests contain real Chromium MediaRecorder WebM/MP4 synthetic tones and run actual FFmpeg normalization/full decode. Duration-less WebM uses a bounded decoded-duration probe; a real duration-less recording over five minutes must fail rather than be silently truncated. Use ordinary `npm ci` to install the pinned FFmpeg executable; an installation made with `--ignore-scripts` needs `npm rebuild ffmpeg-static` before real audio validation.
+
+The default emulator suite adds actual microphone denial/grant and a live WebView track, real MediaRecorder output, preview/Timeline/Stationary playback with advancing decoder time, paused reconnect with zero new API requests, and exact hashed mono-AAC after authorized upload. Saved offline audio joins the photo/text process-loss and ownership-isolation journey. A second independent fixture force-stops a live unfinished recorder after encrypted chunks are durable, revokes microphone permission while stopped, and requires explicit review of restored partial audio after authorized recovery. Physical microphone/speaker quality remains ticket 019.
+
+The manifest includes both `RECORD_AUDIO` and Capacitor's required normal
+`MODIFY_AUDIO_SETTINGS` permission. Early checks compare all installed WebView
+media permission requests with the manifest. An interrupted canonical response
+stream or brief radio loss keeps photo/audio verification retryable, even if
+connectivity returns before rejection. Retries wait at least one second, respect
+native foreground state, and read the acknowledged server copy without uploading
+it again. URL, redirect, HTTP authorization and canonical MIME failures retain
+their existing rejection boundaries.
+
+Protected receipts and checkpoints obey the same foreground boundary. Pause does
+not block local encrypted durability behind an older network reply. Resume drains
+the latest committed revision and digest, without re-encrypting unchanged data or
+repeating an acknowledged receipt just to create its checkpoint. Expiry, withdrawn
+authorization and installation/session transitions keep their existing limits.
+Browser regressions include held receipt/checkpoint replies and context changes;
+the native journey interrupts a real online recorder and proves durable encrypted
+bytes with zero new API requests while paused.
+
+A future release using live WebM capture must declare and require the server
+capability `audio-webm-live-v1` through the release compatibility contract before
+distribution. Existing immutable release candidates are unchanged by this slice.
+
 ### Installation reassignment and interrupted confirmation
 
 Use **Change installation** from the APK login or session controls to scan or
@@ -308,3 +342,7 @@ The APK manifest removes only AndroidX EmojiCompat's automatic downloadable-font
 The old Google-APIs emulator fixture ships WebView109, whose default font prefetch can bind the clinical process to Google Play Services' font provider. Captured `ApplicationExitInfo` and ActivityManager evidence showed Android killing that process when the provider died, even with the app initializer excluded. The default and signed-upgrade harnesses therefore scope a supported font profile to **isolated qemu userdebug/eng emulators with the evidenced WebView109**: only `PrefetchAndroidFonts` and `GMSCoreEmoji` are disabled; verbose logging proves the effective startup settings. Conflicting existing flags, physical/production Android images, symlinks and unsupported WebView generations fail before mutation. The original flag file's exact bytes, mode or absence are restored after success, clinical failure or setup failure; restoration failure fails acceptance. No APK production flags, TLS/origin checks, permissions, Google packages or clinical assertions change. The native probe checks actual provider acquisition and records the startup PID; the harness preserves effective flag evidence in `android/app/build/reports/android-font-profile/`.
 
 This fixture control uses Chromium's [documented userdebug command line](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/docs/commandline-flags.md) and the two entries in its [supported feature list](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/java/src/org/chromium/android_webview/common/ProductionSupportedFlagList.java). It does not establish stock production WebView/GMS behavior: physical-device and regional-provider acceptance remains ticket019. Failed tests are never retried automatically. Failure artifacts also record provider exit reasons and package events so an external provider update/death is distinguishable from a Java assertion, app crash or emulator-host death.
+
+Native plugin responses and listener events use `LifecycleBoundPlugin`: settlement runs on the UI thread, checks the owning WebView at execution, and closes before worker cancellation when the Activity is destroyed. An ordinary pause keeps pending replies valid. This avoids Chromium109's `JsReplyProxy` worker-to-UI race, where destruction can clear the pointer between its initial check and deferred native call. Network authorization and durable pending-work outcomes keep their existing boundaries.
+
+The early Android tests compile the actual reply gate and reproduce the original queue/pointer race before checking live and destroyed delivery. The current-APK startup instrumentation includes `NativeReplyLifecycleTest`: an instrumentation-only plugin registers on the real MainActivity before creation, holds success/error/events until after close, verifies callback disposal, and proves pause/resume and replacement-Activity live delivery. It adds no production bridge endpoint and does not alter immutable upgrade-candidate instrumentation.

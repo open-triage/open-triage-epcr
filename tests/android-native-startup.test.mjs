@@ -3,7 +3,7 @@ import test from 'node:test';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
-import {assertNoRemoteFontInitializer,verifyNativeStartup} from '../scripts/android/native-startup.mjs';
+import {assertNoRemoteFontInitializer,verifyNativeStartup,nativeStartupClasses,assertNativeStartupInstrumentation} from '../scripts/android/native-startup.mjs';
 
 test('generic startup permits local lifecycle initialization and rejects automatic remote emoji fonts',()=>{
   const local='<manifest><application><provider android:name="androidx.startup.InitializationProvider"><meta-data android:name="androidx.lifecycle.ProcessLifecycleInitializer" /></provider></application></manifest>';
@@ -25,4 +25,12 @@ for(const variant of ['debug','release']) test(`${variant} checks the separate i
     assert.throws(()=>verifyNativeStartup(root,variant,{instrumentation:true}),/downloadable font provider/);
     assert.doesNotThrow(()=>verifyNativeStartup(root,variant));
   } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('installed startup requires both initializer and WebView lifecycle acceptance cases',()=>{
+  assert.equal(nativeStartupClasses.length,2);
+  assert.doesNotThrow(()=>assertNativeStartupInstrumentation('Time: 3.3\n\nOK (2 tests)\n'));
+  for(const output of ['OK (1 test)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 2, Failures: 1\n']) {
+    assert.throws(()=>assertNativeStartupInstrumentation(output),/must both pass/);
+  }
 });

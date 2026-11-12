@@ -1,3 +1,4 @@
+import {nativeStartupClasses,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
@@ -38,8 +39,8 @@ try {
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
   const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
-  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
-  console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed app initializer and scoped WebView font profile');
+  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(startup); assertNativeStartupInstrumentation(startup);
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
@@ -72,7 +73,9 @@ try {
   }
   if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
   else {
-    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true, hooks: { beforeReconnect: runReassignmentTransition } });
+    // Preserve incomplete encrypted recorder slices in a separate real process-loss run.
+    await runReportRecoveryJourney({ root, fixture: fixtures[1], adb, serial, run, api, audio: true, unsavedAudio: true });
     await runManagedJourneys({root, fixtures, run, api, adb, serial});
   }
   if (!process.argv.includes('--external-apis')) {
