@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import releaseCatalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
 import {approvedAndroidReleaseUrl,parseAndroidReleaseDescriptor} from '@open-triage/contracts/android-release';
+import {verifyInstrumentationClasses} from './instrumentation-contents.mjs';
 
 /** One installed startup contract for general and focused instrumentation callers. */
 export function nativeStartupArguments({serial,applicationId='org.opentriage.development',classes=nativeStartupClasses,extras={}},catalog=releaseCatalog) {
@@ -25,7 +26,7 @@ export function assertNoRemoteFontInitializer(manifest) {
   assert.match(manifest,/<manifest\b/,'Validate the actual merged Android manifest');
   assert.doesNotMatch(manifest,/androidx\.emoji2\.text\.EmojiCompatInitializer/,'The generic APK must not auto-bind a downloadable font provider');
 }
-export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
+export function verifyNativeStartup(root,variant,{instrumentation=false,instrumentationDexReader}={}) {
   assert(['debug','release'].includes(variant));
   const task=variant==='debug'?'processDebugManifest':'processReleaseManifest';
   const main=readFileSync(join(root,'android/app/build/intermediates/merged_manifests',variant,task,'AndroidManifest.xml'),'utf8');
@@ -34,6 +35,7 @@ export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
   if(instrumentation) {
     const testTask=variant==='debug'?'processDebugAndroidTestManifest':'processReleaseAndroidTestManifest';
     assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/packaged_manifests',`${variant}AndroidTest`,testTask,'AndroidManifest.xml'),'utf8'));
+    verifyInstrumentationClasses(root,variant,{readDex:instrumentationDexReader});
   }
 }
 

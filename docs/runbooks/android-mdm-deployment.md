@@ -204,3 +204,15 @@ observation checks the native policy origin and absence of an editable URL.
 Instrumenting a clinical app may perform ordinary startup network work; these
 observations alone do not prove absence of HTTP traffic or revocation acceptance.
 Actual clinical/policy/upgrade acceptance remains pending until those runs pass.
+
+Native validation also checks actual instrumentation APK DEX class definitions
+against its active Java source directories, including configured shared helpers
+and variant-specific sources. A referenced descriptor alone is insufficient.
+In this lab a release compile incorrectly remained up to date while omitting a
+new tracked test, although the task's resolved source inputs included that file.
+A task-scoped fresh `compileReleaseAndroidTestJavaWithJavac` run (up-to-date
+predicate false and incremental compilation disabled for that task only) emitted
+the missing class. Rebuild and verify the actual instrumentation APK after such
+a retry; do not accept an old APK because compilation or signing exited zero.
+Preserve the failed observation, identify the affected task inputs and outputs,
+and avoid disabling incremental compilation across the whole project.

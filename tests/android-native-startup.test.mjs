@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join,dirname,resolve} from 'node:path';
 import {assertNoRemoteFontInitializer,verifyNativeStartup,nativeStartupClasses,assertNativeStartupInstrumentation,nativeStartupArguments} from '../scripts/android/native-startup.mjs';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {writeInstrumentationSourceFixture} from './helpers/android-instrumentation-dex.mjs';
 
 test('every startup selection receives exact verified catalog arguments and cannot replace mandatory inputs',()=>{
   for(const classes of [nativeStartupClasses,['org.opentriage.development.NativeStartupTest']]) {
@@ -42,15 +43,17 @@ for(const variant of ['debug','release']) test(`${variant} checks the separate i
   const main=join(root,`android/app/build/intermediates/merged_manifests/${variant}/process${capital}Manifest/AndroidManifest.xml`);
   const instrumentation=join(root,`android/app/build/intermediates/packaged_manifests/${variant}AndroidTest/process${capital}AndroidTestManifest/AndroidManifest.xml`);
   const local='<manifest><application /></manifest>';
+  const dex=writeInstrumentationSourceFixture(root),options={instrumentation:true,instrumentationDexReader:()=>[dex]};
   try {
     for(const path of [main,instrumentation]) { mkdirSync(dirname(path),{recursive:true});writeFileSync(path,local); }
-    assert.doesNotThrow(()=>verifyNativeStartup(root,variant,{instrumentation:true}));
+    assert.doesNotThrow(()=>verifyNativeStartup(root,variant,options));
+    assert.throws(()=>verifyNativeStartup(root,variant,{...options,instrumentationDexReader:()=>[]}),/DEX inputs are missing/);
     writeFileSync(instrumentation,'<manifest><application><provider android:name="androidx.startup.InitializationProvider"><meta-data android:name="androidx.emoji2.text.EmojiCompatInitializer" /></provider></application></manifest>');
-    assert.throws(()=>verifyNativeStartup(root,variant,{instrumentation:true}),/downloadable font provider/);
+    assert.throws(()=>verifyNativeStartup(root,variant,options),/downloadable font provider/);
     assert.doesNotThrow(()=>verifyNativeStartup(root,variant));
     const verifier='<manifest><application><activity android:name="org.opentriage.development.NativePdfSafDocumentActivity" /></application></manifest>';
-    writeFileSync(instrumentation,verifier);assert.doesNotThrow(()=>verifyNativeStartup(root,variant,{instrumentation:true}));
-    writeFileSync(main,verifier);assert.throws(()=>verifyNativeStartup(root,variant,{instrumentation:true}),/test-only document verifier/);
+    writeFileSync(instrumentation,verifier);assert.doesNotThrow(()=>verifyNativeStartup(root,variant,options));
+    writeFileSync(main,verifier);assert.throws(()=>verifyNativeStartup(root,variant,options),/test-only document verifier/);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
