@@ -156,10 +156,11 @@ are not returned to JavaScript or stored in localStorage; their vault uses
 Android Keystore AES-GCM. Clinician logout clears the session cookie and retains
 the installation cookie. Android backup and cleartext HTTP are disabled.
 
-These slices validate pairing, scanning and JSON/local-authentication traffic.
-Protected offline reports, managed configuration, OIDC, cross-agency handoff,
-media, native downloads and comprehensive navigation each have following tickets.
-Native redirects are rejected until an explicit supported return flow is added.
+These slices validate pairing, scanning, protected work, managed settings and
+local/OIDC authentication. See [Android authentication](android-authentication.md)
+for the external-browser/native return strategy and independent browser CA
+prerequisites. Generic API redirects remain rejected. Cross-agency handoff,
+media, native downloads and comprehensive navigation have following tickets.
 Emulator results do not substitute for the signing, actual MDM or physical-device
 acceptance checkpoints in tickets 013 and 017–019.
 
@@ -330,6 +331,7 @@ Run `npm run android:validate:release` after `android:build` to catch release-on
 build/signature regressions locally; the Android PR workflow runs this same early
 check with a disposable key. Permanent-key distribution requires the separate
 protected release workflow and actual signed upgrade evidence.
+
 
 Android validation failures preserve bounded crash/runtime logs, application exit reasons, app memory and WebView version under `android/app/build/reports/android-failure/` before fixture/emulator teardown. These synthetic-emulator reports are included in the PR artifact for seven days. The collector excludes command arguments, screenshots, app files and bugreports; it redacts credential fields, known fixture secrets, URL queries, PEM blocks and long opaque values. Probe timeouts or collection failures never replace the original failing result, and instrumentation is never retried automatically.
 

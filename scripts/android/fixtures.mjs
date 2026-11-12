@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
@@ -21,7 +22,8 @@ export async function prepareFixtures(root, directory, run, docker, container) {
   const caPath = join(directory, 'ca.pem'), keyPath = join(directory, 'server.key'), certPath = join(directory, 'server.pem');
   run('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'ca.key'), '-out', caPath, '-days', '2', '-subj', '/CN=OpenTriage synthetic Android CA', '-addext', 'basicConstraints=critical,CA:TRUE']);
   run('openssl', ['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyPath, '-out', join(directory, 'server.csr'), '-subj', '/CN=OpenTriage synthetic Android API']);
-  await writeFile(join(directory, 'server.ext'), 'subjectAltName=IP:10.0.2.2,IP:127.0.0.1,DNS:localhost\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n');
+  const hostIps=Object.values(networkInterfaces()).flat().filter(value=>value?.family==='IPv4'&&!value.internal).map(value=>`IP:${value.address}`);
+  await writeFile(join(directory, 'server.ext'), `subjectAltName=IP:10.0.2.2,IP:127.0.0.1,DNS:localhost,${hostIps.join(',')}\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n`);
   run('openssl', ['x509', '-req', '-in', join(directory, 'server.csr'), '-CA', caPath, '-CAkey', join(directory, 'ca.key'), '-CAcreateserial', '-out', certPath, '-days', '2', '-extfile', join(directory, 'server.ext')]);
   const { AccountService } = await import('../../apps/api/dist/identity/account.service.js');
   const administratorPassword = 'AndroidFixtureAdmin123!', clinicianPassword = 'AndroidFixtureClinician123!';

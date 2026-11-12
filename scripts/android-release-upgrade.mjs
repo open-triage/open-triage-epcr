@@ -77,7 +77,7 @@ try {
   policy({});
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');
 } catch (error) {
-  await preserveAndroidFailure(error, { root, adb, serial, applicationId: 'org.opentriage.android' });
+  await preserveAndroidFailure(error, {root,adb,serial,applicationId:'org.opentriage.android'});
 } finally {
   restoreAndroidDisplay(restoreDisplay);
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });

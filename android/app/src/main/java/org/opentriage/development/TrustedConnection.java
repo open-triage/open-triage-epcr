@@ -134,6 +134,37 @@ final class TrustedConnection {
         return path;
     }
 
+    /** Android and desktop HttpCookie parsers disagree on expiry-only tombstones. */
+    static long credentialExpiry(HttpCookie cookie, String raw, long now) {
+        if (cookie.getValue().isEmpty()) return 0;
+        String maxAge = null, expires = null;
+        for (String attribute : raw.split(";")) {
+            int separator = attribute.indexOf('=');
+            if (separator < 0) continue;
+            String name = attribute.substring(0, separator).trim().toLowerCase(Locale.ROOT);
+            String value = attribute.substring(separator + 1).trim();
+            if (name.equals("max-age")) maxAge = value;
+            if (name.equals("expires")) expires = value;
+        }
+        long maximum = 366L * 24 * 3600;
+        if (maxAge != null) {
+            long seconds = Long.parseLong(maxAge);
+            return seconds <= 0 ? 0 : now + Math.min(seconds, maximum) * 1000;
+        }
+        if (expires != null) {
+            for (var format : List.of(java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME,
+                    new java.time.format.DateTimeFormatterBuilder().parseCaseInsensitive()
+                        .appendPattern("EEE, d-MMM-uuuu HH:mm:ss z").toFormatter(Locale.US))) {
+                try {
+                    long expiry = java.time.ZonedDateTime.parse(expires, format).toInstant().toEpochMilli();
+                    return expiry <= now ? 0 : Math.min(expiry, now + maximum * 1000);
+                } catch (java.time.format.DateTimeParseException invalidFormat) { /* Try the other HTTP cookie date form. */ }
+            }
+            return 0; // Malformed credential expiry must not become an unlimited session cookie.
+        }
+        return Long.MAX_VALUE;
+    }
+
     Reply request(String path, String method, JSONObject headers, String body) throws Exception {
         return requestBytes(path, method, headers, body == null ? null : body.getBytes(StandardCharsets.UTF_8));
     }
@@ -174,9 +205,9 @@ final class TrustedConnection {
                     for (String raw : header.getValue()) for (HttpCookie cookie : HttpCookie.parse(raw)) {
                         if (!COOKIE_NAMES.contains(cookie.getName()) || !cookie.getSecure() || !cookie.isHttpOnly() ||
                                 cookie.getDomain() != null || !"/api".equals(cookie.getPath())) throw new IllegalStateException("Invalid credential cookie");
-                        long maxAge = cookie.getMaxAge();
-                        if (maxAge == 0) cookies.remove(cookie.getName());
-                        else cookies.put(cookie.getName(), new SavedCookie(cookie.getValue(), maxAge < 0 ? Long.MAX_VALUE : System.currentTimeMillis() + Math.min(maxAge, 366L * 24 * 3600) * 1000));
+                        long expiry = credentialExpiry(cookie, raw, System.currentTimeMillis());
+                        if (expiry == 0) cookies.remove(cookie.getName());
+                        else cookies.put(cookie.getName(), new SavedCookie(cookie.getValue(), expiry));
                     }
                 }
             }
@@ -231,7 +262,9 @@ final class TrustedConnection {
         for (int i = 0; i < cookies.length(); i++) {
             JSONObject cookie = cookies.getJSONObject(i);
             if (!COOKIE_NAMES.contains(cookie.getString("name"))) throw new IllegalArgumentException("Invalid stored cookie");
-            connection.cookies.put(cookie.getString("name"), new SavedCookie(cookie.getString("value"), cookie.getLong("expires")));
+            String value = cookie.getString("value"); long expiry = cookie.getLong("expires");
+            if (!value.isEmpty() && expiry > System.currentTimeMillis())
+                connection.cookies.put(cookie.getString("name"), new SavedCookie(value, expiry));
         }
         return connection;
     }

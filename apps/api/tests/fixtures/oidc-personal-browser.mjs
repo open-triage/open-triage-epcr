@@ -61,6 +61,118 @@ try{
  await assert.rejects(agencyRequest.run({origin},()=>personal.callback(guardedCallback,'wrong-correlation')),error=>error.getStatus?.()===401);
  const guardedResult=await agencyRequest.run({origin},()=>personal.callback(guardedCallback,guarded.correlation));assert(guardedResult.created);
  await assert.rejects(agencyRequest.run({origin},()=>personal.callback(guardedCallback,guarded.correlation)),error=>error.getStatus?.()===401);
+ // Native handoff uses the same provider and session issuer, with a separate
+ // browser correlation and installation-bound one-use redemption secret.
+ const nativePair=await control({pairForRace:{origin,token:guardedResult.created.sessionToken}});
+ const nativeContext={origin,installationCredential:nativePair.credential};
+ const inNative=operation=>agencyRequest.run(nativeContext,operation);
+ // Exercise the actual controller and global cookie-CSRF guard, not only services.
+ const installationCookie=`open_triage_installation=${nativePair.credential}`;
+ const nativeHttp=(path,body,cookie=installationCookie,intent='1')=>fetch(`${api}/api/sessions/oidc/native/${path}`,{
+  method:'POST',headers:{origin,'content-type':'application/json',cookie,...(intent===null?{}:{'x-personal-authentication':intent})},body:JSON.stringify(body)});
+ await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
+ assert.equal((await nativeHttp('login',{purpose:'login',returnScheme:'org.opentriage.development.auth'},installationCookie,null)).status,401);
+ let httpBegin;
+ for(const tombstone of ['', 'expired-native-cookie']){
+  const response=await nativeHttp('login',{purpose:'login',returnScheme:'org.opentriage.development.auth'},`${installationCookie}; open_triage_session=${tombstone}`);
+  assert.equal(response.status,200,'Native initial login accepts expired/empty old cookies only through explicit intent');httpBegin=await response.json();
+ }
+ const httpStart=await agencyRequest.run({origin},()=>personal.nativeStart(new URL(httpBegin.authorizationUrl).searchParams.get('ticket')));
+ const httpAuthorization=new URL(httpStart.authorizationUrl);httpAuthorization.searchParams.set('confirm','1');
+ const httpProvider=await fetch(httpAuthorization,{redirect:'manual'});
+ assert.equal((await agencyRequest.run({origin},()=>personal.callback(new URL(httpProvider.headers.get('location')),httpStart.correlation))).created,undefined);
+ assert.equal((await nativeHttp('finish',{secret:httpBegin.nativeSecret},`${installationCookie}; open_triage_session=`,null)).status,401);
+ const firstHttpDelivery=await nativeHttp('finish',{secret:httpBegin.nativeSecret},`${installationCookie}; open_triage_session=`);
+ assert.equal(firstHttpDelivery.status,200);assert.deepEqual(await firstHttpDelivery.json(),{outcome:'succeeded'});
+ const issuedCookie=firstHttpDelivery.headers.getSetCookie().find(value=>value.startsWith('open_triage_session='));assert(issuedCookie);assert.match(issuedCookie,/HttpOnly/);assert.match(issuedCookie,/Secure/);
+ const currentCookie=`${installationCookie}; ${issuedCookie.split(';')[0]}`;
+ const currentHttp=()=>fetch(`${api}/api/sessions/current`,{headers:{origin,cookie:currentCookie}});
+ const originalHttpSession=await (await currentHttp()).json();assert.equal(originalHttpSession.user.id,process.env.OIDC_ALPHA);
+ const retryHttpDelivery=await nativeHttp('finish',{secret:httpBegin.nativeSecret},currentCookie);
+ assert.equal(retryHttpDelivery.status,200);assert.deepEqual(await retryHttpDelivery.json(),{outcome:'succeeded'});assert.equal(retryHttpDelivery.headers.get('set-cookie'),null,'Idempotent native completion issues no credentials');
+ assert.equal((await (await currentHttp()).json()).expiresAt,originalHttpSession.expiresAt);
+ assert.equal((await nativeHttp('finish',{secret:httpBegin.nativeSecret},installationCookie)).status,401,'Consumed secret without its cookie grants nothing');
+ assert.equal((await nativeHttp('finish',{secret:'x'.repeat(43)},currentCookie)).status,401);
+ assert.equal((await nativeHttp('login',{purpose:'switch',returnScheme:'org.opentriage.development.auth'},currentCookie)).status,401,'Explicit switching still requires current-session CSRF in its service');
+ assert.equal((await currentHttp()).status,200,'Rejected unproved switch preserves outgoing authority');
+ console.log('PASS actual native HTTP cookie/CSRF guards: empty/stale login, secret-bound first delivery, exact-cookie idempotency, intent rejection and switch proof');
+
+ await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
+ await assert.rejects(inNative(()=>personal.begin({purpose:'reauthenticate'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
+ await assert.rejects(inNative(()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true,'attacker.auth')),error=>error.getStatus?.()===400);
+ const native=await inNative(()=>personal.begin({purpose:'login'},undefined,undefined,'Controlled native fixture',true));
+ assert(native.nativeSecret);assert(!native.authorizationUrl.includes(native.nativeSecret));
+ const ticket=new URL(native.authorizationUrl).searchParams.get('ticket');
+ await assert.rejects(agencyRequest.run({origin:'https://unapproved.invalid'},()=>personal.nativeStart(ticket)),error=>error.getStatus?.()===401);
+ const startNative=await agencyRequest.run({origin},()=>personal.nativeStart(ticket));
+ await assert.rejects(agencyRequest.run({origin},()=>personal.nativeStart(ticket)),error=>error.getStatus?.()===401);
+ assert.equal((await inNative(()=>personal.nativeFinish({secret:native.nativeSecret}))).outcome,'waiting');
+ const nativeAuthorization=new URL(startNative.authorizationUrl);nativeAuthorization.searchParams.set('confirm','1');
+ const nativeProvider=await fetch(nativeAuthorization,{redirect:'manual'}),nativeCallback=new URL(nativeProvider.headers.get('location'));
+ const nativeCompleted=await agencyRequest.run({origin},()=>personal.callback(nativeCallback,startNative.correlation));
+ assert.equal(nativeCompleted.destination,'org.opentriage.android.auth://return/oidc');assert.equal(nativeCompleted.created,undefined);
+ await assert.rejects(agencyRequest.run({origin},()=>personal.nativeFinish({secret:native.nativeSecret})),error=>error.getStatus?.()===401);
+ await assert.rejects(agencyRequest.run({origin,installationCredential:'x'.repeat(43)},()=>personal.nativeFinish({secret:native.nativeSecret})),error=>error.getStatus?.()===401);
+ await assert.rejects(inNative(()=>personal.nativeFinish({secret:ticket})),error=>error.getStatus?.()===401);
+ const delivered=await inNative(()=>personal.nativeFinish({secret:native.nativeSecret}));
+ assert.equal(delivered.outcome,'succeeded');assert.equal(delivered.created.session.user.id,process.env.OIDC_ALPHA);
+ await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret})),error=>error.getStatus?.()===401);
+ const issuedCount=(await db.query('select count(*)::int count from app_identity.app_session'))[0].count;
+ const resumed=await inNative(()=>personal.nativeFinish({secret:native.nativeSecret},delivered.created.sessionToken));
+ assert.equal(resumed.outcome,'succeeded');assert.equal(resumed.created,undefined);
+ assert.equal((await db.query('select count(*)::int count from app_identity.app_session'))[0].count,issuedCount);
+ await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret},guardedResult.created.sessionToken)),error=>error.getStatus?.()===401);
+ await control({token:{sub:'fictional-beta'},claimsMode:'fresh'});
+ const nativeForeign=await agencyRequest.run({origin},async()=>{const started=await personal.begin({purpose:'login'});const authorization=new URL(started.authorizationUrl);authorization.searchParams.set('confirm','1');const returned=await fetch(authorization,{redirect:'manual'});return personal.callback(new URL(returned.headers.get('location')),started.correlation);});
+ assert.equal(nativeForeign.created.session.user.id,process.env.OIDC_BETA);
+ await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret},nativeForeign.created.sessionToken)),error=>error.getStatus?.()===401);
+ await assert.rejects(agencyRequest.run({origin,installationCredential:'x'.repeat(43)},()=>personal.nativeFinish({secret:native.nativeSecret},delivered.created.sessionToken)),error=>error.getStatus?.()===401);
+ await control({token:{sub:'fictional-alpha'},claimsMode:'fresh'});
+
+ assert.equal((await inNative(()=>sessions.getAuthenticated(delivered.created.sessionToken))).expiresAt,delivered.created.session.expiresAt);
+ await db.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='user_switch' where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(delivered.created.sessionToken)]);
+ await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret},delivered.created.sessionToken)),error=>error.getStatus?.()===401);
+
+ const cancelled=await inNative(()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true));
+ const cancelledStart=await agencyRequest.run({origin},()=>personal.nativeStart(new URL(cancelled.authorizationUrl).searchParams.get('ticket')));
+ const cancelledUrl=new URL(new URL(cancelledStart.authorizationUrl).searchParams.get('redirect_uri'));
+ cancelledUrl.searchParams.set('state',new URL(cancelledStart.authorizationUrl).searchParams.get('state'));cancelledUrl.searchParams.set('error','access_denied');
+ assert.equal((await agencyRequest.run({origin},()=>personal.callback(cancelledUrl,cancelledStart.correlation))).created,undefined);
+ assert.equal((await inNative(()=>personal.nativeFinish({secret:cancelled.nativeSecret}))).outcome,'failed');
+ const stageNative=async()=>{
+  const began=await inNative(()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true));
+  const started=await agencyRequest.run({origin},()=>personal.nativeStart(new URL(began.authorizationUrl).searchParams.get('ticket')));
+  const authorize=new URL(started.authorizationUrl);authorize.searchParams.set('confirm','1');
+  const provider=await fetch(authorize,{redirect:'manual'});
+  const completed=await agencyRequest.run({origin},()=>personal.callback(new URL(provider.headers.get('location')),started.correlation));
+  assert.equal(completed.created,undefined);return began;
+ };
+ // A staging failure rolls back session issuance and native result together.
+ const beforeNativeFailure=(await db.query('select count(*)::int count from app_identity.app_session'))[0].count;
+ const originalStage=personal.stageNativeResult;
+ personal.stageNativeResult=async()=>{throw new Error('Synthetic native-result storage failure');};
+ let failedNative;try{failedNative=await stageNative();}finally{personal.stageNativeResult=originalStage;}
+ assert.equal((await db.query('select count(*)::int count from app_identity.app_session'))[0].count,beforeNativeFailure);
+ assert.equal((await inNative(()=>personal.nativeFinish({secret:failedNative.nativeSecret}))).outcome,'failed');
+ const denyConcurrent=async(kind)=>{
+  const began=await stageNative(),blocker=db.createQueryRunner();await blocker.connect();await blocker.startTransaction();
+  try{
+   if(kind==='enrollment')await blocker.query('select id from app_identity.installation_registration where id=$1 for update',[nativePair.registration]);
+   else await blocker.query('select id from app_identity.app_user where id=$1 for update',[process.env.OIDC_ALPHA]);
+   const redemption=inNative(()=>personal.nativeFinish({secret:began.nativeSecret})).then(value=>({value}),error=>({error}));
+   let waiting=false;for(let i=0;i<100;i++){if((await control({nativeWaiting:true})).waiting>0){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
+   assert(waiting,'Native redemption must follow the shared user/installation lifecycle lock order');
+   if(kind==='enrollment')await blocker.query('update app_identity.installation_registration set revoked_at=clock_timestamp() where id=$1',[nativePair.registration]);
+   else if(kind==='expiry')await blocker.query("update app_identity.app_session set expires_at=created_at+interval '1 microsecond' where user_id=$1 and revoked_at is null",[process.env.OIDC_ALPHA]);
+   else await blocker.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='user_switch' where user_id=$1 and revoked_at is null",[process.env.OIDC_ALPHA]);
+   await blocker.commitTransaction();
+   const result=await redemption;assert.equal(result.error?.getStatus?.(),401,`Concurrent ${kind} must win before native credential delivery`);
+   const [attempt]=await db.query('select native_delivered_at from app_identity.oidc_personal_transaction where native_return_sha256=encode(sha256($1::bytea),\'hex\')',[Buffer.from(began.nativeSecret)]);assert.equal(attempt.native_delivered_at,null);
+  }finally{if(blocker.isTransactionActive)await blocker.rollbackTransaction();await blocker.release();}
+ };
+ await denyConcurrent('revocation');await denyConcurrent('expiry');await denyConcurrent('enrollment');
+ console.log('PASS native atomic issuance and concurrent session revocation, expiry and changed enrollment redemption denial');
+ console.log('PASS native OIDC: separate browser/native secrets, approved origin/installation, one-use start/callback/redemption, cancellation and shared current-login authority');
  await authenticate('fictional-alpha');let alphaToken=await token(),alphaSession=await stored();assert.equal(alphaSession.user.id,process.env.OIDC_ALPHA);assert.equal(alphaSession.authenticationSource,'oidc');assert.equal((await current()).status,200);
  const missingCsrf=await page.evaluate(async()=> (await fetch('/api/sessions/oidc/login',{method:'POST',headers:{'content-type':'application/json','x-personal-authentication':'1'},body:'{"purpose":"switch"}'})).status);assert.equal(missingCsrf,401);assert.equal((await current()).status,200);
  await assert.rejects(agencyRequest.run({origin},()=>sessions.reauthenticate(alphaToken,alphaSession.csrfToken,'anything')),error=>error.getStatus?.()===403);

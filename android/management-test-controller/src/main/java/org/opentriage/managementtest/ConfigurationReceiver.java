@@ -16,6 +16,18 @@ public class ConfigurationReceiver extends BroadcastReceiver {
         PendingResult result = goAsync();
         new Thread(() -> {
             try {
+                String certificate = intent.getStringExtra("caCertificateBase64");
+                if (certificate != null) {
+                    if (certificate.length() > 90000) throw new IllegalArgumentException();
+                    byte[] bytes = Base64.decode(certificate, Base64.NO_WRAP);
+                    DevicePolicyManager policy = context.getSystemService(DevicePolicyManager.class);
+                    ComponentName admin = new ComponentName(context, AdminReceiver.class);
+                    if (intent.getBooleanExtra("removeCertificate", false)) {
+                        policy.uninstallCaCert(admin, bytes);
+                        if (policy.hasCaCertInstalled(admin, bytes)) throw new IllegalStateException();
+                    } else if (!policy.installCaCert(admin, bytes) || !policy.hasCaCertInstalled(admin, bytes)) throw new IllegalStateException();
+                    result.setResultCode(0); return;
+                }
                 String encoded = intent.getStringExtra("configurationBase64");
                 if (encoded == null || encoded.length() > 90000) throw new IllegalArgumentException();
                 JSONObject input = new JSONObject(new String(Base64.decode(encoded, Base64.NO_WRAP), StandardCharsets.UTF_8));
