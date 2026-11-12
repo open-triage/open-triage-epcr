@@ -48,8 +48,10 @@ public class NativePdfSafTest {
             assertEquals("The ResultReceiver belongs to the exact separate test component",component.flattenToShortString(),proof.getString("component"));
             assertEquals(instrumentation.getContext().getApplicationInfo().uid,proof.getInt("consumerUid"));
             var evidence=new android.os.Bundle();for(String key:new String[]{"primaryFailure","cleanupFailure","sha256"})evidence.putString("opentriage_pdf_user_grant_"+key,proof.getString(key,"missing"));
+            var predicates=new org.json.JSONObject();for(String key:new String[]{"contentUri","readFlag","writeFlag","readPermission","writePermission","sameAuthority","sameHint","sameDocumentId","metadataReadable","nameMatches","sizeMatches"})predicates.put(key,proof.getBoolean(key));
+            predicates.put("grantFlags",proof.getInt("grantFlags"));evidence.putString("opentriage_pdf_user_grant_predicates",predicates.toString());
             evidence.putInt("opentriage_pdf_user_grant_bytes",proof.getInt("length"));evidence.putBoolean("opentriage_pdf_user_grant_deleted",proof.getBoolean("deleted"));instrumentation.sendStatus(0,evidence);
-            assertEquals("Primary document verification failure (cleanup is reported independently): "+proof.getString("cleanupFailure"),"",proof.getString("primaryFailure","missing"));
+            assertEquals("Primary document verification failure (cleanup is independent): "+proof.getString("cleanupFailure")+"; predicates="+predicates,"",proof.getString("primaryFailure","missing"));
             assertTrue("Only the exact saved URI/document metadata can be read or deleted",proof.getBoolean("identityMatched"));
             var hash=new StringBuilder();for(byte value:java.security.MessageDigest.getInstance("SHA-256").digest(expected))hash.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
             assertEquals("The explicit download survives viewer cleanup with the exact freshly authorized bytes",hash.toString(),proof.getString("sha256"));
