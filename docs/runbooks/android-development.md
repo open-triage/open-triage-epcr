@@ -1,5 +1,9 @@
 # Android connection development
 
+For the complete physical phone/tablet checkpoint and evidence record, see
+[physical workflow acceptance](android-physical-acceptance.md). Component checks
+below contribute to that record; emulator results do not complete it.
+
 For Android Enterprise restrictions, policy transitions and vendor configuration
 examples, see [managed connection configuration](android-managed-configuration.md).
 

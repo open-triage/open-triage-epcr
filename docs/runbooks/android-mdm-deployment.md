@@ -30,15 +30,38 @@ separate disposable database. HTTP on this isolated management path never change
 the application's HTTPS/TLS policy. Credentials, session state, shared secrets and
 full configuration snapshots stay in private ignored files, mode `0600`.
 
-**Prepared lab evidence (2026-11-12):** the real removable agent is enrolled as
-device owner on the isolated Android 13 emulator, assigned to dedicated
-configuration 3/device 2. Immutable signed candidates 4 and 5 passed a separate
-in-place upgrade test, and their public APKs were independently verified.
-Candidate 4 is imported into Headwind with matching bytes and remains untargeted.
-Actual clinical deployment, standard-policy delivery, revocation and the managed
-retained-work upgrade remain pending. Preparation and the separate upgrade test
-do not mark either management acceptance issue complete; record subsequent actual
-observations separately.
+**Completed substitute lab evidence:** on a fresh Android 13 emulator assigned to
+dedicated configuration 4/device 3, the real agent installed candidate 4 and
+upgraded to 5. The actual Admin-selected candidate 5 and anonymous public download
+matched the approved bytes. Independently pulled installed APKs matched the
+immutable descriptors and permanent signer, with UID 10175 unchanged:
+
+| Release | Installed APK SHA-256 | Bytes |
+| --- | --- | --- |
+| 4 / `0.1.0-rc.4` | `4068cedc6ff57af63dce392029ba43cba4f619cdf967cb1627aedbbfbff17773` | 9,364,250 |
+| 5 / `0.1.0-rc.5` | `e1eeffd1438d4b64be598a0928de0742e89d9c12993a2eab1d81539d134ad552` | 9,364,142 |
+
+The managed upgrade preserved exact encrypted pending work, enrollment, CA,
+pinned versions and original recovery deadline. Foreground reconnect, process
+termination, different-user denial and authorized online recovery passed. Actual
+origin/CA conflicts, invalid typed policy and explicit empty Bundle blocked the
+UI and retained sealed credentials; valid policy restored the current login.
+Administrative test-owner removal produced an empty Bundle and blocked UI; this
+was device-side withdrawal, not server remote wipe. Installation revocation kept
+the valid personal session (200), denied new work (403), and left the unopened
+assignment and original server report metadata unchanged. Revocation-stage proof
+covers sealed connection/server metadata; the preceding upgrade established native
+ciphertext preservation. Deleting the final server setting produced a bounded
+stale-policy observation after receipt and three OS reads; explicit `{}` delivery
+cleared policy successfully. This does not assert a permanent vendor defect.
+
+The completed lab's configuration/overrides, Home, radios/display and reverses
+were restored; its removable agent was uninstalled with clinical version 5/data/UID
+preserved. See the sanitized [deployment acceptance](https://github.com/open-triage/open-triage-epcr/pull/833)
+and [policy acceptance](https://github.com/open-triage/open-triage-epcr/pull/836)
+records for exact-source checks and scope. This establishes the owner-approved
+Headwind substitute lab, with no Intune, combined MDMesh,
+[physical phone/tablet](android-physical-acceptance.md) or human rollout acceptance.
 
 ## Deploy and observe
 
@@ -109,8 +132,8 @@ must not create a new recovery deadline. A different clinician remains denied.
 Test actual supported device-management revocation and installation/vehicle
 revocation separately. Removing a server inventory row is not by itself proof that
 Android cleared policy or that the clinical server revoked an installation. Verify
-fresh authenticated clinical requests are denied after actual installation
-revocation and that eligible ciphertext is retained. Do not use a factory reset,
+fresh installation-authorized new-work requests are denied after actual installation
+revocation; observe the personal session and retained work independently. Do not use a factory reset,
 wipe, uninstall or app-data clear as a revocation experiment with pending work.
 
 Finally restore the saved lab configuration/device overrides, remove only the
@@ -176,12 +199,10 @@ Primary implementation references: the
 [upstream agent inventory implementation](https://github.com/h-mdm/hmdm-android/blob/75eff13e7e3faf2fbe0c4d22f42d24da2a139f69/app/src/main/java/com/hmdm/launcher/util/DeviceInfoProvider.java)
 and [Android managed configurations](https://developer.android.com/work/managed-configurations).
 
-The current substitute lab has genuinely installed approved candidate 4 through
-the real Headwind agent on the isolated device. The first operator attempt stopped
-before any clinical Activity, instrumentation or enrollment because its installed
-APK path parser rejected Android's normal `/data/app/~~…` layout. That failed run
-remains failed; fixing the operator parser does not establish clinical acceptance.
-Retain this delivered APK and its state rather than reinstalling or resetting it.
+The installed-APK path parser accepts Android's normal `/data/app/~~…` layout
+while rejecting ambiguous/split paths. Earlier failed operator attempts remain
+archived as failures; the completed acceptance above used a fresh authorized
+target without clearing or replacing an already enrolled target for preparation.
 
 For this fresh delivered target, `runReportRecoveryJourney` accepts explicit
 `targetPreparation: 'external'` together with `hooks.prepareTarget`, an awaited
@@ -203,7 +224,8 @@ Ready paired UI does not render the setup-only managed-origin notice, so restore
 observation checks the native policy origin and absence of an editable URL.
 Instrumenting a clinical app may perform ordinary startup network work; these
 observations alone do not prove absence of HTTP traffic or revocation acceptance.
-Actual clinical/policy/upgrade acceptance remains pending until those runs pass.
+The completed acceptance above combined these observations with the real
+clinical, policy, upgrade and server-authority journeys.
 
 Native validation also checks actual instrumentation APK DEX class definitions
 against its active Java source directories, including configured shared helpers
@@ -229,11 +251,9 @@ must use that encoding rather than ordinary Node JSON bytes. See Android's
 [restriction reader](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-13.0.0_r63/services/core/java/com/android/server/pm/UserManagerService.java#5184)
 and [JSONStringer string encoding](https://android.googlesource.com/platform/libcore/+/41407f7afb0a83dd4e71ff6e7a242923566ab7f3/json/src/main/java/org/json/JSONStringer.java#306).
 
-The first resumed operator run failed at the initial fingerprint expectation
-before clinical Activity, pairing or enrollment. A later read-only exact typed
-observation passed for the current delivered policy with only its outer CA
-newline trimmed; its native fingerprint matched the trimmed, slash-escaped
-encoding. That establishes this observation boundary, not clinical acceptance.
-The failed run and earlier source proofs remain separate. Never make changed
+The completed lab's typed observations matched Android's trimmed, slash-escaped
+encoding without changing the configured policy. Earlier failed fingerprint
+expectations remain archived separately from the completed clinical evidence.
+Never make changed
 certificate material or a String configuration version equivalent to the intended
 Integer policy, and do not use this observer helper to change certificate trust.

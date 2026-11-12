@@ -151,10 +151,12 @@ do not replace the real server/agent/device acceptance sequence.
 The inspected agent invokes `setApplicationRestrictions` only for packages that
 remain present in its processed settings map. Removing the last setting for a
 package can therefore leave the previous Android restrictions unchanged. This
-is a test hypothesis until observed on the device. Keeping a `managedConfig`
-entry containing `{}` reaches the agent's empty-Bundle call path; this must also
-be verified rather than inferred. Deletion and explicit empty policy are
-separate scenarios.
+was observed in the completed lab: after the received agent configuration lost
+its last row, three subsequent OS observations retained the old Bundle. This is
+a bounded observation, not a claim about every later refresh or a permanent
+vendor defect. Explicit `managedConfig: {}` delivery produced an empty Bundle
+and blocked the app; restoring valid policy restored its current login. Deletion
+and explicit empty policy are separate scenarios.
 
 If either required operation cannot be performed by the actual server/agent,
 record exact versions, targeting state, server response, refresh time and device
@@ -164,10 +166,37 @@ device owner, or use a different controller to claim successful provisioning.
 
 ## Evidence and cleanup
 
-Current evidence is preparation and read-only inspection only. No Headwind
-device enrollment, policy delivery, pairing, reconnect, conflict, removal or
-upgrade acceptance has been observed yet. Human-observed acceptance remains
-unavailable; the owner delegated automated substitute testing while AFK.
+The owner-delegated substitute lab completed on an Android 13 emulator with the
+server and pinned agent identities above, dedicated configuration 4/device 3.
+[Deployment acceptance](https://github.com/open-triage/open-triage-epcr/pull/833)
+and [policy acceptance](https://github.com/open-triage/open-triage-epcr/pull/836)
+record the sanitized results and exact-source validation. The actual Admin-selected
+candidate 5 and anonymous public download matched the approved bytes. Headwind's
+real agent installed candidate 4 and upgraded to 5; independently pulled APK hashes,
+permanent signer and fresh inventory matched the immutable descriptors, with UID
+10175 unchanged. No clinical ADB install or app-data clear supplied this proof.
+
+Matching private-CA pairing, foreground reconnect, real process termination,
+different-user denial and original-author online recovery passed with exact
+pending ciphertext, pinned versions and original recovery deadline preserved.
+Actual origin/CA conflicts, invalid typed policy and explicit empty policy blocked
+the app and retained sealed credentials; valid policy restoration continued the
+existing login without another prompt.
+
+Administrative removal of the verified removable test owner delivered an empty
+Bundle and blocked managed UI. This was device-side withdrawal, not a server
+remote wipe. Installation revocation left the current personal session valid
+(200), denied a fresh new-work request (403), and preserved the unopened assignment
+and original server report pins/envelope receipt/deadline. Revocation observations
+cover sealed connection and server metadata; native ciphertext preservation was
+established by the preceding upgrade journey.
+
+The completed lab's configuration/overrides, Home, radios/display and reverses
+were restored; the removable agent was uninstalled and clinical version 5/data/UID
+preserved. Earlier failed operator attempts remain failures. These results establish
+the delegated Headwind emulator scope only. Intune, unavailable combined MDMesh,
+[physical phone/tablet acceptance](android-physical-acceptance.md) and human
+production-rollout signoff remain separate.
 
 For each executed row record UTC times, artifact/agent identities, configuration
 and device IDs, exact policy hash and sanitized observed pass/fail. Distinguish
