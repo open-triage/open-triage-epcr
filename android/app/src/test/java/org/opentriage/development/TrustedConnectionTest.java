@@ -56,6 +56,17 @@ public class TrustedConnectionTest {
                     if (path.endsWith("pair")) extra = "Set-Cookie: open_triage_installation=installation-secret; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600\r\n";
                     if (path.endsWith("login")) extra = "Set-Cookie: open_triage_session=clinician-secret; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600\r\n";
                     if (path.endsWith("logout")) extra = "Set-Cookie: open_triage_session=; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n";
+                    if (path.endsWith("expires-logout")) extra = "Set-Cookie: open_triage_session=; Path=/api; Secure; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT\r\n";
+                    if (path.endsWith("expired-value")) extra = "Set-Cookie: open_triage_session=expired-secret; Path=/api; Secure; HttpOnly; Expires=Wed, 01 Jan 2020 00:00:00 GMT\r\n";
+                    if (path.endsWith("negative-logout")) extra = "Set-Cookie: open_triage_session=expired-secret; Path=/api; Secure; HttpOnly; Max-Age=-1\r\n";
+                    if (path.endsWith("legacy-expiry")) extra = "Set-Cookie: open_triage_session=expired-secret; Path=/api; Secure; HttpOnly; Expires=Thu, 01-Jan-1970 00:00:00 GMT\r\n";
+                    if (path.endsWith("installation-logout")) extra = "Set-Cookie: open_triage_installation=; Path=/api; Secure; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT\r\n";
+
+                    if (path.endsWith("positive-precedence")) extra = "Set-Cookie: open_triage_session=current-secret; Path=/api; Secure; HttpOnly; Max-Age=60; Expires=Thu, 01 Jan 1970 00:00:00 GMT\r\n";
+                    if (path.endsWith("bad-cookie-name")) extra = "Set-Cookie: Open_Triage_Session=wrong; Path=/api; Secure; HttpOnly; Max-Age=60\r\n";
+                    if (path.endsWith("bad-cookie-domain")) extra = "Set-Cookie: open_triage_session=wrong; Domain=localhost; Path=/api; Secure; HttpOnly; Max-Age=60\r\n";
+                    if (path.endsWith("bad-cookie-path")) extra = "Set-Cookie: open_triage_session=wrong; Path=/; Secure; HttpOnly; Max-Age=60\r\n";
+
                     if (path.endsWith("redirect")) { extra = "Location: https://attacker.test/api/leak\r\n"; status = "302 Found"; }
                     if (path.endsWith("conditional")) {
                         extra = "ETag: \"revision-1\"\r\n";
@@ -87,6 +98,28 @@ public class TrustedConnectionTest {
             restored.request("/api/logout", "DELETE", new JSONObject(), null);
             String after = restored.request("/api/current", "GET", new JSONObject(), null).body();
             assertTrue(after.contains("installation-secret")); assertFalse(after.contains("clinician-secret"));
+            assertFalse(after.contains("open_triage_session="));
+            for (String clear : new String[]{"logout", "expires-logout", "expired-value", "negative-logout", "legacy-expiry"}) {
+                restored.request("/api/login", "POST", new JSONObject(), "{}");
+                restored.request("/api/" + clear, "POST", new JSONObject(), "{}");
+                var cleared = TrustedConnection.restore(restored.saved());
+                String echo = cleared.request("/api/current", "GET", new JSONObject(), null).body();
+                assertTrue("Credential clearing preserves installation pairing", echo.contains("installation-secret"));
+                assertFalse("Empty/zero/negative/expired credentials must be absent after persistence", echo.contains("open_triage_session="));
+            }
+            JSONObject legacyState = restored.saved();
+            legacyState.getJSONArray("cookies").put(new JSONObject().put("name", "open_triage_session").put("value", "").put("expires", Long.MAX_VALUE));
+            String legacyEcho = TrustedConnection.restore(legacyState).request("/api/current", "GET", new JSONObject(), null).body();
+            assertTrue(legacyEcho.contains("installation-secret")); assertFalse("An upgraded vault drops prior empty cookie tombstones", legacyEcho.contains("open_triage_session="));
+            restored.request("/api/positive-precedence", "GET", new JSONObject(), null);
+            assertTrue("Max-Age takes precedence over Expires", restored.request("/api/current", "GET", new JSONObject(), null).body().contains("current-secret"));
+            for (String invalid : new String[]{"bad-cookie-name", "bad-cookie-domain", "bad-cookie-path"})
+                assertThrows(Exception.class, () -> restored.request("/api/" + invalid, "GET", new JSONObject(), null));
+
+            restored.request("/api/installation-logout", "POST", new JSONObject(), "{}");
+            String installationCleared = restored.request("/api/current", "GET", new JSONObject(), null).body();
+            assertFalse(installationCleared.contains("open_triage_installation="));
+            assertTrue("Installation retirement does not silently replace a different cookie", installationCleared.contains("current-secret"));
             assertThrows(Exception.class, () -> restored.request("/api/redirect", "GET", new JSONObject(), null));
             for (String forbidden : new String[]{"Origin", "Cookie", "Authorization", "X-OpenTriage-Android-Version"}) {
                 assertThrows(Exception.class, () -> restored.request("/api/current", "GET", new JSONObject().put(forbidden, "unapproved"), null));

@@ -79,6 +79,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    if(command.expireRecovery){await owner.query("update offline_recovery.report_key_envelope set recovery_deadline=clock_timestamp()-interval '1 second' where report_id=$1",[command.expireRecovery]);}
    if(command.ageRecoveryProof){await owner.query("update app_identity.app_session set personally_authenticated_at=clock_timestamp()-interval '6 minutes',reauthenticated_at=null where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(command.ageRecoveryProof)]);}
 
+   if(command.nativeWaiting){answer.waiting=(await owner.query("select count(*)::int count from pg_stat_activity where application_name='personal-session-race' and wait_event_type='Lock'"))[0].count;}
    if(command.waiting){answer.waiting=(await owner.query("select count(*)::int count from pg_stat_activity where application_name='personal-session-race' and wait_event_type='Lock' and query like '%app_identity.app_user%'"))[0].count;}
    if(command.ageSession){
     const hashed=createHash('sha256').update(command.ageSession.newToken).digest('hex');
@@ -90,7 +91,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    }
    if(command.pairForRace){
     const unit=randomUUID(),identity=randomUUID(),registration=randomUUID(),credential=randomBytes(32).toString('base64url');
-    await owner.query("insert into app_identity.operational_unit(id,organization_id,call_sign,name) values($1,$2,'RACE-009','Fictional race unit')",[unit,child]);
+    await owner.query("insert into app_identity.operational_unit(id,organization_id,call_sign,name) values($1,$2,$3,'Fictional race unit')",[unit,child,`RACE-${unit.slice(0,8)}`]);
     await owner.query('insert into app_identity.installation_identity(id) values($1)',[identity]);
     await owner.query("insert into app_identity.installation_registration(id,installation_identity_id,organization_id,unit_id,name,credential_sha256) values($1,$2,$3,$4,'Fictional paired browser',encode(sha256($5::bytea),'hex'))",[registration,identity,child,unit,Buffer.from(credential)]);
     await owner.query("insert into app_identity.unit_enrollment(id,organization_id,unit_id,issued_by,token_sha256,origin,consumed_at,installation_id) values($1,$2,$3,$4,encode(sha256($5::bytea),'hex'),$6,clock_timestamp(),$7)",[randomUUID(),child,unit,reviewer.userId,randomBytes(32),command.pairForRace.origin,registration]);
@@ -100,7 +101,7 @@ integration('personal OIDC enters common runtime sessions and clinical/admin UI 
    res.setHeader('content-type','application/json');res.end(JSON.stringify(answer));
   }catch{res.writeHead(500).end('{}');}});});control.listen(0,'127.0.0.1');await once(control,'listening');
   const result=await promisify(execFile)(process.execPath,[fileURLToPath(new URL('./fixtures/oidc-personal-browser.mjs',import.meta.url))],{cwd:fileURLToPath(new URL('../../../',import.meta.url)),env:{...process.env,DATABASE_URL:runtimeUrl.toString(),OIDC_CREDENTIAL_KEYS_JSON:keys,NODE_EXTRA_CA_CERTS:fixture.certificate,OIDC_CONTROL_URL:`http://127.0.0.1:${control.address().port}`,OIDC_ALPHA:alpha,OIDC_BETA:beta,OIDC_LOCAL_USER:reviewer.userId,OIDC_LOCAL_PASSWORD:password,OIDC_OTHER:other,OIDC_GROUP:group,OIDC_CHILD:child},timeout:180000,maxBuffer:1024*1024}).catch(error=>{throw new Error(error.stderr||error.stdout||error.message);});
-  assert.match(result.stdout,/"sharedSessions":true/);assert.match(result.stdout,/"sensitiveActionCompleted":true/);assert.match(result.stdout,/"outgoingAuthorityDenied":true/);
+  assert.match(result.stdout,/PASS native OIDC:/);assert.match(result.stdout,/"sharedSessions":true/);assert.match(result.stdout,/"sensitiveActionCompleted":true/);assert.match(result.stdout,/"outgoingAuthorityDenied":true/);
   const [credentials]=await owner.query('select count(*)::int count from app_identity.local_credential where user_id=any($1::uuid[])',[[alpha,beta,empty]]);assert.equal(credentials.count,0);
   const audit=await owner.query("select details from app_identity.authentication_event where details->>'kind'='oidc_personal'");assert(audit.length>5);assert.doesNotMatch(JSON.stringify(audit),/fictional-alpha|fictional-beta|fictional-access-token|fresh-provider-secret|code_verifier|ciphertext|nonce/);
   const runtime=new DataSource({type:'postgres',url:runtimeUrl.toString()});await runtime.initialize();
