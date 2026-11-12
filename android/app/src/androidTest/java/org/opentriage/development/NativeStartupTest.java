@@ -16,6 +16,10 @@ public class NativeStartupTest {
         activity.onActivity(screen->screen.getBridge().getWebView().evaluateJavascript(script,result->{value.set(result);done.countDown();}));
         assertTrue(done.await(10,java.util.concurrent.TimeUnit.SECONDS));return value.get();
     }
+    private String evaluateString(ActivityScenario<MainActivity> activity,String script) throws Exception {
+        Object value=new org.json.JSONTokener(evaluate(activity,script)).nextValue();
+        assertTrue("The JavaScript result must be a string",value instanceof String);return (String)value;
+    }
     private void approvedApkTapLeavesOnlyThroughSystemIntent(ActivityScenario<MainActivity> activity) throws Exception {
         var instrumentation=InstrumentationRegistry.getInstrumentation();
         String url=InstrumentationRegistry.getArguments().getString("officialApkUrl");
@@ -34,7 +38,7 @@ public class NativeStartupTest {
             // A script-driven navigation has no user gesture and must stay inside the local document.
             evaluate(activity,"location.href="+org.json.JSONObject.quote(url));Thread.sleep(300);
             assertNull("An approved URL without a user gesture cannot open an external activity",opened.get());
-            assertEquals("\"https://localhost\"",evaluate(activity,"location.origin"));
+            assertEquals("https://localhost",evaluateString(activity,"location.origin"));
             evaluate(activity,"(()=>{const link=document.createElement('a');link.id='native-apk-probe';link.href="+org.json.JSONObject.quote(url)+";link.target="+org.json.JSONObject.quote(target)+";link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent='Native APK download probe';link.style='position:fixed;top:0;left:0;z-index:2147483647;background:white;color:black;padding:20px';document.body.appendChild(link)})()");
             var link=androidx.test.uiautomator.UiDevice.getInstance(instrumentation).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Native APK download probe")),5000);
             assertNotNull("The actual APK anchor must be reachable to a real user tap",link);link.click();
@@ -42,21 +46,21 @@ public class NativeStartupTest {
             while(opened.get()==null&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(50);
             assertNotNull("A verified APK user tap must open a system browser intent",opened.get());
             assertEquals(url,opened.get().getDataString());
-            assertEquals("The remote APK must never replace the bridged document","\"https://localhost\"",evaluate(activity,"location.origin"));
+            assertEquals("The remote APK must never replace the bridged document","https://localhost",evaluateString(activity,"location.origin"));
             assertNull("No credentials, headers or clinical referrer are attached",opened.get().getExtras());
             assertNull(opened.get().getClipData());
             opened.set(null);
             evaluate(activity,"document.getElementById('native-apk-probe').href='https://attacker.invalid/private.apk'");
             link.click();Thread.sleep(300);
             assertNull("A foreign user-tapped link stays blocked",opened.get());
-            assertEquals("\"https://localhost\"",evaluate(activity,"location.origin"));
+            assertEquals("https://localhost",evaluateString(activity,"location.origin"));
             unavailable.set(true);
             evaluate(activity,"window.__apkFailure=null;window.addEventListener('open-triage.apk-download-failed',e=>window.__apkFailure=e.detail.url,{once:true});document.getElementById('native-apk-probe').href="+org.json.JSONObject.quote(url));
             link.click();
             deadline=android.os.SystemClock.elapsedRealtime()+3000;String failure="null";
             while("null".equals(failure)&&android.os.SystemClock.elapsedRealtime()<deadline){failure=evaluate(activity,"window.__apkFailure");Thread.sleep(50);}
             assertEquals("No browser handler produces the exact actionable UI URL",url,new org.json.JSONTokener(failure).nextValue());
-            assertEquals("\"https://localhost\"",evaluate(activity,"location.origin"));
+            assertEquals("https://localhost",evaluateString(activity,"location.origin"));
         } finally {instrumentation.removeMonitor(monitor);evaluate(activity,"document.getElementById('native-apk-probe')?.remove()");}
     }
     private void waitForDocument(ActivityScenario<MainActivity> activity,String expression) throws Exception {
@@ -67,7 +71,7 @@ public class NativeStartupTest {
     private void bundledDocumentsKeepTheirActualHtmlAndNativeContext(ActivityScenario<MainActivity> activity) throws Exception {
         evaluate(activity,"window.__routeProof=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__routeProof=state)");
         waitForDocument(activity,"Boolean(window.__routeProof?.connectionContext)");
-        String originalContext=(String)new org.json.JSONTokener(evaluate(activity,"window.__routeProof.connectionContext")).nextValue();
+        String originalContext=evaluateString(activity,"window.__routeProof.connectionContext");
         for(String route:new String[]{"/review-call/?report=11111111-1111-4111-8111-111111111111&dataset=synthetic&language=en","/enroll/?language=en"}){
             var view=new java.util.concurrent.atomic.AtomicReference<android.webkit.WebView>();
             var client=new java.util.concurrent.atomic.AtomicReference<android.webkit.WebViewClient>();
@@ -86,10 +90,10 @@ public class NativeStartupTest {
             for(int pass=0;pass<2;pass++){
                 evaluate(activity,"window.__routeProof=null;(async()=>{const state=await window.Capacitor.nativePromise('OpenTriageConnection','state',{});const version=await window.Capacitor.nativePromise('OpenTriageConnection','version',{});window.__routeProof={context:state.connectionContext,version:version.versionCode,platform:window.Capacitor.getPlatform()};})()");
                 waitForDocument(activity,"Boolean(window.__routeProof)");
-                assertEquals(originalContext,new org.json.JSONTokener(evaluate(activity,"window.__routeProof.context")).nextValue());assertEquals("\"android\"",evaluate(activity,"window.__routeProof.platform"));assertEquals("true",evaluate(activity,"window.__routeProof.version>0"));
-                assertEquals("The visible document path is preserved",org.json.JSONObject.quote(url.getEncodedPath()),evaluate(activity,"location.pathname"));
-                assertEquals("The document remains on the approved bundled origin","\"https://localhost\"",evaluate(activity,"location.origin"));
-                assertEquals("The visible document query is preserved",org.json.JSONObject.quote(url.getEncodedQuery()),evaluate(activity,"location.search.slice(1)"));
+                assertEquals(originalContext,evaluateString(activity,"window.__routeProof.context"));assertEquals("android",evaluateString(activity,"window.__routeProof.platform"));assertEquals("true",evaluate(activity,"window.__routeProof.version>0"));
+                assertEquals("The visible document path is preserved",url.getEncodedPath(),evaluateString(activity,"location.pathname"));
+                assertEquals("The document remains on the approved bundled origin","https://localhost",evaluateString(activity,"location.origin"));
+                assertEquals("The visible document query is preserved",url.getEncodedQuery(),evaluateString(activity,"location.search.slice(1)"));
                 if(pass==0){before=evaluate(activity,"performance.timeOrigin");activity.onActivity(screen->screen.getBridge().getWebView().reload());waitForDocument(activity,"document.readyState==='complete' && performance.timeOrigin!=="+before+" && Boolean(window.Capacitor?.nativePromise)");}
             }
         }
@@ -116,6 +120,8 @@ public class NativeStartupTest {
                 rendered="true".equals(response.get());if(!rendered)Thread.sleep(100);
             }
             assertTrue("The real bundled WebView must render before inspecting dependencies",rendered);
+            String serializedString="/review-call/\"Å☃";
+            assertEquals("Decode JavaScript strings independently of Android JSON escaping",serializedString,evaluateString(activity,org.json.JSONObject.quote(serializedString)));
             approvedApkTapLeavesOnlyThroughSystemIntent(activity);
             bundledDocumentsKeepTheirActualHtmlAndNativeContext(activity);
             // Emoji is a transitive runtime-only library, not a test compile dependency.
