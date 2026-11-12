@@ -1,10 +1,17 @@
 import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES, ANDROID_CLIENT_REQUIRED_CAPABILITIES, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compatibility, validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
 const inputs = { ANDROID_KEYSTORE_PATH: '/protected/key.p12', ANDROID_KEYSTORE_PASSWORD: 'synthetic', ANDROID_KEY_PASSWORD: 'synthetic', ANDROID_KEY_ALIAS: 'synthetic', ANDROID_CERTIFICATE_SHA256: 'ab'.repeat(32), ANDROID_VERSION_CODE: '2', ANDROID_VERSION_NAME: '0.1.0-rc.2' };
 const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificateSha256: 'ab'.repeat(32), apkSha256: 'a'.repeat(64) };
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
+test('future live-audio clients require duration-less WebM support even from a protocol-one server', () => {
+  const descriptor = { compatibility };
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES.filter(value => value !== 'audio-webm-live-v1')), false);
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES), true);
+  assert.equal(isAndroidReleaseCompatible({ compatibility: { ...compatibility, requiredCapabilities: undefined } }, 1, []), true);
+});
 test('release signing fails closed for every missing required input and malformed versions/fingerprint', () => {
   assert.equal(validateReleaseInputs(inputs).versionCode, 2);
   for (const name of Object.keys(inputs)) { const missing = { ...inputs }; delete missing[name]; assert.throws(() => validateReleaseInputs(missing), /Missing required/); }
@@ -56,9 +63,9 @@ test('publication requires acceptance evidence for every native extension requir
   validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities: ['native-enrollment-attempt-v1'] }, preflight, identity);
 });
 
-test('merged enrollment, native OIDC and upgrade-policy implementations are advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'android-upgrade-policy-v1', 'native-agency-handoff-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'android-upgrade-policy-v1', 'native-agency-handoff-v1']);
+test('merged enrollment, native OIDC, audio, upgrade policy and agency handoff implementations are advertised and required by future APK descriptors', () => {
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'native-agency-handoff-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'native-agency-handoff-v1']);
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
 
