@@ -1,4 +1,5 @@
 import {adbShellArguments} from './android/instrumentation.mjs';
+import {runNativePdfJourney} from './android/pdf-journey.mjs';
 import {nativeStartupClasses,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
@@ -45,6 +46,7 @@ try {
   const startup = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(startup); assertNativeStartupInstrumentation(startup);
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
+  await runNativePdfJourney({root,adb,serial,verifyFontPid:pid=>fontProfile.verifyForPid(pid)});
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {

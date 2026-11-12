@@ -6,6 +6,8 @@ export type NativeResponse = { status: number; headers: Record<string, string>; 
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
 export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
+  openPdf(options: { operationId: string; path: string; headers: Record<string,string>; connectionContext: string; action: "view" | "save"; language: "en" | "sv"; accent: string }): Promise<{opened:boolean;status:number;code?:string}>;
+  closePdf(options: { operationId: string }): Promise<void>;
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;
@@ -19,6 +21,24 @@ type ConnectionPlugin = {
 };
 export const AndroidConnection = registerPlugin<ConnectionPlugin>("OpenTriageConnection");
 export const isAndroidRuntime = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+/** PDF controls use an opaque native operation; no file/credential bytes enter browser storage or an external URL. */
+export async function openAndroidPdf(options: {operationId:string;path:string;headers:Record<string,string>;action:"view"|"save";language:"en"|"sv";signal:AbortSignal}):Promise<void> {
+  const expectedContext = connectionContext;
+  if (!isAndroidRuntime() || !expectedContext || options.signal.aborted) throw new Error("pdf.unavailable");
+  const close = () => { void AndroidConnection.closePdf({operationId:options.operationId}).catch(() => {}); };
+  options.signal.addEventListener("abort", close, {once:true});
+  try {
+    const result = await AndroidConnection.openPdf({operationId:options.operationId,path:options.path,headers:options.headers,action:options.action,language:options.language,
+      connectionContext:expectedContext,accent:getComputedStyle(document.documentElement).getPropertyValue("--green").trim()});
+    if (options.signal.aborted || expectedContext !== connectionContext) { close(); throw new Error("pdf.unavailable"); }
+    if (!result.opened || result.status !== 200) throw new Error(result.code ?? "pdf.unavailable");
+  } catch (error) {
+    close();
+    const message = error instanceof Error ? error.message : "";
+    const codes = ["pdf.unavailable", "pdf.media-unavailable", "pdf.media-decode-failed", "pdf.media-too-large", "pdf.audio-metadata-unavailable", "pdf.amendment-evidence-unavailable", "pdf.invalid-version", "pdf.definitions-unavailable", "pdf.unsupported-text", "pdf.too-large"];
+    throw new Error(codes.includes(message) ? message : "pdf.unavailable");
+  }
+}
 let installed = false;
 let connectionContext: string | undefined;
 export function configureNativeConnection(state: AndroidConnectionState): void {

@@ -8,6 +8,7 @@ import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
+        NativePdfSessions.cleanOrphans(this);
         // Clinical text must not become an OS-persisted recents thumbnail or screen capture.
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         registerPlugin(OpenTriageConnectionPlugin.class);

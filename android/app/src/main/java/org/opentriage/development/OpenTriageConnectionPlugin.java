@@ -29,6 +29,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     private final Object policyLock = new Object();
     private final ExecutorService policyObserver = Executors.newSingleThreadExecutor();
     private volatile boolean destroyed;
+    private volatile String pdfCookieIdentity = "";
     private void initialize() throws Exception {
         if (!loaded) {
             vault = new ConnectionVault(getContext()); active = vault.read(); pendingEnrollment = vault.pending();
@@ -138,12 +139,104 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                     rejectCall(call, "Managed connection requires attention", error.code);
                 }
                 catch (Exception error) { rejectCall(call, "Connection or pairing failed", "CONNECTION_FAILED"); }
+                finally {
+                    try { pdfCookieIdentity = active == null ? "" : NativePdfContract.cookie(active.saved()); }
+                    catch (Exception invalid) { pdfCookieIdentity = ""; }
+                }
             });
         });
     }
     @PluginMethod public void state(PluginCall call) { execute(call, () -> {
         return connectionState();
     }); }
+    private static final class PdfFailure extends Exception {
+        final int status; final String code;
+        PdfFailure(int status, String code) { this.status = status; this.code = code; }
+    }
+    private NativePdfContract.Authority pdfAuthority(TrustedConnection connection, JSONObject headers) throws Exception {
+        var reply = managedRequest(connection, "/api/sessions/current", "GET", headers, null);
+        vault.write(connection);
+        pdfCookieIdentity = NativePdfContract.cookie(connection.saved());
+        if (reply.status() != 200) throw new PdfFailure(reply.status(), "pdf.unavailable");
+        return NativePdfContract.authority(new JSONObject(reply.body()), connection.saved(), headers.getString("x-organization-id"), System.currentTimeMillis());
+    }
+    @PluginMethod public void closePdf(PluginCall call) {
+        withReplyRealm(call, () -> { NativePdfSessions.close(this, call.getString("operationId", "")); resolveCall(call); });
+    }
+    @PluginMethod public void openPdf(PluginCall call) {
+        withReplyRealm(call, () -> {
+        String uiUrl = getBridge().getWebView().getUrl();
+        if (uiUrl == null || !uiUrl.startsWith("https://localhost/")) { rejectCall(call, "Unapproved UI origin", "CONNECTION_FAILED"); return; }
+        String id = call.getString("operationId", "");
+        try { NativePdfSessions.begin(this, id); }
+        catch (Exception invalid) { rejectCall(call, "PDF unavailable", "CONNECTION_FAILED"); return; }
+        execute(call, () -> {
+            boolean launched = false;
+            try {
+                String path = call.getString("path", ""), context = call.getString("connectionContext", "");
+                JSONObject headers = call.getObject("headers", new JSObject()); NativePdfContract.request(path, headers);
+                TrustedConnection connection = active;
+                if (connection == null || replacing || pendingEnrollment != null || !context.equals(connectionContext) || !NativePdfSessions.pending(this, id)) throw new IllegalStateException("PDF context unavailable");
+                var original = pdfAuthority(connection, headers); long policyRevision = revisions.current();
+                pdfCookieIdentity = original.cookie();
+                var deadline = new java.util.concurrent.atomic.AtomicLong(original.expiresAt());
+                java.util.function.BooleanSupplier current = () -> !destroyed && active == connection && !replacing && pendingEnrollment == null
+                    && context.equals(connectionContext) && policyRevision == revisions.current() && original.cookie().equals(pdfCookieIdentity)
+                    && System.currentTimeMillis() < deadline.get() && NativePdfSessions.alive(this, id);
+                if (!current.getAsBoolean()) throw new IllegalStateException("PDF operation cancelled");
+                var initial = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
+                if (initial.status() != 200) {
+                    String code = "pdf.unavailable";
+                    try {
+                        String candidateCode = new JSONObject(initial.body()).optString("code");
+                        if (java.util.Set.of("pdf.media-unavailable", "pdf.media-decode-failed", "pdf.media-too-large", "pdf.audio-metadata-unavailable", "pdf.amendment-evidence-unavailable", "pdf.invalid-version", "pdf.definitions-unavailable", "pdf.unsupported-text", "pdf.too-large").contains(candidateCode)) code = candidateCode;
+                    } catch (Exception ignored) { /* Never forward arbitrary server prose or clinical content. */ }
+                    throw new PdfFailure(initial.status(), code);
+                }
+                NativePdfContract.bytes(initial.status(), initial.headers(), initial.bytes());
+                if (!NativePdfContract.cookie(connection.saved()).equals(original.cookie())) throw new IllegalStateException("PDF identity changed");
+                NativePdfSessions.Loader loader = () -> {
+                    var task = new java.util.concurrent.FutureTask<byte[]>(() -> {
+                        if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
+                        var fresh = pdfAuthority(connection, headers);
+                        if (!fresh.user().equals(original.user()) || !fresh.organization().equals(original.organization()) || !fresh.cookie().equals(original.cookie())) throw new IllegalStateException("PDF identity changed");
+                        deadline.accumulateAndGet(fresh.expiresAt(), Math::min);
+                        if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
+                        var reply = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
+                        NativePdfContract.bytes(reply.status(), reply.headers(), reply.bytes());
+                        if (!current.getAsBoolean() || !NativePdfContract.cookie(connection.saved()).equals(original.cookie())) throw new IllegalStateException("PDF context ended");
+                        return reply.bytes();
+                    });
+                    executor.execute(task);
+                    try { return task.get(90, java.util.concurrent.TimeUnit.SECONDS); }
+                    catch (Exception failure) { task.cancel(true); throw failure; }
+                };
+                var session = NativePdfSessions.create(getContext(), this, id, original.expiresAt(), current, loader);
+                session.cache(initial.bytes());
+                try (var parsed = new android.graphics.pdf.PdfRenderer(android.os.ParcelFileDescriptor.open(session.preview(), android.os.ParcelFileDescriptor.MODE_READ_ONLY))) {
+                    if (parsed.getPageCount() < 1 || parsed.getPageCount() > 500) throw new IllegalStateException("PDF page bound");
+                }
+                var opened = new java.util.concurrent.CountDownLatch(1);
+                var failure = new java.util.concurrent.atomic.AtomicReference<Exception>();
+                withReplyRealm(call, () -> {
+                    try {
+                        session.requireCurrent();
+                        Intent intent = new Intent(getActivity(), NativePdfActivity.class).putExtra("document", id)
+                            .putExtra("save", "save".equals(call.getString("action"))).putExtra("language", call.getString("language", "en"))
+                            .putExtra("accent", call.getString("accent", ""));
+                        getActivity().startActivity(intent);
+                    } catch (Exception error) { failure.set(error); }
+                    finally { opened.countDown(); }
+                });
+                if (!opened.await(10, java.util.concurrent.TimeUnit.SECONDS) || failure.get() != null) throw new IllegalStateException("PDF viewer unavailable");
+                launched = true;
+                JSObject result = new JSObject(); result.put("opened", true); result.put("status", 200); return result;
+            } catch (PdfFailure error) {
+                JSObject result = new JSObject(); result.put("opened", false); result.put("status", error.status); result.put("code", error.code); return result;
+            } finally { if (!launched) NativePdfSessions.close(this, id); }
+        });
+        });
+    }
     @PluginMethod public void preview(PluginCall call) { execute(call, () -> {
         if (pendingEnrollment != null || active != null && !replacing) throw new IllegalStateException("Use installation reassignment");
         candidate = null; pairing = null;
@@ -294,6 +387,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     @Override protected void handleOnDestroy() {
         closeReplies();
         destroyed = true;
+        NativePdfSessions.closeOwner(this);
         if (restrictionReceiver != null) getContext().unregisterReceiver(restrictionReceiver);
         policyObserver.shutdownNow(); executor.shutdownNow(); super.handleOnDestroy();
     }

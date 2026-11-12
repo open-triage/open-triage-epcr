@@ -407,3 +407,40 @@ This fixture control uses Chromium's [documented userdebug command line](https:/
 Native plugin responses and listener events use `LifecycleBoundPlugin`: settlement runs on the UI thread, checks the owning WebView at execution, and closes before worker cancellation when the Activity is destroyed. An ordinary pause keeps pending replies valid. This avoids Chromium109's `JsReplyProxy` worker-to-UI race, where destruction can clear the pointer between its initial check and deferred native call. Network authorization and durable pending-work outcomes keep their existing boundaries.
 
 The early Android tests compile the actual reply gate and reproduce the original queue/pointer race before checking live and destroyed delivery. The current-APK startup instrumentation includes `NativeReplyLifecycleTest`: an instrumentation-only plugin registers on the real MainActivity before creation, holds success/error/events until after close, verifies callback disposal, and proves pause/resume and replacement-Activity live delivery. It adds no production bridge endpoint and does not alter immutable upgrade-candidate instrumentation.
+
+
+### Authorized PDF inspection and export
+
+The shared signing and Review screens keep their existing server permissions,
+media-readiness checks, versions and valid-login behavior. In the APK, PDF
+inspection uses the platform renderer instead of a WebView PDF iframe. It accepts
+only the existing versioned report PDF API resources, with a fresh server-current
+principal and the private native cookie, origin, agency and managed-policy context.
+No reauthentication prompt or session renewal is added.
+
+Preview bytes stay in an opaque app-private no-backup temporary file, outside
+the FileProvider paths. One page is rendered at a time, bounded to four million
+pixels; the existing 10 MiB / 500-page document limits remain enforced. Native
+controls follow the selected English/Swedish language and agency accent. Closing,
+real backgrounding, expiry or context loss clears the document. The maximum
+preview lifetime is ten minutes, capped by the original server/cookie expiry.
+Cold MainActivity startup deletes only owned stale preview files before mounting
+the credentialed WebView; old memory-only document handles cannot reopen them.
+
+Save PDF uses Android's user-selected document destination. After the picker
+returns, the app fetches and authorizes the exact document again before copying
+any bytes, checks authority throughout the copy and cancels a partial destination
+on failure. The picker receives no application cookies, API URLs or private
+preview URI. A completed user-chosen export is retained as an explicit download;
+closing a preview does not delete that export or retain its URI permission.
+
+Run `npm run android:build` with the documented SDK/JDK prerequisites, then
+`npm run android:test:pdf -- --skip-build` on an exclusively reserved emulator.
+The focused check uses the actual platform renderer and a host force-stop of a
+live preview, then verifies cold cleanup, session/expiry/background boundaries
+and rejection of its old handle. It never clears the application's clinical or
+enrollment data. The full `npm run android:test` journey includes these checks.
+The early `node --test tests/android-pdf.test.mjs tests/android-live-instrumentation.test.mjs`
+checks reject incomplete/crashed instrumentation and a preparation process that
+exits before the host-kill checkpoint. Native JVM tests cover PDF route/byte and
+authority bounds, cancellation races and partial-export cleanup.

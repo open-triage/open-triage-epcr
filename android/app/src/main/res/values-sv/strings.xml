@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="pdf_title">Rapport som PDF</string>
+    <string name="pdf_retry">Försök igen</string>
+    <string name="pdf_close">Stäng</string>
+    <string name="pdf_save">Spara PDF</string>
+    <string name="pdf_loading">Laddar PDF…</string>
+    <string name="pdf_previous">Föregående sida</string>
+    <string name="pdf_next">Nästa sida</string>
+    <string name="pdf_page">Sida %1$d av %2$d</string>
+    <string name="pdf_zoom_out">Zooma ut</string>
+    <string name="pdf_zoom_in">Zooma in</string>
+    <string name="pdf_file_name">rapport.pdf</string>
+    <string name="pdf_save_failed">PDF-filen kunde inte öppnas eller sparas. Försök igen.</string>
+    <string name="pdf_saved">PDF-filen har sparats.</string>
     <string name="app_name">OpenTriage Utveckling</string>
     <string name="title_activity_main">OpenTriage Utveckling</string>
     <string name="managed_version">Konfigurationsversion</string>

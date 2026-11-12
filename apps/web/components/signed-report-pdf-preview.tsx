@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiRequestUrl, browserRequestInit } from "../app/browser-api";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
+import { isAndroidRuntime, openAndroidPdf } from "../app/android-runtime";
 
 /** Ephemeral inspection: never puts identifying PDF bytes into local storage or a service-worker cache. */
 export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence, dataset, language, deliveryId, draftRevision, disabled = false }: {
@@ -14,6 +15,9 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
   const [source, setSource] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [nativeReady, setNativeReady] = useState(false);
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const nativeDocument = useRef<{path:string;controller:AbortController} | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const t = (key: string) => resolveMessage(language, key);
@@ -26,7 +30,16 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
     dialog.current?.showModal();
     const query = new URLSearchParams({ amendmentSequence: String(amendmentSequence), language: language === "sv" ? "sv" : "en", dataset });
     if (!deliveryId) query.set("timeZone", zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const url = apiRequestUrl(draftRevision !== undefined ? `/api/reports/${reportId}/cos/pdf?revision=${typeof draftRevision === 'function' ? draftRevision() : draftRevision}&language=${language}` : deliveryId ? `/api/review/reports/${reportId}/cos-deliveries/${deliveryId}/pdf?${query}` : `/api/review/reports/${reportId}/snapshots/${snapshotId}/pdf?${query}`);
+    const path = draftRevision !== undefined ? `/api/reports/${reportId}/cos/pdf?revision=${typeof draftRevision === 'function' ? draftRevision() : draftRevision}&language=${language}` : deliveryId ? `/api/review/reports/${reportId}/cos-deliveries/${deliveryId}/pdf?${query}` : `/api/review/reports/${reportId}/snapshots/${snapshotId}/pdf?${query}`;
+    const url = apiRequestUrl(path);
+    if (isAndroidRuntime()) {
+      nativeDocument.current = {path,controller};
+      void openAndroidPdf({operationId:crypto.randomUUID(),path,headers:Object.fromEntries(new Headers(browserRequestInit().headers)),action:"view",language:language === "sv" ? "sv" : "en",signal:controller.signal})
+        .then(() => { if (!controller.signal.aborted) setNativeReady(true); })
+        .catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "pdf.unavailable"); })
+        .finally(() => { if (!controller.signal.aborted) setNativeBusy(false); });
+      return () => { controller.abort(); nativeDocument.current = null; };
+    }
     void (async () => {
       try {
         if (!url) throw new Error("pdf.unavailable");
@@ -47,7 +60,14 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
     })();
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [open, reportId, snapshotId, amendmentSequence, dataset, language, attempt, deliveryId, zone, draftRevision, disabled]);
-  const close = () => { dialog.current?.close(); setOpen(false); setSource(null); setError(null); trigger.current?.focus(); };
+  const close = () => { dialog.current?.close(); setOpen(false); setSource(null); setNativeReady(false); setNativeBusy(false); setError(null); trigger.current?.focus(); };
+  const nativeAction = async(action:"view"|"save") => {
+    const document = nativeDocument.current; if (!document || nativeBusy) return;
+    setNativeBusy(true);
+    try { await openAndroidPdf({operationId:crypto.randomUUID(),path:document.path,headers:Object.fromEntries(new Headers(browserRequestInit().headers)),action,language:language === "sv" ? "sv" : "en",signal:document.controller.signal}); }
+    catch(failure) { if (!document.controller.signal.aborted) setError(failure instanceof Error ? failure.message : "pdf.unavailable"); }
+    finally { if (!document.controller.signal.aborted) setNativeBusy(false); }
+  };
   return <>
     <button ref={trigger} type="button" disabled={disabled} onClick={() => setOpen(true)}>{title}</button>
     {open && !disabled && <dialog ref={dialog} className="signed-report-pdf-dialog" aria-labelledby={titleId} onCancel={close}>
@@ -55,7 +75,8 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
         <button type="button" onClick={close}>{t("noteUi.close")}</button></header>
       <p>{draftRevision !== undefined ? t("cosSigning.draftPdf") : resolveMessage(language, "pdf.version", { sequence: amendmentSequence })}</p>
       {draftRevision === undefined && <p>{t(deliveryId ? "pdf.submittedEvidence" : "pdf.limits")}</p>}
-      {error ? <div role="alert"><p>{t(error)}</p><button type="button" onClick={() => { setError(null); setSource(null); setAttempt(attempt + 1); }}>{t("pdf.retry")}</button></div> :
+      {error ? <div role="alert"><p>{t(error)}</p><button type="button" onClick={() => { setError(null); setSource(null); setNativeReady(false); setNativeBusy(false); setAttempt(attempt + 1); }}>{t("pdf.retry")}</button></div> :
+        nativeReady ? <div className="dialog-actions" data-native-pdf-controls><button type="button" disabled={nativeBusy} onClick={() => {void nativeAction("view");}}>{t("pdf.nativeView")}</button><button type="button" disabled={nativeBusy} onClick={() => {void nativeAction("save");}}>{t("pdf.download")}</button></div> :
         source ? <><p>{t("pdf.viewerHelp")}</p><iframe src={source} title={title} /><a href={source} download={draftRevision !== undefined ? `draft-report-${reportId}.pdf` : deliveryId ? `cos-submitted-${deliveryId}.pdf` : `signed-report-${reportId}-${amendmentSequence}.pdf`}>{t("pdf.download")}</a></> :
           <p role="status">{t("pdf.loading")}</p>}
     </dialog>}
