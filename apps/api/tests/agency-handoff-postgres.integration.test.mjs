@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {agencyRetainedSnapshotSql} from '../../../scripts/android/agency-return-evidence.mjs';
 import test from 'node:test';
 import pg from 'pg';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
@@ -28,6 +29,7 @@ integration('only agency-less installation superusers transfer sessions through 
   await query("insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='clinician'",[source,ordinary,user]);
   for(const id of [user,ordinary,boundAdmin,targetPerson])await query('insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password) values($1,$2,$3,false)',[id,name+id.slice(0,8),await createPasswordVerifier(password)]);
   const {seedProtectedRecoveryReports}=await import('./fixtures/protected-recovery-seed.mjs');await seedProtectedRecoveryReports({query},source,ordinary,boundAdmin);
+  await query('explain '+agencyRetainedSnapshotSql,['91200000-0000-4000-8000-000000000001']);
   const otherReport='91200000-0000-4000-8000-000000000001';assert.equal((await query('select documenting_user_id from clinical.report where id=$1',[otherReport]))[0].documenting_user_id,ordinary);
   await client.query('set local role open_triage_api_runtime');
   const directory=new AgencyDirectoryService(database),sessions=new ClinicianSessionService(database,directory),handoffs=new AgencyHandoffService(database,sessions,directory);

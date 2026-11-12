@@ -146,6 +146,8 @@ public class AgencyHandoffJourneyTest {
             } else if(phase.equals("return-source")){
                 waitFor("document.querySelector('.session-identity')");click("Change installation");waitFor("document.querySelector('input[type=file]')");
                 String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
+                waitFor("document.querySelector('input[name=username]')");unchanged(args.getString("retainedSha256"));bundled();
+            } else if(phase.equals("recover-source")){
                 login(args.getString("username"),args.getString("password"));click("Reopen report");waitFor("document.querySelector('.encounter-header')");if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-AGENCY-PENDING'");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");click("Save & close");waitFor("!document.querySelector('.encounter-header')");logout(false);login(args.getString("superuser"),args.getString("superuserPassword"));bundled();
             }else fail("Unknown agency test phase");
         }finally{activity.close();}

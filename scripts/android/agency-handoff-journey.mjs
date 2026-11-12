@@ -8,6 +8,7 @@ import {DataSource} from 'typeorm';
 import {runInstrumentation} from './instrumentation.mjs';
 import {startLiveInstrumentation} from './live-instrumentation.mjs';
 import {stopFixtureChild} from './fixture-processes.mjs';
+import {agencyRetainedSnapshotSql,verifyAgencySourceReturn} from './agency-return-evidence.mjs';
 import {scopedAndroidReverse} from './scoped-reverse.mjs';
 import {seedReportFixture} from './report-fixture.mjs';
 
@@ -53,10 +54,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   const setup=await instrument('setup',{...identity,artifactBase64:await issue(),callNumber});
   reportId=/agency_report_id=([a-f0-9-]{36})/.exec(setup)?.[1];const retainedSha256=/retained_sha256=([a-f0-9]{64})/.exec(setup)?.[1],sourceCookieSha256=/source_cookie_sha256=([a-f0-9]{64})/.exec(setup)?.[1];assert(reportId&&retainedSha256&&sourceCookieSha256);
   const snapshot=async()=>{
-   const [row]=await db.query(`select report.documenting_user_id,report.organization_id,report.incident_id,envelope.recovery_deadline,assignment.unit_id,
-    (select value_text from clinical.element_occurrence where report_id=report.id and element_id='ePatient.03' and tombstoned_at is null) first_name
-    from clinical.report report join offline_recovery.report_key_envelope envelope on envelope.report_id=report.id
-    join clinical.call_assignment assignment on assignment.report_id=report.id where report.id=$1`,[reportId]);return row;
+   const [row]=await db.query(agencyRetainedSnapshotSql,[reportId]);return row;
   };
   const before=await snapshot();assert.equal(before.documenting_user_id,fixture.clinician.userId);assert.equal(before.first_name,'ANDROID-AGENCY-ORIGINAL');
   await instrument('bad-ca',{retainedSha256});
@@ -91,10 +89,11 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   assert(observed.body.requests.some(row=>row.stage==='consume'&&!row.personal&&!row.installation&&row.challenge));
   assert(observed.body.requests.filter(row=>['challenge','consume'].includes(row.stage)).every(row=>!row.installation&&!row.personal),'No source credential may be transferred to target bootstrap');
   assert(observed.body.requests.filter(row=>row.stage==='current').every(row=>row.personal&&!row.installation&&!row.challenge),'Recovery uses only the target-issued personal cookie');
+  assert.deepEqual(await snapshot(),before,'Bundled target restart cannot renew the original retained envelope');
   const released=await api(fixture,ca,'__android-agency-write-outage','POST',{reportId,enabled:false});assert.equal(released.status,200);
-  await instrument('return-source',{...identity,artifactBase64:await issue()});
-  const recovered=await snapshot();assert.equal(recovered.first_name,'ANDROID-AGENCY-PENDING');
-  for(const key of ['documenting_user_id','organization_id','incident_id','unit_id'])assert.equal(recovered[key],before[key]);assert.equal(recovered.recovery_deadline.toISOString(),before.recovery_deadline.toISOString());
+  await verifyAgencySourceReturn({before,snapshot,
+   returnSource:async()=>instrument('return-source',{...identity,artifactBase64:await issue(),retainedSha256}),
+   recoverSource:async()=>instrument('recover-source',identity)});
   run(adb,['-s',serial,'install','-t','-r',join(root,'android/management-test-controller/build/outputs/apk/debug/management-test-controller-debug.apk')]);
   run(adb,['-s',serial,'shell','dpm','set-device-owner','org.opentriage.managementtest/.AdminReceiver']);ownsManagement=true;
   const count=observed.body.requests.length;
