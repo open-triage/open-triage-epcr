@@ -10,7 +10,9 @@ export function assertNoRemoteFontInitializer(manifest) {
 export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
   assert(['debug','release'].includes(variant));
   const task=variant==='debug'?'processDebugManifest':'processReleaseManifest';
-  assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/merged_manifests',variant,task,'AndroidManifest.xml'),'utf8'));
+  const main=readFileSync(join(root,'android/app/build/intermediates/merged_manifests',variant,task,'AndroidManifest.xml'),'utf8');
+  assertNoRemoteFontInitializer(main);
+  assert.doesNotMatch(main,/NativePdfSafDocumentActivity/,'The test-only document verifier must never be packaged in the clinical APK');
   if(instrumentation) {
     const testTask=variant==='debug'?'processDebugAndroidTestManifest':'processReleaseAndroidTestManifest';
     assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/packaged_manifests',`${variant}AndroidTest`,testTask,'AndroidManifest.xml'),'utf8'));

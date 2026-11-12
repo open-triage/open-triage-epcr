@@ -453,7 +453,10 @@ and rejection of its old handle. It closes a real renderer handle to exercise
 the visible failure and explicit Retry path, verifies a fresh authorized load
 and a new renderer, and checks the page count after recovery. It also uses the real system document picker to
 save fresh authorized synthetic bytes, checks that an explicit download survives
-private preview cleanup, deletes only that test export, and cancels the picker
+private preview cleanup, then genuinely selects it again with Open Document in
+the separate test APK. That consumer checks the exact URI/document identity,
+filename, length and fresh-byte hash before deleting only the test export under
+its live user grant. Read and cleanup failures are reported independently. It cancels the picker
 without fetching a document. It never clears the application's clinical or
 enrollment data. The full `npm run android:test` journey includes these checks.
 The early `node --test tests/android-pdf.test.mjs tests/android-live-instrumentation.test.mjs`

@@ -28,6 +28,42 @@ public class NativePdfSafTest {
         }
         assertNotNull("The actual system Save control is available; resource IDs="+resourceIds,save);assertTrue("The chosen filename/destination enables the actual system Save action",save.isEnabled());return save;
     }
+    private void verifyWithNewUserGrant(UiDevice device,android.net.Uri original,String name,byte[] expected) throws Exception {
+        var instrumentation=InstrumentationRegistry.getInstrumentation();var target=instrumentation.getTargetContext();
+        String token=java.util.UUID.randomUUID().toString();var done=new java.util.concurrent.CountDownLatch(1);
+        var result=new java.util.concurrent.atomic.AtomicReference<android.os.Bundle>();var code=new AtomicInteger();
+        var accepting=new java.util.concurrent.atomic.AtomicBoolean(true);
+        var receiver=new android.os.ResultReceiver(new android.os.Handler(android.os.Looper.getMainLooper())) {
+            @Override protected void onReceiveResult(int value,android.os.Bundle data){if(accepting.get()&&data!=null&&token.equals(data.getString("token"))){code.set(value);result.set(data);done.countDown();}}
+        };
+        var component=new android.content.ComponentName(instrumentation.getContext().getPackageName(),NativePdfSafDocumentActivity.class.getName());
+        boolean completed=false;Throwable primary=null;
+        try {
+            target.startActivity(new android.content.Intent().setComponent(component).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra("result",receiver).putExtra("token",token).putExtra("document",original).putExtra("name",name).putExtra("length",expected.length));
+            var file=device.wait(Until.findObject(By.text(name)),10000);
+            assertNotNull("The genuine Open Document picker exposes only this exact synthetic export for user selection",file);file.click();
+            assertTrue("The separately granted document consumer must finish",done.await(15,java.util.concurrent.TimeUnit.SECONDS));
+            var proof=result.get();assertNotNull(proof);
+            assertEquals("The ResultReceiver belongs to the exact separate test component",component.flattenToShortString(),proof.getString("component"));
+            assertEquals(instrumentation.getContext().getApplicationInfo().uid,proof.getInt("consumerUid"));
+            var evidence=new android.os.Bundle();for(String key:new String[]{"primaryFailure","cleanupFailure","sha256"})evidence.putString("opentriage_pdf_user_grant_"+key,proof.getString(key,"missing"));
+            evidence.putInt("opentriage_pdf_user_grant_bytes",proof.getInt("length"));evidence.putBoolean("opentriage_pdf_user_grant_deleted",proof.getBoolean("deleted"));instrumentation.sendStatus(0,evidence);
+            assertEquals("Primary document verification failure (cleanup is reported independently): "+proof.getString("cleanupFailure"),"",proof.getString("primaryFailure","missing"));
+            assertTrue("Only the exact saved URI/document metadata can be read or deleted",proof.getBoolean("identityMatched"));
+            var hash=new StringBuilder();for(byte value:java.security.MessageDigest.getInstance("SHA-256").digest(expected))hash.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
+            assertEquals("The explicit download survives viewer cleanup with the exact freshly authorized bytes",hash.toString(),proof.getString("sha256"));
+            assertEquals(expected.length,proof.getInt("length"));
+            assertEquals("Cleanup failure is not allowed to mask the primary verification","",proof.getString("cleanupFailure","missing"));
+            assertTrue("Delete only the explicitly selected, validated test export while its new write grant is live",proof.getBoolean("deleted"));
+            assertEquals(android.app.Activity.RESULT_OK,code.get());completed=true;
+        } catch(Exception|AssertionError failure){primary=failure;throw failure;
+        } finally {
+            accepting.set(false);
+            if(!completed)try {target.startActivity(new android.content.Intent().setComponent(component).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("cancelToken",token));}
+            catch(Exception cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}
+        }
+    }
     @Test public void actualPickerExportsOnlyFreshlyAuthorizedBytesAndPreservesTheExplicitDownload() throws Exception {
         var instrumentation=InstrumentationRegistry.getInstrumentation();var context=instrumentation.getTargetContext();
         Object owner=new Object();String id=java.util.UUID.randomUUID().toString();
@@ -35,27 +71,27 @@ public class NativePdfSafTest {
         NativePdfSessions.begin(owner,id);
         var session=NativePdfSessions.create(context,owner,id,System.currentTimeMillis()+60_000,()->true,()->{loads.incrementAndGet();return fresh.clone();});
         java.io.File privateFile=session.cache(NativePdfFixture.bytes("SYNTHETIC OLD PREVIEW"));
-        android.net.Uri destination=null;
-        try(var scenario=ActivityScenario.<NativePdfActivity>launchActivityForResult(NativePdfFixture.intent(context,session,"en").putExtra("save",true))) {
+        String nameValue="opentriage-synthetic-"+id+".pdf";
+        try {
+          android.net.Uri destination;
+          try(var scenario=ActivityScenario.<NativePdfActivity>launchActivityForResult(NativePdfFixture.intent(context,session,"en").putExtra("save",true))) {
             UiDevice device=UiDevice.getInstance(instrumentation);
             var name=device.wait(Until.findObject(By.clazz("android.widget.EditText")),5000);
             assertNotNull("The real ACTION_CREATE_DOCUMENT picker opens",name);
             String pickerPackage=name.getApplicationPackage();
             assertNotEquals("The actual picker belongs to another application",context.getPackageName(),pickerPackage);
             assertEquals("The picker does not authorize a download before the user chooses",0,loads.get());
-            name.setText("opentriage-synthetic-"+id+".pdf");
+            name.setText(nameValue);
             systemSave(device,pickerPackage).click();
             var result=scenario.getResult();assertEquals(android.app.Activity.RESULT_OK,result.getResultCode());
             destination=result.getResultData().getData();assertNotNull(destination);assertEquals("content",destination.getScheme());
             assertEquals("Authorization/refetch happens after the real picker returns",1,loads.get());
             assertFalse("The completed viewer has revoked its authority",session.current());
             assertFalse("A completed export leaves no private preview",privateFile.exists());
-            try(var input=context.getContentResolver().openInputStream(destination)) {
-                assertNotNull(input);assertArrayEquals("The explicit user download survives preview cleanup and contains the fresh authorized document",fresh,input.readAllBytes());
-            }
+          }
+          verifyWithNewUserGrant(UiDevice.getInstance(instrumentation),destination,nameValue,fresh);
         } finally {
             NativePdfSessions.closeOwner(owner);
-            if(destination!=null)assertTrue("Delete only this test's explicit synthetic export",android.provider.DocumentsContract.deleteDocument(context.getContentResolver(),destination));
             java.util.Arrays.fill(fresh,(byte)0);
         }
     }

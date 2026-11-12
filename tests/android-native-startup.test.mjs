@@ -24,6 +24,9 @@ for(const variant of ['debug','release']) test(`${variant} checks the separate i
     writeFileSync(instrumentation,'<manifest><application><provider android:name="androidx.startup.InitializationProvider"><meta-data android:name="androidx.emoji2.text.EmojiCompatInitializer" /></provider></application></manifest>');
     assert.throws(()=>verifyNativeStartup(root,variant,{instrumentation:true}),/downloadable font provider/);
     assert.doesNotThrow(()=>verifyNativeStartup(root,variant));
+    const verifier='<manifest><application><activity android:name="org.opentriage.development.NativePdfSafDocumentActivity" /></application></manifest>';
+    writeFileSync(instrumentation,verifier);assert.doesNotThrow(()=>verifyNativeStartup(root,variant,{instrumentation:true}));
+    writeFileSync(main,verifier);assert.throws(()=>verifyNativeStartup(root,variant,{instrumentation:true}),/test-only document verifier/);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
