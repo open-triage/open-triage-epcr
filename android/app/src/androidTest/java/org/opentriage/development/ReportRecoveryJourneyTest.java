@@ -601,9 +601,13 @@ public class ReportRecoveryJourneyTest {
             stageSyntheticPhoto("ANDROID-PDF-MEDIA-RETRY-SYNTHETIC");
             click("Review & sign");waitFor("document.querySelector('.note-readiness') && document.querySelector('.review-actions button')?.disabled");
             assertEquals("Online signing retains its existing unresolved-media blocker","true",evaluate("navigator.onLine && document.querySelector('.note-readiness').textContent.includes('Photo')"));
+            waitFor("document.querySelector('.note-readiness')?.textContent.includes('retry')");
+            evaluate("window.__mediaFailureReceipt=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId).then(response=>response.json()).then(value=>window.__mediaFailureReceipt=value)");
+            waitFor("Boolean(window.__mediaFailureReceipt)");
+            assertEquals("The actual photo POST must receive503 and enter the client failed state while the hold remains armed","true",evaluate("window.__mediaFailureReceipt.held && window.__mediaFailureReceipt.failures>=1 && window.__mediaFailureReceipt.requests===window.__mediaFailureReceipt.failures && window.__mediaFailureReceipt.statuses.length>=1 && window.__mediaFailureReceipt.statuses.every(status=>status===503) && document.querySelector('.note-readiness')?.textContent.includes('retry') && document.querySelector('.review-actions button')?.disabled"));
+            var mediaReceipt=new android.os.Bundle();mediaReceipt.putString("opentriage_media_failure_receipt",evaluate("JSON.stringify(window.__mediaFailureReceipt)"));InstrumentationRegistry.getInstrumentation().sendStatus(0,mediaReceipt);
             evaluate("window.__mediaHold=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=0',{method:'POST'}).then(response=>response.json()).then(value=>window.__mediaHold=value.held)");
             waitFor("window.__mediaHold===false");
-            waitFor("document.querySelector('.note-readiness').textContent.includes('retry')");
             evaluate("document.querySelector('.note-readiness button').click()");click("Retry upload");
             waitFor("!document.querySelector('.photo-note-dialog') || !Array.from(document.querySelectorAll('.photo-note-dialog button')).some(button=>button.textContent==='Retry upload')");
             if("true".equals(evaluate("!!document.querySelector('.photo-note-dialog')")))click("Cancel");
