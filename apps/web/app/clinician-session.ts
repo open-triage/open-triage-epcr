@@ -40,8 +40,9 @@ export function sessionRequestToken(session: AuthenticatedSession): string {
   return session.csrfToken ?? session.accessToken ?? "";
 }
 
-export function storeClinicianSession(storage: Pick<Storage, "setItem">, session: AuthenticatedSession): void {
+export function storeClinicianSession(storage: Pick<Storage, "setItem"> & Partial<Pick<Storage,"removeItem">>, session: AuthenticatedSession): void {
   storage.setItem(CLINICIAN_SESSION_STORAGE_KEY, JSON.stringify(session));
+  storage.removeItem?.(INSTALLATION_SESSION_HINT_KEY);
   bindBrowserOrganization(session.organization?.id);
 }
 

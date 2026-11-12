@@ -43,7 +43,7 @@ test('orphaned confirmed transition reaches primary login after restart without 
 
 test('interruption before native confirmation continues the current valid login without another prompt',async({page})=>{
  await fixture(page,{personal:true,purpose:"enrollment"});await expect(page.locator('.session-identity')).toContainText('Valid native clinician');
- await expect(page.locator('input[name=username]')).toHaveCount(0);expect(await marker(page)).toBeNull();await expect(page.locator('body')).not.toContainText('Stale cached user');
+ await expect(page.locator('input[name=username]')).toHaveCount(0);expect(await marker(page)).toBeNull();await expect(page.locator('body')).not.toContainText('Stale cached user');expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-session-candidate.v1'))).toBeNull();
 });
 
 test('a live cross-tab exclusive transition is never reconciled or cleared',async({page})=>{
