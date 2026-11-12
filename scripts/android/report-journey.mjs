@@ -147,7 +147,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       const signed=(await db.query('select id as signed_snapshot_id from clinical.signed_snapshot where report_id=$1',[opened.id])).rows[0];
       assert(signed?.signed_snapshot_id,'The shared Android signing workflow creates the actual immutable signed snapshot');
       const livePdfChange=async(authorityChange,change)=>{
-        const live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('remote-pdf',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id,snapshotId:signed.signed_snapshot_id,organizationId:fixture.organizationId,authorityChange})),{cwd:root,checkpoint:'opentriage_pdf_authority_phase=visible-awaiting-server-change',timeoutMs:60000});
+        const live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('remote-pdf',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id,snapshotId:signed.signed_snapshot_id,organizationId:fixture.organizationId,authorityChange})),{cwd:root,phase:'pdf-'+authorityChange,checkpoint:'opentriage_pdf_authority_phase=visible-awaiting-server-change',timeoutMs:60000,secrets:[fixture.administratorPassword,fixture.clinicianPassword,report.secondClinicianPassword]});
         let timedOut=false,timer;
         try {
           console.log(await live.ready);await change();

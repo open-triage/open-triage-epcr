@@ -22,7 +22,7 @@ export async function runNativePdfJourney({root,adb,serial,applicationId='org.op
   console.log(live);assertNativePdfInstrumentation(live);
   let preparation;
   try {
-    preparation=startLiveInstrumentation(adb,instrument('org.opentriage.development.NativePdfColdProcessTest',['-e','phase','prepare']),{cwd:root,checkpoint:'opentriage_pdf_phase=ready-for-process-kill',timeoutMs:45000});
+    preparation=startLiveInstrumentation(adb,instrument('org.opentriage.development.NativePdfColdProcessTest',['-e','phase','prepare']),{cwd:root,phase:'pdf-cold-process',checkpoint:'opentriage_pdf_phase=ready-for-process-kill',timeoutMs:45000});
     console.log(await preparation.ready);
     const pid=execFileSync(adb,['-s',serial,'shell','pidof',applicationId],{encoding:'utf8'}).trim();assert(pid,'Native PDF preparation must retain a real live process');
     execFileSync(adb,['-s',serial,'shell','am','force-stop',applicationId]);

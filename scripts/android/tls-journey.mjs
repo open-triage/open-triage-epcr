@@ -78,7 +78,7 @@ export async function runTlsJourney({ root, fixture, material, child, adb, seria
           const original=await issue(material[from].ca);
           const armed=await api(fixture,await readFile(fixture.caPath),'__android-enrollment-drop-arm','POST',{},adminHeaders);assert.equal(armed.body.armed,true);
           const extra={artifactBase64:encode(original),retainedSha256};
-          livePending=startLiveInstrumentation(adb,argumentsFor('pending-live',extra),{cwd:root,checkpoint:'opentriage_phase=pending-confirmation-ready',redact:output=>sanitize(output,extra)});
+          livePending=startLiveInstrumentation(adb,argumentsFor('pending-live',extra),{cwd:root,phase:'tls-pending-confirmation',checkpoint:'opentriage_phase=pending-confirmation-ready',redact:output=>sanitize(output,extra),secrets:[fixture.administratorPassword,fixture.clinicianPassword]});
           const prepared=await livePending.ready;console.log(prepared);
           const tokenHash=/pending_token_sha256=([a-f0-9]{64})/.exec(prepared)?.[1],intent=/pending_intent_sha256=([a-f0-9]{64})/.exec(prepared)?.[1];assert(tokenHash&&intent);
           const pid=execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim();assert(pid,'Ambiguous confirmation must leave a live process before host termination');stop();

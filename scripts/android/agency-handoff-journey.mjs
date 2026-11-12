@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {DataSource} from 'typeorm';
-import {runInstrumentation} from './instrumentation.mjs';
+import {runInstrumentation,adbShellArguments} from './instrumentation.mjs';
 import {startLiveInstrumentation} from './live-instrumentation.mjs';
 import {stopFixtureChild} from './fixture-processes.mjs';
 import {agencyRetainedSnapshotSql,verifyAgencySourceReturn} from './agency-return-evidence.mjs';
@@ -30,7 +30,6 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   args.push('org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner');return args;
  };
  const instrument=async(phase,extra={})=>{let output;try{output=await runInstrumentation(adb,argumentsFor(phase,extra),{cwd:root});}catch{throw Error(`Actual agency ${phase} instrumentation failed`);}console.log(output);assert.match(output,/OK \(1 test\)/,`Actual agency ${phase}`);return output;};
- const rawArgs=args=>{const i=args.indexOf('shell');return[...args.slice(0,i+1),args.slice(i+1).map(v=>"'"+v.replaceAll("'","'\"'\"'")+"'").join(' ')];};
  try{
   const [configuration]=await db.query('select form_version_id from app_identity.active_configuration_bundle where organization_id=$1',[fixture.organizationId]);
   if(!configuration)await seedReportFixture(root,fixture,run);
@@ -51,6 +50,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   await startTarget({keyPath:wrongKey,certPath:wrongCert});
   run(adb,['-s',serial,'shell','pm','clear','org.opentriage.development']);
   const identity={username:fixture.clinician.username,password:fixture.clinicianPassword,superuser:superuser.username,superuserPassword,superuserId:superuser.userId};
+  const liveOptions=phase=>({cwd:root,phase:'agency-'+phase,checkpoint:'INSTRUMENTATION_STATUS: agency_handoff_live=1',secrets:[fixture.administratorPassword,fixture.clinicianPassword,superuserPassword]});
   const setup=await instrument('setup',{...identity,artifactBase64:await issue(),callNumber});
   reportId=/agency_report_id=([a-f0-9-]{36})/.exec(setup)?.[1];const retainedSha256=/retained_sha256=([a-f0-9]{64})/.exec(setup)?.[1],sourceCookieSha256=/source_cookie_sha256=([a-f0-9]{64})/.exec(setup)?.[1];assert(reportId&&retainedSha256&&sourceCookieSha256);
   const snapshot=async()=>{
@@ -60,14 +60,14 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   await instrument('bad-ca',{retainedSha256});
   assert.equal((await db.query('select count(*)::int n from app_identity.agency_session_handoff where issued_at is not null'))[0].n,0,'Untrusted target must fail before source issuance');
   await startTarget();
-  live=startLiveInstrumentation(adb,rawArgs(argumentsFor('prepare-interrupted')),{cwd:root,checkpoint:'INSTRUMENTATION_STATUS: agency_handoff_live=1'});
+  live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('prepare-interrupted')),liveOptions('prepare-interrupted'));
   const checkpoint=await live.ready;assert.match(checkpoint,new RegExp('retained_sha256='+retainedSha256));
   assert(execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim(),'Actual prepared handoff Activity must still be alive');
   run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');await live.closed;live=null;
   await instrument('cancel-interrupted',{retainedSha256,sourceCookieSha256});
   assert.deepEqual(await snapshot(),before,'Interruption/cancellation cannot mutate old clinical authority or deadline');
   assert.equal((await api(targetFixture,ca,'__android-agency-consume-hold','POST',{})).status,200);
-  live=startLiveInstrumentation(adb,rawArgs(argumentsFor('consume-interrupted')),{cwd:root,checkpoint:'INSTRUMENTATION_STATUS: agency_handoff_live=1'});
+  live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('consume-interrupted')),liveOptions('consume-interrupted'));
   const interruptedConsume=await live.ready;assert.match(interruptedConsume,new RegExp('retained_sha256='+retainedSha256));
   const sourceExpiresAt=/source_expires_at=([^\r\n]+)/.exec(interruptedConsume)?.[1];assert(sourceExpiresAt);
   assert(execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim(),'Actual ambiguous consume must remain live at checkpoint');
@@ -77,7 +77,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   const afterAmbiguous=await api(targetFixture,ca,'__android-agency-observations');
   assert.equal(afterAmbiguous.body.requests.filter(row=>row.stage==='consume').length,1,'Ambiguous one-use consume is never replayed during recovery');
   await instrument('return-source-superuser',{...identity,artifactBase64:await issue(),retainedSha256});
-  live=startLiveInstrumentation(adb,rawArgs(argumentsFor('prepare-completed')),{cwd:root,checkpoint:'INSTRUMENTATION_STATUS: agency_handoff_live=1'});
+  live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('prepare-completed')),liveOptions('prepare-completed'));
   assert.match(await live.ready,new RegExp('retained_sha256='+retainedSha256));
   assert(execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim(),'Actual promoted handoff must remain live before JavaScript delivery');
   run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');await live.closed;live=null;
