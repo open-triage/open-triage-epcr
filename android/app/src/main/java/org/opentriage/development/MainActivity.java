@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(OpenTriageScannerPlugin.class);
         registerPlugin(OpenTriageLifecyclePlugin.class);
         super.onCreate(state);
+        applyTextScale();
         // CapacitorCookies installs a global handler even when JS patching is disabled.
         // It would copy native credentials into the WebView cookie store. Own them solely in the vault.
         java.net.CookieHandler.setDefault(null);
@@ -24,5 +25,17 @@ public class MainActivity extends BridgeActivity {
                 return !("https".equals(uri.getScheme()) && "localhost".equals(uri.getHost()) && uri.getPort() == -1);
             }
         });
+    }
+
+    private void applyTextScale() {
+        if (bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().getSettings().setTextZoom(Math.round(getResources().getConfiguration().fontScale * 100));
+        }
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        // Keep the current editor/recorder realm while honoring Android's accessibility setting.
+        applyTextScale();
     }
 }

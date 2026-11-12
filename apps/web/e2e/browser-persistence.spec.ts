@@ -1,5 +1,8 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { build } from "esbuild";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
@@ -1085,10 +1088,21 @@ for (const status of [401, 403]) test(`reopening cannot use a cached report afte
   await expect(page.locator(".report-reauthentication")).toHaveCount(0);
 });
 
-test("Save and close awaits the protected IndexedDB completion before unmounting offline work", async ({ page, context }) => {
+for (const navigation of ["button", "android-back"] as const) test(`${navigation} awaits the protected IndexedDB completion before unmounting offline work`, async ({ page, context }, testInfo) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page);
-  await page.goto("/");
+  if (navigation === "android-back") {
+    const css = await readFile(path.resolve(__dirname, "../app/styles.css"), "utf8") + await readFile(path.resolve(__dirname, "../app/session-layout.css"), "utf8");
+    const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
+      define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: "same-origin", NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "false" }) },
+      plugins: [{ name: "native-installation-control", setup(builder) {
+        builder.onResolve({filter: /android-runtime$/}, args => args.importer.endsWith("android-installation-action.tsx") ? {path: "native-action", namespace: "native-action"} : undefined);
+        builder.onLoad({filter: /.*/, namespace: "native-action"}, () => ({loader: "js", contents: "export const isAndroidRuntime=()=>true;"}));
+      }}],
+      stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `import React from 'react';import {createRoot} from 'react-dom/client';import Home from './app/page';import {handleAndroidBack} from './app/android-navigation';window.androidBack=()=>handleAndroidBack(async()=>{window.didBackground=true});createRoot(document.getElementById('root')).render(<Home/>);` } });
+    await page.route("**/__android-back", route => route.fulfill({ contentType: "text/html", body: `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
+  }
+  await page.goto(navigation === "button" ? "/" : "/__android-back");
   await page.getByRole("button", { name: "Stationary", exact: true }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   const firstName = page.getByRole("textbox", { name: "First Name", exact: true });
@@ -1127,12 +1141,50 @@ test("Save and close awaits the protected IndexedDB completion before unmounting
   });
   await firstName.fill("CLOSE DURABILITY"); await firstName.press("Tab");
   await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { protectedWriteHeld?: boolean }).protectedWriteHeld))).toBe(true);
-  await page.getByRole("button", { name: "Save & close", exact: true }).click();
+  if (navigation === "button") await page.getByRole("button", { name: "Save & close", exact: true }).click();
+  else await page.evaluate(() => {
+    const back = (window as unknown as { androidBack(): void }).androidBack;
+    void back(); void back();
+  });
   await expect(page.locator(".encounter-header")).toBeVisible();
   await page.evaluate(() => (window as unknown as { releaseProtectedWrite(): void }).releaseProtectedWrite());
   await expect(page.locator(".encounter-header")).toHaveCount(0);
   await page.getByRole("button", { name: "Reopen report", exact: true }).click();
   await expect(firstName).toHaveValue("CLOSE DURABILITY");
+  if (navigation === "android-back") {
+    await page.setViewportSize({ width: 320, height: 616 });
+    await page.addStyleTag({ content: ":root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}" });
+    await expect(page.locator(".session-bar [data-change-installation]")).toBeVisible();
+    // The real native-only action must not squeeze identity into a tall pinned column.
+    expect(await page.locator(".session-account").evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(100);
+    expect(await page.locator(".session-bar").evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(616 * .6);
+    await page.keyboard.press("Tab");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: testInfo.outputPath("native-session-header-large-text.png") });
+    await firstName.evaluate(element => element.scrollIntoView({block: "end", behavior: "instant"}));
+    await page.screenshot({ path: testInfo.outputPath("native-session-large-text.png") });
+    expect(await firstName.evaluate(element => { const r = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)); })).toBe(true);
+    await page.setViewportSize({ width: 320, height: 440 });
+    await page.addStyleTag({ content: ":root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}" });
+    const close = page.getByRole("button", { name: "Save & close", exact: true });
+    await close.scrollIntoViewIfNeeded();
+    await expect(close).toBeInViewport({ ratio: 1 });
+    expect(await page.locator(".draft-actions button").evaluateAll(buttons => buttons.every(button => button.scrollWidth <= button.clientWidth + 1))).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("clinical-short-large-text.png") });
+    expect(await close.evaluate(element => { const r = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)); })).toBe(true);
+    await page.getByRole("button", { name: "Mobile", exact: true }).click();
+    await page.getByRole("button", { name: "Text note", exact: true }).click();
+    const summary = page.getByLabel("Note text", { exact: true });
+    await summary.fill("UNSAVED NAVIGATION NOTE");
+    page.once("dialog", dialog => dialog.dismiss());
+    await page.evaluate(() => (window as unknown as { androidBack(): Promise<void> }).androidBack());
+    await expect(summary).toHaveValue("UNSAVED NAVIGATION NOTE");
+    page.once("dialog", dialog => dialog.accept());
+    await page.evaluate(() => (window as unknown as { androidBack(): Promise<void> }).androidBack());
+    await expect(summary).toHaveCount(0);
+    await page.getByRole("button", { name: "Stationary", exact: true }).click();
+    await expect(firstName).toHaveValue("CLOSE DURABILITY");
+  }
 });
 
 test("Save and close retries a failed receipt without requiring another clinical edit", async ({ page }) => {

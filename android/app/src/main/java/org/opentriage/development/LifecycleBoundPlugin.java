@@ -27,6 +27,9 @@ public abstract class LifecycleBoundPlugin extends Plugin {
         if (Looper.myLooper() == Looper.getMainLooper()) bind.run(); else replyUi.post(bind);
     }
     protected void onReplyRealmReady() { super.load(); }
+    protected final void resolveCall(PluginCall call) {
+        replies.dispatch(call::resolve, () -> call.release(getBridge()));
+    }
     protected final void resolveCall(PluginCall call, JSObject value) {
         replies.dispatch(() -> call.resolve(value), () -> call.release(getBridge()));
     }

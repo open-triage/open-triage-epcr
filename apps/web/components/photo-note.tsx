@@ -344,7 +344,11 @@ export function PhotoNoteDialog({
   return <div className="dialog-backdrop" role="presentation">
     <section ref={dialogRef} className="note-dialog photo-note-dialog" role={confirmingDelete ? "alertdialog" : "dialog"}
       aria-modal="true" aria-labelledby="photo-dialog-title" aria-describedby={confirmingDelete ? "photo-delete-description" : undefined}
-      onKeyDownCapture={(event) => { if (confirmingDelete && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelDelete(); } }}>
+      onKeyDownCapture={(event) => {
+        if (event.key !== "Escape") return;
+        if (saving) { event.preventDefault(); event.stopPropagation(); }
+        else if (confirmingDelete) { event.preventDefault(); event.stopPropagation(); cancelDelete(); }
+      }}>
       <div className="note-dialog-heading">
         <div><p className="eyebrow">{note ? t("noteUi.photoState", { state: t(`noteUi.state.${note.persistenceState}`) }) : mode === "camera" ? t("noteUi.live.camera") : t("noteUi.review.captured.photo")}</p>
           <h2 id="photo-dialog-title">{t("noteUi.photo.note")}</h2></div>

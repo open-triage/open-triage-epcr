@@ -2,6 +2,7 @@ import {nativeStartupClasses,assertNativeStartupInstrumentation} from './android
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
+import { captureAndroidDisplay, restoreAndroidDisplay } from './android/display-state.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -24,7 +25,7 @@ const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-
 const adb = join(process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? '', 'platform-tools/adb');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554', children = [];
 const tlsOnly=process.argv.includes('--tls-only');
-let ownsContainer = false, fixtures;
+let ownsContainer = false, fixtures, restoreDisplay;
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
   if (result.error) throw result.error;
@@ -33,6 +34,7 @@ function run(command, args, env = process.env) {
 await withWebViewFontProfile({adb,serial,root},async fontProfile=>{
 try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
+  restoreDisplay = captureAndroidDisplay({ adb, serial });
   if (!process.argv.includes('--skip-build')) { run('npm', ['run', 'android:build']); run('npm', ['run', 'build', '-w', '@open-triage/api']); }
   const fixturesArgument = process.argv.indexOf('--fixtures');
   if (fixturesArgument !== -1) fixtures = JSON.parse(await readFile(process.argv[fixturesArgument + 1], 'utf8'));
@@ -94,6 +96,7 @@ try {
   if (error?.androidFailureCaptured) throw error;
   await preserveAndroidFailure(error, {root,adb,serial,secrets:(fixtures??[]).flatMap(fixture=>[fixture.administratorPassword,fixture.clinicianPassword])});
 } finally {
+  restoreAndroidDisplay(restoreDisplay);
   await stopFixtureChildren(children);
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
 }
