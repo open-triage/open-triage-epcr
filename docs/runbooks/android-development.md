@@ -317,6 +317,18 @@ before native OIDC. For focused diagnosis only, build the API and APK and run
 `npm run android:test -- --skip-build --agency-only`. This does not replace the
 complete default acceptance gate.
 
+Before the emulator run or whole preflight, run the handoff and existing minimal
+native-runtime consumers against the production web build. This catches shared
+runtime-gate imports and native mock contract regressions at the earlier browser
+stage (and includes the server-mode agency header):
+
+```sh
+npm run test:deployment -w @open-triage/web -- android-agency-handoff.spec.ts android-managed-config.spec.ts android-audio-layout.spec.ts android-reassignment.spec.ts session-agency-header.spec.ts
+```
+
+The command builds the API before starting its browser fixture; run it before
+native fixtures start using `apps/api/dist`, never concurrently with them.
+
 The fixture uses two real HTTPS API processes sharing one disposable database.
 A registered `https://127.0.0.1` target is reached through a temporary ADB
 reverse from device port 443 to the existing host fixture port 9444, with the

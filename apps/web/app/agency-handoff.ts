@@ -5,12 +5,9 @@ import {apiRequestUrl,browserRequestInit} from './browser-api';
 import {platformRequestError} from './platform-errors';
 import {transitionInstallation} from './installation-transition';
 import {storeClinicianSession} from './clinician-session';
-import {clearFeedbackTelemetry} from './feedback-telemetry';
-import {INSTALLATION_CONFIGURATION_STORAGE_KEY} from './installation-settings';
+import {storeAgencyHandoffSession} from './agency-session';
 import {resolveMessage} from './localization';
 const intentKey='open-triage.agency-handoff.intent.v1';
-export function clearAgencyHandoffCaches(){clearFeedbackTelemetry();window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);}
-export function storeAgencyHandoffSession(session:AuthenticatedSession){clearAgencyHandoffCaches();storeClinicianSession(window.localStorage,session);}
 const generation=()=>window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
 const changed=()=>new Error(resolveMessage(document.documentElement.lang,'platform.error.auth.agencyHandoffInvalid'));
 function assertGeneration(expected:string|null,inside=false){if(generation()!==expected||!inside&&window.localStorage.getItem(INSTALLATION_TRANSITION_KEY))throw changed();}
