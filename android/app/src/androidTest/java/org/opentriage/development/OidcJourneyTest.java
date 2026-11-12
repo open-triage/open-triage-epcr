@@ -24,6 +24,12 @@ public class OidcJourneyTest extends PairingJourneyTest {
         String button = "Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===" + JSONObject.quote(text) + ")";
         waitFor(button + " && !(" + button + ").disabled"); evaluate("(" + button + ").click()");
     }
+    private void reopenOwnedReport(android.os.Bundle args) throws Exception {
+        String call=args.getString("callNumber"),report=args.getString("reportId");assertNotNull(call);assertNotNull(report);
+        String button="Array.from(document.querySelectorAll('.assigned-call-card')).find(card=>card.querySelector('strong')?.textContent==="+JSONObject.quote(call)+")?.querySelector('button')";
+        waitFor(button+" && !("+button+").disabled && ("+button+").textContent.trim()==='Reopen report'");
+        evaluate("("+button+").click()");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId==="+JSONObject.quote(report));
+    }
     private String retainedDigest() throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onsuccess=()=>{const db=request.result;const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
         waitFor("window.__retained!==null");
@@ -113,7 +119,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
         String sessionStatus=null,observedUser=null,openedReportId=null;
         try {
             if(phase.equals("pending")){
-                waitFor("document.querySelector('.session-identity')");click("Reopen report");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId==="+JSONObject.quote(args.getString("reportId")));
+                waitFor("document.querySelector('.session-identity')");reopenOwnedReport(args);
                 if(!"true".equals(evaluate("Boolean(document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]'))")))click("Stationary");
                 waitFor("document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]') && !document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]').matches(':disabled')");
                 for(String command:new String[]{"svc wifi disable","svc data disable"}){
@@ -222,7 +228,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
                     evaluate("window.__denial=null;fetch('/api/reports/"+args.getString("reportId")+"/recovery-grants',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':window.__oidc.session.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})}).then(response=>window.__denial=response.status)");
                     waitFor("window.__denial!==null");assertEquals("404",evaluate("window.__denial"));
                 } else if(protectedPhase.equals("recover")) {
-                    click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+                    reopenOwnedReport(args);waitFor("document.querySelector('.encounter-header')");
                     if(!"true".equals(evaluate("Boolean(document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]'))")))click("Stationary");
                     waitFor("document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]')?.value==='ANDROID-OIDC-PENDING'");
                     waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");

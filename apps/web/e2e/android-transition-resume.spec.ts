@@ -123,3 +123,14 @@ for(const language of ['en','sv'])test(`an unsupported continuation server block
  await expect(page.locator('body')).toContainText(language==='en'?'The server needs an update before this app can connect.':'Servern behöver uppdateras innan appen kan ansluta.');
  await expect(page.locator('.session-identity,input[name=username],input[name=password]')).toHaveCount(0);
 });
+
+for(const changePublicCache of [false,true])test(`periodic native identity change closes the old view on key-settlement failure without signing out the valid native login (changed cache ${changePublicCache})`,async({page})=>{
+ await fixture(page,{personal:true,durable:true,pendingOidc:false,noMarker:true});await expect(page.locator('.session-identity')).toContainText('Valid native clinician');
+ const before=await page.evaluate(()=>(window as unknown as{retained:()=>Promise<unknown>}).retained());
+ await page.evaluate(change=>{const w=window as unknown as{fixture:{session:{user:{id:string;displayName:string}}};failKeySettlement:boolean;originalOpen:IDBFactory['open']};w.fixture.session={...w.fixture.session,user:{id:'32000000-0000-4000-8000-000000000099',displayName:'New native identity'}};w.failKeySettlement=true;w.originalOpen=indexedDB.open.bind(indexedDB);Object.defineProperty(indexedDB,'open',{configurable:true,value:(...args:Parameters<IDBFactory['open']>)=>{if(w.failKeySettlement){if(change)localStorage.setItem('open-triage.clinician-session.v1','changed-untrusted-public-cache');throw Error('synthetic old-key settlement failure')}return w.originalOpen(...args)}});window.dispatchEvent(new Event('focus'));},changePublicCache);
+ await expect(page.locator('.session-loading [role=alert]')).toContainText('OpenTriage could not connect');await expect(page.locator('.session-identity,.encounter-header,input[name=username],input[name=password]')).toHaveCount(0);
+ expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe(changePublicCache?'changed-untrusted-public-cache':null);
+ expect(await page.evaluate(()=>(window as unknown as{fixture:{personal:boolean}}).fixture.personal)).toBe(true);
+ expect(await page.evaluate(()=>(window as unknown as{fixture:{requests:string[]}}).fixture.requests.filter(path=>path==='/api/sessions/current'))).toEqual([]);
+ await page.evaluate(()=>{(window as unknown as{failKeySettlement:boolean}).failKeySettlement=false;});expect(await page.evaluate(()=>(window as unknown as{retained:()=>Promise<unknown>}).retained())).toEqual(before);
+});

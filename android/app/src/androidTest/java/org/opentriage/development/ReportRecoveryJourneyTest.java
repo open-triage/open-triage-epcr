@@ -33,7 +33,7 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({url:location.href,platform:window.Capacitor?.getPlatform?.(),nativePromise:typeof window.Capacitor?.nativePromise,reviewNative:window.__reviewNative,timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
@@ -449,8 +449,17 @@ public class ReportRecoveryJourneyTest {
     private void prepare() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64", ""), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
+        String observerBase64=args.getString("nativePdfObserverBase64");assertNotNull(observerBase64);assertTrue(observerBase64.length()<16384);
+        String observer=new String(java.util.Base64.getDecoder().decode(observerBase64),StandardCharsets.UTF_8);
+        waitFor("Boolean(window.Capacitor?.nativePromise)");
+        evaluate("window.__nativePreviewObservation=("+observer+")(window.Capacitor,'preview')");
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
+        waitFor("window.__nativePreviewObservation.calls[0]?.settled");
+        String previewReceipt=evaluate("JSON.stringify({count:window.__nativePreviewObservation.total,calls:window.__nativePreviewObservation.calls,online:navigator.onLine})");
+        var previewEvidence=new android.os.Bundle();previewEvidence.putString("opentriage_initial_preview_receipt",previewReceipt);InstrumentationRegistry.getInstrumentation().sendStatus(0,previewEvidence);
+        assertEquals("A single real registered native preview must succeed after transport readiness: "+previewReceipt,"true",evaluate("window.__nativePreviewObservation.total===1 && !window.__nativePreviewObservation.calls[0].errorCode"));
         waitFor("document.querySelector('input[type=checkbox]')");
+        evaluate("window.__nativePreviewObservation.restore()");
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Synthetic recovery ambulance");
         evaluate("document.querySelector('input[type=checkbox]').click()");
         waitFor("!document.querySelector('button[type=submit]').disabled"); evaluate("document.querySelector('form').requestSubmit()");
@@ -579,6 +588,123 @@ public class ReportRecoveryJourneyTest {
         }
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
     }
+    private String pdfBoundaryEvidence() throws Exception {
+        evaluate("window.__pdfBoundaryStats=null;fetch('/api/__android-pdf-download-fail?reportId='+"+JSONObject.quote(InstrumentationRegistry.getArguments().getString("reportId"))+ ").then(response=>response.json()).then(value=>window.__pdfBoundaryStats=value).catch(()=>window.__pdfBoundaryStats={unavailable:true})");
+        waitFor("Boolean(window.__pdfBoundaryStats)");
+        String proof=evaluate("JSON.stringify({native:window.__nativePdfObservation?{total:window.__nativePdfObservation.total,closes:window.__nativePdfObservation.closes,calls:window.__nativePdfObservation.calls}:null,server:window.__pdfBoundaryStats,interaction:window.__pdfInteraction,modal:document.querySelector('.signed-report-pdf-dialog')?.textContent.slice(0,320),configured:window.__reviewNative?.configured,platform:window.Capacitor?.getPlatform?.()})");
+        var evidence=new android.os.Bundle();evidence.putString("opentriage_pdf_boundary",proof);InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);return proof;
+    }
+    private void signReview() throws Exception {
+        String reportId=InstrumentationRegistry.getArguments().getString("reportId");
+        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+        assertEquals("A valid retained login opens without another password prompt","false",evaluate("!!document.querySelector('input[name=password]')"));
+        click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+        evaluate("window.__reportId="+JSONObject.quote(reportId));
+        if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");
+        waitFor("("+FIELD+")?.value==='"+RETAINED+"'");
+        evaluate("window.__signAuthenticationPosts=0;(()=>{const original=window.fetch;window.fetch=(input,init)=>{const path=String(input);if((init?.method??'GET').toUpperCase()==='POST'&&/\\/api\\/sessions(?:$|[/?])/.test(path))window.__signAuthenticationPosts++;return original(input,init)}})()");
+        evaluate("window.__mediaHold=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=1',{method:'POST'}).then(response=>response.json()).then(value=>window.__mediaHold=value.held)");
+        waitFor("window.__mediaHold===true");
+        try {
+            click("Mobile");click("Add photo note");waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
+            stageSyntheticPhoto("ANDROID-PDF-MEDIA-RETRY-SYNTHETIC");
+            click("Review & sign");waitFor("document.querySelector('.note-readiness') && document.querySelector('.review-actions button')?.disabled");
+            assertEquals("Online signing retains its existing unresolved-media blocker","true",evaluate("navigator.onLine && document.querySelector('.note-readiness').textContent.includes('Photo')"));
+            waitFor("document.querySelector('.note-readiness')?.textContent.includes('retry')");
+            evaluate("window.__mediaFailureReceipt=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId).then(response=>response.json()).then(value=>window.__mediaFailureReceipt=value)");
+            waitFor("Boolean(window.__mediaFailureReceipt)");
+            assertEquals("The actual photo POST must receive503 and enter the client failed state while the hold remains armed","true",evaluate("window.__mediaFailureReceipt.held && window.__mediaFailureReceipt.failures>=1 && window.__mediaFailureReceipt.requests===window.__mediaFailureReceipt.failures && window.__mediaFailureReceipt.statuses.length>=1 && window.__mediaFailureReceipt.statuses.every(status=>status===503) && document.querySelector('.note-readiness')?.textContent.includes('retry') && document.querySelector('.review-actions button')?.disabled"));
+            var mediaReceipt=new android.os.Bundle();mediaReceipt.putString("opentriage_media_failure_receipt",evaluate("JSON.stringify(window.__mediaFailureReceipt)"));InstrumentationRegistry.getInstrumentation().sendStatus(0,mediaReceipt);
+            evaluate("window.__mediaHold=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=0',{method:'POST'}).then(response=>response.json()).then(value=>window.__mediaHold=value.held)");
+            waitFor("window.__mediaHold===false");
+            evaluate("document.querySelector('.note-readiness button').click()");click("Retry upload");
+            waitFor("!document.querySelector('.photo-note-dialog') || !Array.from(document.querySelectorAll('.photo-note-dialog button')).some(button=>button.textContent==='Retry upload')");
+            if("true".equals(evaluate("!!document.querySelector('.photo-note-dialog')")))click("Cancel");
+            verifyCanonicalPhoto("ANDROID-PDF-MEDIA-RETRY-SYNTHETIC");
+            waitFor("!document.querySelector('.note-readiness') && document.querySelector('.review-actions button') && !document.querySelector('.review-actions button').disabled");
+            click("Sign record");waitFor("document.querySelector('.call-directory') && !document.querySelector('.encounter-header')");
+            assertEquals("Shared online signing trusts the existing valid login","0",evaluate("window.__signAuthenticationPosts"));
+        } finally {
+            evaluate("fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=0',{method:'POST'})");
+        }
+        evaluate("window.__reviewNative=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__reviewNative=state)");waitFor("Boolean(window.__reviewNative)");
+        String nativeContext=(String)new org.json.JSONTokener(evaluate("window.__reviewNative.connectionContext")).nextValue();
+        String beforeReview=evaluate("performance.timeOrigin");
+        activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+reportId+"&dataset=synthetic&language=en"));
+        waitFor("document.readyState==='complete' && performance.timeOrigin!=="+beforeReview+" && location.pathname==='/review-call/' && window.Capacitor?.getPlatform?.()==='android' && Boolean(window.Capacitor?.nativePromise)");
+        evaluate("window.__reviewNative=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__reviewNative=state)");waitFor("Boolean(window.__reviewNative)");
+        assertEquals("Full Review navigation keeps the actual configured native installation","true",evaluate("window.__reviewNative.configured"));
+        assertEquals(nativeContext,new org.json.JSONTokener(evaluate("window.__reviewNative.connectionContext")).nextValue());
+        waitFor("document.querySelector('#review-full-report') && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')");
+        assertEquals("Signed Review is still under the valid logged-in principal","false",evaluate("!!document.querySelector('input[name=password]')"));
+        evaluate("Array.from(document.querySelectorAll('.review-report-toolbar button')).find(button=>button.textContent.startsWith('Timeline')).click()");
+        waitFor("document.querySelector('.review-timeline-sidebar .photo-thumbnail')?.naturalWidth===640");
+        if(audioEnabled()){observeAudio();playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");}
+        String observerBase64=InstrumentationRegistry.getArguments().getString("nativePdfObserverBase64");assertNotNull(observerBase64);assertTrue(observerBase64.length()<16384);
+        String observer=new String(java.util.Base64.getDecoder().decode(observerBase64),java.nio.charset.StandardCharsets.UTF_8);
+        evaluate("window.__nativePdfObservation=("+observer+")(window.Capacitor)");
+        evaluate("window.__pdfFailureArmed=null;fetch('/api/__android-pdf-download-fail?reportId='+"+JSONObject.quote(reportId)+",{method:'POST'}).then(response=>response.json()).then(value=>window.__pdfFailureArmed=value.armed)");
+        waitFor("window.__pdfFailureArmed===true");
+        click("Inspect signed PDF");
+        waitFor("document.querySelector('.signed-report-pdf-dialog [role=alert]')?.textContent.includes('The signed PDF could not be loaded')");
+        assertEquals("Native failure preserves localized shared Retry without leaking raw fixture/server prose","false",evaluate("document.querySelector('.signed-report-pdf-dialog').textContent.includes('fixture.download-unavailable')"));
+        String firstBoundary=pdfBoundaryEvidence();
+        assertEquals("The registered application plugin actually traverses the observed nativePromise boundary: "+firstBoundary,"1",evaluate("window.__nativePdfObservation.total"));
+        assertEquals("The first failed open consumed exactly the armed server PDF503 before user Retry: "+firstBoundary,"true",evaluate("window.__pdfBoundaryStats.requests===1 && window.__pdfBoundaryStats.failures===1 && !window.__pdfBoundaryStats.armed && window.__pdfBoundaryStats.statuses.length===1 && window.__pdfBoundaryStats.statuses[0]===503 && window.__nativePdfObservation.calls[0].settled && window.__nativePdfObservation.calls[0].status===503"));
+        var rejectedFiles=NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf"));
+        assertTrue("A denied/failed native PDF response leaves no private preview",rejectedFiles==null||rejectedFiles.length==0);
+        evaluate("window.__pdfInteraction={candidates:Array.from(document.querySelectorAll('button')).filter(button=>button.offsetParent!==null&&(button.textContent.trim()==='Retry'||button.getAttribute('aria-label')==='Retry')).map(button=>({pdf:!!button.closest('.signed-report-pdf-dialog'),dialog:button.closest('dialog')?.className??null,type:button.type,ancestors:[button.parentElement?.tagName,button.parentElement?.className,button.parentElement?.parentElement?.tagName,button.parentElement?.parentElement?.className]})).slice(0,8),clicks:[],events:[],states:[],errors:[]};document.addEventListener('click',event=>{const button=event.target.closest('button');if(button&&['Retry','Close'].includes(button.textContent.trim())&&window.__pdfInteraction.clicks.length<8)window.__pdfInteraction.clicks.push({retry:button.textContent.trim()==='Retry',pdf:!!button.closest('.signed-report-pdf-dialog'),type:button.type})},true);for(const name of ['close','cancel'])document.querySelector('.signed-report-pdf-dialog').addEventListener(name,()=>{if(window.__pdfInteraction.events.length<8)window.__pdfInteraction.events.push(name)});window.addEventListener('error',event=>{if(window.__pdfInteraction.errors.length<8)window.__pdfInteraction.errors.push(event.error?.name??'unknown')});window.__pdfDomObserver=new MutationObserver(()=>{const state={modal:!!document.querySelector('.signed-report-pdf-dialog'),open:!!document.querySelector('.signed-report-pdf-dialog[open]'),report:!!document.querySelector('#review-full-report'),review:!!document.querySelector('.review-report-full')};const states=window.__pdfInteraction.states;if(states.length<8&&JSON.stringify(states[states.length-1])!==JSON.stringify(state))states.push(state)});window.__pdfDomObserver.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['open']})");
+        click("Retry");
+        var device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        var rendered=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"))),15000);
+        if(rendered==null)pdfBoundaryEvidence();
+        assertNotNull("The authorized immutable signed report traverses the configured native TLS/cookie connection into the actual renderer",rendered);
+        device.pressBack();waitFor("document.querySelector('[data-native-pdf-controls]')");
+        assertEquals("Native signed PDF viewing leaves no browser blob/iframe path","false",evaluate("!!document.querySelector('.signed-report-pdf-dialog iframe')"));
+        click("Close");evaluate("window.__nativePdfObservation.restore();window.__pdfDomObserver.disconnect()");
+    }
+    private void deniedPdf() throws Exception {
+        var args=InstrumentationRegistry.getArguments();
+        waitFor("document.querySelector('.session-identity') || document.querySelector('input[name=username]')");
+        if("true".equals(evaluate("!!document.querySelector('.session-identity')")))click("Log out");
+        signIn(args.getString("username"),args.getString("password"));
+        assertFalse("A wrapper does not expose an unauthorized clinician's signed call",evaluate("document.body.innerText").contains(args.getString("callNumber")));
+        String path="/api/review/reports/"+args.getString("reportId")+"/snapshots/"+args.getString("snapshotId")+"/pdf?amendmentSequence=0&language=en&dataset=synthetic";
+        evaluate("window.__pdfDenied=null;(async()=>{const bridge=window.Capacitor.Plugins.OpenTriageConnection;const state=await bridge.state();window.__pdfDenied=await bridge.openPdf({operationId:crypto.randomUUID(),connectionContext:state.connectionContext,path:"+JSONObject.quote(path)+",headers:{'x-organization-id':"+JSONObject.quote(args.getString("organizationId"))+"},action:'view',language:'en'})})().catch(()=>window.__pdfDenied={failed:true})");
+        waitFor("window.__pdfDenied!==null");
+        assertEquals("Current server scope denies the native signed PDF despite a valid login","404",evaluate("window.__pdfDenied.status"));
+        assertEquals("Denied downloads never launch a native file viewer","false",evaluate("window.__pdfDenied.opened"));
+        activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+args.getString("reportId")+"&dataset=synthetic&language=en"));
+        waitFor("document.body.innerText.includes('This signed report is unavailable in your Review scope.')");
+        assertEquals("Denied Review has no PDF action","false",evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')"));
+    }
+    private void remotePdf() throws Exception {
+        var args=InstrumentationRegistry.getArguments();String reportId=args.getString("reportId");
+        waitFor("document.querySelector('.session-identity')");
+        activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+reportId+"&dataset=synthetic&language=en"));
+        waitFor("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')");click("Inspect signed PDF");
+        var device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        var page=androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"));
+        assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(page),15000));
+        var files=NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf"));
+        assertNotNull(files);assertEquals("A real private signed PDF is visible when the host changes server authority",1,files.length);
+        long started=android.os.SystemClock.elapsedRealtime();
+        var ready=new android.os.Bundle();ready.putString("opentriage_pdf_authority_phase","visible-awaiting-server-change");InstrumentationRegistry.getInstrumentation().sendStatus(0,ready);
+        assertTrue("The static native page detects real server incompatibility/revocation/workspace withdrawal within its 30-second cadence plus request latency",device.wait(androidx.test.uiautomator.Until.gone(page),45000));
+        assertFalse("Remote authority loss deletes the actual private signed PDF",files[0].exists());
+        if("server-incompatible".equals(args.getString("authorityChange"))) {
+            String operation=java.util.UUID.randomUUID().toString();
+            String path="/api/review/reports/"+reportId+"/snapshots/"+args.getString("snapshotId")+"/pdf?amendmentSequence=0&language=en&dataset=synthetic";
+            evaluate("window.__pdfIncompatible=null;(async()=>{const state=await window.Capacitor.nativePromise('OpenTriageConnection','state',{});try{window.__pdfIncompatible={value:await window.Capacitor.nativePromise('OpenTriageConnection','openPdf',{operationId:"+JSONObject.quote(operation)+",connectionContext:state.connectionContext,path:"+JSONObject.quote(path)+",headers:{'x-organization-id':"+JSONObject.quote(args.getString("organizationId"))+"},language:'en',action:'view',accent:''})};}catch(error){window.__pdfIncompatible={error:error.code};}})()");
+            waitFor("Boolean(window.__pdfIncompatible)");
+            assertEquals("An incompatible server cannot open another native PDF under the still-valid login","\"SERVER_INCOMPATIBLE\"",evaluate("window.__pdfIncompatible.error"));
+            assertNull("Denied open leaves no native authority",NativePdfSessions.get(operation));
+            activity.onActivity(screen->assertFalse("Denied open removes the exact pending operation instead of leaking a bounded slot",NativePdfSessions.pending(screen.getBridge().getPlugin("OpenTriageConnection").getInstance(),operation)));
+            assertFalse("Denied open cannot display a native page",device.hasObject(page));
+            assertEquals("Denied open leaves no private preview",0,NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf")).length);
+        }
+        var evidence=new android.os.Bundle();evidence.putLong("opentriage_pdf_authority_detection_ms",android.os.SystemClock.elapsedRealtime()-started);evidence.putString("opentriage_pdf_authority_change",args.getString("authorityChange"));InstrumentationRegistry.getInstrumentation().addResults(evidence);
+    }
     private boolean historicalRecovery(String phase) throws Exception {
         var args=InstrumentationRegistry.getArguments();
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -668,10 +794,11 @@ public class ReportRecoveryJourneyTest {
             // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
             AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
                 InstrumentationRegistry.getArguments().getString("apiOrigin"), null, false);
-        } else if (phase.equals("reassign") || phase.equals("resume-reassignment")) {
+        } else if (phase.equals("prepare") || phase.equals("reassign") || phase.equals("resume-reassignment")) {
             // Host radio enable is asynchronous. Never retry a pairing request to compensate.
             AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
                 InstrumentationRegistry.getArguments().getString("apiOrigin"), null, true);
+            var ready=new android.os.Bundle();ready.putString("opentriage_fixture_transport_ready",phase);InstrumentationRegistry.getInstrumentation().sendStatus(0,ready);
         }
         activity = ActivityScenario.launch(MainActivity.class);
         var startup=new android.os.Bundle();startup.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));
@@ -684,6 +811,9 @@ public class ReportRecoveryJourneyTest {
             case "resume-reassignment": resumeReassignment(); activity.close(); break;
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
+            case "sign-review": signReview(); activity.close(); break;
+            case "denied-pdf": deniedPdf(); activity.close(); break;
+            case "remote-pdf": remotePdf(); activity.close(); break;
             case "post-upgrade-photo": postUpgradePhoto(); activity.close(); break;
             case "upgrade-session-snapshot": waitFor("document.querySelector('.session-identity')"); snapshotUpgradeLogin(); activity.close(); break;
             default: fail("Host must supply a recovery phase");

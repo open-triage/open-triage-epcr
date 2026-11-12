@@ -2317,6 +2317,7 @@
   "pdf.loading": "Rendering the signed report…",
   "pdf.retry": "Retry",
   "pdf.download": "Download PDF",
+  "pdf.nativeView": "Open PDF",
   "pdf.unavailable": "The signed PDF could not be loaded. Check your access and try again.",
   "pdf.amendment-evidence-unavailable": "The signed amendment evidence is missing or inconsistent. Ask your administrator to investigate the signed amendment history. No PDF was generated.",
   "pdf.invalid-version": "This signed version cannot be verified. No PDF was generated.",

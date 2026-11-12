@@ -25,6 +25,38 @@ public class NativeTransitionResumeTest {
   evaluate(activity,"window.__resumeResult=null;window.Capacitor.nativePromise('OpenTriageConnection','reconcileTransition',"+options+").then(value=>window.__resumeResult={value}).catch(error=>window.__resumeResult={error:error.code||'rejected'})");
   waitFor(activity,"Boolean(window.__resumeResult)");
  }
+ private void pendingHandoffRejectsPdfLaunchAndRevokesLiveAuthority(ActivityScenario<MainActivity> activity,Context context)throws Exception{
+  var plugin=new AtomicReference<OpenTriageConnectionPlugin>();activity.onActivity(screen->plugin.set((OpenTriageConnectionPlugin)screen.getBridge().getPlugin("OpenTriageConnection").getInstance()));
+  var instance=plugin.get();var executorField=OpenTriageConnectionPlugin.class.getDeclaredField("executor");executorField.setAccessible(true);
+  var executor=(java.util.concurrent.ExecutorService)executorField.get(instance);
+  var activeField=OpenTriageConnectionPlugin.class.getDeclaredField("active");activeField.setAccessible(true);var connection=(TrustedConnection)activeField.get(instance);
+  var contextField=OpenTriageConnectionPlugin.class.getDeclaredField("connectionContext");contextField.setAccessible(true);String scope=(String)contextField.get(instance);
+  var pendingField=OpenTriageConnectionPlugin.class.getDeclaredField("pendingHandoff");pendingField.setAccessible(true);Object pending=pendingField.get(instance);assertNotNull(pending);
+  var network=new java.util.concurrent.atomic.AtomicInteger();var viewers=new java.util.concurrent.atomic.AtomicInteger();
+  var oldPolicy=new AtomicReference<android.os.StrictMode.ThreadPolicy>();
+  androidx.test.runner.lifecycle.ActivityLifecycleCallback observer=(screen,stage)->{if(screen instanceof NativePdfActivity&&stage==androidx.test.runner.lifecycle.Stage.CREATED)viewers.incrementAndGet();};
+  var instrumentation=InstrumentationRegistry.getInstrumentation();
+  instrumentation.runOnMainSync(()->androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().addLifecycleCallback(observer));
+  Object owner=new Object();String id=java.util.UUID.randomUUID().toString();
+  try{
+   executor.submit(()->{oldPolicy.set(android.os.StrictMode.getThreadPolicy());android.os.StrictMode.setThreadPolicy(new android.os.StrictMode.ThreadPolicy.Builder().detectNetwork().penaltyListener(Runnable::run,violation->network.incrementAndGet()).build());}).get(5,TimeUnit.SECONDS);
+   // A live session uses the same production predicate as the launch gate.
+   executor.submit(()->{try{pendingField.set(instance,null);}catch(Exception failure){throw new AssertionError(failure);}}).get(5,TimeUnit.SECONDS);
+   NativePdfSessions.begin(owner,id);var loads=new java.util.concurrent.atomic.AtomicInteger();
+   var session=NativePdfSessions.create(context,owner,id,System.currentTimeMillis()+60_000,()->instance.pdfConnectionCurrent(connection,scope),()->{loads.incrementAndGet();return NativePdfFixture.bytes();});
+   var file=session.cache(NativePdfFixture.bytes());assertTrue(session.current());
+   executor.submit(()->{try{pendingField.set(instance,pending);}catch(Exception failure){throw new AssertionError(failure);}}).get(5,TimeUnit.SECONDS);
+   session.reassess();assertFalse("A staged handoff revokes the original live PDF authority",session.current());assertFalse(file.exists());assertNull(NativePdfSessions.get(id));
+   assertThrows(IllegalStateException.class,session::fresh);assertEquals(0,loads.get());
+   evaluate(activity,"window.__pdfHandoffResult=null;window.Capacitor.nativePromise('OpenTriageConnection','openPdf',{operationId:'"+java.util.UUID.randomUUID()+"',connectionContext:window.__nativeState.connectionContext,path:'/api/reports/11111111-1111-4111-8111-111111111111/cos/pdf?revision=0&language=en',headers:{'x-organization-id':'22222222-2222-4222-8222-222222222222'},language:'en',action:'view',accent:''}).then(value=>window.__pdfHandoffResult={value}).catch(error=>window.__pdfHandoffResult={error:error.code||'rejected'})");
+   waitFor(activity,"Boolean(window.__pdfHandoffResult)");assertEquals("true",evaluate(activity,"Boolean(window.__pdfHandoffResult.error)"));
+   assertEquals("Pending handoff is rejected before any network operation",0,network.get());assertEquals("Pending handoff never opens a PDF Activity",0,viewers.get());
+  }finally{
+   NativePdfSessions.closeOwner(owner);
+   executor.submit(()->{try{pendingField.set(instance,pending);}catch(Exception failure){throw new AssertionError(failure);}finally{if(oldPolicy.get()!=null)android.os.StrictMode.setThreadPolicy(oldPolicy.get());}}).get(5,TimeUnit.SECONDS);
+   instrumentation.runOnMainSync(()->androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().removeLifecycleCallback(observer));
+  }
+ }
  private void personalRpc(ActivityScenario<MainActivity> activity,String options)throws Exception{
   evaluate(activity,"window.__personalResult=null;window.Capacitor.nativePromise('OpenTriageConnection','resumePersonalSession',"+options+").then(value=>window.__personalResult={value}).catch(error=>window.__personalResult={error:error.code||'rejected'})");
   waitFor(activity,"Boolean(window.__personalResult)");
@@ -67,6 +99,7 @@ public class NativeTransitionResumeTest {
    try(var activity=ActivityScenario.launch(MainActivity.class)){
     waitFor(activity,"Boolean(window.Capacitor?.nativePromise)");evaluate(activity,"window.__nativeState=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(value=>window.__nativeState=value)");waitFor(activity,"Boolean(window.__nativeState)");
     String before=prefs.getString("encrypted",null);rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.error)"));assertEquals(before,prefs.getString("encrypted",null));assertEquals(handoff.toString(),vault.pendingHandoff().toString());assertNull(vault.pending());assertNotNull(vault.pendingAuthentication());
+    pendingHandoffRejectsPdfLaunchAndRevokesLiveAuthority(activity,context);assertEquals("Blocked PDF cannot rewrite the native vault",before,prefs.getString("encrypted",null));assertEquals(handoff.toString(),vault.pendingHandoff().toString());
     vault.pendingAuthentication(null);personalRpc(activity,"{connectionContext:window.__nativeState.connectionContext}");assertEquals("true",evaluate(activity,"Boolean(window.__personalResult.value&&!window.__personalResult.value.session)"));assertEquals(before,prefs.getString("encrypted",null));assertNotNull(vault.personalContinuation());assertEquals(handoff.toString(),vault.pendingHandoff().toString());assertNull(vault.pendingAuthentication());
     evaluate(activity,"localStorage.removeItem('open-triage.installation-transition.v1');localStorage.removeItem('open-triage.installation-generation.v1')");
    }

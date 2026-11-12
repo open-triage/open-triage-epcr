@@ -29,6 +29,7 @@
         <meta-data android:name="android.content.APP_RESTRICTIONS" android:resource="@xml/app_restrictions" />
 
         <activity android:name=".PairingScannerActivity" android:theme="@style/AppTheme.NoActionBar" android:exported="false" />
+        <activity android:name=".NativePdfActivity" android:theme="@style/AppTheme.NoActionBar" android:exported="false" android:configChanges="orientation|screenSize|fontScale" />
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density|fontScale"
             android:windowSoftInputMode="adjustResize"

@@ -447,9 +447,93 @@ target request. A bounded fixture-only 503 response holds the synthetic report's
 draft writes; all authentication, handoff and protected receipt/key requests use
 the real API. This fixture behavior is absent from the production API entry point.
 
+The setup also retains a real previous clinician's public identity snapshot, signs
+in as the authorized installation owner, then reloads bundled JavaScript with
+that stale snapshot and an inert CSRF value. Only the sealed native continuation
+and fresh server authorization may restore the current owner. The old protected
+record must remain byte-for-byte unchanged and unreadable. Where supported, a
+test-only document-start observer records bounded result/context enums; its exact
+origin handler is removed afterward. This proves fresh-JavaScript startup, while
+the later handoff phases exercise process death separately. Browser coverage also
+checks key-settlement failure and superseded generation/context replies. A stale
+public identity veto was independently reproduced; it does not establish the
+cause of every earlier intermittent cold-start failure.
+
 Native plugin responses and listener events use `LifecycleBoundPlugin`: settlement runs on the UI thread, checks the owning WebView at execution, and closes before worker cancellation when the Activity is destroyed. An ordinary pause keeps pending replies valid. This avoids Chromium109's `JsReplyProxy` worker-to-UI race, where destruction can clear the pointer between its initial check and deferred native call. Network authorization and durable pending-work outcomes keep their existing boundaries.
 
 The early Android tests compile the actual reply gate and reproduce the original queue/pointer race before checking live and destroyed delivery. The current-APK startup instrumentation includes `NativeReplyLifecycleTest`: an instrumentation-only plugin registers on the real MainActivity before creation, holds success/error/events until after close, verifies callback disposal, and proves pause/resume and replacement-Activity live delivery. It adds no production bridge endpoint and does not alter immutable upgrade-candidate instrumentation.
+
+
+### Authorized PDF inspection and export
+
+The shared signing and Review screens keep their existing server permissions,
+media-readiness checks, versions and valid-login behavior. In the APK, PDF
+inspection uses the platform renderer instead of a WebView PDF iframe. It accepts
+only the existing versioned report PDF API resources, with a fresh server-current
+principal and the private native cookie, origin, agency and managed-policy context.
+No reauthentication prompt or session renewal is added.
+
+Preview bytes stay in an opaque app-private no-backup temporary file, outside
+the FileProvider paths. One page is rendered at a time, bounded to four million
+pixels; the existing 10 MiB / 500-page document limits remain enforced. Native
+controls follow the selected English/Swedish language and agency accent. Closing,
+real backgrounding, expiry or context loss clears the document. The maximum
+preview lifetime is ten minutes, capped by the original server/cookie expiry.
+The original request's elapsed-realtime deadline includes device sleep and
+cannot be renewed by rendering or export. A trusted server Date bounds remaining
+session time despite client clock skew; a subsequent wall-clock rollback or
+forward expiry closes the preview permanently.
+While visible, the native surface also serializes `/api/sessions/current`
+reassessment on resume and every 30 seconds, matching the shared session gate.
+A 401/403 or changed principal, cookie, agency membership, capabilities or
+workspace closes the document. Connection failures retain only the original
+deadline. A pending request can delay detection by its bounded network/queue
+time; this is not an immediate remote object-revocation notification. Reload and
+Save still authorize the exact PDF resource again.
+Cold MainActivity startup deletes only owned stale preview files before mounting
+the credentialed WebView; old memory-only document handles cannot reopen them.
+
+Save PDF uses Android's user-selected document destination. After the picker
+returns, the app fetches and authorizes the exact document again before copying
+any bytes, checks authority throughout the copy and cancels a partial destination
+on failure. Closing immediately revokes preview authority and pixels, while an
+in-flight export retains its granting Activity asynchronously until stream close
+and partial-document cleanup settle; no terminal result is published first.
+The picker receives no application cookies, API URLs or private
+preview URI. A completed user-chosen export is retained as an explicit download;
+closing a preview does not delete that export or retain its URI permission.
+
+Run `npm run android:build` with the documented SDK/JDK prerequisites, then
+`npm run android:test:pdf -- --skip-build` on an exclusively reserved emulator.
+The focused check uses the actual platform renderer and a host force-stop of a
+live preview, then verifies cold cleanup, session/expiry/background boundaries
+and rejection of its old handle. It closes a real renderer handle to exercise
+the visible failure and explicit Retry path, verifies a fresh authorized load
+and a new renderer, and checks the page count after recovery. It also uses the real system document picker to
+save fresh authorized synthetic bytes, checks that an explicit download survives
+private preview cleanup, then genuinely selects it again with Open Document in
+the separate test APK. That consumer checks the granted provider and selected document metadata,
+unique filename, type, exact length and fresh-byte hash before deleting only the test export under
+its live user grant. Read and cleanup failures are reported independently. A real
+picker/held-worker Back case proves immediate revocation and deletion before
+releasing the destination grant. It cancels the picker
+without fetching a document. It never clears the application's clinical or
+enrollment data. The full `npm run android:test` journey includes these checks.
+The early `node --test tests/android-pdf.test.mjs tests/android-live-instrumentation.test.mjs`
+checks reject incomplete/crashed instrumentation and a preparation process that
+exits before the host-kill checkpoint. Native JVM tests cover PDF route/byte and
+authority bounds, cancellation races and partial-export cleanup.
+
+For focused diagnosis of the shared signing and Review path, run
+`npm run android:test -- --skip-build --pdf-clinical-only` with the same exclusive
+emulator, PostgreSQL and SDK prerequisites. This reuses the real protected-report
+recovery, photo/audio, signing, PDF failure/Retry, server scope and revocation
+journey. It deliberately omits the standalone PDF components, pairing, managed,
+TLS rotation, agency and OIDC journeys and cannot be combined with another scope.
+The complete default run remains required for acceptance. Test-only bounded
+receipts prove that the registered application's actual native dispatch consumed
+the report-scoped injected PDF503 before Retry; they retain no request options,
+cookies, CSRF values or PDF bytes.
 
 ### Canonical HTTPS handoff fixture routing
 
