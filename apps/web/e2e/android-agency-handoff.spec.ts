@@ -79,3 +79,14 @@ test('an older handoff finally cannot clear a newer installation marker or sessi
  await expect.poll(()=>page.evaluate(()=>(window as F).settled)).toBe(true);
  expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toBe('enrollment:newer');expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('newer-metadata');expect(await page.evaluate(()=>(window as F).completed)).toBe(0);
 });
+
+test('a queued handoff cannot transfer credentials after a newer logout takes ownership',async({page})=>{
+ const script=await bundle(`import{transitionInstallation}from'./app/installation-transition';window.operations=[];window.settled=0;window.hold=()=>navigator.locks.request('open-triage.installation-clinical-context',{mode:'exclusive'},()=>new Promise(resolve=>{window.release=resolve}));window.begin=purpose=>transitionInstallation(async()=>{window.operations.push(purpose);if(purpose==='logout')localStorage.setItem('open-triage.clinician-session.v1','newer-session-metadata')},purpose).catch(()=>{}).finally(()=>window.settled++);`);
+ await page.route('**/agency-script',r=>r.fulfill({contentType:'text/javascript',body:script}));await page.route('**/__agency-queued',r=>r.fulfill({contentType:'text/html',body:'<html><script>window.fixture={}</script><script src="/agency-script"></script></html>'}));await page.goto('/__agency-queued');
+ type F=typeof window&{hold():Promise<void>;release():void;begin(purpose:string):Promise<void>;operations:string[];settled:number};
+ await page.evaluate(()=>{void(window as F).hold();});await expect.poll(()=>page.evaluate(()=>typeof(window as F).release)).toBe('function');
+ await page.evaluate(()=>{void(window as F).begin('handoff');});await expect.poll(()=>page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toMatch(/^handoff:/);
+ await page.evaluate(()=>{void(window as F).begin('logout');});await expect.poll(()=>page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toMatch(/^logout:/);
+ await page.evaluate(()=>(window as F).release());await expect.poll(()=>page.evaluate(()=>(window as F).settled)).toBe(2);
+ expect(await page.evaluate(()=>(window as F).operations)).toEqual(['logout']);expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toBeNull();expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('newer-session-metadata');
+});
