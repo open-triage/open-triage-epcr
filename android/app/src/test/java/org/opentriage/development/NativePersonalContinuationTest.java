@@ -11,7 +11,7 @@ public class NativePersonalContinuationTest {
             .put(new JSONObject().put("name","open_triage_session").put("value","private-personal").put("expires",System.currentTimeMillis()+60000))
             .put(new JSONObject().put("name","open_triage_installation").put("value","private-installation").put("expires",System.currentTimeMillis()+60000))));
     }
-    private JSONObject session() {
+    private JSONObject session() throws Exception {
         return new JSONObject().put("csrfToken","c".repeat(43)).put("user",new JSONObject().put("id","principal"))
             .put("organization",new JSONObject().put("id","agency")).put("capabilities",new JSONArray().put("old:role"))
             .put("expiresAt",java.time.Instant.now().plusSeconds(7200).toString()).put("personallyAuthenticatedAt","2026-01-01T00:00:00Z");

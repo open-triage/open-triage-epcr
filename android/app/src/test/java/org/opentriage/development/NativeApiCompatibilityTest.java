@@ -6,8 +6,8 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public class NativeApiCompatibilityTest {
-    private JSONObject health() { return new JSONObject().put("androidApiProtocol",1).put("androidApiCapabilities",new JSONArray(NativeApiCompatibility.REQUIRED)); }
-    @Test public void compatibleProtocolRequiresEveryImplementedCapabilityButAllowsAdditiveServerSupport() {
+    private JSONObject health() throws Exception { return new JSONObject().put("androidApiProtocol",1).put("androidApiCapabilities",new JSONArray(NativeApiCompatibility.REQUIRED)); }
+    @Test public void compatibleProtocolRequiresEveryImplementedCapabilityButAllowsAdditiveServerSupport() throws Exception {
         var health=health();NativeApiCompatibility.require(health);health.getJSONArray("androidApiCapabilities").put("future-feature");NativeApiCompatibility.require(health);
         for(String omitted:NativeApiCompatibility.REQUIRED){var capabilities=new JSONArray();for(String required:NativeApiCompatibility.REQUIRED)if(!required.equals(omitted))capabilities.put(required);assertThrows(NativeApiCompatibility.Incompatible.class,()->NativeApiCompatibility.require(health().put("androidApiCapabilities",capabilities)));}
         for(Object protocol:new Object[]{"1",0,2,1.5,JSONObject.NULL})assertThrows(NativeApiCompatibility.Incompatible.class,()->NativeApiCompatibility.require(health().put("androidApiProtocol",protocol)));

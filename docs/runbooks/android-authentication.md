@@ -44,6 +44,13 @@ building the API. With a disposable migrated runtime database, also run
 `REQUIRE_DATABASE_INTEGRATION=1 node --test apps/api/tests/oidc-personal-postgres.integration.test.mjs`.
 That real HTTP/provider/cookie path checks first native delivery and exact-cookie
 retry against a fresh current-session payload, including CSRF and fixed expiry.
+Also run the early Android checks with JDK21 and `ANDROID_HOME` (or
+`ANDROID_SDK_ROOT`) pointing to SDK platform36. The JSON signature regression
+compiles the real continuation helpers and their JVM test sources against
+`android.jar`, including a negative control for unchecked desktop assumptions.
+Without an SDK this check explicitly skips; desktop `org.json` execution alone
+does not establish Android source compatibility. The native Gradle task executes
+the assertions against real JUnit after the signature check.
 
 The generic read is `POST /api/sessions/current/continuation`, with the ordinary
 CSRF guard and the same limited-account metadata eligibility as `GET current`.
