@@ -1,4 +1,6 @@
 import { platformRequestError } from "./platform-errors";
+import { approvedMediaApiPath } from "./media-api-path";
+import { readMediaResponse } from "./media-response";
 import type {
   CreateReportPhotoNoteCommand,
   DeleteReportPhotoNoteResponse,
@@ -46,15 +48,7 @@ export function deleteReportPhotoNote(csrfToken: string, reportId: string, noteI
 }
 
 export async function fetchReportPhoto(reportId: string, noteId: string, contentPath?: string): Promise<Blob> {
-  const path = contentPath ?? `/api/reports/${reportId}/photos/${noteId}/image`;
-  // Media locations are API paths, never server-provided credential destinations.
-  const parsed = new URL(path, "https://local.invalid");
-  if (!path.startsWith("/api/") || path.includes("\\") || parsed.origin !== "https://local.invalid" || parsed.hash ||
-      parsed.pathname !== path.split("?")[0] || decodeURIComponent(parsed.pathname).split("/").some(segment => segment === "." || segment === "..")) {
-    throw new Error("Unapproved photo location");
-  }
-  const response = await fetch(browserRouteUrl(path), browserRequestInit({ redirect: "error" }));
-  if (!response.ok) throw await platformRequestError(response);
-  if (response.headers.get("content-type") !== "image/jpeg") throw new Error("The photo response was not a canonical JPEG.");
-  return response.blob();
+  const path = approvedMediaApiPath(contentPath ?? `/api/reports/${reportId}/photos/${noteId}/image`, "photo");
+  return readMediaResponse(() => fetch(browserRouteUrl(path), browserRequestInit({ redirect: "error" })),
+    "image/jpeg", "The photo response was not a canonical JPEG.");
 }

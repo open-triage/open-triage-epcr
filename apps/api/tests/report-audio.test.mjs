@@ -58,6 +58,25 @@ test("normalization rejects recordings beyond five minutes before conversion", a
   assert.equal(normalizer.converted, false);
 });
 
+test("live-container duration fallback is bounded and rejects unknown or excessive decoded duration before conversion", async () => {
+  for (const progress of ["out_time_us=N/A\n", "out_time_us=0\n", "out_time_us=301000000\n"]) {
+    class StreamingNormalizer extends ReportAudioNormalizer {
+      converted = false;
+      async probe() { return { format: {}, streams: [{ codec_type: "audio", codec_name: "opus", channels: 1 }] }; }
+      async ffmpegOutput(args) {
+        assert(args.includes("-progress"));
+        assert.equal(args[args.indexOf("-t") + 1], "301");
+        assert(args.includes("file,pipe"));
+        return progress;
+      }
+      async ffmpeg() { this.converted = true; }
+    }
+    const normalizer = new StreamingNormalizer();
+    await assert.rejects(normalizer.normalize(Buffer.from("source"), "audio/webm"), ReportAudioValidationError);
+    assert.equal(normalizer.converted, false);
+  }
+});
+
 test("audio creation counts aggregate media, verifies authorized stored bytes, and returns Ready only afterward", async () => {
   const command = validCommand();
   const reportId = randomUUID(); const organizationId = randomUUID(); const userId = randomUUID();

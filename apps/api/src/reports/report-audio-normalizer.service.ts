@@ -29,9 +29,14 @@ export class ReportAudioNormalizer {
     try {
       await writeFile(input, source, { mode: 0o600, flag: "wx" });
       const sourceProbe = await this.probe(input);
-      this.assertDuration(sourceProbe, "source recording");
+      const declaredDuration = Number(sourceProbe.format?.duration);
+      // Live MediaRecorder WebM time slices need not carry container duration.
+      // Decode a bounded interval rather than rejecting valid captured speech.
+      if (Number.isFinite(declaredDuration) && declaredDuration > 0) this.assertDuration(sourceProbe, "source recording");
+      else this.assertMilliseconds(await this.decodedDuration(input), "source recording");
       await this.ffmpeg(["-v", "error", "-nostdin", "-protocol_whitelist", "file,pipe", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1",
-        "-vn", "-ac", "1", "-ar", "48000", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4", output]);
+        "-vn", "-t", String((REPORT_AUDIO_MAX_DURATION_MILLISECONDS + 1000) / 1000),
+        "-ac", "1", "-ar", "48000", "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4", output]);
       const canonicalProbe = await this.probe(output);
       const durationMilliseconds = this.assertCanonical(canonicalProbe);
       // A successful full decode is required in addition to container probing.
@@ -46,14 +51,25 @@ export class ReportAudioNormalizer {
   }
 
   protected async ffmpeg(args: readonly string[]): Promise<void> {
+    await this.ffmpegOutput(args);
+  }
+
+  protected async decodedDuration(path: string): Promise<number> {
+    const progress = await this.ffmpegOutput(["-v", "error", "-nostdin", "-protocol_whitelist", "file,pipe", "-i", path,
+      "-map", "0:a:0", "-vn", "-t", String((REPORT_AUDIO_MAX_DURATION_MILLISECONDS + 1000) / 1000), "-progress", "pipe:1", "-nostats", "-f", "null", "-"]);
+    const times = [...progress.matchAll(/^out_time_us=(\d+)\r?$/gm)].map(match => Number(match[1]) / 1000);
+    return times.length ? Math.round(Math.max(...times)) : NaN;
+  }
+
+  protected async ffmpegOutput(args: readonly string[]): Promise<string> {
     const configured = process.env.FFMPEG_PATH;
     try {
-      await run(configured || "ffmpeg", args, { timeout: 45_000, maxBuffer: 2 * 1024 * 1024 });
+      return (await run(configured || "ffmpeg", args, { timeout: 45_000, maxBuffer: 2 * 1024 * 1024 })).stdout;
     } catch (error) {
       if (configured || !missingExecutable(error)) throw error;
       const fallback = (await import("ffmpeg-static")).default as unknown as string | null;
       if (!fallback) throw error;
-      await run(fallback, args, { timeout: 45_000, maxBuffer: 2 * 1024 * 1024 });
+      return (await run(fallback, args, { timeout: 45_000, maxBuffer: 2 * 1024 * 1024 })).stdout;
     }
   }
 
@@ -74,6 +90,10 @@ export class ReportAudioNormalizer {
 
   private assertDuration(probe: Probe, label: string): number {
     const milliseconds = Math.round(Number(probe.format?.duration) * 1000);
+    return this.assertMilliseconds(milliseconds, label);
+  }
+
+  private assertMilliseconds(milliseconds: number, label: string): number {
     if (!Number.isFinite(milliseconds) || milliseconds < 1) throw new ReportAudioValidationError([`${label} has no decodable duration`]);
     if (milliseconds > REPORT_AUDIO_MAX_DURATION_MILLISECONDS + 250) {
       throw new ReportAudioValidationError([`${label} exceeds the five-minute limit`]);

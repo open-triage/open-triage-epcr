@@ -80,7 +80,7 @@ try {
   }
   if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
   else if (!tlsOnly) {
-    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true, hooks: { beforeReconnect: runReassignmentTransition } });
     await runManagedJourneys({root, fixtures, run, api, adb, serial});
   }
   if (!process.argv.includes('--oidc-only')) await runTlsJourney({root,fixture:fixtures[1],material:tlsMaterial,child:children[1],run,api,adb,serial});

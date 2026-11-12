@@ -1,10 +1,17 @@
 import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES, ANDROID_CLIENT_REQUIRED_CAPABILITIES, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
+import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compatibility, validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
 const inputs = { ANDROID_KEYSTORE_PATH: '/protected/key.p12', ANDROID_KEYSTORE_PASSWORD: 'synthetic', ANDROID_KEY_PASSWORD: 'synthetic', ANDROID_KEY_ALIAS: 'synthetic', ANDROID_CERTIFICATE_SHA256: 'ab'.repeat(32), ANDROID_VERSION_CODE: '2', ANDROID_VERSION_NAME: '0.1.0-rc.2' };
 const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificateSha256: 'ab'.repeat(32), apkSha256: 'a'.repeat(64) };
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
+test('future live-audio clients require duration-less WebM support even from a protocol-one server', () => {
+  const descriptor = { compatibility };
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES.filter(value => value !== 'audio-webm-live-v1')), false);
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES), true);
+  assert.equal(isAndroidReleaseCompatible({ compatibility: { ...compatibility, requiredCapabilities: undefined } }, 1, []), true);
+});
 test('release signing fails closed for every missing required input and malformed versions/fingerprint', () => {
   assert.equal(validateReleaseInputs(inputs).versionCode, 2);
   for (const name of Object.keys(inputs)) { const missing = { ...inputs }; delete missing[name]; assert.throws(() => validateReleaseInputs(missing), /Missing required/); }
@@ -63,12 +70,15 @@ test('merged enrollment attempt implementation is advertised and required by fut
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-outcome-v1'));
   assert(ANDROID_API_CAPABILITIES.includes('native-oidc-return-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-oidc-return-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('audio-webm-live-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('audio-webm-live-v1'));
+
   assert(ANDROID_API_CAPABILITIES.includes('android-upgrade-policy-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-policy-v1'));
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
 
-for (const missing of ['native-enrollment-outcome-v1','native-oidc-return-v1']) test(`future clients cannot publish when the server lacks ${missing}`,()=>{
+for (const missing of ['native-enrollment-outcome-v1','native-oidc-return-v1','audio-webm-live-v1']) test(`future clients cannot publish when the server lacks ${missing}`,()=>{
   const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
   const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES.filter(value=>value!==missing),releaseA:{...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions]};
   const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};

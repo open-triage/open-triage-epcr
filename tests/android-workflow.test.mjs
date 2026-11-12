@@ -92,6 +92,26 @@ test('production publication is serialized, gated by preflight and protected env
   assert.match(publication, /published\.immutable, true/);
 });
 
+
+test('Android audio declares optional microphone access and keeps real saved/unfinished media acceptance in the default journey', async () => {
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.RECORD_AUDIO"\s*\/>/);
+  assert.match(manifest, /<uses-feature\s+android:name="android\.hardware\.microphone"\s+android:required="false"\s*\/>/);
+  const runner = await readFile(new URL('../scripts/android-emulator-test.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /fixture: fixtures\[0\][^\n]*audio: true/);
+  assert.match(runner, /runTlsJourney\(\{root,fixture:fixtures\[1\]/);
+  const tls = await readFile(new URL('../scripts/android/tls-journey.mjs', import.meta.url), 'utf8');
+  assert.match(tls, /runReportRecoveryJourney\(\{root,fixture[^\n]*audio:true,unsavedAudio:true/);
+});
+
+test('Android declares every permission requested by the installed WebView media bridge', async () => {
+  const bridge = await readFile(new URL('../node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/BridgeWebChromeClient.java', import.meta.url), 'utf8');
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  const permissions = [...bridge.matchAll(/permissionList\.add\(Manifest\.permission\.(\w+)\)/g)].map(match => match[1]);
+  assert(permissions.length > 0, 'Inspect the installed SDK media permission contract');
+  for (const permission of permissions) assert(manifest.includes(`android:name="android.permission.${permission}"`), `WebView media requires manifest permission ${permission}`);
+});
+
 function assertCompletePreflightBrowser(workflow, label) {
   let checks = 0;
   for (const [name, job] of Object.entries(workflow.jobs ?? {})) {

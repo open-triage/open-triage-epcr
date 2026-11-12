@@ -43,6 +43,7 @@ test("public production health advertises the shared Android protocol independen
       assert(controller.getHealth().androidApiCapabilities.includes("native-enrollment-attempt-v1"));
       assert(controller.getHealth().androidApiCapabilities.includes("native-enrollment-outcome-v1"));
       assert(controller.getHealth().androidApiCapabilities.includes("native-oidc-return-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("audio-webm-live-v1"));
       assert(controller.getHealth().androidApiCapabilities.includes("android-upgrade-policy-v1"));
     }
   } finally {

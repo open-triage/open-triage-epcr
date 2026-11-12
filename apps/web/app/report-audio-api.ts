@@ -1,4 +1,6 @@
 import { platformRequestError } from "./platform-errors";
+import { approvedMediaApiPath } from "./media-api-path";
+import { readMediaResponse } from "./media-response";
 import type { CreateReportAudioNoteCommand, DeleteReportAudioNoteResponse, ReportAudioNoteMutationResponse, UpdateReportAudioCaptionCommand } from "@open-triage/contracts";
 import { browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 import { DraftSaveRejectedError } from "./draft-report";
@@ -34,8 +36,7 @@ export function deleteReportAudioNote(csrfToken: string, reportId: string, noteI
 }
 
 export async function fetchReportAudio(reportId: string, noteId: string, contentPath?: string): Promise<Blob> {
-  const response = await fetch(browserRouteUrl(contentPath ?? `/api/reports/${reportId}/audio/${noteId}/content`), browserRequestInit());
-  if (!response.ok) throw await platformRequestError(response);
-  if (response.headers.get("content-type") !== "audio/mp4") throw new Error("The recording response was not canonical M4A audio.");
-  return response.blob();
+  const path = approvedMediaApiPath(contentPath ?? `/api/reports/${reportId}/audio/${noteId}/content`, "audio");
+  return readMediaResponse(() => fetch(browserRouteUrl(path), browserRequestInit({ redirect: "error" })),
+    "audio/mp4", "The recording response was not canonical M4A audio.");
 }

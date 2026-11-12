@@ -33,7 +33,7 @@ export async function runTlsJourney({ root, fixture, material, child, adb, seria
   const radios=value=>{for(const radio of ['wifi','data'])run(adb,['-s',serial,'shell','svc',radio,value]);};
   try {
     await setFixtureTls(child,'first');fixture.caPath=material.first.caPath;
-    await runReportRecoveryJourney({root,fixture,adb,serial,run,api,hooks:{
+    await runReportRecoveryJourney({root,fixture,adb,serial,run,api,audio:true,unsavedAudio:true,hooks:{
       prepareArguments:{tlsChecks:'1'},
       beforeProcessKill:async()=>{
         await setFixtureTls(child,'renewed');
