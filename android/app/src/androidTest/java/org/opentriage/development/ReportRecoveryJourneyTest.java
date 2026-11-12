@@ -610,8 +610,9 @@ public class ReportRecoveryJourneyTest {
         }
         evaluate("window.__reviewNative=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__reviewNative=state)");waitFor("Boolean(window.__reviewNative)");
         String nativeContext=(String)new org.json.JSONTokener(evaluate("window.__reviewNative.connectionContext")).nextValue();
+        String beforeReview=evaluate("performance.timeOrigin");
         activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+reportId+"&dataset=synthetic&language=en"));
-        waitFor("location.pathname==='/review-call/' && window.Capacitor?.getPlatform?.()==='android' && Boolean(window.Capacitor?.nativePromise)");
+        waitFor("document.readyState==='complete' && performance.timeOrigin!=="+beforeReview+" && location.pathname==='/review-call/' && window.Capacitor?.getPlatform?.()==='android' && Boolean(window.Capacitor?.nativePromise)");
         evaluate("window.__reviewNative=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(state=>window.__reviewNative=state)");waitFor("Boolean(window.__reviewNative)");
         assertEquals("Full Review navigation keeps the actual configured native installation","true",evaluate("window.__reviewNative.configured"));
         assertEquals(nativeContext,new org.json.JSONTokener(evaluate("window.__reviewNative.connectionContext")).nextValue());

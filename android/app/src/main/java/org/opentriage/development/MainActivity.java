@@ -40,7 +40,9 @@ public class MainActivity extends BridgeActivity {
                 };
                 // Retain Capacitor's actual HTML handling/injection and the visible URL/query.
                 var response = super.shouldInterceptRequest(view, localDocument);
-                if (target.notFound() && response != null) response.setStatusCodeAndReasonPhrase(404, "Not Found");
+                if (response == null) return new android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                    java.util.Map.of("Cache-Control", "no-store"), new java.io.ByteArrayInputStream(new byte[0]));
+                if (target.notFound()) response.setStatusCodeAndReasonPhrase(404, "Not Found");
                 return response;
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {

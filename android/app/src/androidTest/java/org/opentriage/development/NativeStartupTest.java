@@ -87,12 +87,15 @@ public class NativeStartupTest {
                 evaluate(activity,"window.__routeProof=null;(async()=>{const state=await window.Capacitor.nativePromise('OpenTriageConnection','state',{});const version=await window.Capacitor.nativePromise('OpenTriageConnection','version',{});window.__routeProof={context:state.connectionContext,version:version.versionCode,platform:window.Capacitor.getPlatform()};})()");
                 waitForDocument(activity,"Boolean(window.__routeProof)");
                 assertEquals(originalContext,new org.json.JSONTokener(evaluate(activity,"window.__routeProof.context")).nextValue());assertEquals("\"android\"",evaluate(activity,"window.__routeProof.platform"));assertEquals("true",evaluate(activity,"window.__routeProof.version>0"));
+                assertEquals("The visible document path is preserved",org.json.JSONObject.quote(url.getEncodedPath()),evaluate(activity,"location.pathname"));
+                assertEquals("The document remains on the approved bundled origin","\"https://localhost\"",evaluate(activity,"location.origin"));
                 assertEquals("The visible document query is preserved",org.json.JSONObject.quote(url.getEncodedQuery()),evaluate(activity,"location.search.slice(1)"));
                 if(pass==0){before=evaluate(activity,"performance.timeOrigin");activity.onActivity(screen->screen.getBridge().getWebView().reload());waitForDocument(activity,"document.readyState==='complete' && performance.timeOrigin!=="+before+" && Boolean(window.Capacitor?.nativePromise)");}
             }
         }
+        String beforeHome=evaluate(activity,"performance.timeOrigin");
         activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/"));
-        waitForDocument(activity,"document.readyState==='complete' && location.pathname==='/' && Boolean(window.Capacitor?.nativePromise)");
+        waitForDocument(activity,"document.readyState==='complete' && performance.timeOrigin!=="+beforeHome+" && location.pathname==='/' && Boolean(window.Capacitor?.nativePromise)");
     }
     @Test public void startupExcludesAppEmojiInitializerAndChecksFixtureFontProfile() throws Exception {
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
