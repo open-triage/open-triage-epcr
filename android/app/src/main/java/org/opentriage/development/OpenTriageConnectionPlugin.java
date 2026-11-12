@@ -185,6 +185,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         final int status; final String code;
         PdfFailure(int status, String code) { this.status = status; this.code = code; }
     }
+    boolean pdfConnectionCurrent(TrustedConnection connection, String context) {
+        return !destroyed && connection != null && active == connection && !replacing
+            && pendingEnrollment == null && pendingHandoff == null && context.equals(connectionContext);
+    }
     private NativePdfContract.Authority pdfAuthority(TrustedConnection connection, JSONObject headers) throws Exception {
         var reply = managedRequest(connection, "/api/sessions/current", "GET", headers, null);
         vault.write(connection);
@@ -208,13 +212,12 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                 String path = call.getString("path", ""), context = call.getString("connectionContext", "");
                 JSONObject headers = call.getObject("headers", new JSObject()); NativePdfContract.request(path, headers);
                 TrustedConnection connection = active;
-                if (connection == null || replacing || pendingEnrollment != null || pendingHandoff != null || !context.equals(connectionContext) || !NativePdfSessions.pending(this, id)) throw new IllegalStateException("PDF context unavailable");
+                if (!pdfConnectionCurrent(connection, context) || !NativePdfSessions.pending(this, id)) throw new IllegalStateException("PDF context unavailable");
                 long requestWall = System.currentTimeMillis(), requestElapsed = android.os.SystemClock.elapsedRealtime();
                 var original = pdfAuthority(connection, headers); long policyRevision = revisions.current();
                 pdfCookieIdentity = original.cookie();
                 var lifetime = new NativePdfLifetime(requestWall,requestElapsed,original.remainingMillis(),System::currentTimeMillis,android.os.SystemClock::elapsedRealtime);
-                java.util.function.BooleanSupplier current = () -> !destroyed && active == connection && !replacing && pendingEnrollment == null && pendingHandoff == null
-                    && context.equals(connectionContext) && policyRevision == revisions.current() && original.cookie().equals(pdfCookieIdentity)
+                java.util.function.BooleanSupplier current = () -> pdfConnectionCurrent(connection, context) && policyRevision == revisions.current() && original.cookie().equals(pdfCookieIdentity)
                     && lifetime.current() && NativePdfSessions.alive(this, id);
                 if (!current.getAsBoolean()) throw new IllegalStateException("PDF operation cancelled");
                 var initial = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
