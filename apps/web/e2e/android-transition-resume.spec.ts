@@ -54,7 +54,7 @@ test('a live cross-tab exclusive transition is never reconciled or cleared',asyn
 
 for(const kind of ['pending','managed'] as const)test(`${kind} native authority keeps its journal barrier and ciphertext locked`,async({page})=>{
  await fixture(page,{state:kind==='pending'?{configured:false,replacementPending:true,pendingOrigin:'https://original.example'}:{configured:false,blocked:true,managed:true,managedStatus:'missing'}});
- if(kind==='pending')await expect(page.locator('[data-pending-enrollment]')).toBeVisible();else await expect(page.locator('[role=alert]')).toBeVisible();
+ if(kind==='pending')await expect(page.getByRole('button',{name:'Retry confirmed pairing'})).toBeVisible();else await expect(page.locator('[role=alert]')).toBeVisible();
  expect(await marker(page)).toBe('interrupted');await expect(page.locator('input[name=username],.session-identity')).toHaveCount(0);
  expect(await page.evaluate(()=>(window as unknown as{fixture:{reconciliations:number}}).fixture.reconciliations)).toBe(0);
  expect(await page.evaluate(()=>(window as unknown as{retained:()=>Promise<unknown>}).retained())).toMatchObject({ciphertext:[8,7,6,5],recoveryDeadline:'2099-01-01T00:00:00Z'});

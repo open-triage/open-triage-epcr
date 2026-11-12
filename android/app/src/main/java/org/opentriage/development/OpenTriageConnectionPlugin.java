@@ -157,7 +157,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         return connectionState();
     }); }
     @PluginMethod public void reconcileTransition(PluginCall call) { execute(call, () -> {
-        if (active == null || pendingEnrollment != null || replacing || !connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation transition is not settled");
+        if (active == null || pendingEnrollment != null || pendingHandoff != null || replacing || !connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation transition is not settled");
         String purpose = call.getString("purpose", "");
         if (!purpose.equals("enrollment") && !purpose.equals("logout")) throw new IllegalArgumentException("Unknown transition purpose");
         allowed(active); long revision = revisions.current();
