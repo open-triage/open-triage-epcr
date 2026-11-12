@@ -75,7 +75,7 @@ required. Preparation and unit tests do not mark either acceptance issue complet
 7. Request current inventory after deployment. Headwind's inspected upstream
    `DeviceInfoProvider` records package and **version name only**; its console green
    state is also name-based. Catalog `versionCode` can be zero. Independently observe
-   installed Android code, name, signer, ordinary UID and observation time. Require
+   installed Android code, name, signer, APK SHA-256 and byte length, ordinary UID and observation time. Require
    both inventory and Android observations after the deployment start timestamp.
 
 ## In-place upgrade and revocation
@@ -148,8 +148,13 @@ node scripts/android/mdm-deployment-verify.mjs \
 ```
 
 The installed observation has `applicationId`, `versionCode`, `versionName`,
-`certificateSha256`, `uid`, and `observedAt` (epoch milliseconds). Supply values
-measured on the leased device, never copied from the expected release descriptor.
+`certificateSha256`, `apkSha256`, `apkBytes`, `uid`, and `observedAt` (epoch milliseconds).
+Use `adb shell pm path org.opentriage.android` to locate the installed base APK,
+pull that exact file to private host storage, and measure its SHA-256 and byte
+length. Inspect its signer with `apksigner verify --print-certs`. Reject split or
+ambiguous package layouts for this single-APK release. Supply values measured on
+the leased device, never copied from the expected release descriptor. Matching
+version and signer alone cannot establish which APK was installed.
 The verifier writes a new `0600` file, verifies real MDM download bytes, and emits
 only non-secret target/inventory facts and a policy digest. Its
 `verified-deployment-observations` status deliberately does not claim clinical

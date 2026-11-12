@@ -79,9 +79,12 @@ export function headwindInstalledInventory(device, descriptor, installed, notBef
   assert.equal(installed.versionCode, descriptor.versionCode, 'Android installed code differs');
   assert.equal(installed.versionName, descriptor.versionName);
   assert.equal(installed.certificateSha256, descriptor.certificateSha256, 'Android installed signer differs');
+  assert.equal(installed.apkSha256, descriptor.apkSha256, 'Android installed APK digest differs');
+  assert.equal(installed.apkBytes, descriptor.apkBytes, 'Android installed APK length differs');
   assert(Number.isSafeInteger(installed.uid) && installed.uid >= 10000, 'Clinical app must use an ordinary application UID');
   assert.equal(Number.isSafeInteger(installed.observedAt) && installed.observedAt >= notBefore, true, 'Android metadata predates deployment');
-  return {versionName: matches[0].version, versionCode: installed.versionCode, uid: installed.uid, inventoryAt: device.lastUpdate};
+  return {versionName: matches[0].version, versionCode: installed.versionCode, apkSha256: installed.apkSha256,
+    apkBytes: installed.apkBytes, uid: installed.uid, inventoryAt: device.lastUpdate};
 }
 
 export function retainedMdmUpgrade(before, after) {

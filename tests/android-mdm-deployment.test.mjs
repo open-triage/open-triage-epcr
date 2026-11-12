@@ -10,7 +10,7 @@ const configuration = {id: 4, applications: [{pkg: descriptor.applicationId, sel
   applicationSettings: [{applicationPkg: descriptor.applicationId, name: 'managedConfig', type: 'STRING', value: '{"configurationVersion":1,"serverOrigin":"https://fixture.invalid","publicCaPem":""}', readonly: true, variable: false}]};
 const device = {configurationId: 4, lastUpdate: 200, info: {applications: [{pkg: descriptor.applicationId, version: descriptor.versionName}]}};
 const installed = {applicationId: descriptor.applicationId, versionCode: descriptor.versionCode, versionName: descriptor.versionName,
-  certificateSha256: descriptor.certificateSha256, uid: 10123, observedAt: 200};
+  certificateSha256: descriptor.certificateSha256, apkSha256: descriptor.apkSha256, apkBytes: descriptor.apkBytes, uid: 10123, observedAt: 200};
 const clone = value => structuredClone(value);
 
 test('MDM artifact selection is bound to Admin catalog identity and complete approved URL', () => {
@@ -66,6 +66,16 @@ test('version-name-only or stale management inventory cannot establish the actua
   assert.throws(() => headwindInstalledInventory({...device, lastUpdate: 99}, descriptor, installed, 100));
   assert.throws(() => headwindInstalledInventory({...device, info: {applications: []}}, descriptor, installed, 100));
   assert.throws(() => headwindInstalledInventory(device, descriptor, {}, 100));
+});
+
+test('an installed APK with the approved version and signer still requires the exact approved bytes', () => {
+  const observed = headwindInstalledInventory(device, descriptor, installed, 100);
+  assert.equal(observed.apkSha256, descriptor.apkSha256);
+  assert.equal(observed.apkBytes, descriptor.apkBytes);
+  for (const change of [{apkSha256: '0'.repeat(64)}, {apkBytes: descriptor.apkBytes - 1},
+    {apkSha256: undefined}, {apkBytes: undefined}, {apkBytes: String(descriptor.apkBytes)}]) {
+    assert.throws(() => headwindInstalledInventory(device, descriptor, {...installed, ...change}, 100));
+  }
 });
 
 test('upgrade keeps target and policy exactly, including changes to types, readonly and substitutions', () => {
