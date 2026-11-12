@@ -158,6 +158,19 @@ public class ReportRecoveryJourneyTest {
         for (byte value : hash) encoded.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
         return encoded.toString();
     }
+    private void snapshotUpgradeLogin() throws Exception {
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSONObject session=new JSONObject(evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'))"));
+        var connection=new ConnectionVault(context).read();assertNotNull(connection);
+        String cookie=null;var cookies=connection.saved().getJSONArray("cookies");
+        for(int index=0;index<cookies.length();index++)if("open_triage_session".equals(cookies.getJSONObject(index).getString("name")))cookie=cookies.getJSONObject(index).getString("value");
+        int uid=context.getApplicationInfo().uid;
+        String hash=UpgradeSessionProof.cookieHash(cookie,uid,connection.origin);
+        String csrf=session.getString("csrfToken"),user=session.getJSONObject("user").getString("id"),organization=session.getJSONObject("organization").getString("id");
+        UpgradeSessionProof.csrf(null,csrf,user,user,organization,organization,hash,hash,uid,uid);
+        assertTrue(context.getSharedPreferences("release-upgrade-acceptance",android.content.Context.MODE_PRIVATE).edit()
+            .putString("loginCsrf",csrf).putString("loginUser",user).putString("loginOrganization",organization).putString("loginCookieHash",hash).putInt("loginUid",uid).commit());
+    }
     private void snapshotUpgrade() throws Exception {
         if (!"1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) return;
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -172,6 +185,7 @@ public class ReportRecoveryJourneyTest {
             args.getString("upgradeReceipt",""),context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),
             args.getString("phase"),"1".equals(args.getString("upgrade"))));
         assertTrue(editor.commit());
+        snapshotUpgradeLogin();
     }
     private java.util.List<String> publicCertificateIdentities(String pem) throws Exception {
         var factory = java.security.cert.CertificateFactory.getInstance("X.509");
@@ -338,6 +352,7 @@ public class ReportRecoveryJourneyTest {
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
         var proof=new android.os.Bundle();proof.putString("opentriage_upgrade_current_media","real-B-photo-permission-pause-offline-bytes-canonical");
         InstrumentationRegistry.getInstrumentation().sendStatus(0,proof);
+        snapshotUpgradeLogin();
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
@@ -414,6 +429,7 @@ public class ReportRecoveryJourneyTest {
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
             case "post-upgrade-photo": postUpgradePhoto(); activity.close(); break;
+            case "upgrade-session-snapshot": waitFor("document.querySelector('.session-identity')"); snapshotUpgradeLogin(); activity.close(); break;
             default: fail("Host must supply a recovery phase");
         }
     }

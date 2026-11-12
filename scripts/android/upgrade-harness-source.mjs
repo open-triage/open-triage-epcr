@@ -7,6 +7,8 @@ const testOnlyPaths=new Set([
  'android/app/src/androidTest/java/org/opentriage/development/ReportRecoveryJourneyTest.java',
  'android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java',
  'tests/android-upgrade-preparation.test.mjs',
+ 'android/app/src/androidTest/java/org/opentriage/development/UpgradePolicyTransportTest.java',
+ 'android/app/src/androidTest/java/org/opentriage/development/UpgradeSessionProof.java',
 ]);
 export function assertUpgradeHarnessSource({artifactSource,testSource,changedPaths}) {
  assert.match(artifactSource,/^[a-f0-9]{40}$/);assert.match(testSource,/^[a-f0-9]{40}$/);

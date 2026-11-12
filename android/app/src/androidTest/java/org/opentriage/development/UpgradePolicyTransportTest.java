@@ -36,7 +36,15 @@ public class UpgradePolicyTransportTest {
         assertTrue("The real Android transport must be ready before its single credentialed request",reachable);
         var session=connection.request("/api/sessions/current","GET",new JSONObject(),null);
         assertEquals("Ordinary personal session remains valid; no reauthentication",200,session.status());
-        String csrf=new JSONObject(session.body()).getString("csrfToken");
+        JSONObject current=new JSONObject(session.body());
+        var saved=context.getSharedPreferences("release-upgrade-acceptance",android.content.Context.MODE_PRIVATE);
+        String cookie=null;var cookies=connection.saved().getJSONArray("cookies");
+        for(int index=0;index<cookies.length();index++)if("open_triage_session".equals(cookies.getJSONObject(index).getString("name")))cookie=cookies.getJSONObject(index).getString("value");
+        String csrf=UpgradeSessionProof.csrf(current.optString("csrfToken",null),saved.getString("loginCsrf",null),
+            current.getJSONObject("user").getString("id"),saved.getString("loginUser",null),
+            current.getJSONObject("organization").getString("id"),saved.getString("loginOrganization",null),
+            UpgradeSessionProof.cookieHash(cookie,context.getApplicationInfo().uid,connection.origin),saved.getString("loginCookieHash",null),
+            context.getApplicationInfo().uid,saved.getInt("loginUid",-1));
         boolean legacy="1".equals(args.getString("legacy"));
         var headers=new JSONObject().put("x-csrf-token",csrf);
         TrustedConnection.Reply opened;

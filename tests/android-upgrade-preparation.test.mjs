@@ -50,7 +50,7 @@ test('actual Java profile selector rejects every non-A1/current/production/prepa
    try {HistoricalUpgradePreparation.enabled(profile,app,code,phase,upgrade);throw new AssertionError("invalid profile accepted");}
    catch(IllegalArgumentException expected) {}
   }
-  public static void main(String[]args) {
+  public static void main(String[]args) throws Exception {
    if(!HistoricalUpgradePreparation.enabled("historical-a1-text-v1","org.opentriage.android",1,"prepare",true))throw new AssertionError();
    for(long version:new long[]{1,2,3})if(HistoricalUpgradePreparation.enabled("current","org.opentriage.android",version,"prepare",true))throw new AssertionError();
    denied("unknown","org.opentriage.android",1,"prepare",true);
@@ -72,13 +72,24 @@ test('actual Java profile selector rejects every non-A1/current/production/prepa
    expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"offline",true));
    expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"recover",false));
    expectDenied(()->HistoricalUpgradePreparation.recovered("current",receipt,receipt,"org.opentriage.android",3,"recover",true));
+   String hash=UpgradeSessionProof.cookieHash("synthetic-cookie",101,"https://fixture.test"),csrf="a".repeat(43),oidc="b".repeat(43);
+   if(!csrf.equals(UpgradeSessionProof.csrf(null,csrf,"user","user","org","org",hash,hash,101,101)))throw new AssertionError("local original CSRF lost");
+   if(!oidc.equals(UpgradeSessionProof.csrf(oidc,csrf,"user","user","org","org",hash,hash,101,101)))throw new AssertionError("OIDC current CSRF lost");
+   expectDenied(()->UpgradeSessionProof.csrf(null,csrf,"other","user","org","org",hash,hash,101,101));
+   expectDenied(()->UpgradeSessionProof.csrf(null,csrf,"user","user","other","org",hash,hash,101,101));
+   expectDenied(()->UpgradeSessionProof.csrf(null,csrf,"user","user","org","org",hash,"0".repeat(64),101,101));
+   expectDenied(()->UpgradeSessionProof.csrf(oidc,csrf,"user","user","org","org",hash,"0".repeat(64),101,101));
+   expectDenied(()->UpgradeSessionProof.csrf(null,csrf,"user","user","org","org",hash,hash,102,101));
+   expectDenied(()->UpgradeSessionProof.csrf(null,null,"user","user","org","org",hash,hash,101,101));
+   expectDenied(()->UpgradeSessionProof.csrf("invalid",csrf,"user","user","org","org",hash,hash,101,101));
+
   }
   static void expectDenied(Runnable action) {try {action.run();throw new AssertionError("invalid receipt accepted");}catch(IllegalArgumentException expected){}}
  }`;
  try{
   const harness=join(folder,'ProfileBoundaries.java');writeFileSync(harness,source);
   const java=name=>process.env.JAVA_HOME?join(process.env.JAVA_HOME,'bin',name):name;
-  for(const [command,args] of [[java('javac'),['-d',folder,resolve('android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java'),harness]],[java('java'),['-cp',folder,'org.opentriage.development.ProfileBoundaries']]]){
+  for(const [command,args] of [[java('javac'),['-d',folder,resolve('android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java'),resolve('android/app/src/androidTest/java/org/opentriage/development/UpgradeSessionProof.java'),harness]],[java('java'),['-cp',folder,'org.opentriage.development.ProfileBoundaries']]]){
    const result=spawnSync(command,args,{encoding:'utf8',timeout:30000});assert.equal(result.error,undefined);assert.equal(result.status,0,result.stdout+result.stderr);
   }
  }finally{rmSync(folder,{recursive:true,force:true});}

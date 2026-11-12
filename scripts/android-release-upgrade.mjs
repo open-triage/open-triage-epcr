@@ -75,6 +75,7 @@ try {
   await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true, preparationProfile, upgradeReceipt,
     hooks:{afterRecovery:async({instrument})=>{
       if(preparationProfile==='historical-a1-text-v1')instrument('post-upgrade-photo',fixtures[0].clinician.username,fixtures[0].clinicianPassword);
+      else instrument('upgrade-session-snapshot',fixtures[0].clinician.username,fixtures[0].clinicianPassword);
     },afterOfflineStartup:async output=>{await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(output)?.[1]);},beforeProcessKill:async({db,report,opened,ca})=>{
       upgradeReport={...report,id:opened.id};
       incomingAssignment=randomUUID();const incident=randomUUID();
