@@ -12,8 +12,9 @@ const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const secret=()=>randomBytes(32).toString('base64url');
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const invalid=()=>new UnauthorizedException({code:'auth.agencyHandoffInvalid'});
-function command(value:unknown,keys:string[]):Record<string,string>{
- if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!keys.includes(k))||keys.some(k=>typeof (value as Record<string,unknown>)[k]!=='string'||String((value as Record<string,unknown>)[k]).length>128))throw new BadRequestException({code:'auth.agencyHandoffInvalid'});
+function replacementCsrf(value:unknown):string{if(value===undefined)return secret();if(typeof value!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(value))throw invalid();return value;}
+function command(value:unknown,keys:string[],optional:string[]=[]):Record<string,string>{
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!keys.includes(k)&&!optional.includes(k))||keys.some(k=>typeof (value as Record<string,unknown>)[k]!=='string'||String((value as Record<string,unknown>)[k]).length>128))throw new BadRequestException({code:'auth.agencyHandoffInvalid'});
  return value as Record<string,string>;
 }
 type Handoff={id:string;source_session_id:string;target_organization_id:string;source_origin:string;target_origin:string;verifier_sha256:string;challenge_sha256:string|null;code_sha256:string|null;issued_at:Date|null;consumed_at:Date|null;expires_at:Date;user_id:string};
@@ -26,16 +27,17 @@ export class AgencyHandoffService {
  private origin(){const origin=agencyRequest.getStore()?.origin;if(!origin)throw invalid();return origin;}
  /** Same-origin native switches use the ordinary agency policy, then retire the
   * outgoing cookie/CSRF/device binding without issuing new personal proof/time. */
+ async current(token:string){return this.sessions.getAuthenticated(token,new Date(),false);}
  async switch(token:string,input:unknown):Promise<CreatedSession>{
-  const body=command(input,['organizationId']);if(!uuid.test(body.organizationId!))throw invalid();
+  const body=command(input,['organizationId'],['replacementCsrf']);const csrf=replacementCsrf(body.replacementCsrf);if(!uuid.test(body.organizationId!))throw invalid();
   const origin=this.origin();if(!await this.agencies.allowsOrigin(origin))throw invalid();
   return this.database.transaction(async manager=>{
    await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
    await this.sessions.switchAgency(token,body.organizationId!,manager);
-   const [source]=await manager.query<Array<{id:string;authentication_source:string;oidc_group_id:string|null}>>(
-    'select id,authentication_source,oidc_group_id from app_identity.app_session where token_sha256=$1 and revoked_at is null for update',[digest(token)]);
-   if(!source)throw invalid();
-   const replacement=secret(),csrf=secret();
+   const [source]=await manager.query<Array<{id:string;authentication_source:string;oidc_group_id:string|null;csrf_sha256:string}>>(
+    'select id,authentication_source,oidc_group_id,csrf_sha256 from app_identity.app_session where token_sha256=$1 and revoked_at is null for update',[digest(token)]);
+   if(!source||source.csrf_sha256===digest(csrf))throw invalid();
+   const replacement=secret();
    const encrypted=source.authentication_source==='oidc'
     ?await encryptAgencyCredential(manager,csrf,source.oidc_group_id!,`csrf:${digest(replacement)}`):null;
    await manager.query(`insert into app_identity.app_session select (jsonb_populate_record(null::app_identity.app_session,to_jsonb(s)||jsonb_build_object(
@@ -115,18 +117,18 @@ export class AgencyHandoffService {
   });
  }
  async consume(input:unknown,correlation:string,targetToken?:string):Promise<CreatedSession>{
-  const body=command(input,['transactionId','code']),origin=this.origin();if(!/^[A-Za-z0-9_-]{43}$/.test(body.code!)||!/^[A-Za-z0-9_-]{43}$/.test(correlation))throw invalid();
+  const body=command(input,['transactionId','code'],['replacementCsrf']),origin=this.origin(),csrf=replacementCsrf(body.replacementCsrf);if(!/^[A-Za-z0-9_-]{43}$/.test(body.code!)||!/^[A-Za-z0-9_-]{43}$/.test(correlation))throw invalid();
   return this.database.transaction(async manager=>{
    const before=await this.row(manager,body.transactionId!);
    await manager.query('select id from app_identity.app_user where id=$1 for share',[before.user_id]);
    const row=await this.row(manager,body.transactionId!,true);
    if(row.target_origin!==origin||!row.issued_at||row.code_sha256!==digest(body.code!)||row.challenge_sha256!==digest(correlation))throw invalid();
    await this.target(manager,row);await this.sameTargetUser(manager,row,targetToken);
-   const source=await manager.query(`select s.id from app_identity.app_session s join app_identity.local_credential c on c.user_id=s.user_id
+   const source=await manager.query(`select s.id,s.csrf_sha256 from app_identity.app_session s join app_identity.local_credential c on c.user_id=s.user_id
     where s.id=$1 and s.authentication_source='local' and s.revoked_at is not null and s.revocation_reason='agency_handoff'
-     and s.expires_at>clock_timestamp() and c.credential_version=s.credential_version and not c.must_change_password for update of s`,[row.source_session_id]);if(!source.length)throw invalid();
+     and s.expires_at>clock_timestamp() and c.credential_version=s.credential_version and not c.must_change_password for update of s`,[row.source_session_id]);if(!source.length||source[0].csrf_sha256===digest(csrf))throw invalid();
    if(targetToken)await manager.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='agency_handoff' where token_sha256=$1 and user_id=$2 and revoked_at is null",[digest(targetToken),row.user_id]);
-   const token=secret(),csrf=secret();
+   const token=secret();
    await manager.query(`insert into app_identity.app_session select (jsonb_populate_record(null::app_identity.app_session,to_jsonb(s)||jsonb_build_object(
     'id',gen_random_uuid(),'token_sha256',$2::text,'csrf_sha256',$3::text,'organization_id',$4::uuid,'browser_origin',$5::text,
     'revoked_at',null,'revocation_reason',null,'last_activity_at',clock_timestamp(),'installation_registration_id',null))).*

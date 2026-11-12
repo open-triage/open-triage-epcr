@@ -98,14 +98,46 @@ public class AgencyHandoffJourneyTest {
             } else if(phase.equals("cancel-interrupted")){
                 waitFor("document.body.innerText.includes('The agency switch was interrupted')");assertEquals("null",evaluate("document.querySelector('.session-identity')"));unchanged(args.getString("retainedSha256"));click("Return to original installation");waitFor("document.querySelector('.session-identity')");
                 assertEquals("No new login was needed for an unissued cancelled handoff","null",evaluate("document.querySelector('input[name=password]')"));assertEquals(args.getString("sourceCookieSha256"),NativeAgencyHandoff.sessionIdentity(vault().read()));assertNull(vault().pendingHandoff());unchanged(args.getString("retainedSha256"));current();bundled();
+            } else if(phase.equals("consume-interrupted")){
+                waitFor("document.querySelector('.session-identity')");current();status("source_expires_at",new org.json.JSONTokener(evaluate("window.__agencyCurrent.body.expiresAt")).nextValue().toString());
+                select(args.getString("targetAgency"));waitFor("document.body.innerText.includes('The agency switch is ready to finish')");
+                assertEquals("consuming",vault().pendingHandoff().getString("phase"));assertEquals(args.getString("apiOrigin"),vault().read().origin);
+                NativeAgencyHandoff.sessionIdentity(TrustedConnection.restore(vault().pendingHandoff().getJSONObject("target")));
+                status("retained_sha256",records());status("agency_handoff_live","1");
+                long end=android.os.SystemClock.elapsedRealtime()+120000;while(android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(100);fail("Host must kill the actual ambiguous consume after its target cookie is journaled");
+            } else if(phase.equals("return-source-superuser")){
+                waitFor("document.querySelector('.session-identity')");click("Change installation");waitFor("document.querySelector('input[type=file]')");
+                String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
+                login(args.getString("superuser"),args.getString("superuserPassword"));unchanged(args.getString("retainedSha256"));bundled();
+            } else if(phase.equals("prepare-completed")){
+                waitFor("document.querySelector('.session-identity')");
+                // Hold only delivery of the real native result. The real UI owns
+                // its Web Lock/marker, and the actual server/Keystore promotion runs.
+                evaluate("(()=>{const cap=window.Capacitor,send=cap.nativePromise.bind(cap);cap.nativePromise=(plugin,method,options)=>{const reply=send(plugin,method,options);if(plugin==='OpenTriageConnection'&&method==='confirmAgencyHandoff')return reply.then(value=>new Promise(()=>{window.__completedHandoffHeld=true}));return reply;};})()");
+                select(args.getString("targetAgency"));waitFor("window.__completedHandoffHeld===true");
+                assertEquals("completed",vault().pendingHandoff().getString("phase"));assertEquals("https://127.0.0.1",vault().read().origin);
+                assertEquals("true",evaluate("localStorage.getItem('open-triage.installation-transition.v1')?.startsWith('handoff:')"));
+                assertEquals("null",evaluate(session()));status("retained_sha256",records());status("agency_handoff_live","1");
+                long end=android.os.SystemClock.elapsedRealtime()+120000;while(android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(100);fail("Host must kill the actual promoted handoff before JS delivery");
+            } else if(phase.equals("finish-completed")){
+                waitFor("document.body.innerText.includes('The agency switch is ready to finish')");unchanged(args.getString("retainedSha256"));
+                var completed=vault().pendingHandoff().optJSONObject("publicSession");String expiry=completed!=null?completed.getString("expiresAt"):args.getString("sourceExpiresAt");assertNotNull(expiry);
+                click("Finish agency switch");waitFor("document.querySelector('.session-identity')");current();
+                assertEquals(JSONObject.quote(expiry),evaluate("window.__agencyCurrent.body.expiresAt"));
+                assertEquals(JSONObject.quote(args.getString("targetAgency")),evaluate("window.__agencyCurrent.body.organization.id"));
+                assertNotEquals(args.getString("sourceCookieSha256"),NativeAgencyHandoff.sessionIdentity(vault().read()));
+                assertNull(vault().pendingHandoff());assertEquals("null",evaluate("localStorage.getItem('open-triage.installation-transition.v1')"));
+                assertEquals("null",evaluate("document.querySelector('input[name=password]')"));
+                var cookies=vault().read().saved().getJSONArray("cookies");for(int i=0;i<cookies.length();i++)assertEquals("Target has only its own new personal cookie","open_triage_session",cookies.getJSONObject(i).getString("name"));
+                unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("switch")){
                 waitFor("document.querySelector('.session-identity')");String before=records();String oldCookie=NativeAgencyHandoff.sessionIdentity(vault().read());current();String expiry=evaluate("window.__agencyCurrent.body.expiresAt"),proof=evaluate("window.__agencyCurrent.body.personallyAuthenticatedAt");select(args.getString("targetAgency"));
                 waitFor(session()+"?.organization?.id==="+JSONObject.quote(args.getString("targetAgency")));waitFor("document.querySelector('.session-identity')");current();assertEquals(expiry,evaluate("window.__agencyCurrent.body.expiresAt"));assertEquals(proof,evaluate("window.__agencyCurrent.body.personallyAuthenticatedAt"));assertNotEquals(oldCookie,NativeAgencyHandoff.sessionIdentity(vault().read()));
-                assertEquals("https://localhost",vault().read().origin);assertNull(vault().pendingHandoff());
+                assertEquals("https://127.0.0.1",vault().read().origin);assertNull(vault().pendingHandoff());
                 var cookies=vault().read().saved().getJSONArray("cookies");for(int i=0;i<cookies.length();i++)assertEquals("Target has only its own new personal cookie","open_triage_session",cookies.getJSONObject(i).getString("name"));
                 unchanged(before);bundled();
             } else if(phase.equals("restart-target")){
-                waitFor("document.querySelector('.session-identity')");assertEquals("https://localhost",vault().read().origin);assertEquals(JSONObject.quote(args.getString("targetAgency")),evaluate(session()+".organization.id"));unchanged(args.getString("retainedSha256"));bundled();
+                waitFor("document.querySelector('.session-identity')");assertEquals("https://127.0.0.1",vault().read().origin);assertEquals(JSONObject.quote(args.getString("targetAgency")),evaluate(session()+".organization.id"));unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("return-source")){
                 waitFor("document.querySelector('.session-identity')");click("Change installation");waitFor("document.querySelector('input[type=file]')");
                 String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");

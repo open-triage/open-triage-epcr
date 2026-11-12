@@ -5,11 +5,13 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor
 
 export type NativeResponse = { status: number; headers: Record<string, string>; bodyBase64: string };
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
-export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; handoffPending?: boolean; storageScope?: string; legacyStorageScope?: string };
+export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; handoffPending?: boolean; handoffComplete?: boolean; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
   prepareAgencyHandoff(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<{crossHost: boolean}>;
   confirmAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;
   switchAgency(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;
+  resumeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState & {session?:AuthenticatedSession}>;
+  acknowledgeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState>;
   cancelAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session?: AuthenticatedSession}>;
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;

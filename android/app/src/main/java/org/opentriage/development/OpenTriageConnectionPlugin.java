@@ -84,6 +84,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     private JSObject statePayload(ManagedConnectionPolicy.State policy, TrustedConnection retained) throws Exception {
         JSObject result = new JSObject(); result.put("configured", retained != null && !policy.blocked() && pendingEnrollment == null && !replacing && !handoffInterrupted());
         result.put("handoffPending", handoffInterrupted());
+        result.put("handoffComplete", handoffCanResume());
         result.put("connectionContext", connectionContext); result.put("replacementPending", pendingEnrollment != null);
         result.put("managed", policy.managed()); result.put("managedStatus", policy.status()); result.put("blocked", policy.blocked());
         if (retained != null) { result.put("origin", retained.origin); result.put("storageScope", NativeConnectionIdentity.storageScope(retained.origin)); }
@@ -91,6 +92,11 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         if (policy.origin() != null) result.put("managedOrigin", policy.origin());
         if (policy.context() != null) result.put("managedContext", policy.context());
         return result;
+    }
+    private boolean handoffCanResume() {
+        if (pendingHandoff == null || active == null) return false;
+        try { NativeAgencyHandoff.resumeDestination(pendingHandoff, active); return true; }
+        catch (Exception noNewSession) { return false; }
     }
     private boolean handoffInterrupted() { return pendingHandoff != null && (!pendingHandoff.optString("phase").equals("prepared") || !connectionContext.equals(pendingHandoff.optString("context"))); }
     private void allowed(TrustedConnection connection) throws Exception {
@@ -248,6 +254,41 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         } else { vault.stageHandoff(active, null); pendingHandoff = null; }
         return result;
     }); }
+    private JSObject completedHandoff(TrustedConnection connection, JSONObject session) throws Exception {
+        JSONObject completed = NativeAgencyHandoff.completed(connection, session);
+        vault.stageHandoff(connection, completed); active = connection; pendingHandoff = completed;
+        connectionContext = java.util.UUID.randomUUID().toString();
+        JSObject result = connectionState(); result.put("session", session);
+        notifyListeners("configurationChanged", connectionState()); return result;
+    }
+    @PluginMethod public void resumeAgencyHandoff(PluginCall call) { execute(call, () -> {
+        if (!connectionContext.equals(call.getString("connectionContext")) || active == null || !handoffCanResume()) throw new IllegalStateException("Agency completion unavailable");
+        final JSONObject pending = pendingHandoff;
+        final boolean completed = pending.getString("phase").equals("completed");
+        final TrustedConnection destination = NativeAgencyHandoff.resumeDestination(pending, active);
+        String csrf = completed ? pending.getJSONObject("publicSession").getString("csrfToken") : pending.getString("replacementCsrf");
+        var headers = new JSONObject().put("content-type", "application/json").put("x-csrf-token", csrf);
+        var response = destination == active ? managedRequest(destination, "/api/sessions/agency-handoff/current", "POST", headers, "{}") : candidateRequest(destination, "/api/sessions/agency-handoff/current", "POST", headers, "{}");
+        if (response.status() == 401 || response.status() == 403) {
+            vault.promoteHandoff(active); pendingHandoff = null; return connectionState();
+        }
+        if (response.status() != 200) throw new IllegalStateException("Agency session status unavailable");
+        JSONObject session = new JSONObject(response.body());
+        if (completed) session = NativeAgencyHandoff.recovered(pending, destination, session);
+        else {
+            if (!session.getJSONObject("organization").getString("id").equals(pending.getString("organizationId"))) throw new IllegalStateException("Agency completion changed");
+            session.put("csrfToken", csrf);
+        }
+        return completedHandoff(destination, session);
+    }); }
+    @PluginMethod public void acknowledgeAgencyHandoff(PluginCall call) { execute(call, () -> {
+        if (!connectionContext.equals(call.getString("connectionContext")) || pendingHandoff == null ||
+            !pendingHandoff.optString("phase").equals("completed")) throw new IllegalStateException("Agency completion changed");
+        allowed(active);
+        if (!NativeAgencyHandoff.sessionIdentity(active).equals(pendingHandoff.getString("session"))) throw new IllegalStateException("Agency session changed");
+        vault.promoteHandoff(active); pendingHandoff = null;
+        return connectionState();
+    }); }
     @PluginMethod public void confirmAgencyHandoff(PluginCall call) { execute(call, () -> {
         if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
         if (active == null || pendingEnrollment != null || replacing || pendingHandoff == null ||
@@ -259,24 +300,29 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
             (connection, path, headers, body) -> connection == source ? managedRequest(connection, path, "POST", headers, body.toString()) : candidateRequest(connection, path, "POST", headers, body.toString()),
             this::allowedCandidate, pending -> { vault.stageHandoff(active, pending); pendingHandoff = pending; });
         allowedCandidate(transferred.connection());
-        vault.promoteHandoff(transferred.connection()); active = transferred.connection(); pendingHandoff = null;
-        connectionContext = java.util.UUID.randomUUID().toString();
-        JSObject result = connectionState(); result.put("session", transferred.session());
-        notifyListeners("configurationChanged", connectionState()); return result;
+        return completedHandoff(transferred.connection(), transferred.session());
     }); }
     @PluginMethod public void switchAgency(PluginCall call) { execute(call, () -> {
         if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
         if (active == null || pendingEnrollment != null || replacing || handoffInterrupted()) throw new IllegalStateException("Connection unavailable");
-        var reply = managedRequest(active, "/api/sessions/agency-handoff/switch", "POST", new JSONObject().put("content-type", "application/json").put("x-agency-handoff", "1").put("x-csrf-token", call.getString("csrfToken", "")), new JSONObject().put("organizationId", call.getString("organizationId", "")).toString());
-        if (reply.status() != 200 && reply.status() != 201) throw new IllegalStateException("Agency switch denied");
-        vault.promoteHandoff(active); pendingHandoff = null; vault.pendingAuthentication(null);
-        connectionContext = java.util.UUID.randomUUID().toString();
-        JSObject result = connectionState(); result.put("session", new JSONObject(reply.body()));
-        notifyListeners("configurationChanged", connectionState()); return result;
+        String replacementCsrf = NativeAgencyHandoff.secret();
+        pendingHandoff = new JSONObject().put("phase", "rotating").put("organizationId", call.getString("organizationId", ""))
+            .put("session", NativeAgencyHandoff.sessionIdentity(active)).put("csrf", call.getString("csrfToken", "")).put("replacementCsrf", replacementCsrf);
+        vault.stageHandoff(active, pendingHandoff);
+        TrustedConnection.Reply reply;
+        try {
+            reply = managedRequest(active, "/api/sessions/agency-handoff/switch", "POST", new JSONObject().put("content-type", "application/json").put("x-agency-handoff", "1").put("x-csrf-token", call.getString("csrfToken", "")), new JSONObject().put("organizationId", call.getString("organizationId", "")).put("replacementCsrf", replacementCsrf).toString());
+        } finally { vault.stageHandoff(active, pendingHandoff); }
+        if (reply.status() != 200 && reply.status() != 201) {
+            vault.promoteHandoff(active); pendingHandoff = null; throw new IllegalStateException("Agency switch denied");
+        }
+        vault.pendingAuthentication(null);
+        return completedHandoff(active, new JSONObject(reply.body()));
     }); }
     @PluginMethod public void cancelAgencyHandoff(PluginCall call) { execute(call, () -> {
         if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
         if (pendingHandoff == null) return connectionState();
+        if (handoffCanResume()) throw new IllegalStateException("Complete the validated agency switch");
         JSONObject restored = null;
         if (active != null) {
             var reply = managedRequest(active, "/api/sessions/current", "GET", new JSONObject(), null);
@@ -284,10 +330,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                 restored = new JSONObject(reply.body()).put("csrfToken", pendingHandoff.getString("csrf"));
             } else if (reply.status() != 401 && reply.status() != 403) throw new IllegalStateException("Original session status unavailable");
         }
-        vault.promoteHandoff(active); pendingHandoff = null; vault.pendingAuthentication(null);
-        connectionContext = java.util.UUID.randomUUID().toString();
-        JSObject result = connectionState(); if (restored != null) result.put("session", restored);
-        return result;
+        vault.pendingAuthentication(null);
+        if (restored != null) return completedHandoff(active, restored);
+        vault.promoteHandoff(active); pendingHandoff = null;
+        connectionContext = java.util.UUID.randomUUID().toString(); return connectionState();
     }); }
     @PluginMethod public void beginAuthentication(PluginCall call) { execute(call, () -> {
         if (active == null || pendingEnrollment != null || replacing || handoffInterrupted()) throw new IllegalStateException("Pairing required");

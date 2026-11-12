@@ -12,7 +12,7 @@ final class NativeAgencyHandoff {
     interface Check { void target(TrustedConnection connection) throws Exception; }
     interface Save { void phase(JSONObject pending) throws Exception; }
     record Result(TrustedConnection connection, JSONObject session) {}
-    private static String secret() { byte[] bytes = new byte[32]; new java.security.SecureRandom().nextBytes(bytes); return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
+    static String secret() { byte[] bytes = new byte[32]; new java.security.SecureRandom().nextBytes(bytes); return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes); }
     private static String digest(String value) throws Exception { byte[] bytes = java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)); StringBuilder result = new StringBuilder(); for (byte b : bytes) result.append(String.format(java.util.Locale.ROOT, "%02x", b & 255)); return result.toString(); }
     static String sessionIdentity(TrustedConnection connection) throws Exception {
         var cookies = connection.saved().getJSONArray("cookies");
@@ -57,7 +57,31 @@ final class NativeAgencyHandoff {
         String hash = destination(challenge.getString("sourceUrl"), source.origin, "issue", id).get("challengeHash");
         return new JSONObject().put("phase", "prepared").put("transactionId", id).put("organizationId", organizationId)
             .put("source", source.saved()).put("target", target.saved()).put("verifier", verifier).put("csrf", csrf).put("challengeHash", hash)
-            .put("session", sessionIdentity(source)).put("createdAt", System.currentTimeMillis());
+            .put("session", sessionIdentity(source)).put("replacementCsrf", secret()).put("createdAt", System.currentTimeMillis());
+    }
+    static TrustedConnection resumeDestination(JSONObject pending, TrustedConnection active) throws Exception {
+        String phase=pending.getString("phase");
+        if (phase.equals("consuming")) {
+            var target=TrustedConnection.restore(pending.getJSONObject("target"));
+            if (!target.caPem.equals(active.caPem) || target.origin.equals(active.origin)) throw new IllegalStateException("Agency destination changed");
+            sessionIdentity(target); return target;
+        }
+        if (phase.equals("completed") && active.origin.equals(pending.getString("origin")) && sessionIdentity(active).equals(pending.getString("session"))) return active;
+        if (phase.equals("rotating") && !sessionIdentity(active).equals(pending.getString("session"))) return active;
+        throw new IllegalStateException("No validated replacement cookie");
+    }
+    static JSONObject completed(TrustedConnection connection, JSONObject session) throws Exception {
+        if (session.getString("csrfToken").isEmpty()) throw new IllegalStateException("Session response required");
+        return new JSONObject().put("phase", "completed").put("origin", connection.origin)
+            .put("session", sessionIdentity(connection)).put("publicSession", session);
+    }
+    static JSONObject recovered(JSONObject pending, TrustedConnection connection, JSONObject current) throws Exception {
+        var original = pending.getJSONObject("publicSession");
+        if (!pending.getString("phase").equals("completed") || !connection.origin.equals(pending.getString("origin")) ||
+            !sessionIdentity(connection).equals(pending.getString("session")) ||
+            !current.getJSONObject("user").getString("id").equals(original.getJSONObject("user").getString("id")) ||
+            !current.getJSONObject("organization").getString("id").equals(original.getJSONObject("organization").getString("id"))) throw new IllegalStateException("Agency completion changed");
+        return current.put("csrfToken", original.getString("csrfToken"));
     }
     static Result finish(JSONObject pending, TrustedConnection source, Request request, Check check, Save save) throws Exception {
         if (!pending.getString("phase").equals("prepared") || System.currentTimeMillis() < pending.getLong("createdAt") || System.currentTimeMillis() - pending.getLong("createdAt") >= 90000 ||
@@ -73,8 +97,15 @@ final class NativeAgencyHandoff {
         String code = destination(issued.getString("targetUrl"), target.origin, "consume", pending.getString("transactionId")).get("code");
         pending.put("phase", "consuming"); pending.put("source", source.saved()); save.phase(pending);
         check.target(target);
-        var session = json(request.send(target, "/api/sessions/agency-handoff/consume", new JSONObject().put("content-type", "application/json").put("x-agency-handoff", "1"),
-            new JSONObject().put("transactionId", pending.getString("transactionId")).put("code", code)));
+        JSONObject session;
+        try {
+            session = json(request.send(target, "/api/sessions/agency-handoff/consume", new JSONObject().put("content-type", "application/json").put("x-agency-handoff", "1"),
+                new JSONObject().put("transactionId", pending.getString("transactionId")).put("code", code).put("replacementCsrf", pending.getString("replacementCsrf"))));
+        } finally {
+            // Headers can install the valid cookie before a body is lost. Keep
+            // that jar with the preselected CSRF, never replay one-use consume.
+            pending.put("target", target.saved()); save.phase(pending);
+        }
         if (!session.getJSONObject("organization").getString("id").equals(pending.getString("organizationId"))) throw new IllegalStateException("Unexpected target agency");
         return new Result(target, session);
     }

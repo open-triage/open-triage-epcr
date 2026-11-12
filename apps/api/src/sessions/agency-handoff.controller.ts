@@ -1,4 +1,4 @@
-import {Body,Controller,Header,Headers,Post,Req,Res} from '@nestjs/common';
+import {Body,Controller,Header,Headers,HttpCode,Post,Req,Res} from '@nestjs/common';
 import {AgencyHandoffService} from './agency-handoff.service.js';
 import {sessionToken,bearerToken,SESSION_COOKIE,cookieOptions,clearSessionCookie,type SessionCookieResponse} from './clinician-session.controller.js';
 export const AGENCY_HANDOFF_COOKIE='open_triage_agency_handoff';
@@ -8,6 +8,8 @@ const optionalToken=(request:Request)=>{try{return bearerToken(undefined,request
 @Controller('sessions/agency-handoff')
 export class AgencyHandoffController {
  constructor(private readonly handoffs:AgencyHandoffService){}
+ @Post('current') @HttpCode(200) @Header('Cache-Control','no-store, private')
+ current(@Req()request:Request,@Headers('authorization')authorization?:string){return this.handoffs.current(sessionToken(request,authorization));}
  @Post('switch') @Header('Cache-Control','no-store, private')
  async switch(@Body()body:unknown,@Req()request:Request,@Res({passthrough:true})response:SessionCookieResponse,@Headers('authorization')authorization?:string){
   const created=await this.handoffs.switch(sessionToken(request,authorization),body);

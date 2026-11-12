@@ -467,7 +467,7 @@ export function ClinicianSessionGate({ children }: {
         clearFeedbackTelemetry();
         window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
         storeClinicianSession(window.localStorage, { ...changed, csrfToken: changed.csrfToken ?? authenticatedSession.csrfToken });
-      });
+      },'handoff');
     } catch(reason) {
       // Startup rechecks the unchanged cookie; denial does not demand a new login.
       if(ownedGeneration===window.localStorage.getItem(INSTALLATION_GENERATION_KEY))storeClinicianSession(window.localStorage,authenticatedSession);

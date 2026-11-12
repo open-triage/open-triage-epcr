@@ -78,8 +78,20 @@ app.use((request, response, next) => {
 });
 // Test-only, bounded write outage and non-secret origin/cookie-presence evidence.
 const agencyOutages=new Set(),agencyObservations=[];
+let holdNextAgencyConsume=false;
 app.use((request,response,next)=>{
  const path=request.url.split('?',1)[0];
+ if(path==='/api/__android-agency-consume-hold'&&request.method==='POST'){holdNextAgencyConsume=true;return response.json({armed:true});}
+ if(path==='/api/sessions/agency-handoff/consume'&&request.method==='POST'&&holdNextAgencyConsume){
+  const end=response.end;
+  response.end=function(chunk,...args){
+   if(this.statusCode>=200&&this.statusCode<300&&chunk){
+    holdNextAgencyConsume=false;this.write(Buffer.from(chunk).subarray(0,5));
+    const timeout=setTimeout(()=>request.socket.destroy(),45000);request.socket.once('close',()=>clearTimeout(timeout));return this;
+   }
+   return end.call(this,chunk,...args);
+  };
+ }
  if(path==='/api/__android-agency-observations'&&request.method==='GET')return response.json({requests:agencyObservations});
  if(path==='/api/__android-agency-write-outage'&&request.method==='POST'){
   let raw='';request.on('data',chunk=>{raw+=chunk;if(raw.length>1024)request.destroy();});

@@ -3127,6 +3127,8 @@
   "platform.error.android.policyOnlineRequired": "Uppgraderingspolicyn kräver anslutning till installationen.",
   "platform.error.android.clientInvalid": "Ogiltig Android-applikationsversion.",
   "androidUpgrade.agencies": "Organisationer",
+  "android.handoffComplete": "Organisationsbytet är redo att slutföras.",
+  "android.finishHandoff": "Slutför organisationsbyte",
   "android.handoffInterrupted": "Bytet av organisation avbröts. Krypterat arbete finns kvar vid den ursprungliga installationen.",
   "android.cancelHandoff": "Återgå till ursprunglig installation"
 }

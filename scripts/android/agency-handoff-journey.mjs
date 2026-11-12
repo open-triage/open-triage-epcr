@@ -13,7 +13,7 @@ import {seedReportFixture} from './report-fixture.mjs';
 /** Two real trusted origins; only an explicit test-only reverse reaches localhost:443. */
 export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial,run,api}){
  const db=new DataSource({type:'postgres',url:fixture.databaseUrl});await db.initialize();
- const ca=await readFile(fixture.caPath),targetOrigin='https://localhost',targetAgency=randomUUID();
+ const ca=await readFile(fixture.caPath),targetOrigin='https://127.0.0.1',targetAgency=randomUUID();
  const reverseList=execFileSync(adb,['-s',serial,'reverse','--list'],{encoding:'utf8'});
  const previous=reverseList.split('\n').map(line=>line.trim().split(/\s+/)).find(parts=>parts.at(-2)==='tcp:443')?.at(-1);
  if(previous)assert(/^(tcp:[0-9]+|localabstract:[A-Za-z0-9_.-]+)$/.test(previous),'Unknown reverse mapping must remain untouched');
@@ -40,7 +40,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   const superuserPassword='AndroidFixtureAgencySuperuser123!';
   const superuser=await new AccountService(db).createSuperadmin({username:'android.agency.superuser',displayName:'Synthetic agency superuser',temporaryPassword:superuserPassword,operator:{operatorId:'android-test',osAccount:'synthetic',host:'disposable'}});
   await db.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null,password_changed_at=clock_timestamp() where user_id=$1',[superuser.userId]);
-  await db.query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Android agency target','localhost','UTC')",[targetAgency]);
+  await db.query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Android agency target','127.0.0.1','UTC')",[targetAgency]);
   const incident=randomUUID(),assignment=randomUUID(),callNumber='ANDROID-AGENCY-HANDOFF';
   await db.query("insert into clinical.incident(id,organization_id,operational_state,synthetic) values($1,$2,'assigned',true)",[incident,fixture.organizationId]);
   await db.query("insert into clinical.call_assignment(id,organization_id,unit_id,incident_id,call_number,dispatched_at,dispatch_reason,status,synthetic) values($1,$2,$3,$4,$5,clock_timestamp(),'Synthetic agency pending-work handoff','assigned',true)",[assignment,fixture.organizationId,fixture.unitId,incident,callNumber]);
@@ -49,7 +49,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   const issue=async()=>{const result=await api(fixture,ca,`admin/units/${fixture.unitId}/enrollment`,'POST',{},headers);assert.equal(result.status,201);return Buffer.from(JSON.stringify({version:1,...result.body,caPem:ca.toString('utf8')})).toString('base64');};
   reverse(['tcp:443','tcp:9444']);changedReverse=true;
   const wrongKey=join(directory,'agency-untrusted.key'),wrongCert=join(directory,'agency-untrusted.pem');
-  run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',wrongKey,'-out',wrongCert,'-days','2','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
+  run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',wrongKey,'-out',wrongCert,'-days','2','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1']);
   await startTarget({keyPath:wrongKey,certPath:wrongCert});
   run(adb,['-s',serial,'shell','pm','clear','org.opentriage.development']);
   const identity={username:fixture.clinician.username,password:fixture.clinicianPassword,superuser:superuser.username,superuserPassword};
@@ -71,13 +71,29 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');await live.closed;live=null;
   await instrument('cancel-interrupted',{retainedSha256,sourceCookieSha256});
   assert.deepEqual(await snapshot(),before,'Interruption/cancellation cannot mutate old clinical authority or deadline');
-  await instrument('switch',{retainedSha256});
+  assert.equal((await api(targetFixture,ca,'__android-agency-consume-hold','POST',{})).status,200);
+  live=startLiveInstrumentation(adb,rawArgs(argumentsFor('consume-interrupted')),{cwd:root,checkpoint:'INSTRUMENTATION_STATUS: agency_handoff_live=1'});
+  const interruptedConsume=await live.ready;assert.match(interruptedConsume,new RegExp('retained_sha256='+retainedSha256));
+  const sourceExpiresAt=/source_expires_at=([^\r\n]+)/.exec(interruptedConsume)?.[1];assert(sourceExpiresAt);
+  assert(execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim(),'Actual ambiguous consume must remain live at checkpoint');
+  run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');await live.closed;live=null;
+  await instrument('finish-completed',{retainedSha256,sourceCookieSha256,sourceExpiresAt});
+  assert.deepEqual(await snapshot(),before,'Lost consume body and completion recovery preserve original clinical authority/deadline');
+  const afterAmbiguous=await api(targetFixture,ca,'__android-agency-observations');
+  assert.equal(afterAmbiguous.body.requests.filter(row=>row.stage==='consume').length,1,'Ambiguous one-use consume is never replayed during recovery');
+  await instrument('return-source-superuser',{...identity,artifactBase64:await issue(),retainedSha256});
+  live=startLiveInstrumentation(adb,rawArgs(argumentsFor('prepare-completed')),{cwd:root,checkpoint:'INSTRUMENTATION_STATUS: agency_handoff_live=1'});
+  assert.match(await live.ready,new RegExp('retained_sha256='+retainedSha256));
+  assert(execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim(),'Actual promoted handoff must remain live before JavaScript delivery');
+  run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');await live.closed;live=null;
+  await instrument('finish-completed',{retainedSha256,sourceCookieSha256});
   assert.deepEqual(await snapshot(),before,'Cross-agency handoff cannot retag/synchronize old pending work or extend its deadline');
   run(adb,['-s',serial,'shell','am','force-stop','org.opentriage.development']);await instrument('restart-target',{retainedSha256});
   const observed=await api(targetFixture,ca,'__android-agency-observations');assert.equal(observed.status,200);
   assert(observed.body.requests.some(row=>row.stage==='challenge'&&!row.personal&&!row.installation&&!row.challenge));
   assert(observed.body.requests.some(row=>row.stage==='consume'&&!row.personal&&!row.installation&&row.challenge));
-  assert(observed.body.requests.every(row=>!row.installation&&!row.personal),'No source credential may be transferred to the target');
+  assert(observed.body.requests.filter(row=>['challenge','consume'].includes(row.stage)).every(row=>!row.installation&&!row.personal),'No source credential may be transferred to target bootstrap');
+  assert(observed.body.requests.filter(row=>row.stage==='current').every(row=>row.personal&&!row.installation&&!row.challenge),'Recovery uses only the target-issued personal cookie');
   const released=await api(fixture,ca,'__android-agency-write-outage','POST',{reportId,enabled:false});assert.equal(released.status,200);
   await instrument('return-source',{...identity,artifactBase64:await issue()});
   const recovered=await snapshot();assert.equal(recovered.first_name,'ANDROID-AGENCY-PENDING');

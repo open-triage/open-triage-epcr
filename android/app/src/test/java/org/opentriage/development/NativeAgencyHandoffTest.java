@@ -38,7 +38,7 @@ public class NativeAgencyHandoffTest {
         var pending=NativeAgencyHandoff.prepare(source,AGENCY,"csrf",request,target->assertEquals(TARGET,target.origin));
         assertEquals("prepared",pending.getString("phase"));assertEquals(2,calls.size());
         var result=NativeAgencyHandoff.finish(pending,source,request,target->assertEquals(TARGET,target.origin),value->phases.add(value.getString("phase")));
-        assertEquals(List.of("issuing","consuming"),phases);assertEquals(TARGET,result.connection().origin);assertEquals(AGENCY,result.session().getJSONObject("organization").getString("id"));assertEquals(4,calls.size());
+        assertEquals(List.of("issuing","consuming","consuming"),phases);assertEquals(TARGET,result.connection().origin);assertEquals(AGENCY,result.session().getJSONObject("organization").getString("id"));assertEquals(4,calls.size());
     }
     @Test public void managedConflictAndUntrustedTargetFailBeforeSourceIssuance() throws Exception {
         for(boolean managed:new boolean[]{true,false}) {
@@ -79,4 +79,40 @@ public class NativeAgencyHandoffTest {
             assertThrows(IllegalArgumentException.class,()->NativeAgencyHandoff.destination(value,TARGET,"consume",ID));
         assertThrows(IllegalArgumentException.class,()->NativeAgencyHandoff.destination(url(TARGET,"prepare",""),TARGET,"prepare",AGENCY));
     }
+    @Test public void completedSessionRemainsBoundToItsCookieOriginIdentityAndAgencyUntilAcknowledged() throws Exception {
+        var connection=source();var session=new JSONObject().put("csrfToken","sealed-csrf")
+            .put("user",new JSONObject().put("id",ID)).put("organization",new JSONObject().put("id",AGENCY));
+        var completed=NativeAgencyHandoff.completed(connection,session);
+        assertEquals("completed",completed.getString("phase"));assertFalse(completed.has("source"));assertFalse(completed.has("verifier"));
+        var current=new JSONObject(session.toString());current.remove("csrfToken");
+        assertEquals("sealed-csrf",NativeAgencyHandoff.recovered(completed,connection,current).getString("csrfToken"));
+        for(String changed:new String[]{"user","organization","origin","cookie"}) {
+            var copy=new JSONObject(completed.toString());var response=new JSONObject(session.toString());
+            if(changed.equals("origin"))copy.put("origin",TARGET);
+            else if(changed.equals("cookie"))copy.put("session","different-session");
+            else response.getJSONObject(changed).put("id","different-identity");
+            assertThrows(IllegalStateException.class,()->NativeAgencyHandoff.recovered(copy,connection,response));
+        }
+        connection.clearPersonalSession();
+        assertThrows(IllegalStateException.class,()->NativeAgencyHandoff.recovered(completed,connection,new JSONObject(session.toString())));
+    }
+
+    @Test public void interruptedConsumeOrRotationResumesOnlyWithADurableNewCookieWithoutReplay() throws Exception {
+        var original=source();var pending=new JSONObject().put("phase","rotating").put("session",NativeAgencyHandoff.sessionIdentity(original));
+        final JSONObject originalRotation=pending;
+        assertThrows(IllegalStateException.class,()->NativeAgencyHandoff.resumeDestination(originalRotation,original));
+        var saved=original.saved();var jar=saved.getJSONArray("cookies");for(int i=0;i<jar.length();i++)if(jar.getJSONObject(i).getString("name").equals("open_triage_session"))jar.getJSONObject(i).put("value","new-personal-cookie");
+        var rotated=TrustedConnection.restore(saved);
+        assertSame(rotated,NativeAgencyHandoff.resumeDestination(pending,rotated));
+        var target=new TrustedConnection(TARGET,original.caPem);
+        pending=new JSONObject().put("phase","consuming").put("target",target.saved());
+        final JSONObject withoutCookie=pending;
+        assertThrows(IllegalStateException.class,()->NativeAgencyHandoff.resumeDestination(withoutCookie,original));
+        var targetSaved=target.saved();targetSaved.getJSONArray("cookies").put(new JSONObject().put("name","open_triage_session").put("value","valid-target-cookie").put("expires",System.currentTimeMillis()+60000));
+        pending.put("target",targetSaved);
+        assertEquals(TARGET,NativeAgencyHandoff.resumeDestination(pending,original).origin);
+        pending.put("phase","issuing");final JSONObject noReplay=pending;
+        assertThrows(IllegalStateException.class,()->NativeAgencyHandoff.resumeDestination(noReplay,original));
+    }
+
 }

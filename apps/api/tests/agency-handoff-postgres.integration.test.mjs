@@ -21,8 +21,8 @@ integration('only agency-less installation superusers transfer sessions through 
   await query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Handoff source',$2,'UTC'),($3,'Handoff target',$4,'UTC')",[source,new URL(sourceOrigin).hostname,target,new URL(targetOrigin).hostname]);
   await query("insert into app_identity.app_user(id,organization_id,display_name,account_scope) values($1,null,'Global administrator','installation'),($2,$3,'Ordinary person','agency'),($4,$3,'Agency-bound administrator','agency')",[user,ordinary,source,boundAdmin]);
   await query("insert into app_identity.installation_superadmin(user_id,established_by_operator_id) values($1,'test')",[user]);
-  // Ordinary workspace authority requires a completed installation-owner setup.
-  await query("insert into app_identity.installation_owner(user_id,established_by_operator_id) values($1,'test')",[user]);
+  // Ordinary workspace authority requires owner setup; full preflight may already have it.
+  await query("insert into app_identity.installation_owner(user_id,established_by_operator_id) select $1,'test' where not exists(select 1 from app_identity.installation_owner)",[user]);
   await query("insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='administrator'",[source,boundAdmin,user]);
   await query("insert into app_identity.app_user(id,organization_id,display_name,account_scope) values($1,$2,'Destination person','agency')",[targetPerson,target]);
   await query("insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='clinician'",[source,ordinary,user]);
@@ -30,6 +30,10 @@ integration('only agency-less installation superusers transfer sessions through 
   await client.query('set local role open_triage_api_runtime');
   const directory=new AgencyDirectoryService(database),sessions=new ClinicianSessionService(database,directory),handoffs=new AgencyHandoffService(database,sessions,directory);
   const at=(origin,work)=>agencyRequest.run({origin},work);
+  // The Android reverse fixture must satisfy the real registered-host policy.
+  const loopback=randomUUID();await query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Native loopback fixture','127.0.0.1','UTC')",[loopback]);
+  assert.equal(await directory.allowsOrigin('https://127.0.0.1'),true);
+  assert.equal(await directory.allowsOrigin('https://127.0.0.1:9444'),false);
   const login=id=>at(sourceOrigin,()=>sessions.create({username:name+id.slice(0,8),password}));
   const sourceSession=await login(user);
   const original=await at(sourceOrigin,()=>sessions.getAuthenticated(sourceSession.sessionToken));
@@ -48,7 +52,11 @@ integration('only agency-less installation superusers transfer sessions through 
   await assert.rejects(at(sourceOrigin,()=>sessions.getAuthenticated(sourceSession.sessionToken)));
   await assert.rejects(at(targetOrigin,()=>handoffs.consume({transactionId:start.transactionId,code},randomBytes(32).toString('base64url'))));
   await assert.rejects(at(sourceOrigin,()=>handoffs.consume({transactionId:start.transactionId,code},challenge.correlation)));
-  const created=await at(targetOrigin,()=>handoffs.consume({transactionId:start.transactionId,code},challenge.correlation));
+  const chosenConsumeCsrf=randomBytes(32).toString('base64url');
+  await assert.rejects(at(targetOrigin,()=>handoffs.consume({transactionId:start.transactionId,code,replacementCsrf:sourceSession.session.csrfToken},challenge.correlation)));
+  await assert.rejects(at(targetOrigin,()=>handoffs.consume({transactionId:start.transactionId,code,replacementCsrf:'bad'},challenge.correlation)));
+  const created=await at(targetOrigin,()=>handoffs.consume({transactionId:start.transactionId,code,replacementCsrf:chosenConsumeCsrf},challenge.correlation));
+  assert.equal(created.session.csrfToken,chosenConsumeCsrf);await sessions.assertCsrf(created.sessionToken,chosenConsumeCsrf);
   assert.equal(created.session.user.id,user);assert.equal(created.session.organization.id,target);assert.equal(created.session.installationSuperadmin,true);assert.equal(created.session.homeOrganizationId,undefined);
   assert.equal(created.session.startedAt,sourceSession.session.startedAt);assert.equal(created.session.expiresAt,sourceSession.session.expiresAt);assert.equal(created.session.authenticationSource,'local');assert.equal(created.session.personallyAuthenticatedAt,original.personallyAuthenticatedAt);
   const [binding]=await query('select browser_origin,installation_registration_id from app_identity.app_session where token_sha256=$1',[digest(created.sessionToken)]);assert.deepEqual(binding,{browser_origin:targetOrigin,installation_registration_id:null});
@@ -72,7 +80,11 @@ integration('only agency-less installation superusers transfer sessions through 
   // Native and browser same-origin transitions share eligibility, but rotate
   // personal authority instead of allowing stale work to retain the old cookie.
   const beforeNative=await login(user), beforeNativeAuthenticated=await at(sourceOrigin,()=>sessions.getAuthenticated(beforeNative.sessionToken));
-  const rotated=await at(sourceOrigin,()=>handoffs.switch(beforeNative.sessionToken,{organizationId:target}));
+  const chosenSwitchCsrf=randomBytes(32).toString('base64url');
+  await assert.rejects(at(sourceOrigin,()=>handoffs.switch(beforeNative.sessionToken,{organizationId:target,replacementCsrf:beforeNative.session.csrfToken})));
+  await assert.rejects(at(sourceOrigin,()=>handoffs.switch(beforeNative.sessionToken,{organizationId:target,replacementCsrf:'bad'})));
+  const rotated=await at(sourceOrigin,()=>handoffs.switch(beforeNative.sessionToken,{organizationId:target,replacementCsrf:chosenSwitchCsrf}));
+  assert.equal(rotated.session.csrfToken,chosenSwitchCsrf);await sessions.assertCsrf(rotated.sessionToken,chosenSwitchCsrf);
   assert.equal(rotated.session.organization.id,target);assert.notEqual(rotated.sessionToken,beforeNative.sessionToken);assert.notEqual(rotated.session.csrfToken,beforeNative.session.csrfToken);
   assert.equal(rotated.session.startedAt,beforeNative.session.startedAt);assert.equal(rotated.session.expiresAt,beforeNative.session.expiresAt);
   assert.equal(rotated.session.personallyAuthenticatedAt,beforeNativeAuthenticated.personallyAuthenticatedAt);
@@ -112,6 +124,15 @@ integration('only agency-less installation superusers transfer sessions through 
    assert.equal(stored.user.id,user);assert.equal(stored.organization.id,target);assert.equal(stored.expiresAt,browserSession.session.expiresAt);
    const sourceCookies=await context.cookies(browserSource+'/api');assert(!sourceCookies.some(c=>c.name==='open_triage_session'));
    const cookies=await context.cookies(browserTarget+'/api');const cookie=cookies.find(c=>c.name==='open_triage_session');assert(cookie);assert(cookie.httpOnly);assert.equal(cookie.sameSite,'Strict');assert(!cookies.some(c=>c.name==='open_triage_agency_handoff'));
+   const fixedCsrf=randomBytes(32).toString('base64url');
+   const response=await page.evaluate(async({target,csrf,replacementCsrf})=>{const result=await fetch('/api/sessions/agency-handoff/switch',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({organizationId:target,replacementCsrf})});return{status:result.status,body:await result.json()};},{target,csrf:stored.csrfToken,replacementCsrf:fixedCsrf});
+   assert.equal(response.status,201);assert.equal(response.body.csrfToken,fixedCsrf);assert.equal(response.body.expiresAt,stored.expiresAt);
+   const beforeCheck=(await query('select count(*)::int n from app_identity.app_session'))[0].n;
+   for(const csrf of [null,'wrong-csrf',fixedCsrf]){
+    const current=await page.evaluate(async csrf=>{const result=await fetch('/api/sessions/agency-handoff/current',{method:'POST',headers:{'content-type':'application/json',...(csrf?{'x-csrf-token':csrf}:{})},body:'{}'});return{status:result.status,body:await result.json()};},csrf);
+    assert.equal(current.status,csrf===fixedCsrf?200:401);if(csrf===fixedCsrf){assert.equal(current.body.user.id,user);assert.equal(current.body.organization.id,target);assert.equal(current.body.expiresAt,stored.expiresAt);}
+   }
+   assert.equal((await query('select count(*)::int n from app_identity.app_session'))[0].n,beforeCheck,'Completion verification cannot create or replace a session');
   }finally{await browser?.close();if(proxy)await new Promise(r=>proxy.close(r));await app.close();}
  }finally{if(previousOrigin===undefined)delete process.env.WEB_ORIGIN;else process.env.WEB_ORIGIN=previousOrigin;await client.query('rollback');await client.end();}
 });

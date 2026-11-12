@@ -318,10 +318,10 @@ before native OIDC. For focused diagnosis only, build the API and APK and run
 complete default acceptance gate.
 
 The fixture uses two real HTTPS API processes sharing one disposable database.
-A registered `https://localhost` target is reached through a temporary ADB
+A registered `https://127.0.0.1` target is reached through a temporary ADB
 reverse from device port 443 to the existing host fixture port 9444, with the
-normal localhost certificate SAN and approved private CA. Packaged WebView
-assets remain at the separate virtual `https://localhost` asset origin: Java
+normal loopback IP certificate SAN and approved private CA. Packaged WebView
+assets remain at the virtual `https://localhost` asset origin: Java
 HTTPS requests reach the API, while WebView navigation reloads only bundled
 assets. The original reverse map is captured and restored exactly. No new
 container proxy, hostname verifier or trust bypass is installed.
@@ -332,7 +332,9 @@ cannot read that clinician's report, and performs the agency transition without
 acquiring its author/unit/agency or original device credential. The test exercises
 an untrusted target CA before source issuance, an actual live-process kill after
 private preparation, cancellation preserving a still-valid source login, a
-successful UI switch and bundled restart, explicit original pairing and original
+a consume response body interrupted after real target cookie headers without replay,
+a completed promotion held before JavaScript delivery with an orphan handoff marker,
+bundled restart and validated completion without sign-in, explicit original pairing and original
 clinician recovery at the fixed deadline, and managed-origin conflict before any
 target request. A bounded fixture-only 503 response holds the synthetic report's
 draft writes; all authentication, handoff and protected receipt/key requests use

@@ -147,3 +147,19 @@ closed. It remains in its original native-origin/agency scope, without retagging
 deleting or extending recovery. Returning to that scope and original authorized
 identity is required for ordinary recovery. An active/opening report still blocks
 switching until it has been closed through the shared workflow.
+
+Native switch and consume commands preselect a random replacement CSRF value in
+the encrypted journal. If response headers install a new personal cookie before
+the body is interrupted, that jar is retained without replaying the one-use
+consume. A read-only `POST /api/sessions/agency-handoff/current` keeps the normal
+cookie CSRF guard and current server authorization; it verifies the sealed value
+before returning current public session metadata. Missing/incorrect CSRF never
+turns this into a login or recovery bypass.
+
+Completed target promotion and cancellation back to a still-valid source keep a
+sealed completion journal. JavaScript stores the validated public metadata inside
+the typed `handoff` cross-tab barrier, waits for its matching marker to clear, and
+only then acknowledges native completion. A restart before acknowledgement
+exposes **Finish agency switch**, keeps clinical work locked, and validates the
+private cookie before restoring metadata. Original author, unit, agency and
+recovery deadline remain attached to retained encrypted reports.

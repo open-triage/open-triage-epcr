@@ -37,9 +37,9 @@ export function participateInInstallationTransition(endContext: () => Promise<vo
 }
 
 /** Common boundary for local and future federated login: no personal evidence is reused. */
-export async function transitionInstallation<T>(replaceBinding: () => Promise<T>): Promise<T> {
+export async function transitionInstallation<T>(replaceBinding: () => Promise<T>, purpose: "enrollment"|"logout"|"handoff" = "logout"): Promise<T> {
  if(!navigator.locks) throw new Error("Secure cross-tab coordination is required");
- const generation=crypto.randomUUID();
+ const generation=`${purpose}:${crypto.randomUUID()}`;
  window.localStorage.setItem(INSTALLATION_GENERATION_KEY,generation);
  window.localStorage.setItem(INSTALLATION_TRANSITION_KEY,generation);
  window.dispatchEvent(new Event(eventName));
@@ -52,7 +52,9 @@ export async function transitionInstallation<T>(replaceBinding: () => Promise<T>
    return replaceBinding();
   });
  } finally {
-  window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY);
-  window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
+  if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===generation&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation){
+   window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY);
+   window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
+  }
  }
 }

@@ -5,8 +5,12 @@ import {apiRequestUrl,browserRequestInit} from './browser-api';
 import {platformRequestError} from './platform-errors';
 import {transitionInstallation} from './installation-transition';
 import {storeClinicianSession} from './clinician-session';
+import {clearFeedbackTelemetry} from './feedback-telemetry';
+import {INSTALLATION_CONFIGURATION_STORAGE_KEY} from './installation-settings';
 import {resolveMessage} from './localization';
 const intentKey='open-triage.agency-handoff.intent.v1';
+export function clearAgencyHandoffCaches(){clearFeedbackTelemetry();window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);}
+export function storeAgencyHandoffSession(session:AuthenticatedSession){clearAgencyHandoffCaches();storeClinicianSession(window.localStorage,session);}
 const generation=()=>window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
 const changed=()=>new Error(resolveMessage(document.documentElement.lang,'platform.error.auth.agencyHandoffInvalid'));
 function assertGeneration(expected:string|null,inside=false){if(generation()!==expected||!inside&&window.localStorage.getItem(INSTALLATION_TRANSITION_KEY))throw changed();}
@@ -30,13 +34,16 @@ export async function startAgencyHandoff(organizationId:string,csrf:string,origi
   if(!prepared.crossHost)return false;
   let owned=started;
   try {
-   await transitionInstallation(async()=>{
+   const completed=await transitionInstallation(async()=>{
     owned=generation();
     const result=await AndroidConnection.confirmAgencyHandoff({connectionContext:expected});
     assertGeneration(owned,true);
     if(expected!==nativeConnectionContext()&&result.connectionContext!==nativeConnectionContext())throw changed();
-    configureNativeConnection(result);storeClinicianSession(window.localStorage,result.session);
-   });
+    storeAgencyHandoffSession(result.session);return result;
+   },'handoff');
+   assertGeneration(owned);
+   const acknowledged=await AndroidConnection.acknowledgeAgencyHandoff({connectionContext:completed.connectionContext});
+   assertGeneration(owned);configureNativeConnection(acknowledged);
   } catch(error) {
    if(original&&owned===generation()&&expected===nativeConnectionContext())storeClinicianSession(window.localStorage,original);
    throw nativeFailure(error);
@@ -47,7 +54,7 @@ export async function startAgencyHandoff(organizationId:string,csrf:string,origi
  const result=await request<{transactionId?:string;targetUrl:string|null;targetOrigin?:string}>('start',{organizationId,verifierHash:await hash(verifier)},csrf);
  if(!result.targetUrl)return false;
  window.sessionStorage.setItem(intentKey,JSON.stringify({transactionId:result.transactionId,verifier,csrf,targetOrigin:result.targetOrigin,expiresAt:Date.now()+90000}));
- await transitionInstallation(async()=>{});
+ await transitionInstallation(async()=>{},'handoff');
  window.location.assign(result.targetUrl);return true;
 }
 type Resume={redirecting:true}|{session:AuthenticatedSession}|null;
@@ -65,7 +72,7 @@ export function resumeAgencyHandoff():Promise<Resume>{
    const result=await request<{sourceUrl:string}>('challenge',{transactionId});
    // Lock every target-host workspace before leaving its page. This preserves
    // opaque pending work while removing the previous user's in-memory keys.
-   await transitionInstallation(async()=>{});
+   await transitionInstallation(async()=>{},'handoff');
    window.location.assign(result.sourceUrl);return {redirecting:true} as const;
   }
   if(stage==='issue'){
@@ -77,8 +84,8 @@ export function resumeAgencyHandoff():Promise<Resume>{
    window.sessionStorage.removeItem(intentKey);window.location.assign(result.targetUrl);return {redirecting:true} as const;
   }
   if(stage==='consume'){
-   const session=await transitionInstallation(()=>request<AuthenticatedSession>('consume',{transactionId,code:params.get('code')??''}));
-   storeClinicianSession(window.localStorage,session);return {session};
+   const session=await transitionInstallation(()=>request<AuthenticatedSession>('consume',{transactionId,code:params.get('code')??''}),'handoff');
+   storeAgencyHandoffSession(session);return {session};
   }
   throw fail();
  })();return pending;
@@ -88,13 +95,16 @@ export function resumeAgencyHandoff():Promise<Resume>{
 export async function switchAndroidAgency(organizationId:string,csrf:string,original:AuthenticatedSession):Promise<void>{
  const expected=nativeConnectionContext();let owned=generation();
  try {
-  await transitionInstallation(async()=>{
+  const completed=await transitionInstallation(async()=>{
    owned=generation();
    const result=await AndroidConnection.switchAgency({organizationId,csrfToken:csrf,connectionContext:expected});
    assertGeneration(owned,true);
    if(expected!==nativeConnectionContext()&&result.connectionContext!==nativeConnectionContext())throw changed();
-   configureNativeConnection(result);storeClinicianSession(window.localStorage,result.session);
-  });
+   storeAgencyHandoffSession(result.session);return result;
+  },'handoff');
+  assertGeneration(owned);
+  const acknowledged=await AndroidConnection.acknowledgeAgencyHandoff({connectionContext:completed.connectionContext});
+  assertGeneration(owned);configureNativeConnection(acknowledged);
  } catch(error) {
   if(owned===generation()&&expected===nativeConnectionContext())storeClinicianSession(window.localStorage,original);
   throw nativeFailure(error);
