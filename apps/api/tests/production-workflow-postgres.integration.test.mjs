@@ -1,3 +1,4 @@
+import {androidUpgradePolicyFixture} from './fixtures/android-upgrade-policy.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -102,7 +103,7 @@ integration('upgrade inventories conflicts read-only and explicit rollout preser
   assert.deepEqual({...upgraded,audit:upgraded.audit.map(({audit_id,...evidence})=>evidence)},original);
   await db.initialize();const origin='https://rollout.example',directory=new AgencyDirectoryService(db);
   const agencies={allowsOrigin:async candidate=>candidate===origin,forLogin:async()=>({id:group,name:'Legacy root'}),accessible:(...args)=>directory.accessible(...args)};
-  const sessions=new ClinicianSessionService(db,agencies),schedules=new SchedulesService(db,sessions),workflow=new ProductionWorkflowService(db,sessions),calls=new AssignedCallsService(db,sessions,schedules),reports=new DraftReportService(db,sessions,schedules),enrollment=new InstallationEnrollmentService(db,sessions,agencies);
+  const sessions=new ClinicianSessionService(db,agencies),schedules=new SchedulesService(db,sessions),workflow=new ProductionWorkflowService(db,sessions),calls=new AssignedCallsService(db,sessions,schedules, androidUpgradePolicyFixture(db,sessions)),reports=new DraftReportService(db,sessions,schedules, androidUpgradePolicyFixture(db,sessions)),enrollment=new InstallationEnrollmentService(db,sessions,agencies);
   const run=(work,credential)=>agencyRequest.run({origin,organizationId:group,installationCredential:credential},work);
   const login=credential=>run(()=>sessions.create({username:'rollout-clinician',password}),credential);
   const unpaired=await login(),token=unpaired.sessionToken;

@@ -10,6 +10,7 @@ export type AndroidConnectionState = { configured: boolean; origin?: string; man
 type ConnectionPlugin = {
   openPdf(options: { operationId: string; path: string; headers: Record<string,string>; connectionContext: string; action: "view" | "save"; language: "en" | "sv"; accent: string }): Promise<{opened:boolean;status:number;code?:string}>;
   closePdf(options: { operationId: string }): Promise<void>;
+  version(): Promise<{versionCode: number}>;
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;

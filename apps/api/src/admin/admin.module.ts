@@ -45,6 +45,6 @@ import { AndroidReleaseService } from "./android-release.service.js";
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
     AgencySettingsService, OrganizationsService],
-  exports: [AgencySettingsService]
+  exports: [AgencySettingsService, AndroidUpgradePolicyService]
 })
 export class AdminModule {}

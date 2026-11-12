@@ -118,3 +118,65 @@ policy row lock. HTTP coverage checks both native enrollment authority and norma
 session CSRF. `npm run android:build` validates the instrumented policy check;
 `npm run android:test -- --skip-build` exercises the pre-login policy read through
 the actual native HTTPS/cookie boundary during manual pairing acceptance.
+
+## New-work enforcement and retained documentation
+
+Current Android packages send `X-OpenTriage-Android-Version` from the installed
+`PackageInfo.versionCode` through the native transport. JavaScript cannot supply
+or override this header. Future packages require `android-upgrade-gate-v1` as well
+as the policy capability, so a server that only displays policy cannot appear to
+provide authoritative enforcement. This declaration is compatibility metadata,
+not binary attestation or personal/device authorization.
+
+The server evaluates policy before committing a new dispatched report, standalone
+incident/report, or synthetic assignment. It verifies replacement bytes before
+opening the clinical transaction, locks the shared policy before person/device/
+session rows, and samples the server clock when actually asserting new work.
+A concurrent policy save cannot slip between policy evaluation and report creation.
+No grace value restores unsupported formats. Unknown or malformed declared
+versions receive `426 android.upgradeRequired`. Missing version metadata on an
+installation with a native enrollment-attempt receipt receives the same outcome,
+including when only its previously bound personal session accompanies the request.
+
+Immutable candidates 1 and 2 predate version declarations and native enrollment
+attempt receipts. Android's legacy `HttpURLConnection` agent is boundedly recognized
+as `Dalvik/... (Linux; U; Android ...)`, following [AOSP RuntimeInit](https://android.googlesource.com/platform/frameworks/base/+/android12-release/core/java/com/android/internal/os/RuntimeInit.java); without newer native provenance or an
+explicit declaration it is conservatively evaluated as the exact approved
+`android-candidate-1-0.1.0-rc.1` baseline. The server never assumes latest/current
+for an unreported version. Missing or incompatible baseline fails closed.
+Retiring candidate 1 therefore retires unversioned legacy APKs too. Ordinary
+browser user agents and browser enrollment receipts retain their browser contract.
+These compatibility signals never grant authority, and cannot attest to a binary.
+
+Retirement alone does not lock or reset the current report. Authorized owned
+report reopening, already-open call retries, idempotent create-command replay,
+saving, signing and eligible recovery keep their existing authorization and
+expiry rules. Additional documentation within an already owned incident continues
+under its pinned configuration. New independent incidents remain gated. The
+localized notice does not replace the mounted clinical workspace or rewrite its
+encrypted pending record. When online, it uses the authorized server evaluation
+and links to the approved replacement. An unavailable policy check blocks new-work
+controls while existing documentation remains usable.
+
+The current upgrade acceptance runner registers the exact new B descriptor and
+verified B bytes only through its synthetic API's explicit test providers. It
+starts with no retirement, prepares real pending work on immutable A, then retires
+A and proves its actual legacy transport refuses new work. It stages B through
+Android Package Installer and abandons that session before commit, proving A
+remains installed. The ordinary `install -r` upgrade then retains the original UID,
+Keystore/pairing/CA/managed settings and exact pending ciphertext through offline
+restart and authorized recovery. The final installed B must successfully start
+new work. These additional assertions are required before publishing a package
+that declares the upgrade-gate capability. No synthetic catalog or retirement is
+written to the production catalog, and no published candidate is modified.
+
+Unsupported retained envelope metadata or an authenticated future payload produces
+an explicit localized recovery-material notice. The original encrypted bytes stay
+unchanged and the report remains read-only; the runtime does not initialize a new
+key/envelope or replace that material with an empty current-schema record. Normal
+online recovery remains available for supported records under its original policy.
+
+Policy polling rechecks native foreground, cancellation and installation generation
+after the asynchronous installed-version read, immediately before HTTP dispatch.
+A delayed native callback cannot start a new request after the app pauses or its
+installation/session context changes.

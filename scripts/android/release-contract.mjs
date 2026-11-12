@@ -26,6 +26,7 @@ export function verifyApkMetadata(metadata, signature, expected) {
   assert(!/Signer #2 certificate/.test(signature), 'Unexpected extra APK signer');
 }
 export const requiredUpgradeAssertions = Object.freeze(['in-place-install-r', 'downgrade-rejected', 'same-uid', 'keystore-connection-ca-enrollment', 'managed-policy', 'presentation-preference', 'exact-pending-ciphertext', 'offline-no-plaintext', 'other-clinician-denied', 'original-clinician-recovery-sync', 'pinned-versions-and-deadline', 'packaged-ui-no-service-worker', 'remote-web-deployment-keeps-installed-ui']);
+export const requiredUpgradeGateAssertions = Object.freeze(['retired-old-apk-new-work-refused', 'interrupted-staging-preserves-old-apk', 'replacement-new-work-authorized']);
 export function validatePublicationEvidence(descriptor, evidence, preflight, identity) {
   assert.equal(descriptor.applicationId, identity.applicationId); assert.equal(descriptor.certificateSha256, identity.certificateSha256);
   assert.match(descriptor.sourceCommit, /^[a-f0-9]{40}$/);
@@ -36,5 +37,6 @@ export function validatePublicationEvidence(descriptor, evidence, preflight, ide
   assert.equal(evidence.releaseB.sourceCommit, descriptor.sourceCommit, 'Evidence must cover the release source');
   assert(Number(evidence.androidApi) >= descriptor.minAndroidApi, 'Supported Android runtime acceptance is required');
   for (const assertion of requiredUpgradeAssertions) assert(evidence.assertions?.includes(assertion), `Missing upgrade acceptance: ${assertion}`);
+  if (descriptor.compatibility?.requiredCapabilities?.includes('android-upgrade-gate-v1')) for (const assertion of requiredUpgradeGateAssertions) assert(evidence.assertions?.includes(assertion), `Missing upgrade gate acceptance: ${assertion}`);
   assert.equal(preflight.status, 'passed'); assert.equal(preflight.command, 'npm run check:ci'); assert.equal(preflight.sourceCommit, descriptor.sourceCommit);
 }

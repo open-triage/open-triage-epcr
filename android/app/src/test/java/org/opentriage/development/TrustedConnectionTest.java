@@ -17,6 +17,24 @@ public class TrustedConnectionTest {
     private JSONObject artifact() throws Exception {
         return new JSONObject().put("version", 1).put("origin", "https://localhost").put("caPem", "").put("token", "a".repeat(43)).put("expiresAt", Instant.now().plusSeconds(250).toString());
     }
+    @Test public void installationOnlyPreservesTrustAndRegistrationExpiryWithoutMutatingTheOriginalLogin() throws Exception {
+        long now=System.currentTimeMillis(),expires=now+60000;
+        JSONObject saved=new TrustedConnection("https://localhost",ca()).saved().put("cookies",new org.json.JSONArray()
+            .put(new JSONObject().put("name","open_triage_installation").put("value","I".repeat(43)).put("expires",expires))
+            .put(new JSONObject().put("name","open_triage_session").put("value","P".repeat(43)).put("expires",expires)));
+        var original=TrustedConnection.restore(saved);var only=original.installationOnly(now);var retained=only.saved();
+        assertEquals(original.origin,only.origin);assertEquals(original.caPem,only.caPem);
+        var cookies=retained.getJSONArray("cookies");assertEquals(1,cookies.length());
+        assertEquals("open_triage_installation",cookies.getJSONObject(0).getString("name"));
+        assertEquals("I".repeat(43),cookies.getJSONObject(0).getString("value"));assertEquals(expires,cookies.getJSONObject(0).getLong("expires"));
+        assertEquals(2,original.saved().getJSONArray("cookies").length());assertFalse(retained.toString().contains("P".repeat(43)));
+        var factory=TrustedConnection.class.getDeclaredField("socketFactory");factory.setAccessible(true);
+        assertSame("Stripping login never creates or revalidates trust",factory.get(original),factory.get(only));
+        var expired=original.installationOnly(expires);
+        assertEquals("An expired installation cookie cannot be renewed",0,expired.saved().getJSONArray("cookies").length());
+        assertSame(factory.get(original),factory.get(expired));
+        assertEquals("Copies cannot mutate the existing connection",2,original.saved().getJSONArray("cookies").length());
+    }
     @Test public void rejectsMalformedExpiredAndOversizedImports() throws Exception {
         assertEquals(1, TrustedConnection.artifact(artifact().toString(), System.currentTimeMillis()).getInt("version"));
         for (JSONObject bad : new JSONObject[]{artifact().put("version", 2), artifact().put("version", 1.5), artifact().put("privateKey", "secret"), artifact().put("token", "bad"), artifact().put("expiresAt", Instant.now().minusSeconds(1).toString())}) {
@@ -54,6 +72,7 @@ public class TrustedConnectionTest {
         assertEquals(saved.getString("caPem"), retained.caPem);
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.request("/api/current", "GET", new JSONObject(), null));
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.requestBytes("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.requestBytes("/api/current", "GET", new JSONObject(), null, 1L));
         assertThrows(java.security.cert.CertificateExpiredException.class, () -> new TrustedConnection("https://localhost", ca(), clock::get));
         assertThrows(Exception.class, () -> TrustedConnection.restore(saved.put("caPem", "broken public trust"), clock::get));
     }
@@ -74,11 +93,12 @@ public class TrustedConnectionTest {
                 try (var socket = server.accept()) {
                     socket.setSoTimeout(3000);
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
-                    String path = reader.readLine().split(" ")[1], originHeader = "null", cookieHeader = "null", jobHeader = "null", conditionalHeader = "null", line;
+                    String path = reader.readLine().split(" ")[1], originHeader = "null", cookieHeader = "null", jobHeader = "null", conditionalHeader = "null", versionHeader = "null", line;
                     while ((line = reader.readLine()) != null && !line.isEmpty()) {
                         if (line.toLowerCase().startsWith("origin: ")) originHeader = line.substring(8);
                         if (line.toLowerCase().startsWith("cookie: ")) cookieHeader = line.substring(8);
                         if (line.toLowerCase().startsWith("x-job-confirmation: ")) jobHeader = line.substring(20);
+                        if (line.toLowerCase().startsWith("x-opentriage-android-version: ")) versionHeader = line.substring(line.indexOf(':') + 1).trim();
                         if (line.toLowerCase().startsWith("if-none-match: ")) conditionalHeader = line.substring(15);
                     }
                     String extra = "", status = "200 OK";
@@ -101,7 +121,7 @@ public class TrustedConnectionTest {
                         extra = "ETag: \"revision-1\"\r\n";
                         if (conditionalHeader.equals("\"revision-1\"")) status = "304 Not Modified";
                     }
-                    byte[] body = (path.endsWith("confirmed-job") ? jobHeader : originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
+                    byte[] body = (path.endsWith("native-version") ? versionHeader : path.endsWith("confirmed-job") ? jobHeader : originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
                     if (status.startsWith("304")) body = new byte[0];
                     String head = "HTTP/1.1 " + status + "\r\n" + extra + "Content-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
                     socket.getOutputStream().write(head.getBytes(StandardCharsets.US_ASCII)); socket.getOutputStream().write(body); socket.getOutputStream().flush();
@@ -113,6 +133,9 @@ public class TrustedConnectionTest {
             String origin = "https://localhost:" + server.getLocalPort();
             var first = new TrustedConnection(origin, ca());
             assertEquals(origin + "|null", first.request("/api/pair", "GET", new JSONObject(), null).body());
+            assertEquals("16", first.requestBytes("/api/native-version", "GET", new JSONObject(), null, 16L).body());
+            assertEquals("null", first.request("/api/native-version", "GET", new JSONObject(), null).body());
+            assertThrows(Exception.class, () -> first.requestBytes("/api/native-version", "GET", new JSONObject(), null, 0L));
             assertEquals("a".repeat(43), first.request("/api/confirmed-job", "POST", new JSONObject().put("X-Job-Confirmation", "a".repeat(43)), "{}").body());
             assertEquals("\"revision-1\"", first.request("/api/conditional", "GET", new JSONObject(), null).headers().getString("ETag"));
             var unchanged = first.request("/api/conditional", "GET", new JSONObject().put("If-None-Match", "\"revision-1\""), null);
@@ -147,7 +170,7 @@ public class TrustedConnectionTest {
             assertFalse(installationCleared.contains("open_triage_installation="));
             assertTrue("Installation retirement does not silently replace a different cookie", installationCleared.contains("current-secret"));
             assertThrows(Exception.class, () -> restored.request("/api/redirect", "GET", new JSONObject(), null));
-            for (String forbidden : new String[]{"Origin", "Cookie", "Authorization"}) {
+            for (String forbidden : new String[]{"Origin", "Cookie", "Authorization", "X-OpenTriage-Android-Version"}) {
                 assertThrows(Exception.class, () -> restored.request("/api/current", "GET", new JSONObject().put(forbidden, "unapproved"), null));
             }
             assertThrows(Exception.class, () -> new TrustedConnection(origin, "").request("/api/current", "GET", new JSONObject(), null));

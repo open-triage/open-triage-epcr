@@ -1,3 +1,5 @@
+import { AssignedCallsService } from "../dist/calls/assigned-calls.service.js";
+import { AndroidUpgradePolicyService } from "../dist/admin/android-upgrade-policy.service.js";
 import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -1266,6 +1268,8 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Publisher')", [userId, organizationId]);
 
   const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
+  assert.equal(app.get(AssignedCallsService).upgrades, app.get(AndroidUpgradePolicyService), "Production call creation must receive the authoritative upgrade policy");
+  assert.equal(app.get(DraftReportService).upgrades, app.get(AndroidUpgradePolicyService), "Production standalone creation must receive the same authoritative upgrade policy");
   app.get(ClinicianSessionService).requireCapability = async () => ({
     user: { id: userId, displayName: "Publisher" }, organization: { id: organizationId, name: "Publication API" },
     startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
@@ -1478,6 +1482,8 @@ integrationTest("the idempotent demo installation authenticates with its exact r
   });
 
   const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
+  assert.equal(app.get(AssignedCallsService).upgrades, app.get(AndroidUpgradePolicyService), "Production call creation must receive the authoritative upgrade policy");
+  assert.equal(app.get(DraftReportService).upgrades, app.get(AndroidUpgradePolicyService), "Production standalone creation must receive the same authoritative upgrade policy");
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -1644,6 +1650,8 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     values ($1,$2,$3,$4,'Draft API fixture')`, [organizationId, validationVersionId, formVersionId, userId]);
 
   const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
+  assert.equal(app.get(AssignedCallsService).upgrades, app.get(AndroidUpgradePolicyService), "Production call creation must receive the authoritative upgrade policy");
+  assert.equal(app.get(DraftReportService).upgrades, app.get(AndroidUpgradePolicyService), "Production standalone creation must receive the same authoritative upgrade policy");
   const integrationAccessToken = randomBytes(32).toString("base64url");
   const clinicianSessions = app.get(ClinicianSessionService);
   clinicianSessions.get = (token) => {

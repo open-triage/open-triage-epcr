@@ -1,9 +1,10 @@
+import { AndroidUpgradePolicyService, prepareAndroidNewWork } from "../admin/android-upgrade-policy.service.js";
 import {validateDestinationProvenance} from "../hospital/destination-provenance.js";
 import { recordPatientAccess } from "./patient-access-audit.js";
 import {
   ConflictException,
   GoneException,
-  Injectable,
+  Injectable, Optional,
   NotFoundException,
   UnprocessableEntityException
 } from "@nestjs/common";
@@ -178,11 +179,13 @@ export class DraftReportService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly sessions: ClinicianSessionService,
-    private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions)
+    private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions),
+    @Optional() private readonly upgrades?: AndroidUpgradePolicyService
   ) {}
 
   async create(accessToken: string, input: unknown, confirmationToken?: string): Promise<DraftReportResult> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
+    const upgrade = await prepareAndroidNewWork(this.upgrades, accessToken);
     let command: CreateDraftReportCommand;
     try {
       command = validateCreateDraftReportCommand(input);
@@ -199,6 +202,7 @@ export class DraftReportService {
     const digest = commandSha256(command);
     try {
       return await retryTransaction(() => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        const assertUpgrade = await upgrade(manager);
         // Acquire person/device/unit/session authority before command and incident rows.
         // Nonready access is asserted only for new production work, keeping existing work available.
         const jobAccess = await productionJobAccess(manager, accessToken, session, this.schedules,
@@ -277,6 +281,7 @@ export class DraftReportService {
           throw new UnprocessableEntityException("No effective agency demographic version matches the active form catalog");
         }
 
+        if (!parent) await assertUpgrade();
         await manager.query(`
           insert into clinical.incident (id, organization_id, synthetic)
           values ($1, $2, $3) on conflict (id) do nothing
