@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
-import {upgradePreparationProfile,upgradePreparationReceipt} from '../scripts/android/upgrade-policy-fixture.mjs';
+import {upgradePreparationProfile,upgradePreparationReceipt,decodeUpgradePreparationReceipt} from '../scripts/android/upgrade-policy-fixture.mjs';
 import {assertUpgradeHarnessSource} from '../scripts/android/upgrade-harness-source.mjs';
 test('historical preparation binds the complete immutable published A1 descriptor',()=>{
  const a=structuredClone(catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
@@ -13,6 +13,17 @@ test('historical preparation binds the complete immutable published A1 descripto
  for(const field of ['sourceCommit','apkSha256','certificateSha256'])assert.throws(()=>upgradePreparationProfile({...a,[field]:'a'.repeat(64)}),/exact immutable/);
  assert.throws(()=>upgradePreparationProfile({...a,applicationId:'org.attacker.app'}),/exact immutable/);
  for(const versionCode of [2,3,99])assert.equal(upgradePreparationProfile({...a,versionCode}),'current');
+});
+test('historical receipt survives the actual adb-shell argument parsing category without shell syntax',()=>{
+ const a=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ const b={...catalog.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3};
+ const value=upgradePreparationReceipt(a,b);
+ assert.match(value,/^[A-Za-z0-9_-]+$/,'Receipt must use only safe bare shell argument characters');
+ const result=spawnSync('/bin/sh',['-c',`printf '%s' ${value}`],{encoding:'utf8'});
+ assert.equal(result.error,undefined);assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,value);
+ const fields=decodeUpgradePreparationReceipt(value);assert.equal(fields.length,8);
+ for(const invalid of [value+'=',value+'|sh','a/b',Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify(fields)+' ').toString('base64url')])assert.throws(()=>decodeUpgradePreparationReceipt(invalid));
+ for(let index=0;index<8;index++){const changed=[...fields];changed[index]='invalid';assert.throws(()=>decodeUpgradePreparationReceipt(Buffer.from(JSON.stringify(changed)).toString('base64url')));}
 });
 test('separate harness provenance rejects all production and unknown path changes',()=>{
  const artifactSource='a'.repeat(40),testSource='b'.repeat(40);
@@ -30,6 +41,9 @@ test('actual Java profile selector rejects every non-A1/current/production/prepa
  const origin=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
  const replacement={...catalog.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3,sourceCommit:'c1e426a12d9dcc8541ec2090fb787fa6972b9dd1'};
  const receipt=upgradePreparationReceipt(origin,replacement);
+ const receiptFields=decodeUpgradePreparationReceipt(receipt),invalidReceipts=receiptFields.map((_,index)=>{const changed=[...receiptFields];changed[index]='invalid';return Buffer.from(JSON.stringify(changed)).toString('base64url');});
+ invalidReceipts.push(receipt+'=',receipt+'|sh','a/b',Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify(receiptFields)+' ').toString('base64url'));
+ const invalidJava=invalidReceipts.map(value=>JSON.stringify(value)).join(',');
  const source=`package org.opentriage.development;
  public class ProfileBoundaries {
   static void denied(String profile,String app,long code,String phase,boolean upgrade) {
@@ -49,7 +63,7 @@ test('actual Java profile selector rejects every non-A1/current/production/prepa
    if(!HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"recover",true))throw new AssertionError();
    if(!HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"post-upgrade-photo",true))throw new AssertionError();
    if(HistoricalUpgradePreparation.recovered("current","","","org.opentriage.development",1,"recover",false))throw new AssertionError();
-   for(int i=0;i<8;i++) {String[] parts=receipt.split("\\\\|",-1);parts[i]="invalid";String bad=String.join("|",parts);expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",bad,bad,"org.opentriage.android",3,"recover",true));}
+   for(String bad:new String[]{${invalidJava}})expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",bad,bad,"org.opentriage.android",3,"recover",true));
    expectDenied(()->HistoricalUpgradePreparation.prepareReceipt("current",receipt,"org.opentriage.android",1,"prepare",true));
    expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1","",receipt,"org.opentriage.android",3,"recover",true));
    expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",1,"recover",true));

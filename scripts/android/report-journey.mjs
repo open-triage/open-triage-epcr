@@ -1,3 +1,4 @@
+import {decodeUpgradePreparationReceipt} from './upgrade-policy-fixture.mjs';
 import { captureAndroidFailure } from './diagnostics.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
@@ -7,6 +8,7 @@ import { seedReportFixture } from './report-fixture.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
 export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, preparationProfile = 'current', upgradeReceipt = '', hooks = {} }) {
+  if(upgradeReceipt)decodeUpgradePreparationReceipt(upgradeReceipt);else assert.equal(preparationProfile,'current','Historical profile requires its validated receipt before ADB');
   const report = await seedReportFixture(root, fixture, run); let ca = await readFile(fixture.caPath);
   const administrator = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
   assert.equal(administrator.status, 201);

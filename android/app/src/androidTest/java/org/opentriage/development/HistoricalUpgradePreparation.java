@@ -12,7 +12,13 @@ final class HistoricalUpgradePreparation {
         return true;
     }
     private static String[] receipt(String value) {
-        String[] parts=value.split("\\|",-1);
+        if(!value.matches("[A-Za-z0-9_-]+"))throw new IllegalArgumentException("Receipt must be shell-safe base64url");
+        byte[] bytes=java.util.Base64.getUrlDecoder().decode(value);
+        if(!java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes).equals(value))throw new IllegalArgumentException("Noncanonical receipt encoding");
+        String json=new String(bytes,java.nio.charset.StandardCharsets.UTF_8);
+        // Canonical JSON array of eight bounded ASCII strings; no permissive token splitting.
+        if(!json.matches("\\[\"[a-z0-9-]+\"(?:,\"[a-z0-9]+\"){7}\\]"))throw new IllegalArgumentException("Invalid receipt JSON");
+        String[] parts=json.substring(2,json.length()-2).split("\",\"",-1);
         if(parts.length!=8 || !PROFILE.equals(parts[0])
                 || !"8a6b1dddabeccf1dde1231e0c1cc1ac50ec69fae13e374636f5fcf4e198a9cbb".equals(parts[1])
                 || !"bbb55c5237d4900f450ebf9dca996370254c4704".equals(parts[2])

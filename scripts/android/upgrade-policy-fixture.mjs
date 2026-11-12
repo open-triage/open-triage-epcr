@@ -36,6 +36,18 @@ export function upgradePreparationProfile(descriptor) {
  return 'historical-a1-text-v1';
 }
 
+export function decodeUpgradePreparationReceipt(value) {
+ assert.equal(typeof value,'string');assert.match(value,/^[A-Za-z0-9_-]+$/,'Receipt must be one shell-safe base64url argument');
+ const decoded=Buffer.from(value,'base64url');assert.equal(decoded.toString('base64url'),value,'Receipt encoding must be canonical');
+ const fields=JSON.parse(decoded.toString('utf8'));
+ const a=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ assert(Array.isArray(fields)&&fields.length===8&&fields.every(field=>typeof field==='string'));
+ assert.deepEqual(fields.slice(0,5),['historical-a1-text-v1',createHash('sha256').update(JSON.stringify(a)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256]);
+ assert.match(fields[5],/^[1-9][0-9]{0,9}$/);assert(Number(fields[5])>1&&Number(fields[5])<=2100000000);
+ assert.match(fields[6],/^[a-f0-9]{40}$/);assert.match(fields[7],/^[a-f0-9]{64}$/);
+ assert.equal(JSON.stringify(fields),decoded.toString('utf8'),'Receipt JSON must be canonical');
+ return fields;
+}
 export function upgradePreparationReceipt(a,b) {
  const profile=upgradePreparationProfile(a);
  if(profile==='current')return '';
@@ -43,5 +55,6 @@ export function upgradePreparationReceipt(a,b) {
  assert(Number.isSafeInteger(b.versionCode)&&b.versionCode>a.versionCode);
  assert.match(b.sourceCommit,/^[a-f0-9]{40}$/);assert.match(b.apkSha256,/^[a-f0-9]{64}$/);
  const approved=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
- return [profile,createHash('sha256').update(JSON.stringify(approved)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256,b.versionCode,b.sourceCommit,b.apkSha256].join('|');
+ const fields=[profile,createHash('sha256').update(JSON.stringify(approved)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256,String(b.versionCode),b.sourceCommit,b.apkSha256];
+ const receipt=Buffer.from(JSON.stringify(fields),'utf8').toString('base64url');decodeUpgradePreparationReceipt(receipt);return receipt;
 }
