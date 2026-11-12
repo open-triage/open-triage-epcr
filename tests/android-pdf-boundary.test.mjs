@@ -24,7 +24,7 @@ test('default Android acceptance retains every stage and focused clinical diagno
 test('observer sees actual Capacitor registerPlugin dispatch and preserves original promise/results without retaining options',async()=>{
  const before={Capacitor:globalThis.Capacitor,androidBridge:globalThis.androidBridge};const reply={opened:false,status:503,code:'pdf.unavailable',private:'do-not-record'};const originalPromise=Promise.resolve(reply);const invocations=[];
  const original=function(...args){invocations.push({receiver:this,args});return originalPromise;};
- globalThis.androidBridge={};globalThis.Capacitor={nativePromise:original,PluginHeaders:[{name:'OpenTriageConnection',methods:[{name:'openPdf',rtype:'promise'},{name:'closePdf',rtype:'promise'}]}]};
+ globalThis.androidBridge={};globalThis.Capacitor={nativePromise:original,PluginHeaders:[{name:'OpenTriageConnection',methods:[{name:'openPdf',rtype:'promise'},{name:'closePdf',rtype:'promise'},{name:'preview',rtype:'promise'}]}]};
  try{
   const{Capacitor,registerPlugin}=await import('@capacitor/core');const observation=observeNativePdfCalls(Capacitor),plugin=registerPlugin('OpenTriageConnection');
   const options={path:'PRIVATE_PATH',headers:{'x-csrf-token':'PRIVATE_CSRF'},body:'PRIVATE_BODY'};
@@ -33,6 +33,8 @@ test('observer sees actual Capacitor registerPlugin dispatch and preserves origi
   assert.equal(await plugin.closePdf({operationId:'PRIVATE_ID'}),reply);assert.equal(observation.closes,1);
   assert.deepEqual(observation.calls[0],{settled:true,opened:false,status:503,code:'pdf.unavailable'});assert.doesNotMatch(JSON.stringify(observation),/PRIVATE_|do-not-record/);
   observation.restore();assert.equal(Capacitor.nativePromise,original);
+  const preview=observeNativePdfCalls(Capacitor,'preview');assert.equal(await plugin.preview({artifact:'PRIVATE_TOKEN_CA_ORIGIN'}),reply);assert.equal(preview.total,1);assert.equal(preview.calls[0].status,503);assert.doesNotMatch(JSON.stringify(preview),/PRIVATE_/);preview.restore();assert.equal(Capacitor.nativePromise,original);
+  assert.throws(()=>observeNativePdfCalls(Capacitor,'request'),/Unapproved diagnostic method/);
  }finally{if(before.Capacitor===undefined)delete globalThis.Capacitor;else globalThis.Capacitor=before.Capacitor;if(before.androidBridge===undefined)delete globalThis.androidBridge;else globalThis.androidBridge=before.androidBridge;}
 });
 test('native rejection remains the identical rejection and exposes only an approved machine code',async()=>{

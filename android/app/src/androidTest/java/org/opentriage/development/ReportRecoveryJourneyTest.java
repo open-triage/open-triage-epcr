@@ -449,8 +449,17 @@ public class ReportRecoveryJourneyTest {
     private void prepare() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64", ""), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
+        String observerBase64=args.getString("nativePdfObserverBase64");assertNotNull(observerBase64);assertTrue(observerBase64.length()<16384);
+        String observer=new String(java.util.Base64.getDecoder().decode(observerBase64),StandardCharsets.UTF_8);
+        waitFor("Boolean(window.Capacitor?.nativePromise)");
+        evaluate("window.__nativePreviewObservation=("+observer+")(window.Capacitor,'preview')");
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
+        waitFor("window.__nativePreviewObservation.calls[0]?.settled");
+        String previewReceipt=evaluate("JSON.stringify({count:window.__nativePreviewObservation.total,calls:window.__nativePreviewObservation.calls,online:navigator.onLine})");
+        var previewEvidence=new android.os.Bundle();previewEvidence.putString("opentriage_initial_preview_receipt",previewReceipt);InstrumentationRegistry.getInstrumentation().sendStatus(0,previewEvidence);
+        assertEquals("A single real registered native preview must succeed after transport readiness: "+previewReceipt,"true",evaluate("window.__nativePreviewObservation.total===1 && !window.__nativePreviewObservation.calls[0].errorCode"));
         waitFor("document.querySelector('input[type=checkbox]')");
+        evaluate("window.__nativePreviewObservation.restore()");
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Synthetic recovery ambulance");
         evaluate("document.querySelector('input[type=checkbox]').click()");
         waitFor("!document.querySelector('button[type=submit]').disabled"); evaluate("document.querySelector('form').requestSubmit()");
@@ -785,10 +794,11 @@ public class ReportRecoveryJourneyTest {
             // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
             AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
                 InstrumentationRegistry.getArguments().getString("apiOrigin"), null, false);
-        } else if (phase.equals("reassign") || phase.equals("resume-reassignment")) {
+        } else if (phase.equals("prepare") || phase.equals("reassign") || phase.equals("resume-reassignment")) {
             // Host radio enable is asynchronous. Never retry a pairing request to compensate.
             AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
                 InstrumentationRegistry.getArguments().getString("apiOrigin"), null, true);
+            var ready=new android.os.Bundle();ready.putString("opentriage_fixture_transport_ready",phase);InstrumentationRegistry.getInstrumentation().sendStatus(0,ready);
         }
         activity = ActivityScenario.launch(MainActivity.class);
         var startup=new android.os.Bundle();startup.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));
