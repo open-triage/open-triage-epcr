@@ -260,6 +260,22 @@ final class TrustedConnection {
         return next;
     }
 
+    /** Copy only already-approved immutable trust; credential removal does not revalidate or replace it. */
+    private TrustedConnection(TrustedConnection source) {
+        this.origin = source.origin;
+        this.caPem = source.caPem;
+        this.socketFactory = source.socketFactory;
+    }
+    TrustedConnection installationOnly() {
+        return installationOnly(System.currentTimeMillis());
+    }
+    TrustedConnection installationOnly(long now) {
+        TrustedConnection next = new TrustedConnection(this);
+        SavedCookie installation = cookies.get("open_triage_installation");
+        if (installation != null && installation.expires > now) next.cookies.put("open_triage_installation", installation);
+        return next;
+    }
+
     JSONObject saved() throws Exception {
         JSONArray savedCookies = new JSONArray();
         for (var entry : cookies.entrySet()) savedCookies.put(new JSONObject().put("name", entry.getKey()).put("value", entry.getValue().value).put("expires", entry.getValue().expires));
