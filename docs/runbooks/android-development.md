@@ -337,6 +337,67 @@ Android validation failures preserve bounded crash/runtime logs, application exi
 
 Camera discovery records the active device without reopening its stream. Only an explicit camera cycle requests another device; duplicate native/document visibility notifications leave an already foregrounded stream running. Browser lifecycle coverage checks this before native acceptance.
 
+## Shared Android navigation and layout
+
+Android Back dismisses the system keyboard first. With a shared dialog open it
+sends Escape through that dialog's React subtree, preserving recording,
+permission, deletion and save guards. An unfinished recording stops into its
+explicit Use/Cancel preview. Unsaved clinical entry dialogs require a discard
+decision. Saving photo/text dialogs consume Back until their operation settles.
+Back from review/checklist/sidebar returns to the current report; Back from the
+report uses the same single-flight Save & close operation as its button. Failed
+protected persistence keeps the editor open. At the call directory, Back returns
+from a permitted alternate mode to Mobile, then backgrounds the existing task.
+It never traverses WebView history or restores another identity's old page.
+
+The first permitted clinical entry defaults to Mobile; the shared saved mode,
+agency appearance and language apply on later entries. Android configuration
+changes retain the current WebView realm, including an unfinished editor, while
+system text scale updates WebView text zoom. Capacitor's system-bar/cutout insets
+and explicit `adjustResize` keep the keyboard and system controls outside the
+application viewport. The browser uses its existing responsive UI and the
+`resizes-content` viewport policy. Long localized shared section headings wrap.
+At short viewport heights, the shared clinical headers and action bars scroll
+with the page so a keyboard or enlarged text cannot pin Save & close off-screen.
+
+The early path remains `npm run check:ci`, `npm run android:build`, then
+`npm run android:test -- --skip-build`. The browser preflight covers Back modal
+capture, unmounted identity handlers, repeated Back during a held encrypted
+write, unsaved-entry confirmation, and English/Swedish Admin settings on phone,
+short enlarged-text and tablet layouts with accessibility checks. The native
+report journey adds trusted-touch keyboard entry, hardware Back, real rotation,
+150% system text size and an actual emulator tablet resize. It checks the same
+JS realm and persisted field, then Back/reopen under the existing valid login.
+The native checks restore display changes in Java `finally`; both host entry
+points also capture the exact previous display override, font scale and rotation
+settings and restore them in their outer `finally`, including after an Android
+process crash. Early tests verify default/unset and custom values and all-setting
+restore attempts when an individual command fails. Native checks measure the
+Save & close bounds and hit target in landscape, with the keyboard open and on
+the tablet-sized display.
+The audio process-loss fixture first exercises hardware Back into an interrupted
+preview, explicitly cancels it, and starts a fresh live recorder before process
+termination. Existing foreground assignment/sync and bundled-UI checks still run.
+
+For slice 019, repeat on an actual supported phone and tablet using fictional
+reports and the intended agency palette/language. Record device/OS/WebView/APK
+versions and evidence for each result:
+
+| Check | Expected evidence |
+| --- | --- |
+| Open an old call under a current login | Existing session opens it without another authentication prompt. |
+| Edit a field, rotate both ways, resize/split screen | Same value and report remain; server acknowledgement or encrypted pending revision proves persistence. |
+| Keyboard in a clinical dialog and long Admin settings | First Back hides the keyboard; Save/Cancel stay reachable by scrolling, with focus visible. |
+| Back during recording, preview, deletion and a slow save | Recording stops into explicit choice; cancellation/deletion/save use their ordinary guards and settle once. |
+| Back from a report and reopen | Exact saved/pending value returns; persistence failure leaves the editor open. |
+| Largest supported text size, display cutout and gesture/three-button navigation | Text remains readable and all required controls reachable in portrait/landscape and English/Swedish. |
+| Background/foreground and a server web deployment | Assignments and eligible sync refresh; the APK keeps its bundled UI and current navigation. |
+| User/agency switch, expired or revoked session | Old identity/history cannot reappear; ordinary current authorization remains enforced. |
+
+Emulator and browser results do not establish physical keyboard, cutout, OEM
+Back gestures, microphone or tablet acceptance. Store those slice-019 results
+separately from automated evidence.
+
 The APK manifest removes only AndroidX EmojiCompat's automatic downloadable-font initializer; other local Startup components remain. Both debug and production builds check the actual merged manifests, and the native startup test verifies that this app initializer stays disabled. This does not prevent the OS-selected WebView from independently fetching provider fonts. See [Android's initializer configuration](https://developer.android.com/reference/androidx/emoji2/text/EmojiCompatInitializer).
 
 The old Google-APIs emulator fixture ships WebView109, whose default font prefetch can bind the clinical process to Google Play Services' font provider. Captured `ApplicationExitInfo` and ActivityManager evidence showed Android killing that process when the provider died, even with the app initializer excluded. The default and signed-upgrade harnesses therefore scope a supported font profile to **isolated qemu userdebug/eng emulators with the evidenced WebView109**: only `PrefetchAndroidFonts` and `GMSCoreEmoji` are disabled; verbose logging proves the effective startup settings. Conflicting existing flags, physical/production Android images, symlinks and unsupported WebView generations fail before mutation. The original flag file's exact bytes, mode or absence are restored after success, clinical failure or setup failure; restoration failure fails acceptance. No APK production flags, TLS/origin checks, permissions, Google packages or clinical assertions change. The native probe checks actual provider acquisition and records the startup PID; the harness preserves effective flag evidence in `android/app/build/reports/android-font-profile/`.
