@@ -150,6 +150,21 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     @PluginMethod public void state(PluginCall call) { execute(call, () -> {
         return connectionState();
     }); }
+    @PluginMethod public void reconcileTransition(PluginCall call) { execute(call, () -> {
+        if (active == null || pendingEnrollment != null || replacing || !connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation transition is not settled");
+        String purpose = call.getString("purpose", "");
+        if (!purpose.equals("enrollment") && !purpose.equals("logout")) throw new IllegalArgumentException("Unknown transition purpose");
+        allowed(active); long revision = revisions.current();
+        // stage() strips personal cookies durably before the first confirmation
+        // POST; promotion/abandonment never copy them back. A remaining valid
+        // native login therefore belongs to an unconfirmed transition.
+        vault.pendingAuthentication(null);
+        if (purpose.equals("logout")) { active = active.installationOnly(); vault.write(active); }
+        allowed(active);
+        if (revision != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
+        connectionContext = java.util.UUID.randomUUID().toString();
+        return connectionState();
+    }); }
     @PluginMethod public void preview(PluginCall call) { execute(call, () -> {
         if (pendingEnrollment != null || active != null && !replacing) throw new IllegalStateException("Use installation reassignment");
         candidate = null; pairing = null;

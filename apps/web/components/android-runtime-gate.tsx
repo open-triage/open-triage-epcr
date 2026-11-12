@@ -6,7 +6,7 @@ import { AndroidScanner, parseAndroidPairingQr, scannerFailureMessage } from "..
 import { clearProtectedRuntimeReports } from "../app/offline-reports";
 import { lockProtectedClinicalStorage } from "../app/protected-clinical-storage";
 import { resolveMessage } from "../app/localization";
-import { transitionInstallation } from "../app/installation-transition";
+import { transitionInstallation, resumeNativeInstallationTransition, INSTALLATION_TRANSITION_KEY, INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { AndroidInstallationAction, ANDROID_REPLACE_INSTALLATION } from "./android-installation-action";
 import { installAndroidLifecycle } from "../app/android-lifecycle";
 
@@ -15,6 +15,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   const [preview, setPreview] = useState<PairingPreview | null>(null), [name, setName] = useState(""), [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null), [language, setLanguage] = useState("en");
   const [connection, setConnection] = useState<AndroidConnectionState | null>(null);
+  const [recoveringTransition,setRecoveringTransition]=useState(false);
   const currentState = useRef<AndroidConnectionState | null>(null), revision = useRef(0), mounted = useRef(false);
   const applyState = useCallback((state: AndroidConnectionState) => {
     if (!mounted.current) return;
@@ -23,8 +24,9 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     if (identity(previous) !== identity(state)) revision.current++;
     configureNativeConnection(state);
     currentState.current = state;
-    setConnection(state); setReady(state.configured && !state.blocked);
-    if (previous?.managedContext !== state.managedContext || state.blocked) { setPreview(null); setConfirmed(false); setName(""); }
+    const interrupted=state.configured&&!state.blocked&&!state.replacementPending&&Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY));
+    setConnection(state); setRecoveringTransition(interrupted); setReady(state.configured && !state.blocked&&!interrupted);
+    if (previous?.managedContext !== state.managedContext || state.blocked || previous?.replacementPending && !state.replacementPending) { setPreview(null); setConfirmed(false); setName(""); }
     if (state.blocked) {
       // Shared locking retains eligible ciphertext while removing readable work.
       void lockProtectedClinicalStorage().catch(() => { /* Native policy still denies requests. */ });
@@ -40,6 +42,26 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   const t = (key: string) => resolveMessage(language, key);
   useEffect(() => {
     let active = true;
+    let checking=false,waiting=false;
+    const observe=async(provided?:AndroidConnectionState)=>{
+      if(checking||!active||!isAndroidRuntime())return;
+      checking=true;
+      try {
+        const state=provided??await AndroidConnection.state();
+        const next=await resumeNativeInstallationTransition(state,(context,purpose)=>AndroidConnection.reconcileTransition({connectionContext:context,purpose}));
+        waiting=next===null;
+        if(active)applyState(next??state);
+      } catch {
+        waiting=Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY));
+        if(active&&waiting){setRecoveringTransition(true);setReady(false);}
+        if(active&&!waiting)applyState({configured:false,blocked:true,managedStatus:"unavailable"});
+      } finally {checking=false;}
+    };
+    const retry=()=>{if(waiting)void observe();};
+    const storage=(event:StorageEvent)=>{if(event.key===INSTALLATION_TRANSITION_KEY)void observe();};
+    const completed=()=>{void observe();};
+    const timer=window.setInterval(retry,250);
+    window.addEventListener("storage",storage);window.addEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT,completed);
     const generation = revision;
     const replace = () => {
       setBusy(true); setReady(false); setError(null);
@@ -62,15 +84,15 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       try {
         await installAndroidLifecycle();
         if (!active) return;
-        const listener = await AndroidConnection.addListener("configurationChanged", state => { if (active) applyState(state); });
+        const listener = await AndroidConnection.addListener("configurationChanged", state => { if (active) void observe(state); });
         if (!active) { await listener.remove(); return; }
         removeListener = () => listener.remove();
         const started = revision.current;
         const state = await AndroidConnection.state();
-        if (active && revision.current === started) applyState(state);
+        if (active && revision.current === started) await observe(state);
       } catch { if (active) applyState({configured: false, blocked: true, managedStatus: "unavailable"}); }
     });
-    return () => { active = false; mounted.current = false; window.removeEventListener(ANDROID_REPLACE_INSTALLATION, replace); generation.current++; void removeListener?.(); };
+    return () => { active = false; mounted.current = false;window.clearInterval(timer);window.removeEventListener("storage",storage);window.removeEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT,completed); window.removeEventListener(ANDROID_REPLACE_INSTALLATION, replace); generation.current++; void removeListener?.(); };
   }, [applyState]);
   async function preparePairing(artifact: string, source: "scan" | "import", started: number) {
     if (!isCurrent(started)) return;
@@ -80,6 +102,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   }
   const managedNotice = connection?.managed ? <p role="status" className="android-managed-connection" data-managed-context={connection.managedContext} data-managed-status={connection.managedStatus}>{t("android.managed.locked")}{connection.managedOrigin ? ` · ${connection.managedOrigin}` : ""}</p> : null;
   if (ready) return children;
+  if(recoveringTransition)return <main role="status" aria-busy="true">{t("login.opening")}</main>;
   if (!native || !connection) return null;
   return <main className="admin-directory installation-enrollment"><h1>{t("android.pairingTitle")}</h1>
     {managedNotice}
@@ -87,7 +110,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     {error && <p role="alert" className="admin-error">{t(error)}</p>}
     {connection.replacementPending ? <button type="button" disabled={busy} onClick={async () => {
       setBusy(true); setError(null); const started=revision.current;
-      try { const state=await transitionInstallation(() => AndroidConnection.resumeEnrollment()); if(isCurrent(started)) applyState(state); }
+      try { const state=await transitionInstallation(() => AndroidConnection.resumeEnrollment(),"enrollment"); if(isCurrent(started)) applyState(state); }
       catch(failure) { if(isCurrent(started)) setError(failureMessage(failure)); } finally { if(mounted.current) setBusy(false); }
     }}>{t("android.retryPairing")}</button> : <>    {!preview ? <><button type="button" className="button-primary" data-pairing-scan disabled={busy} onClick={async () => {
       setBusy(true); setError(null); const started = revision.current;
@@ -107,7 +130,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       try {
         await installAndroidLifecycle();
         if (!isCurrent(started)) return;
-        await transitionInstallation(() => AndroidConnection.confirm({ name, confirmInstallation: true }));
+        await transitionInstallation(() => AndroidConnection.confirm({ name, confirmInstallation: true }),"enrollment");
         if (!isCurrent(started)) return;
         const state = await AndroidConnection.state();
         if (isCurrent(started)) { setPreview(null); applyState(state); }
