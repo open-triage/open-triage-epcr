@@ -9,5 +9,7 @@ test('default acceptance covers saved audio and unfinished audio/TLS with one pr
  assert.match(tls,/runReportRecoveryJourney\(\{root,fixture,adb,serial,run,api,audio:true,unsavedAudio:true,hooks:/);
  for(const hook of ['beforeProcessKill','beforeSessionWithdrawal','beforeReconnect'])assert(tls.includes(hook));
  const rotate=runner.indexOf('await runTlsJourney('),stop=runner.indexOf('await stopFixtureChild(children[1])'),oidc=runner.indexOf('await runOidcJourney(');
- assert(rotate>0&&stop>rotate&&oidc>stop,'TLS finishes before the OIDC fixture takes its API port');
+ const agency=runner.indexOf('await runAgencyHandoffJourney(');
+ assert(rotate>0&&stop>rotate&&agency>stop&&oidc>agency,'TLS finishes before agency and OIDC reuse the target API port');
+ assert.match(runner,/!process\.argv\.includes\('--agency-only'\)\) await runTlsJourney/,'Focused agency acceptance must not rerun the full TLS journey');
 });

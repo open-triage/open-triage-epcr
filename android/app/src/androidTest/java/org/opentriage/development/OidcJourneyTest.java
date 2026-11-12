@@ -24,6 +24,12 @@ public class OidcJourneyTest extends PairingJourneyTest {
         String button = "Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===" + JSONObject.quote(text) + ")";
         waitFor(button + " && !(" + button + ").disabled"); evaluate("(" + button + ").click()");
     }
+    private void reopenOwnedReport(android.os.Bundle args) throws Exception {
+        String call=args.getString("callNumber"),report=args.getString("reportId");assertNotNull(call);assertNotNull(report);
+        String button="Array.from(document.querySelectorAll('.assigned-call-card')).find(card=>card.querySelector('strong')?.textContent==="+JSONObject.quote(call)+")?.querySelector('button')";
+        waitFor(button+" && !("+button+").disabled && ("+button+").textContent.trim()==='Reopen report'");
+        evaluate("("+button+").click()");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId==="+JSONObject.quote(report));
+    }
     private String retainedDigest() throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onsuccess=()=>{const db=request.result;const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
         waitFor("window.__retained!==null");
@@ -113,7 +119,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
         String sessionStatus=null,observedUser=null,openedReportId=null;
         try {
             if(phase.equals("pending")){
-                waitFor("document.querySelector('.session-identity')");click("Reopen report");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId==="+JSONObject.quote(args.getString("reportId")));
+                waitFor("document.querySelector('.session-identity')");reopenOwnedReport(args);
                 if(!"true".equals(evaluate("Boolean(document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]'))")))click("Stationary");
                 waitFor("document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]') && !document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]').matches(':disabled')");
                 for(String command:new String[]{"svc wifi disable","svc data disable"}){
@@ -202,12 +208,18 @@ public class OidcJourneyTest extends PairingJourneyTest {
                     // Simulate abrupt stop between durable issued-cookie storage
                     // and deletion of its now-consumed pending return slot.
                     assertNotNull(interruptedReturn);new ConnectionVault(targetContext).pendingAuthentication(interruptedReturn);
+                    assertTrue(NativePersonalContinuation.matches(new ConnectionVault(targetContext).personalContinuation(),new ConnectionVault(targetContext).read()));
+                    evaluate("localStorage.removeItem('open-triage.clinician-session.v1');localStorage.removeItem('open-triage.installation-session-candidate.v1')");
                     activity.recreate();waitFor("document.querySelector('.session-identity')");
                     long cleanupDeadline=System.currentTimeMillis()+15000;
                     while(new ConnectionVault(targetContext).pendingAuthentication()!=null&&System.currentTimeMillis()<cleanupDeadline)Thread.sleep(100);
                     assertNull("An already issued current OIDC session survives interrupted pending-slot cleanup",new ConnectionVault(targetContext).pendingAuthentication());
                     waitFor("document.querySelector('.session-identity')");
                     assertEquals("Pending-slot recovery does not extend session expiry",issuedExpiry,evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')).expiresAt"));
+                    evaluate("localStorage.removeItem('open-triage.clinician-session.v1');localStorage.removeItem('open-triage.installation-session-candidate.v1')");
+                    activity.recreate();waitFor("document.querySelector('.session-identity')");
+                    assertEquals("Native OIDC continuation uses the same fixed expiry after total public metadata loss",issuedExpiry,evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')).expiresAt"));
+                    assertEquals(JSONObject.quote(args.getString("userId")),evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')).user.id"));
 
                 } else if(protectedPhase.equals("isolate")) {
                     assertFalse(evaluate("document.body.innerText").contains("ANDROID-OIDC-PENDING"));
@@ -216,7 +228,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
                     evaluate("window.__denial=null;fetch('/api/reports/"+args.getString("reportId")+"/recovery-grants',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':window.__oidc.session.csrfToken},body:JSON.stringify({schemaVersion:1,envelopeVersion:1})}).then(response=>window.__denial=response.status)");
                     waitFor("window.__denial!==null");assertEquals("404",evaluate("window.__denial"));
                 } else if(protectedPhase.equals("recover")) {
-                    click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+                    reopenOwnedReport(args);waitFor("document.querySelector('.encounter-header')");
                     if(!"true".equals(evaluate("Boolean(document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]'))")))click("Stationary");
                     waitFor("document.querySelector('[data-element-id=\"ePatient.03\"] input[type=text]')?.value==='ANDROID-OIDC-PENDING'");
                     waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");

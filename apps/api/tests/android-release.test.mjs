@@ -9,9 +9,10 @@ import { isAndroidReleaseCompatible, parseAndroidReleaseDescriptor } from '@open
 import { verifyAndroidArtifact } from '@open-triage/contracts/android-artifact';
 import { AndroidReleaseService } from '../dist/admin/android-release.service.js';
 import { AndroidReleaseController } from '../dist/admin/android-release.controller.js';
+import {historicalAndroidRelease,syntheticApprovedAndroidRelease} from '../../../tests/helpers/android-release-fixtures.mjs';
 
 const payload=Buffer.from('synthetic APK verification bytes'), digest=createHash('sha256').update(payload).digest('hex');
-const fixture=()=>{const value=structuredClone(catalog);const d=value.releases[0].descriptor;d.apkBytes=payload.length;d.apkSha256=digest;d.artifact=`opentriage-${d.versionName}-${d.versionCode}-${digest}.apk`;value.releases[0].downloadUrl=`https://github.com/open-triage/open-triage-epcr/releases/download/${value.releases[0].tag}/${d.artifact}`;return value;};
+const fixture=()=>{const value=structuredClone(catalog);const selected=syntheticApprovedAndroidRelease(payload,value.releases[0]);value.releases[0].descriptor=selected.descriptor;value.releases[0].downloadUrl=selected.downloadUrl;return value;};
 const selected=catalog.releases[0].tag;
 async function selection(work){const previous=process.env.ANDROID_APPROVED_RELEASE;try{process.env.ANDROID_APPROVED_RELEASE=selected;await work();}finally{if(previous===undefined)delete process.env.ANDROID_APPROVED_RELEASE;else process.env.ANDROID_APPROVED_RELEASE=previous;}}
 
@@ -58,8 +59,8 @@ test('artifact transport follows only approved public CDN redirects, sends no se
 });
 
 test('legacy descriptors remain compatible while missing required native capabilities fail closed',()=>{
- const descriptor=parseAndroidReleaseDescriptor(catalog.releases[0].descriptor);
- assert(isAndroidReleaseCompatible(descriptor,1));
+ for(const versionCode of [1,2])assert(isAndroidReleaseCompatible(parseAndroidReleaseDescriptor(historicalAndroidRelease(versionCode).descriptor),1));
+ const descriptor=parseAndroidReleaseDescriptor(historicalAndroidRelease(1).descriptor);
  const extended={...descriptor,compatibility:{...descriptor.compatibility,requiredCapabilities:['native-enrollment-attempt-v1','native-oidc-return-v1']}};
  assert.equal(isAndroidReleaseCompatible(extended,1,[]),false);assert.equal(isAndroidReleaseCompatible(extended,1,['native-enrollment-attempt-v1']),false);
  assert.equal(isAndroidReleaseCompatible({...extended,upgradeGraceDays:365},1,[]),false);

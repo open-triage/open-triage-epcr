@@ -1,4 +1,4 @@
-import { clearClinicianSession,loadClinicianSession } from "./clinician-session";
+import { clearClinicianSession,loadClinicianSession } from "./clinician-session-storage";
 import { lockProtectedClinicalStorage } from "./protected-clinical-storage";
 import { clearProtectedRuntimeReports } from "./offline-reports";
 
@@ -36,27 +36,32 @@ export async function resumeNativeInstallationTransition<T extends NativeTransit
 /** A signed-in tab holds a shared barrier until its existing storage lifecycle has settled. */
 export function participateInInstallationTransition(endContext: () => Promise<void>): () => void {
  const abort = new AbortController();
- let release = () => {}, ending = false;
- const end = () => {
+ let release = () => {};
+ let ending: Promise<void> | undefined;
+ const settle = (work: () => Promise<void>) => {
   if (ending) return;
-  ending = true;
-  void endContext().finally(() => { release(); abort.abort(); });
+  ending = Promise.resolve().then(work).finally(() => { release(); abort.abort(); });
+  // A failed participant still relinquishes its lock after settlement. The
+  // exclusive owner separately enforces key settlement before replacing authority.
+  void ending.catch(() => {});
  };
+ const end = () => settle(endContext);
  const storage = (event: StorageEvent) => { if(event.key === INSTALLATION_TRANSITION_KEY && event.newValue) end(); };
  window.addEventListener("storage", storage);
  window.addEventListener(eventName, end);
  if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)) end();
- else void navigator.locks.request(lockName,{mode:"shared",signal:abort.signal},async()=>{
-  if(ending) return;
+ void navigator.locks.request(lockName,{mode:"shared",signal:abort.signal},async()=>{
+  // The transition event can arrive before this queued shared callback runs.
+  // Retain the barrier until its existing context has actually finished ending.
+  if(ending) { await ending.catch(() => {}); return; }
   await new Promise<void>(resolve=>{release=resolve;});
  }).catch(()=>{});
  return ()=>{
   window.removeEventListener("storage",storage);window.removeEventListener(eventName,end);
-  if(ending) return; // The requested reassignment owns completion and release.
-  ending=true;
-  // A lifecycle teardown settles keys without mutating personal authentication.
-  // In particular, development effect replay must never sign the clinician out.
-  void lockProtectedClinicalStorage().catch(()=>{}).finally(()=>{clearProtectedRuntimeReports();release();abort.abort();});
+  if(ending) return;
+  // Teardown settles keys without changing personal authentication. A queued
+  // shared callback must also await this cleanup before allowing replacement.
+  settle(async()=>{try{await lockProtectedClinicalStorage();}catch{/* The exclusive owner independently settles keys. */}finally{clearProtectedRuntimeReports();}});
  };
 }
 

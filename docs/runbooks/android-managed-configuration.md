@@ -4,8 +4,8 @@ For server key/chain installation, same-CA renewal, and deliberate CA overlap or
 replacement without rebuilding the APK, follow [TLS provisioning](android-tls-provisioning.md).
 Public CA material never includes a server or CA private key.
 
-The generic development package is `org.opentriage.development`. Production
-package/signing ownership is selected in ticket 013. The clinical APK is an
+The generic development package is `org.opentriage.development`; the selected
+production package is `org.opentriage.android`. The clinical APK is an
 ordinary managed application and never becomes the device owner.
 
 Android's `APP_RESTRICTIONS` schema is declared in `res/xml/app_restrictions.xml`.
@@ -95,7 +95,7 @@ blocked. Actual tenant/certificate-profile/upgrade acceptance is ticket 017.
 ## Combined Headwind/MDMesh
 
 The management agent must turn the generic values above into Android Bundle
-values for `org.opentriage.development`, using standard
+values for the actual deployed package (`org.opentriage.android` in production), using standard
 `DevicePolicyManager.setApplicationRestrictions`. Keep version as an integer,
 public CA as one PEM string, and private server keys outside configuration.
 
@@ -103,7 +103,10 @@ Inspect the actual combined server/agent before claiming that its configuration
 feature reaches standard app restrictions. If it does not, record that separate
 MDM project's blocker. An app-private file or manual workaround does not establish
 managed provisioning. The clinical app has no vendor SDK or device-owner role.
-Actual deployment acceptance belongs to ticket 018.
+Actual deployment acceptance belongs to ticket 018. The owner-authorized
+substitute lab and actual Headwind setting format are documented in
+[Headwind acceptance](android-headwind-acceptance.md); upstream capability or a
+configuration saved on the server alone does not establish device delivery.
 
 ## Standard controller validation
 

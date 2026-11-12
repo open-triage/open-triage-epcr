@@ -1,13 +1,13 @@
 "use client";
+import { isAndroidRuntime } from "../app/android-runtime";
 import { AndroidApkLink } from "./android-apk-link";
 import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
 import { useAndroidBack } from "./use-android-back";
 import { AndroidInstallationAction } from "./android-installation-action";
-import { isAndroidRuntime } from "../app/android-runtime";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
-import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration, INSTALLATION_GENERATION_KEY } from "../app/installation-transition-generation";
 import { participateInInstallationTransition,transitionInstallation, INSTALLATION_TRANSITION_KEY,INSTALLATION_TRANSITION_EVENT,INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { PlatformRequestError } from "../app/platform-errors";
 
@@ -19,6 +19,7 @@ import {
   createClinicianSession,
   endClinicianSession,
   authenticateRestartedClinicianSession,
+  NativePersonalSessionSettlementError,
   resumeInterruptedNativeClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
@@ -39,7 +40,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration, INSTALLATION_CONFIGURATION_STORAGE_KEY } from "../app/installation-settings";
-import {startAgencyHandoff,resumeAgencyHandoff} from "../app/agency-handoff";
+import {startAgencyHandoff,resumeAgencyHandoff,switchAndroidAgency} from "../app/agency-handoff";
 import { switchAgency } from "../app/agencies";
 import { availableUiLanguages, resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
@@ -94,6 +95,7 @@ export function ClinicianSessionGate({ children }: {
     resolveMessage(language, key, parameters), [language]);
   const [startupFailure, setStartupFailure] = useState<string | null>(null);
   const [authenticatedSession, setSession] = useState<AuthenticatedSession | null>(null);
+  const retrySessionStartup=useRef(()=>{});
   const session = authenticatedSession?.organization ? authenticatedSession as ClinicianSession : null;
   const [installationRecovery, setInstallationRecovery] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -253,6 +255,10 @@ export function ClinicianSessionGate({ children }: {
       inFlight = true;
       try {
         const handoff=await resumeAgencyHandoff();
+        try {
+          const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
+          if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
+        } catch { /* Language selection remains available without persistent storage. */ }
         if(handoff&&"redirecting" in handoff){resolved=true;return;}
         // Both requests are independent. Keep protected content gated until
         // authentication and configuration have both completed successfully.
@@ -267,10 +273,6 @@ export function ClinicianSessionGate({ children }: {
         let authenticated = assessed;
         try { assertAuthenticationInstallationGeneration(startupGeneration); } catch { authenticated = null; }
         if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
-        try {
-          const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
-          if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
-        } catch { /* Language selection remains available without persistent storage. */ }
         setInstallation(loaded);
         setOrganizationLogin(organizationAuthentication);
         if(personalResult){
@@ -285,7 +287,7 @@ export function ClinicianSessionGate({ children }: {
         resolved = true;
       } catch (reason: unknown) {
         if (!current) return;
-        setStartupFailure(reason instanceof Error ? reason.message : "The application could not be loaded.");
+        setStartupFailure(reason instanceof NativePersonalSessionSettlementError?null:reason instanceof Error ? reason.message : "The application could not be loaded.");
         setStartupState("failed");
       } finally {
         inFlight = false;
@@ -293,11 +295,13 @@ export function ClinicianSessionGate({ children }: {
     };
     void load();
     const reconnect = () => void load();
+    const retryStartup=()=>{resolved=false;};retrySessionStartup.current=retryStartup;
     const retry = window.setInterval(reconnect, 5_000);
     window.addEventListener("online", reconnect);
     window.addEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
     return () => {
       current = false;
+      if(retrySessionStartup.current===retryStartup)retrySessionStartup.current=()=>{};
       window.clearInterval(retry);
       window.removeEventListener("online", reconnect);
       window.removeEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
@@ -346,9 +350,21 @@ export function ClinicianSessionGate({ children }: {
         const live = await authenticateRestartedClinicianSession(authenticatedSession);
         if (current && !live) await lockAndEndLocalSession(t("login.sessionExpired"));
         else if (current && live && JSON.stringify(live) !== JSON.stringify(authenticatedSession)) {
+          if(live.user.id!==authenticatedSession.user.id || live.organization?.id!==authenticatedSession.organization?.id){
+            setActiveReport(null);clearFeedbackTelemetry();
+          }
           storeClinicianSession(window.localStorage, live); setSession(live);
         }
-      } catch { /* Connection failure does not extend the existing local deadline. */ }
+      } catch(error) {
+        if(current&&error instanceof NativePersonalSessionSettlementError&&error.isCurrent()){
+          // The old view must close even if unrelated public cache bytes changed.
+          // Only delete metadata still owned by this failed attempt.
+          if(error.ownsPublicMetadata())clearClinicianSession(window.localStorage);
+          clearProtectedRuntimeReports();clearFeedbackTelemetry();setActiveReport(null);setSession(null);setLockingSession(false);
+          setStartupFailure(null);setStartupState("failed");retrySessionStartup.current();
+        }
+        // Connectivity failures retain the existing fixed local deadline.
+      }
       finally { inFlight = false; }
     };
     const visible = () => { if (applicationVisible()) void reassess(); };
@@ -390,7 +406,7 @@ export function ClinicianSessionGate({ children }: {
       storePresentationMode(window.localStorage, initialMode);
       setPresentationMode(initialMode);
     } catch (error) {
-      setMessage(error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The username or password is incorrect."
+      setMessage((error as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The username or password is incorrect."
         ? t("login.invalidCredentials") : t("login.unavailable"));
     } finally {
       setSubmitting(false);
@@ -400,7 +416,7 @@ export function ClinicianSessionGate({ children }: {
   async function personalLogin(){
     setSubmitting(true);setMessage(null);
     try{await beginPersonalClinicianSession("login",authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
-    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
+    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage((error as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
     finally{setSubmitting(false);}
   }
 
@@ -423,7 +439,7 @@ export function ClinicianSessionGate({ children }: {
       storeClinicianSession(window.localStorage, changed);
       setSession(changed);
     } catch (error) {
-      setMessage(error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The current password is incorrect."
+      setMessage((error as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The current password is incorrect."
         ? t("login.passwordIncorrect") : t("login.passwordChangeFailed"));
     } finally {
       setSubmitting(false);
@@ -455,21 +471,32 @@ export function ClinicianSessionGate({ children }: {
 
   async function changeAgency(id: string) {
     if (!authenticatedSession || !online) throw new Error(t("admin.connectToSwitchAgencies"));
-    if (activeReport || openingCall || protectedLogoutSummary().pendingReportCount > 0) {
+    if (activeReport || openingCall) {
       throw new Error(t("admin.closeReportsToSwitchAgencies"));
     }
     if (!confirmDiscardChanges(unsavedEditors.current.size > 0)) return;
     if(authenticatedSession.installationSuperadmin&&!("homeOrganizationId" in authenticatedSession&&authenticatedSession.homeOrganizationId)){
-      if(await startAgencyHandoff(id,sessionRequestToken(authenticatedSession)))return;
+      if(await startAgencyHandoff(id,sessionRequestToken(authenticatedSession),authenticatedSession))return;
     }
-    await lockProtectedClinicalStorage();
-    const changed = await switchAgency(sessionRequestToken(authenticatedSession), id);
-    clearProtectedRuntimeReports();
-    clearFeedbackTelemetry();
-    window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
-    storeClinicianSession(window.localStorage, { ...changed, csrfToken: authenticatedSession.csrfToken });
-    // Recreate all workspaces and in-memory caches at the new agency boundary.
-    window.location.reload();
+    if (isAndroidRuntime()) { await switchAndroidAgency(id,sessionRequestToken(authenticatedSession),authenticatedSession); return; }
+    let ownedGeneration=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+    try {
+      await transitionInstallation(async()=>{
+        ownedGeneration=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+        const changed = await switchAgency(sessionRequestToken(authenticatedSession), id);
+        if(ownedGeneration!==window.localStorage.getItem(INSTALLATION_GENERATION_KEY))throw new Error(t("admin.agencyOpenFailed"));
+        clearFeedbackTelemetry();
+        window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
+        storeClinicianSession(window.localStorage, { ...changed, csrfToken: changed.csrfToken ?? authenticatedSession.csrfToken });
+      },'handoff');
+    } catch(reason) {
+      // Startup rechecks the unchanged cookie; denial does not demand a new login.
+      if(ownedGeneration===window.localStorage.getItem(INSTALLATION_GENERATION_KEY))storeClinicianSession(window.localStorage,authenticatedSession);
+      throw reason;
+    } finally {
+      // Recreate all workspaces and in-memory caches at the agency boundary.
+      if(ownedGeneration===window.localStorage.getItem(INSTALLATION_GENERATION_KEY))window.location.reload();
+    }
   }
 
   function logoutDialogKeys(event: KeyboardEvent<HTMLElement>) {
@@ -500,7 +527,7 @@ export function ClinicianSessionGate({ children }: {
   if (startupState !== "ready") return <main className="session-loading" aria-label={t("login.opening")} aria-busy={startupState === "loading"}>
     {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
       <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
-      {online && startupFailure && <p>{startupFailure}</p>}
+      {online && startupFailure && <p>{startupFailure === "android.serverUpgradeRequired" ? t(startupFailure) : startupFailure}</p>}
       <AndroidInstallationAction language={language} />
     </div>}
   </main>;
@@ -607,7 +634,7 @@ export function ClinicianSessionGate({ children }: {
         {(session.agencies?.length ?? 0) > 1 && <label className="session-agency-selector">
           <select aria-label={t("admin.agency")} value={session.organization.id}
             disabled={!online || activeReport !== null || openingCall !== null}
-            onChange={(event) => { void changeAgency(event.target.value).catch((reason: unknown) => setModeMessage(resolveErrorMessage(language, reason instanceof Error ? reason.message : null, "admin.agencyOpenFailed"))); }}>
+            onChange={(event) => { void changeAgency(event.target.value).catch((reason: unknown) => setModeMessage((reason as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : resolveErrorMessage(language, reason instanceof Error ? reason.message : null, "admin.agencyOpenFailed"))); }}>
             {session.agencies?.map((agency) => <option key={agency.id} value={agency.id}>{agency.name}</option>)}
           </select>
         </label>}

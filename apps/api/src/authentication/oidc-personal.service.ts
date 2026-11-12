@@ -154,17 +154,17 @@ export class OidcPersonalService {
    if(!await lockInstallationForSession(manager))throw new UnauthorizedException({code:'login.identityUnavailable'});
    const current=await this.active(attempt.group_id,manager,true);
    if(!current||Number(current.revision)!==Number(attempt.revision)||personalProofPolicyDigest(this.policy(current))!==personalProofPolicyDigest(saved.policy))throw new UnauthorizedException({code:'login.identityUnavailable'});
-   if(created)await this.sessions.getAuthenticated(created.sessionToken,new Date(),false,manager);
+   const session=created?await this.sessions.getAuthenticated(created.sessionToken,new Date(),false,manager):undefined;
    if(attempt.native_delivered_at){
     // Interrupted native cleanup can reuse only this already-issued session.
     // A consumed return secret alone, or another current user, grants nothing.
     if(!created||!currentToken||digest(currentToken)!==digest(created.sessionToken))throw new UnauthorizedException({code:'login.identityUnavailable'});
-    return {outcome:'succeeded'};
+    return {outcome:'succeeded',session};
    }
    const claimed=mutationRows(await manager.query(`update app_identity.oidc_personal_transaction set native_delivered_at=clock_timestamp()
     where state_sha256=$1 and native_delivered_at is null and expires_at>clock_timestamp() returning state_sha256`,[attempt.state_sha256]));
    if(!claimed.length)throw new UnauthorizedException({code:'login.identityUnavailable'});
-   return {outcome,created};
+   return {outcome,created,session};
   });
  }
  async callback(url:URL,correlation:string):Promise<{destination:string;created?:CreatedSession;clearSession?:boolean}>{

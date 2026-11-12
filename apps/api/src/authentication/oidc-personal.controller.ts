@@ -57,7 +57,7 @@ export class OidcPersonalController {
   let token:string|undefined;try{token=sessionToken(request);}catch{ /* First delivery has no issued session yet. */ }
   const result=await this.personal.nativeFinish(body,token);
   if(result.created)response.cookie(SESSION_COOKIE,result.created.sessionToken,cookieOptions(result.created.session.expiresAt));
-  return {outcome:result.outcome};
+  return {outcome:result.outcome,...(result.session?{session:result.session}:{})};
  }
  @Post("reauthenticate") @HttpCode(200) @Header("Cache-Control","no-store, private")
  async reauthenticate(@Body() body:unknown,@Req() request:Request,@Headers("x-csrf-token") csrf:string|undefined,

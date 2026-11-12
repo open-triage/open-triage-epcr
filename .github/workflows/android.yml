@@ -44,6 +44,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          OPEN_TRIAGE_ANDROID_ALLOW_SCOPED_ADBD_ROOT: "1"
         with:
           api-level: 33
           arch: x86_64

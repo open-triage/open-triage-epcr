@@ -8,6 +8,62 @@ Initial sign-in, explicit logout/user switching, session expiry/revocation,
 current capabilities, report ownership and recovery deadlines still apply.
 Installation-owner recovery retains the existing local policy.
 
+## Continuing a valid login after process loss
+
+WebView localStorage is public session metadata, not a durable authentication
+commit. Before reporting a successful local login or password replacement, the
+native connection saves the cookie and minimal continuation material in the
+same Keystore-encrypted connection envelope. OIDC completion and agency handoff
+completion preserve this boundary before acknowledging their native journals.
+The continuation contains the CSRF value and exact principal, agency, personal
+cookie hash, approved origin/CA hash and installation-cookie binding. It contains
+no cached roles, expiry extension, clinical keys or report payloads.
+
+If public metadata disappears at a cold start, the native connection first
+requires a compatible, unblocked current policy and a settled connection. It
+then validates the saved CSRF through a fresh protected server current-session
+request. Only that response supplies the current capabilities, expiry and
+personal authentication timestamp, and its principal and agency must still match
+the sealed binding. Matching management-policy adoption or restoration can
+continue the valid login. Pending enrollment, agency handoff, OIDC completion,
+replacement, stale connection contexts and conflicting policy cannot use this
+generic path. Explicit logout/new primary login clears the continuation before
+the request; cookie, trust or installation changes invalidate its binding.
+
+The actual agency acceptance deliberately deletes only public session/candidate
+metadata after a successful ordinary native login and before a cold restart,
+including before matching managed-policy adoption. The old protected ciphertext
+and recovery deadline remain under their original boundaries. Run the early
+`node --test tests/android-*.test.mjs`, native JVM tests and the complete emulator
+journey to cover this persistence boundary; a successful warm WebView login alone
+does not prove restart continuity.
+
+Before the full preflight, exercise the generic continuation/controller unit
+contract with `node --test apps/api/tests/personal-continuation.test.mjs` after
+building the API. With a disposable migrated runtime database, also run
+`REQUIRE_DATABASE_INTEGRATION=1 node --test apps/api/tests/oidc-personal-postgres.integration.test.mjs`.
+That real HTTP/provider/cookie path checks first native delivery and exact-cookie
+retry against a fresh current-session payload, including CSRF and fixed expiry.
+Also run the early Android checks with JDK21 and `ANDROID_HOME` (or
+`ANDROID_SDK_ROOT`) pointing to SDK platform36. The JSON signature regression
+compiles the real continuation helpers and their JVM test sources against
+`android.jar`, including a negative control for unchecked desktop assumptions.
+Without an SDK this check explicitly skips; desktop `org.json` execution alone
+does not establish Android source compatibility. The native Gradle task executes
+the assertions against real JUnit after the signature check.
+
+The generic read is `POST /api/sessions/current/continuation`, with the ordinary
+CSRF guard and the same limited-account metadata eligibility as `GET current`.
+The agency-handoff current endpoint retains its existing eligibility. Servers
+advertise `personal-session-continuation-v1`; new APK descriptors require it.
+Native checks the shared protocol/capability contract at initial pairing and
+before authentication or continuation, and checks a cross-host target before
+source-session revocation. An unsupported server shows localized upgrade
+guidance. Older immutable APK descriptors retain their original requirements.
+Native OIDC finish includes fresh public session metadata with first delivery
+and exact-cookie retry, so the cookie and continuation commit together before
+the separate pending-return journal is cleared.
+
 ## External browser and native return
 
 OIDC follows the external-user-agent model in
@@ -109,6 +165,60 @@ command retains all preceding acceptance journeys. `--skip-oidc` is only for foc
 acceptance includes OIDC. Synthetic emulator acceptance does not establish real
 regional provider or physical-device acceptance: record those in ticket 019.
 
+## Agency handoff
+
+The APK keeps the bundled `https://localhost` workspace when switching agencies.
+Agency-less installation superusers retain the existing cross-host eligibility;
+agency-bound local and OIDC accounts use their ordinary accessible-agency policy.
+No current valid login needs another personal-authentication prompt.
+
+A native cross-host handoff first asks the currently approved API for the
+registered destination. It creates a fresh target connection with an empty
+cookie jar and the already approved public CA roots. Strict TLS hostname and CA
+verification remain enabled. A target requiring different trust, an unexpected
+host/redirect, or managed-origin conflict fails before source issuance, leaving
+the original login usable. The APK never accepts a CA from a return URL and
+never copies source personal or installation cookies to the target.
+
+After a target challenge succeeds, the shared transition barrier settles local
+writers and removes readable keys. Only then does native code issue and consume
+the one-use handoff. Verifiers, challenge cookies, source cookies and intermediate
+state stay in the Keystore-encrypted vault. The returned public session has new
+cookie/CSRF authority, the original start/proof/maximum expiry, and no old unit
+binding. Same-origin browser and APK switching use that same authority rotation.
+The original reports retain their author, agency, unit and recovery deadlines.
+
+Uncertain issue/consume responses are recorded before dispatch and are never
+replayed automatically. On restart the workspace stays locked and offers
+**Return to original installation**. This clears the interrupted private intent
+while preserving the original cookie and installation. Cancellation verifies
+that cookie with the server and restores only the matching sealed source session
+metadata; a still-valid login resumes without another sign-in. Only actual source
+revocation or expiry requires ordinary initial login. Eligible encrypted work
+remains unchanged. A successfully transferred session does not
+acquire the old unit's pairing. Pair the target explicitly if unit work is needed.
+
+Pending encrypted work does not prohibit an agency switch once its editor is
+closed. It remains in its original native-origin/agency scope, without retagging,
+deleting or extending recovery. Returning to that scope and original authorized
+identity is required for ordinary recovery. An active/opening report still blocks
+switching until it has been closed through the shared workflow.
+
+Native switch and consume commands preselect a random replacement CSRF value in
+the encrypted journal. If response headers install a new personal cookie before
+the body is interrupted, that jar is retained without replaying the one-use
+consume. A read-only `POST /api/sessions/agency-handoff/current` keeps the normal
+cookie CSRF guard and current server authorization; it verifies the sealed value
+before returning current public session metadata. Missing/incorrect CSRF never
+turns this into a login or recovery bypass.
+
+Completed target promotion and cancellation back to a still-valid source keep a
+sealed completion journal. JavaScript stores the validated public metadata inside
+the typed `handoff` cross-tab barrier, waits for its matching marker to clear, and
+only then acknowledges native completion. A restart before acknowledgement
+exposes **Finish agency switch**, keeps clinical work locked, and validates the
+private cookie before restoring metadata. Original author, unit, agency and
+recovery deadline remain attached to retained encrypted reports.
 ## Interrupted native transitions
 
 If Android stops after a confirmed operation settles natively but before its UI

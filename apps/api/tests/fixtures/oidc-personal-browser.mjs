@@ -83,19 +83,43 @@ try{
  assert.equal((await agencyRequest.run({origin},()=>personal.callback(new URL(httpProvider.headers.get('location')),httpStart.correlation))).created,undefined);
  assert.equal((await nativeHttp('finish',{secret:httpBegin.nativeSecret},`${installationCookie}; open_triage_session=`,null)).status,401);
  const firstHttpDelivery=await nativeHttp('finish',{secret:httpBegin.nativeSecret},`${installationCookie}; open_triage_session=`);
- assert.equal(firstHttpDelivery.status,200);assert.deepEqual(await firstHttpDelivery.json(),{outcome:'succeeded'});
+ assert.equal(firstHttpDelivery.status,200);const firstHttpBody=await firstHttpDelivery.json();
  const issuedCookie=firstHttpDelivery.headers.getSetCookie().find(value=>value.startsWith('open_triage_session='));assert(issuedCookie);assert.match(issuedCookie,/HttpOnly/);assert.match(issuedCookie,/Secure/);
  const currentCookie=`${installationCookie}; ${issuedCookie.split(';')[0]}`;
  const currentHttp=()=>fetch(`${api}/api/sessions/current`,{headers:{origin,cookie:currentCookie}});
  const originalHttpSession=await (await currentHttp()).json();assert.equal(originalHttpSession.user.id,process.env.OIDC_ALPHA);
+ assert.deepEqual(firstHttpBody,{outcome:'succeeded',session:originalHttpSession},'Cookie delivery includes exactly the current public session/CSRF, never a token or cached authority');
  const retryHttpDelivery=await nativeHttp('finish',{secret:httpBegin.nativeSecret},currentCookie);
- assert.equal(retryHttpDelivery.status,200);assert.deepEqual(await retryHttpDelivery.json(),{outcome:'succeeded'});assert.equal(retryHttpDelivery.headers.get('set-cookie'),null,'Idempotent native completion issues no credentials');
+ assert.equal(retryHttpDelivery.status,200);assert.deepEqual(await retryHttpDelivery.json(),{outcome:'succeeded',session:await (await currentHttp()).json()});assert.equal(retryHttpDelivery.headers.get('set-cookie'),null,'Idempotent native completion issues no credentials');
  assert.equal((await (await currentHttp()).json()).expiresAt,originalHttpSession.expiresAt);
  assert.equal((await nativeHttp('finish',{secret:httpBegin.nativeSecret},installationCookie)).status,401,'Consumed secret without its cookie grants nothing');
  assert.equal((await nativeHttp('finish',{secret:'x'.repeat(43)},currentCookie)).status,401);
  assert.equal((await nativeHttp('login',{purpose:'switch',returnScheme:'org.opentriage.development.auth'},currentCookie)).status,401,'Explicit switching still requires current-session CSRF in its service');
  assert.equal((await currentHttp()).status,200,'Rejected unproved switch preserves outgoing authority');
  console.log('PASS actual native HTTP cookie/CSRF guards: empty/stale login, secret-bound first delivery, exact-cookie idempotency, intent rejection and switch proof');
+
+ // Same-origin agency switching preserves OIDC provenance and fixed time but
+ // rotates all browser/native personal authority and drops outgoing unit binding.
+ const agencySwitch=(organizationId,csrf=originalHttpSession.csrfToken)=>fetch(`${api}/api/sessions/agency-handoff/switch`,{
+  method:'POST',headers:{origin,cookie:currentCookie,'content-type':'application/json',...(csrf?{'x-csrf-token':csrf}:{})},body:JSON.stringify({organizationId})});
+ assert.equal((await agencySwitch(process.env.OIDC_GROUP,null)).status,401);
+ const oidcCrossHost=await fetch(`${api}/api/sessions/agency-handoff/start`,{method:'POST',headers:{origin,cookie:currentCookie,'content-type':'application/json','x-csrf-token':originalHttpSession.csrfToken},body:JSON.stringify({organizationId:process.env.OIDC_OTHER,verifierHash:'a'.repeat(64)})});
+ assert.equal(oidcCrossHost.status,403,'OIDC agency accounts keep the same restricted cross-host eligibility as local agency accounts');
+
+ assert.equal((await agencySwitch(process.env.OIDC_OTHER)).status,403);
+ assert.equal((await currentHttp()).status,200,'Denied agency context keeps the original valid login');
+ const switched=await agencySwitch(process.env.OIDC_GROUP);assert.equal(switched.status,201);
+ const switchedSession=await switched.json();assert.equal(switchedSession.authenticationSource,'oidc');assert.equal(switchedSession.organization.id,process.env.OIDC_GROUP);
+ assert.equal(switchedSession.startedAt,originalHttpSession.startedAt);assert.equal(switchedSession.expiresAt,originalHttpSession.expiresAt);
+ assert.equal(switchedSession.personallyAuthenticatedAt,originalHttpSession.personallyAuthenticatedAt);assert.notEqual(switchedSession.csrfToken,originalHttpSession.csrfToken);
+ const switchedCookies=switched.headers.getSetCookie();assert(switchedCookies.some(value=>value.startsWith('open_triage_installation=;')));
+ const switchedCookie=switchedCookies.find(value=>value.startsWith('open_triage_session=')).split(';')[0];
+ assert.notEqual(switchedCookie,issuedCookie.split(';')[0]);assert.equal((await currentHttp()).status,401,'Outgoing OIDC cookie is revoked');
+ const switchedCurrent=await fetch(`${api}/api/sessions/current`,{headers:{origin,cookie:switchedCookie}});assert.equal(switchedCurrent.status,200);
+ assert.equal((await switchedCurrent.json()).csrfToken,switchedSession.csrfToken,'New token decrypts only its freshly bound CSRF');
+ const [switchedBinding]=await db.query('select installation_registration_id from app_identity.app_session where token_sha256=encode(sha256($1::bytea),\'hex\')',[Buffer.from(switchedCookie.split('=')[1])]);assert.equal(switchedBinding.installation_registration_id,null);
+ console.log('PASS native agency OIDC rotation: unchanged proof/time, new token/CSRF, no outgoing unit, denied scope and CSRF preserve source');
+
 
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
  await assert.rejects(inNative(()=>personal.begin({purpose:'reauthenticate'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
@@ -116,10 +140,12 @@ try{
  await assert.rejects(inNative(()=>personal.nativeFinish({secret:ticket})),error=>error.getStatus?.()===401);
  const delivered=await inNative(()=>personal.nativeFinish({secret:native.nativeSecret}));
  assert.equal(delivered.outcome,'succeeded');assert.equal(delivered.created.session.user.id,process.env.OIDC_ALPHA);
+ assert.equal(delivered.session.csrfToken,delivered.created.session.csrfToken);assert.equal(delivered.session.user.id,process.env.OIDC_ALPHA);
  await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret})),error=>error.getStatus?.()===401);
  const issuedCount=(await db.query('select count(*)::int count from app_identity.app_session'))[0].count;
  const resumed=await inNative(()=>personal.nativeFinish({secret:native.nativeSecret},delivered.created.sessionToken));
  assert.equal(resumed.outcome,'succeeded');assert.equal(resumed.created,undefined);
+ assert.equal(resumed.session.csrfToken,delivered.session.csrfToken);assert.equal(resumed.session.expiresAt,delivered.session.expiresAt);assert.equal(resumed.session.personallyAuthenticatedAt,delivered.session.personallyAuthenticatedAt);
  assert.equal((await db.query('select count(*)::int count from app_identity.app_session'))[0].count,issuedCount);
  await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret},guardedResult.created.sessionToken)),error=>error.getStatus?.()===401);
  await control({token:{sub:'fictional-beta'},claimsMode:'fresh'});
