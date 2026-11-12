@@ -175,3 +175,32 @@ acceptance checkbox.
 Primary implementation references: the
 [upstream agent inventory implementation](https://github.com/h-mdm/hmdm-android/blob/75eff13e7e3faf2fbe0c4d22f42d24da2a139f69/app/src/main/java/com/hmdm/launcher/util/DeviceInfoProvider.java)
 and [Android managed configurations](https://developer.android.com/work/managed-configurations).
+
+The current substitute lab has genuinely installed approved candidate 4 through
+the real Headwind agent on the isolated device. The first operator attempt stopped
+before any clinical Activity, instrumentation or enrollment because its installed
+APK path parser rejected Android's normal `/data/app/~~…` layout. That failed run
+remains failed; fixing the operator parser does not establish clinical acceptance.
+Retain this delivered APK and its state rather than reinstalling or resetting it.
+
+For this fresh delivered target, `runReportRecoveryJourney` accepts explicit
+`targetPreparation: 'external'` together with `hooks.prepareTarget`, an awaited
+function receiving the selected target and issued synthetic artifact. The hook
+must prove freshness before proceeding, using independently verified installed
+bytes plus the actual unpaired UI. A missing/invalid hook or rejected proof aborts;
+default callers retain their original package clear. Never use this override to
+resume an already enrolled or pending-work target through the preparation phase.
+
+`ActualManagedUiObservationTest` is a vendor-neutral instrumentation observer for
+actual externally delivered policy: `pairingConflict` imports a synthetic
+conflicting artifact without confirming enrollment; `managedBlocked` verifies
+fail-closed UI and exact sealed envelope preservation; `managedRestored` verifies
+existing login and native credentials after restoring the original policy.
+`deliveredPolicyFingerprint` reports only a typed policy digest. These methods
+never deliver restrictions, clear data or sign in. Run methods individually with
+their explicit fixture arguments and a separately recorded test APK identity.
+Ready paired UI does not render the setup-only managed-origin notice, so restored
+observation checks the native policy origin and absence of an editable URL.
+Instrumenting a clinical app may perform ordinary startup network work; these
+observations alone do not prove absence of HTTP traffic or revocation acceptance.
+Actual clinical/policy/upgrade acceptance remains pending until those runs pass.

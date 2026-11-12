@@ -8,9 +8,11 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
 import { startLiveInstrumentation } from './live-instrumentation.mjs';
+import { prepareReportJourneyTarget, validateReportTargetPreparation } from './report-target-preparation.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
-export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, preparationProfile = 'current', upgradeReceipt = '', hooks = {}, audio = false, unsavedAudio = false, signReview = false }) {
+export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, preparationProfile = 'current', upgradeReceipt = '', hooks = {}, targetPreparation = 'clear', audio = false, unsavedAudio = false, signReview = false }) {
+  validateReportTargetPreparation(targetPreparation, hooks.prepareTarget);
   if(upgradeReceipt)decodeUpgradePreparationReceipt(upgradeReceipt);else assert.equal(preparationProfile,'current','Historical profile requires its validated receipt before ADB');
   const report = await seedReportFixture(root, fixture, run); let ca = await readFile(fixture.caPath);
   const administrator = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
@@ -59,7 +61,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const db = new pg.Client({ connectionString: fixture.databaseUrl }); await db.connect();
   let preparation;
   try {
-    run(adb, ['-s', serial, 'shell', 'pm', 'clear', applicationId]);
+    await prepareReportJourneyTarget({ mode: targetPreparation, prepareTarget: hooks.prepareTarget, root, fixture, report, artifact, applicationId, adb, serial, run, api, db, ca });
     preparation = prepareUntilKilled('prepare', hooks.prepareArguments ?? {}); await preparation.ready;
     const { rows: [opened] } = await db.query(`select r.id,r.revision,r.form_version_id,r.catalog_release_id,r.validation_version_id,
       envelope.recovery_deadline,envelope.wrapping_key_version,envelope.ciphertext_revision from clinical.call_assignment assignment
