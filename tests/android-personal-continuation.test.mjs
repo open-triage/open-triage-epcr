@@ -8,7 +8,8 @@ import {realContractsSourcePlugin,assertUnbuiltWorkspaceInputs} from './helpers/
 
 const bundled=await build({bundle:true,write:false,metafile:true,format:'cjs',platform:'node',define:{'process.env.NEXT_PUBLIC_API_URL':'"same-origin"'},plugins:[realContractsSourcePlugin(),{name:'native-continuation',setup(builder){
  builder.onResolve({filter:/^\.\/protected-clinical-storage$/},args=>args.importer.endsWith('/clinician-session.ts')?{path:'settlement',namespace:'held-storage'}:undefined);
- builder.onLoad({filter:/.*/,namespace:'held-storage'},()=>({contents:'export async function lockProtectedClinicalStorage(){return globalThis.continuationFixture.lock?.();}'}));
+ builder.onLoad({filter:/.*/,namespace:'held-storage'},()=>({contents:`export async function lockProtectedClinicalStorage(){return globalThis.continuationFixture.lock?.();}
+ export function then(resolve){const done=()=>resolve({lockProtectedClinicalStorage});if(globalThis.continuationFixture.holdImport){globalThis.continuationFixture.releaseImport=done;globalThis.continuationFixture.importStarted();}else done();}`}));
  builder.onResolve({filter:/^@capacitor\/core$/},()=>({path:'core',namespace:'test'}));
  builder.onLoad({filter:/.*/,namespace:'test'},()=>({contents:`export const Capacitor={isNativePlatform:()=>true,getPlatform:()=> 'android'};export const registerPlugin=()=>({resumePersonalSession:options=>globalThis.continuationFixture.resume(options)});`}));
 }}],stdin:{resolveDir:process.cwd(),contents:"export{authenticateRestartedClinicianSession,resumeInterruptedNativeClinicianSession}from'./apps/web/app/clinician-session';export{configureNativeConnection}from'./apps/web/app/android-runtime';"}});
@@ -25,6 +26,17 @@ test('complete public session loss restores fresh native authority without crede
 test('a legacy public candidate migrates only through a successful CSRF-guarded current POST',async()=>{
  const f=fixture(async()=>({}));
  try{globalThis.fetch=async(url,options)=>{assert.match(url,/\/api\/sessions\/current\/continuation$/);assert.equal(options.method,'POST');assert.equal(new Headers(options.headers).get('x-csrf-token'),session.csrfToken);return Response.json({...session,csrfToken:undefined})};assert.deepEqual(await api.authenticateRestartedClinicianSession({...session,capabilities:['stale:role'],expiresAt:'2099-01-01T00:00:00Z'}),session);}finally{f.restore();}
+});
+for(const change of ['generation','context'])test(`a held module import cannot lock or publish after ${change} replacement`,async()=>{
+ let started;const ready=new Promise(resolve=>started=resolve),f=fixture(async()=>({session:structuredClone(session)}));
+ try{
+  const stale={...structuredClone(session),user:{id:'old-public-user',displayName:'Old cached identity'}};const encoded=JSON.stringify(stale);f.entries.set('open-triage.clinician-session.v1',encoded);
+  let locks=0;Object.assign(globalThis.continuationFixture,{holdImport:true,importStarted:started,lock:()=>{locks++;}});
+  const pending=api.authenticateRestartedClinicianSession(stale);await ready;
+  if(change==='generation')f.entries.set('open-triage.installation-generation.v1','new-generation');
+  else api.configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'new-context'});
+  globalThis.continuationFixture.releaseImport();await assert.rejects(pending);assert.equal(locks,0);assert.equal(f.entries.get('open-triage.clinician-session.v1'),encoded);
+ }finally{f.restore();}
 });
 test('stale public identity A cannot veto sealed native identity B after fresh server validation',async()=>{
  const f=fixture(async()=>({session:structuredClone(session)}));

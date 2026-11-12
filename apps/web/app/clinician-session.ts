@@ -66,7 +66,8 @@ async function adoptNativePersonalSession(session:AuthenticatedSession,generatio
     try{
       const {lockProtectedClinicalStorage}=await import("./protected-clinical-storage");
       const {clearProtectedRuntimeReports}=await import("./offline-reports");
-      try{await lockProtectedClinicalStorage();}finally{clearProtectedRuntimeReports();}
+      assertNativePersonalContext(generation,context);
+      try{await lockProtectedClinicalStorage();}finally{if(isCurrent())clearProtectedRuntimeReports();}
     }catch(error){
       if(!isCurrent())throw error;
       throw new NativePersonalSessionSettlementError(isCurrent,()=>window.localStorage.getItem(CLINICIAN_SESSION_STORAGE_KEY)===encoded);
