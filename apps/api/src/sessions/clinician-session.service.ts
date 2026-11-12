@@ -311,8 +311,8 @@ export class ClinicianSessionService {
     return session;
   }
 
-  async switchAgency(token: string, organizationId: string): Promise<ClinicianSession> {
-    return this.dataSource.transaction(async (manager) => {
+  async switchAgency(token: string, organizationId: string, transaction?: EntityManager): Promise<ClinicianSession> {
+    const change = async (manager: EntityManager) => {
       const current = await this.getAuthenticated(token, new Date(), false, manager);
       if (!current.agencies?.some((agency) => agency.id === organizationId)) {
         throw new ForbiddenException("This agency is not available to this account");
@@ -331,7 +331,8 @@ export class ClinicianSessionService {
       const request = agencyRequest.getStore();
       if (request) request.organizationId = organizationId;
       return this.get(token, new Date(), false, manager);
-    });
+    };
+    return transaction ? change(transaction) : this.dataSource.transaction(change);
   }
 
   async reauthenticate(sessionToken: string, csrfToken: string | undefined, currentPassword: string,

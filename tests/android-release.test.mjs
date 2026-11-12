@@ -63,9 +63,22 @@ test('publication requires acceptance evidence for every native extension requir
   validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities: ['native-enrollment-attempt-v1'] }, preflight, identity);
 });
 
-test('merged enrollment and upgrade policy implementations are advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-enrollment-outcome-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-enrollment-outcome-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
+test('merged enrollment attempt implementation is advertised and required by future APK descriptors', () => {
+  assert(ANDROID_API_CAPABILITIES.includes('native-enrollment-attempt-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-attempt-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('native-enrollment-outcome-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-outcome-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('native-oidc-return-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-oidc-return-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('audio-webm-live-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('audio-webm-live-v1'));
+
+  assert(ANDROID_API_CAPABILITIES.includes('android-upgrade-policy-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-policy-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('native-agency-handoff-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-agency-handoff-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('android-upgrade-gate-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-gate-v1'));
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
 

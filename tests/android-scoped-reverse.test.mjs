@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {scopedAndroidReverse} from '../scripts/android/scoped-reverse.mjs';
+function fixture(previous,fail=false){let mapping=previous;const calls=[];const execute=(_adb,args)=>{const op=args.slice(3);calls.push(op);if(op[0]==='--list')return{status:0,stdout:mapping?`device tcp:443 ${mapping}\n`:''};if(op[0]==='--remove'){mapping=undefined;return{status:0}}if(fail&&op[1]==='tcp:9444'){if(fail==='partial')mapping='tcp:9444';return{status:1,stderr:'cannot bind listener: Permission denied SECRET-OPAQUE'};}mapping=op[1];return{status:0}};return{execute,calls,mapping:()=>mapping};}
+for(const original of [undefined,'tcp:4443','localabstract:owned'])test(`scoped reverse restores exact original ${original??'absence'}`,()=>{const f=fixture(original);const restore=scopedAndroidReverse({adb:'adb',serial:'leased',execute:f.execute});assert.equal(f.mapping(),'tcp:9444');restore();restore();assert.equal(f.mapping(),original);});
+test('privileged listener denial is actionable, sanitized and leaves original mapping untouched',()=>{const f=fixture('tcp:4443',true);assert.throws(()=>scopedAndroidReverse({adb:'adb',serial:'leased',execute:f.execute}),error=>/requires device permission/.test(error.message)&&!error.message.includes('SECRET'));assert.equal(f.mapping(),'tcp:4443');});
+test('unknown reverse families fail without mutation',()=>{const f=fixture('unrecognized:device');assert.throws(()=>scopedAndroidReverse({adb:'adb',serial:'leased',execute:f.execute}),/Unknown/);assert.equal(f.calls.length,1);});
+
+test('a failed partially applied setup restores the original listener',()=>{const f=fixture('tcp:4443','partial');assert.throws(()=>scopedAndroidReverse({adb:'adb',serial:'leased',execute:f.execute}),/requires device permission/);assert.equal(f.mapping(),'tcp:4443');});

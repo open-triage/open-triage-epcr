@@ -1,3 +1,4 @@
+import type { AuthenticatedSession } from "@open-triage/contracts";
 import { foregroundNetworkAllowed, APPLICATION_FOREGROUND_EVENT } from "./application-foreground";
 import { setNativeStorageScope } from "./native-storage-context";
 import { nativeTlsFailure, publishNativeTlsStatus } from "./android-connection-failure";
@@ -6,8 +7,14 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor
 
 export type NativeResponse = { status: number; headers: Record<string, string>; bodyBase64: string };
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
-export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; pendingOrigin?: string; pendingOutcome?: string; storageScope?: string; legacyStorageScope?: string };
+export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; pendingOrigin?: string; pendingOutcome?: string; handoffPending?: boolean; handoffComplete?: boolean; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
+  prepareAgencyHandoff(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<{crossHost: boolean}>;
+  confirmAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;
+  switchAgency(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;
+  resumeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState & {session?:AuthenticatedSession}>;
+  acknowledgeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState>;
+  cancelAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session?: AuthenticatedSession}>;
   version(): Promise<{versionCode: number}>;
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
@@ -28,6 +35,7 @@ export const AndroidConnection = registerPlugin<ConnectionPlugin>("OpenTriageCon
 export const isAndroidRuntime = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 let installed = false;
 let connectionContext: string | undefined;
+export const nativeConnectionContext = () => connectionContext;
 export function configureNativeConnection(state: AndroidConnectionState): void {
   connectionContext = state.connectionContext;
   if (state.origin) { if(!state.storageScope) throw new Error("Native storage context unavailable"); setNativeStorageScope(state.storageScope, state.legacyStorageScope); }
