@@ -8,17 +8,14 @@ import {DataSource} from 'typeorm';
 import {runInstrumentation} from './instrumentation.mjs';
 import {startLiveInstrumentation} from './live-instrumentation.mjs';
 import {stopFixtureChild} from './fixture-processes.mjs';
+import {scopedAndroidReverse} from './scoped-reverse.mjs';
 import {seedReportFixture} from './report-fixture.mjs';
 
 /** Two real trusted origins; only an explicit test-only reverse reaches localhost:443. */
 export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial,run,api}){
  const db=new DataSource({type:'postgres',url:fixture.databaseUrl});await db.initialize();
  const ca=await readFile(fixture.caPath),targetOrigin='https://127.0.0.1',targetAgency=randomUUID();
- const reverseList=execFileSync(adb,['-s',serial,'reverse','--list'],{encoding:'utf8'});
- const previous=reverseList.split('\n').map(line=>line.trim().split(/\s+/)).find(parts=>parts.at(-2)==='tcp:443')?.at(-1);
- if(previous)assert(/^(tcp:[0-9]+|localabstract:[A-Za-z0-9_.-]+)$/.test(previous),'Unknown reverse mapping must remain untouched');
- let targetApi,ownsManagement=false,reportId,live,changedReverse=false,failure;
- const reverse=args=>{const value=spawnSync(adb,['-s',serial,'reverse',...args],{encoding:'utf8'});if(value.status!==0)throw new Error('Agency fixture reverse operation failed');};
+ let targetApi,ownsManagement=false,reportId,live,restoreReverse,failure;
  const targetFixture={...fixture,origin:targetOrigin,port:9444};
  const startTarget=async overrides=>{
   if(targetApi)await stopFixtureChild(targetApi);
@@ -47,7 +44,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   const administrator=await api(fixture,ca,'sessions','POST',{username:fixture.administrator.username,password:fixture.administratorPassword});assert.equal(administrator.status,201);
   const cookie=administrator.headers['set-cookie'].map(value=>value.split(';')[0]).join('; '),headers={Cookie:cookie,'x-csrf-token':administrator.body.csrfToken,'x-organization-id':fixture.organizationId};
   const issue=async()=>{const result=await api(fixture,ca,`admin/units/${fixture.unitId}/enrollment`,'POST',{},headers);assert.equal(result.status,201);return Buffer.from(JSON.stringify({version:1,...result.body,caPem:ca.toString('utf8')})).toString('base64');};
-  reverse(['tcp:443','tcp:9444']);changedReverse=true;
+  restoreReverse=scopedAndroidReverse({adb,serial});
   const wrongKey=join(directory,'agency-untrusted.key'),wrongCert=join(directory,'agency-untrusted.pem');
   run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',wrongKey,'-out',wrongCert,'-days','2','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1']);
   await startTarget({keyPath:wrongKey,certPath:wrongCert});
@@ -118,13 +115,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
    }
   });
   await cleanup('Agency target API cleanup failed',()=>stopFixtureChild(targetApi??{}));
-  await cleanup('Agency fixture reverse restoration failed',async()=>{
-   if(changedReverse){
-    if(previous)reverse(['tcp:443',previous]);else reverse(['--remove','tcp:443']);
-    const after=execFileSync(adb,['-s',serial,'reverse','--list'],{encoding:'utf8'}).split('\n').map(line=>line.trim().split(/\s+/)).find(parts=>parts.at(-2)==='tcp:443')?.at(-1);
-    assert.equal(after,previous,'Original reverse endpoint must be restored exactly');
-   }
-  });
+  await cleanup('Agency fixture reverse restoration failed',async()=>restoreReverse?.());
   await cleanup('Agency fixture database connection cleanup failed',()=>db.destroy());
   if(cleanupErrors.length)throw new AggregateError(failure?[failure,...cleanupErrors]:cleanupErrors,'Agency journey or cleanup failed');
  }

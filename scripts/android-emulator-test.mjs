@@ -1,3 +1,4 @@
+import {scopedAgencyAdbdRoot} from './android/scoped-adbd-root.mjs';
 import {adbShellArguments} from './android/instrumentation.mjs';
 import {nativeStartupClasses,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
 import { runAgencyHandoffJourney } from './android/agency-handoff-journey.mjs';
@@ -33,6 +34,9 @@ function run(command, args, env = process.env) {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed (${result.status ?? result.signal})`);
 }
+let restoreAdbd;
+try {
+if (!tlsOnly && !process.argv.includes('--oidc-only') && !process.argv.includes('--external-apis')) restoreAdbd=scopedAgencyAdbdRoot({adb,serial});
 await withWebViewFontProfile({adb,serial,root},async fontProfile=>{
 try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
@@ -103,4 +107,7 @@ try {
   await stopFixtureChildren(children);
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
 }
-}).finally(()=>rm(directory,{recursive:true,force:true}));
+});
+} finally {
+ try {restoreAdbd?.();} finally {await rm(directory,{recursive:true,force:true});}
+}

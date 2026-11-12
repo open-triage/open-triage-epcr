@@ -450,3 +450,20 @@ the real API. This fixture behavior is absent from the production API entry poin
 Native plugin responses and listener events use `LifecycleBoundPlugin`: settlement runs on the UI thread, checks the owning WebView at execution, and closes before worker cancellation when the Activity is destroyed. An ordinary pause keeps pending replies valid. This avoids Chromium109's `JsReplyProxy` worker-to-UI race, where destruction can clear the pointer between its initial check and deferred native call. Network authorization and durable pending-work outcomes keep their existing boundaries.
 
 The early Android tests compile the actual reply gate and reproduce the original queue/pointer race before checking live and destroyed delivery. The current-APK startup instrumentation includes `NativeReplyLifecycleTest`: an instrumentation-only plugin registers on the real MainActivity before creation, holds success/error/events until after close, verifies callback disposal, and proves pause/resume and replacement-Activity live delivery. It adds no production bridge endpoint and does not alter immutable upgrade-candidate instrumentation.
+
+### Canonical HTTPS handoff fixture routing
+
+The agency fixture uses registered `https://127.0.0.1` with strict private-CA and
+hostname validation. Its temporary reverse listener therefore needs device port
+443. On an explicitly leased disposable emulator, opt in with
+`OPEN_TRIAGE_ANDROID_ALLOW_SCOPED_ADBD_ROOT=1 npm run android:test -- --skip-build`.
+The Android workflow supplies this opt-in for its disposable Google APIs image.
+The helper rejects physical/non-debuggable/production devices, probes the bind
+before Docker/database/app mutation and elevates only adbd when permission is
+required. Existing reverse listeners must be released before a daemon restart.
+The installed app remains its ordinary Android UID; startup instrumentation proves
+that it is not root. No TLS checks, CA stores or application permissions change.
+Cleanup restores the exact original port-443 mapping and daemon UID, with bounded
+reconnection and verification; restoration failure fails acceptance. Focused
+`--agency-only` uses the same guard. Early fake-ADB regressions run with
+`node --test tests/android-scoped-adbd-root.test.mjs tests/android-scoped-reverse.test.mjs`.
