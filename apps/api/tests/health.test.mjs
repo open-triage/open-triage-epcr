@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NotFoundException } from "@nestjs/common";
 import { HealthController } from "../dist/health.controller.js";
+import { ANDROID_API_CAPABILITIES } from "@open-triage/contracts/android-client-protocol";
 
 test("development health details identify the checkout and database without exposing a URL", async () => {
   const previous = process.env.NODE_ENV;
@@ -38,7 +39,13 @@ test("public production health advertises the shared Android protocol independen
   try {
     for (const source of ["a".repeat(40), "b".repeat(40)]) {
       process.env.OPEN_TRIAGE_BUILD_SHA = source;
-      assert.deepEqual(controller.getHealth(), { status: "ok", service: "open-triage-api", androidApiProtocol: 1, androidApiCapabilities: ["native-enrollment-attempt-v1", "native-oidc-return-v1", "audio-webm-live-v1", "android-upgrade-policy-v1", "native-agency-handoff-v1"] });
+      assert.deepEqual(controller.getHealth(), { status: "ok", service: "open-triage-api", androidApiProtocol: 1, androidApiCapabilities: ANDROID_API_CAPABILITIES });
+      assert(controller.getHealth().androidApiCapabilities.includes("native-enrollment-attempt-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("native-enrollment-outcome-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("native-oidc-return-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("audio-webm-live-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("android-upgrade-policy-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("native-agency-handoff-v1"));
     }
   } finally {
     if (previous === undefined) delete process.env.OPEN_TRIAGE_BUILD_SHA;

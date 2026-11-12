@@ -10,7 +10,8 @@ async function bundle(contents: string, native = false) {
       state:async()=>window.fixture.state,addListener:async()=>({remove:async()=>{}}),
       beginReplacement:async()=>{window.fixture.begun++;if(window.fixture.holdReplacement)await new Promise(resolve=>{window.fixture.releaseReplacement=()=>{window.fixture.holdReplacement=false;resolve()}});return window.fixture.state={configured:false,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'replacement'}},
       preview:async()=>({origin:'https://original.example',organizationName:'Agency',unitName:'New unit',callSign:'NEW'}),
-      confirm:async()=>{window.fixture.state={...window.fixture.state,replacementPending:true};throw Error('Response lost')},
+      confirm:async()=>{window.fixture.state={...window.fixture.state,replacementPending:true,...window.fixture.uncommitted?{pendingOutcome:'not-committed'}:{}};throw Error('Response lost')},
+      abandonUncommittedEnrollment:async()=>{window.fixture.abandons=(window.fixture.abandons||0)+1;return window.fixture.state={...window.fixture.state,replacementPending:false,configured:false,connectionContext:'abandoned'}},
       resumeEnrollment:async()=>window.fixture.state={configured:true,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'promoted'},cancel:async()=>{window.fixture.state={configured:true,origin:'https://original.example',storageScope:'A'.repeat(43),connectionContext:'cancelled'}}
       }:{addListener:async()=>({remove:async()=>{}}),state:async()=>({active:true})};
     `}));}}]} : {}),stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents}})).outputFiles[0]!.text;
@@ -39,10 +40,27 @@ test('native replacement settles current identity and resumes only the already c
   await page.locator('input[type=file]').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
   await page.getByRole('textbox').fill('New installation');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
   await expect(page.getByRole('button',{name:'Retry confirmed pairing'})).toBeVisible();
-  await expect(page.locator('input[type=file],input[type=checkbox],[data-clinical]')).toHaveCount(0);
+  await expect(page.locator('input[type=checkbox],[data-clinical]')).toHaveCount(0);
+  await expect(page.getByLabel('Update pending server trust')).toBeVisible();
   await page.getByRole('button',{name:'Retry confirmed pairing'}).click();
   await expect(page.locator('[data-clinical]')).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBeNull();
+});
+
+test('proved abandonment in the same live gate removes the stale confirmed preview before accepting a new code',async({page})=>{
+  const script=await bundle(`import React from 'react';import{createRoot}from'react-dom/client';import{AndroidRuntimeGate}from'./components/android-runtime-gate';import{AndroidInstallationAction}from'./components/android-installation-action';
+    createRoot(document.getElementById('root')!).render(<AndroidRuntimeGate><main data-clinical>Current workspace<AndroidInstallationAction language="en"/></main></AndroidRuntimeGate>);`,true);
+  await page.route('**/__live-abandon-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
+  await page.route('**/__live-abandon',route=>route.fulfill({contentType:'text/html',body:'<html><body><div id="root"></div><script>window.fixture={begun:0,uncommitted:true,state:{configured:true,origin:"https://original.example",storageScope:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",connectionContext:"original"}}</script><script src="/__live-abandon-script"></script></body></html>'}));
+  await page.goto('/__live-abandon');await page.getByRole('button',{name:'Change installation'}).click();
+  const artifact={version:1,origin:'https://original.example',token:'A'.repeat(43),caPem:'',expiresAt:new Date(Date.now()+240000).toISOString()};
+  await page.getByLabel('Import vehicle pairing file').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
+  await page.getByRole('textbox').fill('Old confirmed preview');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
+  await expect(page.locator('[data-pending-enrollment]')).toBeVisible();await page.getByRole('button',{name:'Use a new pairing code'}).click();
+  await expect(page.locator('[data-pending-enrollment]')).toHaveCount(0);
+  await expect(page.getByLabel('Import vehicle pairing file')).toBeEnabled();
+  await expect(page.getByRole('checkbox')).toHaveCount(0);await expect(page.getByRole('textbox')).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as unknown as {fixture:{abandons:number}}).fixture.abandons)).toBe(1);
 });
 
 test('native pending recovery handles stay in their original server scope while ciphertext is retained',async({page})=>{

@@ -34,6 +34,8 @@ android {
         androidTest.java.srcDir "src/testSupport/java"
         test.java.srcDir "src/sharedTest/java"
         androidTest.java.srcDir "src/sharedTest/java"
+        test.java.srcDir "src/testSupport/java"
+        androidTest.java.srcDir "src/testSupport/java"
     }
     testOptions {
         unitTests.all {

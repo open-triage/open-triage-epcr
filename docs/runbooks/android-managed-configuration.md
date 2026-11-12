@@ -1,5 +1,9 @@
 # Android managed connection configuration
 
+For server key/chain installation, same-CA renewal, and deliberate CA overlap or
+replacement without rebuilding the APK, follow [TLS provisioning](android-tls-provisioning.md).
+Public CA material never includes a server or CA private key.
+
 The generic development package is `org.opentriage.development`. Production
 package/signing ownership is selected in ticket 013. The clinical APK is an
 ordinary managed application and never becomes the device owner.

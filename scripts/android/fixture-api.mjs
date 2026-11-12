@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { readFile } from 'node:fs/promises';
+import { installTlsFixtureControl } from './tls-fixture-control.mjs';
 const fixture = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const runtimeDatabase = new URL(fixture.databaseUrl);
 runtimeDatabase.searchParams.set('options', '-c role=open_triage_api_runtime');
@@ -27,8 +28,12 @@ const [databaseIdentity] = await app.get(DataSource).query('select current_user 
 if (databaseIdentity.effective_role !== 'open_triage_api_runtime') throw new Error('Synthetic API must use the restricted runtime role');
 // A bounded fixture-only barrier makes lifecycle/policy races deterministic.
 // This file is a synthetic API launcher, never the production API entry point.
+let acceptedRequests = 0;
+let outcomeAvailable = true;
 let dropEnrollmentReplies = false;
 app.use((request, response, next) => {
+  acceptedRequests++;
+  if (!outcomeAvailable && request.url === '/api/installations/enrollment-outcome') return response.status(404).json({code:'fixture.unavailable'});
   if (request.url === '/api/__android-enrollment-expire' && request.method === 'POST') {
     let input=''; request.on('data',chunk=>{input+=chunk;if(input.length>1024)request.destroy();});
     request.on('end',()=>{void(async()=>{
@@ -61,6 +66,7 @@ app.use((request, response, next) => {
   if (request.url === '/') return response.type('html').send(`<html><body>SYNTHETIC-REMOTE-WEB-DEPLOYMENT-${webDeployment}</body></html>`);
   next();
 });
+
 app.use((request, response, next) => {
   const url = new URL(request.url, fixture.origin), id = url.searchParams.get('requestId');
   if (!/^[a-f0-9-]{36}$/.test(id ?? '')) return next();
@@ -119,6 +125,7 @@ app.use((request,response,next)=>{
 });
 app.setGlobalPrefix('api'); app.use(agencyContextMiddleware); app.use(securityHeaders); app.useGlobalFilters(new PlatformErrorFilter());
 await app.listen(fixture.port, '0.0.0.0');
+installTlsFixtureControl(app.getHttpServer(), fixture.tlsVariants, process, readFile, () => acceptedRequests, selected => { outcomeAvailable = selected.outcomeAvailable !== false; });
 process.send?.({ ready: true });
 console.log(`Synthetic Android fixture ready on port ${fixture.port}`);
 process.on('SIGTERM', async () => { await app.close(); process.exit(0); });

@@ -11,6 +11,8 @@ import {INSTALLATION_GENERATION_KEY} from "../app/installation-transition-genera
 import { transitionInstallation, resumeNativeInstallationTransition, INSTALLATION_TRANSITION_KEY, INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { AndroidInstallationAction, ANDROID_REPLACE_INSTALLATION } from "./android-installation-action";
 import { installAndroidLifecycle } from "../app/android-lifecycle";
+import { AndroidTlsNotice } from "./android-tls-notice";
+import { AndroidPendingEnrollment } from "./android-pending-enrollment";
 
 export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false), [native, setNative] = useState(false), [busy, setBusy] = useState(false);
@@ -39,6 +41,9 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     const code = (failure as { code?: string })?.code;
     if (code === "MANAGED_CONFLICT") return "android.managed.conflict";
     if (code === "MANAGED_BLOCKED") return "android.managed.unavailable";
+    if (code === "TLS_FAILED") return "android.tlsFailed";
+    if (code === "ENROLLMENT_NOT_COMMITTED") return "android.pendingNotCommitted";
+    if (code === "ENROLLMENT_UNAVAILABLE") return "android.pendingUnavailable";
     return source === "scan" ? scannerFailureMessage(failure) : "android.pairingFailed";
   };
   const t = (key: string) => resolveMessage(language, key);
@@ -114,7 +119,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     if (isCurrent(started)) { setName(""); setConfirmed(false); setPreview(next); }
   }
   const managedNotice = connection?.managed ? <p role="status" className="android-managed-connection" data-managed-context={connection.managedContext} data-managed-status={connection.managedStatus}>{t("android.managed.locked")}{connection.managedOrigin ? ` · ${connection.managedOrigin}` : ""}</p> : null;
-  if (ready) return children;
+  if (ready) return <><AndroidTlsNotice />{children}</>;
   if(recoveringTransition)return <main role="status" aria-busy="true">{t("login.opening")}</main>;
   if (!native || !connection) return null;
   return <main className="admin-directory installation-enrollment"><h1>{t("android.pairingTitle")}</h1>
@@ -137,11 +142,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
         if(sameGeneration()&&mounted.current&&!currentState.current?.blocked&&(revision.current===started||currentState.current?.connectionContext===state.connectionContext)){applyState(state);window.location.reload();}
       }
       catch(failure){setError(failureMessage(failure));}finally{if(mounted.current)setBusy(false);}
-    }}>{t(connection.handoffComplete?"android.finishHandoff":"android.cancelHandoff")}</button></> : connection.replacementPending ? <button type="button" disabled={busy} onClick={async () => {
-      setBusy(true); setError(null); const started=revision.current;
-      try { const state=await transitionInstallation(() => AndroidConnection.resumeEnrollment(),'enrollment'); if(isCurrent(started)) applyState(state); }
-      catch(failure) { if(isCurrent(started)) setError(failureMessage(failure)); } finally { if(mounted.current) setBusy(false); }
-    }}>{t("android.retryPairing")}</button> : <>    {!preview ? <><button type="button" className="button-primary" data-pairing-scan disabled={busy} onClick={async () => {
+    }}>{t(connection.handoffComplete?"android.finishHandoff":"android.cancelHandoff")}</button></> : connection.replacementPending ? <AndroidPendingEnrollment key={`${connection.connectionContext}:${connection.managedContext}`} state={connection} language={language} onState={applyState} /> : <>    {!preview ? <><button type="button" className="button-primary" data-pairing-scan disabled={busy} onClick={async () => {
       setBusy(true); setError(null); const started = revision.current;
       try { const result = await AndroidScanner.scan(); if (!result.cancelled) await preparePairing(result.artifact, "scan", started); }
       catch (reason) { if (isCurrent(started)) setError(failureMessage(reason, "scan")); } finally { if (mounted.current) setBusy(false); }
@@ -159,7 +160,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       try {
         await installAndroidLifecycle();
         if (!isCurrent(started)) return;
-        await transitionInstallation(() => AndroidConnection.confirm({ name, confirmInstallation: true }),'enrollment');
+        await transitionInstallation(() => AndroidConnection.confirm({ name, confirmInstallation: true }),"enrollment");
         if (!isCurrent(started)) return;
         const state = await AndroidConnection.state();
         if (isCurrent(started)) { setPreview(null); applyState(state); }

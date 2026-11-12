@@ -18,6 +18,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     private volatile TrustedConnection active;
     private TrustedConnection candidate;
     private JSONObject pairing;
+    private JSONObject pendingTrustArtifact;
+    private TrustedConnection pendingTrustCandidate;
+    private long pendingTrustRevision = -1;
+    private volatile String pendingOutcome;
     private ConnectionVault vault;
     private boolean loaded;
     private volatile JSONObject pendingEnrollment;
@@ -60,6 +64,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                     try {
                         initialize(); var effective = pairingPolicy(sampledPolicy(), active);
                         if (effective.blocked() || candidate != null && effective.managed() && !effective.matches(candidate)) { candidate = null; pairing = null; }
+                        if (effective.blocked() || pendingTrustCandidate != null && effective.managed() && !effective.matches(pendingTrustCandidate)) { pendingTrustCandidate = null; pendingTrustArtifact = null; }
                         if (!destroyed) notifyListeners("configurationChanged", connectionState());
                     } catch (Exception ignored) {
                         JSObject failed = new JSObject(); failed.put("configured", false); failed.put("managed", true); failed.put("blocked", true); failed.put("managedStatus", "unavailable");
@@ -86,6 +91,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         result.put("handoffPending", handoffInterrupted());
         result.put("handoffComplete", handoffCanResume());
         result.put("connectionContext", connectionContext); result.put("replacementPending", pendingEnrollment != null);
+        if (pendingEnrollment != null) {
+            result.put("pendingOrigin", pendingEnrollment.getJSONObject("candidate").getString("origin"));
+            if (pendingOutcome != null) result.put("pendingOutcome", pendingOutcome);
+        }
         result.put("managed", policy.managed()); result.put("managedStatus", policy.status()); result.put("blocked", policy.blocked());
         if (retained != null) { result.put("origin", retained.origin); result.put("storageScope", NativeConnectionIdentity.storageScope(retained.origin)); }
         if (vault != null) { String legacyScope = vault.legacyStorageScope(); if (legacyScope != null) result.put("legacyStorageScope", legacyScope); }
@@ -132,6 +141,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         final String code;
         ManagedFailure(String code) { this.code = code; }
     }
+    private static class EnrollmentFailure extends Exception {
+        final String code;
+        EnrollmentFailure(String code) { this.code = code; }
+    }
     private interface Operation { JSObject run() throws Exception; }
     private void execute(PluginCall call, Operation operation) {
         withReplyRealm(call, () -> {
@@ -146,9 +159,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                     try { if (!destroyed) notifyListeners("configurationChanged", connectionState()); } catch (Exception ignored) { /* The request already fails closed. */ }
                     rejectCall(call, "Managed connection requires attention", error.code);
                 }
+                catch (EnrollmentFailure error) { rejectCall(call, "Pending enrollment requires attention", error.code); }
                 catch (Exception error) {
                     if (handoffInterrupted()) { try { notifyListeners("configurationChanged", connectionState()); } catch (Exception ignored) { /* Native journal still blocks traffic. */ } }
-                    rejectCall(call, "Connection or pairing failed", "CONNECTION_FAILED");
+                    rejectCall(call, "Connection or pairing failed", ConnectionFailure.code(error));
                 }
             });
         });
@@ -196,7 +210,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         if (pendingEnrollment != null || active != null && !replacing || candidate == null || pairing == null || !Boolean.TRUE.equals(call.getBoolean("confirmInstallation"))) throw new IllegalStateException("Confirmation required");
         JSONObject artifact = new JSONObject(pairing.toString()); artifact.remove("reassign");
         TrustedConnection.artifact(artifact.toString(), System.currentTimeMillis());
-        String name = call.getString("name", "").trim();
+        String name = NativeEnrollmentAttempt.normalizedName(call.getString("name", ""));
         if (name.isEmpty() || name.length() > 100 || name.matches("(?s).*[\\x00-\\x1f\\x7f].*")) throw new IllegalArgumentException("Installation name required");
         allowedCandidate(candidate);
         byte[] secret = new byte[32]; new java.security.SecureRandom().nextBytes(secret);
@@ -204,7 +218,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         JSONObject body = new JSONObject().put("token", pairing.getString("token")).put("name", name).put("confirmInstallation", true).put("attempt", attempt);
         if (pairing.optBoolean("reassign")) body.put("reassign", true);
         JSONObject prepared = new JSONObject().put("candidate", candidate.saved()).put("body", body).put("createdAt", System.currentTimeMillis());
-        TrustedConnection retained = active == null ? null : active.enrollmentCandidate(active.origin, active.caPem);
+        TrustedConnection retained = active == null ? null : active.installationOnly();
         vault.stage(retained, prepared); active = retained; pendingEnrollment = prepared; connectionContext = java.util.UUID.randomUUID().toString();
         vault.pendingAuthentication(null);
         return finishEnrollment(true);
@@ -213,22 +227,82 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         if (pendingEnrollment == null) throw new IllegalStateException("No pending enrollment");
         TrustedConnection next = TrustedConnection.restore(pendingEnrollment.getJSONObject("candidate"));
         allowedCandidate(next); long generation = revisions.current();
+        pendingOutcome = null;
+        if (!firstRequest) {
+            TrustedConnection recovered = NativeEnrollmentAttempt.resultConnection(pendingEnrollment, System.currentTimeMillis());
+            var proof = candidateRequest(recovered, "/api/installations/current", "GET", new JSONObject(), null);
+            if (proof.status() != 200) throw new EnrollmentFailure("ENROLLMENT_UNAVAILABLE");
+            JSONObject observed = new JSONObject(proof.body());
+            if (observed.optBoolean("enrolled")) {
+                JSONObject installation = observed.getJSONObject("installation");
+                for (String key : new String[]{"id","installationId","organizationId","unitId"}) if (!installation.getString(key).matches("[a-fA-F0-9-]{36}")) throw new EnrollmentFailure("ENROLLMENT_UNAVAILABLE");
+                allowedCandidate(recovered);
+                if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
+                return promoteEnrollment(recovered);
+            }
+        }
         var response = candidateRequest(next, "/api/installations/enroll", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), pendingEnrollment.getJSONObject("body").toString());
         if (response.status() != 201 && response.status() != 200) {
-            // An explicit rejection of the first request cannot have committed
-            // this attempt. Network ambiguity or a resumed attempt stays locked.
-            if (firstRequest && response.status() >= 400 && response.status() < 500) {
-                vault.promote(active); pendingEnrollment = null; candidate = null; pairing = null;
-            }
-            throw new IllegalStateException("Pairing rejected");
+            pendingOutcome = readPendingOutcome(next);
+            throw new EnrollmentFailure("not-committed".equals(pendingOutcome) ? "ENROLLMENT_NOT_COMMITTED" : "ENROLLMENT_UNAVAILABLE");
         }
         allowedCandidate(next);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
-        // The credential and journal removal share one encrypted durable commit.
+        return promoteEnrollment(next);
+    }
+    private JSObject promoteEnrollment(TrustedConnection next) throws Exception {
+        // The proved credential and journal removal share one encrypted durable commit.
         vault.promote(next); active = next; pendingEnrollment = null; replacing = false; candidate = null; pairing = null;
+        pendingTrustArtifact = null; pendingTrustCandidate = null; pendingOutcome = null;
         connectionContext = java.util.UUID.randomUUID().toString();
         return connectionState();
     }
+    private String readPendingOutcome(TrustedConnection original) throws Exception {
+        var outcome = candidateRequest(original, "/api/installations/enrollment-outcome", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), pendingEnrollment.getJSONObject("body").toString());
+        if (outcome.status() != 200 && outcome.status() != 201) return "unavailable";
+        String status = new JSONObject(outcome.body()).optString("status");
+        return java.util.Set.of("not-committed","pending","result-unavailable","unavailable").contains(status) ? status : "unavailable";
+    }
+    @PluginMethod public void previewPendingTrust(PluginCall call) { execute(call, () -> {
+        if (pendingEnrollment == null) throw new IllegalStateException("No pending enrollment");
+        pendingTrustArtifact = null; pendingTrustCandidate = null;
+        JSONObject artifact = TrustedConnection.artifact(call.getString("artifact", ""), System.currentTimeMillis());
+        JSONObject original = pendingEnrollment.getJSONObject("candidate");
+        if (!artifact.getString("origin").equals(original.getString("origin"))) throw new IllegalArgumentException("Pending enrollment origin cannot change");
+        // The artifact supplies trust only: its token never replaces the confirmed intent.
+        new TrustedConnection(artifact.getString("origin"), artifact.getString("caPem"));
+        TrustedConnection proposed = TrustedConnection.restore(new JSONObject(original.toString()).put("caPem", artifact.getString("caPem")));
+        allowedCandidate(proposed);
+        // Before explicit trust confirmation, send only the fresh artifact's
+        // bootstrap authority, never the original pending installation cookie.
+        TrustedConnection probe = new TrustedConnection(proposed.origin, proposed.caPem);
+        var response = candidateRequest(probe, "/api/installations/current", "GET", new JSONObject(), null);
+        if (response.status() != 200) throw new IllegalStateException("Connection failed");
+        var fresh = candidateRequest(probe, "/api/installations/preview", "POST", new JSONObject().put("content-type", "application/json").put("x-installation-enrollment", "1"), new JSONObject().put("token", artifact.getString("token")).toString());
+        if (fresh.status() != 200 && fresh.status() != 201) throw new IllegalStateException("Fresh trust artifact unavailable");
+        pendingTrustCandidate = proposed; pendingTrustArtifact = artifact;
+        pendingTrustRevision = revisions.current();
+        JSObject result = new JSObject(); result.put("origin", proposed.origin);
+        result.put("trustFingerprint", ManagedConnectionPolicy.context(proposed.origin, proposed.caPem));return result;
+    }); }
+    @PluginMethod public void confirmPendingTrust(PluginCall call) { execute(call, () -> {
+        if (pendingEnrollment == null || pendingTrustCandidate == null || pendingTrustArtifact == null || !Boolean.TRUE.equals(call.getBoolean("confirmTrust"))) throw new IllegalStateException("Trust confirmation required");
+        TrustedConnection.artifact(pendingTrustArtifact.toString(), System.currentTimeMillis());allowedCandidate(pendingTrustCandidate);
+        if (pendingTrustRevision != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
+        JSONObject updated = NativeEnrollmentAttempt.replaceTrust(pendingEnrollment, pendingTrustCandidate.origin, pendingTrustCandidate.caPem);
+        // Body/token/attempt/original cookie, original creation time and legacy proof remain unchanged.
+        vault.stage(active, updated);pendingEnrollment = updated;pendingTrustCandidate = null;pendingTrustArtifact = null;pendingOutcome = null;
+        connectionContext = java.util.UUID.randomUUID().toString();return connectionState();
+    }); }
+    @PluginMethod public void abandonUncommittedEnrollment(PluginCall call) { execute(call, () -> {
+        if (pendingEnrollment == null || !Boolean.TRUE.equals(call.getBoolean("confirmAbandon"))) throw new IllegalStateException("Explicit confirmation required");
+        pendingOutcome = null;
+        String proved = readPendingOutcome(TrustedConnection.restore(pendingEnrollment.getJSONObject("candidate")));
+        pendingOutcome = proved;
+        if (!proved.equals("not-committed")) throw new EnrollmentFailure("ENROLLMENT_UNAVAILABLE");
+        vault.promote(active);pendingEnrollment = null;pendingOutcome = null;pendingTrustCandidate = null;pendingTrustArtifact = null;candidate = null;pairing = null;replacing = true;
+        connectionContext = java.util.UUID.randomUUID().toString();return connectionState();
+    }); }
     @PluginMethod public void resumeEnrollment(PluginCall call) { execute(call, () -> finishEnrollment(false)); }
     @PluginMethod public void beginReplacement(PluginCall call) { execute(call, () -> {
         if (pendingEnrollment != null || pendingHandoff != null) throw new IllegalStateException("Resolve the pending transition first");
