@@ -1,5 +1,22 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <string name="pdf_title">Report PDF</string>
+    <string name="pdf_retry">Retry</string>
+    <string name="pdf_previous_symbol" translatable="false">‹</string>
+    <string name="pdf_next_symbol" translatable="false">›</string>
+    <string name="pdf_zoom_out_symbol" translatable="false">−</string>
+    <string name="pdf_zoom_in_symbol" translatable="false">+</string>
+    <string name="pdf_close">Close</string>
+    <string name="pdf_save">Save PDF</string>
+    <string name="pdf_loading">Loading PDF…</string>
+    <string name="pdf_previous">Previous page</string>
+    <string name="pdf_next">Next page</string>
+    <string name="pdf_page">Page %1$d of %2$d</string>
+    <string name="pdf_zoom_out">Zoom out</string>
+    <string name="pdf_zoom_in">Zoom in</string>
+    <string name="pdf_file_name">report.pdf</string>
+    <string name="pdf_save_failed">The PDF could not be opened or saved. Try again.</string>
+    <string name="pdf_saved">PDF saved.</string>
     <string name="managed_version">Configuration version</string>
     <string name="managed_origin">Server HTTPS origin</string>
     <string name="managed_ca">Public CA certificates (PEM)</string>

@@ -253,6 +253,10 @@ export function ClinicianSessionGate({ children }: {
       inFlight = true;
       try {
         const handoff=await resumeAgencyHandoff();
+        try {
+          const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
+          if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
+        } catch { /* Language selection remains available without persistent storage. */ }
         if(handoff&&"redirecting" in handoff){resolved=true;return;}
         // Both requests are independent. Keep protected content gated until
         // authentication and configuration have both completed successfully.
@@ -267,10 +271,6 @@ export function ClinicianSessionGate({ children }: {
         let authenticated = assessed;
         try { assertAuthenticationInstallationGeneration(startupGeneration); } catch { authenticated = null; }
         if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
-        try {
-          const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
-          if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
-        } catch { /* Language selection remains available without persistent storage. */ }
         setInstallation(loaded);
         setOrganizationLogin(organizationAuthentication);
         if(personalResult){
@@ -390,7 +390,7 @@ export function ClinicianSessionGate({ children }: {
       storePresentationMode(window.localStorage, initialMode);
       setPresentationMode(initialMode);
     } catch (error) {
-      setMessage(error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The username or password is incorrect."
+      setMessage((error as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The username or password is incorrect."
         ? t("login.invalidCredentials") : t("login.unavailable"));
     } finally {
       setSubmitting(false);
@@ -400,7 +400,7 @@ export function ClinicianSessionGate({ children }: {
   async function personalLogin(){
     setSubmitting(true);setMessage(null);
     try{await beginPersonalClinicianSession("login",authenticatedSession?sessionRequestToken(authenticatedSession):undefined);}
-    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage(error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
+    catch(error){if(!(error instanceof PersonalAuthenticationRedirect))setMessage((error as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : error instanceof PlatformRequestError?error.message:t("login.organizationFailed"));}
     finally{setSubmitting(false);}
   }
 
@@ -423,7 +423,7 @@ export function ClinicianSessionGate({ children }: {
       storeClinicianSession(window.localStorage, changed);
       setSession(changed);
     } catch (error) {
-      setMessage(error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The current password is incorrect."
+      setMessage((error as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The current password is incorrect."
         ? t("login.passwordIncorrect") : t("login.passwordChangeFailed"));
     } finally {
       setSubmitting(false);
@@ -511,7 +511,7 @@ export function ClinicianSessionGate({ children }: {
   if (startupState !== "ready") return <main className="session-loading" aria-label={t("login.opening")} aria-busy={startupState === "loading"}>
     {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
       <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
-      {online && startupFailure && <p>{startupFailure}</p>}
+      {online && startupFailure && <p>{startupFailure === "android.serverUpgradeRequired" ? t(startupFailure) : startupFailure}</p>}
       <AndroidInstallationAction language={language} />
     </div>}
   </main>;
@@ -618,7 +618,7 @@ export function ClinicianSessionGate({ children }: {
         {(session.agencies?.length ?? 0) > 1 && <label className="session-agency-selector">
           <select aria-label={t("admin.agency")} value={session.organization.id}
             disabled={!online || activeReport !== null || openingCall !== null}
-            onChange={(event) => { void changeAgency(event.target.value).catch((reason: unknown) => setModeMessage(resolveErrorMessage(language, reason instanceof Error ? reason.message : null, "admin.agencyOpenFailed"))); }}>
+            onChange={(event) => { void changeAgency(event.target.value).catch((reason: unknown) => setModeMessage((reason as {code?:string})?.code === "SERVER_INCOMPATIBLE" ? t("android.serverUpgradeRequired") : resolveErrorMessage(language, reason instanceof Error ? reason.message : null, "admin.agencyOpenFailed"))); }}>
             {session.agencies?.map((agency) => <option key={agency.id} value={agency.id}>{agency.name}</option>)}
           </select>
         </label>}

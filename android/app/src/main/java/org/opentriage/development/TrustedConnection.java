@@ -239,7 +239,7 @@ final class TrustedConnection {
                 }
             }
             JSONObject responseHeaders = new JSONObject();
-            for (String name : List.of("Content-Type", "ETag", "Retry-After")) {
+            for (String name : List.of("Content-Type", "ETag", "Retry-After", "Date")) {
                 String value = connection.getHeaderField(name);
                 if (value != null) responseHeaders.put(name, value);
             }

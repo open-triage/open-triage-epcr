@@ -34,6 +34,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     private final Object policyLock = new Object();
     private final ExecutorService policyObserver = Executors.newSingleThreadExecutor();
     private volatile boolean destroyed;
+    private volatile String pdfCookieIdentity = "";
     private void initialize() throws Exception {
         if (!loaded) {
             vault = new ConnectionVault(getContext()); active = vault.read(); pendingEnrollment = vault.pending(); pendingHandoff = vault.pendingHandoff();
@@ -125,6 +126,15 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         if (destroyed || Thread.currentThread().isInterrupted() || generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
         return reply;
     }
+    private void compatibleApi(TrustedConnection connection, boolean candidate) throws Exception {
+        var response = candidate ? candidateRequest(connection, "/api/health", "GET", new JSONObject(), null)
+            : managedRequest(connection, "/api/health", "GET", new JSONObject(), null);
+        if (response.status() != 200) throw new IllegalStateException("Server status unavailable");
+        NativeApiCompatibility.require(new JSONObject(response.body()));
+    }
+    private void compatibleCandidate(TrustedConnection connection) throws Exception {
+        allowedCandidate(connection); compatibleApi(connection, true);
+    }
     private TrustedConnection.Reply managedRequest(TrustedConnection connection, String path, String method, JSONObject headers, String body) throws Exception {
         return managedRequestBytes(connection, path, method, headers, body == null ? null : body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
@@ -160,9 +170,14 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                     rejectCall(call, "Managed connection requires attention", error.code);
                 }
                 catch (EnrollmentFailure error) { rejectCall(call, "Pending enrollment requires attention", error.code); }
+                catch (NativeApiCompatibility.Incompatible error) { rejectCall(call, "android.serverUpgradeRequired", "SERVER_INCOMPATIBLE"); }
                 catch (Exception error) {
                     if (handoffInterrupted()) { try { notifyListeners("configurationChanged", connectionState()); } catch (Exception ignored) { /* Native journal still blocks traffic. */ } }
                     rejectCall(call, "Connection or pairing failed", ConnectionFailure.code(error));
+                }
+                finally {
+                    try { pdfCookieIdentity = active == null ? "" : NativePdfContract.cookie(active.saved()); }
+                    catch (Exception invalid) { pdfCookieIdentity = ""; }
                 }
             });
         });
@@ -176,6 +191,122 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     @PluginMethod public void state(PluginCall call) { execute(call, () -> {
         return connectionState();
     }); }
+    private static final class PdfFailure extends Exception {
+        final int status; final String code;
+        PdfFailure(int status, String code) { this.status = status; this.code = code; }
+    }
+    boolean pdfConnectionCurrent(TrustedConnection connection, String context) {
+        return !destroyed && connection != null && active == connection && !replacing
+            && pendingEnrollment == null && pendingHandoff == null && context.equals(connectionContext);
+    }
+    private NativePdfContract.Authority pdfAuthority(TrustedConnection connection, JSONObject headers) throws Exception {
+        compatibleApi(connection, false);
+        var reply = managedRequest(connection, "/api/sessions/current", "GET", headers, null);
+        vault.write(connection);
+        pdfCookieIdentity = NativePdfContract.cookie(connection.saved());
+        if (reply.status() != 200) throw new PdfFailure(reply.status(), "pdf.unavailable");
+        return NativePdfContract.authority(new JSONObject(reply.body()), connection.saved(), headers.getString("x-organization-id"), System.currentTimeMillis(),reply.headers());
+    }
+    @PluginMethod public void closePdf(PluginCall call) {
+        withReplyRealm(call, () -> { NativePdfSessions.close(this, call.getString("operationId", "")); resolveCall(call); });
+    }
+    @PluginMethod public void openPdf(PluginCall call) {
+        withReplyRealm(call, () -> {
+        String uiUrl = getBridge().getWebView().getUrl();
+        if (uiUrl == null || !uiUrl.startsWith("https://localhost/")) { rejectCall(call, "Unapproved UI origin", "CONNECTION_FAILED"); return; }
+        String id = call.getString("operationId", "");
+        try { NativePdfSessions.begin(this, id); }
+        catch (Exception invalid) { rejectCall(call, "PDF unavailable", "CONNECTION_FAILED"); return; }
+        execute(call, () -> {
+            boolean launched = false;
+            try {
+                String path = call.getString("path", ""), context = call.getString("connectionContext", "");
+                JSONObject headers = call.getObject("headers", new JSObject()); NativePdfContract.request(path, headers);
+                TrustedConnection connection = active;
+                if (!pdfConnectionCurrent(connection, context) || !NativePdfSessions.pending(this, id)) throw new IllegalStateException("PDF context unavailable");
+                long requestWall = System.currentTimeMillis(), requestElapsed = android.os.SystemClock.elapsedRealtime();
+                var original = pdfAuthority(connection, headers); long policyRevision = revisions.current();
+                pdfCookieIdentity = original.cookie();
+                var lifetime = new NativePdfLifetime(requestWall,requestElapsed,original.remainingMillis(),System::currentTimeMillis,android.os.SystemClock::elapsedRealtime);
+                java.util.function.BooleanSupplier current = () -> pdfConnectionCurrent(connection, context) && policyRevision == revisions.current() && original.cookie().equals(pdfCookieIdentity)
+                    && lifetime.current() && NativePdfSessions.alive(this, id);
+                if (!current.getAsBoolean()) throw new IllegalStateException("PDF operation cancelled");
+                var initial = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
+                if (initial.status() != 200) {
+                    String code = "pdf.unavailable";
+                    try {
+                        String candidateCode = new JSONObject(initial.body()).optString("code");
+                        if (java.util.Set.of("pdf.media-unavailable", "pdf.media-decode-failed", "pdf.media-too-large", "pdf.audio-metadata-unavailable", "pdf.amendment-evidence-unavailable", "pdf.invalid-version", "pdf.definitions-unavailable", "pdf.unsupported-text", "pdf.too-large").contains(candidateCode)) code = candidateCode;
+                    } catch (Exception ignored) { /* Never forward arbitrary server prose or clinical content. */ }
+                    throw new PdfFailure(initial.status(), code);
+                }
+                NativePdfContract.bytes(initial.status(), initial.headers(), initial.bytes());
+                if (!NativePdfContract.cookie(connection.saved()).equals(original.cookie())) throw new IllegalStateException("PDF identity changed");
+                NativePdfSessions.Loader loader = () -> {
+                    var task = new java.util.concurrent.FutureTask<byte[]>(() -> {
+                        if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
+                        long freshRequestElapsed = android.os.SystemClock.elapsedRealtime();
+                        var fresh = pdfAuthority(connection, headers);
+                        if (!NativePdfContract.sameAuthority(original,fresh)) throw new IllegalStateException("PDF identity changed");
+                        lifetime.shorten(freshRequestElapsed,fresh.remainingMillis());
+                        if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
+                        var reply = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
+                        NativePdfContract.bytes(reply.status(), reply.headers(), reply.bytes());
+                        if (!current.getAsBoolean() || !NativePdfContract.cookie(connection.saved()).equals(original.cookie())) throw new IllegalStateException("PDF context ended");
+                        return reply.bytes();
+                    });
+                    executor.execute(task);
+                    try { return task.get(90, java.util.concurrent.TimeUnit.SECONDS); }
+                    catch (Exception failure) { task.cancel(true); throw failure; }
+                };
+                var session = NativePdfSessions.create(getContext(), this, id, lifetime, current, loader);
+                session.refresher = () -> {
+                    var task = new java.util.concurrent.FutureTask<Void>(() -> {
+                        if (!current.getAsBoolean()) throw new NativePdfSessions.Revoked();
+                        long refreshStarted=android.os.SystemClock.elapsedRealtime();
+                        NativePdfContract.Authority fresh;
+                        try { fresh=pdfAuthority(connection,headers); }
+                        catch(PdfFailure denied) {
+                            if(denied.status==401||denied.status==403)throw new NativePdfSessions.Revoked();
+                            throw denied;
+                        } catch(IllegalArgumentException|org.json.JSONException|IllegalStateException|java.time.DateTimeException invalid) {throw new NativePdfSessions.Revoked();}
+                        if(!current.getAsBoolean() || !NativePdfContract.sameAuthority(original,fresh))throw new NativePdfSessions.Revoked();
+                        lifetime.shorten(refreshStarted,fresh.remainingMillis());
+                        if(!current.getAsBoolean())throw new NativePdfSessions.Revoked();
+                        return null;
+                    });
+                    executor.execute(task);
+                    try { task.get(90,java.util.concurrent.TimeUnit.SECONDS); }
+                    catch(java.util.concurrent.ExecutionException failure) {
+                        if(failure.getCause() instanceof NativePdfSessions.Revoked)throw new NativePdfSessions.Revoked();
+                        throw failure;
+                    } catch(Exception unavailable) {task.cancel(true);throw unavailable;}
+                };
+                session.cache(initial.bytes());
+                try (var parsed = new android.graphics.pdf.PdfRenderer(android.os.ParcelFileDescriptor.open(session.preview(), android.os.ParcelFileDescriptor.MODE_READ_ONLY))) {
+                    if (parsed.getPageCount() < 1 || parsed.getPageCount() > 500) throw new IllegalStateException("PDF page bound");
+                }
+                var opened = new java.util.concurrent.CountDownLatch(1);
+                var failure = new java.util.concurrent.atomic.AtomicReference<Exception>();
+                withReplyRealm(call, () -> {
+                    try {
+                        session.requireCurrent();
+                        Intent intent = new Intent(getActivity(), NativePdfActivity.class).putExtra("document", id)
+                            .putExtra("save", "save".equals(call.getString("action"))).putExtra("language", call.getString("language", "en"))
+                            .putExtra("accent", call.getString("accent", ""));
+                        getActivity().startActivity(intent);
+                    } catch (Exception error) { failure.set(error); }
+                    finally { opened.countDown(); }
+                });
+                if (!opened.await(10, java.util.concurrent.TimeUnit.SECONDS) || failure.get() != null) throw new IllegalStateException("PDF viewer unavailable");
+                launched = true;
+                JSObject result = new JSObject(); result.put("opened", true); result.put("status", 200); return result;
+            } catch (PdfFailure error) {
+                JSObject result = new JSObject(); result.put("opened", false); result.put("status", error.status); result.put("code", error.code); return result;
+            } finally { if (!launched) NativePdfSessions.close(this, id); }
+        });
+        });
+    }
     @PluginMethod public void reconcileTransition(PluginCall call) { execute(call, () -> {
         if (active == null || pendingEnrollment != null || pendingHandoff != null || replacing || !connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation transition is not settled");
         String purpose = call.getString("purpose", "");
@@ -185,7 +316,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         // POST; promotion/abandonment never copy them back. A remaining valid
         // native login therefore belongs to an unconfirmed transition.
         vault.pendingAuthentication(null);
-        if (purpose.equals("logout")) { active = active.installationOnly(); vault.write(active); }
+        if (purpose.equals("logout")) { vault.clearPersonalContinuation(); active = active.installationOnly(); vault.write(active); }
         allowed(active);
         if (revision != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
         connectionContext = java.util.UUID.randomUUID().toString();
@@ -197,6 +328,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         JSONObject artifact = TrustedConnection.artifact(call.getString("artifact", ""), System.currentTimeMillis());
         TrustedConnection next = active == null ? new TrustedConnection(artifact.getString("origin"), artifact.getString("caPem")) : active.enrollmentCandidate(artifact.getString("origin"), artifact.getString("caPem"));
         allowedCandidate(next);
+        compatibleApi(next, true);
         long generation = revisions.current();
         TrustedConnection.Reply current = candidateRequest(next, "/api/installations/current", "GET", new JSONObject(), null);
         if (current.status() != 200) throw new IllegalStateException("Connection failed");
@@ -325,15 +457,44 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         long generation = revisions.current();
         String path = call.getString("path", "");
         if (path.equals("/api/sessions") || (path.equals("/api/sessions/current") && call.getString("method", "GET").equals("DELETE"))) {
+            vault.clearPersonalContinuation();
             vault.pendingAuthentication(null); vault.stageHandoff(active, null); pendingHandoff = null;
         }
+        if ((path.equals("/api/sessions") || path.startsWith("/api/sessions/")) &&
+            !(path.equals("/api/sessions/current") && call.getString("method", "GET").equals("DELETE"))) compatibleApi(active, false);
         var response = managedRequestBytes(active, path, call.getString("method", "GET"), call.getObject("headers", new JSObject()), TrustedConnection.decodeRequestBody(call.getString("bodyBase64")));
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         allowed(active);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
         if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
-        vault.write(active);
+        boolean persisted = false;
+        // The cookie and minimal continuation must be durable before JavaScript
+        // sees authentication succeed. WebView localStorage is not a commit boundary.
+        if (response.status() >= 200 && response.status() < 300 &&
+            (path.equals("/api/sessions") || path.equals("/api/sessions/password") || path.equals("/api/sessions/current/continuation") ||
+                path.equals("/api/sessions/current") && call.getString("method", "GET").equals("GET"))) {
+            JSONObject body = new JSONObject(response.body());
+            if (path.equals("/api/sessions/current/continuation")) body.put("csrfToken", call.getObject("headers", new JSObject()).optString("x-csrf-token", ""));
+            if (body.has("csrfToken") && body.has("user")) { vault.savePersonalContinuation(active, body); persisted = true; }
+        }
+        if (!persisted) vault.write(active);
         JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("bodyBase64", response.bodyBase64()); return result;
+    }); }
+    @PluginMethod public void resumePersonalSession(PluginCall call) { execute(call, () -> {
+        JSObject result = new JSObject();
+        if (active == null || pendingEnrollment != null || pendingHandoff != null || replacing || vault.pendingAuthentication() != null) {
+            result.put("unavailable", true); return result;
+        }
+        if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
+        allowed(active);
+        compatibleApi(active, false);
+        JSONObject continuation = vault.personalContinuation();
+        if (!NativePersonalContinuation.matches(continuation, active)) { vault.clearPersonalContinuation(); if(continuation != null)result.put("unavailable",true); return result; }
+        JSONObject session = NativePersonalContinuation.resume(continuation, active, csrf -> managedRequest(active, "/api/sessions/current/continuation", "POST",
+            new JSONObject().put("content-type", "application/json").put("x-csrf-token", csrf), "{}"));
+        vault.write(active);
+        if (session == null) { vault.clearPersonalContinuation(); result.put("unavailable",true); return result; }
+        result.put("session", session); return result;
     }); }
     @PluginMethod public void prepareAgencyHandoff(PluginCall call) { execute(call, () -> {
         if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
@@ -341,7 +502,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         allowed(active);
         final TrustedConnection source = active;
         JSONObject prepared = NativeAgencyHandoff.prepare(source, call.getString("organizationId", ""), call.getString("csrfToken"),
-            (connection, path, headers, body) -> connection == source ? managedRequest(connection, path, "POST", headers, body.toString()) : candidateRequest(connection, path, "POST", headers, body.toString()), this::allowedCandidate);
+            (connection, path, headers, body) -> connection == source ? managedRequest(connection, path, "POST", headers, body.toString()) : candidateRequest(connection, path, "POST", headers, body.toString()), this::compatibleCandidate);
         JSObject result = new JSObject(); result.put("crossHost", prepared != null);
         if (prepared != null) {
             prepared.put("context", connectionContext).put("policy", policy().context());
@@ -351,7 +512,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     }); }
     private JSObject completedHandoff(TrustedConnection connection, JSONObject session) throws Exception {
         JSONObject completed = NativeAgencyHandoff.completed(connection, session);
-        vault.stageHandoff(connection, completed); active = connection; pendingHandoff = completed;
+        vault.stageHandoffSession(connection, completed, session); active = connection; pendingHandoff = completed;
         connectionContext = java.util.UUID.randomUUID().toString();
         JSObject result = connectionState(); result.put("session", session);
         notifyListeners("configurationChanged", connectionState()); return result;
@@ -361,6 +522,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         final JSONObject pending = pendingHandoff;
         final boolean completed = pending.getString("phase").equals("completed");
         final TrustedConnection destination = NativeAgencyHandoff.resumeDestination(pending, active);
+        compatibleApi(destination, destination != active);
         String csrf = completed ? pending.getJSONObject("publicSession").getString("csrfToken") : pending.getString("replacementCsrf");
         var headers = new JSONObject().put("content-type", "application/json").put("x-csrf-token", csrf);
         var response = destination == active ? managedRequest(destination, "/api/sessions/agency-handoff/current", "POST", headers, "{}") : candidateRequest(destination, "/api/sessions/agency-handoff/current", "POST", headers, "{}");
@@ -393,13 +555,14 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         connectionContext = java.util.UUID.randomUUID().toString(); vault.pendingAuthentication(null);
         var transferred = NativeAgencyHandoff.finish(pendingHandoff, source,
             (connection, path, headers, body) -> connection == source ? managedRequest(connection, path, "POST", headers, body.toString()) : candidateRequest(connection, path, "POST", headers, body.toString()),
-            this::allowedCandidate, pending -> { vault.stageHandoff(active, pending); pendingHandoff = pending; });
+            this::compatibleCandidate, pending -> { vault.stageHandoff(active, pending); pendingHandoff = pending; });
         allowedCandidate(transferred.connection());
         return completedHandoff(transferred.connection(), transferred.session());
     }); }
     @PluginMethod public void switchAgency(PluginCall call) { execute(call, () -> {
         if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
         if (active == null || pendingEnrollment != null || replacing || handoffInterrupted()) throw new IllegalStateException("Connection unavailable");
+        compatibleApi(active, false);
         String replacementCsrf = NativeAgencyHandoff.secret();
         pendingHandoff = new JSONObject().put("phase", "rotating").put("organizationId", call.getString("organizationId", ""))
             .put("session", NativeAgencyHandoff.sessionIdentity(active)).put("csrf", call.getString("csrfToken", "")).put("replacementCsrf", replacementCsrf);
@@ -435,6 +598,8 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         allowed(active);
         String purpose = call.getString("purpose", "");
         if (!purpose.equals("login") && !purpose.equals("switch")) throw new IllegalArgumentException("Invalid login purpose");
+        vault.clearPersonalContinuation();
+        compatibleApi(active, false);
         String installation = NativeAuthentication.installationIdentity(active.saved(), System.currentTimeMillis());
         vault.stageHandoff(active, null); pendingHandoff = null;
         // Discard an older native return before beginning a new explicit login.
@@ -485,20 +650,25 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         if (active == null || !NativeAuthentication.contextMatches(pending, active.origin, active.caPem, policy().context(), installation)) {
             vault.pendingAuthentication(null); return result;
         }
+        compatibleApi(active, false);
         var reply = managedRequest(active, "/api/sessions/oidc/native/finish", "POST", new JSONObject().put("content-type", "application/json").put("x-personal-authentication", "1"),
             new JSONObject().put("secret", pending.getString("secret")).toString());
         if (reply.status() != 200) {
             if (reply.status() == 401 || reply.status() == 403) { vault.pendingAuthentication(null); result.put("outcome", "failed"); return result; }
             throw new IllegalStateException("Sign-in return unavailable");
         }
-        String outcome = new JSONObject(reply.body()).getString("outcome");
-        vault.write(active);
+        JSONObject body = new JSONObject(reply.body());
+        String outcome = body.getString("outcome");
+        if (outcome.equals("succeeded")) {
+            vault.savePersonalContinuation(active, body.getJSONObject("session"));
+        } else vault.write(active);
         if (!outcome.equals("waiting")) vault.pendingAuthentication(null);
         result.put("outcome", outcome); return result;
     }); }
     @Override protected void handleOnDestroy() {
         closeReplies();
         destroyed = true;
+        NativePdfSessions.closeOwner(this);
         if (restrictionReceiver != null) getContext().unregisterReceiver(restrictionReceiver);
         policyObserver.shutdownNow(); executor.shutdownNow(); super.handleOnDestroy();
     }

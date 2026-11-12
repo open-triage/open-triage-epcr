@@ -2,6 +2,7 @@ import {scopedAgencyAdbdRoot} from './android/scoped-adbd-root.mjs';
 import {adbShellArguments} from './android/instrumentation.mjs';
 import {nativeStartupArguments,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
 import { runAgencyHandoffJourney } from './android/agency-handoff-journey.mjs';
+import {runNativePdfJourney} from './android/pdf-journey.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
@@ -22,7 +23,9 @@ import { runReassignmentTransition } from './android/reassignment-journey.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
 import { createTlsFixtures } from './android/tls-fixtures.mjs';
 import { runTlsJourney } from './android/tls-journey.mjs';
+import { androidTestScope } from './android/test-scope.mjs';
 
+const scope=androidTestScope(process.argv);
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
 const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-android-${randomUUID()}`;
 const adb = join(process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? '', 'platform-tools/adb');
@@ -36,7 +39,7 @@ function run(command, args, env = process.env) {
 }
 let restoreAdbd;
 try {
-if (!tlsOnly && !process.argv.includes('--oidc-only') && !process.argv.includes('--external-apis')) restoreAdbd=scopedAgencyAdbdRoot({adb,serial});
+if (!scope.focusedPdfClinical && !tlsOnly && !process.argv.includes('--oidc-only') && !process.argv.includes('--external-apis')) restoreAdbd=scopedAgencyAdbdRoot({adb,serial});
 await withWebViewFontProfile({adb,serial,root},async fontProfile=>{
 try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
@@ -52,11 +55,14 @@ try {
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/debug/app-debug.apk')]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]);
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
+  if(scope.startupAndComponents){
   const legacyVault = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(2 tests\)/, 'Actual Keystore legacy provenance and expired-trust migration');
   const startup = execFileSync(adb, adbShellArguments(nativeStartupArguments({serial})), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(startup); assertNativeStartupInstrumentation(startup);
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
+  await runNativePdfJourney({root,adb,serial,verifyFontPid:pid=>fontProfile.verifyForPid(pid)});
+  }
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
@@ -64,7 +70,7 @@ try {
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  if (!tlsOnly && !process.argv.includes('--report-only') && !process.argv.includes('--oidc-only') && !process.argv.includes('--agency-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (scope.pairing && !tlsOnly && !process.argv.includes('--report-only') && !process.argv.includes('--oidc-only') && !process.argv.includes('--agency-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');
@@ -88,11 +94,13 @@ try {
   }
   if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
   else if (!tlsOnly && !process.argv.includes('--agency-only')) {
-    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true, hooks: { beforeReconnect: runReassignmentTransition } });
-    await runManagedJourneys({root, fixtures, run, api, adb, serial});
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true, signReview: true, hooks: { beforeReconnect: runReassignmentTransition } });
+    if(scope.managed) await runManagedJourneys({root, fixtures, run, api, adb, serial});
   }
+  if(scope.tls){
   if (!process.argv.includes('--oidc-only') && !process.argv.includes('--agency-only')) await runTlsJourney({root,fixture:fixtures[1],material:tlsMaterial,child:children[1],run,api,adb,serial});
-  if (!tlsOnly) {
+  }
+  if (scope.agencyAndOidc && !tlsOnly) {
   if (!process.argv.includes('--external-apis')) {
     await stopFixtureChild(children[1]);
     if (!process.argv.includes('--oidc-only')) await runAgencyHandoffJourney({root,directory,fixture:fixtures[0],adb,serial,run,api});

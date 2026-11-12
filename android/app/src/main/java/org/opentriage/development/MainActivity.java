@@ -8,6 +8,7 @@ import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
+        NativePdfSessions.cleanOrphans(this);
         // Clinical text must not become an OS-persisted recents thumbnail or screen capture.
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         registerPlugin(OpenTriageConnectionPlugin.class);
@@ -20,6 +21,30 @@ public class MainActivity extends BridgeActivity {
         java.net.CookieHandler.setDefault(null);
         // Remote pages never inherit the native bridge. OIDC uses the external system browser.
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                var target = NativeStaticRoutes.resolve(request.getUrl().toString(), request.getMethod(), request.isForMainFrame(), path -> {
+                    try (var ignored = getAssets().open(path)) { return true; }
+                    catch (java.io.IOException missing) { return false; }
+                });
+                if (target == null) return super.shouldInterceptRequest(view, request);
+                if (target.path() == null) return new android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                    java.util.Map.of("Cache-Control", "no-store"), new java.io.ByteArrayInputStream(new byte[0]));
+                var url = request.getUrl().buildUpon().encodedPath(target.path()).build();
+                var localDocument = new WebResourceRequest() {
+                    @Override public android.net.Uri getUrl() { return url; }
+                    @Override public boolean isForMainFrame() { return request.isForMainFrame(); }
+                    @Override public boolean isRedirect() { return request.isRedirect(); }
+                    @Override public boolean hasGesture() { return request.hasGesture(); }
+                    @Override public String getMethod() { return request.getMethod(); }
+                    @Override public java.util.Map<String, String> getRequestHeaders() { return request.getRequestHeaders(); }
+                };
+                // Retain Capacitor's actual HTML handling/injection and the visible URL/query.
+                var response = super.shouldInterceptRequest(view, localDocument);
+                if (response == null) return new android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                    java.util.Map.of("Cache-Control", "no-store"), new java.io.ByteArrayInputStream(new byte[0]));
+                if (target.notFound()) response.setStatusCodeAndReasonPhrase(404, "Not Found");
+                return response;
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 var uri = request.getUrl();
                 if ("https".equals(uri.getScheme()) && "localhost".equals(uri.getHost()) && uri.getPort() == -1) return false;

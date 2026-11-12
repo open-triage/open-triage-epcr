@@ -77,6 +77,8 @@ test('merged enrollment attempt implementation is advertised and required by fut
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-policy-v1'));
   assert(ANDROID_API_CAPABILITIES.includes('native-agency-handoff-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-agency-handoff-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('personal-session-continuation-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('personal-session-continuation-v1'));
   assert(ANDROID_API_CAPABILITIES.includes('android-upgrade-gate-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-gate-v1'));
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
@@ -88,6 +90,12 @@ test('future upgrade-gating APKs cannot mistake policy-only support for authorit
   const descriptor = {compatibility};
   assert(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES));
   assert(!isAndroidReleaseCompatible(descriptor, 1, policyOnly));
+});
+
+test('future continuation APKs require the implemented generic current route without breaking older descriptor requirements',()=>{
+  const prior=ANDROID_API_CAPABILITIES.filter(value=>value!=='personal-session-continuation-v1');
+  assert(!isAndroidReleaseCompatible({compatibility},1,prior));
+  assert(isAndroidReleaseCompatible({compatibility:{...compatibility,requiredCapabilities:prior}},1,ANDROID_API_CAPABILITIES));
 });
 
 test('publication of an upgrade-gating APK requires actual retirement, interrupted staging and current-replacement acceptance', () => {
