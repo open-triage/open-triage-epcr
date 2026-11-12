@@ -441,7 +441,10 @@ the credentialed WebView; old memory-only document handles cannot reopen them.
 Save PDF uses Android's user-selected document destination. After the picker
 returns, the app fetches and authorizes the exact document again before copying
 any bytes, checks authority throughout the copy and cancels a partial destination
-on failure. The picker receives no application cookies, API URLs or private
+on failure. Closing immediately revokes preview authority and pixels, while an
+in-flight export retains its granting Activity asynchronously until stream close
+and partial-document cleanup settle; no terminal result is published first.
+The picker receives no application cookies, API URLs or private
 preview URI. A completed user-chosen export is retained as an explicit download;
 closing a preview does not delete that export or retain its URI permission.
 
@@ -456,7 +459,9 @@ save fresh authorized synthetic bytes, checks that an explicit download survives
 private preview cleanup, then genuinely selects it again with Open Document in
 the separate test APK. That consumer checks the exact URI/document identity,
 filename, length and fresh-byte hash before deleting only the test export under
-its live user grant. Read and cleanup failures are reported independently. It cancels the picker
+its live user grant. Read and cleanup failures are reported independently. A real
+picker/held-worker Back case proves immediate revocation and deletion before
+releasing the destination grant. It cancels the picker
 without fetching a document. It never clears the application's clinical or
 enrollment data. The full `npm run android:test` journey includes these checks.
 The early `node --test tests/android-pdf.test.mjs tests/android-live-instrumentation.test.mjs`

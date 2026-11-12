@@ -10,9 +10,9 @@ test('native PDF acceptance requires all rendering/lifetime cases, not a partial
   assertNativePdfInstrumentation('Time: 1\n\nOK (6 tests)\nINSTRUMENTATION_CODE: -1\n');
   for(const value of ['OK (1 test)\n','OK (2 tests)\n','OK (3 tests)\n','OK (5 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 6, Failures: 1\n','OK (6 tests)\nINSTRUMENTATION_CODE: 0\n','OK (6 tests)\nINSTRUMENTATION_CODE: -1\nshortMsg=Process crashed.\n'])assert.throws(()=>assertNativePdfInstrumentation(value));
 });
-test('native PDF save acceptance requires both real picker cases and successful completion',()=>{
- assertNativePdfSafInstrumentation('OK (2 tests)\nINSTRUMENTATION_CODE: -1\n');
- for(const value of ['OK (1 test)\nINSTRUMENTATION_CODE: -1\n','OK (2 tests)\nINSTRUMENTATION_CODE: 0\n','OK (2 tests)\nINSTRUMENTATION_CODE: -1\nshortMsg=Process crashed.\n'])assert.throws(()=>assertNativePdfSafInstrumentation(value));
+test('native PDF save acceptance requires all real picker cases including in-flight cancellation and successful completion',()=>{
+ assertNativePdfSafInstrumentation('OK (3 tests)\nINSTRUMENTATION_CODE: -1\n');
+ for(const value of ['OK (1 test)\nINSTRUMENTATION_CODE: -1\n','OK (2 tests)\nINSTRUMENTATION_CODE: -1\n','OK (3 tests)\nINSTRUMENTATION_CODE: 0\n','OK (3 tests)\nINSTRUMENTATION_CODE: -1\nshortMsg=Process crashed.\n'])assert.throws(()=>assertNativePdfSafInstrumentation(value));
 });
 test('actual Java PDF authority cannot survive clock rollback, frozen wall time or a longer refresh before an Android build',()=>{
  const temporary=mkdtempSync(join(tmpdir(),'android-pdf-lifetime-'));

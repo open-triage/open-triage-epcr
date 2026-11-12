@@ -40,6 +40,8 @@ public final class NativePdfActivity extends Activity {
     private volatile boolean picking;
     private boolean saveOnly;
     private Uri pendingDestination;
+    private volatile java.util.concurrent.CompletableFuture<Void> exportCompletion=java.util.concurrent.CompletableFuture.completedFuture(null);
+    private boolean finishRequested;
     private int pageIndex, pages;
     private float zoom = 1;
     private android.content.res.Resources localizedResources;
@@ -168,6 +170,7 @@ public final class NativePdfActivity extends Activity {
         });
     }
     private void chooseDestination() {
+        if(picking||!exportCompletion.isDone())return;
         if (session == null || !session.current()) { finish(); return; }
         picking = true;
         try {
@@ -183,8 +186,10 @@ public final class NativePdfActivity extends Activity {
         else if (saveOnly) finish();
     }
     private void export(Uri destination) {
+        var completion=new java.util.concurrent.CompletableFuture<Void>();exportCompletion=completion;
         int expected = ++generation; status.setText(R.string.pdf_loading); save.setEnabled(false);
         worker.execute(() -> {
+            Throwable problem=null;
             try {
                 if (!"content".equals(destination.getScheme()) || destination.getAuthority() == null) throw new IllegalArgumentException("Unapproved document destination");
                 var provider = getPackageManager().resolveContentProvider(destination.getAuthority(), 0);
@@ -197,27 +202,46 @@ public final class NativePdfActivity extends Activity {
                     }
                 }, () -> !ended && !stopped && expected == generation && session.current(), new NativePdfExport.Destination() {
                     @Override public java.io.OutputStream open() throws Exception { return getContentResolver().openOutputStream(destination, "wt"); }
-                    @Override public void delete() throws Exception { DocumentsContract.deleteDocument(getContentResolver(), destination); }
+                    @Override public void delete() throws Exception { if(!DocumentsContract.deleteDocument(getContentResolver(), destination))throw new java.io.IOException("Destination cleanup rejected"); }
                 });
+            } catch (Exception|Error error) {
+                problem=error;if(error instanceof Error fatal)throw fatal;
+            } finally {
+                try {session.clearPreview();}catch(Exception cleanup){if(problem!=null)problem.addSuppressed(cleanup);else problem=cleanup;}
+                if(problem==null)completion.complete(null);else completion.completeExceptionally(problem);
+                Throwable settledProblem=problem;
                 ui.post(() -> {
-                    if (!ended && expected == generation && session.current()) {
+                    if(ended)return;
+                    if(finishRequested){finish();return;}
+                    if(settledProblem!=null){showFailure(expected);return;}
+                    if (!stopped && expected == generation && session.current()) {
                         android.widget.Toast.makeText(this,R.string.pdf_saved,android.widget.Toast.LENGTH_SHORT).show();
-                        if (saveOnly) { setResult(RESULT_OK,new Intent().setData(destination).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); finish(); }
+                        if (saveOnly) { session.close();setResult(RESULT_OK,new Intent().setData(destination).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); finish(); }
                         else {save.setEnabled(true);render();}
                     }
                 });
-            } catch (Exception error) {
-                showFailure(expected);
-            } finally { session.clearPreview(); }
+            }
         });
     }
     private void showFailure(int expected) {
         ui.post(() -> { if (!ended && !stopped && expected == generation) { status.setVisibility(View.VISIBLE);status.setText(R.string.pdf_save_failed);save.setVisibility(View.GONE);retry.setVisibility(View.VISIBLE); } });
     }
     private void clearVisible() {
-        generation++; image.setImageDrawable(null); if (bitmap != null) { bitmap.recycle(); bitmap = null; }
+        clearImage();
         // Renderer work and its close share one worker; the UI never waits on native PDF parsing or TLS.
         worker.execute(() -> { try { closeRenderer(); } finally { if (session != null) session.clearPreview(); } });
+    }
+    private void clearImage() {
+        generation++;if(image!=null)image.setImageDrawable(null);if(bitmap!=null){bitmap.recycle();bitmap=null;}
+    }
+    @Override public void finish() {
+        // Terminal authority and owned bytes end before Android delivers any
+        // result or returns control to another Activity (Close, Back or cancel).
+        if(session!=null)session.close();clearImage();finishRequested=true;
+        // Keep the selected-document grant alive until the worker has closed
+        // its stream and deleted an interrupted destination. Never wait on UI.
+        if(!exportCompletion.isDone())return;
+        super.finish();
     }
     private void closeRenderer() {
         // A failed/closed native handle cannot poison Retry or prevent cleanup.
@@ -235,8 +259,7 @@ public final class NativePdfActivity extends Activity {
         super.onStop();
     }
     @Override protected void onDestroy() {
-        ended = true; stopped = true; generation++; ui.removeCallbacksAndMessages(null);
-        if (image != null) image.setImageDrawable(null); if (bitmap != null) { bitmap.recycle(); bitmap = null; }
+        ended = true; stopped = true; clearImage(); ui.removeCallbacksAndMessages(null);
         if (session != null) session.close();
         worker.execute(this::closeRenderer); worker.shutdown();
         super.onDestroy();

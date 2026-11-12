@@ -9,7 +9,7 @@ final class NativePdfExport {
     interface Validator { void validate(byte[] bytes) throws Exception; }
     interface Destination { OutputStream open() throws Exception; void delete() throws Exception; }
     static void write(Loader fresh, Validator validate, BooleanSupplier current, Destination destination) throws Exception {
-        byte[] bytes = null; boolean completed = false;
+        byte[] bytes = null; boolean completed = false;Throwable primary = null;
         try {
             require(current); bytes = fresh.load(); require(current);
             if (bytes == null || bytes.length > NativePdfContract.MAX_BYTES) throw new IllegalStateException("PDF bound");
@@ -22,9 +22,12 @@ final class NativePdfExport {
                 output.flush(); require(current);
             }
             require(current); completed = true;
+        } catch(Exception|Error failure) {primary=failure;throw failure;
         } finally {
             if (bytes != null) java.util.Arrays.fill(bytes, (byte) 0);
-            if (!completed) try { destination.delete(); } catch (Exception ignored) { /* A failed export is never reported as completed. */ }
+            if (!completed) try { destination.delete(); } catch (Exception cleanup) {
+                if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;
+            }
         }
     }
     private static void require(BooleanSupplier current) { if (!current.getAsBoolean()) throw new IllegalStateException("PDF authority ended"); }

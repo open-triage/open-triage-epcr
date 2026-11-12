@@ -10,7 +10,7 @@ export function assertNativePdfInstrumentation(output) {
   assert.doesNotMatch(output,/FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=/,'A late crash or runner failure cannot be hidden by an earlier test count');
 }
 export function assertNativePdfSafInstrumentation(output) {
-  assert.match(output,/(?:^|\n)OK \(2 tests\)(?:\r?\n|$)/,'Both genuine system picker save and cancellation cases must pass');
+  assert.match(output,/(?:^|\n)OK \(3 tests\)(?:\r?\n|$)/,'All genuine system picker save, cancellation and in-flight grant cleanup cases must pass');
   assert.match(output,/INSTRUMENTATION_CODE: -1(?:\r?\n|$)/);
   assert.doesNotMatch(output,/FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=/);
 }
@@ -37,7 +37,7 @@ export async function runNativePdfJourney({root,adb,serial,applicationId='org.op
   } finally {
     if(preparation&&preparation.child.exitCode===null&&preparation.child.signalCode===null){preparation.child.kill('SIGTERM');await preparation.closed;}
   }
-  const saf=execFileSync(adb,instrument('org.opentriage.development.NativePdfSafTest'),{cwd:root,encoding:'utf8',timeout:120000});
+  const saf=execFileSync(adb,instrument('org.opentriage.development.NativePdfSafTest'),{cwd:root,encoding:'utf8',timeout:180000});
   console.log(saf);assertNativePdfSafInstrumentation(saf);
   console.log('PASS genuine system PDF save: fresh authorized bytes, explicit export retained and test-owned export cleanup; cancellation without document fetch');
 }

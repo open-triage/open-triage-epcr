@@ -32,4 +32,12 @@ public class NativePdfExportTest {
             assertEquals(1,deleted.get());assertEquals(stage==2?1:0,opened.get());
         }
     }
+    @Test public void cleanupFailureIsSuppressedOnTheOriginalExportFailureRatherThanHiddenOrReplacingIt() {
+        var primary=new IOException("original denied export");var cleanup=new IOException("provider cleanup failed");
+        var actual=assertThrows(IOException.class,()->NativePdfExport.write(()->{throw primary;},bytes->{},()->true,new NativePdfExport.Destination(){
+            public OutputStream open(){fail("Denied export cannot open a destination");return null;}
+            public void delete()throws Exception{throw cleanup;}
+        }));
+        assertSame(primary,actual);assertArrayEquals(new Throwable[]{cleanup},actual.getSuppressed());
+    }
 }

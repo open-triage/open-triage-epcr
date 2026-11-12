@@ -110,4 +110,37 @@ public class NativePdfSafTest {
             assertEquals(0,loads.get());assertFalse(session.current());assertFalse(privateFile.exists());
         } finally {NativePdfSessions.closeOwner(owner);}
     }
+    @Test public void backDuringHeldFreshExportRevokesImmediatelyAndDeletesTheSelectedDocumentBeforeReleasingItsGrant() throws Exception {
+        var instrumentation=InstrumentationRegistry.getInstrumentation();var context=instrumentation.getTargetContext();Object owner=new Object();
+        String id=java.util.UUID.randomUUID().toString();var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+        byte[] fresh=NativePdfFixture.bytes("SYNTHETIC INTERRUPTED EXPORT");NativePdfSessions.begin(owner,id);
+        var session=NativePdfSessions.create(context,owner,id,System.currentTimeMillis()+120_000,()->true,()->{
+            entered.countDown();if(!release.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new java.io.IOException("Held export not released");return fresh.clone();
+        });
+        var file=session.cache(NativePdfFixture.bytes());
+        var pending=new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.CompletableFuture<?>>();
+        try(var scenario=ActivityScenario.<NativePdfActivity>launchActivityForResult(NativePdfFixture.intent(context,session,"en").putExtra("save",true))) {
+          try {
+            var device=UiDevice.getInstance(instrumentation);var name=device.wait(Until.findObject(By.clazz("android.widget.EditText")),5000);assertNotNull(name);
+            String pickerPackage=name.getApplicationPackage();name.setText("opentriage-synthetic-"+id+".pdf");systemSave(device,pickerPackage).click();
+            assertTrue("The genuine picker returns before the fresh authorized load is held",entered.await(10,java.util.concurrent.TimeUnit.SECONDS));
+            scenario.onActivity(activity->{
+                try {var field=NativePdfActivity.class.getDeclaredField("exportCompletion");field.setAccessible(true);pending.set((java.util.concurrent.CompletableFuture<?>)field.get(activity));}
+                catch(ReflectiveOperationException failure){throw new AssertionError(failure);}
+            });
+            assertNotNull(pending.get());assertFalse(pending.get().isDone());device.pressBack();
+            scenario.onActivity(activity->{
+                assertFalse("Back immediately revokes the original preview authority",session.current());
+                assertFalse("Back immediately removes owned PDF bytes",file.exists());
+                assertFalse("The granting Activity remains alive only until asynchronous export cleanup settles",activity.isFinishing());
+            });
+            assertFalse("UI cancellation cannot fake completion of a still-held worker",pending.get().isDone());release.countDown();
+            var failure=assertThrows(java.util.concurrent.ExecutionException.class,()->pending.get().get(10,java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue("The cancelled authority prevents copying fresh bytes",failure.getCause() instanceof IllegalStateException);
+            assertEquals("Real DocumentsContract deletion must succeed under the retained user grant before terminal result delivery",0,failure.getCause().getSuppressed().length);
+            assertEquals(android.app.Activity.RESULT_CANCELED,scenario.getResult().getResultCode());
+            assertFalse(session.current());assertFalse(file.exists());
+          } finally {release.countDown();}
+        } finally {NativePdfSessions.closeOwner(owner);java.util.Arrays.fill(fresh,(byte)0);}
+    }
 }
