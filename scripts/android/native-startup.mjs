@@ -16,3 +16,13 @@ export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
     assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/packaged_manifests',`${variant}AndroidTest`,testTask,'AndroidManifest.xml'),'utf8'));
   }
 }
+
+/** Each startup class owns one acceptance case; require the complete installed suite. */
+export const nativeStartupClasses = Object.freeze([
+  'org.opentriage.development.NativeStartupTest',
+  'org.opentriage.development.NativeReplyLifecycleTest',
+]);
+export function assertNativeStartupInstrumentation(output) {
+  assert.match(output, /(?:^|\n)OK \(2 tests\)(?:\r?\n|$)/,
+    'Actual installed startup and WebView reply lifecycle cases must both pass');
+}
