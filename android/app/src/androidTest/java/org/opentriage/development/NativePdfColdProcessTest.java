@@ -13,6 +13,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @RunWith(AndroidJUnit4.class)
 public class NativePdfColdProcessTest {
+    private String nativeVaultDigest(android.content.Context context) throws Exception {
+        var values=new java.util.TreeMap<String,Object>(context.getSharedPreferences("connection-v1",android.content.Context.MODE_PRIVATE).getAll());
+        byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(values.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return java.util.Base64.getEncoder().encodeToString(digest);
+    }
     @Test public void abruptDeathCannotRestorePlaintextOrAnOldDocumentHandle() throws Exception {
         var instrumentation = InstrumentationRegistry.getInstrumentation(); var context = instrumentation.getTargetContext();
         var preferences = context.getSharedPreferences("native-pdf-acceptance", android.content.Context.MODE_PRIVATE);
@@ -21,7 +26,7 @@ public class NativePdfColdProcessTest {
             var session = NativePdfFixture.create(context, this, new AtomicBoolean(true), System.currentTimeMillis() + 60_000);
             java.io.File directory = NativePdfSessions.directory(context);
             java.nio.file.Files.write(new java.io.File(directory,"unrelated-fixture.txt").toPath(),"KEEP".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            assertTrue(preferences.edit().putString("operation",session.id).putInt("pid",android.os.Process.myPid()).commit());
+            assertTrue(preferences.edit().putString("operation",session.id).putInt("pid",android.os.Process.myPid()).putString("nativeVault",nativeVaultDigest(context)).commit());
             try (var scenario = ActivityScenario.<NativePdfActivity>launch(NativePdfFixture.intent(context, session,"en"))) {
                 assertNotNull(UiDevice.getInstance(instrumentation).wait(Until.findObject(By.desc("Page 1 of 2")),5000));
                 assertTrue("A real private PDF must exist when the host kills this live process", session.preview().isFile());
@@ -38,6 +43,7 @@ public class NativePdfColdProcessTest {
                     assertFalse("Cold MainActivity startup removes owned stale preview bytes before mounting the UI",new java.io.File(NativePdfSessions.directory(context),id+".pdf").exists());
                     assertTrue("Unrelated files are not removed by preview cleanup",new java.io.File(NativePdfSessions.directory(context),"unrelated-fixture.txt").isFile());
                 });
+                assertEquals("Cold PDF cleanup does not reset or rewrite enrolled native credentials",preferences.getString("nativeVault","missing"),nativeVaultDigest(context));
             }
             var rejected=new java.util.concurrent.CountDownLatch(1);
             var application=(android.app.Application)context.getApplicationContext();
