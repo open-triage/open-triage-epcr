@@ -6,7 +6,7 @@ import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
-export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, hooks = {} }) {
+export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, preparationProfile = 'current', hooks = {} }) {
   const report = await seedReportFixture(root, fixture, run); let ca = await readFile(fixture.caPath);
   const administrator = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
   assert.equal(administrator.status, 201);
@@ -18,7 +18,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const artifact = { version: 1, ...issued.body, caPem: ca.toString('utf8') };
   const argumentsFor = (phase, username, password, extra = {}) => {
     const args = ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.ReportRecoveryJourneyTest'];
-    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', ...extra })) args.push('-e', key, String(value));
+    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', preparationProfile: phase==='prepare'?preparationProfile:'current', ...extra })) args.push('-e', key, String(value));
     args.push(`${applicationId}.test/androidx.test.runner.AndroidJUnitRunner`);
     return args;
   };

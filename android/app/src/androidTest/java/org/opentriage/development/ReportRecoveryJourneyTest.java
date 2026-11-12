@@ -99,17 +99,30 @@ public class ReportRecoveryJourneyTest {
         assertNotNull("Retry must permit actual camera permission grant", granted); granted.click();
         // Prove granted permission reaches the real WebView camera before substituting synthetic pixels.
         waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
+        var args=InstrumentationRegistry.getArguments();
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        boolean historical=HistoricalUpgradePreparation.enabled(args.getString("preparationProfile","current"),context.getPackageName(),
+            context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),args.getString("phase"),"1".equals(args.getString("upgrade")));
+        if (!historical) {
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
         assertEquals("Native pause stops the actual camera track", "true", evaluate("Array.from(document.querySelector('.photo-note-dialog video').srcObject.getTracks()).every(track=>track.readyState==='ended')"));
         activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("Array.from(document.querySelector('.photo-note-dialog video')?.srcObject?.getTracks()??[]).some(track=>track.readyState==='live')");
+        }
         stageSyntheticPhoto("ANDROID-PHOTO-RESUME-SYNTHETIC");
+        if (historical) {
+            // A1 supports encrypted photo capture/sync but predates native photo pause handling.
+            connection(true);
+            var profile=new android.os.Bundle();profile.putString("opentriage_upgrade_preparation_profile","historical-a1-camera-v1");
+            InstrumentationRegistry.getInstrumentation().sendStatus(0,profile);
+        } else {
         evaluate("window.__backgroundRequests=0;window.__backgroundPaths=[]");
         activity.moveToState(Lifecycle.State.CREATED);
         waitFor("window.__nativeActive===false");
         connection(true); Thread.sleep(1200);
         assertEquals("Paused reconnect must not start new API traffic: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
         activity.moveToState(Lifecycle.State.RESUMED);
+        }
         verifyCanonicalPhoto("ANDROID-PHOTO-RESUME-SYNTHETIC");
         connection(false); click("Mobile"); click("Add photo note");
         waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");

@@ -27,3 +27,11 @@ export async function upgradePolicyFixture(input) {
    if(!lifecycle.retirements.length)lifecycle.retirements.push({versionCode:a.versionCode,supersededAt:'2000-01-01T00:00:00.000Z',replacementTag:tag});
  },fetcher:async target=>{assert.equal(String(target),url,'Fixture verifies only exact approved replacement bytes');return new Response(bytes,{headers:{'content-length':String(bytes.length)}});}};
 }
+
+/** Only the immutable published A1 predates native photo pause handling. */
+export function upgradePreparationProfile(descriptor) {
+ if(descriptor.versionCode!==1)return 'current';
+ const original=catalog.releases.find(entry=>entry.tag==='android-candidate-1-0.1.0-rc.1');
+ assert.deepEqual(descriptor,original?.descriptor,'Historical preparation requires the exact immutable published A1 descriptor');
+ return 'historical-a1-camera-v1';
+}

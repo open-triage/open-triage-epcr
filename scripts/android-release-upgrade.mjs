@@ -1,3 +1,5 @@
+import {upgradePreparationProfile} from './android/upgrade-policy-fixture.mjs';
+import {assertUpgradeHarnessSource} from './android/upgrade-harness-source.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
@@ -19,6 +21,11 @@ const [aDirectory, bDirectory] = process.argv.slice(2).map(value => resolve(valu
 assert(aDirectory && bDirectory, 'Supply release A and B artifact directories');
 const a = JSON.parse(await readFile(join(aDirectory, 'release.json'))), b = JSON.parse(await readFile(join(bDirectory, 'release.json')));
 validateUpgrade(a, b);
+const testSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+assert.equal(execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim(),'','Upgrade acceptance requires clean committed test source');
+const changedPaths=execFileSync('git',['diff','--name-only',`${b.sourceCommit}..${testSourceCommit}`],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(Boolean);
+assertUpgradeHarnessSource({artifactSource:b.sourceCommit,testSource:testSourceCommit,changedPaths});
+const preparationProfile=upgradePreparationProfile(a);
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT, adb = join(sdk, 'platform-tools/adb');
 const serial = process.env.ANDROID_SERIAL ?? 'emulator-5554';
 function run(command, args, env = process.env) {
@@ -65,7 +72,7 @@ try {
     const output=execFileSync(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.UpgradePolicyTransportTest','-e','expectedVersion',String(version),'-e','assignmentId',incomingAssignment,'-e','expectedStatus',String(expectedStatus),'-e','legacy',legacy?'1':'0',`${a.applicationId}.test/androidx.test.runner.AndroidJUnitRunner`],{cwd:root,encoding:'utf8',timeout:120000});
     console.log(output);assert.match(output,/OK \(1 test\)/,'Real installed APK transport must enforce retirement without launching or modifying the pending WebView');
   };
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true,
+  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true, preparationProfile,
     hooks:{afterOfflineStartup:async output=>{await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(output)?.[1]);},beforeProcessKill:async({db,report,opened,ca})=>{
       upgradeReport={...report,id:opened.id};
       incomingAssignment=randomUUID();const incident=randomUUID();
@@ -112,7 +119,7 @@ try {
       assert.match(rejected.stdout + rejected.stderr, /INSTALL_FAILED_VERSION_DOWNGRADE/);
     } });
   policyInstrument(b.versionCode,200);
-  const evidence = { schemaVersion: 1, status: 'passed', serverAndroidApiProtocol, serverAndroidApiCapabilities, releaseA: a, releaseB: b, androidApi: execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'], { encoding: 'utf8' }).trim(), assertions: [...requiredUpgradeAssertions,...requiredUpgradeGateAssertions], deviceScope: 'isolated Android emulator; physical/MDM rollout remains separate' };
+  const evidence = { schemaVersion: 1, status: 'passed', testSourceCommit, preparationProfile, serverAndroidApiProtocol, serverAndroidApiCapabilities, releaseA: a, releaseB: b, androidApi: execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk'], { encoding: 'utf8' }).trim(), assertions: [...requiredUpgradeAssertions,...requiredUpgradeGateAssertions], deviceScope: 'isolated Android emulator; physical/MDM rollout remains separate' };
   await writeFile(join(bDirectory, 'upgrade-evidence.json'), JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' });
   policy({});
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');
