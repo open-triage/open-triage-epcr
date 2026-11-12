@@ -512,6 +512,17 @@ checks reject incomplete/crashed instrumentation and a preparation process that
 exits before the host-kill checkpoint. Native JVM tests cover PDF route/byte and
 authority bounds, cancellation races and partial-export cleanup.
 
+For focused diagnosis of the shared signing and Review path, run
+`npm run android:test -- --skip-build --pdf-clinical-only` with the same exclusive
+emulator, PostgreSQL and SDK prerequisites. This reuses the real protected-report
+recovery, photo/audio, signing, PDF failure/Retry, server scope and revocation
+journey. It deliberately omits the standalone PDF components, pairing, managed,
+TLS rotation, agency and OIDC journeys and cannot be combined with another scope.
+The complete default run remains required for acceptance. Test-only bounded
+receipts prove that the registered application's actual native dispatch consumed
+the report-scoped injected PDF503 before Retry; they retain no request options,
+cookies, CSRF values or PDF bytes.
+
 ### Canonical HTTPS handoff fixture routing
 
 The agency fixture uses registered `https://127.0.0.1` with strict private-CA and

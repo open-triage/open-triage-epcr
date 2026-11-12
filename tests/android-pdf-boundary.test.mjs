@@ -1,8 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {EventEmitter} from 'node:events';
+import {readFileSync} from 'node:fs';
+import {androidTestScope} from '../scripts/android/test-scope.mjs';
 import {observeNativePdfCalls} from '../scripts/android/pdf-native-observer.mjs';
 import {pdfDownloadFixture} from '../scripts/android/pdf-download-fixture.mjs';
+
+test('default Android acceptance retains every stage and focused clinical diagnosis has an explicit non-combinable scope',()=>{
+ const full=androidTestScope(['--skip-build']);assert.equal(full.focusedPdfClinical,false);
+ for(const[key,enabled]of Object.entries(full))if(key!=='focusedPdfClinical')assert.equal(enabled,true,key);
+ const focused=androidTestScope(['--skip-build','--pdf-clinical-only']);assert.equal(focused.focusedPdfClinical,true);
+ for(const[key,enabled]of Object.entries(focused))if(key!=='focusedPdfClinical')assert.equal(enabled,false,key);
+ for(const mode of ['--tls-only','--oidc-only','--agency-only','--report-only','--external-apis','--skip-oidc'])assert.throws(()=>androidTestScope(['--pdf-clinical-only',mode]),/cannot be combined/);
+ const runner=readFileSync(new URL('../scripts/android-emulator-test.mjs',import.meta.url),'utf8');
+ assert.match(runner,/if\(scope.startupAndComponents\)\{[\s\S]*?LegacyConnectionVaultTest[\s\S]*?nativeStartupArguments[\s\S]*?runNativePdfJourney[\s\S]*?\n  \}/);
+ assert.match(runner,/if \(scope.pairing &&[^\n]*for \(const fixture of fixtures\)/);
+ assert.match(runner,/else if \(!tlsOnly[^\n]*\{\n    await runReportRecoveryJourney\([^\n]*audio: true, signReview: true/);
+ assert.match(runner,/if\(scope.managed\) await runManagedJourneys/);
+ assert.match(runner,/if\(scope.tls\)\{\n[^\n]*await runTlsJourney/);
+ assert.match(runner,/if \(scope.agencyAndOidc && !tlsOnly\) \{[\s\S]*?runAgencyHandoffJourney[\s\S]*?runOidcJourney/);
+});
 
 test('observer sees actual Capacitor registerPlugin dispatch and preserves original promise/results without retaining options',async()=>{
  const before={Capacitor:globalThis.Capacitor,androidBridge:globalThis.androidBridge};const reply={opened:false,status:503,code:'pdf.unavailable',private:'do-not-record'};const originalPromise=Promise.resolve(reply);const invocations=[];

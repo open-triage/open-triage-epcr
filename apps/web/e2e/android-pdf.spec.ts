@@ -36,6 +36,20 @@ test('native PDF findings retain localized retry and never display raw bridge/se
   await expect(page.getByRole('alert')).not.toContainText('PRIVATE SERVER DETAILS');
   await page.evaluate('window.__pdfFixture.mode="ready"');await page.getByRole('button',{name:'Retry',exact:true}).click();await expect(page.locator('[data-native-pdf-controls]')).toBeVisible();
 });
+test('programmatic native PDF Retry keeps the same modal and starts a fresh native operation',async({page})=>{
+  await mount(page,{mode:'denied'});await page.getByRole('button',{name:'Inspect signed PDF',exact:true}).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.evaluate(()=>{
+    (window as any).__pdfFixture.mode='ready';
+    const retry=Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null&&button.textContent.trim()==='Retry');
+    if(!retry)throw Error('Expected the visible PDF Retry');
+    retry.click();
+  });
+  await expect(page.locator('.signed-report-pdf-dialog')).toBeVisible();
+  await expect(page.locator('[data-native-pdf-controls]')).toBeVisible();
+  await expect.poll(()=>page.evaluate('window.__pdfFixture.calls.length')).toBe(2);
+  expect(await page.evaluate('window.__pdfFixture.calls[0].operationId!==window.__pdfFixture.calls[1].operationId')).toBe(true);
+});
 for(const boundary of ['close','disabled','context'])test(`late native PDF cannot reopen after ${boundary}`,async({page})=>{
   await mount(page,{mode:'held'});await page.getByRole('button',{name:'Inspect signed PDF',exact:true}).click();await expect.poll(()=>page.evaluate('window.__pdfFixture.calls.length')).toBe(1);
   if(boundary==='close')await page.getByRole('button',{name:'Close',exact:true}).click();
