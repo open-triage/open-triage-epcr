@@ -19,6 +19,7 @@ import {
   createClinicianSession,
   endClinicianSession,
   authenticateRestartedClinicianSession,
+  NativePersonalSessionSettlementError,
   resumeInterruptedNativeClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
@@ -94,6 +95,7 @@ export function ClinicianSessionGate({ children }: {
     resolveMessage(language, key, parameters), [language]);
   const [startupFailure, setStartupFailure] = useState<string | null>(null);
   const [authenticatedSession, setSession] = useState<AuthenticatedSession | null>(null);
+  const retrySessionStartup=useRef(()=>{});
   const session = authenticatedSession?.organization ? authenticatedSession as ClinicianSession : null;
   const [installationRecovery, setInstallationRecovery] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -285,7 +287,7 @@ export function ClinicianSessionGate({ children }: {
         resolved = true;
       } catch (reason: unknown) {
         if (!current) return;
-        setStartupFailure(reason instanceof Error ? reason.message : "The application could not be loaded.");
+        setStartupFailure(reason instanceof NativePersonalSessionSettlementError?null:reason instanceof Error ? reason.message : "The application could not be loaded.");
         setStartupState("failed");
       } finally {
         inFlight = false;
@@ -293,11 +295,13 @@ export function ClinicianSessionGate({ children }: {
     };
     void load();
     const reconnect = () => void load();
+    const retryStartup=()=>{resolved=false;};retrySessionStartup.current=retryStartup;
     const retry = window.setInterval(reconnect, 5_000);
     window.addEventListener("online", reconnect);
     window.addEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
     return () => {
       current = false;
+      if(retrySessionStartup.current===retryStartup)retrySessionStartup.current=()=>{};
       window.clearInterval(retry);
       window.removeEventListener("online", reconnect);
       window.removeEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
@@ -346,9 +350,21 @@ export function ClinicianSessionGate({ children }: {
         const live = await authenticateRestartedClinicianSession(authenticatedSession);
         if (current && !live) await lockAndEndLocalSession(t("login.sessionExpired"));
         else if (current && live && JSON.stringify(live) !== JSON.stringify(authenticatedSession)) {
+          if(live.user.id!==authenticatedSession.user.id || live.organization?.id!==authenticatedSession.organization?.id){
+            setActiveReport(null);clearFeedbackTelemetry();
+          }
           storeClinicianSession(window.localStorage, live); setSession(live);
         }
-      } catch { /* Connection failure does not extend the existing local deadline. */ }
+      } catch(error) {
+        if(current&&error instanceof NativePersonalSessionSettlementError&&error.isCurrent()){
+          // The old view must close even if unrelated public cache bytes changed.
+          // Only delete metadata still owned by this failed attempt.
+          if(error.ownsPublicMetadata())clearClinicianSession(window.localStorage);
+          clearProtectedRuntimeReports();clearFeedbackTelemetry();setActiveReport(null);setSession(null);setLockingSession(false);
+          setStartupFailure(null);setStartupState("failed");retrySessionStartup.current();
+        }
+        // Connectivity failures retain the existing fixed local deadline.
+      }
       finally { inFlight = false; }
     };
     const visible = () => { if (applicationVisible()) void reassess(); };

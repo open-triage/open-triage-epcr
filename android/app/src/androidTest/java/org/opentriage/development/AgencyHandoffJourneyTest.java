@@ -84,6 +84,36 @@ public class AgencyHandoffJourneyTest {
         assertEquals("null",evaluate("localStorage.getItem('open-triage.clinician-session.v1')"));
         status("agency_public_metadata_removed","1");
     }
+    /** Test-only document-start observer/seed; never changes native credentials. */
+    private void stalePublicIdentityCannotVetoCurrentNativeLogin(JSONObject oldPublic) throws Exception {
+        String currentUser=new org.json.JSONTokener(evaluate(session()+".user.id")).nextValue().toString();
+        String currentCsrf=new org.json.JSONTokener(evaluate(session()+".csrfToken")).nextValue().toString();
+        assertFalse("The public snapshot belongs to the real previous clinician",oldPublic.getJSONObject("user").getString("id").equals(currentUser));
+        oldPublic.put("csrfToken","s".repeat(43));oldPublic.remove("accessToken"); // Deliberately inert public proof, never an old credential.
+        String cookie=NativeAgencyHandoff.sessionIdentity(vault().read()),before=records(),time=evaluate("performance.timeOrigin");
+        assertTrue(NativePersonalContinuation.matches(vault().personalContinuation(),vault().read()));
+        evaluate("window.__staleContext=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(s=>window.__staleContext=s.connectionContext)");waitFor("typeof window.__staleContext==='string'");
+        String expectedContext=new org.json.JSONTokener(evaluate("window.__staleContext")).nextValue().toString();
+        String script="(()=>{const old="+oldPublic+",expectedUser="+JSONObject.quote(currentUser)+",expectedContext="+JSONObject.quote(expectedContext)+";localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(old));localStorage.removeItem('open-triage.installation-session-candidate.v1');const initial=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'));const p=window.__staleNativeProbe={initialWasA:initial.user.id===old.user.id,initialWasB:initial.user.id===expectedUser,candidatePresent:!!localStorage.getItem('open-triage.installation-session-candidate.v1'),nativeCalled:false,nativeResult:'unseen',contextMatches:false,hooked:false};const cap=window.Capacitor,send=cap?.nativePromise;if(typeof send==='function'){p.hooked=true;cap.nativePromise=function(plugin,method,options){const reply=send.apply(this,arguments);if(plugin==='OpenTriageConnection'&&method==='resumePersonalSession'){p.nativeCalled=true;p.contextMatches=options?.connectionContext===expectedContext;void reply.then(value=>{p.nativeResult=value.session?.user?.id===expectedUser?'current-B':value.unavailable?'unavailable':'empty'},()=>{p.nativeResult='rejected'});}return reply;};}})();";
+        final Object[] handler={null};final boolean[] supported={false};
+        try{
+            activity.onActivity(screen->{try{
+                supported[0]=(Boolean)Class.forName("androidx.webkit.WebViewFeature").getMethod("isFeatureSupported",String.class).invoke(null,"DOCUMENT_START_SCRIPT");
+                if(supported[0])handler[0]=Class.forName("androidx.webkit.WebViewCompat").getMethod("addDocumentStartJavaScript",android.webkit.WebView.class,String.class,java.util.Set.class).invoke(null,screen.getBridge().getWebView(),script,java.util.Collections.singleton("https://localhost"));
+            }catch(Exception error){throw new IllegalStateException("Document-start test setup failed",error);}});
+            if(!supported[0]){evaluate("localStorage.setItem('open-triage.clinician-session.v1',"+JSONObject.quote(oldPublic.toString())+");localStorage.removeItem('open-triage.installation-session-candidate.v1')");assertEquals(JSONObject.quote(oldPublic.getJSONObject("user").getString("id")),evaluate(session()+".user.id"));}
+            activity.onActivity(screen->screen.getBridge().getWebView().reload());
+            waitFor("performance.timeOrigin!=="+time+" && document.querySelector('.session-identity') && "+session()+"?.user?.id==="+JSONObject.quote(currentUser));
+            if(supported[0]){
+                assertEquals("true",evaluate("window.__staleNativeProbe?.initialWasA && !window.__staleNativeProbe.initialWasB && !window.__staleNativeProbe.candidatePresent && window.__staleNativeProbe.hooked && window.__staleNativeProbe.nativeCalled && window.__staleNativeProbe.contextMatches && window.__staleNativeProbe.nativeResult==='current-B'"));
+                status("agency_stale_public_probe",new org.json.JSONTokener(evaluate("JSON.stringify(window.__staleNativeProbe)")).nextValue().toString());
+            }else status("agency_stale_public_probe","document-start-unavailable; verified-seed-and-fresh-JS-reload-passed");
+            assertEquals(cookie,NativeAgencyHandoff.sessionIdentity(vault().read()));assertTrue(NativePersonalContinuation.matches(vault().personalContinuation(),vault().read()));
+            assertTrue("Fresh native CSRF is retained without copying the inert stale public value",currentCsrf.equals(new org.json.JSONTokener(evaluate(session()+".csrfToken")).nextValue().toString()));
+            assertEquals("null",evaluate("document.querySelector('.encounter-header')"));unchanged(before);bundled();
+            status("agency_stale_public_current_native","passed-fresh-JS-startup-not-process-death");
+        }finally{if(handler[0]!=null)activity.onActivity(screen->{try{Class.forName("androidx.webkit.ScriptHandler").getMethod("remove").invoke(handler[0]);}catch(Exception error){throw new IllegalStateException("Document-start test cleanup failed",error);}});}
+    }
     private void select(String id) throws Exception {
         waitFor("document.querySelector('.session-agency-selector select') && !document.querySelector('.session-agency-selector select').disabled");
         evaluate("(()=>{const s=document.querySelector('.session-agency-selector select');s.value="+JSONObject.quote(id)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
@@ -115,7 +145,9 @@ public class AgencyHandoffJourneyTest {
                 var active=vault().read();var fault=new TrustedConnection(active.origin,active.caPem);
                 assertEquals(200,fault.request("/api/__android-agency-write-outage","POST",new JSONObject().put("content-type","application/json"),new JSONObject().put("reportId",reportId).put("enabled",true).toString()).status());
                 set(FIELD,"ANDROID-AGENCY-PENDING");waitFor("document.querySelector('.sync-status')?.textContent!=='Saved'");Thread.sleep(1200);click("Save & close");waitFor("!document.querySelector('.encounter-header')");
+                JSONObject oldPublic=new JSONObject(new org.json.JSONTokener(evaluate("JSON.stringify("+session()+")")).nextValue().toString());
                 logout(true);login(args.getString("superuser"),args.getString("superuserPassword"));
+                stalePublicIdentityCannotVetoCurrentNativeLogin(oldPublic);
                 // Probe the real private transport without presenting a deliberate
                 // permission denial as a clinician UI session-expiry response.
                 var nonclinical=vault().read();String beforeDenied=NativeAgencyHandoff.sessionIdentity(nonclinical);

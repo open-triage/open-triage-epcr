@@ -10,7 +10,7 @@ import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 export {CLINICIAN_SESSION_STORAGE_KEY,sessionIsActive,loadClinicianSession,sessionRequestToken,storeClinicianSession,clearClinicianSession} from "./clinician-session-storage";
-import {sessionIsActive,storeClinicianSession} from "./clinician-session-storage";
+import {CLINICIAN_SESSION_STORAGE_KEY,sessionIsActive,storeClinicianSession} from "./clinician-session-storage";
 
 const localDemoIdentity = {
   user: { id: DEMO_CLINICIAN_ID, displayName: "Synthetic Clinician" },
@@ -54,6 +54,30 @@ function assertNativePersonalContext(generation:string|null, context:string|unde
   assertAuthenticationInstallationGeneration(generation);
   if(nativeConnectionContext()!==context)throw new InstallationContextChangedError("Installation changed");
 }
+export class NativePersonalSessionSettlementError extends Error {
+  constructor(readonly isCurrent:()=>boolean,readonly ownsPublicMetadata:()=>boolean){super("Native personal context settlement failure");}
+}
+let nativePersonalSettlementRequired=false;
+async function adoptNativePersonalSession(session:AuthenticatedSession,generation:string|null,context:string|undefined,prior?:AuthenticatedSession):Promise<AuthenticatedSession>{
+  if(nativePersonalSettlementRequired || prior&&(prior.user.id!==session.user.id || prior.organization?.id!==session.organization?.id)){
+    const encoded=window.localStorage.getItem(CLINICIAN_SESSION_STORAGE_KEY);
+    const isCurrent=()=>{try{assertNativePersonalContext(generation,context);return true;}catch{return false;}};
+    nativePersonalSettlementRequired=true;
+    try{
+      const {lockProtectedClinicalStorage}=await import("./protected-clinical-storage");
+      const {clearProtectedRuntimeReports}=await import("./offline-reports");
+      try{await lockProtectedClinicalStorage();}finally{clearProtectedRuntimeReports();}
+    }catch(error){
+      if(!isCurrent())throw error;
+      throw new NativePersonalSessionSettlementError(isCurrent,()=>window.localStorage.getItem(CLINICIAN_SESSION_STORAGE_KEY)===encoded);
+    }
+    assertNativePersonalContext(generation,context);
+    nativePersonalSettlementRequired=false;
+  }
+  assertNativePersonalContext(generation,context);
+  storeClinicianSession(window.localStorage,session);
+  return session;
+}
 export async function authenticateRestartedClinicianSession(stored: AuthenticatedSession): Promise<AuthenticatedSession | null> {
   let installationGeneration: string | null;
   try { installationGeneration = authenticationInstallationGeneration(); } catch { return null; }
@@ -62,7 +86,8 @@ export async function authenticateRestartedClinicianSession(stored: Authenticate
     const continued=await AndroidConnection.resumePersonalSession({connectionContext:expectedNativeContext});
     try { assertNativePersonalContext(installationGeneration,expectedNativeContext); } catch { return null; }
     if(continued.unavailable)return null;
-    if(continued.session)return continued.session.user.id===stored.user.id && continued.session.organization?.id===stored.organization?.id?continued.session:null;
+    // Public metadata can roll back independently of committed native authority.
+    if(continued.session)return adoptNativePersonalSession(continued.session,installationGeneration,expectedNativeContext,stored);
   }
   const nativeLegacy=isAndroidRuntime() && !!stored.csrfToken;
   const url = apiRequestUrl(nativeLegacy?"/api/sessions/current/continuation":"/api/sessions/current");
@@ -90,8 +115,7 @@ export async function resumeInterruptedNativeClinicianSession():Promise<Authenti
   assertNativePersonalContext(generation,context);
   if(result.unavailable)return null;
   if(result.session) {
-   storeClinicianSession(window.localStorage,result.session);
-   return result.session;
+   return adoptNativePersonalSession(result.session,generation,context);
   }
  }
  const encoded=window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY);
