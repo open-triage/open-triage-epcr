@@ -55,7 +55,7 @@ public class NativeStartupTest {
             link.click();
             deadline=android.os.SystemClock.elapsedRealtime()+3000;String failure="null";
             while("null".equals(failure)&&android.os.SystemClock.elapsedRealtime()<deadline){failure=evaluate(activity,"window.__apkFailure");Thread.sleep(50);}
-            assertEquals("No browser handler produces the actionable UI event",org.json.JSONObject.quote(url),failure);
+            assertEquals("No browser handler produces the exact actionable UI URL",url,new org.json.JSONTokener(failure).nextValue());
             assertEquals("\"https://localhost\"",evaluate(activity,"location.origin"));
         } finally {instrumentation.removeMonitor(monitor);evaluate(activity,"document.getElementById('native-apk-probe')?.remove()");}
     }
