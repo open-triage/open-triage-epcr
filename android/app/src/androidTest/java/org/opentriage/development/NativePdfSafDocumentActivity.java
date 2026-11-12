@@ -16,17 +16,18 @@ public final class NativePdfSafDocumentActivity extends Activity {
     private final java.util.concurrent.atomic.AtomicBoolean completed = new java.util.concurrent.atomic.AtomicBoolean();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private ResultReceiver receiver;
-    private String token, expectedName;
+    private String token, expectedName, expectedSha256;
     private Uri expectedUri;
     private int expectedLength;
     private final Runnable timeout = () -> complete(RESULT_CANCELED,new Bundle(),"picker-timeout");
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         var input=getIntent();receiver=input.getParcelableExtra("result",ResultReceiver.class);
-        token=input.getStringExtra("token");expectedName=input.getStringExtra("name");expectedUri=input.getParcelableExtra("document",Uri.class);expectedLength=input.getIntExtra("length",0);
+        token=input.getStringExtra("token");expectedName=input.getStringExtra("name");expectedUri=input.getParcelableExtra("document",Uri.class);expectedLength=input.getIntExtra("length",0);expectedSha256=input.getStringExtra("sha256");
         if(!getPackageName().endsWith(".test") || input.getComponent()==null || !getClass().getName().equals(input.getComponent().getClassName())
             || receiver==null || token==null || !token.matches("[a-f0-9-]{36}") || expectedName==null
             || !expectedName.matches("opentriage-synthetic-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\\.pdf")
+            || expectedSha256==null || !expectedSha256.matches("[a-f0-9]{64}")
             || expectedUri==null || !"content".equals(expectedUri.getScheme()) || expectedUri.getAuthority()==null || expectedLength<1 || expectedLength>MAX_BYTES) {
             complete(RESULT_CANCELED,new Bundle(),"invalid-test-request");return;
         }
@@ -62,19 +63,27 @@ public final class NativePdfSafDocumentActivity extends Activity {
             // Deliver pure predicates before any provider/system permission RPC,
             // so diagnostics cannot hide the first failing identity condition.
             var progress=new Bundle(result);progress.putString("token",token);progress.putString("progressStage","pure-identity");receiver.send(RESULT_FIRST_USER,progress);
-            if((flags&grants)!=grants || !"content".equals(selected.getScheme()) || !expectedUri.getAuthority().equals(selected.getAuthority())
-                || !DocumentsContract.getDocumentId(expectedUri).equals(DocumentsContract.getDocumentId(selected)))throw new IllegalArgumentException("Unexpected selected document");
+            // DownloadProvider may return another durable ID for the same
+            // exported file when the user selects it through OPEN_DOCUMENT.
+            // Bind this new grant to the provider, exact metadata and fresh
+            // byte digest; the old URI is a location hint, not an ID contract.
+            if((flags&grants)!=grants || !content || !expectedUri.getAuthority().equals(selected.getAuthority()))throw new IllegalArgumentException("Unexpected selected document provider/grant");
+            String selectedId=DocumentsContract.getDocumentId(selected);
+            if(selectedId.isEmpty())throw new IllegalArgumentException("Missing selected document ID");
             boolean readPermission=checkUriPermission(selected,android.os.Process.myPid(),android.os.Process.myUid(),Intent.FLAG_GRANT_READ_URI_PERMISSION)==android.content.pm.PackageManager.PERMISSION_GRANTED;
-            result.putBoolean("readPermission",readPermission);
-            result.putBoolean("writePermission",checkUriPermission(selected,android.os.Process.myPid(),android.os.Process.myUid(),Intent.FLAG_GRANT_WRITE_URI_PERMISSION)==android.content.pm.PackageManager.PERMISSION_GRANTED);
-            if(content&&readPermission)try(var diagnostic=getContentResolver().query(selected,new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE},null,null,null)) {
-                if(diagnostic!=null&&diagnostic.moveToFirst()){result.putBoolean("metadataReadable",true);result.putBoolean("nameMatches",expectedName.equals(diagnostic.getString(0)));result.putBoolean("sizeMatches",!diagnostic.isNull(1)&&diagnostic.getLong(1)==expectedLength);}
-            }catch(Exception unavailable){result.putBoolean("metadataReadable",false);}
+            boolean writePermission=checkUriPermission(selected,android.os.Process.myPid(),android.os.Process.myUid(),Intent.FLAG_GRANT_WRITE_URI_PERMISSION)==android.content.pm.PackageManager.PERMISSION_GRANTED;
+            result.putBoolean("readPermission",readPermission);result.putBoolean("writePermission",writePermission);
+            if(!readPermission||!writePermission)throw new SecurityException("Selected document is not currently readable and writable");
             stage="metadata";
-            try(var cursor=getContentResolver().query(selected,new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE},null,null,null)) {
-                if(cursor==null||!cursor.moveToFirst()||!expectedName.equals(cursor.getString(0)))throw new IllegalArgumentException("Unexpected document metadata");
-                owned=true;result.putBoolean("identityMatched",true);
-                if(!cursor.isNull(1)&&(cursor.getLong(1)<1||cursor.getLong(1)>MAX_BYTES||cursor.getLong(1)!=expectedLength))throw new IllegalArgumentException("Unexpected document size");
+            try(var cursor=getContentResolver().query(selected,new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE,DocumentsContract.Document.COLUMN_MIME_TYPE},null,null,null)) {
+                if(cursor==null||!cursor.moveToFirst())throw new IllegalArgumentException("Document metadata unavailable");
+                result.putBoolean("metadataReadable",true);
+                boolean documentIdMatches=selectedId.equals(cursor.getString(0));
+                boolean nameMatches=expectedName.equals(cursor.getString(1));
+                boolean sizeMatches=!cursor.isNull(2)&&cursor.getLong(2)==expectedLength;
+                boolean mimeMatches="application/pdf".equals(cursor.getString(3));
+                result.putBoolean("selectedDocumentIdMatches",documentIdMatches);result.putBoolean("nameMatches",nameMatches);result.putBoolean("sizeMatches",sizeMatches);result.putBoolean("mimeMatches",mimeMatches);
+                if(!documentIdMatches||!nameMatches||!sizeMatches||!mimeMatches||cursor.moveToNext())throw new IllegalArgumentException("Unexpected document metadata");
             }
             stage="read";var digest=java.security.MessageDigest.getInstance("SHA-256");int count=0;
             try(var input=getContentResolver().openInputStream(selected)) {
@@ -84,6 +93,9 @@ public final class NativePdfSafDocumentActivity extends Activity {
             if(count!=expectedLength)throw new java.io.IOException("Unexpected document length");
             var hex=new StringBuilder();for(byte value:digest.digest()){hex.append(Character.forDigit((value>>>4)&15,16));hex.append(Character.forDigit(value&15,16));}
             result.putInt("length",count);result.putString("sha256",hex.toString());
+            if(!expectedSha256.equals(hex.toString()))throw new SecurityException("Selected export does not contain the exact freshly authorized bytes");
+            // Never delete a selected document on a metadata/hash failure.
+            owned=true;result.putBoolean("identityMatched",true);
         } catch(Exception failure){primary=stage+":"+failure.getClass().getSimpleName();}
         finally {
             java.util.Arrays.fill(buffer,(byte)0);

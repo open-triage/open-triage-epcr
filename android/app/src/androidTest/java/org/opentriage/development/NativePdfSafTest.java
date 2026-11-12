@@ -30,6 +30,7 @@ public class NativePdfSafTest {
     }
     private void verifyWithNewUserGrant(UiDevice device,android.net.Uri original,String name,byte[] expected) throws Exception {
         var instrumentation=InstrumentationRegistry.getInstrumentation();var target=instrumentation.getTargetContext();
+        var expectedDigest=new StringBuilder();for(byte value:java.security.MessageDigest.getInstance("SHA-256").digest(expected))expectedDigest.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
         String token=java.util.UUID.randomUUID().toString();var done=new java.util.concurrent.CountDownLatch(1);
         var result=new java.util.concurrent.atomic.AtomicReference<android.os.Bundle>();var code=new AtomicInteger();
         var accepting=new java.util.concurrent.atomic.AtomicBoolean(true);
@@ -52,7 +53,7 @@ public class NativePdfSafTest {
         boolean completed=false;Throwable primary=null;
         try {
             target.startActivity(new android.content.Intent().setComponent(component).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra("result",receiver).putExtra("token",token).putExtra("document",original).putExtra("name",name).putExtra("length",expected.length));
+                .putExtra("result",receiver).putExtra("token",token).putExtra("document",original).putExtra("name",name).putExtra("length",expected.length).putExtra("sha256",expectedDigest.toString()));
             var file=device.wait(Until.findObject(By.text(name)),10000);
             assertNotNull("The genuine Open Document picker exposes only this exact synthetic export for user selection",file);
             // A long filename's accessibility TextView can extend beyond the
@@ -74,7 +75,7 @@ public class NativePdfSafTest {
             assertEquals("The ResultReceiver belongs to the exact separate test component",component.flattenToShortString(),proof.getString("component"));
             assertEquals(instrumentation.getContext().getApplicationInfo().uid,proof.getInt("consumerUid"));
             var evidence=new android.os.Bundle();for(String key:new String[]{"primaryFailure","cleanupFailure","sha256"})evidence.putString("opentriage_pdf_user_grant_"+key,proof.getString(key,"missing"));
-            var predicates=new org.json.JSONObject();for(String key:new String[]{"contentUri","readFlag","writeFlag","readPermission","writePermission","sameAuthority","sameHint","sameDocumentId","metadataReadable","nameMatches","sizeMatches"})predicates.put(key,proof.containsKey(key)?proof.getBoolean(key):org.json.JSONObject.NULL);
+            var predicates=new org.json.JSONObject();for(String key:new String[]{"contentUri","readFlag","writeFlag","readPermission","writePermission","sameAuthority","sameHint","sameDocumentId","metadataReadable","nameMatches","sizeMatches","mimeMatches","selectedDocumentIdMatches"})predicates.put(key,proof.containsKey(key)?proof.getBoolean(key):org.json.JSONObject.NULL);
             predicates.put("grantFlags",proof.getInt("grantFlags"));evidence.putString("opentriage_pdf_user_grant_predicates",predicates.toString());
             evidence.putInt("opentriage_pdf_user_grant_bytes",proof.getInt("length"));evidence.putBoolean("opentriage_pdf_user_grant_deleted",proof.getBoolean("deleted"));instrumentation.sendStatus(0,evidence);
             assertEquals("Primary document verification failure (cleanup is independent): "+proof.getString("cleanupFailure")+"; predicates="+predicates,"",proof.getString("primaryFailure","missing"));
