@@ -308,3 +308,32 @@ The APK manifest removes only AndroidX EmojiCompat's automatic downloadable-font
 The old Google-APIs emulator fixture ships WebView109, whose default font prefetch can bind the clinical process to Google Play Services' font provider. Captured `ApplicationExitInfo` and ActivityManager evidence showed Android killing that process when the provider died, even with the app initializer excluded. The default and signed-upgrade harnesses therefore scope a supported font profile to **isolated qemu userdebug/eng emulators with the evidenced WebView109**: only `PrefetchAndroidFonts` and `GMSCoreEmoji` are disabled; verbose logging proves the effective startup settings. Conflicting existing flags, physical/production Android images, symlinks and unsupported WebView generations fail before mutation. The original flag file's exact bytes, mode or absence are restored after success, clinical failure or setup failure; restoration failure fails acceptance. No APK production flags, TLS/origin checks, permissions, Google packages or clinical assertions change. The native probe checks actual provider acquisition and records the startup PID; the harness preserves effective flag evidence in `android/app/build/reports/android-font-profile/`.
 
 This fixture control uses Chromium's [documented userdebug command line](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/docs/commandline-flags.md) and the two entries in its [supported feature list](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/java/src/org/chromium/android_webview/common/ProductionSupportedFlagList.java). It does not establish stock production WebView/GMS behavior: physical-device and regional-provider acceptance remains ticket019. Failed tests are never retried automatically. Failure artifacts also record provider exit reasons and package events so an external provider update/death is distinguishable from a Java assertion, app crash or emulator-host death.
+
+## Android agency acceptance
+
+The complete default `npm run android:test` journey includes the two-origin
+agency handoff after ordinary protected-work and managed-configuration coverage,
+before native OIDC. For focused diagnosis only, build the API and APK and run
+`npm run android:test -- --skip-build --agency-only`. This does not replace the
+complete default acceptance gate.
+
+The fixture uses two real HTTPS API processes sharing one disposable database.
+A registered `https://localhost` target is reached through a temporary ADB
+reverse from device port 443 to the existing host fixture port 9444, with the
+normal localhost certificate SAN and approved private CA. Packaged WebView
+assets remain at the separate virtual `https://localhost` asset origin: Java
+HTTPS requests reach the API, while WebView navigation reloads only bundled
+assets. The original reverse map is captured and restored exactly. No new
+container proxy, hostname verifier or trust bypass is installed.
+
+The ordinary synthetic clinician creates genuine protected pending work before
+logging out. A separately authenticated, already eligible installation superuser
+cannot read that clinician's report, and performs the agency transition without
+acquiring its author/unit/agency or original device credential. The test exercises
+an untrusted target CA before source issuance, an actual live-process kill after
+private preparation, cancellation preserving a still-valid source login, a
+successful UI switch and bundled restart, explicit original pairing and original
+clinician recovery at the fixed deadline, and managed-origin conflict before any
+target request. A bounded fixture-only 503 response holds the synthetic report's
+draft writes; all authentication, handoff and protected receipt/key requests use
+the real API. This fixture behavior is absent from the production API entry point.

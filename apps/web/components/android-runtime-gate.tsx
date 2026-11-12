@@ -1,4 +1,5 @@
 "use client";
+import { storeClinicianSession } from "../app/clinician-session";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AndroidConnection, configureNativeConnection, installAndroidTransport, isAndroidRuntime, type PairingPreview, type AndroidConnectionState } from "../app/android-runtime";
 import { MAX_PAIRING_BYTES, parseAndroidPairing } from "../app/android-pairing";
@@ -19,7 +20,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   const applyState = useCallback((state: AndroidConnectionState) => {
     if (!mounted.current) return;
     const previous = currentState.current;
-    const identity = (value: AndroidConnectionState | null) => JSON.stringify(value && [value.origin, value.connectionContext, value.replacementPending, value.configured, value.blocked, value.managed, value.managedStatus, value.managedContext, value.managedOrigin]);
+    const identity = (value: AndroidConnectionState | null) => JSON.stringify(value && [value.origin, value.connectionContext, value.replacementPending, value.handoffPending, value.configured, value.blocked, value.managed, value.managedStatus, value.managedContext, value.managedOrigin]);
     if (identity(previous) !== identity(state)) revision.current++;
     configureNativeConnection(state);
     currentState.current = state;
@@ -85,7 +86,11 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     {managedNotice}
     {connection?.blocked ? <><p role="alert" className="admin-error">{t(`android.managed.${["missing", "pending", "invalid", "changed"].includes(connection.managedStatus ?? "") ? connection.managedStatus : "unavailable"}`)}</p>{connection.managedStatus === "changed" && <AndroidInstallationAction language={language} />}</> : <>
     {error && <p role="alert" className="admin-error">{t(error)}</p>}
-    {connection.replacementPending ? <button type="button" disabled={busy} onClick={async () => {
+    {connection.handoffPending ? <><p role="alert">{t("android.handoffInterrupted")}</p><button type="button" disabled={busy} onClick={async()=>{
+      setBusy(true);setError(null);const started=revision.current,context=currentState.current?.connectionContext;
+      try {const state=await transitionInstallation(()=>AndroidConnection.cancelAgencyHandoff({connectionContext:context}));if(isCurrent(started)){if(state.session)storeClinicianSession(window.localStorage,state.session);applyState(state);window.location.reload();}}
+      catch(failure){setError(failureMessage(failure));}finally{if(mounted.current)setBusy(false);}
+    }}>{t("android.cancelHandoff")}</button></> : connection.replacementPending ? <button type="button" disabled={busy} onClick={async () => {
       setBusy(true); setError(null); const started=revision.current;
       try { const state=await transitionInstallation(() => AndroidConnection.resumeEnrollment()); if(isCurrent(started)) applyState(state); }
       catch(failure) { if(isCurrent(started)) setError(failureMessage(failure)); } finally { if(mounted.current) setBusy(false); }

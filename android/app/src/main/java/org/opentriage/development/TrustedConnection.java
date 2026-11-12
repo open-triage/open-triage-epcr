@@ -30,9 +30,9 @@ final class TrustedConnection {
     final String caPem;
     private final javax.net.ssl.SSLSocketFactory socketFactory;
     private final Map<String, SavedCookie> cookies = new HashMap<>();
-    private static final Set<String> COOKIE_NAMES = Set.of("open_triage_session", "open_triage_installation");
-    private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "x-job-confirmation", "if-match", "if-none-match");
-    record SavedCookie(String value, long expires) {}
+    private static final Set<String> COOKIE_NAMES = Set.of("open_triage_session", "open_triage_installation", "open_triage_agency_handoff");
+    private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "x-job-confirmation", "x-agency-handoff", "if-match", "if-none-match");
+    record SavedCookie(String value, long expires, String path) { SavedCookie(String value, long expires) { this(value, expires, "/api"); } }
     record Reply(int status, JSONObject headers, byte[] bytes) {
         String body() { return new String(bytes, StandardCharsets.UTF_8); }
         String bodyBase64() { return java.util.Base64.getEncoder().encodeToString(bytes); }
@@ -190,7 +190,7 @@ final class TrustedConnection {
         }
         List<String> cookieValues = new ArrayList<>();
         cookies.entrySet().removeIf(entry -> entry.getValue().expires <= System.currentTimeMillis());
-        for (var entry : cookies.entrySet()) cookieValues.add(entry.getKey() + "=" + entry.getValue().value);
+        for (var entry : cookies.entrySet()) if (path.equals(entry.getValue().path) || path.startsWith(entry.getValue().path + "/") || path.startsWith(entry.getValue().path + "?")) cookieValues.add(entry.getKey() + "=" + entry.getValue().value);
         if (!cookieValues.isEmpty()) connection.setRequestProperty("Cookie", String.join("; ", cookieValues));
         try {
             if (body != null) {
@@ -204,10 +204,10 @@ final class TrustedConnection {
                 if (header.getKey() != null && header.getKey().equalsIgnoreCase("Set-Cookie")) {
                     for (String raw : header.getValue()) for (HttpCookie cookie : HttpCookie.parse(raw)) {
                         if (!COOKIE_NAMES.contains(cookie.getName()) || !cookie.getSecure() || !cookie.isHttpOnly() ||
-                                cookie.getDomain() != null || !"/api".equals(cookie.getPath())) throw new IllegalStateException("Invalid credential cookie");
+                                cookie.getDomain() != null || !cookiePath(cookie.getName()).equals(cookie.getPath())) throw new IllegalStateException("Invalid credential cookie");
                         long expiry = credentialExpiry(cookie, raw, System.currentTimeMillis());
                         if (expiry == 0) cookies.remove(cookie.getName());
-                        else cookies.put(cookie.getName(), new SavedCookie(cookie.getValue(), expiry));
+                        else cookies.put(cookie.getName(), new SavedCookie(cookie.getValue(), expiry, cookie.getPath()));
                     }
                 }
             }
@@ -251,9 +251,12 @@ final class TrustedConnection {
         return next;
     }
 
+    private static String cookiePath(String name) { return name.equals("open_triage_agency_handoff") ? "/api/sessions/agency-handoff" : "/api"; }
+    void clearPersonalSession() { cookies.remove("open_triage_session"); cookies.remove("open_triage_agency_handoff"); }
+
     JSONObject saved() throws Exception {
         JSONArray savedCookies = new JSONArray();
-        for (var entry : cookies.entrySet()) savedCookies.put(new JSONObject().put("name", entry.getKey()).put("value", entry.getValue().value).put("expires", entry.getValue().expires));
+        for (var entry : cookies.entrySet()) savedCookies.put(new JSONObject().put("name", entry.getKey()).put("value", entry.getValue().value).put("expires", entry.getValue().expires).put("path", entry.getValue().path));
         return new JSONObject().put("origin", origin).put("caPem", caPem).put("cookies", savedCookies);
     }
     static TrustedConnection restore(JSONObject saved) throws Exception {
@@ -262,9 +265,10 @@ final class TrustedConnection {
         for (int i = 0; i < cookies.length(); i++) {
             JSONObject cookie = cookies.getJSONObject(i);
             if (!COOKIE_NAMES.contains(cookie.getString("name"))) throw new IllegalArgumentException("Invalid stored cookie");
+            if (!cookiePath(cookie.getString("name")).equals(cookie.optString("path", "/api"))) throw new IllegalArgumentException("Invalid stored cookie path");
             String value = cookie.getString("value"); long expiry = cookie.getLong("expires");
             if (!value.isEmpty() && expiry > System.currentTimeMillis())
-                connection.cookies.put(cookie.getString("name"), new SavedCookie(value, expiry));
+                connection.cookies.put(cookie.getString("name"), new SavedCookie(value, expiry, cookiePath(cookie.getString("name"))));
         }
         return connection;
     }

@@ -3126,5 +3126,7 @@
   "platform.error.android.policyForbidden": "Installationsadministration krävs.",
   "platform.error.android.policyOnlineRequired": "Uppgraderingspolicyn kräver anslutning till installationen.",
   "platform.error.android.clientInvalid": "Ogiltig Android-applikationsversion.",
-  "androidUpgrade.agencies": "Organisationer"
+  "androidUpgrade.agencies": "Organisationer",
+  "android.handoffInterrupted": "Bytet av organisation avbröts. Krypterat arbete finns kvar vid den ursprungliga installationen.",
+  "android.cancelHandoff": "Återgå till ursprunglig installation"
 }

@@ -97,6 +97,29 @@ try{
  assert.equal((await currentHttp()).status,200,'Rejected unproved switch preserves outgoing authority');
  console.log('PASS actual native HTTP cookie/CSRF guards: empty/stale login, secret-bound first delivery, exact-cookie idempotency, intent rejection and switch proof');
 
+ // Same-origin agency switching preserves OIDC provenance and fixed time but
+ // rotates all browser/native personal authority and drops outgoing unit binding.
+ const agencySwitch=(organizationId,csrf=originalHttpSession.csrfToken)=>fetch(`${api}/api/sessions/agency-handoff/switch`,{
+  method:'POST',headers:{origin,cookie:currentCookie,'content-type':'application/json',...(csrf?{'x-csrf-token':csrf}:{})},body:JSON.stringify({organizationId})});
+ assert.equal((await agencySwitch(process.env.OIDC_GROUP,null)).status,401);
+ const oidcCrossHost=await fetch(`${api}/api/sessions/agency-handoff/start`,{method:'POST',headers:{origin,cookie:currentCookie,'content-type':'application/json','x-csrf-token':originalHttpSession.csrfToken},body:JSON.stringify({organizationId:process.env.OIDC_OTHER,verifierHash:'a'.repeat(64)})});
+ assert.equal(oidcCrossHost.status,403,'OIDC agency accounts keep the same restricted cross-host eligibility as local agency accounts');
+
+ assert.equal((await agencySwitch(process.env.OIDC_OTHER)).status,403);
+ assert.equal((await currentHttp()).status,200,'Denied agency context keeps the original valid login');
+ const switched=await agencySwitch(process.env.OIDC_GROUP);assert.equal(switched.status,201);
+ const switchedSession=await switched.json();assert.equal(switchedSession.authenticationSource,'oidc');assert.equal(switchedSession.organization.id,process.env.OIDC_GROUP);
+ assert.equal(switchedSession.startedAt,originalHttpSession.startedAt);assert.equal(switchedSession.expiresAt,originalHttpSession.expiresAt);
+ assert.equal(switchedSession.personallyAuthenticatedAt,originalHttpSession.personallyAuthenticatedAt);assert.notEqual(switchedSession.csrfToken,originalHttpSession.csrfToken);
+ const switchedCookies=switched.headers.getSetCookie();assert(switchedCookies.some(value=>value.startsWith('open_triage_installation=;')));
+ const switchedCookie=switchedCookies.find(value=>value.startsWith('open_triage_session=')).split(';')[0];
+ assert.notEqual(switchedCookie,issuedCookie.split(';')[0]);assert.equal((await currentHttp()).status,401,'Outgoing OIDC cookie is revoked');
+ const switchedCurrent=await fetch(`${api}/api/sessions/current`,{headers:{origin,cookie:switchedCookie}});assert.equal(switchedCurrent.status,200);
+ assert.equal((await switchedCurrent.json()).csrfToken,switchedSession.csrfToken,'New token decrypts only its freshly bound CSRF');
+ const [switchedBinding]=await db.query('select installation_registration_id from app_identity.app_session where token_sha256=encode(sha256($1::bytea),\'hex\')',[Buffer.from(switchedCookie.split('=')[1])]);assert.equal(switchedBinding.installation_registration_id,null);
+ console.log('PASS native agency OIDC rotation: unchanged proof/time, new token/CSRF, no outgoing unit, denied scope and CSRF preserve source');
+
+
  await assert.rejects(agencyRequest.run({origin},()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
  await assert.rejects(inNative(()=>personal.begin({purpose:'reauthenticate'},undefined,undefined,undefined,true)),error=>error.getStatus?.()===401);
  await assert.rejects(inNative(()=>personal.begin({purpose:'login'},undefined,undefined,undefined,true,'attacker.auth')),error=>error.getStatus?.()===400);

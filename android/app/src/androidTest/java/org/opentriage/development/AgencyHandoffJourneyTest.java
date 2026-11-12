@@ -1,0 +1,116 @@
+package org.opentriage.development;
+
+import static org.junit.Assert.*;
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+/** Actual bundled UI, private cookie vault and two real HTTPS agency origins. */
+@RunWith(AndroidJUnit4.class)
+public class AgencyHandoffJourneyTest {
+    private ActivityScenario<MainActivity> activity;
+    private static final String FIELD="document.querySelector('[data-element-id=\"ePatient.03\"] input[type=\"text\"]')";
+    private String evaluate(String script) throws Exception {
+        var value=new AtomicReference<String>();var done=new CountDownLatch(1);
+        activity.onActivity(screen->screen.getBridge().getWebView().evaluateJavascript(script,result->{value.set(result);done.countDown();}));
+        assertTrue("Bundled WebView must answer",done.await(15,TimeUnit.SECONDS));return value.get();
+    }
+    private void waitFor(String expression) throws Exception {
+        long end=android.os.SystemClock.elapsedRealtime()+60000;
+        while(android.os.SystemClock.elapsedRealtime()<end){if("true".equals(evaluate("Boolean("+expression+")")))return;Thread.sleep(100);}
+        fail("Agency UI condition failed: "+expression+" body="+evaluate("document.body.innerText.slice(0,1600)"));
+    }
+    private void set(String expression,String value) throws Exception {waitFor(expression+" && !("+expression+").disabled");evaluate(WebViewTestInput.change(expression,value));}
+    private void click(String label) throws Exception {
+        String button="Array.from(document.querySelectorAll('button')).find(b=>b.offsetParent!==null&&b.textContent.trim()==="+JSONObject.quote(label)+")";
+        waitFor(button+" && !("+button+").disabled");
+        if(label.equals("Save & close")){
+            evaluate("setTimeout(()=>("+button+").click(),0)");
+            var confirm=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("OK")),1500);if(confirm!=null)confirm.click();
+        }else evaluate("("+button+").click()");
+    }
+    private void login(String username,String password) throws Exception {
+        waitFor("document.querySelector('input[name=username]') && document.querySelector('.login-sign-in button[type=submit]') && !document.querySelector('.login-sign-in button[type=submit]').disabled");
+        set("document.querySelector('input[name=username]')",username);set("document.querySelector('input[name=password]')",password);evaluate("document.querySelector('.login-sign-in').requestSubmit()");waitFor("document.querySelector('.session-identity')");
+    }
+    private void logout(boolean pending) throws Exception {
+        click("Log out");
+        if(pending){waitFor("document.querySelector('.logout-dialog')");click("Log out and lock work");}
+        waitFor("document.querySelector('input[name=username]') && !document.querySelector('.login-sign-in button[type=submit]').disabled");
+    }
+    private String records() throws Exception {
+        evaluate("window.__agencyRecords=null;(()=>{const r=indexedDB.open('open-triage-protected-clinical-v1');r.onsuccess=()=>{const db=r.result;const q=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();q.onsuccess=()=>{window.__agencyRecords=q.result.map(x=>({...x,ciphertext:Array.from(new Uint8Array(x.ciphertext)),nonce:Array.from(new Uint8Array(x.nonce))}));db.close()}}})()");
+        waitFor("window.__agencyRecords!==null");
+        byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(evaluate("JSON.stringify(window.__agencyRecords)").getBytes(StandardCharsets.UTF_8));var hash=new StringBuilder();for(byte b:bytes)hash.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return hash.toString();
+    }
+    private ConnectionVault vault(){return new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());}
+    private String session(){return "JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null')";}
+    private void status(String key,String value){var data=new android.os.Bundle();data.putString(key,value);InstrumentationRegistry.getInstrumentation().sendStatus(0,data);}
+    private void select(String id) throws Exception {
+        waitFor("document.querySelector('.session-agency-selector select') && !document.querySelector('.session-agency-selector select').disabled");
+        evaluate("(()=>{const s=document.querySelector('.session-agency-selector select');s.value="+JSONObject.quote(id)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    private void current() throws Exception {
+        evaluate("window.__agencyCurrent=null;fetch('/api/sessions/current').then(async r=>window.__agencyCurrent={status:r.status,body:await r.json()}).catch(()=>window.__agencyCurrent={status:0})");waitFor("window.__agencyCurrent");assertEquals("200",evaluate("window.__agencyCurrent.status"));
+    }
+    private void bundled() throws Exception {
+        assertEquals("\"https://localhost\"",evaluate("location.origin"));assertEquals("null",evaluate("document.querySelector('body').textContent.includes('SYNTHETIC-REMOTE-WEB-DEPLOYMENT')?true:null"));
+        assertNull("No remote credential enters the WebView cookie store",android.webkit.CookieManager.getInstance().getCookie("https://localhost/api"));
+        assertEquals("true",evaluate("!document.cookie.includes('open_triage_session') && !document.cookie.includes('open_triage_installation')"));
+    }
+    private void unchanged(String expected) throws Exception {assertEquals("Agency transition preserves exact old opaque clinical record",expected,records());}
+    @Test public void isolatedAgencyHandoff() throws Exception {
+        var args=InstrumentationRegistry.getArguments();String phase=args.getString("phase");
+        AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),args.getString("apiOrigin"),null,true);
+        activity=ActivityScenario.launch(MainActivity.class);
+        try {
+            if(phase.equals("setup")){
+                String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);
+                waitFor("document.querySelector('input[type=file]')");AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Agency handoff source");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
+                login(args.getString("username"),args.getString("password"));
+                String row="Array.from(document.querySelectorAll('.assigned-call-card')).find(row=>row.textContent.includes("+JSONObject.quote(args.getString("callNumber"))+"))";
+                waitFor(row+"?.querySelector('button')");evaluate("("+row+").querySelector('button').click()");waitFor("document.querySelector('.encounter-header')");
+                if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");
+                set(FIELD,"ANDROID-AGENCY-ORIGINAL");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
+                String reportId=new org.json.JSONTokener(evaluate("document.querySelector('.active-report-notice').dataset.reportId")).nextValue().toString();
+                status("agency_report_id",reportId);
+                var active=vault().read();var fault=new TrustedConnection(active.origin,active.caPem);
+                assertEquals(200,fault.request("/api/__android-agency-write-outage","POST",new JSONObject().put("content-type","application/json"),new JSONObject().put("reportId",reportId).put("enabled",true).toString()).status());
+                set(FIELD,"ANDROID-AGENCY-PENDING");waitFor("document.querySelector('.sync-status')?.textContent!=='Saved'");Thread.sleep(1200);click("Save & close");waitFor("!document.querySelector('.encounter-header')");
+                logout(true);login(args.getString("superuser"),args.getString("superuserPassword"));
+                evaluate("window.__otherReport=null;fetch('/api/reports/"+reportId+"').then(r=>window.__otherReport=r.status)");waitFor("window.__otherReport!==null");assertEquals("Another administrator must not read the original clinician's report","404",evaluate("window.__otherReport"));
+                status("retained_sha256",records());status("source_cookie_sha256",NativeAgencyHandoff.sessionIdentity(vault().read()));bundled();
+            } else if(phase.equals("bad-ca")||phase.equals("managed-denied")){
+                waitFor("document.querySelector('.session-identity')");String cookie=NativeAgencyHandoff.sessionIdentity(vault().read());String before=records();select(args.getString("targetAgency"));waitFor("document.querySelector('.admin-entry-blocked[role=alert]')");
+                current();assertEquals(JSONObject.quote(args.getString("sourceAgency")),evaluate("window.__agencyCurrent.body.organization.id"));assertEquals(cookie,NativeAgencyHandoff.sessionIdentity(vault().read()));assertEquals(args.getString("apiOrigin"),vault().read().origin);unchanged(before);assertNull(vault().pendingHandoff());bundled();
+            } else if(phase.equals("prepare-interrupted")){
+                waitFor("document.querySelector('.session-identity')");
+                evaluate("window.__prepared=null;window.Capacitor.Plugins.OpenTriageConnection.state().then(state=>window.Capacitor.Plugins.OpenTriageConnection.prepareAgencyHandoff({organizationId:"+JSONObject.quote(args.getString("targetAgency"))+",csrfToken:"+session()+".csrfToken,connectionContext:state.connectionContext})).then(v=>window.__prepared=v)");waitFor("window.__prepared?.crossHost");
+                assertEquals("prepared",vault().pendingHandoff().getString("phase"));status("retained_sha256",records());status("agency_handoff_live","1");
+                long end=android.os.SystemClock.elapsedRealtime()+120000;while(android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(100);fail("Host must kill the actual live process at the checkpoint");
+            } else if(phase.equals("cancel-interrupted")){
+                waitFor("document.body.innerText.includes('The agency switch was interrupted')");assertEquals("null",evaluate("document.querySelector('.session-identity')"));unchanged(args.getString("retainedSha256"));click("Return to original installation");waitFor("document.querySelector('.session-identity')");
+                assertEquals("No new login was needed for an unissued cancelled handoff","null",evaluate("document.querySelector('input[name=password]')"));assertEquals(args.getString("sourceCookieSha256"),NativeAgencyHandoff.sessionIdentity(vault().read()));assertNull(vault().pendingHandoff());unchanged(args.getString("retainedSha256"));current();bundled();
+            } else if(phase.equals("switch")){
+                waitFor("document.querySelector('.session-identity')");String before=records();String oldCookie=NativeAgencyHandoff.sessionIdentity(vault().read());current();String expiry=evaluate("window.__agencyCurrent.body.expiresAt"),proof=evaluate("window.__agencyCurrent.body.personallyAuthenticatedAt");select(args.getString("targetAgency"));
+                waitFor(session()+"?.organization?.id==="+JSONObject.quote(args.getString("targetAgency")));waitFor("document.querySelector('.session-identity')");current();assertEquals(expiry,evaluate("window.__agencyCurrent.body.expiresAt"));assertEquals(proof,evaluate("window.__agencyCurrent.body.personallyAuthenticatedAt"));assertNotEquals(oldCookie,NativeAgencyHandoff.sessionIdentity(vault().read()));
+                assertEquals("https://localhost",vault().read().origin);assertNull(vault().pendingHandoff());
+                var cookies=vault().read().saved().getJSONArray("cookies");for(int i=0;i<cookies.length();i++)assertEquals("Target has only its own new personal cookie","open_triage_session",cookies.getJSONObject(i).getString("name"));
+                unchanged(before);bundled();
+            } else if(phase.equals("restart-target")){
+                waitFor("document.querySelector('.session-identity')");assertEquals("https://localhost",vault().read().origin);assertEquals(JSONObject.quote(args.getString("targetAgency")),evaluate(session()+".organization.id"));unchanged(args.getString("retainedSha256"));bundled();
+            } else if(phase.equals("return-source")){
+                waitFor("document.querySelector('.session-identity')");click("Change installation");waitFor("document.querySelector('input[type=file]')");
+                String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
+                login(args.getString("username"),args.getString("password"));click("Reopen report");waitFor("document.querySelector('.encounter-header')");if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-AGENCY-PENDING'");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");click("Save & close");waitFor("!document.querySelector('.encounter-header')");logout(false);login(args.getString("superuser"),args.getString("superuserPassword"));bundled();
+            }else fail("Unknown agency test phase");
+        }finally{activity.close();}
+    }
+}

@@ -1,3 +1,4 @@
+import { runAgencyHandoffJourney } from './android/agency-handoff-journey.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
@@ -48,7 +49,7 @@ try {
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  if (!process.argv.includes('--report-only') && !process.argv.includes('--oidc-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (!process.argv.includes('--report-only') && !process.argv.includes('--oidc-only') && !process.argv.includes('--agency-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');
@@ -71,14 +72,15 @@ try {
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
   if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
-  else {
+  else if (!process.argv.includes('--agency-only')) {
     await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
     await runManagedJourneys({root, fixtures, run, api, adb, serial});
   }
   if (!process.argv.includes('--external-apis')) {
     const secondApi = children[1];
     await stopFixtureChild(secondApi);
-    await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
+    if (!process.argv.includes('--oidc-only')) await runAgencyHandoffJourney({root,directory,fixture:fixtures[0],adb,serial,run,api});
+    if (!process.argv.includes('--agency-only')) await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
   } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
 } catch (error) {
   if (error?.androidFailureCaptured) throw error;

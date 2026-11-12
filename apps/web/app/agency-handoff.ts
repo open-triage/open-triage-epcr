@@ -1,3 +1,5 @@
+import {INSTALLATION_GENERATION_KEY,INSTALLATION_TRANSITION_KEY} from "./installation-transition-generation";
+import {AndroidConnection,configureNativeConnection,isAndroidRuntime,nativeConnectionContext} from "./android-runtime";
 import type {AuthenticatedSession} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from './browser-api';
 import {platformRequestError} from './platform-errors';
@@ -5,6 +7,11 @@ import {transitionInstallation} from './installation-transition';
 import {storeClinicianSession} from './clinician-session';
 import {resolveMessage} from './localization';
 const intentKey='open-triage.agency-handoff.intent.v1';
+const generation=()=>window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+const changed=()=>new Error(resolveMessage(document.documentElement.lang,'platform.error.auth.agencyHandoffInvalid'));
+function assertGeneration(expected:string|null,inside=false){if(generation()!==expected||!inside&&window.localStorage.getItem(INSTALLATION_TRANSITION_KEY))throw changed();}
+function nativeFailure(error:unknown){const code=(error as {code?:string})?.code;return new Error(resolveMessage(document.documentElement.lang,code==='MANAGED_CONFLICT'?'android.managed.conflict':code==='MANAGED_BLOCKED'?'android.managed.unavailable':'admin.agencyOpenFailed'));}
+
 async function request<T>(stage:string,body:unknown,csrf?:string):Promise<T>{
  const url=apiRequestUrl(`/api/sessions/agency-handoff/${stage}`);if(!url)throw new Error(resolveMessage(document.documentElement.lang,'admin.authenticationApiRequired'));
  const response=await fetch(url,browserRequestInit({method:'POST',headers:{'content-type':'application/json','x-agency-handoff':'1',...(csrf?{'x-csrf-token':csrf}:{})},body:JSON.stringify(body)}));
@@ -13,7 +20,29 @@ async function request<T>(stage:string,body:unknown,csrf?:string):Promise<T>{
 function random(){const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');}
 async function hash(value:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');}
 /** Only eligible server-verified superusers can initiate a cross-host handoff. */
-export async function startAgencyHandoff(organizationId:string,csrf:string):Promise<boolean>{
+export async function startAgencyHandoff(organizationId:string,csrf:string,original?:AuthenticatedSession):Promise<boolean>{
+ if(isAndroidRuntime()){
+  const expected=nativeConnectionContext(),started=generation();
+  assertGeneration(started);
+  const prepared=await AndroidConnection.prepareAgencyHandoff({organizationId,csrfToken:csrf,connectionContext:expected}).catch(error=>{throw nativeFailure(error);});
+  assertGeneration(started);
+  if(expected!==nativeConnectionContext())throw changed();
+  if(!prepared.crossHost)return false;
+  let owned=started;
+  try {
+   await transitionInstallation(async()=>{
+    owned=generation();
+    const result=await AndroidConnection.confirmAgencyHandoff({connectionContext:expected});
+    assertGeneration(owned,true);
+    if(expected!==nativeConnectionContext()&&result.connectionContext!==nativeConnectionContext())throw changed();
+    configureNativeConnection(result);storeClinicianSession(window.localStorage,result.session);
+   });
+  } catch(error) {
+   if(original&&owned===generation()&&expected===nativeConnectionContext())storeClinicianSession(window.localStorage,original);
+   throw nativeFailure(error);
+  } finally {if(owned===generation())window.location.reload();}
+  return true;
+ }
  const verifier=random();
  const result=await request<{transactionId?:string;targetUrl:string|null;targetOrigin?:string}>('start',{organizationId,verifierHash:await hash(verifier)},csrf);
  if(!result.targetUrl)return false;
@@ -53,4 +82,21 @@ export function resumeAgencyHandoff():Promise<Resume>{
   }
   throw fail();
  })();return pending;
+}
+
+/** Same policy as browser switching, with a fresh native cookie/CSRF and no old unit binding. */
+export async function switchAndroidAgency(organizationId:string,csrf:string,original:AuthenticatedSession):Promise<void>{
+ const expected=nativeConnectionContext();let owned=generation();
+ try {
+  await transitionInstallation(async()=>{
+   owned=generation();
+   const result=await AndroidConnection.switchAgency({organizationId,csrfToken:csrf,connectionContext:expected});
+   assertGeneration(owned,true);
+   if(expected!==nativeConnectionContext()&&result.connectionContext!==nativeConnectionContext())throw changed();
+   configureNativeConnection(result);storeClinicianSession(window.localStorage,result.session);
+  });
+ } catch(error) {
+  if(owned===generation()&&expected===nativeConnectionContext())storeClinicianSession(window.localStorage,original);
+  throw nativeFailure(error);
+ } finally {if(owned===generation())window.location.reload();}
 }

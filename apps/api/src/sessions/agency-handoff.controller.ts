@@ -8,6 +8,13 @@ const optionalToken=(request:Request)=>{try{return bearerToken(undefined,request
 @Controller('sessions/agency-handoff')
 export class AgencyHandoffController {
  constructor(private readonly handoffs:AgencyHandoffService){}
+ @Post('switch') @Header('Cache-Control','no-store, private')
+ async switch(@Body()body:unknown,@Req()request:Request,@Res({passthrough:true})response:SessionCookieResponse,@Headers('authorization')authorization?:string){
+  const created=await this.handoffs.switch(sessionToken(request,authorization),body);
+  response.cookie(SESSION_COOKIE,created.sessionToken,cookieOptions(created.session.expiresAt));
+  response.clearCookie('open_triage_installation',{httpOnly:true,secure:true,sameSite:'strict',path:'/api'});
+  return created.session;
+ }
  @Post('start') @Header('Cache-Control','no-store, private')
  start(@Body()body:unknown,@Req()request:Request,@Headers('authorization')authorization?:string){return this.handoffs.start(sessionToken(request,authorization),body);}
  @Post('challenge') @Header('Cache-Control','no-store, private')

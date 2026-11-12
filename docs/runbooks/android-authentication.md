@@ -108,3 +108,42 @@ before producing offline unacknowledged ciphertext. The default
 command retains all preceding acceptance journeys. `--skip-oidc` is only for focused `--external-apis` diagnostics; default/CI
 acceptance includes OIDC. Synthetic emulator acceptance does not establish real
 regional provider or physical-device acceptance: record those in ticket 019.
+
+## Agency handoff
+
+The APK keeps the bundled `https://localhost` workspace when switching agencies.
+Agency-less installation superusers retain the existing cross-host eligibility;
+agency-bound local and OIDC accounts use their ordinary accessible-agency policy.
+No current valid login needs another personal-authentication prompt.
+
+A native cross-host handoff first asks the currently approved API for the
+registered destination. It creates a fresh target connection with an empty
+cookie jar and the already approved public CA roots. Strict TLS hostname and CA
+verification remain enabled. A target requiring different trust, an unexpected
+host/redirect, or managed-origin conflict fails before source issuance, leaving
+the original login usable. The APK never accepts a CA from a return URL and
+never copies source personal or installation cookies to the target.
+
+After a target challenge succeeds, the shared transition barrier settles local
+writers and removes readable keys. Only then does native code issue and consume
+the one-use handoff. Verifiers, challenge cookies, source cookies and intermediate
+state stay in the Keystore-encrypted vault. The returned public session has new
+cookie/CSRF authority, the original start/proof/maximum expiry, and no old unit
+binding. Same-origin browser and APK switching use that same authority rotation.
+The original reports retain their author, agency, unit and recovery deadlines.
+
+Uncertain issue/consume responses are recorded before dispatch and are never
+replayed automatically. On restart the workspace stays locked and offers
+**Return to original installation**. This clears the interrupted private intent
+while preserving the original cookie and installation. Cancellation verifies
+that cookie with the server and restores only the matching sealed source session
+metadata; a still-valid login resumes without another sign-in. Only actual source
+revocation or expiry requires ordinary initial login. Eligible encrypted work
+remains unchanged. A successfully transferred session does not
+acquire the old unit's pairing. Pair the target explicitly if unit work is needed.
+
+Pending encrypted work does not prohibit an agency switch once its editor is
+closed. It remains in its original native-origin/agency scope, without retagging,
+deleting or extending recovery. Returning to that scope and original authorized
+identity is required for ordinary recovery. An active/opening report still blocks
+switching until it has been closed through the shared workflow.

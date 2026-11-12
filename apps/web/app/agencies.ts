@@ -14,4 +14,4 @@ async function request<T>(path: string, csrfToken?: string, method = "GET", body
 export const loadAgencies = () => request<AgencyDirectory>("/api/super-admin/agencies");
 export const createAgency = (csrfToken: string, command: CreateAgencyCommand) => request<AgencySummary>("/api/super-admin/agencies", csrfToken, "POST", command);
 export const updateAgency = (csrfToken: string, id: string, command: UpdateAgencyCommand) => request<AgencySummary>(`/api/super-admin/agencies/${id}`, csrfToken, "PUT", command);
-export const switchAgency = (csrfToken: string, id: string) => request<ClinicianSession>(`/api/sessions/agency/${id}`, csrfToken, "POST");
+export const switchAgency = (csrfToken: string, id: string) => request<ClinicianSession>("/api/sessions/agency-handoff/switch", csrfToken, "POST", { organizationId: id });

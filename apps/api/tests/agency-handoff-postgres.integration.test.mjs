@@ -21,8 +21,11 @@ integration('only agency-less installation superusers transfer sessions through 
   await query("insert into app_identity.organization(id,name,hostname,deployment_timezone) values($1,'Handoff source',$2,'UTC'),($3,'Handoff target',$4,'UTC')",[source,new URL(sourceOrigin).hostname,target,new URL(targetOrigin).hostname]);
   await query("insert into app_identity.app_user(id,organization_id,display_name,account_scope) values($1,null,'Global administrator','installation'),($2,$3,'Ordinary person','agency'),($4,$3,'Agency-bound administrator','agency')",[user,ordinary,source,boundAdmin]);
   await query("insert into app_identity.installation_superadmin(user_id,established_by_operator_id) values($1,'test')",[user]);
+  // Ordinary workspace authority requires a completed installation-owner setup.
+  await query("insert into app_identity.installation_owner(user_id,established_by_operator_id) values($1,'test')",[user]);
   await query("insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='administrator'",[source,boundAdmin,user]);
   await query("insert into app_identity.app_user(id,organization_id,display_name,account_scope) values($1,$2,'Destination person','agency')",[targetPerson,target]);
+  await query("insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by) select $1,$2,id,$3 from app_identity.role where organization_id=$1 and system_key='clinician'",[source,ordinary,user]);
   for(const id of [user,ordinary,boundAdmin,targetPerson])await query('insert into app_identity.local_credential(user_id,username,password_verifier,must_change_password) values($1,$2,$3,false)',[id,name+id.slice(0,8),await createPasswordVerifier(password)]);
   await client.query('set local role open_triage_api_runtime');
   const directory=new AgencyDirectoryService(database),sessions=new ClinicianSessionService(database,directory),handoffs=new AgencyHandoffService(database,sessions,directory);
@@ -65,6 +68,18 @@ integration('only agency-less installation superusers transfer sessions through 
   await assert.rejects(at(targetOrigin,()=>handoffs.challenge({transactionId:expiring.transactionId})));
   const another=await at(targetOrigin,()=>sessions.create({username:name+targetPerson.slice(0,8),password})),pending=await at(sourceOrigin,()=>handoffs.start(expiringSession.sessionToken,{organizationId:target,verifierHash:digest(verifier)}));
   await assert.rejects(at(targetOrigin,()=>handoffs.challenge({transactionId:pending.transactionId},another.sessionToken)),e=>e.getResponse?.().code==='auth.agencyHandoffOtherUser');
+
+  // Native and browser same-origin transitions share eligibility, but rotate
+  // personal authority instead of allowing stale work to retain the old cookie.
+  const beforeNative=await login(user), beforeNativeAuthenticated=await at(sourceOrigin,()=>sessions.getAuthenticated(beforeNative.sessionToken));
+  const rotated=await at(sourceOrigin,()=>handoffs.switch(beforeNative.sessionToken,{organizationId:target}));
+  assert.equal(rotated.session.organization.id,target);assert.notEqual(rotated.sessionToken,beforeNative.sessionToken);assert.notEqual(rotated.session.csrfToken,beforeNative.session.csrfToken);
+  assert.equal(rotated.session.startedAt,beforeNative.session.startedAt);assert.equal(rotated.session.expiresAt,beforeNative.session.expiresAt);
+  assert.equal(rotated.session.personallyAuthenticatedAt,beforeNativeAuthenticated.personallyAuthenticatedAt);
+  await assert.rejects(at(sourceOrigin,()=>sessions.getAuthenticated(beforeNative.sessionToken)));
+  assert.equal((await at(sourceOrigin,()=>sessions.getAuthenticated(rotated.sessionToken))).user.id,user);
+  const ordinaryNative=await login(ordinary);assert.equal(ordinaryNative.session.workspaceAvailable,true);await assert.rejects(at(sourceOrigin,()=>handoffs.switch(ordinaryNative.sessionToken,{organizationId:target})));
+  assert.equal((await at(sourceOrigin,()=>sessions.getAuthenticated(ordinaryNative.sessionToken))).organization.id,source,'Denied transition preserves the existing valid workspace');
 
   // Real cross-host browser cookies, source intent, target challenge and CSRF guard.
   const {NestFactory}=await import('@nestjs/core'),{Module}=await import('@nestjs/common'),{APP_GUARD}=await import('@nestjs/core');

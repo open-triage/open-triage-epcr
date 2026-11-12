@@ -3128,5 +3128,7 @@
   "platform.error.android.policyForbidden": "Installation administration is required.",
   "platform.error.android.policyOnlineRequired": "Upgrade policy requires a connection to the installation.",
   "platform.error.android.clientInvalid": "Invalid Android application version.",
-  "androidUpgrade.agencies": "Agencies"
+  "androidUpgrade.agencies": "Agencies",
+  "android.handoffInterrupted": "The agency switch was interrupted. Encrypted work remains at its original installation.",
+  "android.cancelHandoff": "Return to original installation"
 }

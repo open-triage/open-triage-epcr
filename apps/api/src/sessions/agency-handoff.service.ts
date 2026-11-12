@@ -7,6 +7,7 @@ import {ClinicianSessionService,type CreatedSession} from './clinician-session.s
 import {AgencyDirectoryService,registeredAgencyOrigin} from './agency-directory.service.js';
 import {agencyRequest} from './agency-context.js';
 import {mutationRows} from '../database/mutation-result.js';
+import {encryptAgencyCredential} from '../authentication/agency-oidc-keys.js';
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const secret=()=>randomBytes(32).toString('base64url');
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -23,6 +24,29 @@ function destination(origin:string,stage:string,values:Record<string,string>){
 export class AgencyHandoffService {
  constructor(@InjectDataSource()private readonly database:DataSource,private readonly sessions:ClinicianSessionService,private readonly agencies:AgencyDirectoryService){}
  private origin(){const origin=agencyRequest.getStore()?.origin;if(!origin)throw invalid();return origin;}
+ /** Same-origin native switches use the ordinary agency policy, then retire the
+  * outgoing cookie/CSRF/device binding without issuing new personal proof/time. */
+ async switch(token:string,input:unknown):Promise<CreatedSession>{
+  const body=command(input,['organizationId']);if(!uuid.test(body.organizationId!))throw invalid();
+  const origin=this.origin();if(!await this.agencies.allowsOrigin(origin))throw invalid();
+  return this.database.transaction(async manager=>{
+   await this.sessions.lockPersonalAuthenticationContext(manager,null,token);
+   await this.sessions.switchAgency(token,body.organizationId!,manager);
+   const [source]=await manager.query<Array<{id:string;authentication_source:string;oidc_group_id:string|null}>>(
+    'select id,authentication_source,oidc_group_id from app_identity.app_session where token_sha256=$1 and revoked_at is null for update',[digest(token)]);
+   if(!source)throw invalid();
+   const replacement=secret(),csrf=secret();
+   const encrypted=source.authentication_source==='oidc'
+    ?await encryptAgencyCredential(manager,csrf,source.oidc_group_id!,`csrf:${digest(replacement)}`):null;
+   await manager.query(`insert into app_identity.app_session select (jsonb_populate_record(null::app_identity.app_session,to_jsonb(s)||jsonb_build_object(
+    'id',gen_random_uuid(),'token_sha256',$2::text,'csrf_sha256',$3::text,'encrypted_csrf',$4::jsonb,
+    'last_activity_at',clock_timestamp(),'installation_registration_id',null))).*
+    from app_identity.app_session s where s.id=$1`,[source.id,digest(replacement),digest(csrf),JSON.stringify(encrypted)]);
+   await manager.query("update app_identity.app_session set revoked_at=clock_timestamp(),revocation_reason='agency_handoff' where id=$1",[source.id]);
+   const session=await this.sessions.getAuthenticated(replacement,new Date(),false,manager);
+   return {sessionToken:replacement,session:{...session,csrfToken:csrf}};
+  });
+ }
  private async eligible(manager:EntityManager,userId:string){
   const [row]=await manager.query<Array<{eligible:boolean}>>(`select active and account_scope='installation' and organization_id is null and app_identity.is_installation_superadmin(id) eligible from app_identity.app_user where id=$1`,[userId]);
   if(!row?.eligible)throw new ForbiddenException({code:'auth.agencyHandoffRestricted'});
