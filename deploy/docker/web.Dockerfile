@@ -15,6 +15,7 @@ RUN npm ci
 COPY apps/api apps/api
 COPY apps/web apps/web
 COPY tests/fixtures tests/fixtures
+COPY tests/helpers tests/helpers
 COPY defines defines
 COPY packages/contracts packages/contracts
 COPY packages/database/scripts/lib packages/database/scripts/lib

@@ -22,7 +22,7 @@ test('grace cannot restore unsupported protocol or capabilities and unknown vers
  }
  assert.equal(evaluateAndroidUpgrade({...input,versionCode:9876}).reason,'unknown-release');
  assert.equal(evaluateAndroidUpgrade({...input,versionCode:9876}).replacement,null,'A lower version cannot be a usable Android upgrade');
- assert.equal(evaluateAndroidUpgrade({...input,versionCode:2}).replacement,null,'The installed version is not its own upgrade');
+ assert.equal(evaluateAndroidUpgrade({...input,versionCode:replacement.descriptor.versionCode}).replacement,null,'The installed version is not its own upgrade');
 });
 test('retirement requires exact approved compatible replacement; no selected, unavailable or wrong replacement starts a deadline',()=>{
  for(const update of [{status:'unavailable',reason:'not-selected'},{status:'unavailable',reason:'unavailable'},{...replacement,tag:'unselected-release'}, {...replacement,descriptor:{...replacement.descriptor,compatibility:{...replacement.descriptor.compatibility,requiredCapabilities:['missing-v1']}}}]){
@@ -33,7 +33,7 @@ test('retirement requires exact approved compatible replacement; no selected, un
 test('lifecycle validation rejects ambiguous, unknown, non-increasing and invalid-time retirements; live catalog contains no invented retirement',()=>{
  assert.deepEqual(parseAndroidReleaseLifecycle(lifecycle,catalog.releases),[]);
  assert.deepEqual(parseAndroidReleaseLifecycle({schemaVersion:1,retirements:[retired]},catalog.releases),[retired]);
- for(const value of [{schemaVersion:2,retirements:[]},{schemaVersion:1,retirements:[retired,retired]},{schemaVersion:1,retirements:[{...retired,versionCode:99}]},{schemaVersion:1,retirements:[{...retired,replacementTag:'unknown'}]},{schemaVersion:1,retirements:[{...retired,versionCode:2}]},{schemaVersion:1,retirements:[{...retired,supersededAt:'2026-02-30T00:00:00.000Z'}]}]) assert.throws(()=>parseAndroidReleaseLifecycle(value,catalog.releases));
+ for(const value of [{schemaVersion:2,retirements:[]},{schemaVersion:1,retirements:[retired,retired]},{schemaVersion:1,retirements:[{...retired,versionCode:99}]},{schemaVersion:1,retirements:[{...retired,replacementTag:'unknown'}]},{schemaVersion:1,retirements:[{...retired,versionCode:replacement.descriptor.versionCode}]},{schemaVersion:1,retirements:[{...retired,supersededAt:'2026-02-30T00:00:00.000Z'}]}]) assert.throws(()=>parseAndroidReleaseLifecycle(value,catalog.releases));
  for(const value of [-1,366,1.5,'90',null,NaN])assert.throws(()=>parseAndroidUpgradeGraceDays(value));
  for(const value of [0,90,365])assert.equal(parseAndroidUpgradeGraceDays(value),value);
 });
