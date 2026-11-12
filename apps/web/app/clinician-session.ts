@@ -1,5 +1,5 @@
 import { AndroidConnection, isAndroidRuntime } from "./android-runtime";
-import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY } from "./installation-transition-generation";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY, INSTALLATION_SESSION_HINT_KEY } from "./installation-transition-generation";
 import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
@@ -40,8 +40,9 @@ export function sessionRequestToken(session: AuthenticatedSession): string {
   return session.csrfToken ?? session.accessToken ?? "";
 }
 
-export function storeClinicianSession(storage: Pick<Storage, "setItem">, session: AuthenticatedSession): void {
+export function storeClinicianSession(storage: Pick<Storage, "setItem"> & Partial<Pick<Storage,"removeItem">>, session: AuthenticatedSession): void {
   storage.setItem(CLINICIAN_SESSION_STORAGE_KEY, JSON.stringify(session));
+  storage.removeItem?.(INSTALLATION_SESSION_HINT_KEY);
   bindBrowserOrganization(session.organization?.id);
 }
 
@@ -99,6 +100,21 @@ export async function authenticateRestartedClinicianSession(stored: Authenticate
     ...(stored.csrfToken ? { csrfToken: stored.csrfToken } : {}),
     ...(stored.accessToken ? { accessToken: stored.accessToken } : {}),
   };
+}
+
+/** A generation-bound public candidate is never authority: the current native
+ * cookie must re-establish the same principal through the ordinary server path. */
+export async function resumeInterruptedNativeClinicianSession():Promise<AuthenticatedSession|null> {
+ const encoded=window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY);
+ if(!encoded)return null;
+ let hint:{generation:string;session:AuthenticatedSession};
+ try {hint=JSON.parse(encoded);if(hint.generation!==authenticationInstallationGeneration()||!hint.session?.csrfToken||!hint.session.user?.id||!sessionIsActive(hint.session))return null;}catch{return null;}
+ const candidate={...hint.session};delete candidate.accessToken;
+ const authenticated=await authenticateRestartedClinicianSession(candidate);
+ if(authenticationInstallationGeneration()!==hint.generation)return null;
+ if(window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY)===encoded)window.localStorage.removeItem(INSTALLATION_SESSION_HINT_KEY);
+ if(authenticated)storeClinicianSession(window.localStorage,authenticated);
+ return authenticated;
 }
 
 export async function endClinicianSession(csrfToken: string): Promise<void> {

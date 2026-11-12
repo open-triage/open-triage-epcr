@@ -7,7 +7,7 @@ import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { captureAndroidDisplay, restoreAndroidDisplay } from './android/display-state.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,11 +19,14 @@ import { runManagedJourneys } from './android/managed-journey.mjs';
 import { seedReportFixture } from './android/report-fixture.mjs';
 import { runReassignmentTransition } from './android/reassignment-journey.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
+import { createTlsFixtures } from './android/tls-fixtures.mjs';
+import { runTlsJourney } from './android/tls-journey.mjs';
 
 const root = resolve(import.meta.dirname, '..'), directory = await mkdtemp(join(tmpdir(), 'open-triage-android-'));
 const docker = process.env.DOCKER_COMMAND || 'docker', container = `open-triage-android-${randomUUID()}`;
 const adb = join(process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? '', 'platform-tools/adb');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554', children = [];
+const tlsOnly=process.argv.includes('--tls-only');
 let ownsContainer = false, fixtures, restoreDisplay;
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
@@ -38,11 +41,15 @@ try {
   const fixturesArgument = process.argv.indexOf('--fixtures');
   if (fixturesArgument !== -1) fixtures = JSON.parse(await readFile(process.argv[fixturesArgument + 1], 'utf8'));
   else { ownsContainer = true; fixtures = await prepareFixtures(root, directory, run, docker, container); }
+  const tlsDirectory=join(directory,'tls-rotation');await mkdir(tlsDirectory,{mode:0o700});
+  const tlsMaterial=await createTlsFixtures(tlsDirectory);
+  fixtures[1].tlsVariants={baseline:{keyPath:fixtures[1].keyPath,certPath:fixtures[1].certPath},...Object.fromEntries(Object.entries(tlsMaterial).filter(([,value])=>typeof value==='object').map(([name,value])=>[name,{keyPath:value.keyPath,certPath:value.certPath}]))};
+  fixtures[1].tlsVariants['replacement-outcome-missing']={keyPath:tlsMaterial.replacement.keyPath,certPath:tlsMaterial.replacement.certPath,outcomeAvailable:false};
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/debug/app-debug.apk')]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]);
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
-  const legacyVault = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
-  console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
+  const legacyVault = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(legacyVault); assert.match(legacyVault, /OK \(2 tests\)/, 'Actual Keystore legacy provenance and expired-trust migration');
   const startup = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(startup); assertNativeStartupInstrumentation(startup);
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
@@ -54,7 +61,7 @@ try {
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  if (!process.argv.includes('--report-only') && !process.argv.includes('--oidc-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (!tlsOnly && !process.argv.includes('--oidc-only') && !process.argv.includes('--report-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');
@@ -77,17 +84,17 @@ try {
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
   if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
-  else {
+  else if (!tlsOnly) {
     await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, audio: true, hooks: { beforeReconnect: runReassignmentTransition } });
-    // Preserve incomplete encrypted recorder slices in a separate real process-loss run.
-    await runReportRecoveryJourney({ root, fixture: fixtures[1], adb, serial, run, api, audio: true, unsavedAudio: true });
     await runManagedJourneys({root, fixtures, run, api, adb, serial});
   }
-  if (!process.argv.includes('--external-apis')) {
-    const secondApi = children[1];
-    await stopFixtureChild(secondApi);
-    await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
-  } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
+  if (!process.argv.includes('--oidc-only')) await runTlsJourney({root,fixture:fixtures[1],material:tlsMaterial,child:children[1],run,api,adb,serial});
+  if (!tlsOnly) {
+    if (!process.argv.includes('--external-apis')) {
+      await stopFixtureChild(children[1]);
+      await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
+    } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
+  }
 } catch (error) {
   if (error?.androidFailureCaptured) throw error;
   await preserveAndroidFailure(error, {root,adb,serial,secrets:(fixtures??[]).flatMap(fixture=>[fixture.administratorPassword,fixture.clinicianPassword])});

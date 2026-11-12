@@ -12,6 +12,7 @@
     "dev:local": "npm run dev --",
     "deploy:kubernetes": "node scripts/deploy-kubernetes.mjs",
     "prepare:kubernetes": "node scripts/prepare-kubernetes-secrets.mjs",
+    "provision:tls": "node scripts/provision-server-tls.mjs",
     "db:reset:development": "npm run reset:development -w @open-triage/database --",
     "feedback:validate": "node scripts/feedback-validation.mjs",
     "load:test:demo": "node scripts/load-test-demo.mjs",

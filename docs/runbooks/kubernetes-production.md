@@ -161,6 +161,13 @@ through the platform. API credential throttling remains enabled. See
 [Contour annotation support](https://projectcontour.io/docs/main/config/annotations/)
 and [authentication throttling](authentication-throttling.md).
 
+For manually maintained TLS material, use `npm run provision:tls` to validate the
+private-key match, certificate dates, all ingress SANs and server chain before
+applying this existing Secret. Its verified health check also checks the served
+leaf fingerprint. See [TLS provisioning and Android CA rotation](android-tls-provisioning.md)
+for the secret-safe shell workflow, public pairing CA export and renewal/replacement
+procedure. Do not apply it over a certificate-controller-owned Secret.
+
 ## 3. Build and publish the release images
 
 Use a reviewed commit identifier as an immutable registry tag. Example variables

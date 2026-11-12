@@ -19,6 +19,22 @@ public class LegacyConnectionVaultTest {
         return new JSONObject().put("iv",Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP))
             .put("body",Base64.encodeToString(cipher.doFinal(plain.toString().getBytes(StandardCharsets.UTF_8)),Base64.NO_WRAP)).toString();
     }
+    @Test public void expiredAuthenticatedLegacyTrustKeepsItsOriginalScopeButCannotSendRequests() throws Exception {
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        var preferences=context.getSharedPreferences("connection-v1",Context.MODE_PRIVATE);
+        String ca=new String(Base64.decode(InstrumentationRegistry.getArguments().getString("expiredCaBase64",""),Base64.NO_WRAP),StandardCharsets.UTF_8);
+        assertFalse("Host supplies only the public expired synthetic CA",ca.isEmpty());
+        preferences.edit().clear().commit();var vault=new ConnectionVault(context);
+        try {
+            var saved=new TrustedConnection("https://original.example", "").saved().put("caPem",ca);
+            String bytes=encrypted(vault,saved);assertTrue(preferences.edit().putString("encrypted",bytes).commit());
+            assertEquals(NativeConnectionIdentity.storageScope("https://original.example"),vault.legacyStorageScope());
+            var restored=vault.read();assertEquals("https://original.example",restored.origin);
+            assertThrows(java.security.cert.CertificateExpiredException.class,()->restored.request("/api/health","GET",new JSONObject(),null));
+            assertEquals("Reading expired trust never discards its authenticated legacy envelope",bytes,preferences.getString("encrypted",null));
+            assertThrows(java.security.cert.CertificateExpiredException.class,()->new TrustedConnection(restored.origin,ca));
+        } finally { preferences.edit().clear().commit(); }
+    }
     @Test public void authenticatedLegacyScopeSurvivesJournalPromotionAndMissingOrCorruptProofFailsClosed() throws Exception {
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         var preferences=context.getSharedPreferences("connection-v1",Context.MODE_PRIVATE);

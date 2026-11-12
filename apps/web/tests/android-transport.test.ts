@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { androidFetch, configureNativeConnection, pollAndroidAuthenticationReturn } from '../app/android-runtime';
+import { ANDROID_TLS_STATUS_EVENT } from '../app/android-connection-failure';
 test('shared API requests preserve CSRF/agency/body through the native connection and surface HTTP failures', async () => {
   let received: unknown;
   const transport = androidFetch(async () => { throw new Error('API escaped the native boundary'); }, async options => {
@@ -74,6 +75,25 @@ test('a delayed native reply cannot revive the previous installation context', a
   configureNativeConnection({configured:false});
 });
 
+test('TLS notices preserve typed failures and ignore aborted or stale native callbacks', async () => {
+  const previous=globalThis.window, events=new EventTarget(), statuses:boolean[]=[];
+  events.addEventListener(ANDROID_TLS_STATUS_EVENT,event=>statuses.push((event as CustomEvent<{failed:boolean}>).detail.failed));
+  Object.defineProperty(globalThis,'window',{value:events,configurable:true,writable:true});
+  try {
+    const failure=Object.assign(new Error('Public failure category'),{code:'TLS_FAILED'});
+    let reject!: (error:unknown)=>void;
+    const transport=androidFetch(fetch,async()=>new Promise((_resolve,no)=>{reject=no;}),'https://localhost');
+    const pending=transport('/api/health');reject(failure);await assert.rejects(pending,error=>error===failure);assert.deepEqual(statuses,[true]);
+    const recovered=androidFetch(fetch,async()=>({status:200,headers:{},bodyBase64:btoa('{}')}),'https://localhost');await recovered('/api/health');assert.deepEqual(statuses,[true,false]);
+    const abort=new AbortController(),cancelled=transport('/api/health',{signal:abort.signal});abort.abort();reject(failure);await assert.rejects(cancelled);assert.deepEqual(statuses,[true,false]);
+    configureNativeConnection({configured:true,connectionContext:'old'});
+    const stale=transport('/api/health');configureNativeConnection({configured:true,connectionContext:'new'});reject(failure);await assert.rejects(stale,/Installation changed/);assert.deepEqual(statuses,[true,false]);
+  } finally {
+    configureNativeConnection({configured:false});
+    if(previous===undefined)Reflect.deleteProperty(globalThis,'window');else Object.defineProperty(globalThis,'window',{value:previous,configurable:true,writable:true});
+  }
+});
+
 test('stale authentication success and failure cannot navigate a replacement or newly paired installation', async () => {
   for (const outcome of ['succeeded','pending','denied','failed'] as const) {
     configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
@@ -104,4 +124,16 @@ test('connection replacement during binary body preparation prevents native disp
   assert.equal(calls,0);
 
   configureNativeConnection({configured:false});
+});
+
+test('an installation transition prevents native OIDC redemption and ignores a return already in flight',async()=>{
+ const original=globalThis.window;let marker:string|null='logout:interrupted';
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{localStorage:{getItem:()=>marker}}});
+ try {
+  let calls=0;const paths:string[]=[];
+  await pollAndroidAuthenticationReturn(async()=>{calls++;return{outcome:'succeeded'}},path=>paths.push(path));assert.equal(calls,0);
+  marker=null;let release!:(value:{outcome:'succeeded'})=>void;
+  const pending=pollAndroidAuthenticationReturn(()=>new Promise(resolve=>{release=resolve;}),path=>paths.push(path));
+  marker='enrollment:new';release({outcome:'succeeded'});await pending;assert.deepEqual(paths,[]);
+ } finally {if(original===undefined)Reflect.deleteProperty(globalThis,'window');else Object.defineProperty(globalThis,'window',{configurable:true,value:original});}
 });

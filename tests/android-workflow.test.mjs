@@ -99,7 +99,9 @@ test('Android audio declares optional microphone access and keeps real saved/unf
   assert.match(manifest, /<uses-feature\s+android:name="android\.hardware\.microphone"\s+android:required="false"\s*\/>/);
   const runner = await readFile(new URL('../scripts/android-emulator-test.mjs', import.meta.url), 'utf8');
   assert.match(runner, /fixture: fixtures\[0\][^\n]*audio: true/);
-  assert.match(runner, /fixture: fixtures\[1\][^\n]*audio: true[^\n]*unsavedAudio: true/);
+  assert.match(runner, /runTlsJourney\(\{root,fixture:fixtures\[1\]/);
+  const tls = await readFile(new URL('../scripts/android/tls-journey.mjs', import.meta.url), 'utf8');
+  assert.match(tls, /runReportRecoveryJourney\(\{root,fixture[^\n]*audio:true,unsavedAudio:true/);
 });
 
 test('Android declares every permission requested by the installed WebView media bridge', async () => {
