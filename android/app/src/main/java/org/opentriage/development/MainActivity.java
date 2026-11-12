@@ -22,7 +22,20 @@ public class MainActivity extends BridgeActivity {
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 var uri = request.getUrl();
-                return !("https".equals(uri.getScheme()) && "localhost".equals(uri.getHost()) && uri.getPort() == -1);
+                if ("https".equals(uri.getScheme()) && "localhost".equals(uri.getHost()) && uri.getPort() == -1) return false;
+                var release = OfficialApkLink.approved(uri.toString());
+                if (release != null && request.isForMainFrame() && request.hasGesture()) {
+                    try {
+                        var intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(release.toString()));
+                        intent.addCategory(android.content.Intent.CATEGORY_BROWSABLE);
+                        startActivity(intent);
+                    } catch (android.content.ActivityNotFoundException | SecurityException unavailable) {
+                        // Only public release metadata crosses this boundary; no app credentials or CA state.
+                        view.evaluateJavascript("window.dispatchEvent(new CustomEvent('open-triage.apk-download-failed',{detail:{url:"
+                            + org.json.JSONObject.quote(release.toString()) + "}}))", null);
+                    }
+                }
+                return true;
             }
         });
     }

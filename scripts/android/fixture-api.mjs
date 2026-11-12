@@ -16,6 +16,21 @@ Object.assign(process.env, {
 // Nest's CJS/ESM bridge must initialize before loading the application's modules on Node 22.
 const { NestFactory } = await import('@nestjs/core');
 const { AppModule } = await import('../../apps/api/dist/app.module.js');
+let upgradeAcceptance;
+if(fixture.upgradeAcceptance) {
+  const {upgradePolicyFixture}=await import('./upgrade-policy-fixture.mjs');
+  upgradeAcceptance=await upgradePolicyFixture(fixture.upgradeAcceptance);
+  const {AdminModule}=await import('../../apps/api/dist/admin/admin.module.js');
+  const {ANDROID_RELEASE_CATALOG,ANDROID_RELEASE_FETCH}=await import('../../apps/api/dist/admin/android-release.service.js');
+  const {ANDROID_RELEASE_LIFECYCLE}=await import('../../apps/api/dist/admin/android-upgrade-policy.service.js');
+  // Explicit test-only providers, installed before normal Nest module construction.
+  Reflect.defineMetadata('providers',[...Reflect.getMetadata('providers',AdminModule),
+    {provide:ANDROID_RELEASE_CATALOG,useValue:upgradeAcceptance.approved},
+    {provide:ANDROID_RELEASE_LIFECYCLE,useValue:upgradeAcceptance.lifecycle},
+    {provide:ANDROID_RELEASE_FETCH,useValue:upgradeAcceptance.fetcher}],AdminModule);
+  process.env.ANDROID_APPROVED_RELEASE=upgradeAcceptance.tag;
+}
+
 const { agencyContextMiddleware } = await import('../../apps/api/dist/sessions/agency-context.middleware.js');
 const { PlatformErrorFilter } = await import('../../apps/api/dist/platform-error.filter.js');
 const { securityHeaders } = await import('../../apps/api/dist/security-headers.js');
@@ -31,6 +46,13 @@ if (databaseIdentity.effective_role !== 'open_triage_api_runtime') throw new Err
 let acceptedRequests = 0;
 let outcomeAvailable = true;
 let dropEnrollmentReplies = false;
+if(upgradeAcceptance) app.use((request,response,next)=>{
+  if(request.url==='/api/__android-upgrade-policy/retire' && request.method==='POST') {
+    upgradeAcceptance.retire();return response.json({retired:true});
+  }
+  next();
+});
+
 app.use((request, response, next) => {
   acceptedRequests++;
   if (!outcomeAvailable && request.url === '/api/installations/enrollment-outcome') return response.status(404).json({code:'fixture.unavailable'});

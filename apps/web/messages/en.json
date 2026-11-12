@@ -3146,5 +3146,13 @@
   "android.handoffComplete": "The agency switch is ready to finish.",
   "android.finishHandoff": "Finish agency switch",
   "android.handoffInterrupted": "The agency switch was interrupted. Encrypted work remains at its original installation.",
-  "android.cancelHandoff": "Return to original installation"
+  "android.cancelHandoff": "Return to original installation",
+  "android.upgradeRequired": "Update the Android app before starting new work. Current documentation and retained drafts remain available.",
+  "android.upgradeApproaching": "Update the Android app before {deadline}.",
+  "android.upgradeCheckRequired": "Connect to check Android compatibility before starting new work.",
+  "android.downloadUpdate": "Download {version}",
+  "android.apkDownloadUnavailable": "Cannot open the download. Ask your administrator to install the update.",
+  "androidRelease.apkDownloadUnavailable": "Cannot open the download. Use a browser to download the APK.",
+  "platform.error.android.upgradeRequired": "Update the Android app before starting new work. Current documentation and retained drafts remain available.",
+  "android.retainedIncompatible": "This retained draft uses an incompatible format. Its encrypted data is preserved for recovery."
 }

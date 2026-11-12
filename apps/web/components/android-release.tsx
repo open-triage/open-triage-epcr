@@ -1,4 +1,5 @@
 "use client";
+import { AndroidApkLink } from "./android-apk-link";
 import React, { useEffect, useState } from "react";
 import { approvedAndroidReleaseUrl, parseAndroidReleaseDescriptor, type AndroidReleaseAvailability } from "@open-triage/contracts";
 import { loadAndroidRelease } from "../app/admin-context";
@@ -33,7 +34,7 @@ export function AndroidReleasePanel({ language }: { language: string }) {
         <div><dt>{t("androidRelease.url")}</dt><dd><code>{release.downloadUrl}</code></dd></div>
         <div><dt>{t("androidRelease.digest")}</dt><dd><code>{release.descriptor.apkSha256}</code></dd></div>
       </dl>
-      {!busy && <a className="button-link button-primary" href={release.downloadUrl} rel="noopener noreferrer" target="_blank">{t("androidRelease.download")}</a>}
+      {!busy && <AndroidApkLink className="button-link button-primary" verifiedUrl={release.downloadUrl} unavailableMessage={t("androidRelease.apkDownloadUnavailable")}>{t("androidRelease.download")}</AndroidApkLink>}
     </>}
   </section>;
 }

@@ -1,7 +1,8 @@
 "use client";
 import { isAndroidRuntime } from "../app/android-runtime";
+import { AndroidApkLink } from "./android-apk-link";
+import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
 import { useAndroidBack } from "./use-android-back";
-
 import { AndroidInstallationAction } from "./android-installation-action";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
@@ -128,6 +129,7 @@ export function ClinicianSessionGate({ children }: {
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
   const foreground = useNativeForeground();
+  const androidUpgrade = useAndroidUpgradePolicy(session ? `${session.organization.id}:${session.user.id}` : "", !!session && online && foreground && !transitionPending);
   const attentionSessionKey = session ? `${session.organization.id}:${session.user.id}:${session.capabilities?.join(",")}` : "";
   const [storedReviewAttention, setStoredReviewAttention] = useState<{
     key: string; value: ReviewAttentionResponse } | null>(null);
@@ -656,11 +658,18 @@ export function ClinicianSessionGate({ children }: {
           </div>
         </section>
       </div>}
+      {androidUpgrade.native && (!androidUpgrade.policy || androidUpgrade.policy.status !== "compatible") && <aside className="safety-notice" role="status" aria-live="polite">
+        <span>{t(!androidUpgrade.policy ? "android.upgradeCheckRequired" : androidUpgrade.policy.status === "upgrade-required" ? "android.upgradeRequired" : "android.upgradeApproaching", {
+          deadline: androidUpgrade.policy?.deadline ? new Intl.DateTimeFormat(language, {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"}).format(new Date(androidUpgrade.policy.deadline)) + " UTC" : ""
+        })}</span>
+        {androidUpgrade.policy?.replacement && <AndroidApkLink className="button-link" verifiedUrl={androidUpgrade.policy.replacement.downloadUrl} unavailableMessage={t("android.apkDownloadUnavailable")}>{t("android.downloadUpdate", { version: androidUpgrade.policy.replacement.versionName })}</AndroidApkLink>}
+      </aside>}
       {modeMessage && <p className="admin-entry-blocked" role="alert">{modeMessage}</p>}
         {shouldShowClinicalDemoBanner({ authenticated: true, capabilities: session.capabilities,
         presentationMode, online, requestMode: browserRequestConfiguration().mode }) && <ClinicalDemoBanner
           session={session}
           activeReport={activeReport}
+          newWorkBlocked={androidUpgrade.newWorkBlocked}
           refreshRequest={refreshRequest}
           onGenerated={(assignmentId) => {
             setGeneratedAssignmentId(assignmentId);
@@ -678,7 +687,7 @@ export function ClinicianSessionGate({ children }: {
       </section>}
       {presentationMode !== "admin" && presentationMode !== "review" && <div className="call-directory" hidden={activeReport !== null || openingCall !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount dismissOnInteraction={false} />
-        <AssignedCalls paused={activeReport !== null || openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
+        <AssignedCalls newWorkBlocked={androidUpgrade.newWorkBlocked} paused={activeReport !== null || openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
           setCompletionNotice(null);
           await prepareProtectedReport(sessionRequestToken(session), opened.report.id, (payload) =>
@@ -688,7 +697,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenReports key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={completeActiveReport} onReopened={(opened) => {
+        <OpenReports newWorkBlocked={androidUpgrade.newWorkBlocked} key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={completeActiveReport} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);

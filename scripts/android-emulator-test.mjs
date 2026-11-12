@@ -1,4 +1,6 @@
 import {scopedAgencyAdbdRoot} from './android/scoped-adbd-root.mjs';
+import releaseCatalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {approvedAndroidReleaseUrl,parseAndroidReleaseDescriptor} from '@open-triage/contracts/android-release';
 import {adbShellArguments} from './android/instrumentation.mjs';
 import {nativeStartupClasses,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
 import { runAgencyHandoffJourney } from './android/agency-handoff-journey.mjs';
@@ -54,7 +56,9 @@ try {
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
   const legacyVault = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(2 tests\)/, 'Actual Keystore legacy provenance and expired-trust migration');
-  const startup = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
+  const startupRelease=releaseCatalog.releases[0];
+  assert.equal(startupRelease.downloadUrl,approvedAndroidReleaseUrl(startupRelease.tag,parseAndroidReleaseDescriptor(startupRelease.descriptor)));
+  const startup = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', '-e','officialApkUrl',startupRelease.downloadUrl, 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(startup); assertNativeStartupInstrumentation(startup);
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
   for (const fixture of fixtures) {

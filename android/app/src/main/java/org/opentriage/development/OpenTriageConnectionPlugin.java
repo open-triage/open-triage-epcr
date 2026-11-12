@@ -131,7 +131,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     private TrustedConnection.Reply managedRequestBytes(TrustedConnection connection, String path, String method, JSONObject headers, byte[] body) throws Exception {
         allowed(connection);
         long generation = revisions.current();
-        var reply = connection.requestBytes(path, method, headers, body);
+        var reply = connection.requestBytes(path, method, headers, body, installedVersion());
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         allowed(connection);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
@@ -167,6 +167,12 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
             });
         });
     }
+    private long installedVersion() throws Exception {
+        return getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0).getLongVersionCode();
+    }
+    @PluginMethod public void version(PluginCall call) { execute(call, () -> {
+        JSObject result = new JSObject(); result.put("versionCode", installedVersion()); return result;
+    }); }
     @PluginMethod public void state(PluginCall call) { execute(call, () -> {
         return connectionState();
     }); }

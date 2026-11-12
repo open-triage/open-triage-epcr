@@ -15,6 +15,7 @@ type ConnectionPlugin = {
   resumeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState & {session?:AuthenticatedSession}>;
   acknowledgeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState>;
   cancelAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session?: AuthenticatedSession}>;
+  version(): Promise<{versionCode: number}>;
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;

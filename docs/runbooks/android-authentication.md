@@ -163,3 +163,14 @@ only then acknowledges native completion. A restart before acknowledgement
 exposes **Finish agency switch**, keeps clinical work locked, and validates the
 private cookie before restoring metadata. Original author, unit, agency and
 recovery deadline remain attached to retained encrypted reports.
+## Interrupted native transitions
+
+If Android stops after a confirmed operation settles natively but before its UI
+finishes, reopening the app reconciles the abandoned transition under the same
+exclusive clinical-storage barrier. It preserves ciphertext and its original
+deadlines. A pending native enrollment or blocked managed policy remains locked.
+An interrupted logout cannot restore the previous personal session. An enrollment
+that never crossed native confirmation can retain a valid login only after fresh
+server verification of the same user and agency; cached public metadata supplies
+no authentication authority. Ambiguous older transition markers require ordinary
+primary login. Do not clear app storage to bypass these checks.

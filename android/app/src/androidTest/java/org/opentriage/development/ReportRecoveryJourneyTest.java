@@ -88,6 +88,9 @@ public class ReportRecoveryJourneyTest {
         waitFor("window.__serverVerified!==null"); assertEquals("true", evaluate("window.__serverVerified"));
         waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
     }
+    private void observeNativeLifecycle() throws Exception {
+        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;window.__backgroundPaths?.push(url)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+    }
     private void photoOfflineCapture() throws Exception {
         click("Mobile");
         click("Add photo note");
@@ -388,6 +391,19 @@ public class ReportRecoveryJourneyTest {
         for (byte value : hash) encoded.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
         return encoded.toString();
     }
+    private void snapshotUpgradeLogin() throws Exception {
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSONObject session=new JSONObject(evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1'))"));
+        var connection=new ConnectionVault(context).read();assertNotNull(connection);
+        String cookie=null;var cookies=connection.saved().getJSONArray("cookies");
+        for(int index=0;index<cookies.length();index++)if("open_triage_session".equals(cookies.getJSONObject(index).getString("name")))cookie=cookies.getJSONObject(index).getString("value");
+        int uid=context.getApplicationInfo().uid;
+        String hash=UpgradeSessionProof.cookieHash(cookie,uid,connection.origin);
+        String csrf=session.getString("csrfToken"),user=session.getJSONObject("user").getString("id"),organization=session.getJSONObject("organization").getString("id");
+        UpgradeSessionProof.csrf(null,csrf,user,user,organization,organization,hash,hash,uid,uid);
+        assertTrue(context.getSharedPreferences("release-upgrade-acceptance",android.content.Context.MODE_PRIVATE).edit()
+            .putString("loginCsrf",csrf).putString("loginUser",user).putString("loginOrganization",organization).putString("loginCookieHash",hash).putInt("loginUid",uid).commit());
+    }
     private void snapshotUpgrade() throws Exception {
         if (!"1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) return;
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -397,7 +413,12 @@ public class ReportRecoveryJourneyTest {
         var editor = context.getSharedPreferences("release-upgrade-acceptance", android.content.Context.MODE_PRIVATE).edit();
         editor.putString("connection", connectionIdentity()).putString("ciphertext", retainedDigest()).putInt("uid", context.getApplicationInfo().uid)
             .putString("presentation", evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
+        var args=InstrumentationRegistry.getArguments();
+        editor.putString("historicalReceipt",HistoricalUpgradePreparation.prepareReceipt(args.getString("preparationProfile","current"),
+            args.getString("upgradeReceipt",""),context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),
+            args.getString("phase"),"1".equals(args.getString("upgrade"))));
         assertTrue(editor.commit());
+        snapshotUpgradeLogin();
     }
     private java.util.List<String> publicCertificateIdentities(String pem) throws Exception {
         var factory = java.security.cert.CertificateFactory.getInstance("X.509");
@@ -447,7 +468,7 @@ public class ReportRecoveryJourneyTest {
             assertFalse("Remote web deployment cannot replace APK UI after reload", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
             assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
         }
-        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;window.__backgroundPaths?.push(url)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+        observeNativeLifecycle();
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("window.__nativeEvents.includes(false) && window.__nativeEvents.includes(true) && window.__assignedReads>0");
         assertEquals("No new API drains while the native activity is paused", "0", evaluate("window.__backgroundRequests"));
@@ -472,8 +493,21 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
         connection(true); serverValue("ANDROID-RECONNECTED-SYNTHETIC");
         assertEquals(JSONObject.quote("ANDROID-RECONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
-        connection(false); if (audioEnabled()) audioOfflineCapture();
-        photoOfflineCapture(); if (audioEnabled()) stageRetainedAudio(); records();
+        connection(false);
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String historicalReceipt=HistoricalUpgradePreparation.prepareReceipt(args.getString("preparationProfile","current"),
+            args.getString("upgradeReceipt",""),context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),
+            args.getString("phase"),"1".equals(args.getString("upgrade")));
+        if (historicalReceipt.isEmpty()) {
+            if (audioEnabled()) audioOfflineCapture();
+            photoOfflineCapture();
+            if (audioEnabled()) stageRetainedAudio();
+        }
+        else {
+            var profile=new android.os.Bundle();profile.putString("opentriage_upgrade_preparation_profile","historical-a1-text-v1");
+            InstrumentationRegistry.getInstrumentation().sendStatus(0,profile);
+        }
+        records();
         evaluate("window.__beforeRetainedRevision=window.__retained[0].ciphertextRevision");
         setInput(FIELD, RETAINED);
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
@@ -539,8 +573,32 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
         if (!"true".equals(evaluate("Boolean(" + FIELD + ")"))) click("Stationary");
         waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'"); serverValue(RETAINED);
-        verifyRecoveredPhoto(); if (audioEnabled()) verifyRecoveredAudio();
+        if (!historicalRecovery("recover")) {
+            verifyRecoveredPhoto();
+            if (audioEnabled()) verifyRecoveredAudio();
+        }
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
+    }
+    private boolean historicalRecovery(String phase) throws Exception {
+        var args=InstrumentationRegistry.getArguments();
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String saved=context.getSharedPreferences("release-upgrade-acceptance",android.content.Context.MODE_PRIVATE).getString("historicalReceipt","");
+        return HistoricalUpgradePreparation.recovered(args.getString("originPreparationProfile","current"),saved,args.getString("upgradeReceipt",""),
+            context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),phase,"1".equals(args.getString("upgrade")));
+    }
+    private void postUpgradePhoto() throws Exception {
+        assertTrue("New media acceptance requires the exact retained A1-to-B receipt",historicalRecovery("post-upgrade-photo"));
+        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+        click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+        evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
+        if (!"true".equals(evaluate("Boolean("+FIELD+")"))) click("Stationary");
+        waitFor("("+FIELD+")?.value==='"+RETAINED+"'");
+        observeNativeLifecycle();
+        connection(false);photoOfflineCapture();connection(true);verifyRecoveredPhoto();
+        assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
+        var proof=new android.os.Bundle();proof.putString("opentriage_upgrade_current_media","real-B-photo-permission-pause-offline-bytes-canonical");
+        InstrumentationRegistry.getInstrumentation().sendStatus(0,proof);
+        snapshotUpgradeLogin();
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
@@ -626,6 +684,8 @@ public class ReportRecoveryJourneyTest {
             case "resume-reassignment": resumeReassignment(); activity.close(); break;
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
+            case "post-upgrade-photo": postUpgradePhoto(); activity.close(); break;
+            case "upgrade-session-snapshot": waitFor("document.querySelector('.session-identity')"); snapshotUpgradeLogin(); activity.close(); break;
             default: fail("Host must supply a recovery phase");
         }
     }
