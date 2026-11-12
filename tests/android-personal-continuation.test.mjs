@@ -4,13 +4,15 @@ import {build} from 'esbuild';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {ANDROID_CLIENT_REQUIRED_CAPABILITIES} from '../packages/contracts/android-client-protocol.mjs';
+import {realContractsSourcePlugin,assertUnbuiltWorkspaceInputs} from './helpers/unbuilt-contracts.mjs';
 
-const bundled=await build({bundle:true,write:false,format:'cjs',platform:'node',define:{'process.env.NEXT_PUBLIC_API_URL':'"same-origin"'},plugins:[{name:'native-continuation',setup(builder){
+const bundled=await build({bundle:true,write:false,metafile:true,format:'cjs',platform:'node',define:{'process.env.NEXT_PUBLIC_API_URL':'"same-origin"'},plugins:[realContractsSourcePlugin(),{name:'native-continuation',setup(builder){
  builder.onResolve({filter:/^@capacitor\/core$/},()=>({path:'core',namespace:'test'}));
  builder.onLoad({filter:/.*/,namespace:'test'},()=>({contents:`export const Capacitor={isNativePlatform:()=>true,getPlatform:()=> 'android'};export const registerPlugin=()=>({resumePersonalSession:options=>globalThis.continuationFixture.resume(options)});`}));
 }}],stdin:{resolveDir:process.cwd(),contents:"export{authenticateRestartedClinicianSession,resumeInterruptedNativeClinicianSession}from'./apps/web/app/clinician-session';export{configureNativeConnection}from'./apps/web/app/android-runtime';"}});
 const module={exports:{}};new Function('module','exports','require',bundled.outputFiles[0].text)(module,module.exports,createRequire(import.meta.url));
 const api=module.exports;
+test('early personal continuation regressions consume real contracts sources without generated outputs',()=>{assertUnbuiltWorkspaceInputs(bundled.metafile);});
 const session={csrfToken:'c'.repeat(43),user:{id:'principal',displayName:'Current server name'},organization:{id:'agency'},capabilities:['current:role'],expiresAt:'2098-01-01T00:00:00Z',startedAt:'2026-01-01T00:00:00Z',personallyAuthenticatedAt:'2026-01-01T00:00:00Z'};
 function fixture(resume){const entries=new Map();const priorWindow=globalThis.window,priorFetch=globalThis.fetch;globalThis.window={localStorage:{getItem:k=>entries.get(k)??null,setItem:(k,v)=>entries.set(k,v),removeItem:k=>entries.delete(k)},location:{origin:'https://localhost',href:'https://localhost/'},dispatchEvent:()=>true};globalThis.continuationFixture={resume};api.configureNativeConnection({configured:true,origin:'https://source.example',storageScope:'A'.repeat(43),connectionContext:'current-context'});return{entries,restore(){globalThis.window=priorWindow;globalThis.fetch=priorFetch;delete globalThis.continuationFixture}};}
 
