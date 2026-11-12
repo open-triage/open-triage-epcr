@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -61,6 +61,10 @@ test("writes private files and refuses to replace existing installation secrets"
     assert.equal(await readFile(path.join(outputDir, "open-triage-api.env"), "utf8"), before);
     const publicDir = path.join(directory, "public");
     await mkdir(publicDir, { mode: 0o755 });
+    // mkdir's mode is filtered by the caller's umask; this rejection fixture
+    // must actually be public even when CI itself creates private files.
+    await chmod(publicDir, 0o755);
+    assert.equal((await stat(publicDir)).mode & 0o777, 0o755);
     await assert.rejects(prepareSecrets({ migrationEnv, outputDir: publicDir }), /private directory/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
