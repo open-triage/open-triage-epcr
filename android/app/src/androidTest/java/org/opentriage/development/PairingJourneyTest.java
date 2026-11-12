@@ -85,7 +85,11 @@ public class PairingJourneyTest {
             // Browser-visible JS must never receive the protected cookie credentials.
             assertEquals("true", evaluate("!document.cookie.includes('open_triage_session') && !document.cookie.includes('open_triage_installation')"));
             evaluate("Array.from(document.querySelectorAll('button')).find(button=>['Log out','Logga ut'].includes(button.textContent.trim())).click()");
-            waitFor("document.querySelector('input[name=username]')");
+            // Local state locks immediately; the login remains disabled until the
+            // outgoing native cookie response has settled across all tabs.
+            waitFor("document.querySelector('input[name=username]') && document.querySelector('.login-sign-in button[type=submit]') && !document.querySelector('.login-sign-in button[type=submit]').disabled");
+            var retainedCookies = new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).read().saved().getJSONArray("cookies");
+            for (int i=0;i<retainedCookies.length();i++) assertNotEquals("Logout must remove the session cookie, including an empty Expires tombstone", "open_triage_session", retainedCookies.getJSONObject(i).getString("name"));
             evaluate("window.__androidResult=null;fetch('/api/installations/current').then(async response=>{window.__androidResult=await response.json()})");
             waitFor("window.__androidResult");
             assertEquals("Pairing must survive clinician logout", "true", evaluate("window.__androidResult.enrolled"));

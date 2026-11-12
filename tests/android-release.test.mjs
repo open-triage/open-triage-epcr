@@ -56,8 +56,17 @@ test('publication requires acceptance evidence for every native extension requir
   validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities: ['native-enrollment-attempt-v1'] }, preflight, identity);
 });
 
-test('merged enrollment and upgrade policy implementations are advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1']);
+test('merged enrollment, native OIDC and upgrade-policy implementations are advertised and required by future APK descriptors', () => {
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'android-upgrade-policy-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'android-upgrade-policy-v1']);
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
+});
+
+test('a future OIDC APK cannot publish against an enrollment-only server', () => {
+  const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33, compatibility };
+  const evidence = {status: 'passed', serverAndroidApiProtocol: 1, releaseA: {...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions]};
+  const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit};
+  const identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
+  assert.throws(()=>validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:['native-enrollment-attempt-v1']},preflight,identity),/protocol and capabilities/);
+  validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);
 });

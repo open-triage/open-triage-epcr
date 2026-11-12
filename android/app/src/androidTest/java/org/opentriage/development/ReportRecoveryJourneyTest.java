@@ -37,7 +37,7 @@ public class ReportRecoveryJourneyTest {
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
-        assertEquals("The actual input must be editable", "true", evaluate("(()=>{const input=" + expression + ";if(!input || input.matches(':disabled') || input.readOnly)return false;input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + JSONObject.quote(value) + ");input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();return true;})()"));
+        assertEquals("The actual input must be editable", "true", evaluate(WebViewTestInput.change(expression,value)));
     }
     private void click(String label) throws Exception {
         String button = "Array.from(document.querySelectorAll('button')).find(button=>button.offsetParent!==null && (button.textContent.trim()===" + JSONObject.quote(label) + " || button.getAttribute('aria-label')===" + JSONObject.quote(label) + "))";
@@ -342,7 +342,14 @@ public class ReportRecoveryJourneyTest {
     private void resumeReassignment() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         waitFor("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Retry confirmed pairing')");
-        assertNotNull(new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        var vault=new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        assertNotNull(vault.pending());
+        String journal=vault.pending().toString();
+        evaluate("window.__pendingAuthentication=null;(async()=>{const bridge=window.Capacitor.Plugins.OpenTriageConnection;const outcome=await bridge.finishAuthentication();let denied=false;try{await bridge.beginAuthentication({purpose:'login'});}catch{denied=true;}window.__pendingAuthentication={outcome:outcome.outcome,denied};})().catch(()=>window.__pendingAuthentication={failed:true})");
+        waitFor("window.__pendingAuthentication!==null");
+        assertEquals("Confirmed pending enrollment cannot redeem a browser return", "\"idle\"",evaluate("window.__pendingAuthentication.outcome"));
+        assertEquals("Confirmed pending enrollment cannot begin authentication", "true",evaluate("window.__pendingAuthentication.denied"));
+        assertTrue("Authentication attempts preserve the exact enrollment journal",journal.equals(vault.pending().toString()));
         click("Retry confirmed pairing"); waitFor("document.querySelector('input[name=username]')");
         assertNull("Promotion and journal removal commit atomically", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
         assertEquals("Existing personal evidence is not restored by retried pairing", "null", evaluate("document.querySelector('.session-identity')"));
@@ -359,6 +366,8 @@ public class ReportRecoveryJourneyTest {
             assertFalse("The real API must be unreachable before offline Activity launch", apiReachable());
         }
         activity = ActivityScenario.launch(MainActivity.class);
+        var startup=new android.os.Bundle();startup.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));
+        InstrumentationRegistry.getInstrumentation().sendStatus(0,startup);
         activity.onActivity(screen -> assertTrue("Prevent Android task snapshots and captures", (screen.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0));
         switch (phase) {
             case "prepare": prepare(); break;

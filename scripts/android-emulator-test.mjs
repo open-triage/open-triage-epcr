@@ -1,4 +1,5 @@
-import { stopFixtureChildren } from './android/fixture-processes.mjs';
+import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
+import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { execFileSync, fork, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -9,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { prepareFixtures } from './android/fixtures.mjs';
 import { fixtureApi as api } from './android/fixture-client.mjs';
+import { runOidcJourney } from './android/oidc-journey.mjs';
 import { runManagedJourneys } from './android/managed-journey.mjs';
+import { seedReportFixture } from './android/report-fixture.mjs';
 import { runReassignmentTransition } from './android/reassignment-journey.mjs';
 import { runReportRecoveryJourney } from './android/report-journey.mjs';
 
@@ -23,6 +26,7 @@ function run(command, args, env = process.env) {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} failed (${result.status ?? result.signal})`);
 }
+await withWebViewFontProfile({adb,serial,root},async fontProfile=>{
 try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
   if (!process.argv.includes('--skip-build')) { run('npm', ['run', 'android:build']); run('npm', ['run', 'build', '-w', '@open-triage/api']); }
@@ -34,16 +38,17 @@ try {
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
   const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
-  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
-  console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed native startup excludes remote font providers');
+  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed app initializer and scoped WebView font profile');
+  await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
   for (const fixture of fixtures) {
     const file = join(directory, `fixture-${fixture.index}.json`); await writeFile(file, JSON.stringify(fixture));
     if (!process.argv.includes('--external-apis')) {
-      const child = fork(fileURLToPath(new URL('./android/fixture-api.mjs', import.meta.url)), [file], { cwd: root, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }); children.push(child);
+      const child = fork(fileURLToPath(new URL('./android/fixture-api.mjs', import.meta.url)), [file], { cwd: root, env: {...process.env,NODE_EXTRA_CA_CERTS:fixture.caPath}, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }); children.push(child);
       await new Promise((ready, reject) => { const timer = setTimeout(() => reject(new Error('Synthetic API startup timed out')), 45000); child.once('message', () => { clearTimeout(timer); ready(); }); child.once('exit', code => { clearTimeout(timer); reject(new Error(`Synthetic API exited (${code})`)); }); });
     }
   }
-  if (!process.argv.includes('--report-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
+  if (!process.argv.includes('--report-only') && !process.argv.includes('--oidc-only')) for (const fixture of fixtures) for (const entry of ['import', 'scan']) {
     const ca = await readFile(fixture.caPath);
     const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
     assert.equal(login.status, 201, 'Synthetic administrator login');
@@ -65,12 +70,21 @@ try {
     assert.equal(replay.status, 401, 'Confirmed enrollment authorization must reject replay');
     console.log(`PASS fixture ${fixture.index} ${entry}: same APK, private CA, pairing/confirm/login/assigned calls/logout/retained pairing/inventory/replay rejection`);
   }
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
-  await runManagedJourneys({root, fixtures, run, api, adb, serial});
+  if (process.argv.includes('--oidc-only')) await seedReportFixture(root, fixtures[0], run);
+  else {
+    await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, hooks: { beforeReconnect: runReassignmentTransition } });
+    await runManagedJourneys({root, fixtures, run, api, adb, serial});
+  }
+  if (!process.argv.includes('--external-apis')) {
+    const secondApi = children[1];
+    await stopFixtureChild(secondApi);
+    await runOidcJourney({root, fixture:fixtures[0], adb, serial, run, api});
+  } else if (!process.argv.includes('--skip-oidc')) throw new Error('OIDC acceptance requires harness-owned TLS APIs; use --skip-oidc only for focused non-OIDC diagnosis');
 } catch (error) {
-  await preserveAndroidFailure(error, { root, adb, serial, secrets: (fixtures ?? []).flatMap(fixture => [fixture.administratorPassword, fixture.clinicianPassword]) });
+  if (error?.androidFailureCaptured) throw error;
+  await preserveAndroidFailure(error, {root,adb,serial,secrets:(fixtures??[]).flatMap(fixture=>[fixture.administratorPassword,fixture.clinicianPassword])});
 } finally {
   await stopFixtureChildren(children);
   if (ownsContainer) spawnSync(docker, ['rm', '--force', container], { stdio: 'inherit' });
-  await rm(directory, { recursive: true, force: true });
 }
+}).finally(()=>rm(directory,{recursive:true,force:true}));

@@ -156,10 +156,11 @@ are not returned to JavaScript or stored in localStorage; their vault uses
 Android Keystore AES-GCM. Clinician logout clears the session cookie and retains
 the installation cookie. Android backup and cleartext HTTP are disabled.
 
-These slices validate pairing, scanning and JSON/local-authentication traffic.
-Protected offline reports, managed configuration, OIDC, cross-agency handoff,
-media, native downloads and comprehensive navigation each have following tickets.
-Native redirects are rejected until an explicit supported return flow is added.
+These slices validate pairing, scanning, protected work, managed settings and
+local/OIDC authentication. See [Android authentication](android-authentication.md)
+for the external-browser/native return strategy and independent browser CA
+prerequisites. Generic API redirects remain rejected. Cross-agency handoff,
+media, native downloads and comprehensive navigation have following tickets.
 Emulator results do not substitute for the signing, actual MDM or physical-device
 acceptance checkpoints in tickets 013 and 017–019.
 
@@ -297,8 +298,13 @@ build/signature regressions locally; the Android PR workflow runs this same earl
 check with a disposable key. Permanent-key distribution requires the separate
 protected release workflow and actual signed upgrade evidence.
 
+
 Android validation failures preserve bounded crash/runtime logs, application exit reasons, app memory and WebView version under `android/app/build/reports/android-failure/` before fixture/emulator teardown. These synthetic-emulator reports are included in the PR artifact for seven days. The collector excludes command arguments, screenshots, app files and bugreports; it redacts credential fields, known fixture secrets, URL queries, PEM blocks and long opaque values. Probe timeouts or collection failures never replace the original failing result, and instrumentation is never retried automatically.
 
 Camera discovery records the active device without reopening its stream. Only an explicit camera cycle requests another device; duplicate native/document visibility notifications leave an already foregrounded stream running. Browser lifecycle coverage checks this before native acceptance.
 
-The generic APK uses platform and WebView fonts. Its manifest removes only AndroidX EmojiCompat's automatic downloadable-font initializer; other local Startup components remain. A hosted process death was traced to Android killing the clinical PID after its Google Play Services font provider died. Both debug and production builds check their actual merged manifests before device execution, and the installed native startup test verifies remote emoji initialization stays disabled. See [Android's initializer configuration](https://developer.android.com/reference/androidx/emoji2/text/EmojiCompatInitializer).
+The APK manifest removes only AndroidX EmojiCompat's automatic downloadable-font initializer; other local Startup components remain. Both debug and production builds check the actual merged manifests, and the native startup test verifies that this app initializer stays disabled. This does not prevent the OS-selected WebView from independently fetching provider fonts. See [Android's initializer configuration](https://developer.android.com/reference/androidx/emoji2/text/EmojiCompatInitializer).
+
+The old Google-APIs emulator fixture ships WebView109, whose default font prefetch can bind the clinical process to Google Play Services' font provider. Captured `ApplicationExitInfo` and ActivityManager evidence showed Android killing that process when the provider died, even with the app initializer excluded. The default and signed-upgrade harnesses therefore scope a supported font profile to **isolated qemu userdebug/eng emulators with the evidenced WebView109**: only `PrefetchAndroidFonts` and `GMSCoreEmoji` are disabled; verbose logging proves the effective startup settings. Conflicting existing flags, physical/production Android images, symlinks and unsupported WebView generations fail before mutation. The original flag file's exact bytes, mode or absence are restored after success, clinical failure or setup failure; restoration failure fails acceptance. No APK production flags, TLS/origin checks, permissions, Google packages or clinical assertions change. The native probe checks actual provider acquisition and records the startup PID; the harness preserves effective flag evidence in `android/app/build/reports/android-font-profile/`.
+
+This fixture control uses Chromium's [documented userdebug command line](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/docs/commandline-flags.md) and the two entries in its [supported feature list](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/java/src/org/chromium/android_webview/common/ProductionSupportedFlagList.java). It does not establish stock production WebView/GMS behavior: physical-device and regional-provider acceptance remains ticket019. Failed tests are never retried automatically. Failure artifacts also record provider exit reasons and package events so an external provider update/death is distinguishable from a Java assertion, app crash or emulator-host death.

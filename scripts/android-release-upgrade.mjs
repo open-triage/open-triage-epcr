@@ -1,3 +1,4 @@
+import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChildren } from './android/fixture-processes.mjs';
 import { preserveAndroidFailure } from './android/diagnostics.mjs';
 import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
@@ -35,6 +36,7 @@ for (const [directory, descriptor] of [[aDirectory, a], [bDirectory, b]]) {
 }
 const directory = await mkdtemp(join(tmpdir(), 'open-triage-upgrade-')), container = `open-triage-upgrade-${randomUUID()}`;
 const children = []; let ownsController = false;
+await withWebViewFontProfile({adb,serial,root,applicationId:a.applicationId},async fontProfile=>{
 try {
   const fixtures = await prepareFixtures(root, directory, run, process.env.DOCKER_COMMAND ?? 'docker', container);
   for (const fixture of fixtures) {
@@ -58,6 +60,7 @@ try {
   const policy = value => run(adb, ['-s', serial, 'shell', 'am', 'broadcast', '--include-stopped-packages', '-a', 'org.opentriage.managementtest.SET_CONFIGURATION', '-n', 'org.opentriage.managementtest/.ConfigurationReceiver', '--es', 'targetPackage', 'org.opentriage.android', '--es', 'configurationBase64', Buffer.from(JSON.stringify(value)).toString('base64')]);
   policy(restrictions);
   await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true,
+    hooks: {afterOfflineStartup: async output=>{await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(output)?.[1]);}},
     afterProcessStop: async () => {
       // No uninstall, data clear, downgrade flag or direct file copying during upgrade.
       run(adb, ['-s', serial, 'install', '-r', join(bDirectory, b.artifact)]);
@@ -72,10 +75,10 @@ try {
   policy({});
   console.log('PASS permanent production identity A/B upgrade with retained managed pairing, presentation and encrypted pending work');
 } catch (error) {
-  await preserveAndroidFailure(error, { root, adb, serial, applicationId: 'org.opentriage.android' });
+  await preserveAndroidFailure(error, {root,adb,serial,applicationId:'org.opentriage.android'});
 } finally {
   if (ownsController) spawnSync(adb, ['-s', serial, 'shell', 'dpm', 'remove-active-admin', 'org.opentriage.managementtest/.AdminReceiver'], { stdio: 'inherit' });
   await stopFixtureChildren(children);
   spawnSync(process.env.DOCKER_COMMAND ?? 'docker', ['rm', '--force', container], { stdio: 'inherit' });
-  await rm(directory, { recursive: true, force: true });
 }
+}).finally(()=>rm(directory,{recursive:true,force:true}));

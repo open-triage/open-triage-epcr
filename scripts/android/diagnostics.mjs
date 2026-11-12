@@ -12,6 +12,8 @@ export async function captureAndroidFailure({ root, adb, serial, applicationId =
   const probes = {
     'crash.txt': ['logcat', '-b', 'crash', '-d', '-t', '500', '-v', 'threadtime'],
     'runtime.txt': ['logcat', '-d', '-t', '500', '-v', 'threadtime', 'AndroidRuntime:E', 'libc:F', 'DEBUG:F', 'chromium:E', 'ActivityManager:I', 'lmkd:I', '*:S'],
+    'gms-exit-info.txt': ['shell', 'dumpsys', 'activity', 'exit-info', 'com.google.android.gms'],
+    'package-events.txt': ['logcat', '-b', 'system', '-d', '-t', '500', '-v', 'threadtime', 'PackageManager:I', 'PackageInstaller:I', 'ActivityManager:I', '*:S'],
     'exit-info.txt': ['shell', 'dumpsys', 'activity', 'exit-info', applicationId],
     'memory.txt': ['shell', 'dumpsys', 'meminfo', applicationId],
     'webview.txt': ['shell', 'dumpsys', 'webviewupdate'],

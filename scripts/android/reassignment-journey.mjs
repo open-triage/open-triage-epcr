@@ -24,7 +24,9 @@ export async function runReassignmentTransition({fixture,report,applicationId='o
     assert.equal(spawnSync(adb,['-s',serial,'shell','pidof',applicationId],{encoding:'utf8'}).stdout.trim(),'');
     await pending.closed;
     const released=await api(fixture,ca,'__android-enrollment-drop-release','POST',{},adminHeaders);assert.equal(released.body.released,true);
+    const beforeAuthentication=await api(fixture,ca,'__android-native-authentication-count','GET',undefined,adminHeaders);assert.equal(beforeAuthentication.status,200);
     instrument('resume-reassignment',fixture.clinician.username,fixture.clinicianPassword,{unitId,installationId:before.installation_identity_id,retainedSha256});
+    const afterAuthentication=await api(fixture,ca,'__android-native-authentication-count','GET',undefined,adminHeaders);assert.equal(afterAuthentication.status,200);assert.equal(afterAuthentication.body.count,beforeAuthentication.body.count,'A process-restored pending enrollment must send no authentication requests');
     const {rows:after}=await db.query('select id,unit_id,credential_sha256,revoked_at from app_identity.installation_registration where installation_identity_id=$1 order by enrolled_at',[before.installation_identity_id]);
     assert.equal(after.length,2);assert(after[0].revoked_at);assert.equal(after[1].revoked_at,null);assert.equal(after[1].unit_id,unitId);assert.notEqual(after[1].credential_sha256,before.credential_sha256);
     assert.equal((await db.query("select count(*) n from app_identity.installation_event where installation_id=$1 and event_type='installation-reassigned'",[before.id])).rows[0].n,'1');
