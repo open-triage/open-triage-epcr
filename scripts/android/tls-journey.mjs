@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { setFixtureTls, observeFixtureTls } from './tls-fixture-control.mjs';
 import { runReportRecoveryJourney } from './report-journey.mjs';
 import { captureAndroidFailure, redactAndroidDiagnostics } from './diagnostics.mjs';
+import { startLiveInstrumentation } from './live-instrumentation.mjs';
+import { stopFixtureChild } from './fixture-processes.mjs';
 
 /** One generic APK, one API/database and real retained clinical work across TLS changes. */
 export async function runTlsJourney({ root, fixture, material, child, adb, serial, run, api }) {
@@ -11,10 +13,16 @@ export async function runTlsJourney({ root, fixture, material, child, adb, seria
   const originalCaPath=fixture.caPath;
   let ownsManagement=false;
   let finalAdminHeaders,issueCurrent;
-  const instrument=(phase,extra={})=>{
+  let livePending;
+  const argumentsFor=(phase,extra={})=>{
     const args=['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.TlsRotationJourneyTest','-e','tlsPhase',phase];
     for(const [key,value] of Object.entries(extra))args.push('-e',key,String(value));
     args.push('org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner');
+    return args;
+  };
+  const sanitize=(output,extra)=>redactAndroidDiagnostics(String(output),Object.entries(extra).filter(([key])=>/artifact/i.test(key)).map(([,value])=>value));
+  const instrument=(phase,extra={})=>{
+    const args=argumentsFor(phase,extra);
     const result=spawnSync(adb,args,{cwd:root,encoding:'utf8',timeout:600000});
     const output=redactAndroidDiagnostics(String(result.stdout??'')+'\n'+String(result.stderr??''),Object.entries(extra).filter(([key])=>/artifact/i.test(key)).map(([,value])=>value));
     console.log(output);assert.equal(result.status,0,`Actual TLS phase ${phase} child failed (${result.signal??'nonzero exit'})`);
@@ -69,9 +77,15 @@ export async function runTlsJourney({ root, fixture, material, child, adb, seria
         const pendingTransition=async(from,to,managed=false)=>{
           const original=await issue(material[from].ca);
           const armed=await api(fixture,await readFile(fixture.caPath),'__android-enrollment-drop-arm','POST',{},adminHeaders);assert.equal(armed.body.armed,true);
-          const prepared=instrument('pending',{artifactBase64:encode(original),retainedSha256});
+          const extra={artifactBase64:encode(original),retainedSha256};
+          livePending=startLiveInstrumentation(adb,argumentsFor('pending-live',extra),{cwd:root,checkpoint:'opentriage_phase=pending-confirmation-ready',redact:output=>sanitize(output,extra)});
+          const prepared=await livePending.ready;console.log(prepared);
           const tokenHash=/pending_token_sha256=([a-f0-9]{64})/.exec(prepared)?.[1],intent=/pending_intent_sha256=([a-f0-9]{64})/.exec(prepared)?.[1];assert(tokenHash&&intent);
           const pid=execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).trim();assert(pid,'Ambiguous confirmation must leave a live process before host termination');stop();
+          let closeTimer;
+          try {await Promise.race([livePending.closed,new Promise((_,reject)=>{closeTimer=setTimeout(()=>reject(new Error('Pending instrumentation did not close after host process kill')),30000);})]);}
+          finally {clearTimeout(closeTimer);}
+          livePending=null;
           assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8'}).stdout.trim(),'');
           assert.equal((await api(fixture,await readFile(fixture.caPath),'__android-enrollment-drop-release','POST',{},adminHeaders)).body.released,true);
           const aged=await db.query(`update app_identity.unit_enrollment set issued_at=clock_timestamp()-interval '30 minutes',expires_at=clock_timestamp()-interval '25 minutes',consumed_at=clock_timestamp()-interval '27 minutes'
@@ -132,6 +146,7 @@ export async function runTlsJourney({ root, fixture, material, child, adb, seria
     throw error;
   } finally {
     stop();radios('enable');
+    if(livePending)await stopFixtureChild(livePending.child);
     if(ownsManagement) {
       spawnSync(adb,['-s',serial,'shell','am','broadcast','--include-stopped-packages','-a','org.opentriage.managementtest.SET_CONFIGURATION','-n','org.opentriage.managementtest/.ConfigurationReceiver','--es','configurationBase64',Buffer.from('{}').toString('base64')],{stdio:'inherit'});
       spawnSync(adb,['-s',serial,'shell','dpm','remove-active-admin','org.opentriage.managementtest/.AdminReceiver'],{stdio:'inherit'});

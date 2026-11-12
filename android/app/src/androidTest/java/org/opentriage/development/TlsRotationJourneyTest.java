@@ -110,7 +110,7 @@ public class TlsRotationJourneyTest {
         String before=context().getSharedPreferences("connection-v1",Context.MODE_PRIVATE).getString("encrypted",null);
         activity=ActivityScenario.launch(MainActivity.class);
         try {
-            if(phase.startsWith("pending-") && !phase.equals("pending-offline")) {
+            if(phase.startsWith("pending-") && !phase.equals("pending-offline") && !phase.equals("pending-live")) {
                 waitFor("document.querySelector('[data-pending-enrollment]')");
                 String intent=intentDigest(vault.pending());
                 if(args.containsKey("pendingIntentSha256"))assertEquals(args.getString("pendingIntentSha256"),intent);
@@ -177,11 +177,18 @@ public class TlsRotationJourneyTest {
             input("input[maxlength='100']","TLS rotation ambulance");evaluate("document.querySelector('input[type=checkbox]').click()");
             if(phase.equals("pending-offline"))radios(false);
             waitFor("!document.querySelector('button[type=submit]').disabled");evaluate("document.querySelector('form').requestSubmit()");
-            if(phase.equals("pending")||phase.equals("pending-offline")) {
+            if(phase.equals("pending")||phase.equals("pending-offline")||phase.equals("pending-live")) {
                 waitFor("document.querySelector('[data-pending-enrollment]')");assertNotNull(vault.pending());
                 String retained=retained(args.getString("retainedSha256"));
                 var result=new android.os.Bundle();result.putString("pending_token_sha256",digest(vault.pending().getJSONObject("body").getString("token")));
                 result.putString("pending_intent_sha256",intentDigest(vault.pending()));result.putString("retained_sha256",retained);
+                if(phase.equals("pending-live")) {
+                    result.putString("opentriage_phase","pending-confirmation-ready");
+                    InstrumentationRegistry.getInstrumentation().sendStatus(2,result);
+                    // The host must kill this live Activity after all durable-state
+                    // assertions, rather than observing normal JUnit cleanup.
+                    while(true)Thread.sleep(1000);
+                }
                 InstrumentationRegistry.getInstrumentation().addResults(result);return;
             }
             waitFor("document.querySelector('input[name=username]')");retained(args.getString("retainedSha256"));
