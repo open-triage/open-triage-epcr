@@ -11,13 +11,13 @@ const lockName = "open-triage.installation-clinical-context";
 
 type NativeTransitionState = {configured:boolean; blocked?:boolean; replacementPending?:boolean; handoffPending?:boolean; connectionContext?:string; origin?:string; managedContext?:string};
 /** Resume only an abandoned JS barrier, under the same exclusive lock as confirmation. */
-export async function resumeNativeInstallationTransition<T extends NativeTransitionState>(state:T,reconcile:(context:string,purpose:"enrollment"|"logout")=>Promise<T>):Promise<T|null> {
+export async function resumeNativeInstallationTransition<T extends NativeTransitionState>(state:T,reconcile:(context:string,purpose:"enrollment"|"logout")=>Promise<T>,isCurrent:()=>boolean=()=>true):Promise<T|null> {
  const marker=window.localStorage.getItem(INSTALLATION_TRANSITION_KEY);
  if(!marker||!state.configured||state.blocked||state.replacementPending||state.handoffPending)return state;
  if(marker.startsWith("handoff:"))return null;
  const generation=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
  const purpose=marker.startsWith("enrollment:")&&generation===marker?"enrollment":"logout";
- const matches=()=>window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===marker&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation;
+ const matches=()=>isCurrent()&&window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===marker&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation;
  if(!navigator.locks||!state.connectionContext)return null;
  return navigator.locks.request(lockName,{mode:"exclusive",ifAvailable:true},async lock=>{
   if(!lock||!matches())return null;
