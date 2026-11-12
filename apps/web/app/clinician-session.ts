@@ -1,5 +1,5 @@
 import { AndroidConnection, isAndroidRuntime, nativeConnectionContext } from "./android-runtime";
-import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY, INSTALLATION_SESSION_HINT_KEY } from "./installation-transition-generation";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY, INSTALLATION_SESSION_HINT_KEY, InstallationContextChangedError } from "./installation-transition-generation";
 import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
@@ -50,12 +50,17 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
 }
 
 /** Re-establishes server authority after a browser restart without trusting the persisted identity payload. */
+function assertNativePersonalContext(generation:string|null, context:string|undefined):void {
+  assertAuthenticationInstallationGeneration(generation);
+  if(nativeConnectionContext()!==context)throw new InstallationContextChangedError("Installation changed");
+}
 export async function authenticateRestartedClinicianSession(stored: AuthenticatedSession): Promise<AuthenticatedSession | null> {
   let installationGeneration: string | null;
   try { installationGeneration = authenticationInstallationGeneration(); } catch { return null; }
+  const expectedNativeContext=nativeConnectionContext();
   if(isAndroidRuntime()) {
-    const continued=await AndroidConnection.resumePersonalSession({connectionContext:nativeConnectionContext()});
-    try { assertAuthenticationInstallationGeneration(installationGeneration); } catch { return null; }
+    const continued=await AndroidConnection.resumePersonalSession({connectionContext:expectedNativeContext});
+    try { assertNativePersonalContext(installationGeneration,expectedNativeContext); } catch { return null; }
     if(continued.unavailable)return null;
     if(continued.session)return continued.session.user.id===stored.user.id && continued.session.organization?.id===stored.organization?.id?continued.session:null;
   }
@@ -66,7 +71,7 @@ export async function authenticateRestartedClinicianSession(stored: Authenticate
   if (response.status === 401) return null;
   if (!response.ok) throw await platformRequestError(response);
   const authenticated = await response.json() as AuthenticatedSession;
-  try { assertAuthenticationInstallationGeneration(installationGeneration); } catch { return null; }
+  try { assertAuthenticationInstallationGeneration(installationGeneration);if(isAndroidRuntime())assertNativePersonalContext(installationGeneration,expectedNativeContext); } catch { return null; }
   if (authenticated.user.id !== stored.user.id || authenticated.organization?.id !== stored.organization?.id) return null;
   return {
     ...authenticated,
@@ -78,10 +83,11 @@ export async function authenticateRestartedClinicianSession(stored: Authenticate
 /** A generation-bound public candidate is never authority: the current native
  * cookie must re-establish the same principal through the ordinary server path. */
 export async function resumeInterruptedNativeClinicianSession():Promise<AuthenticatedSession|null> {
+ const context=nativeConnectionContext();
  if(isAndroidRuntime()) {
   const generation=authenticationInstallationGeneration();
-  const result=await AndroidConnection.resumePersonalSession({connectionContext:nativeConnectionContext()});
-  assertAuthenticationInstallationGeneration(generation);
+  const result=await AndroidConnection.resumePersonalSession({connectionContext:context});
+  assertNativePersonalContext(generation,context);
   if(result.unavailable)return null;
   if(result.session) {
    storeClinicianSession(window.localStorage,result.session);
@@ -95,6 +101,7 @@ export async function resumeInterruptedNativeClinicianSession():Promise<Authenti
  const candidate={...hint.session};delete candidate.accessToken;
  const authenticated=await authenticateRestartedClinicianSession(candidate);
  if(authenticationInstallationGeneration()!==hint.generation)return null;
+ if(isAndroidRuntime())assertNativePersonalContext(hint.generation,context);
  if(window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY)===encoded)window.localStorage.removeItem(INSTALLATION_SESSION_HINT_KEY);
  if(authenticated)storeClinicianSession(window.localStorage,authenticated);
  return authenticated;

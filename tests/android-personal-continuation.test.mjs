@@ -30,6 +30,22 @@ test('an explicitly unavailable native context cannot fall back to public metada
 test('a late native continuation cannot cross a newer installation generation',async()=>{
  let release;const f=fixture(()=>new Promise(resolve=>release=resolve));try{const pending=api.resumeInterruptedNativeClinicianSession();f.entries.set('open-triage.installation-generation.v1','enrollment:newer');release({session});await assert.rejects(pending);assert.equal(f.entries.has('open-triage.clinician-session.v1'),false);}finally{f.restore();}
 });
+for(const stored of [false,true])test(`a held native reply cannot cross a new connection even without a new JS generation (${stored?'existing metadata':'missing metadata'})`,async()=>{
+ let release;const f=fixture(()=>new Promise(resolve=>release=resolve));
+ try{
+  const pending=stored?api.authenticateRestartedClinicianSession(session):api.resumeInterruptedNativeClinicianSession();
+  api.configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'newer-context'});
+  assert.equal(f.entries.get('open-triage.installation-generation.v1'),undefined);
+  release({session});if(stored)assert.equal(await pending,null);else await assert.rejects(pending);
+  assert.equal(f.entries.has('open-triage.clinician-session.v1'),false);
+ }finally{f.restore();}
+});
+test('a held legacy migration body cannot restore authority after a native connection change',async()=>{
+ let release,started;const ready=new Promise(resolve=>started=resolve),f=fixture(async()=>({}));
+ try{globalThis.fetch=async()=>({ok:true,status:200,json:()=>{started();return new Promise(resolve=>release=resolve)}});const pending=api.authenticateRestartedClinicianSession(session);await ready;
+  api.configureNativeConnection({configured:true,origin:'https://new.example',storageScope:'B'.repeat(43),connectionContext:'newer-context'});release(session);assert.equal(await pending,null);assert.equal(f.entries.has('open-triage.clinician-session.v1'),false);
+ }finally{f.restore();}
+});
 test('actual process-restart acceptance deliberately removes public metadata only after native login is durable',()=>{
  const source=readFileSync(new URL('../android/app/src/androidTest/java/org/opentriage/development/AgencyHandoffJourneyTest.java',import.meta.url),'utf8');
  assert.match(source,/Successful native login commits continuation before public metadata may disappear/);assert.match(source,/status\("source_cookie_sha256"[^\n]+\n\s+losePublicSessionMetadata\(\)/);assert.match(source,/verifySuperuser\([^\n]+losePublicSessionMetadata\(\)/);
