@@ -55,14 +55,12 @@ public class ReportRecoveryJourneyTest {
             try (var result = new ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))) { result.readAllBytes(); }
         }
         waitFor(connected ? "navigator.onLine" : "!navigator.onLine");
-        assertEquals("Radio transitions must affect the actual API transport", connected, apiReachable());
-    }
-    private boolean apiReachable() {
-        var endpoint = java.net.URI.create(InstrumentationRegistry.getArguments().getString("apiOrigin"));
-        try (var socket = new java.net.Socket()) {
-            socket.connect(new java.net.InetSocketAddress(endpoint.getHost(), endpoint.getPort()), 2000);
-            return true;
-        } catch (java.io.IOException connectionLoss) { return false; }
+        AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
+            InstrumentationRegistry.getArguments().getString("apiOrigin"), () -> {
+                String value = evaluate("navigator.onLine");
+                if (!"true".equals(value) && !"false".equals(value)) throw new AssertionError("WebView network signal unavailable");
+                return Boolean.parseBoolean(value);
+            }, connected);
     }
     private void records() throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[];};request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('encrypted-reports')){window.__retained=[];db.close();return;}const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
@@ -316,8 +314,13 @@ public class ReportRecoveryJourneyTest {
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Expired preview");
         evaluate("document.querySelector('input[type=checkbox]').click()");waitFor("!document.querySelector('button[type=submit]').disabled");
         evaluate("document.querySelector('form').requestSubmit()");
-        waitFor("document.querySelector('input[type=file]') && document.querySelector('[role=alert]')");
-        assertNull("Definitively rejected first request must allow a fresh code", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        waitFor("document.querySelector('[data-pending-enrollment]') && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Use a new pairing code')");
+        assertNotNull("Even a proved unconsumed expired intent stays durable until explicit abandonment", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        click("Use a new pairing code");
+        waitFor("!document.querySelector('[data-pending-enrollment]') && document.querySelector('input[type=file]') && !document.querySelector('input[type=file]').disabled");
+        assertNull("Fresh read-only not-committed proof and explicit abandonment permit a fresh code", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        records();
+        assertEquals("Abandoning an unconsumed intent preserves the original encrypted work", args.getString("retainedSha256"), retainedDigest());
         var armed = fault.request("/api/__android-enrollment-drop-arm", "POST", new JSONObject().put("content-type", "application/json"), "{}");
         assertTrue(new JSONObject(armed.body()).getBoolean("armed"));
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
@@ -357,7 +360,12 @@ public class ReportRecoveryJourneyTest {
         String phase = InstrumentationRegistry.getArguments().getString("phase", "");
         if (phase.equals("offline")) {
             // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
-            assertFalse("The real API must be unreachable before offline Activity launch", apiReachable());
+            AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
+                InstrumentationRegistry.getArguments().getString("apiOrigin"), null, false);
+        } else if (phase.equals("reassign") || phase.equals("resume-reassignment")) {
+            // Host radio enable is asynchronous. Never retry a pairing request to compensate.
+            AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
+                InstrumentationRegistry.getArguments().getString("apiOrigin"), null, true);
         }
         activity = ActivityScenario.launch(MainActivity.class);
         var startup=new android.os.Bundle();startup.putString("opentriage_startup_pid",String.valueOf(android.os.Process.myPid()));

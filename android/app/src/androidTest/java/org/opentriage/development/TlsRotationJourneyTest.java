@@ -71,22 +71,8 @@ public class TlsRotationJourneyTest {
         waitFor(enabled?"navigator.onLine":"!navigator.onLine");
     }
     private void awaitFixtureNetwork(String origin) throws Exception {
-        var target=java.net.URI.create(origin);
-        var networks=context().getSystemService(android.net.ConnectivityManager.class);
-        long deadline=android.os.SystemClock.elapsedRealtime()+45000;
-        while(android.os.SystemClock.elapsedRealtime()<deadline) {
-            var capabilities=networks.getNetworkCapabilities(networks.getActiveNetwork());
-            if(capabilities!=null&&capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
-                // Probe only routing/listener readiness. No TLS, cookies, API request,
-                // trust update or Activity can run before the single strict proof.
-                try(var socket=new java.net.Socket()) {
-                    socket.connect(new java.net.InetSocketAddress(target.getHost(),target.getPort()==-1?443:target.getPort()),250);
-                    return;
-                } catch(java.io.IOException notYetReachable) { /* Radio enable is asynchronous. */ }
-            }
-            Thread.sleep(100);
-        }
-        fail("Synthetic fixture network did not reconnect before the TLS proof");
+        // No Activity, WebView, TLS, credentials or application request before the one strict proof.
+        AndroidFixtureNetwork.await(context(), origin, null, true);
     }
     @Test public void certificateRotationPreservesProtectedWork() throws Exception {
         var args=InstrumentationRegistry.getArguments();String phase=args.getString("tlsPhase","");
