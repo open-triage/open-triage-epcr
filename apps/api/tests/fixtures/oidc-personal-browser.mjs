@@ -139,10 +139,12 @@ try{
  await assert.rejects(inNative(()=>personal.nativeFinish({secret:ticket})),error=>error.getStatus?.()===401);
  const delivered=await inNative(()=>personal.nativeFinish({secret:native.nativeSecret}));
  assert.equal(delivered.outcome,'succeeded');assert.equal(delivered.created.session.user.id,process.env.OIDC_ALPHA);
+ assert.equal(delivered.session.csrfToken,delivered.created.session.csrfToken);assert.equal(delivered.session.user.id,process.env.OIDC_ALPHA);
  await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret})),error=>error.getStatus?.()===401);
  const issuedCount=(await db.query('select count(*)::int count from app_identity.app_session'))[0].count;
  const resumed=await inNative(()=>personal.nativeFinish({secret:native.nativeSecret},delivered.created.sessionToken));
  assert.equal(resumed.outcome,'succeeded');assert.equal(resumed.created,undefined);
+ assert.equal(resumed.session.csrfToken,delivered.session.csrfToken);assert.equal(resumed.session.expiresAt,delivered.session.expiresAt);assert.equal(resumed.session.personallyAuthenticatedAt,delivered.session.personallyAuthenticatedAt);
  assert.equal((await db.query('select count(*)::int count from app_identity.app_session'))[0].count,issuedCount);
  await assert.rejects(inNative(()=>personal.nativeFinish({secret:native.nativeSecret},guardedResult.created.sessionToken)),error=>error.getStatus?.()===401);
  await control({token:{sub:'fictional-beta'},claimsMode:'fresh'});

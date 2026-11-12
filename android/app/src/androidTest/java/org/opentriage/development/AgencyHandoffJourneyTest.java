@@ -76,6 +76,14 @@ public class AgencyHandoffJourneyTest {
         assertTrue(InstrumentationRegistry.getInstrumentation().getTargetContext().getSharedPreferences("agency-test-evidence",0).edit().putString("cookie",hash).commit());
         sessionEvidence("valid-before-managed-cold-start");
     }
+    private void losePublicSessionMetadata() throws Exception {
+        var vault=vault();var continuation=vault.personalContinuation();
+        assertTrue("Successful native login commits continuation before public metadata may disappear",NativePersonalContinuation.matches(continuation,vault.read()));
+        assertEquals(new org.json.JSONTokener(evaluate(session()+".csrfToken")).nextValue().toString(),continuation.getString("csrf"));
+        evaluate("localStorage.removeItem('open-triage.clinician-session.v1');localStorage.removeItem('open-triage.installation-session-candidate.v1')");
+        assertEquals("null",evaluate("localStorage.getItem('open-triage.clinician-session.v1')"));
+        status("agency_public_metadata_removed","1");
+    }
     private void select(String id) throws Exception {
         waitFor("document.querySelector('.session-agency-selector select') && !document.querySelector('.session-agency-selector select').disabled");
         evaluate("(()=>{const s=document.querySelector('.session-agency-selector select');s.value="+JSONObject.quote(id)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
@@ -115,6 +123,7 @@ public class AgencyHandoffJourneyTest {
                 assertEquals("Installation identity cannot read another clinician report",404,forbidden.status());
                 assertFalse(forbidden.body().contains("ANDROID-AGENCY-ORIGINAL"));assertFalse(new JSONObject(forbidden.body()).has("report"));assertEquals(beforeDenied,NativeAgencyHandoff.sessionIdentity(nonclinical));current();assertEquals(beforeDenied,NativeAgencyHandoff.sessionIdentity(vault().read()));
                 status("retained_sha256",records());status("source_cookie_sha256",NativeAgencyHandoff.sessionIdentity(vault().read()));bundled();
+                losePublicSessionMetadata();
             } else if(phase.equals("bad-ca")||phase.equals("managed-denied")){
                 waitFor("document.querySelector('.session-identity')");String cookie=NativeAgencyHandoff.sessionIdentity(vault().read());String before=records();select(args.getString("targetAgency"));waitFor("document.querySelector('.admin-entry-blocked[role=alert]')");
                 current();assertEquals(JSONObject.quote(args.getString("sourceAgency")),evaluate("window.__agencyCurrent.body.organization.id"));assertEquals(cookie,NativeAgencyHandoff.sessionIdentity(vault().read()));assertEquals(args.getString("apiOrigin"),vault().read().origin);unchanged(before);assertNull(vault().pendingHandoff());bundled();
@@ -171,7 +180,7 @@ public class AgencyHandoffJourneyTest {
                 String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
                 waitFor("document.querySelector('input[name=username]')");unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("recover-source")){
-                login(args.getString("username"),args.getString("password"));click("Reopen report");waitFor("document.querySelector('.encounter-header')");if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-AGENCY-PENDING'");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");click("Save & close");waitFor("!document.querySelector('.encounter-header')");logout(false);login(args.getString("superuser"),args.getString("superuserPassword"));bundled();verifySuperuser(args.getString("superuserId"),args.getString("sourceAgency"));
+                login(args.getString("username"),args.getString("password"));click("Reopen report");waitFor("document.querySelector('.encounter-header')");if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-AGENCY-PENDING'");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");click("Save & close");waitFor("!document.querySelector('.encounter-header')");logout(false);login(args.getString("superuser"),args.getString("superuserPassword"));bundled();verifySuperuser(args.getString("superuserId"),args.getString("sourceAgency"));losePublicSessionMetadata();
             }else fail("Unknown agency test phase");
         }catch(AssertionError failure){sessionEvidence(phase);throw failure;}finally{activity.close();}
     }

@@ -25,6 +25,10 @@ public class NativeTransitionResumeTest {
   evaluate(activity,"window.__resumeResult=null;window.Capacitor.nativePromise('OpenTriageConnection','reconcileTransition',"+options+").then(value=>window.__resumeResult={value}).catch(error=>window.__resumeResult={error:error.code||'rejected'})");
   waitFor(activity,"Boolean(window.__resumeResult)");
  }
+ private void personalRpc(ActivityScenario<MainActivity> activity,String options)throws Exception{
+  evaluate(activity,"window.__personalResult=null;window.Capacitor.nativePromise('OpenTriageConnection','resumePersonalSession',"+options+").then(value=>window.__personalResult={value}).catch(error=>window.__personalResult={error:error.code||'rejected'})");
+  waitFor(activity,"Boolean(window.__personalResult)");
+ }
  @Test public void nativeReconciliationRequiresSettledContextAndHonorsExplicitLogout()throws Exception{
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();var prefs=context.getSharedPreferences("connection-v1",Context.MODE_PRIVATE);prefs.edit().clear().commit();
   var vault=new ConnectionVault(context);
@@ -37,26 +41,33 @@ public class NativeTransitionResumeTest {
    JSONObject saved=new TrustedConnection("https://transition.invalid","").saved().put("cookies",new JSONArray()
     .put(new JSONObject().put("name","open_triage_installation").put("value","I".repeat(43)).put("expires",expiry))
     .put(new JSONObject().put("name","open_triage_session").put("value","P".repeat(43)).put("expires",expiry)));
-   vault.write(TrustedConnection.restore(saved));vault.pendingAuthentication(new JSONObject().put("secret","synthetic-old-return"));
+   vault.write(TrustedConnection.restore(saved));
+   var session=new JSONObject().put("csrfToken","C".repeat(43)).put("user",new JSONObject().put("id","original-user")).put("organization",JSONObject.NULL);
+   vault.savePersonalContinuation(vault.read(),session);vault.pendingAuthentication(new JSONObject().put("secret","synthetic-old-return"));
    try(var activity=ActivityScenario.launch(MainActivity.class)){
     waitFor(activity,"Boolean(window.Capacitor?.nativePromise)");
     evaluate(activity,"window.__nativeState=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(value=>window.__nativeState=value)");waitFor(activity,"Boolean(window.__nativeState)");
     String before=prefs.getString("encrypted",null);
+    personalRpc(activity,"{connectionContext:window.__nativeState.connectionContext}");assertEquals("true",evaluate(activity,"Boolean(window.__personalResult.value&&!window.__personalResult.value.session)"));assertEquals(before,prefs.getString("encrypted",null));assertNotNull(vault.pendingAuthentication());
     rpc(activity,"{connectionContext:'wrong-context',purpose:'logout'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.error)"));assertEquals(before,prefs.getString("encrypted",null));assertNotNull(vault.pendingAuthentication());
     rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'enrollment'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.value?.configured)"));assertEquals(2,vault.read().saved().getJSONArray("cookies").length());assertNull(vault.pendingAuthentication());
     evaluate(activity,"window.__nativeState=window.__resumeResult.value");
+    personalRpc(activity,"{connectionContext:'wrong-context'}");assertEquals("true",evaluate(activity,"Boolean(window.__personalResult.error)"));assertNotNull(vault.personalContinuation());
     rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals(1,vault.read().saved().getJSONArray("cookies").length());assertEquals("open_triage_installation",vault.read().saved().getJSONArray("cookies").getJSONObject(0).getString("name"));assertEquals("https://transition.invalid",vault.read().origin);
+    assertNull(vault.personalContinuation());
    }
    JSONObject pending=new JSONObject().put("candidate",TrustedConnection.restore(saved).installationOnly().saved()).put("body",new JSONObject().put("token","T".repeat(43))).put("createdAt",System.currentTimeMillis());vault.stage(TrustedConnection.restore(saved).installationOnly(),pending);vault.pendingAuthentication(new JSONObject().put("secret","must-remain-pending"));
    try(var activity=ActivityScenario.launch(MainActivity.class)){
     waitFor(activity,"Boolean(window.Capacitor?.nativePromise)");evaluate(activity,"window.__nativeState=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(value=>window.__nativeState=value)");waitFor(activity,"Boolean(window.__nativeState)");
     String before=prefs.getString("encrypted",null);rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.error)"));assertEquals(before,prefs.getString("encrypted",null));assertEquals(pending.toString(),vault.pending().toString());assertNotNull(vault.pendingAuthentication());
+    personalRpc(activity,"{connectionContext:window.__nativeState.connectionContext}");assertEquals("true",evaluate(activity,"Boolean(window.__personalResult.value&&!window.__personalResult.value.session)"));assertEquals(before,prefs.getString("encrypted",null));assertNull(vault.personalContinuation());
    }
    JSONObject handoff=new JSONObject().put("phase","prepared").put("context","pending-context");
-   vault.promoteHandoff(TrustedConnection.restore(saved));vault.stageHandoff(TrustedConnection.restore(saved),handoff);vault.pendingAuthentication(new JSONObject().put("secret","must-remain-handoff"));assertNull(vault.pending());
+   vault.promoteHandoff(TrustedConnection.restore(saved));vault.savePersonalContinuation(vault.read(),session);vault.stageHandoff(TrustedConnection.restore(saved),handoff);vault.pendingAuthentication(new JSONObject().put("secret","must-remain-handoff"));assertNull(vault.pending());
    try(var activity=ActivityScenario.launch(MainActivity.class)){
     waitFor(activity,"Boolean(window.Capacitor?.nativePromise)");evaluate(activity,"window.__nativeState=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(value=>window.__nativeState=value)");waitFor(activity,"Boolean(window.__nativeState)");
     String before=prefs.getString("encrypted",null);rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.error)"));assertEquals(before,prefs.getString("encrypted",null));assertEquals(handoff.toString(),vault.pendingHandoff().toString());assertNull(vault.pending());assertNotNull(vault.pendingAuthentication());
+    vault.pendingAuthentication(null);personalRpc(activity,"{connectionContext:window.__nativeState.connectionContext}");assertEquals("true",evaluate(activity,"Boolean(window.__personalResult.value&&!window.__personalResult.value.session)"));assertEquals(before,prefs.getString("encrypted",null));assertNotNull(vault.personalContinuation());assertEquals(handoff.toString(),vault.pendingHandoff().toString());assertNull(vault.pendingAuthentication());
     evaluate(activity,"localStorage.removeItem('open-triage.installation-transition.v1');localStorage.removeItem('open-triage.installation-generation.v1')");
    }
   }finally{prefs.edit().clear().commit();}

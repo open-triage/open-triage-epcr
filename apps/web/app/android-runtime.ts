@@ -9,6 +9,7 @@ export type NativeResponse = { status: number; headers: Record<string, string>; 
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
 export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; pendingOrigin?: string; pendingOutcome?: string; handoffPending?: boolean; handoffComplete?: boolean; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
+  resumePersonalSession(options: {connectionContext?:string}): Promise<{session?:AuthenticatedSession;unavailable?:boolean}>;
   prepareAgencyHandoff(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<{crossHost: boolean}>;
   confirmAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;
   switchAgency(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;

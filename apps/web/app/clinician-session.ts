@@ -1,55 +1,21 @@
-import { AndroidConnection, isAndroidRuntime } from "./android-runtime";
+import { AndroidConnection, isAndroidRuntime, nativeConnectionContext } from "./android-runtime";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY, INSTALLATION_SESSION_HINT_KEY } from "./installation-transition-generation";
 import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
-import { apiRequestUrl, bindBrowserOrganization, browserRequestConfiguration, browserRequestInit } from "./browser-api";
+import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
-export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
+export {CLINICIAN_SESSION_STORAGE_KEY,sessionIsActive,loadClinicianSession,sessionRequestToken,storeClinicianSession,clearClinicianSession} from "./clinician-session-storage";
+import {sessionIsActive,storeClinicianSession} from "./clinician-session-storage";
 
 const localDemoIdentity = {
   user: { id: DEMO_CLINICIAN_ID, displayName: "Synthetic Clinician" },
   organization: { id: DEMO_ORGANIZATION_ID, name: "OpenTriage Synthetic EMS" }
 } as const;
-
-export function sessionIsActive(session: AuthenticatedSession, now = new Date()): boolean {
-  return Number.isFinite(Date.parse(session.expiresAt)) && Date.parse(session.expiresAt) > now.getTime();
-}
-
-export function loadClinicianSession(storage: Pick<Storage, "getItem" | "removeItem">, now = new Date()): AuthenticatedSession | null {
-  const encoded = storage.getItem(CLINICIAN_SESSION_STORAGE_KEY);
-  if (!encoded) return null;
-  try {
-    const session = JSON.parse(encoded) as AuthenticatedSession;
-    if ((!session.csrfToken && !session.accessToken) || !session.user?.id || (!session.organization?.id && !(session.organization === null && (session.installationOwner || session.installationSuperadmin))) || !sessionIsActive(session, now)) {
-      storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
-      return null;
-    }
-    return session;
-  } catch {
-    storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
-    return null;
-  }
-}
-
-export function sessionRequestToken(session: AuthenticatedSession): string {
-  return session.csrfToken ?? session.accessToken ?? "";
-}
-
-export function storeClinicianSession(storage: Pick<Storage, "setItem"> & Partial<Pick<Storage,"removeItem">>, session: AuthenticatedSession): void {
-  storage.setItem(CLINICIAN_SESSION_STORAGE_KEY, JSON.stringify(session));
-  storage.removeItem?.(INSTALLATION_SESSION_HINT_KEY);
-  bindBrowserOrganization(session.organization?.id);
-}
-
-export function clearClinicianSession(storage: Pick<Storage, "removeItem">): void {
-  storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
-  bindBrowserOrganization(undefined);
-}
 
 export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<AuthenticatedSession> {
   const installationGeneration = authenticationInstallationGeneration();
@@ -87,9 +53,16 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
 export async function authenticateRestartedClinicianSession(stored: AuthenticatedSession): Promise<AuthenticatedSession | null> {
   let installationGeneration: string | null;
   try { installationGeneration = authenticationInstallationGeneration(); } catch { return null; }
-  const url = apiRequestUrl("/api/sessions/current");
+  if(isAndroidRuntime()) {
+    const continued=await AndroidConnection.resumePersonalSession({connectionContext:nativeConnectionContext()});
+    try { assertAuthenticationInstallationGeneration(installationGeneration); } catch { return null; }
+    if(continued.unavailable)return null;
+    if(continued.session)return continued.session.user.id===stored.user.id && continued.session.organization?.id===stored.organization?.id?continued.session:null;
+  }
+  const nativeLegacy=isAndroidRuntime() && !!stored.csrfToken;
+  const url = apiRequestUrl(nativeLegacy?"/api/sessions/current/continuation":"/api/sessions/current");
   if (!url) return stored;
-  const response = await fetch(url, browserRequestInit({ method: "GET", cache: "no-store" }));
+  const response = await fetch(url, browserRequestInit(nativeLegacy?{method:"POST",headers:{"content-type":"application/json","x-csrf-token":stored.csrfToken!},body:"{}",cache:"no-store"}:{ method: "GET", cache: "no-store" }));
   if (response.status === 401) return null;
   if (!response.ok) throw await platformRequestError(response);
   const authenticated = await response.json() as AuthenticatedSession;
@@ -105,6 +78,16 @@ export async function authenticateRestartedClinicianSession(stored: Authenticate
 /** A generation-bound public candidate is never authority: the current native
  * cookie must re-establish the same principal through the ordinary server path. */
 export async function resumeInterruptedNativeClinicianSession():Promise<AuthenticatedSession|null> {
+ if(isAndroidRuntime()) {
+  const generation=authenticationInstallationGeneration();
+  const result=await AndroidConnection.resumePersonalSession({connectionContext:nativeConnectionContext()});
+  assertAuthenticationInstallationGeneration(generation);
+  if(result.unavailable)return null;
+  if(result.session) {
+   storeClinicianSession(window.localStorage,result.session);
+   return result.session;
+  }
+ }
  const encoded=window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY);
  if(!encoded)return null;
  let hint:{generation:string;session:AuthenticatedSession};

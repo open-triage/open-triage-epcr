@@ -4,7 +4,7 @@ import type {AuthenticatedSession} from '@open-triage/contracts';
 import {apiRequestUrl,browserRequestInit} from './browser-api';
 import {platformRequestError} from './platform-errors';
 import {transitionInstallation} from './installation-transition';
-import {storeClinicianSession} from './clinician-session';
+import {storeClinicianSession} from './clinician-session-storage';
 import {storeAgencyHandoffSession} from './agency-session';
 import {resolveMessage} from './localization';
 const intentKey='open-triage.agency-handoff.intent.v1';

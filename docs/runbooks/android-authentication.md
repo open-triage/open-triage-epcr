@@ -8,6 +8,48 @@ Initial sign-in, explicit logout/user switching, session expiry/revocation,
 current capabilities, report ownership and recovery deadlines still apply.
 Installation-owner recovery retains the existing local policy.
 
+## Continuing a valid login after process loss
+
+WebView localStorage is public session metadata, not a durable authentication
+commit. Before reporting a successful local login or password replacement, the
+native connection saves the cookie and minimal continuation material in the
+same Keystore-encrypted connection envelope. OIDC completion and agency handoff
+completion preserve this boundary before acknowledging their native journals.
+The continuation contains the CSRF value and exact principal, agency, personal
+cookie hash, approved origin/CA hash and installation-cookie binding. It contains
+no cached roles, expiry extension, clinical keys or report payloads.
+
+If public metadata disappears at a cold start, the native connection first
+requires a compatible, unblocked current policy and a settled connection. It
+then validates the saved CSRF through a fresh protected server current-session
+request. Only that response supplies the current capabilities, expiry and
+personal authentication timestamp, and its principal and agency must still match
+the sealed binding. Matching management-policy adoption or restoration can
+continue the valid login. Pending enrollment, agency handoff, OIDC completion,
+replacement, stale connection contexts and conflicting policy cannot use this
+generic path. Explicit logout/new primary login clears the continuation before
+the request; cookie, trust or installation changes invalidate its binding.
+
+The actual agency acceptance deliberately deletes only public session/candidate
+metadata after a successful ordinary native login and before a cold restart,
+including before matching managed-policy adoption. The old protected ciphertext
+and recovery deadline remain under their original boundaries. Run the early
+`node --test tests/android-*.test.mjs`, native JVM tests and the complete emulator
+journey to cover this persistence boundary; a successful warm WebView login alone
+does not prove restart continuity.
+
+The generic read is `POST /api/sessions/current/continuation`, with the ordinary
+CSRF guard and the same limited-account metadata eligibility as `GET current`.
+The agency-handoff current endpoint retains its existing eligibility. Servers
+advertise `personal-session-continuation-v1`; new APK descriptors require it.
+Native checks the shared protocol/capability contract at initial pairing and
+before authentication or continuation, and checks a cross-host target before
+source-session revocation. An unsupported server shows localized upgrade
+guidance. Older immutable APK descriptors retain their original requirements.
+Native OIDC finish includes fresh public session metadata with first delivery
+and exact-cookie retry, so the cookie and continuation commit together before
+the separate pending-return journal is cleared.
+
 ## External browser and native return
 
 OIDC follows the external-user-agent model in
