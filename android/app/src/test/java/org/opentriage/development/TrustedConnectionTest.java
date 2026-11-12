@@ -102,6 +102,7 @@ public class TrustedConnectionTest {
                         if (line.toLowerCase().startsWith("if-none-match: ")) conditionalHeader = line.substring(15);
                     }
                     String extra = "", status = "200 OK";
+                    if (path.endsWith("agency-challenge")) extra = "Set-Cookie: open_triage_agency_handoff=challenge-secret; Path=/api/sessions/agency-handoff; Secure; HttpOnly; SameSite=Strict; Max-Age=90\r\n";
                     if (path.endsWith("pair")) extra = "Set-Cookie: open_triage_installation=installation-secret; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600\r\n";
                     if (path.endsWith("login")) extra = "Set-Cookie: open_triage_session=clinician-secret; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600\r\n";
                     if (path.endsWith("logout")) extra = "Set-Cookie: open_triage_session=; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=0\r\n";
@@ -131,6 +132,14 @@ public class TrustedConnectionTest {
         worker.setDaemon(true); worker.start();
         try {
             String origin = "https://localhost:" + server.getLocalPort();
+            var challengeOnly = new TrustedConnection(origin, ca());
+            challengeOnly.request("/api/sessions/agency-handoff/agency-challenge", "POST", new JSONObject().put("x-agency-handoff", "1"), "{}");
+            assertTrue(challengeOnly.request("/api/sessions/agency-handoff/consume", "POST", new JSONObject().put("x-agency-handoff", "1"), "{}").body().contains("open_triage_agency_handoff=challenge-secret"));
+            assertEquals(origin + "|null", challengeOnly.request("/api/health", "GET", new JSONObject(), null).body());
+            var restoredChallenge = TrustedConnection.restore(challengeOnly.saved());
+            assertEquals(origin + "|null", restoredChallenge.request("/api/health", "GET", new JSONObject(), null).body());
+            assertTrue(restoredChallenge.request("/api/sessions/agency-handoff/consume", "POST", new JSONObject().put("x-agency-handoff", "1"), "{}").body().contains("open_triage_agency_handoff=challenge-secret"));
+
             var first = new TrustedConnection(origin, ca());
             assertEquals(origin + "|null", first.request("/api/pair", "GET", new JSONObject(), null).body());
             assertEquals("16", first.requestBytes("/api/native-version", "GET", new JSONObject(), null, 16L).body());

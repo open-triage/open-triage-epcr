@@ -60,12 +60,17 @@ final class ConnectionVault {
     void write(TrustedConnection connection) throws Exception { writeState(connection, pending()); }
     void stage(TrustedConnection connection, JSONObject enrollment) throws Exception { writeState(connection, enrollment); }
     void promote(TrustedConnection connection) throws Exception { writeState(connection, null); }
-    private void writeState(TrustedConnection connection, JSONObject enrollment) throws Exception {
+    JSONObject pendingHandoff() throws Exception { var saved = readJson("encrypted"); return saved == null ? null : saved.optJSONObject("handoff"); }
+    void stageHandoff(TrustedConnection connection, JSONObject handoff) throws Exception { writeState(connection, pending(), handoff); }
+    void promoteHandoff(TrustedConnection connection) throws Exception { writeState(connection, null, null); }
+    private void writeState(TrustedConnection connection, JSONObject enrollment) throws Exception { writeState(connection, enrollment, pendingHandoff()); }
+    private void writeState(TrustedConnection connection, JSONObject enrollment, JSONObject handoff) throws Exception {
         JSONObject state = new JSONObject();
         String legacyScope = legacyStorageScope();
         if (legacyScope != null) state.put("legacyStorageScope", legacyScope);
         if (connection != null) state.put("connection", connection.saved());
         if (enrollment != null) state.put("enrollment", enrollment);
+        if (handoff != null) state.put("handoff", handoff);
         writeJson("encrypted", state);
     }
     JSONObject pendingAuthentication() throws Exception { return readJson("oidc-return"); }

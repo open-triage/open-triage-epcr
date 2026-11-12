@@ -8,6 +8,13 @@ final class AndroidUiInput {
     @FunctionalInterface interface Evaluate { String run(String script) throws Exception; }
     @FunctionalInterface interface WaitFor { void until(String expression) throws Exception; }
 
+    static void clickEnabled(Evaluate evaluate, WaitFor waitFor, String expression) throws Exception {
+        String ready = "(()=>{const button=(" + expression + ");return Boolean(button && button.isConnected && button.offsetParent!==null && !button.matches(':disabled') && button.getAttribute('aria-disabled')!=='true');})()";
+        waitFor.until(ready);
+        assertEquals("Click delivery must use the current visible enabled control", "true", evaluate.run(
+            "(()=>{const button=(" + expression + ");if(!button || !button.isConnected || button.offsetParent===null || button.matches(':disabled') || button.getAttribute('aria-disabled')==='true')return false;button.click();return true;})()"));
+    }
+
     static void importPairing(Evaluate evaluate, WaitFor waitFor, String artifact) throws Exception {
         String input = "document.querySelector('input[type=file]')";
         waitFor.until(input + " && !(" + input + ").matches(':disabled')");

@@ -61,6 +61,8 @@ public class NativeStartupTest {
     }
     @Test public void startupExcludesAppEmojiInitializerAndChecksFixtureFontProfile() throws Exception {
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertEquals("Instrumentation remains the ordinary installed application",context.getApplicationInfo().uid,android.os.Process.myUid());
+        assertTrue("Scoped adbd privileges never make the application root",android.os.Process.myUid()>=10000);
         try {
             var provider=context.getPackageManager().getProviderInfo(new ComponentName(context,"androidx.startup.InitializationProvider"),PackageManager.GET_META_DATA);
             assertTrue("Other local Startup initializers remain available",provider.metaData!=null);

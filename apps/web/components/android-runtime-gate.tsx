@@ -1,4 +1,5 @@
 "use client";
+import {clearAgencyHandoffCaches,storeAgencyHandoffSession} from "../app/agency-session";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AndroidConnection, configureNativeConnection, installAndroidTransport, isAndroidRuntime, type PairingPreview, type AndroidConnectionState } from "../app/android-runtime";
 import { MAX_PAIRING_BYTES, parseAndroidPairing } from "../app/android-pairing";
@@ -6,6 +7,7 @@ import { AndroidScanner, parseAndroidPairingQr, scannerFailureMessage } from "..
 import { clearProtectedRuntimeReports } from "../app/offline-reports";
 import { lockProtectedClinicalStorage } from "../app/protected-clinical-storage";
 import { resolveMessage } from "../app/localization";
+import {INSTALLATION_GENERATION_KEY} from "../app/installation-transition-generation";
 import { transitionInstallation, resumeNativeInstallationTransition, INSTALLATION_TRANSITION_KEY, INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { AndroidInstallationAction, ANDROID_REPLACE_INSTALLATION } from "./android-installation-action";
 import { installAndroidLifecycle } from "../app/android-lifecycle";
@@ -22,12 +24,12 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   const applyState = useCallback((state: AndroidConnectionState) => {
     if (!mounted.current) return;
     const previous = currentState.current;
-    const identity = (value: AndroidConnectionState | null) => JSON.stringify(value && [value.origin, value.connectionContext, value.replacementPending, value.configured, value.blocked, value.managed, value.managedStatus, value.managedContext, value.managedOrigin]);
+    const identity = (value: AndroidConnectionState | null) => JSON.stringify(value && [value.origin, value.connectionContext, value.replacementPending, value.handoffPending, value.handoffComplete, value.configured, value.blocked, value.managed, value.managedStatus, value.managedContext, value.managedOrigin]);
     if (identity(previous) !== identity(state)) revision.current++;
     configureNativeConnection(state);
     currentState.current = state;
-    const interrupted=state.configured&&!state.blocked&&!state.replacementPending&&Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY));
-    setConnection(state); setRecoveringTransition(interrupted); setReady(state.configured && !state.blocked&&!interrupted);
+    const interrupted=state.configured&&!state.blocked&&!state.replacementPending&&!state.handoffPending&&Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY));
+    setConnection(state); setRecoveringTransition(interrupted); setReady(state.configured && !state.blocked&&!state.handoffPending&&!interrupted);
     if (previous?.managedContext !== state.managedContext || state.blocked || previous?.replacementPending && !state.replacementPending) { setPreview(null); setConfirmed(false); setName(""); }
     if (state.blocked) {
       // Shared locking retains eligible ciphertext while removing readable work.
@@ -124,7 +126,23 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     {managedNotice}
     {connection?.blocked ? <><p role="alert" className="admin-error">{t(`android.managed.${["missing", "pending", "invalid", "changed"].includes(connection.managedStatus ?? "") ? connection.managedStatus : "unavailable"}`)}</p>{connection.managedStatus === "changed" && <AndroidInstallationAction language={language} />}</> : <>
     {error && <p role="alert" className="admin-error">{t(error)}</p>}
-    {connection.replacementPending ? <AndroidPendingEnrollment key={`${connection.connectionContext}:${connection.managedContext}`} state={connection} language={language} onState={applyState} /> : <>    {!preview ? <><button type="button" className="button-primary" data-pairing-scan disabled={busy} onClick={async () => {
+    {connection.handoffPending ? <><p role="alert">{t(connection.handoffComplete?"android.handoffComplete":"android.handoffInterrupted")}</p><button type="button" disabled={busy} onClick={async()=>{
+      setBusy(true);setError(null);const started=revision.current,context=currentState.current?.connectionContext;
+      let owned:string|null=null;
+      const sameGeneration=()=>owned===window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+      try {
+        const completed=await transitionInstallation(async()=>{
+          owned=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+          const state=await (connection.handoffComplete?AndroidConnection.resumeAgencyHandoff({connectionContext:context}):AndroidConnection.cancelAgencyHandoff({connectionContext:context}));
+          if(!sameGeneration()||!mounted.current||currentState.current?.blocked||revision.current!==started&&currentState.current?.connectionContext!==state.connectionContext)throw new Error("Agency context changed");
+          if(state.session)storeAgencyHandoffSession(state.session);else clearAgencyHandoffCaches();return state;
+        },'handoff');
+        if(!sameGeneration())throw new Error("Agency context changed");
+        const state=completed.handoffComplete?await AndroidConnection.acknowledgeAgencyHandoff({connectionContext:completed.connectionContext}):completed;
+        if(sameGeneration()&&mounted.current&&!currentState.current?.blocked&&(revision.current===started||currentState.current?.connectionContext===state.connectionContext)){applyState(state);window.location.reload();}
+      }
+      catch(failure){setError(failureMessage(failure));}finally{if(mounted.current)setBusy(false);}
+    }}>{t(connection.handoffComplete?"android.finishHandoff":"android.cancelHandoff")}</button></> : connection.replacementPending ? <AndroidPendingEnrollment key={`${connection.connectionContext}:${connection.managedContext}`} state={connection} language={language} onState={applyState} /> : <>    {!preview ? <><button type="button" className="button-primary" data-pairing-scan disabled={busy} onClick={async () => {
       setBusy(true); setError(null); const started = revision.current;
       try { const result = await AndroidScanner.scan(); if (!result.cancelled) await preparePairing(result.artifact, "scan", started); }
       catch (reason) { if (isCurrent(started)) setError(failureMessage(reason, "scan")); } finally { if (mounted.current) setBusy(false); }
