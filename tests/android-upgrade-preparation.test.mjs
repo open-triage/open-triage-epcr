@@ -5,11 +5,11 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
-import {upgradePreparationProfile} from '../scripts/android/upgrade-policy-fixture.mjs';
+import {upgradePreparationProfile,upgradePreparationReceipt} from '../scripts/android/upgrade-policy-fixture.mjs';
 import {assertUpgradeHarnessSource} from '../scripts/android/upgrade-harness-source.mjs';
 test('historical preparation binds the complete immutable published A1 descriptor',()=>{
  const a=structuredClone(catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
- assert.equal(upgradePreparationProfile(a),'historical-a1-camera-v1');
+ assert.equal(upgradePreparationProfile(a),'historical-a1-text-v1');
  for(const field of ['sourceCommit','apkSha256','certificateSha256'])assert.throws(()=>upgradePreparationProfile({...a,[field]:'a'.repeat(64)}),/exact immutable/);
  assert.throws(()=>upgradePreparationProfile({...a,applicationId:'org.attacker.app'}),/exact immutable/);
  for(const versionCode of [2,3,99])assert.equal(upgradePreparationProfile({...a,versionCode}),'current');
@@ -27,6 +27,9 @@ test('separate harness provenance rejects all production and unknown path change
 });
 test('actual Java profile selector rejects every non-A1/current/production/prepare boundary',()=>{
  const folder=mkdtempSync(join(tmpdir(),'android-upgrade-profile-'));
+ const origin=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ const replacement={...catalog.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3,sourceCommit:'c1e426a12d9dcc8541ec2090fb787fa6972b9dd1'};
+ const receipt=upgradePreparationReceipt(origin,replacement);
  const source=`package org.opentriage.development;
  public class ProfileBoundaries {
   static void denied(String profile,String app,long code,String phase,boolean upgrade) {
@@ -34,14 +37,29 @@ test('actual Java profile selector rejects every non-A1/current/production/prepa
    catch(IllegalArgumentException expected) {}
   }
   public static void main(String[]args) {
-   if(!HistoricalUpgradePreparation.enabled("historical-a1-camera-v1","org.opentriage.android",1,"prepare",true))throw new AssertionError();
+   if(!HistoricalUpgradePreparation.enabled("historical-a1-text-v1","org.opentriage.android",1,"prepare",true))throw new AssertionError();
    for(long version:new long[]{1,2,3})if(HistoricalUpgradePreparation.enabled("current","org.opentriage.android",version,"prepare",true))throw new AssertionError();
    denied("unknown","org.opentriage.android",1,"prepare",true);
-   denied("historical-a1-camera-v1","org.opentriage.development",1,"prepare",true);
-   for(long version:new long[]{0,2,3})denied("historical-a1-camera-v1","org.opentriage.android",version,"prepare",true);
-   for(String phase:new String[]{"offline","recover",null})denied("historical-a1-camera-v1","org.opentriage.android",1,phase,true);
-   denied("historical-a1-camera-v1","org.opentriage.android",1,"prepare",false);
+   denied("historical-a1-text-v1","org.opentriage.development",1,"prepare",true);
+   for(long version:new long[]{0,2,3})denied("historical-a1-text-v1","org.opentriage.android",version,"prepare",true);
+   for(String phase:new String[]{"offline","recover",null})denied("historical-a1-text-v1","org.opentriage.android",1,phase,true);
+   denied("historical-a1-text-v1","org.opentriage.android",1,"prepare",false);
+   String receipt=${JSON.stringify(receipt)};
+   if(!HistoricalUpgradePreparation.prepareReceipt("historical-a1-text-v1",receipt,"org.opentriage.android",1,"prepare",true).equals(receipt))throw new AssertionError();
+   if(!HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"recover",true))throw new AssertionError();
+   if(!HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"post-upgrade-photo",true))throw new AssertionError();
+   if(HistoricalUpgradePreparation.recovered("current","","","org.opentriage.development",1,"recover",false))throw new AssertionError();
+   for(int i=0;i<8;i++) {String[] parts=receipt.split("\\\\|",-1);parts[i]="invalid";String bad=String.join("|",parts);expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",bad,bad,"org.opentriage.android",3,"recover",true));}
+   expectDenied(()->HistoricalUpgradePreparation.prepareReceipt("current",receipt,"org.opentriage.android",1,"prepare",true));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1","",receipt,"org.opentriage.android",3,"recover",true));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",1,"recover",true));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",4,"recover",true));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.development",3,"recover",true));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"offline",true));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("historical-a1-text-v1",receipt,receipt,"org.opentriage.android",3,"recover",false));
+   expectDenied(()->HistoricalUpgradePreparation.recovered("current",receipt,receipt,"org.opentriage.android",3,"recover",true));
   }
+  static void expectDenied(Runnable action) {try {action.run();throw new AssertionError("invalid receipt accepted");}catch(IllegalArgumentException expected){}}
  }`;
  try{
   const harness=join(folder,'ProfileBoundaries.java');writeFileSync(harness,source);

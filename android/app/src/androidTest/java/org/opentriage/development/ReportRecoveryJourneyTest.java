@@ -85,6 +85,9 @@ public class ReportRecoveryJourneyTest {
         waitFor("window.__serverVerified!==null"); assertEquals("true", evaluate("window.__serverVerified"));
         waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
     }
+    private void observeNativeLifecycle() throws Exception {
+        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;window.__backgroundPaths?.push(url)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+    }
     private void photoOfflineCapture() throws Exception {
         click("Mobile");
         click("Add photo note");
@@ -99,30 +102,17 @@ public class ReportRecoveryJourneyTest {
         assertNotNull("Retry must permit actual camera permission grant", granted); granted.click();
         // Prove granted permission reaches the real WebView camera before substituting synthetic pixels.
         waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
-        var args=InstrumentationRegistry.getArguments();
-        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        boolean historical=HistoricalUpgradePreparation.enabled(args.getString("preparationProfile","current"),context.getPackageName(),
-            context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),args.getString("phase"),"1".equals(args.getString("upgrade")));
-        if (!historical) {
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(300);
         assertEquals("Native pause stops the actual camera track", "true", evaluate("Array.from(document.querySelector('.photo-note-dialog video').srcObject.getTracks()).every(track=>track.readyState==='ended')"));
         activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("Array.from(document.querySelector('.photo-note-dialog video')?.srcObject?.getTracks()??[]).some(track=>track.readyState==='live')");
-        }
         stageSyntheticPhoto("ANDROID-PHOTO-RESUME-SYNTHETIC");
-        if (historical) {
-            // A1 supports encrypted photo capture/sync but predates native photo pause handling.
-            connection(true);
-            var profile=new android.os.Bundle();profile.putString("opentriage_upgrade_preparation_profile","historical-a1-camera-v1");
-            InstrumentationRegistry.getInstrumentation().sendStatus(0,profile);
-        } else {
         evaluate("window.__backgroundRequests=0;window.__backgroundPaths=[]");
         activity.moveToState(Lifecycle.State.CREATED);
         waitFor("window.__nativeActive===false");
         connection(true); Thread.sleep(1200);
         assertEquals("Paused reconnect must not start new API traffic: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
         activity.moveToState(Lifecycle.State.RESUMED);
-        }
         verifyCanonicalPhoto("ANDROID-PHOTO-RESUME-SYNTHETIC");
         connection(false); click("Mobile"); click("Add photo note");
         waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
@@ -177,6 +167,10 @@ public class ReportRecoveryJourneyTest {
         var editor = context.getSharedPreferences("release-upgrade-acceptance", android.content.Context.MODE_PRIVATE).edit();
         editor.putString("connection", connectionIdentity()).putString("ciphertext", retainedDigest()).putInt("uid", context.getApplicationInfo().uid)
             .putString("presentation", evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
+        var args=InstrumentationRegistry.getArguments();
+        editor.putString("historicalReceipt",HistoricalUpgradePreparation.prepareReceipt(args.getString("preparationProfile","current"),
+            args.getString("upgradeReceipt",""),context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),
+            args.getString("phase"),"1".equals(args.getString("upgrade"))));
         assertTrue(editor.commit());
     }
     private java.util.List<String> publicCertificateIdentities(String pem) throws Exception {
@@ -227,7 +221,7 @@ public class ReportRecoveryJourneyTest {
             assertFalse("Remote web deployment cannot replace APK UI after reload", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
             assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
         }
-        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;window.__backgroundPaths?.push(url)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+        observeNativeLifecycle();
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("window.__nativeEvents.includes(false) && window.__nativeEvents.includes(true) && window.__assignedReads>0");
         assertEquals("No new API drains while the native activity is paused", "0", evaluate("window.__backgroundRequests"));
@@ -250,7 +244,17 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
         connection(true); serverValue("ANDROID-RECONNECTED-SYNTHETIC");
         assertEquals(JSONObject.quote("ANDROID-RECONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
-        connection(false); photoOfflineCapture(); records();
+        connection(false);
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String historicalReceipt=HistoricalUpgradePreparation.prepareReceipt(args.getString("preparationProfile","current"),
+            args.getString("upgradeReceipt",""),context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),
+            args.getString("phase"),"1".equals(args.getString("upgrade")));
+        if (historicalReceipt.isEmpty()) photoOfflineCapture();
+        else {
+            var profile=new android.os.Bundle();profile.putString("opentriage_upgrade_preparation_profile","historical-a1-text-v1");
+            InstrumentationRegistry.getInstrumentation().sendStatus(0,profile);
+        }
+        records();
         evaluate("window.__beforeRetainedRevision=window.__retained[0].ciphertextRevision");
         setInput(FIELD, RETAINED);
         waitFor("document.querySelector('.sync-status')?.textContent==='Pending sync'");
@@ -312,8 +316,28 @@ public class ReportRecoveryJourneyTest {
         evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
         if (!"true".equals(evaluate("Boolean(" + FIELD + ")"))) click("Stationary");
         waitFor("(" + FIELD + ")?.value==='" + RETAINED + "'"); serverValue(RETAINED);
-        verifyRecoveredPhoto();
+        if (!historicalRecovery("recover")) verifyRecoveredPhoto();
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
+    }
+    private boolean historicalRecovery(String phase) throws Exception {
+        var args=InstrumentationRegistry.getArguments();
+        var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String saved=context.getSharedPreferences("release-upgrade-acceptance",android.content.Context.MODE_PRIVATE).getString("historicalReceipt","");
+        return HistoricalUpgradePreparation.recovered(args.getString("originPreparationProfile","current"),saved,args.getString("upgradeReceipt",""),
+            context.getPackageName(),context.getPackageManager().getPackageInfo(context.getPackageName(),0).getLongVersionCode(),phase,"1".equals(args.getString("upgrade")));
+    }
+    private void postUpgradePhoto() throws Exception {
+        assertTrue("New media acceptance requires the exact retained A1-to-B receipt",historicalRecovery("post-upgrade-photo"));
+        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+        click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+        evaluate("window.__reportId=document.querySelector('.active-report-notice').dataset.reportId");
+        if (!"true".equals(evaluate("Boolean("+FIELD+")"))) click("Stationary");
+        waitFor("("+FIELD+")?.value==='"+RETAINED+"'");
+        observeNativeLifecycle();
+        connection(false);photoOfflineCapture();connection(true);verifyRecoveredPhoto();
+        assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
+        var proof=new android.os.Bundle();proof.putString("opentriage_upgrade_current_media","real-B-photo-permission-pause-offline-bytes-canonical");
+        InstrumentationRegistry.getInstrumentation().sendStatus(0,proof);
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
@@ -389,6 +413,7 @@ public class ReportRecoveryJourneyTest {
             case "resume-reassignment": resumeReassignment(); activity.close(); break;
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
+            case "post-upgrade-photo": postUpgradePhoto(); activity.close(); break;
             default: fail("Host must supply a recovery phase");
         }
     }

@@ -1,4 +1,4 @@
-import {upgradePreparationProfile} from './android/upgrade-policy-fixture.mjs';
+import {upgradePreparationProfile,upgradePreparationReceipt} from './android/upgrade-policy-fixture.mjs';
 import {assertUpgradeHarnessSource} from './android/upgrade-harness-source.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChildren } from './android/fixture-processes.mjs';
@@ -25,7 +25,7 @@ const testSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encodin
 assert.equal(execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim(),'','Upgrade acceptance requires clean committed test source');
 const changedPaths=execFileSync('git',['diff','--name-only',`${b.sourceCommit}..${testSourceCommit}`],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(Boolean);
 assertUpgradeHarnessSource({artifactSource:b.sourceCommit,testSource:testSourceCommit,changedPaths});
-const preparationProfile=upgradePreparationProfile(a);
+const preparationProfile=upgradePreparationProfile(a),upgradeReceipt=upgradePreparationReceipt(a,b);
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT, adb = join(sdk, 'platform-tools/adb');
 const serial = process.env.ANDROID_SERIAL ?? 'emulator-5554';
 function run(command, args, env = process.env) {
@@ -72,8 +72,10 @@ try {
     const output=execFileSync(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','class','org.opentriage.development.UpgradePolicyTransportTest','-e','expectedVersion',String(version),'-e','assignmentId',incomingAssignment,'-e','expectedStatus',String(expectedStatus),'-e','legacy',legacy?'1':'0',`${a.applicationId}.test/androidx.test.runner.AndroidJUnitRunner`],{cwd:root,encoding:'utf8',timeout:120000});
     console.log(output);assert.match(output,/OK \(1 test\)/,'Real installed APK transport must enforce retirement without launching or modifying the pending WebView');
   };
-  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true, preparationProfile,
-    hooks:{afterOfflineStartup:async output=>{await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(output)?.[1]);},beforeProcessKill:async({db,report,opened,ca})=>{
+  await runReportRecoveryJourney({ root, fixture: fixtures[0], adb, serial, run, api, applicationId: 'org.opentriage.android', upgrade: true, preparationProfile, upgradeReceipt,
+    hooks:{afterRecovery:async({instrument})=>{
+      if(preparationProfile==='historical-a1-text-v1')instrument('post-upgrade-photo',fixtures[0].clinician.username,fixtures[0].clinicianPassword);
+    },afterOfflineStartup:async output=>{await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(output)?.[1]);},beforeProcessKill:async({db,report,opened,ca})=>{
       upgradeReport={...report,id:opened.id};
       incomingAssignment=randomUUID();const incident=randomUUID();
       await db.query(`insert into clinical.incident(id,organization_id,synthetic) select $1,organization_id,synthetic from clinical.incident where id=$2`,[incident,report.incidentId]);

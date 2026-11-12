@@ -28,10 +28,20 @@ export async function upgradePolicyFixture(input) {
  },fetcher:async target=>{assert.equal(String(target),url,'Fixture verifies only exact approved replacement bytes');return new Response(bytes,{headers:{'content-length':String(bytes.length)}});}};
 }
 
-/** Only the immutable published A1 predates native photo pause handling. */
+/** Only the immutable published A1 predates byte transport and native photo handling. */
 export function upgradePreparationProfile(descriptor) {
  if(descriptor.versionCode!==1)return 'current';
  const original=catalog.releases.find(entry=>entry.tag==='android-candidate-1-0.1.0-rc.1');
  assert.deepEqual(descriptor,original?.descriptor,'Historical preparation requires the exact immutable published A1 descriptor');
- return 'historical-a1-camera-v1';
+ return 'historical-a1-text-v1';
+}
+
+export function upgradePreparationReceipt(a,b) {
+ const profile=upgradePreparationProfile(a);
+ if(profile==='current')return '';
+ assert.equal(b.applicationId,a.applicationId);assert.equal(b.certificateSha256,a.certificateSha256);
+ assert(Number.isSafeInteger(b.versionCode)&&b.versionCode>a.versionCode);
+ assert.match(b.sourceCommit,/^[a-f0-9]{40}$/);assert.match(b.apkSha256,/^[a-f0-9]{64}$/);
+ const approved=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ return [profile,createHash('sha256').update(JSON.stringify(approved)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256,b.versionCode,b.sourceCommit,b.apkSha256].join('|');
 }
