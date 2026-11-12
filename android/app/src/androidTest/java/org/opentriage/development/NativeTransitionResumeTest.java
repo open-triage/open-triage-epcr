@@ -51,6 +51,12 @@ public class NativeTransitionResumeTest {
    try(var activity=ActivityScenario.launch(MainActivity.class)){
     waitFor(activity,"Boolean(window.Capacitor?.nativePromise)");evaluate(activity,"window.__nativeState=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(value=>window.__nativeState=value)");waitFor(activity,"Boolean(window.__nativeState)");
     String before=prefs.getString("encrypted",null);rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.error)"));assertEquals(before,prefs.getString("encrypted",null));assertEquals(pending.toString(),vault.pending().toString());assertNotNull(vault.pendingAuthentication());
+   }
+   JSONObject handoff=new JSONObject().put("phase","prepared").put("context","pending-context");
+   vault.promoteHandoff(TrustedConnection.restore(saved));vault.stageHandoff(TrustedConnection.restore(saved),handoff);vault.pendingAuthentication(new JSONObject().put("secret","must-remain-handoff"));assertNull(vault.pending());
+   try(var activity=ActivityScenario.launch(MainActivity.class)){
+    waitFor(activity,"Boolean(window.Capacitor?.nativePromise)");evaluate(activity,"window.__nativeState=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(value=>window.__nativeState=value)");waitFor(activity,"Boolean(window.__nativeState)");
+    String before=prefs.getString("encrypted",null);rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.error)"));assertEquals(before,prefs.getString("encrypted",null));assertEquals(handoff.toString(),vault.pendingHandoff().toString());assertNull(vault.pending());assertNotNull(vault.pendingAuthentication());
     evaluate(activity,"localStorage.removeItem('open-triage.installation-transition.v1');localStorage.removeItem('open-triage.installation-generation.v1')");
    }
   }finally{prefs.edit().clear().commit();}

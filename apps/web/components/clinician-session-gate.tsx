@@ -1,13 +1,13 @@
 "use client";
+import { isAndroidRuntime } from "../app/android-runtime";
 import { AndroidApkLink } from "./android-apk-link";
 import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
 import { useAndroidBack } from "./use-android-back";
 import { AndroidInstallationAction } from "./android-installation-action";
-import { isAndroidRuntime } from "../app/android-runtime";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
-import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration } from "../app/installation-transition-generation";
+import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration, INSTALLATION_GENERATION_KEY } from "../app/installation-transition-generation";
 import { participateInInstallationTransition,transitionInstallation, INSTALLATION_TRANSITION_KEY,INSTALLATION_TRANSITION_EVENT,INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { PlatformRequestError } from "../app/platform-errors";
 
@@ -39,7 +39,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration, INSTALLATION_CONFIGURATION_STORAGE_KEY } from "../app/installation-settings";
-import {startAgencyHandoff,resumeAgencyHandoff} from "../app/agency-handoff";
+import {startAgencyHandoff,resumeAgencyHandoff,switchAndroidAgency} from "../app/agency-handoff";
 import { switchAgency } from "../app/agencies";
 import { availableUiLanguages, resolveMessage, resolveErrorMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
@@ -455,21 +455,32 @@ export function ClinicianSessionGate({ children }: {
 
   async function changeAgency(id: string) {
     if (!authenticatedSession || !online) throw new Error(t("admin.connectToSwitchAgencies"));
-    if (activeReport || openingCall || protectedLogoutSummary().pendingReportCount > 0) {
+    if (activeReport || openingCall) {
       throw new Error(t("admin.closeReportsToSwitchAgencies"));
     }
     if (!confirmDiscardChanges(unsavedEditors.current.size > 0)) return;
     if(authenticatedSession.installationSuperadmin&&!("homeOrganizationId" in authenticatedSession&&authenticatedSession.homeOrganizationId)){
-      if(await startAgencyHandoff(id,sessionRequestToken(authenticatedSession)))return;
+      if(await startAgencyHandoff(id,sessionRequestToken(authenticatedSession),authenticatedSession))return;
     }
-    await lockProtectedClinicalStorage();
-    const changed = await switchAgency(sessionRequestToken(authenticatedSession), id);
-    clearProtectedRuntimeReports();
-    clearFeedbackTelemetry();
-    window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
-    storeClinicianSession(window.localStorage, { ...changed, csrfToken: authenticatedSession.csrfToken });
-    // Recreate all workspaces and in-memory caches at the new agency boundary.
-    window.location.reload();
+    if (isAndroidRuntime()) { await switchAndroidAgency(id,sessionRequestToken(authenticatedSession),authenticatedSession); return; }
+    let ownedGeneration=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+    try {
+      await transitionInstallation(async()=>{
+        ownedGeneration=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+        const changed = await switchAgency(sessionRequestToken(authenticatedSession), id);
+        if(ownedGeneration!==window.localStorage.getItem(INSTALLATION_GENERATION_KEY))throw new Error(t("admin.agencyOpenFailed"));
+        clearFeedbackTelemetry();
+        window.localStorage.removeItem(INSTALLATION_CONFIGURATION_STORAGE_KEY);
+        storeClinicianSession(window.localStorage, { ...changed, csrfToken: changed.csrfToken ?? authenticatedSession.csrfToken });
+      },'handoff');
+    } catch(reason) {
+      // Startup rechecks the unchanged cookie; denial does not demand a new login.
+      if(ownedGeneration===window.localStorage.getItem(INSTALLATION_GENERATION_KEY))storeClinicianSession(window.localStorage,authenticatedSession);
+      throw reason;
+    } finally {
+      // Recreate all workspaces and in-memory caches at the agency boundary.
+      if(ownedGeneration===window.localStorage.getItem(INSTALLATION_GENERATION_KEY))window.location.reload();
+    }
   }
 
   function logoutDialogKeys(event: KeyboardEvent<HTMLElement>) {

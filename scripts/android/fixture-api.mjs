@@ -123,6 +123,34 @@ app.use((request, response, next) => {
   }
   next();
 });
+// Test-only, bounded write outage and non-secret origin/cookie-presence evidence.
+const agencyOutages=new Set(),agencyObservations=[];
+let holdNextAgencyConsume=false;
+app.use((request,response,next)=>{
+ const path=request.url.split('?',1)[0];
+ if(path==='/api/__android-agency-consume-hold'&&request.method==='POST'){holdNextAgencyConsume=true;return response.json({armed:true});}
+ if(path==='/api/sessions/agency-handoff/consume'&&request.method==='POST'&&holdNextAgencyConsume){
+  const end=response.end;
+  response.end=function(chunk,...args){
+   if(this.statusCode>=200&&this.statusCode<300&&chunk){
+    holdNextAgencyConsume=false;this.write(Buffer.from(chunk).subarray(0,5));
+    const timeout=setTimeout(()=>request.socket.destroy(),45000);request.socket.once('close',()=>clearTimeout(timeout));return this;
+   }
+   return end.call(this,chunk,...args);
+  };
+ }
+ if(path==='/api/__android-agency-observations'&&request.method==='GET')return response.json({requests:agencyObservations});
+ if(path==='/api/__android-agency-write-outage'&&request.method==='POST'){
+  let raw='';request.on('data',chunk=>{raw+=chunk;if(raw.length>1024)request.destroy();});
+  request.on('end',()=>{try{const body=JSON.parse(raw);if(typeof body.reportId!=='string'||!/^[a-f0-9-]{36}$/.test(body.reportId)||typeof body.enabled!=='boolean')throw Error();
+   if(body.enabled){if(agencyOutages.size>=4&&!agencyOutages.has(body.reportId))throw Error();agencyOutages.add(body.reportId);}else agencyOutages.delete(body.reportId);response.json({enabled:agencyOutages.has(body.reportId)});
+  }catch{response.status(400).json({error:'invalid fixture control'});}});return;
+ }
+ const report=/^\/api\/reports\/([a-f0-9-]{36})\/draft-changes$/.exec(path);
+ if(report&&request.method==='POST'&&agencyOutages.has(report[1]))return response.status(503).json({code:'reports.saveUnavailable'});
+ if(path.startsWith('/api/sessions/agency-handoff/')&&agencyObservations.length<128)agencyObservations.push({stage:path.split('/').at(-1),origin:request.headers.origin,personal:request.headers.cookie?.includes('open_triage_session=')===true,installation:request.headers.cookie?.includes('open_triage_installation=')===true,challenge:request.headers.cookie?.includes('open_triage_agency_handoff=')===true});
+ next();
+});
 let nativeAuthenticationRequests=0;
 app.use((request,response,next)=>{
   if(request.url==='/api/__android-native-authentication-count'&&request.method==='GET')return response.json({count:nativeAuthenticationRequests});

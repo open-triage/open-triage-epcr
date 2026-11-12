@@ -404,6 +404,49 @@ The old Google-APIs emulator fixture ships WebView109, whose default font prefet
 
 This fixture control uses Chromium's [documented userdebug command line](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/docs/commandline-flags.md) and the two entries in its [supported feature list](https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/java/src/org/chromium/android_webview/common/ProductionSupportedFlagList.java). It does not establish stock production WebView/GMS behavior: physical-device and regional-provider acceptance remains ticket019. Failed tests are never retried automatically. Failure artifacts also record provider exit reasons and package events so an external provider update/death is distinguishable from a Java assertion, app crash or emulator-host death.
 
+## Android agency acceptance
+
+The complete default `npm run android:test` journey includes the two-origin
+agency handoff after ordinary protected-work and managed-configuration coverage,
+before native OIDC. For focused diagnosis only, build the API and APK and run
+`npm run android:test -- --skip-build --agency-only`. This does not replace the
+complete default acceptance gate.
+
+Before the emulator run or whole preflight, run the handoff and existing minimal
+native-runtime consumers against the production web build. This catches shared
+runtime-gate imports and native mock contract regressions at the earlier browser
+stage (and includes the server-mode agency header):
+
+```sh
+npm run test:deployment -w @open-triage/web -- android-agency-handoff.spec.ts android-managed-config.spec.ts android-audio-layout.spec.ts android-reassignment.spec.ts session-agency-header.spec.ts
+```
+
+The command builds the API before starting its browser fixture; run it before
+native fixtures start using `apps/api/dist`, never concurrently with them.
+
+The fixture uses two real HTTPS API processes sharing one disposable database.
+A registered `https://127.0.0.1` target is reached through a temporary ADB
+reverse from device port 443 to the existing host fixture port 9444, with the
+normal loopback IP certificate SAN and approved private CA. Packaged WebView
+assets remain at the virtual `https://localhost` asset origin: Java
+HTTPS requests reach the API, while WebView navigation reloads only bundled
+assets. The original reverse map is captured and restored exactly. No new
+container proxy, hostname verifier or trust bypass is installed.
+
+The ordinary synthetic clinician creates genuine protected pending work before
+logging out. A separately authenticated, already eligible installation superuser
+cannot read that clinician's report, and performs the agency transition without
+acquiring its author/unit/agency or original device credential. The test exercises
+an untrusted target CA before source issuance, an actual live-process kill after
+private preparation, cancellation preserving a still-valid source login, a
+a consume response body interrupted after real target cookie headers without replay,
+a completed promotion held before JavaScript delivery with an orphan handoff marker,
+bundled restart and validated completion without sign-in, explicit original pairing and original
+clinician recovery at the fixed deadline, and managed-origin conflict before any
+target request. A bounded fixture-only 503 response holds the synthetic report's
+draft writes; all authentication, handoff and protected receipt/key requests use
+the real API. This fixture behavior is absent from the production API entry point.
+
 Native plugin responses and listener events use `LifecycleBoundPlugin`: settlement runs on the UI thread, checks the owning WebView at execution, and closes before worker cancellation when the Activity is destroyed. An ordinary pause keeps pending replies valid. This avoids Chromium109's `JsReplyProxy` worker-to-UI race, where destruction can clear the pointer between its initial check and deferred native call. Network authorization and durable pending-work outcomes keep their existing boundaries.
 
 The early Android tests compile the actual reply gate and reproduce the original queue/pointer race before checking live and destroyed delivery. The current-APK startup instrumentation includes `NativeReplyLifecycleTest`: an instrumentation-only plugin registers on the real MainActivity before creation, holds success/error/events until after close, verifies callback disposal, and proves pause/resume and replacement-Activity live delivery. It adds no production bridge endpoint and does not alter immutable upgrade-candidate instrumentation.
@@ -457,8 +500,8 @@ the visible failure and explicit Retry path, verifies a fresh authorized load
 and a new renderer, and checks the page count after recovery. It also uses the real system document picker to
 save fresh authorized synthetic bytes, checks that an explicit download survives
 private preview cleanup, then genuinely selects it again with Open Document in
-the separate test APK. That consumer checks the exact URI/document identity,
-filename, length and fresh-byte hash before deleting only the test export under
+the separate test APK. That consumer checks the granted provider and selected document metadata,
+unique filename, type, exact length and fresh-byte hash before deleting only the test export under
 its live user grant. Read and cleanup failures are reported independently. A real
 picker/held-worker Back case proves immediate revocation and deletion before
 releasing the destination grant. It cancels the picker
@@ -468,3 +511,20 @@ The early `node --test tests/android-pdf.test.mjs tests/android-live-instrumenta
 checks reject incomplete/crashed instrumentation and a preparation process that
 exits before the host-kill checkpoint. Native JVM tests cover PDF route/byte and
 authority bounds, cancellation races and partial-export cleanup.
+
+### Canonical HTTPS handoff fixture routing
+
+The agency fixture uses registered `https://127.0.0.1` with strict private-CA and
+hostname validation. Its temporary reverse listener therefore needs device port
+443. On an explicitly leased disposable emulator, opt in with
+`OPEN_TRIAGE_ANDROID_ALLOW_SCOPED_ADBD_ROOT=1 npm run android:test -- --skip-build`.
+The Android workflow supplies this opt-in for its disposable Google APIs image.
+The helper rejects physical/non-debuggable/production devices, probes the bind
+before Docker/database/app mutation and elevates only adbd when permission is
+required. Existing reverse listeners must be released before a daemon restart.
+The installed app remains its ordinary Android UID; startup instrumentation proves
+that it is not root. No TLS checks, CA stores or application permissions change.
+Cleanup restores the exact original port-443 mapping and daemon UID, with bounded
+reconnection and verification; restoration failure fails acceptance. Focused
+`--agency-only` uses the same guard. Early fake-ADB regressions run with
+`node --test tests/android-scoped-adbd-root.test.mjs tests/android-scoped-reverse.test.mjs`.
