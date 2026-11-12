@@ -177,9 +177,9 @@ export class AndroidUpgradePolicyService {
 export async function prepareAndroidNewWork(policy: AndroidUpgradePolicyService | undefined, token: string) {
   const version = agencyRequest.getStore()?.androidVersion;
   if (!policy) {
-    // Isolated legacy service tests may omit the provider; production modules
-    // explicitly import/export it. A declared Android request still fails closed.
-    if (version !== undefined || agencyRequest.getStore()?.legacyAndroid) throw new ServiceUnavailableException({ code: "android.policyOnlineRequired" });
+    // Only direct service calls without an HTTP context retain the legacy
+    // constructor contract. Every real request requires the policy provider.
+    if (agencyRequest.getStore() !== undefined) throw new ServiceUnavailableException({ code: "android.policyOnlineRequired" });
     return async (_manager: EntityManager) => () => {};
   }
   return policy.prepareNewWork(version, token);

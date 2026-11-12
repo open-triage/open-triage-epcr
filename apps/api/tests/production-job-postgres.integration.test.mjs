@@ -1,3 +1,4 @@
+import {androidUpgradePolicyFixture} from './fixtures/android-upgrade-policy.mjs';
 import {AndroidUpgradePolicyService} from '../dist/admin/android-upgrade-policy.service.js';
 import {AndroidReleaseService} from '../dist/admin/android-release.service.js';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
@@ -40,7 +41,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const directory=new AgencyDirectoryService(db);
  const agencies={allowsOrigin:async x=>x===origin,forLogin:async()=>({id:scope,name:'Fictional job agency',shift_session_duration_hours:12}),accessible:(...args)=>directory.accessible(...args)};
  const sessions=new ClinicianSessionService(db,agencies),schedules=new SchedulesService(db,sessions);
- const calls=new AssignedCallsService(db,sessions,schedules),reports=new DraftReportService(db,sessions,schedules);
+ const calls=new AssignedCallsService(db,sessions,schedules, androidUpgradePolicyFixture(db,sessions)),reports=new DraftReportService(db,sessions,schedules, androidUpgradePolicyFixture(db,sessions));
  const administrative={requireCapability:async()=>({organization:{id:scope},user:{id:SYNTHETIC_DEMO_FIXTURE.userId}})};
  const enrollment=new InstallationEnrollmentService(db,administrative,agencies);
  const scheduleAdmin=new SchedulesService(db,administrative);
@@ -158,7 +159,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
   try{return await schedules.evaluateUnit(manager,organizationId,unitId);}
   catch(error){if(error.code==='40001')serializationFailures++;throw error;}
  };
- const racingReports=new DraftReportService(db,sessions,racingSchedules);
+ const racingReports=new DraftReportService(db,sessions,racingSchedules, androidUpgradePolicyFixture(db,sessions));
  await run(binding.credential,()=>racingReports.create(paired.sessionToken,standalone));
  assert.equal(serializationFailures,1,'the fixture must cause a real PostgreSQL serialization failure');
  assert.equal(evaluations,3,'the whole creation transaction retries and rechecks schedule access before commit');
@@ -177,7 +178,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
    throw error;
   }
  };
- await assert.rejects(run(binding.credential,()=>new DraftReportService(db,sessions,revokedSchedules).create(revokedLogin.sessionToken,revokedCommand)),error=>error.getStatus?.()===401);
+ await assert.rejects(run(binding.credential,()=>new DraftReportService(db,sessions,revokedSchedules, androidUpgradePolicyFixture(db,sessions)).create(revokedLogin.sessionToken,revokedCommand)),error=>error.getStatus?.()===401);
  assert.equal(serializationFailures,2);
  assert.equal((await admin.query('select count(*)::int n from clinical.report where id=$1',[revokedCommand.reportId])).rows[0].n,0);
  assert.equal((await admin.query('select count(*)::int n from clinical.command_receipt where idempotency_key=$1',[revokedCommand.commandId])).rows[0].n,0);
@@ -201,7 +202,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
   if(initial){initial=false;await admin.query(`update app_identity.user_role_assignment a set ended_at=clock_timestamp(),ended_by=$3 from app_identity.role r
     where a.role_id=r.id and a.user_id=$1 and a.organization_id=$2 and r.system_key in ('clinical-demo','demo') and a.ended_at is null`,[user,agency,SYNTHETIC_DEMO_FIXTURE.userId]);}
   return result;}};
- const changingCalls=new AssignedCallsService(db,changingSession,schedules);
+ const changingCalls=new AssignedCallsService(db,changingSession,schedules, androidUpgradePolicyFixture(db,changingSession));
  const afterWithdrawal=await run(binding.credential,()=>changingCalls.list(paired.sessionToken));
  assert.ok(!afterWithdrawal.assignedCalls.some(x=>x.id===generated.assignment.id));
  assert.ok(afterWithdrawal.assignedCalls.every(x=>x.unit.id===firstUnit));
@@ -238,7 +239,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  assert.equal((await open(shiftBinding,shiftLogin,shiftJob)).report.id,shiftOpened.report.id);
  let crossingAt=checkpoint.getTime()-1;
  const crossingSchedules=new SchedulesService(db,sessions);crossingSchedules.now=async()=>crossingAt;
- const crossingCalls=new AssignedCallsService(db,sessions,crossingSchedules);
+ const crossingCalls=new AssignedCallsService(db,sessions,crossingSchedules, androidUpgradePolicyFixture(db,sessions));
  assert.equal((await run(shiftBinding.credential,()=>crossingCalls.list(shiftLogin.sessionToken))).productionAccess.state,'ready');
  assert.equal(await run(shiftBinding.credential,()=>crossingCalls.prepareConfirmation(shiftLogin.sessionToken,shiftLogin.session.csrfToken,`assignment:${shiftJob}`)),null);
  const crossing=await dispatch(shiftUnit);
@@ -246,7 +247,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  const crossingWait=run(shiftBinding.credential,()=>crossingCalls.open(shiftLogin.sessionToken,crossing));
  await waitForAssignmentLock();crossingAt=checkpoint.getTime();await admin.query('commit');
  assert.ok((await crossingWait).report.id,'crossing the checkpoint retains valid-login authority');
- const crossingReports=new DraftReportService(db,sessions,crossingSchedules);
+ const crossingReports=new DraftReportService(db,sessions,crossingSchedules, androidUpgradePolicyFixture(db,sessions));
  await run(shiftBinding.credential,()=>crossingReports.create(shiftLogin.sessionToken,{...standalone,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()}));
  assert.deepEqual((await admin.query("select personally_authenticated_at,reauthenticated_at,expires_at from app_identity.app_session where token_sha256=encode(sha256($1::bytea),'hex')",[Buffer.from(shiftLogin.sessionToken)])).rows[0],beforeContinue,'new work never fabricates proof or renews session expiry');
  // Session expiry still wins while a creation waits at the domain boundary.

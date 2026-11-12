@@ -125,7 +125,7 @@ export function ClinicianSessionGate({ children }: {
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
   const foreground = useNativeForeground();
-  const androidUpgrade = useAndroidUpgradePolicy(session ? `${session.organization.id}:${session.user.id}:${authenticationInstallationGeneration()}` : "", !!session && online && foreground);
+  const androidUpgrade = useAndroidUpgradePolicy(session ? `${session.organization.id}:${session.user.id}` : "", !!session && online && foreground && !transitionPending);
   const attentionSessionKey = session ? `${session.organization.id}:${session.user.id}:${session.capabilities?.join(",")}` : "";
   const [storedReviewAttention, setStoredReviewAttention] = useState<{
     key: string; value: ReviewAttentionResponse } | null>(null);

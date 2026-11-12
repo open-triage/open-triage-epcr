@@ -19,17 +19,19 @@ test.beforeAll(async()=>{
 });
 async function cipher(page:Page){return page.evaluate(async()=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('open-triage-protected-clinical-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});try{return await new Promise<unknown[]>((resolve,reject)=>{const r=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();r.onsuccess=()=>resolve(r.result.map(v=>({revision:v.ciphertextRevision,nonce:[...new Uint8Array(v.nonce)],ciphertext:[...new Uint8Array(v.ciphertext)]})));r.onerror=()=>reject(r.error);});}finally{db.close();}});}
 for(const language of ['en','sv'])test(`Android retirement gates new work without replacing active documentation (${language})`,async({page},testInfo)=>{
- let status='compatible',policyReads=0,saves=0,reauth=0,isOpen=false,recoveryHandle='',reportKeyBase64='',consumed=0,createdKeys=0;
+ let status='compatible',policyReads=0,saves=0,reauth=0,isOpen=false,recoveryHandle='',reportKeyBase64='',consumed=0,createdKeys=0,ended=false,holdPolicy=false,policyHeld=false,releasePolicy=()=>{};
+ const pageErrors:string[]=[];page.on('pageerror',error=>pageErrors.push(error.message));
  await page.setViewportSize({width:390,height:844});
  await page.addInitScript(value=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(value)),session);
  await page.route('**/__upgrade-gate',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${script}</script></body></html>`}));
  await page.route('**/api/**',async route=>{
   const url=new URL(route.request().url());
   if(url.pathname==='/api/installation')return route.fulfill({json:{settings:{...productionSettings,language}}});
-  if(url.pathname==='/api/sessions/current')return route.fulfill({json:session});
+  if(url.pathname==='/api/sessions/current'){if(route.request().method()==='DELETE'){ended=true;return route.fulfill({status:204});}return ended?route.fulfill({status:401,json:{code:'auth.sessionRequired'}}):route.fulfill({json:session});}
   if(url.pathname.includes('reauthenticate')){reauth++;return route.fulfill({status:500,json:{}});}
   if(url.pathname==='/api/android/compatibility'){
    policyReads++;expect(url.searchParams.get('versionCode')).toBe('1');
+   if(holdPolicy){policyHeld=true;await new Promise<void>(resolve=>{releasePolicy=resolve;});}
    return route.fulfill({json:{versionCode:1,status,reason:status==='compatible'?'supported':'retired',serverTime:'2026-11-01T00:00:00.000Z',deadline:status==='compatible'?null:'2026-11-02T00:00:00.000Z',replacement:status==='compatible'?null:{versionCode:2,versionName:'0.1.0-rc.2',tag:'android-candidate-2-0.1.0-rc.2',downloadUrl:'https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-2-0.1.0-rc.2/opentriage-update.apk',apkSha256:'a'.repeat(64)},policyRevision:1,graceDays:90}});
   }
   if(url.pathname==='/api/calls/assigned')return route.fulfill({json:demoAssignedCalls});
@@ -82,16 +84,25 @@ for(const language of ['en','sv'])test(`Android retirement gates new work withou
     const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('open-triage-protected-clinical-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
     try{
       const row=await new Promise<{recoveryHandle:string;ciphertextRevision:number;[key:string]:unknown}>((resolve,reject)=>{const r=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();r.onsuccess=()=>resolve(r.result[0]);r.onerror=()=>reject(r.error);});
-      const nonce=crypto.getRandomValues(new Uint8Array(12)),ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:new TextEncoder().encode(JSON.stringify({schemaVersion:1,recoveryHandle:row.recoveryHandle,ciphertextRevision:row.ciphertextRevision}))},key,new TextEncoder().encode(JSON.stringify({schemaVersion:99})));
-      await new Promise<void>((resolve,reject)=>{const tx=db.transaction('encrypted-reports','readwrite');tx.objectStore('encrypted-reports').put({...row,schemaVersion:1,nonce:nonce.buffer,ciphertext});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});
+      const ciphertextRevision=Number(row.ciphertextRevision)+1,nonce=crypto.getRandomValues(new Uint8Array(12)),ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:new TextEncoder().encode(JSON.stringify({schemaVersion:1,recoveryHandle:row.recoveryHandle,ciphertextRevision}))},key,new TextEncoder().encode(JSON.stringify({schemaVersion:99})));
+      await new Promise<void>((resolve,reject)=>{const tx=db.transaction('encrypted-reports','readwrite');tx.objectStore('encrypted-reports').put({...row,schemaVersion:1,ciphertextRevision,nonce:nonce.buffer,ciphertext});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});
     }finally{db.close();}
   },reportKeyBase64);
   const futurePayload=await cipher(page);await page.reload();await page.getByRole('button',{name:'Reopen report',exact:true}).click();
   await expect(page.getByRole('alert').filter({hasText:'This retained draft uses an incompatible format'})).toBeVisible();
   expect(await cipher(page)).toEqual(futurePayload);expect(consumed).toBe(1);expect(createdKeys).toBe(keyCount);
+  // A held native policy response must not crash the session-transition render
+  // or restore an outgoing session after the authentication generation changes.
+  holdPolicy=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>policyHeld).toBe(true);
+  await page.getByRole('button',{name:'Log out',exact:true}).click();
+  const confirmation=page.getByRole('button',{name:'Log out and lock work',exact:true});if(await confirmation.isVisible())await confirmation.click();
+  await expect(page.getByRole('heading',{name:'Sign in',exact:true})).toBeVisible();
+  releasePolicy();await expect(page.getByLabel('Username',{exact:true})).toBeVisible();
+  expect(await cipher(page)).toEqual(futurePayload);
+
 
 
  }
- expect(reauth).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(pageErrors).toEqual([]);expect(reauth).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:testInfo.outputPath(`upgrade-gate-${language}.png`)});
 });

@@ -66,3 +66,8 @@ test('a newly committed native enrollment cannot evade metadata enforcement betw
   await assert.rejects(assertNew,error=>error.getStatus()===426&&error.getResponse().reason==='invalid-client');
  });
 });
+
+test('a real request with omitted native headers cannot proceed when its policy provider is missing',async()=>{
+ await agencyRequest.run({origin:'https://test.example',installationCredential:'a'.repeat(43)},()=>assert.rejects(prepareAndroidNewWork(undefined,'bound-login'),error=>error.getStatus()===503));
+ const direct=await prepareAndroidNewWork(undefined,'isolated-unit-call');assert.equal((await direct({}))(),undefined);
+});
