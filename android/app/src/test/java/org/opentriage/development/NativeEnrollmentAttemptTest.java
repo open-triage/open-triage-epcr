@@ -21,7 +21,7 @@ public class NativeEnrollmentAttemptTest {
         }
     }
     @Test public void resultUsesOnlyImmutableIntentAndOriginalInstallationAuthorityWithoutRenewingExpiry() throws Exception {
-        var vector=vectors().getJSONObject(0);long now=1700000000000L,created=now-3600000,expiry=now+100000;
+        var vector=vectors().getJSONObject(0);long now=System.currentTimeMillis(),created=now-3600000,expiry=now+100000;
         JSONObject original=new TrustedConnection(vector.getString("origin"),"").saved().put("cookies",new JSONArray().put(new JSONObject().put("name","open_triage_installation").put("value",vector.getString("originalCredential")).put("expires",expiry)));
         JSONObject body=new JSONObject().put("token",vector.getString("token")).put("name",vector.getString("name")).put("attempt",vector.getString("attempt")).put("confirmInstallation",true).put("reassign",true);
         JSONObject pending=new JSONObject().put("candidate",original).put("body",body).put("createdAt",created);

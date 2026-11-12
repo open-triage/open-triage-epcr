@@ -193,6 +193,7 @@ public class OpenTriageConnectionPlugin extends Plugin {
         JSONObject prepared = new JSONObject().put("candidate", candidate.saved()).put("body", body).put("createdAt", System.currentTimeMillis());
         TrustedConnection retained = active == null ? null : active.installationOnly();
         vault.stage(retained, prepared); active = retained; pendingEnrollment = prepared; connectionContext = java.util.UUID.randomUUID().toString();
+        vault.pendingAuthentication(null);
         return finishEnrollment(true);
     }); }
     private JSObject finishEnrollment(boolean firstRequest) throws Exception {
@@ -289,13 +290,80 @@ public class OpenTriageConnectionPlugin extends Plugin {
         if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
         allowed(active);
         long generation = revisions.current();
-        var response = managedRequestBytes(active, call.getString("path", ""), call.getString("method", "GET"), call.getObject("headers", new JSObject()), TrustedConnection.decodeRequestBody(call.getString("bodyBase64")));
+        String path = call.getString("path", "");
+        if (path.equals("/api/sessions") || (path.equals("/api/sessions/current") && call.getString("method", "GET").equals("DELETE"))) vault.pendingAuthentication(null);
+        var response = managedRequestBytes(active, path, call.getString("method", "GET"), call.getObject("headers", new JSObject()), TrustedConnection.decodeRequestBody(call.getString("bodyBase64")));
         if (destroyed || Thread.currentThread().isInterrupted()) throw new IllegalStateException("Runtime closed");
         allowed(active);
         if (generation != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
         if (!connectionContext.equals(requestedContext)) throw new IllegalStateException("Installation changed");
         vault.write(active);
         JSObject result = new JSObject(); result.put("status", response.status()); result.put("headers", response.headers()); result.put("bodyBase64", response.bodyBase64()); return result;
+    }); }
+    @PluginMethod public void beginAuthentication(PluginCall call) { execute(call, () -> {
+        if (active == null || pendingEnrollment != null || replacing) throw new IllegalStateException("Pairing required");
+        allowed(active);
+        String purpose = call.getString("purpose", "");
+        if (!purpose.equals("login") && !purpose.equals("switch")) throw new IllegalArgumentException("Invalid login purpose");
+        String installation = NativeAuthentication.installationIdentity(active.saved(), System.currentTimeMillis());
+        // Discard an older native return before beginning a new explicit login.
+        vault.pendingAuthentication(null);
+        JSONObject headers = new JSONObject().put("content-type", "application/json").put("x-personal-authentication", "1");
+        String csrf = call.getString("csrfToken"); if (csrf != null) headers.put("x-csrf-token", csrf);
+        var reply = managedRequest(active, "/api/sessions/oidc/native/login", "POST", headers, new JSONObject().put("purpose", purpose).put("returnScheme", getContext().getPackageName() + ".auth").toString());
+        vault.write(active); // Persist outgoing session revocation even if provider preparation fails.
+        if (reply.status() != 200) throw new IllegalStateException("Sign-in unavailable");
+        JSONObject body = new JSONObject(reply.body());
+        String secret = body.getString("nativeSecret"), destination = body.getString("authorizationUrl");
+        NativeAuthentication.validateStart(active.origin, destination, secret);
+        allowed(active);
+        long revision = revisions.current();
+        vault.pendingAuthentication(new JSONObject().put("secret", secret).put("origin", active.origin)
+            .put("trust", NativeAuthentication.connectionIdentity(active.origin, active.caPem)).put("context", policy().context())
+            .put("installation", installation));
+        // The external browser owns provider pages; none inherits the Capacitor bridge.
+        var launched = new java.util.concurrent.CountDownLatch(1);
+        var failure = new java.util.concurrent.atomic.AtomicReference<Exception>();
+        getActivity().runOnUiThread(() -> {
+            try {
+                allowed(active);
+                if (destroyed || revision != revisions.current()) throw new IllegalStateException("Policy changed");
+                Intent intent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(destination));
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                getActivity().startActivity(intent);
+            } catch (Exception error) { failure.set(error); }
+            finally { launched.countDown(); }
+        });
+        if (!launched.await(10, java.util.concurrent.TimeUnit.SECONDS) || failure.get() != null) {
+            vault.pendingAuthentication(null); throw new IllegalStateException("Browser unavailable");
+        }
+        return new JSObject();
+    }); }
+    @PluginMethod public void finishAuthentication(PluginCall call) { execute(call, () -> {
+        JSObject result = new JSObject(); result.put("outcome", "idle");
+        // Preview cancellation preserves the original return; confirmed replacement
+        // cannot send or redeem authentication traffic under outgoing authority.
+        if (pendingEnrollment != null || replacing) return result;
+        JSONObject pending = vault.pendingAuthentication();
+        if (pending == null) return result;
+        String installation = null;
+        if (active != null) {
+            try { installation = NativeAuthentication.installationIdentity(active.saved(), System.currentTimeMillis()); }
+            catch (IllegalStateException expiredInstallation) { /* Old returns cannot revive an expired enrollment. */ }
+        }
+        if (active == null || !NativeAuthentication.contextMatches(pending, active.origin, active.caPem, policy().context(), installation)) {
+            vault.pendingAuthentication(null); return result;
+        }
+        var reply = managedRequest(active, "/api/sessions/oidc/native/finish", "POST", new JSONObject().put("content-type", "application/json").put("x-personal-authentication", "1"),
+            new JSONObject().put("secret", pending.getString("secret")).toString());
+        if (reply.status() != 200) {
+            if (reply.status() == 401 || reply.status() == 403) { vault.pendingAuthentication(null); result.put("outcome", "failed"); return result; }
+            throw new IllegalStateException("Sign-in return unavailable");
+        }
+        String outcome = new JSONObject(reply.body()).getString("outcome");
+        vault.write(active);
+        if (!outcome.equals("waiting")) vault.pendingAuthentication(null);
+        result.put("outcome", outcome); return result;
     }); }
     @Override protected void handleOnDestroy() {
         destroyed = true;

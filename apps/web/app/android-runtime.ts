@@ -1,3 +1,4 @@
+import { foregroundNetworkAllowed, APPLICATION_FOREGROUND_EVENT } from "./application-foreground";
 import { setNativeStorageScope } from "./native-storage-context";
 import { nativeTlsFailure, publishNativeTlsStatus } from "./android-connection-failure";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
@@ -6,6 +7,8 @@ export type NativeResponse = { status: number; headers: Record<string, string>; 
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
 export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; pendingOrigin?: string; pendingOutcome?: string; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
+  beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
+  finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;
   beginReplacement(): Promise<AndroidConnectionState>;
   resumeEnrollment(): Promise<AndroidConnectionState>;
@@ -32,6 +35,7 @@ export function installAndroidTransport(): void {
   installed = true;
   const browserFetch = window.fetch.bind(window);
   window.fetch = androidFetch(browserFetch, options => AndroidConnection.request(options), window.location.origin);
+  installAndroidAuthenticationReturn();
 }
 
 // Bound bridge copies while supporting a default 10 MiB photo in its JSON command.
@@ -79,4 +83,33 @@ export function androidFetch(browserFetch: typeof fetch, nativeRequest: Connecti
     publishNativeTlsStatus(false);
     return new Response(effective.method === "HEAD" || [204, 205, 304].includes(result.status) ? null : decodeBytes(result.bodyBase64), { status: result.status, headers: result.headers });
   };
+}
+
+/** Stale completions cannot navigate a newly selected installation or replacement preview. */
+export async function pollAndroidAuthenticationReturn(
+  finish: ConnectionPlugin["finishAuthentication"] = () => AndroidConnection.finishAuthentication(),
+  redirect: (path: string) => void = path => window.location.assign(path),
+): Promise<void> {
+  const expectedContext = connectionContext;
+  const {outcome} = await finish();
+  if (expectedContext !== connectionContext) return;
+  if (["succeeded", "pending", "denied", "failed"].includes(outcome))
+    redirect(`/?authentication=${outcome === "succeeded" ? "completed" : outcome}`);
+}
+
+/** No return URI/query parameter supplies authority. Only native vault redemption can complete login. */
+export function installAndroidAuthenticationReturn(): void {
+  let inFlight = false;
+  const poll = async () => {
+    if (inFlight || !foregroundNetworkAllowed() || document.visibilityState === "hidden") return;
+    inFlight = true;
+    try {
+      await pollAndroidAuthenticationReturn();
+    } catch { /* Transient outage retains the native encrypted handoff until expiry; managed policy denies independently. */ }
+    finally { inFlight = false; }
+  };
+  window.setInterval(() => { void poll(); }, 1000);
+  document.addEventListener("visibilitychange", () => { void poll(); });
+  window.addEventListener(APPLICATION_FOREGROUND_EVENT, () => { void poll(); });
+  void poll();
 }

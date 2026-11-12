@@ -61,14 +61,16 @@ test('merged enrollment attempt implementation is advertised and required by fut
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-attempt-v1'));
   assert(ANDROID_API_CAPABILITIES.includes('native-enrollment-outcome-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-enrollment-outcome-v1'));
+  assert(ANDROID_API_CAPABILITIES.includes('native-oidc-return-v1'));
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('native-oidc-return-v1'));
   assert(ANDROID_API_CAPABILITIES.includes('android-upgrade-policy-v1'));
   assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-policy-v1'));
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
 
-test('future immutable-outcome clients cannot publish against an attempt-only server',()=>{
+for (const missing of ['native-enrollment-outcome-v1','native-oidc-return-v1']) test(`future clients cannot publish when the server lacks ${missing}`,()=>{
   const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
-  const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:['native-enrollment-attempt-v1'],releaseA:{...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions]};
+  const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES.filter(value=>value!==missing),releaseA:{...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions]};
   const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
   assert.throws(()=>validatePublicationEvidence(descriptor,evidence,preflight,identity),/protocol and capabilities/);
   validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);

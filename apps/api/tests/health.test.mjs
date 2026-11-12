@@ -42,6 +42,7 @@ test("public production health advertises the shared Android protocol independen
       assert.deepEqual(controller.getHealth(), { status: "ok", service: "open-triage-api", androidApiProtocol: 1, androidApiCapabilities: ANDROID_API_CAPABILITIES });
       assert(controller.getHealth().androidApiCapabilities.includes("native-enrollment-attempt-v1"));
       assert(controller.getHealth().androidApiCapabilities.includes("native-enrollment-outcome-v1"));
+      assert(controller.getHealth().androidApiCapabilities.includes("native-oidc-return-v1"));
       assert(controller.getHealth().androidApiCapabilities.includes("android-upgrade-policy-v1"));
     }
   } finally {

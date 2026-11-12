@@ -15,7 +15,11 @@ export class CsrfGuard implements CanActivate {
     if (request.method.toUpperCase() === "POST" && /\/sessions\/?(?:\?.*)?$/.test(path)) return true;
     // Fresh login also works with an expired cookie. The non-simple header and
     // registered-origin middleware protect it; switch/reauth verify CSRF in service.
-    if(request.method.toUpperCase()==="POST" && path==="/api/sessions/oidc/login" && request.headers['x-personal-authentication']==='1')return true;
+    if(request.method.toUpperCase()==="POST" && /^\/api\/sessions\/oidc\/(?:native\/)?login$/.test(path) && request.headers['x-personal-authentication']==='1')return true;
+    // Native redemption has a distinct one-use secret, live installation/origin
+    // binding and exact-session check for retries. It also needs a non-simple
+    // intent header; unrelated mutations retain ordinary cookie CSRF checks.
+    if(request.method.toUpperCase()==="POST" && path==="/api/sessions/oidc/native/finish" && request.headers['x-personal-authentication']==='1')return true;
     // Target-host handoff bootstrap has its own browser challenge and one-use
     // exchange; the source start/issue endpoints retain normal session CSRF.
     if(request.method.toUpperCase()==="POST"&&/^\/api\/sessions\/agency-handoff\/(challenge|consume)\/?(?:\?.*)?$/.test(path)){
