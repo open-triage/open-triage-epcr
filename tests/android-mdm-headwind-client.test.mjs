@@ -20,7 +20,7 @@ test('console session stays on the selected origin and supported routes, includi
 
 test('console adapter refuses redirects, remote cleartext and rejected sessions without logging private bodies', async () => {
   for (const origin of ['http://remote.invalid', 'https://host.invalid/path', 'https://user:secret@host.invalid']) assert.throws(() => new HeadwindLabClient(origin, 'session'));
-  for (const response of [new Response('private-response', {status: 302, headers: {location: 'https://other.invalid'}}), Response.json({status: 'ERROR', data: 'private-response'})]) {
+  for (const response of [new Response('private-response', {status: 302, headers: {location: 'https://other.invalid'}}), new Response('private-response'), Response.json({status: 'ERROR', data: 'private-response'})]) {
     const client = new HeadwindLabClient('http://127.0.0.1:18080', 'session', async () => response);
     await assert.rejects(client.configurations(), error => !String(error).includes('private-response'));
   }

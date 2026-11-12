@@ -13,7 +13,10 @@ export class HeadwindLabClient {
     this.#origin = url.origin; this.#cookie = cookie; this.#fetch = fetcher;
   }
   static async fromStorageState(origin, path, fetcher = fetch) {
-    const url = new URL(origin), state = JSON.parse(await readFile(path, 'utf8'));
+    const url = new URL(origin);
+    let state;
+    try { state = JSON.parse(await readFile(path, 'utf8')); }
+    catch { throw new Error('Private console session file is unavailable or invalid'); }
     const cookie = state.cookies.filter(value => value.name === 'JSESSIONID' && value.domain.replace(/^\./, '') === url.hostname
       && value.path === '/' && (!value.secure || url.protocol === 'https:') && (value.expires === -1 || value.expires * 1000 > Date.now()));
     assert.equal(cookie.length, 1, 'One current private console session is required');
@@ -25,7 +28,9 @@ export class HeadwindLabClient {
       headers: {Cookie: this.#cookie, Accept: 'application/json', ...(body === undefined ? {} : {'Content-Type': 'application/json'})},
       ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     if (response.status !== 200) { await response.body?.cancel(); throw new Error('Headwind console request rejected; response body withheld'); }
-    const result = await response.json();
+    let result;
+    try { result = await response.json(); }
+    catch { throw new Error('Headwind console returned invalid JSON; private response withheld'); }
     assert.equal(result.status, 'OK', 'Headwind console rejected the request; private response withheld');
     return result.data;
   }
