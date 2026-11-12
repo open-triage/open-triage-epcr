@@ -30,11 +30,15 @@ separate disposable database. HTTP on this isolated management path never change
 the application's HTTPS/TLS policy. Credentials, session state, shared secrets and
 full configuration snapshots stay in private ignored files, mode `0600`.
 
-**Current evidence:** the server is running, its real console API has been read
-successfully, and the removable agent was built. Device enrollment, deployment,
-standard-policy delivery, revocation and the retained-work managed upgrade have
-not yet run. Signed final artifacts and an exclusive disposable-device lease are
-required. Preparation and unit tests do not mark either acceptance issue complete.
+**Prepared lab evidence (2026-11-12):** the real removable agent is enrolled as
+device owner on the isolated Android 13 emulator, assigned to dedicated
+configuration 3/device 2. Immutable signed candidates 4 and 5 passed a separate
+in-place upgrade test, and their public APKs were independently verified.
+Candidate 4 is imported into Headwind with matching bytes and remains untargeted.
+Actual clinical deployment, standard-policy delivery, revocation and the managed
+retained-work upgrade remain pending. Preparation and the separate upgrade test
+do not mark either management acceptance issue complete; record subsequent actual
+observations separately.
 
 ## Deploy and observe
 
