@@ -90,3 +90,14 @@ test('a queued handoff cannot transfer credentials after a newer logout takes ow
  await page.evaluate(()=>(window as F).release());await expect.poll(()=>page.evaluate(()=>(window as F).settled)).toBe(2);
  expect(await page.evaluate(()=>(window as F).operations)).toEqual(['logout']);expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'))).toBeNull();expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('newer-session-metadata');
 });
+
+for(const kind of ['queued','existing-marker','rejected-unmount'] as const)test(`the real FIFO shared barrier settles its ${kind} participant before replacement`,async({page})=>{
+ const script=await bundle(`import{participateInInstallationTransition,transitionInstallation}from'./app/installation-transition';window.unhandled=0;addEventListener('unhandledrejection',()=>window.unhandled++);window.begin=()=>{${kind==='existing-marker'?"localStorage.setItem('open-triage.installation-transition.v1','enrollment:existing');":''}window.ended=false;window.operation=false;window.calls=0;const unmount=participateInInstallationTransition(async()=>{window.calls++;await new Promise(resolve=>window.releaseEnd=resolve);window.ended=true;${kind==='rejected-unmount'?"throw Error('held old cleanup failed');":''}});window.transition=transitionInstallation(async()=>{window.operation=true;window.observedEnded=window.ended},'handoff');${kind==='rejected-unmount'?'unmount();':''}};`);
+ await page.route('**/agency-script',r=>r.fulfill({contentType:'text/javascript',body:script}));await page.route('**/__agency-participant',r=>r.fulfill({contentType:'text/html',body:'<html><script>window.fixture={}</script><script src="/agency-script"></script></html>'}));await page.goto('/__agency-participant');
+ type F=typeof window&{begin():void;releaseEnd():void;operation:boolean;observedEnded:boolean;calls:number;transition:Promise<void>;unhandled:number};
+ await page.evaluate(()=>(window as F).begin());await expect.poll(()=>page.evaluate(()=>typeof(window as F).releaseEnd)).toBe('function');
+ await expect.poll(()=>page.evaluate(async()=>{const locks=await navigator.locks.query();return locks.held?.some(x=>x.name==='open-triage.installation-clinical-context'&&x.mode==='shared')&&locks.pending?.some(x=>x.name==='open-triage.installation-clinical-context'&&x.mode==='exclusive');})).toBe(true);
+ expect(await page.evaluate(()=>(window as F).operation)).toBe(false);
+ await page.evaluate(async()=>{const f=window as F;f.releaseEnd();await f.transition;});
+ expect(await page.evaluate(()=>(window as F).observedEnded)).toBe(true);expect(await page.evaluate(()=>(window as F).calls)).toBe(1);expect(await page.evaluate(()=>(window as F).unhandled)).toBe(0);
+});
