@@ -13,22 +13,27 @@ final class NativePdfSessions {
     static final class Session implements AutoCloseable {
         final String id;
         final Object owner;
-        final long expiresAt;
         private final File directory;
         private final Loader loader;
         private final BooleanSupplier authority;
-        private final java.util.function.LongSupplier clock;
+        private final NativePdfLifetime lifetime;
         private File preview;
         private volatile boolean closed;
         volatile Runnable onClosed = () -> {};
         Session(Object owner, String id, File directory, long expiry, BooleanSupplier authority, Loader loader) {
-            this(owner,id,directory,expiry,authority,loader,System::currentTimeMillis);
+            this(owner,id,directory,expiry,authority,loader,System::currentTimeMillis,android.os.SystemClock::elapsedRealtime);
         }
         Session(Object owner, String id, File directory, long expiry, BooleanSupplier authority, Loader loader, java.util.function.LongSupplier clock) {
-            this.owner = owner; this.id = id; this.directory = directory; this.clock = clock; this.expiresAt = Math.min(expiry, clock.getAsLong() + 10 * 60_000);
+            this(owner,id,directory,expiry,authority,loader,clock,clock);
+        }
+        Session(Object owner, String id, File directory, long expiry, BooleanSupplier authority, Loader loader, java.util.function.LongSupplier wall, java.util.function.LongSupplier elapsed) {
+            this(owner,id,directory,new NativePdfLifetime(wall.getAsLong(),elapsed.getAsLong(),expiry-wall.getAsLong(),wall,elapsed),authority,loader);
+        }
+        Session(Object owner, String id, File directory, NativePdfLifetime lifetime, BooleanSupplier authority, Loader loader) {
+            this.owner = owner; this.id = id; this.directory = directory; this.lifetime = lifetime;
             this.authority = authority; this.loader = loader;
         }
-        boolean current() { return !closed && clock.getAsLong() < expiresAt && authority.getAsBoolean(); }
+        boolean current() { return !closed && lifetime.current() && authority.getAsBoolean() && !closed; }
         void requireCurrent() { if (!current()) throw new IllegalStateException("PDF context ended"); }
         byte[] fresh() throws Exception {
             requireCurrent();byte[] bytes=loader.load();
@@ -68,10 +73,13 @@ final class NativePdfSessions {
     static boolean pending(Object owner, String id) { synchronized (sessions) { return pending.get(id) == owner; } }
     static boolean alive(Object owner, String id) { synchronized (sessions) { Session session = sessions.get(id); return pending.get(id) == owner || session != null && session.owner == owner && !session.closed; } }
     static Session create(Context context, Object owner, String id, long expiry, BooleanSupplier current, Loader loader) {
+        return create(context,owner,id,new NativePdfLifetime(System.currentTimeMillis(),android.os.SystemClock.elapsedRealtime(),expiry-System.currentTimeMillis(),System::currentTimeMillis,android.os.SystemClock::elapsedRealtime),current,loader);
+    }
+    static Session create(Context context, Object owner, String id, NativePdfLifetime lifetime, BooleanSupplier current, Loader loader) {
         synchronized (sessions) {
             if (pending.get(id) != owner) throw new IllegalStateException("PDF operation cancelled");
             pending.remove(id);
-            Session session = new Session(owner, id, directory(context), expiry, current, loader); sessions.put(id, session); return session;
+            Session session = new Session(owner, id, directory(context), lifetime, current, loader); sessions.put(id, session); return session;
         }
     }
     static Session get(String id) { synchronized (sessions) { return sessions.get(id); } }

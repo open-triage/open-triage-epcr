@@ -172,7 +172,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         vault.write(connection);
         pdfCookieIdentity = NativePdfContract.cookie(connection.saved());
         if (reply.status() != 200) throw new PdfFailure(reply.status(), "pdf.unavailable");
-        return NativePdfContract.authority(new JSONObject(reply.body()), connection.saved(), headers.getString("x-organization-id"), System.currentTimeMillis());
+        return NativePdfContract.authority(new JSONObject(reply.body()), connection.saved(), headers.getString("x-organization-id"), System.currentTimeMillis(),reply.headers());
     }
     @PluginMethod public void closePdf(PluginCall call) {
         withReplyRealm(call, () -> { NativePdfSessions.close(this, call.getString("operationId", "")); resolveCall(call); });
@@ -191,12 +191,13 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                 JSONObject headers = call.getObject("headers", new JSObject()); NativePdfContract.request(path, headers);
                 TrustedConnection connection = active;
                 if (connection == null || replacing || pendingEnrollment != null || !context.equals(connectionContext) || !NativePdfSessions.pending(this, id)) throw new IllegalStateException("PDF context unavailable");
+                long requestWall = System.currentTimeMillis(), requestElapsed = android.os.SystemClock.elapsedRealtime();
                 var original = pdfAuthority(connection, headers); long policyRevision = revisions.current();
                 pdfCookieIdentity = original.cookie();
-                var deadline = new java.util.concurrent.atomic.AtomicLong(original.expiresAt());
+                var lifetime = new NativePdfLifetime(requestWall,requestElapsed,original.remainingMillis(),System::currentTimeMillis,android.os.SystemClock::elapsedRealtime);
                 java.util.function.BooleanSupplier current = () -> !destroyed && active == connection && !replacing && pendingEnrollment == null
                     && context.equals(connectionContext) && policyRevision == revisions.current() && original.cookie().equals(pdfCookieIdentity)
-                    && System.currentTimeMillis() < deadline.get() && NativePdfSessions.alive(this, id);
+                    && lifetime.current() && NativePdfSessions.alive(this, id);
                 if (!current.getAsBoolean()) throw new IllegalStateException("PDF operation cancelled");
                 var initial = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
                 if (initial.status() != 200) {
@@ -212,9 +213,10 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                 NativePdfSessions.Loader loader = () -> {
                     var task = new java.util.concurrent.FutureTask<byte[]>(() -> {
                         if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
+                        long freshRequestElapsed = android.os.SystemClock.elapsedRealtime();
                         var fresh = pdfAuthority(connection, headers);
                         if (!fresh.user().equals(original.user()) || !fresh.organization().equals(original.organization()) || !fresh.cookie().equals(original.cookie())) throw new IllegalStateException("PDF identity changed");
-                        deadline.accumulateAndGet(fresh.expiresAt(), Math::min);
+                        lifetime.shorten(freshRequestElapsed,fresh.remainingMillis());
                         if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
                         var reply = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
                         NativePdfContract.bytes(reply.status(), reply.headers(), reply.bytes());
@@ -225,7 +227,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                     try { return task.get(90, java.util.concurrent.TimeUnit.SECONDS); }
                     catch (Exception failure) { task.cancel(true); throw failure; }
                 };
-                var session = NativePdfSessions.create(getContext(), this, id, original.expiresAt(), current, loader);
+                var session = NativePdfSessions.create(getContext(), this, id, lifetime, current, loader);
                 session.cache(initial.bytes());
                 try (var parsed = new android.graphics.pdf.PdfRenderer(android.os.ParcelFileDescriptor.open(session.preview(), android.os.ParcelFileDescriptor.MODE_READ_ONLY))) {
                     if (parsed.getPageCount() < 1 || parsed.getPageCount() > 500) throw new IllegalStateException("PDF page bound");

@@ -23,6 +23,10 @@ public class NativePdfContractTest {
         byte[] pdf="%PDF-1.4\nfixture".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         JSONObject type=new JSONObject().put("Content-Type","application/pdf");
         NativePdfContract.bytes(200,type,pdf);
+        NativePdfContract.bytes(200,new JSONObject().put("content-type","application/pdf"),pdf);
+        NativePdfContract.bytes(200,new JSONObject().put("cOnTeNt-TyPe","Application/PDF; charset=binary"),pdf);
+        assertThrows(Exception.class,()->NativePdfContract.bytes(200,type.put("content-type","text/html"),pdf));
+        type.remove("content-type");
         for(int status:new int[]{206,302,401,403,404,422,500})assertThrows(Exception.class,()->NativePdfContract.bytes(status,type,pdf));
         assertThrows(Exception.class,()->NativePdfContract.bytes(200,new JSONObject().put("Content-Type","text/html"),pdf));
         assertThrows(Exception.class,()->NativePdfContract.bytes(200,type,"<html>login</html>".getBytes()));
@@ -40,5 +44,16 @@ public class NativePdfContractTest {
         assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(now+1000),OTHER,now));
         assertThrows(Exception.class,()->NativePdfContract.authority(current().put("expiresAt","2020-01-01T00:00:00Z"),saved(Long.MAX_VALUE),ID,now));
         assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(Long.MAX_VALUE).put("cookies",new org.json.JSONArray()),ID,now));
+    }
+    @Test public void trustedServerDateBoundsRemainingAuthorityDespiteClientClockSkew() throws Exception {
+        long server=java.time.Instant.parse("2029-01-01T00:00:00Z").toEpochMilli();
+        JSONObject date=new JSONObject().put("dAtE","Mon, 1 Jan 2029 00:00:00 GMT");
+        for(long skew:new long[]{-86_400_000,86_400_000}) {
+            var authority=NativePdfContract.authority(current(),saved(server+10_000),ID,server+skew,date);
+            assertEquals(9001,authority.remainingMillis());
+        }
+        assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(server+999),ID,server,date));
+        assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(server+10_000),ID,server,new JSONObject().put("Date","invalid")));
+        assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(server+10_000),ID,server,date.put("Date","Mon, 1 Jan 2029 00:00:00 GMT")));
     }
 }

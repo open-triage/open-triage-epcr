@@ -47,7 +47,12 @@ public final class NativePdfActivity extends Activity {
     private final Runnable authorityWatch = new Runnable() {
         @Override public void run() {
             if (ended) return;
-            if (session == null || !session.current()) { finish(); return; }
+            if (session == null || !session.current()) {
+                // Retain only the picker result receiver after revocation, so
+                // an empty destination selected late can still be cancelled.
+                if (picking && session != null) session.close();
+                else { finish(); return; }
+            }
             ui.postDelayed(this, 250);
         }
     };
@@ -57,7 +62,7 @@ public final class NativePdfActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         session = NativePdfSessions.get(getIntent().getStringExtra("document"));
         if (session == null || !session.current()) { finish(); return; }
-        session.onClosed = () -> ui.post(() -> { if (!ended) finish(); });
+        session.onClosed = () -> ui.post(() -> { if (!ended && !picking) finish(); });
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         int padding = Math.round(12 * getResources().getDisplayMetrics().density); root.setPadding(padding, padding, padding, padding);
         title = new TextView(this); title.setText(R.string.pdf_title); title.setTextSize(20); root.addView(title);
@@ -106,7 +111,13 @@ public final class NativePdfActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume(); stopped = false;
-        if (session == null || !session.current()) { finish(); return; }
+        if (session == null || !session.current()) {
+            Uri cancelled = pendingDestination; pendingDestination = null;
+            if (cancelled != null) worker.execute(() -> {
+                try { DocumentsContract.deleteDocument(getContentResolver(),cancelled); } catch (Exception ignored) { /* Never report a cancelled export as saved. */ }
+            });
+            finish(); return;
+        }
         if (pendingDestination != null) { Uri destination = pendingDestination; pendingDestination = null; export(destination); }
         else if (!picking) {
             if (saveOnly && getIntent().getBooleanExtra("save", false)) { getIntent().removeExtra("save"); chooseDestination(); }
@@ -196,6 +207,9 @@ public final class NativePdfActivity extends Activity {
     }
     @Override protected void onStop() {
         stopped = true;
+        // Revoke before deleting bytes: Activity destruction may be deferred
+        // after Home, and a stale handle must never recreate the private file.
+        if (!picking && session != null) session.close();
         if (image != null) clearVisible();
         if (!picking) finish();
         super.onStop();

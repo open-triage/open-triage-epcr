@@ -40,10 +40,30 @@ final class NativePdfContract {
         if (!headers.has("x-organization-id")) throw new IllegalArgumentException("Agency required");
     }
     static void bytes(int status, JSONObject headers, byte[] bytes) throws Exception {
-        if (status != 200 || !headers.optString("Content-Type").toLowerCase(Locale.ROOT).matches("application/pdf(?:;.*)?") || bytes.length < 8 || bytes.length > MAX_BYTES || !new String(bytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) throw new IllegalStateException("PDF unavailable");
+        if (status != 200 || !header(headers,"Content-Type").toLowerCase(Locale.ROOT).matches("application/pdf(?:;.*)?") || bytes.length < 8 || bytes.length > MAX_BYTES || !new String(bytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) throw new IllegalStateException("PDF unavailable");
     }
-    record Authority(String user, String organization, String cookie, long expiresAt) {}
+    static String header(JSONObject headers, String name) {
+        String found = null;
+        for (var keys = headers.keys(); keys.hasNext();) {
+            String key = keys.next();
+            if (key.equalsIgnoreCase(name)) {
+                if (found != null) throw new IllegalArgumentException("Ambiguous response header");
+                found = headers.optString(key);
+            }
+        }
+        return found == null ? "" : found;
+    }
+    record Authority(String user, String organization, String cookie, long expiresAt, long remainingMillis) {}
     static Authority authority(JSONObject current, JSONObject saved, String organization, long now) throws Exception {
+        return authority(current,saved,organization,now,new JSONObject());
+    }
+    static Authority authority(JSONObject current, JSONObject saved, String organization, long now, JSONObject responseHeaders) throws Exception {
+        String date = header(responseHeaders,"Date");
+        if (!date.isEmpty()) {
+            // HTTP dates have whole-second precision. Use the end of that
+            // second, and anchor the lease before the request, conservatively.
+            now = java.time.ZonedDateTime.parse(date,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() + 999;
+        }
         String user = current.getJSONObject("user").getString("id"), agency = current.getJSONObject("organization").getString("id");
         long expiry = Instant.parse(current.getString("expiresAt")).toEpochMilli();
         if (!user.matches(UUID) || !agency.equals(organization) || expiry <= now) throw new IllegalStateException("PDF authority unavailable");
@@ -53,7 +73,8 @@ final class NativePdfContract {
             cookieExpiry = cookies.getJSONObject(i).getLong("expires"); personal = true;
         }
         if (!personal || cookieExpiry <= now) throw new IllegalStateException("PDF authority unavailable");
-        return new Authority(user, agency, cookie(saved), Math.min(expiry, cookieExpiry));
+        long boundedExpiry = Math.min(expiry, cookieExpiry);
+        return new Authority(user, agency, cookie(saved), boundedExpiry, boundedExpiry - now);
     }
     static String cookie(JSONObject saved) throws Exception {
         String personal = "";

@@ -7,7 +7,7 @@ import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
-export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, hooks = {}, audio = false, unsavedAudio = false }) {
+export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, hooks = {}, audio = false, unsavedAudio = false, signReview = false }) {
   const report = await seedReportFixture(root, fixture, run); let ca = await readFile(fixture.caPath);
   const administrator = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
   assert.equal(administrator.status, 201);
@@ -137,6 +137,13 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     assert.equal(after.validation_version_id, opened.validation_version_id);
     assert.equal(after.recovery_deadline.toISOString(), after.expected_deadline.toISOString(), 'Only the synchronized retained edit receipt advances the deadline under the established policy and report expiry');
     console.log('PASS protected work: actual Android primitives/fallbacks, offline edits, foreground reconnect, retained ciphertext after process kill, different-user denial, online recovery, pinned versions and policy-bound deadline');
+    if(signReview) {
+      instrument('sign-review',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id});
+      const signed=(await db.query('select id as signed_snapshot_id from clinical.signed_snapshot where report_id=$1',[opened.id])).rows[0];
+      assert(signed?.signed_snapshot_id,'The shared Android signing workflow creates the actual immutable signed snapshot');
+      instrument('denied-pdf',report.secondClinician.username,report.secondClinicianPassword,{reportId:opened.id,snapshotId:signed.signed_snapshot_id,organizationId:fixture.organizationId});
+      console.log('PASS Android Stationary/Review: unresolved media blocks signing; actual retry and signing; native authorized signed PDF; second-clinician scope denies PDF');
+    }
   } catch (error) {
     try { await captureAndroidFailure({ root, adb, serial, applicationId, secrets: [fixture.administratorPassword, fixture.clinicianPassword, report.secondClinicianPassword, issued.body.token] }); } catch { console.error('Android recovery diagnostics unavailable'); }
     const diagnostics = (await db.query(`select r.id,r.revision,envelope.ciphertext_revision,envelope.recovery_deadline,

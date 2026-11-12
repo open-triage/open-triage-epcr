@@ -424,6 +424,10 @@ pixels; the existing 10 MiB / 500-page document limits remain enforced. Native
 controls follow the selected English/Swedish language and agency accent. Closing,
 real backgrounding, expiry or context loss clears the document. The maximum
 preview lifetime is ten minutes, capped by the original server/cookie expiry.
+The original request's elapsed-realtime deadline includes device sleep and
+cannot be renewed by rendering or export. A trusted server Date bounds remaining
+session time despite client clock skew; a subsequent wall-clock rollback or
+forward expiry closes the preview permanently.
 Cold MainActivity startup deletes only owned stale preview files before mounting
 the credentialed WebView; old memory-only document handles cannot reopen them.
 
@@ -438,7 +442,10 @@ Run `npm run android:build` with the documented SDK/JDK prerequisites, then
 `npm run android:test:pdf -- --skip-build` on an exclusively reserved emulator.
 The focused check uses the actual platform renderer and a host force-stop of a
 live preview, then verifies cold cleanup, session/expiry/background boundaries
-and rejection of its old handle. It never clears the application's clinical or
+and rejection of its old handle. It also uses the real system document picker to
+save fresh authorized synthetic bytes, checks that an explicit download survives
+private preview cleanup, deletes only that test export, and cancels the picker
+without fetching a document. It never clears the application's clinical or
 enrollment data. The full `npm run android:test` journey includes these checks.
 The early `node --test tests/android-pdf.test.mjs tests/android-live-instrumentation.test.mjs`
 checks reject incomplete/crashed instrumentation and a preparation process that

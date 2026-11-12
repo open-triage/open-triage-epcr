@@ -542,6 +542,62 @@ public class ReportRecoveryJourneyTest {
         verifyRecoveredPhoto(); if (audioEnabled()) verifyRecoveredAudio();
         assertFalse(evaluate("JSON.stringify({...localStorage})").contains(RETAINED));
     }
+    private void signReview() throws Exception {
+        String reportId=InstrumentationRegistry.getArguments().getString("reportId");
+        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+        assertEquals("A valid retained login opens without another password prompt","false",evaluate("!!document.querySelector('input[name=password]')"));
+        click("Reopen report");waitFor("document.querySelector('.encounter-header')");
+        evaluate("window.__reportId="+JSONObject.quote(reportId));
+        if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");
+        waitFor("("+FIELD+")?.value==='"+RETAINED+"'");
+        evaluate("window.__signAuthenticationPosts=0;(()=>{const original=window.fetch;window.fetch=(input,init)=>{const path=String(input);if((init?.method??'GET').toUpperCase()==='POST'&&/\\/api\\/sessions(?:$|[/?])/.test(path))window.__signAuthenticationPosts++;return original(input,init)}})()");
+        evaluate("window.__mediaHold=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=1',{method:'POST'}).then(response=>response.json()).then(value=>window.__mediaHold=value.held)");
+        waitFor("window.__mediaHold===true");
+        try {
+            click("Mobile");click("Add photo note");waitFor("document.querySelector('.photo-note-dialog video')?.videoWidth>0");
+            stageSyntheticPhoto("ANDROID-PDF-MEDIA-RETRY-SYNTHETIC");
+            click("Review & sign");waitFor("document.querySelector('.note-readiness') && document.querySelector('.review-actions button')?.disabled");
+            assertEquals("Online signing retains its existing unresolved-media blocker","true",evaluate("navigator.onLine && document.querySelector('.note-readiness').textContent.includes('Photo')"));
+            evaluate("window.__mediaHold=null;fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=0',{method:'POST'}).then(response=>response.json()).then(value=>window.__mediaHold=value.held)");
+            waitFor("window.__mediaHold===false");
+            waitFor("document.querySelector('.note-readiness').textContent.includes('retry')");
+            evaluate("document.querySelector('.note-readiness button').click()");click("Retry upload");
+            waitFor("!document.querySelector('.photo-note-dialog') || !Array.from(document.querySelectorAll('.photo-note-dialog button')).some(button=>button.textContent==='Retry upload')");
+            if("true".equals(evaluate("!!document.querySelector('.photo-note-dialog')")))click("Cancel");
+            verifyCanonicalPhoto("ANDROID-PDF-MEDIA-RETRY-SYNTHETIC");
+            waitFor("!document.querySelector('.note-readiness') && document.querySelector('.review-actions button') && !document.querySelector('.review-actions button').disabled");
+            click("Sign record");waitFor("document.querySelector('.call-directory') && !document.querySelector('.encounter-header')");
+            assertEquals("Shared online signing trusts the existing valid login","0",evaluate("window.__signAuthenticationPosts"));
+        } finally {
+            evaluate("fetch('/api/__android-pdf-media-hold?reportId='+window.__reportId+'&hold=0',{method:'POST'})");
+        }
+        activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+reportId+"&dataset=synthetic&language=en"));
+        waitFor("document.querySelector('#review-full-report') && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')");
+        assertEquals("Signed Review is still under the valid logged-in principal","false",evaluate("!!document.querySelector('input[name=password]')"));
+        evaluate("Array.from(document.querySelectorAll('.review-report-toolbar button')).find(button=>button.textContent.startsWith('Timeline')).click()");
+        waitFor("document.querySelector('.review-timeline-sidebar .photo-thumbnail')?.naturalWidth===640");
+        if(audioEnabled()){observeAudio();playTimelineAudio("ANDROID-AUDIO-SYNTHETIC");}
+        click("Inspect signed PDF");
+        var device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        assertNotNull("The authorized immutable signed report traverses the configured native TLS/cookie connection into the actual renderer",device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"))),15000));
+        device.pressBack();waitFor("document.querySelector('[data-native-pdf-controls]')");
+        assertEquals("Native signed PDF viewing leaves no browser blob/iframe path","false",evaluate("!!document.querySelector('.signed-report-pdf-dialog iframe')"));
+        click("Close");
+    }
+    private void deniedPdf() throws Exception {
+        var args=InstrumentationRegistry.getArguments();
+        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
+        click("Log out");signIn(args.getString("username"),args.getString("password"));
+        assertFalse("A wrapper does not expose an unauthorized clinician's signed call",evaluate("document.body.innerText").contains(args.getString("callNumber")));
+        String path="/api/review/reports/"+args.getString("reportId")+"/snapshots/"+args.getString("snapshotId")+"/pdf?amendmentSequence=0&language=en&dataset=synthetic";
+        evaluate("window.__pdfDenied=null;(async()=>{const bridge=window.Capacitor.Plugins.OpenTriageConnection;const state=await bridge.state();window.__pdfDenied=await bridge.openPdf({operationId:crypto.randomUUID(),connectionContext:state.connectionContext,path:"+JSONObject.quote(path)+",headers:{'x-organization-id':"+JSONObject.quote(args.getString("organizationId"))+"},action:'view',language:'en'})})().catch(()=>window.__pdfDenied={failed:true})");
+        waitFor("window.__pdfDenied!==null");
+        assertEquals("Current server scope denies the native signed PDF despite a valid login","404",evaluate("window.__pdfDenied.status"));
+        assertEquals("Denied downloads never launch a native file viewer","false",evaluate("window.__pdfDenied.opened"));
+        activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+args.getString("reportId")+"&dataset=synthetic&language=en"));
+        waitFor("document.body.innerText.includes('This signed report is unavailable in your Review scope.')");
+        assertEquals("Denied Review has no PDF action","false",evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')"));
+    }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
         waitFor("document.querySelector('[data-change-installation]')");
@@ -626,6 +682,8 @@ public class ReportRecoveryJourneyTest {
             case "resume-reassignment": resumeReassignment(); activity.close(); break;
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
+            case "sign-review": signReview(); activity.close(); break;
+            case "denied-pdf": deniedPdf(); activity.close(); break;
             default: fail("Host must supply a recovery phase");
         }
     }
