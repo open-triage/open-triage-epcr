@@ -45,15 +45,20 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     let active = true;
     let checking=false,waiting=false;
+    const stillWaiting=()=>Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY))&&(!currentState.current||currentState.current.configured&&!currentState.current.blocked&&!currentState.current.replacementPending);
     const observe=async(provided?:AndroidConnectionState)=>{
       if(checking||!active||!isAndroidRuntime())return;
       checking=true;
+      const observedRevision=revision.current;
       try {
         const state=provided??await AndroidConnection.state();
-        const next=await resumeNativeInstallationTransition(state,(context,purpose)=>AndroidConnection.reconcileTransition({connectionContext:context,purpose}));
+        if(!active||revision.current!==observedRevision){waiting=stillWaiting();return;}
+        const next=await resumeNativeInstallationTransition(state,(context,purpose)=>AndroidConnection.reconcileTransition({connectionContext:context,purpose}),()=>active&&revision.current===observedRevision);
+        if(!active||revision.current!==observedRevision){waiting=stillWaiting();return;}
         waiting=next===null;
         if(active)applyState(next??state);
       } catch {
+        if(!active||revision.current!==observedRevision){waiting=stillWaiting();return;}
         waiting=Boolean(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY));
         if(active&&waiting){setRecoveringTransition(true);setReady(false);}
         if(active&&!waiting)applyState({configured:false,blocked:true,managedStatus:"unavailable"});
@@ -86,7 +91,13 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       try {
         await installAndroidLifecycle();
         if (!active) return;
-        const listener = await AndroidConnection.addListener("configurationChanged", state => { if (active) void observe(state); });
+        const listener = await AndroidConnection.addListener("configurationChanged", state => {
+          if(!active)return;
+          // Every policy edge invalidates outstanding scans/previews immediately,
+          // including changed-and-restored events in one JavaScript task.
+          applyState(state);
+          if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY))void observe(state);
+        });
         if (!active) { await listener.remove(); return; }
         removeListener = () => listener.remove();
         const started = revision.current;
