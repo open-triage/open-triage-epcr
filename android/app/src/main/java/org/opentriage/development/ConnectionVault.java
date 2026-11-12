@@ -63,14 +63,32 @@ final class ConnectionVault {
     JSONObject pendingHandoff() throws Exception { var saved = readJson("encrypted"); return saved == null ? null : saved.optJSONObject("handoff"); }
     void stageHandoff(TrustedConnection connection, JSONObject handoff) throws Exception { writeState(connection, pending(), handoff); }
     void promoteHandoff(TrustedConnection connection) throws Exception { writeState(connection, null, null); }
+    JSONObject personalContinuation() throws Exception { var saved = readJson("encrypted"); return saved == null ? null : saved.optJSONObject("personalContinuation"); }
+    void clearPersonalContinuation() throws Exception {
+        var saved = readJson("encrypted");
+        if (saved != null && saved.has("personalContinuation")) { saved.remove("personalContinuation"); writeJson("encrypted", saved); }
+    }
+    void savePersonalContinuation(TrustedConnection connection, JSONObject session) throws Exception {
+        JSONObject continuation = NativePersonalContinuation.capture(connection, session);
+        writeState(connection, pending(), pendingHandoff(), continuation);
+    }
+    void stageHandoffSession(TrustedConnection connection, JSONObject handoff, JSONObject session) throws Exception {
+        writeState(connection, null, handoff, NativePersonalContinuation.capture(connection, session));
+    }
     private void writeState(TrustedConnection connection, JSONObject enrollment) throws Exception { writeState(connection, enrollment, pendingHandoff()); }
     private void writeState(TrustedConnection connection, JSONObject enrollment, JSONObject handoff) throws Exception {
+        JSONObject continuation = personalContinuation();
+        if (!NativePersonalContinuation.matches(continuation, connection)) continuation = null;
+        writeState(connection, enrollment, handoff, continuation);
+    }
+    private void writeState(TrustedConnection connection, JSONObject enrollment, JSONObject handoff, JSONObject continuation) throws Exception {
         JSONObject state = new JSONObject();
         String legacyScope = legacyStorageScope();
         if (legacyScope != null) state.put("legacyStorageScope", legacyScope);
         if (connection != null) state.put("connection", connection.saved());
         if (enrollment != null) state.put("enrollment", enrollment);
         if (handoff != null) state.put("handoff", handoff);
+        if (continuation != null && enrollment == null) state.put("personalContinuation", continuation);
         writeJson("encrypted", state);
     }
     JSONObject pendingAuthentication() throws Exception { return readJson("oidc-return"); }

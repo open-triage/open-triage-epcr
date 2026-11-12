@@ -655,8 +655,19 @@ public class ReportRecoveryJourneyTest {
         assertNotNull(files);assertEquals("A real private signed PDF is visible when the host changes server authority",1,files.length);
         long started=android.os.SystemClock.elapsedRealtime();
         var ready=new android.os.Bundle();ready.putString("opentriage_pdf_authority_phase","visible-awaiting-server-change");InstrumentationRegistry.getInstrumentation().sendStatus(0,ready);
-        assertTrue("The static native page detects real server revocation/workspace withdrawal within its 30-second cadence plus request latency",device.wait(androidx.test.uiautomator.Until.gone(page),45000));
+        assertTrue("The static native page detects real server incompatibility/revocation/workspace withdrawal within its 30-second cadence plus request latency",device.wait(androidx.test.uiautomator.Until.gone(page),45000));
         assertFalse("Remote authority loss deletes the actual private signed PDF",files[0].exists());
+        if("server-incompatible".equals(args.getString("authorityChange"))) {
+            String operation=java.util.UUID.randomUUID().toString();
+            String path="/api/review/reports/"+reportId+"/snapshots/"+args.getString("snapshotId")+"/pdf?amendmentSequence=0&language=en&dataset=synthetic";
+            evaluate("window.__pdfIncompatible=null;(async()=>{const state=await window.Capacitor.nativePromise('OpenTriageConnection','state',{});try{window.__pdfIncompatible={value:await window.Capacitor.nativePromise('OpenTriageConnection','openPdf',{operationId:"+JSONObject.quote(operation)+",connectionContext:state.connectionContext,path:"+JSONObject.quote(path)+",headers:{'x-organization-id':"+JSONObject.quote(args.getString("organizationId"))+"},language:'en',action:'view',accent:''})};}catch(error){window.__pdfIncompatible={error:error.code};}})()");
+            waitFor("Boolean(window.__pdfIncompatible)");
+            assertEquals("An incompatible server cannot open another native PDF under the still-valid login","\"SERVER_INCOMPATIBLE\"",evaluate("window.__pdfIncompatible.error"));
+            assertNull("Denied open leaves no native authority",NativePdfSessions.get(operation));
+            activity.onActivity(screen->assertFalse("Denied open removes the exact pending operation instead of leaking a bounded slot",NativePdfSessions.pending(screen.getBridge().getPlugin("OpenTriageConnection").getInstance(),operation)));
+            assertFalse("Denied open cannot display a native page",device.hasObject(page));
+            assertEquals("Denied open leaves no private preview",0,NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf")).length);
+        }
         var evidence=new android.os.Bundle();evidence.putLong("opentriage_pdf_authority_detection_ms",android.os.SystemClock.elapsedRealtime()-started);evidence.putString("opentriage_pdf_authority_change",args.getString("authorityChange"));InstrumentationRegistry.getInstrumentation().addResults(evidence);
     }
     private boolean historicalRecovery(String phase) throws Exception {

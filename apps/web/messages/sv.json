@@ -3043,6 +3043,7 @@
   "android.pendingTrustConfirm": "Använd de betrodda servercertifikaten i den här filen för den väntande kopplingen.",
   "android.pendingTrustApply": "Bekräfta serverförtroende",
   "android.tlsFailed": "Säker anslutning misslyckades. Kontrollera enhetens tid eller be IT kontrollera servercertifikatet och CA-förtroendet. Lokalt arbete behålls.",
+  "android.serverUpgradeRequired": "Servern behöver uppdateras innan appen kan ansluta. Kontakta installationsadministratören.",
   "android.pairingFailed": "Kopplingen misslyckades. Kontrollera fil, serveranslutning och certifikat eller begär en ny kod.",
   "android.cancel": "Avbryt",
   "android.publicCa": "Publika CA-certifikat (PEM, valfritt)",

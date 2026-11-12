@@ -146,7 +146,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       const signed=(await db.query('select id as signed_snapshot_id from clinical.signed_snapshot where report_id=$1',[opened.id])).rows[0];
       assert(signed?.signed_snapshot_id,'The shared Android signing workflow creates the actual immutable signed snapshot');
       const livePdfChange=async(authorityChange,change)=>{
-        const live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('remote-pdf',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id,authorityChange})),{cwd:root,checkpoint:'opentriage_pdf_authority_phase=visible-awaiting-server-change',timeoutMs:60000});
+        const live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('remote-pdf',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id,snapshotId:signed.signed_snapshot_id,organizationId:fixture.organizationId,authorityChange})),{cwd:root,checkpoint:'opentriage_pdf_authority_phase=visible-awaiting-server-change',timeoutMs:60000});
         let timedOut=false,timer;
         try {
           console.log(await live.ready);await change();
@@ -163,6 +163,15 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
           }
         }
       };
+      try {
+        await livePdfChange('server-incompatible',async()=>{
+          const changed=await api(fixture,ca,'__android-pdf-server-capability?compatible=0','POST',{});
+          assert.equal(changed.status,200);assert.equal(changed.body.compatible,false);
+        });
+      } finally {
+        const restored=await api(fixture,ca,'__android-pdf-server-capability?compatible=1','POST',{});
+        assert.equal(restored.status,200);assert.equal(restored.body.compatible,true);
+      }
       const users=await api(fixture,ca,'admin/users','GET',undefined,adminHeaders);assert.equal(users.status,200);
       const target=users.body.items.find(user=>user.id===fixture.clinician.userId);assert(target&&target.roles.length,'Synthetic clinician must retain an ordinary role before workspace withdrawal');
       let changed;

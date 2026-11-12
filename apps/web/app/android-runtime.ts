@@ -11,6 +11,7 @@ export type AndroidConnectionState = { configured: boolean; origin?: string; man
 type ConnectionPlugin = {
   openPdf(options: { operationId: string; path: string; headers: Record<string,string>; connectionContext: string; action: "view" | "save"; language: "en" | "sv"; accent: string }): Promise<{opened:boolean;status:number;code?:string}>;
   closePdf(options: { operationId: string }): Promise<void>;
+  resumePersonalSession(options: {connectionContext?:string}): Promise<{session?:AuthenticatedSession;unavailable?:boolean}>;
   prepareAgencyHandoff(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<{crossHost: boolean}>;
   confirmAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;
   switchAgency(options: {organizationId: string; csrfToken: string; connectionContext?: string}): Promise<AndroidConnectionState & {session: AuthenticatedSession}>;

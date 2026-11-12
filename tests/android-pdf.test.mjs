@@ -4,6 +4,7 @@ import {resolve,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import test from 'node:test';
+import {pdfServerCompatibilityFixture} from '../scripts/android/pdf-server-compatibility-fixture.mjs';
 import {assertNativePdfInstrumentation,assertNativePdfSafInstrumentation} from '../scripts/android/pdf-journey.mjs';
 
 test('native PDF acceptance requires all rendering/lifetime cases, not a partial or failed instrumentation run',()=>{
@@ -43,4 +44,15 @@ test('cold startup deletes only owned PDF files before constructing the new cred
  assert(source.indexOf('NativePdfSessions.cleanOrphans(this)')<source.indexOf('super.onCreate(state)'));
  const runner=readFileSync(resolve(root,'scripts/android-emulator-test.mjs'),'utf8');assert.match(runner,/await runNativePdfJourney\(/);
  const manifest=readFileSync(resolve(root,'android/app/src/main/AndroidManifest.xml'),'utf8');assert.match(manifest,/<activity android:name="\.NativePdfActivity"[^>]*android:exported="false"/);assert.match(manifest,/android:allowBackup="false"/);
+});
+
+test('PDF compatibility fixture withdraws only the required marker on health and restores the exact descriptor',()=>{
+ const middleware=pdfServerCompatibilityFixture(),descriptor={status:'ok',androidApiProtocol:1,androidApiCapabilities:['native-enrollment-attempt-v1','personal-session-continuation-v1','audio-webm-live-v1']};
+ const request=(method,url,body=descriptor)=>{let value,status=200;const response={status(code){status=code;return this;},json(data){value=data;return this;}};middleware({method,url},response,()=>response.json(body));return{value,status};};
+ assert.equal(request('GET','/api/health').value,descriptor);
+ assert.deepEqual(request('POST','/api/__android-pdf-server-capability?compatible=0').value,{compatible:false});
+ const changed=request('GET','/api/health').value;assert.equal(changed.androidApiProtocol,1);assert.equal(changed.status,'ok');assert.deepEqual(changed.androidApiCapabilities,['native-enrollment-attempt-v1','audio-webm-live-v1']);assert.equal(descriptor.androidApiCapabilities.length,3);
+ assert.equal(request('GET','/api/sessions/current').value,descriptor);assert.equal(request('POST','/api/health').value,descriptor);
+ assert.equal(request('POST','/api/__android-pdf-server-capability?compatible=1&extra=1').status,400);assert.equal(request('GET','/api/health').value.androidApiCapabilities.includes('personal-session-continuation-v1'),false);
+ assert.deepEqual(request('POST','/api/__android-pdf-server-capability?compatible=1').value,{compatible:true});assert.equal(request('GET','/api/health').value,descriptor);
 });

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { readFile } from 'node:fs/promises';
 import { installTlsFixtureControl } from './tls-fixture-control.mjs';
+import { pdfServerCompatibilityFixture } from './pdf-server-compatibility-fixture.mjs';
 const fixture = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const runtimeDatabase = new URL(fixture.databaseUrl);
 runtimeDatabase.searchParams.set('options', '-c role=open_triage_api_runtime');
@@ -48,6 +49,7 @@ let outcomeAvailable = true;
 let dropEnrollmentReplies = false;
 const pdfMediaHolds = new Set();
 const pdfDownloadFailures = new Set();
+app.use(pdfServerCompatibilityFixture());
 if(upgradeAcceptance) app.use((request,response,next)=>{
   if(request.url==='/api/__android-upgrade-policy/retire' && request.method==='POST') {
     upgradeAcceptance.retire();return response.json({retired:true});

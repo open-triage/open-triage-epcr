@@ -55,6 +55,15 @@ export class ClinicianSessionController {
     return this.sessions.getAuthenticated(sessionToken(request, authorization), new Date(), true);
   }
 
+  /** Read-only restart authority, including valid accounts awaiting password or workspace setup.
+   * The ordinary global CSRF guard applies; this never renews personal proof or expiry. */
+  @Post("current/continuation")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  currentContinuation(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AuthenticatedSession> {
+    return this.sessions.getAuthenticated(sessionToken(request, authorization), new Date(), true);
+  }
+
   @Post("agency/:id")
   @HttpCode(200)
   switchAgency(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,

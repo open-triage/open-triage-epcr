@@ -1,4 +1,4 @@
-import { clearClinicianSession,loadClinicianSession } from "./clinician-session";
+import { clearClinicianSession,loadClinicianSession } from "./clinician-session-storage";
 import { lockProtectedClinicalStorage } from "./protected-clinical-storage";
 import { clearProtectedRuntimeReports } from "./offline-reports";
 
