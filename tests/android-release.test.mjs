@@ -8,7 +8,7 @@ const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificate
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
 test('future live-audio clients require duration-less WebM support even from a protocol-one server', () => {
   const descriptor = { compatibility };
-  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ['native-enrollment-attempt-v1']), false);
+  assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES.filter(value => value !== 'audio-webm-live-v1')), false);
   assert.equal(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES), true);
   assert.equal(isAndroidReleaseCompatible({ compatibility: { ...compatibility, requiredCapabilities: undefined } }, 1, []), true);
 });
