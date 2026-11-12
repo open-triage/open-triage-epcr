@@ -62,9 +62,9 @@ public class NativePdfSafTest {
             assertNotEquals(target.getPackageName(),pickerPackage);
             assertNotEquals(component.getPackageName(),pickerPackage);
             var row=file;android.graphics.Rect visible=null;String geometry="";
-            for(int depth=0;row!=null&&depth<5;depth++,row=row.getParent()) {
-                var bounds=row.getVisibleBounds();geometry+=" depth="+depth+":"+bounds+":"+row.isClickable();
-                if(!pickerPackage.equals(row.getApplicationPackage())||!row.isEnabled()||!row.isClickable())continue;
+            for(int depth=0;row!=null&&depth<8;depth++,row=row.getParent()) {
+                var bounds=row.getVisibleBounds();geometry+=" depth="+depth+":"+bounds+":"+row.isClickable()+":"+row.getResourceName();
+                if(!pickerPackage.equals(row.getApplicationPackage())||!(pickerPackage+":id/item_root").equals(row.getResourceName())||!row.isEnabled()||!row.isClickable())continue;
                 if(bounds.intersect(0,0,device.getDisplayWidth(),device.getDisplayHeight())&&!bounds.isEmpty()){visible=bounds;break;}
             }
             assertNotNull("The exact synthetic document has an enabled clickable row inside the display;"+geometry,visible);
