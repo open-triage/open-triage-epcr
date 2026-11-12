@@ -44,11 +44,12 @@ public class TrustedConnectionTest {
                 try (var socket = server.accept()) {
                     socket.setSoTimeout(3000);
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
-                    String path = reader.readLine().split(" ")[1], originHeader = "null", cookieHeader = "null", jobHeader = "null", conditionalHeader = "null", line;
+                    String path = reader.readLine().split(" ")[1], originHeader = "null", cookieHeader = "null", jobHeader = "null", conditionalHeader = "null", versionHeader = "null", line;
                     while ((line = reader.readLine()) != null && !line.isEmpty()) {
                         if (line.toLowerCase().startsWith("origin: ")) originHeader = line.substring(8);
                         if (line.toLowerCase().startsWith("cookie: ")) cookieHeader = line.substring(8);
                         if (line.toLowerCase().startsWith("x-job-confirmation: ")) jobHeader = line.substring(20);
+                        if (line.toLowerCase().startsWith("x-opentriage-android-version: ")) versionHeader = line.substring(line.indexOf(':') + 1).trim();
                         if (line.toLowerCase().startsWith("if-none-match: ")) conditionalHeader = line.substring(15);
                     }
                     String extra = "", status = "200 OK";
@@ -60,7 +61,7 @@ public class TrustedConnectionTest {
                         extra = "ETag: \"revision-1\"\r\n";
                         if (conditionalHeader.equals("\"revision-1\"")) status = "304 Not Modified";
                     }
-                    byte[] body = (path.endsWith("confirmed-job") ? jobHeader : originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
+                    byte[] body = (path.endsWith("native-version") ? versionHeader : path.endsWith("confirmed-job") ? jobHeader : originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
                     if (status.startsWith("304")) body = new byte[0];
                     String head = "HTTP/1.1 " + status + "\r\n" + extra + "Content-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
                     socket.getOutputStream().write(head.getBytes(StandardCharsets.US_ASCII)); socket.getOutputStream().write(body); socket.getOutputStream().flush();
@@ -72,6 +73,9 @@ public class TrustedConnectionTest {
             String origin = "https://localhost:" + server.getLocalPort();
             var first = new TrustedConnection(origin, ca());
             assertEquals(origin + "|null", first.request("/api/pair", "GET", new JSONObject(), null).body());
+            assertEquals("16", first.requestBytes("/api/native-version", "GET", new JSONObject(), null, 16L).body());
+            assertEquals("null", first.request("/api/native-version", "GET", new JSONObject(), null).body());
+            assertThrows(Exception.class, () -> first.requestBytes("/api/native-version", "GET", new JSONObject(), null, 0L));
             assertEquals("a".repeat(43), first.request("/api/confirmed-job", "POST", new JSONObject().put("X-Job-Confirmation", "a".repeat(43)), "{}").body());
             assertEquals("\"revision-1\"", first.request("/api/conditional", "GET", new JSONObject(), null).headers().getString("ETag"));
             var unchanged = first.request("/api/conditional", "GET", new JSONObject().put("If-None-Match", "\"revision-1\""), null);
@@ -84,7 +88,7 @@ public class TrustedConnectionTest {
             String after = restored.request("/api/current", "GET", new JSONObject(), null).body();
             assertTrue(after.contains("installation-secret")); assertFalse(after.contains("clinician-secret"));
             assertThrows(Exception.class, () -> restored.request("/api/redirect", "GET", new JSONObject(), null));
-            for (String forbidden : new String[]{"Origin", "Cookie", "Authorization"}) {
+            for (String forbidden : new String[]{"Origin", "Cookie", "Authorization", "X-OpenTriage-Android-Version"}) {
                 assertThrows(Exception.class, () -> restored.request("/api/current", "GET", new JSONObject().put(forbidden, "unapproved"), null));
             }
             assertThrows(Exception.class, () -> new TrustedConnection(origin, "").request("/api/current", "GET", new JSONObject(), null));

@@ -3126,5 +3126,11 @@
   "platform.error.android.policyForbidden": "Installationsadministration krävs.",
   "platform.error.android.policyOnlineRequired": "Uppgraderingspolicyn kräver anslutning till installationen.",
   "platform.error.android.clientInvalid": "Ogiltig Android-applikationsversion.",
-  "androidUpgrade.agencies": "Organisationer"
+  "androidUpgrade.agencies": "Organisationer",
+  "android.upgradeRequired": "Uppdatera Android-appen innan du börjar med nytt arbete. Pågående dokumentation och sparade utkast finns kvar.",
+  "android.upgradeApproaching": "Uppdatera Android-appen före {deadline}.",
+  "android.upgradeCheckRequired": "Anslut för att kontrollera Android-kompatibilitet innan du börjar med nytt arbete.",
+  "android.downloadUpdate": "Hämta {version}",
+  "platform.error.android.upgradeRequired": "Uppdatera Android-appen innan du börjar med nytt arbete. Pågående dokumentation och sparade utkast finns kvar.",
+  "android.retainedIncompatible": "Det sparade utkastet använder ett inkompatibelt format. Dess krypterade data bevaras för återställning."
 }

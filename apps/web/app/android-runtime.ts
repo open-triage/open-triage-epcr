@@ -5,6 +5,7 @@ export type NativeResponse = { status: number; headers: Record<string, string>; 
 export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
 export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
+  version(): Promise<{versionCode: number}>;
   state(): Promise<AndroidConnectionState>;
   beginReplacement(): Promise<AndroidConnectionState>;
   resumeEnrollment(): Promise<AndroidConnectionState>;

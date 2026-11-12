@@ -1,3 +1,7 @@
+import {AndroidUpgradePolicyService} from '../dist/admin/android-upgrade-policy.service.js';
+import {AndroidReleaseService} from '../dist/admin/android-release.service.js';
+import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {createHash} from 'node:crypto';
 import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -105,6 +109,44 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  assert.equal((await run(undefined,()=>reports.reopen(unpaired.sessionToken,reportId))).report.formVersionId,original.form_version_id);
  const standalone={commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID(),organizationId:agency,documentingUserId:user,patientIdentityState:'unknown'};
  await assert.rejects(run(undefined,()=>reports.create(unpaired.sessionToken,standalone)),denied('calls.enrollmentRequired'));
+ // Real new-work gates cover both dispatch-open and standalone creation, while
+ // retirement cannot invalidate owned report reopen, call retry or command replay.
+ {
+  const previousSelection=process.env.ANDROID_APPROVED_RELEASE;
+  const approved=structuredClone(catalog),replacement=approved.releases[0],bytes=Buffer.from('synthetic upgrade-policy replacement');
+  const hash=createHash('sha256').update(bytes).digest('hex');
+  replacement.descriptor.apkSha256=hash;replacement.descriptor.apkBytes=bytes.length;
+  replacement.descriptor.artifact=`opentriage-${replacement.descriptor.versionName}-${replacement.descriptor.versionCode}-${hash}.apk`;
+  replacement.downloadUrl=`https://github.com/open-triage/open-triage-epcr/releases/download/${replacement.tag}/${replacement.descriptor.artifact}`;
+  const lifecycle={schemaVersion:1,retirements:[]};
+  process.env.ANDROID_APPROVED_RELEASE=replacement.tag;
+  const release=new AndroidReleaseService(sessions,async()=>new Response(bytes),approved);
+  const upgrade=new AndroidUpgradePolicyService(db,sessions,release,enrollment,approved,lifecycle);
+  const gatedCalls=new AssignedCallsService(db,sessions,schedules,upgrade),gatedReports=new DraftReportService(db,sessions,schedules,upgrade);
+  const android=(version,work,legacy=false)=>agencyRequest.run({origin,installationCredential:binding.credential,androidVersion:version,legacyAndroid:legacy},work);
+  try {
+   const pendingCommand={...standalone,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()};
+   const before=await android(undefined,()=>gatedReports.create(paired.sessionToken,pendingCommand),true);
+   assert.equal(before.id,pendingCommand.reportId,'the oldest supported unversioned APK starts before retirement');
+   lifecycle.retirements.push({versionCode:1,supersededAt:'2000-01-01T00:00:00.000Z',replacementTag:replacement.tag});
+   const incoming=await dispatch(firstUnit);
+   await assert.rejects(android('1',()=>gatedCalls.open(paired.sessionToken,incoming)),error=>error.getStatus?.()===426);
+   await assert.rejects(android(undefined,()=>gatedCalls.open(paired.sessionToken,incoming),true),error=>error.getStatus?.()===426);
+   const freshCommand={...pendingCommand,commandId:randomUUID(),reportId:randomUUID(),incidentId:randomUUID(),patientId:randomUUID()};
+   await assert.rejects(android('1',()=>gatedReports.create(paired.sessionToken,freshCommand)),error=>error.getStatus?.()===426);
+   assert.equal((await admin.query('select report_id,status from clinical.call_assignment where id=$1',[incoming])).rows[0].report_id,null);
+   assert.equal((await admin.query('select count(*)::int n from clinical.report where id=$1',[freshCommand.reportId])).rows[0].n,0);
+   assert.equal((await admin.query('select count(*)::int n from clinical.command_receipt where idempotency_key=$1',[freshCommand.commandId])).rows[0].n,0);
+   assert.equal((await android('1',()=>gatedCalls.open(paired.sessionToken,assignment))).report.id,reportId);
+   assert.equal((await android('1',()=>gatedReports.reopen(paired.sessionToken,reportId))).report.id,reportId);
+   assert.equal((await android('1',()=>gatedReports.create(paired.sessionToken,pendingCommand))).id,pendingCommand.reportId);
+   assert.equal((await android('1',()=>gatedReports.create(paired.sessionToken,{...freshCommand,commandId:randomUUID(),reportId:randomUUID(),patientId:randomUUID(),incidentId:original.incident_id}))).status,'draft','authorized existing-incident documentation can continue');
+   // A real browser and an explicitly supported replacement retain independent paths.
+   assert.equal((await android('2',()=>gatedCalls.open(paired.sessionToken,incoming))).assignmentId,incoming);
+   const browserIncoming=await dispatch(firstUnit);
+   assert.equal((await run(binding.credential,()=>gatedCalls.open(paired.sessionToken,browserIncoming))).assignmentId,browserIncoming);
+  } finally {if(previousSelection===undefined)delete process.env.ANDROID_APPROVED_RELEASE;else process.env.ANDROID_APPROVED_RELEASE=previousSelection;}
+ }
  // Force a committed schedule snapshot update after the SERIALIZABLE snapshot
  // exists, before its first evaluation write. This reproduces the browser race
  // deterministically instead of depending on request timing.

@@ -60,8 +60,10 @@ export function OpenReports({
   onSessionEnded,
   refreshRequest = 0,
   paused = false,
+  newWorkBlocked = false,
 }: {
   readonly paused?: boolean;
+  readonly newWorkBlocked?: boolean;
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly activeReportId?: string;
@@ -272,8 +274,8 @@ export function OpenReports({
           <p className="eyebrow">{t("reports.yourDocumentation")}</p>
           <h1 id="open-reports-title">{t("reports.openReports")}</h1>
         </div>
-        <button type="button" disabled={creating || reopeningId !== null || paused || Boolean(activeReportId)}
-          onClick={event => { creationTrigger.current=event.currentTarget;setReturningFocus(false);void (async () => {
+        <button type="button" disabled={newWorkBlocked || creating || reopeningId !== null || paused || Boolean(activeReportId)}
+          onClick={event => { if (newWorkBlocked) return; creationTrigger.current=event.currentTarget;setReturningFocus(false);void (async () => {
             setCreating(true); setError(null);
             try {
               const opened = await createNewPatientReport(session);

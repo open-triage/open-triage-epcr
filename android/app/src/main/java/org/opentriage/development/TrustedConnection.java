@@ -139,6 +139,9 @@ final class TrustedConnection {
     }
 
     Reply requestBytes(String path, String method, JSONObject headers, byte[] body) throws Exception {
+        return requestBytes(path, method, headers, body, null);
+    }
+    Reply requestBytes(String path, String method, JSONObject headers, byte[] body, Long androidVersion) throws Exception {
         requestPath(path);
         if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD").contains(method) ||
                 body != null && body.length > MAX_BODY) throw new IllegalArgumentException("Invalid request");
@@ -156,6 +159,12 @@ final class TrustedConnection {
             String lower = key.toLowerCase(Locale.ROOT), value = headers.getString(key);
             if (!HEADERS.contains(lower) || value.contains("\r") || value.contains("\n") || value.length() > 8192) throw new IllegalArgumentException("Unapproved header");
             connection.setRequestProperty(key, value);
+        }
+        // Set only from the installed package, after validating all caller headers.
+        // The JS header allowlist deliberately excludes this field.
+        if (androidVersion != null) {
+            if (androidVersion < 1 || androidVersion > 2100000000L) throw new IllegalArgumentException("Invalid installed version");
+            connection.setRequestProperty("X-OpenTriage-Android-Version", Long.toString(androidVersion));
         }
         List<String> cookieValues = new ArrayList<>();
         cookies.entrySet().removeIf(entry -> entry.getValue().expires <= System.currentTimeMillis());

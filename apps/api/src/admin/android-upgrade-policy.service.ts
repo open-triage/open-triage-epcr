@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Optional, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Optional, UnauthorizedException, ServiceUnavailableException, HttpException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { DataSource, type EntityManager } from "typeorm";
@@ -12,6 +12,7 @@ import defaultLifecycle from "@open-triage/contracts/config/android-release-life
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { AndroidReleaseService, ANDROID_RELEASE_CATALOG } from "./android-release.service.js";
 import { InstallationEnrollmentService } from "./installation-enrollment.service.js";
+import { agencyRequest } from "../sessions/agency-context.js";
 export const ANDROID_RELEASE_LIFECYCLE = "ANDROID_RELEASE_LIFECYCLE";
 type PolicyRow = { grace_days: number; revision: number; updated_at: Date | string };
 function command(input: unknown, saving: boolean) {
@@ -103,6 +104,61 @@ export class AndroidUpgradePolicyService {
       return this.view(saved, inputs, new Date().toISOString());
     });
   }
+  /** Download verification precedes database locks. The shared policy lock always
+   * precedes person/device/session locks, matching the policy writer's order.
+   * Evaluation is delayed until genuinely new work, so retries and existing work survive retirement. */
+  async prepareNewWork(version: string | undefined, token: string) {
+    let legacyMetadata = false;
+    if (version === undefined) {
+      const request = agencyRequest.getStore();
+      const native = await this.nativeProvenance(this.database.manager, token);
+      if (!native && !request?.legacyAndroid) return async (manager: EntityManager) => async () => {
+        // Enrollment may have committed after the initial metadata read. The
+        // call path now holds its normal registration/session authority locks;
+        // missing native metadata must still fail before a new report is inserted.
+        if (await this.nativeProvenance(manager, token)) throw new HttpException({code: "android.upgradeRequired", reason: "invalid-client", replacement: null}, 426);
+      };
+      if (!native && request?.legacyAndroid) {
+        // Only the immutable pre-metadata candidate is the legacy baseline.
+        // Never substitute latest/current for an unreported package version.
+        const value = this.approved as typeof catalog;
+        const baseline = value?.releases?.find(entry => entry.tag === "android-candidate-1-0.1.0-rc.1" && entry.descriptor.versionCode === 1);
+        version = baseline ? "1" : "";
+        legacyMetadata = true;
+      } else version = "";
+    }
+    const declaredVersion = version;
+    const inputs = await this.inputs();
+    return async (manager: EntityManager) => {
+      const policy = await this.policyForNewWork(manager);
+      return async () => {
+        const valid = /^[1-9][0-9]{0,9}$/.test(declaredVersion) && Number(declaredVersion) <= 21e8;
+        if (!valid) throw new HttpException({ code: "android.upgradeRequired", reason: "invalid-client", replacement: null }, 426);
+        const selection = this.releases.currentVerifiedSelection();
+        if (inputs.selection !== (process.env.ANDROID_APPROVED_RELEASE ?? "") || !selection || JSON.stringify(selection) !== JSON.stringify(inputs.replacement))
+          throw new ConflictException({ code: "android.policyChanged" });
+        const outcome = this.evaluate(inputs, policy.graceDays, new Date().toISOString(), Number(declaredVersion));
+        if (outcome.status === "upgrade-required") throw new HttpException({ code: "android.upgradeRequired", ...outcome, metadata: legacyMetadata ? "legacy-baseline" : "declared" }, 426);
+        return { ...outcome, metadata: legacyMetadata ? "legacy-baseline" : "declared" };
+      };
+    };
+  }
+  private async nativeProvenance(manager: Pick<EntityManager, "query">, token: string): Promise<boolean> {
+    const request = agencyRequest.getStore();
+    const [provenance] = await manager.query(`select exists(
+      select 1 from app_identity.unit_enrollment e
+      join app_identity.installation_registration i on i.organization_id=e.organization_id and i.id=e.installation_id
+      where e.native_attempt_sha256 is not null and e.native_binding_sha256 is not null
+      and (i.credential_sha256=$1 or i.id=(select installation_registration_id from app_identity.app_session where token_sha256=$2))
+    ) as native`, [request?.installationCredential ? createHash("sha256").update(request.installationCredential).digest("hex") : null,
+      createHash("sha256").update(token).digest("hex")]);
+    return provenance?.native === true;
+  }
+  private async policyForNewWork(manager: EntityManager): Promise<AndroidUpgradePolicy> {
+    const [row] = await manager.query<PolicyRow[]>(`select grace_days,revision,updated_at from app_identity.android_upgrade_policy where singleton for share`);
+    if (!row) throw new ServiceUnavailableException({ code: "android.policyOnlineRequired" });
+    return { graceDays: row.grace_days, revision: row.revision, updatedAt: new Date(row.updated_at).toISOString() };
+  }
   async client(token: string, credential: string | undefined, versionCode: number) {
     if (!Number.isSafeInteger(versionCode) || versionCode < 1 || versionCode > 21e8) throw new BadRequestException({ code: "android.clientInvalid" });
     if (credential) await this.enrollment.current(credential);
@@ -113,4 +169,18 @@ export class AndroidUpgradePolicyService {
     const [policy, inputs] = await Promise.all([this.policy(), this.inputs()]);
     return { ...this.evaluate(inputs, policy.graceDays, new Date().toISOString(), versionCode), policyRevision: policy.revision, graceDays: policy.graceDays };
   }
+}
+
+/** Version declaration is compatibility metadata, never device or personal authority.
+ * Known native registrations cannot evade retirement by omitting the declaration.
+ * Legacy Dalvik clients are conservatively evaluated as immutable candidate 1. */
+export async function prepareAndroidNewWork(policy: AndroidUpgradePolicyService | undefined, token: string) {
+  const version = agencyRequest.getStore()?.androidVersion;
+  if (!policy) {
+    // Isolated legacy service tests may omit the provider; production modules
+    // explicitly import/export it. A declared Android request still fails closed.
+    if (version !== undefined || agencyRequest.getStore()?.legacyAndroid) throw new ServiceUnavailableException({ code: "android.policyOnlineRequired" });
+    return async (_manager: EntityManager) => () => {};
+  }
+  return policy.prepareNewWork(version, token);
 }

@@ -75,6 +75,26 @@ integration('installation upgrade policy persists once across agencies with live
   const unsupported=await service.preview(superSession.sessionToken,{graceDays:365,expectedRevision:2});
   assert.equal(unsupported.proposedClients.find(entry=>entry.versionCode===1).reason,'unsupported');assert.equal(unsupported.proposedClients.find(entry=>entry.versionCode===1).deadline,null);
   assert.equal((await service.client(clinicalA.sessionToken,undefined,1)).status,'upgrade-required');delete oldRelease.descriptor.compatibility.requiredCapabilities;
+  // A clinical reader waits behind a real concurrent policy writer, then
+  // evaluates the committed days under its shared lock rather than a stale preview.
+  {
+   const prepared=await service.prepareNewWork('1',clinicalA.sessionToken);
+   const writer=new pg.Client({connectionString:url.toString()});await writer.connect();
+   let queued;
+   try{
+    await writer.query('begin');await writer.query('update app_identity.android_upgrade_policy set grace_days=101 where singleton');
+    queued=db.transaction(async manager=>(await prepared(manager))()).then(value=>({value}),error=>({error}));
+    let waiting=false;
+    for(let i=0;i<100;i++){
+     const rows=await owner.query("select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and query like 'select grace_days,revision,updated_at%for share') waiting");
+     if(rows[0].waiting){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    assert(waiting,'New work must actually wait on the authoritative policy row');
+    await writer.query('commit');const result=await queued;
+    assert.equal(result.error?.getStatus?.(),426);
+    assert.equal(result.error.getResponse().deadline,'2026-04-12T00:00:00.000Z','The committed 101-day policy, not the old 100-day preview, determines the rejection');
+   }finally{await writer.query('rollback');await writer.end();if(queued)await queued;await owner.query('update app_identity.android_upgrade_policy set grace_days=100 where singleton');}
+  }
   const audit=await owner.query('select * from app_identity.android_upgrade_policy_event');assert.equal(audit.length,1);assert.equal(audit[0].before_policy.graceDays,90);assert.equal(audit[0].after_policy.graceDays,100);
   await assert.rejects(owner.query('update app_identity.android_upgrade_policy_event set action=action'),/append-only/);
   await assert.rejects(db.query('update app_identity.android_upgrade_policy set grace_days=4,updated_by=$1',[agencyAdmin.userId]),error=>error.code==='42501');

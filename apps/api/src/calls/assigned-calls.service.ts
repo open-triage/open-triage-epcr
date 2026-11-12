@@ -1,6 +1,7 @@
+import { AndroidUpgradePolicyService, prepareAndroidNewWork } from "../admin/android-upgrade-policy.service.js";
 import { recordPatientAccess } from "../reports/patient-access-audit.js";
 import { randomUUID } from "node:crypto";
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, Injectable, Optional, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type {
@@ -198,7 +199,8 @@ export class AssignedCallsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly sessions: ClinicianSessionService,
-    private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions)
+    private readonly schedules: SchedulesService = new SchedulesService(dataSource, sessions),
+    @Optional() private readonly upgrades?: AndroidUpgradePolicyService
   ) {}
 
   async list(accessToken: string, now = new Date()): Promise<AssignedCallsResponse> {
@@ -283,12 +285,15 @@ export class AssignedCallsService {
 
   async generateSynthetic(accessToken: string, csrfToken: string | undefined, unitId: string,
     now = new Date(), options: { dispatchedAt?: Date; random?: () => number } = {}): Promise<GenerateSyntheticCallResponse> {
+    await this.sessions.requireCapability(accessToken, "clinical:document");
+    const upgrade = await prepareAndroidNewWork(this.upgrades, accessToken);
     const dispatchedAt = options.dispatchedAt ?? now;
     if (!Number.isFinite(dispatchedAt.getTime()) || dispatchedAt > now) {
       throw new UnprocessableEntityException("Synthetic dispatch time must be a valid time at or before now");
     }
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        const assertUpgrade = await upgrade(manager);
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         await this.sessions.requireCapability(accessToken, "clinical:document", manager, now);
         const session = await this.sessions.requireCapability(accessToken, "clinical:demo", manager, now);
@@ -333,6 +338,7 @@ export class AssignedCallsService {
           return { assignment: assignedCall(existing[0]), reused: true };
         }
 
+        await assertUpgrade();
         const assignment = await this.createSyntheticAssignment(manager, {
           organizationId: session.organization.id,
           userId: session.user.id,
@@ -379,8 +385,10 @@ export class AssignedCallsService {
 
   async open(accessToken: string, assignmentId: string, confirmationToken?: string): Promise<OpenAssignmentResponse> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:document");
+    const upgrade = await prepareAndroidNewWork(this.upgrades, accessToken);
     try {
       return await withReportSnapshot(this.dataSource, async (manager) => {
+        const assertUpgrade = await upgrade(manager);
         const productionAccess = await productionJobAccess(manager, accessToken, session, this.schedules, { target: `assignment:${assignmentId}`, token: confirmationToken });
         const current = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         const assignments = await manager.query<OpenableAssignmentRow[]>(`
@@ -448,6 +456,7 @@ export class AssignedCallsService {
         const agencyVersion = agencyVersions[0];
         if (!agencyVersion) throw new ConflictException("No compatible agency demographics are available");
 
+        await assertUpgrade();
         const patientId = randomUUID();
         const reportId = randomUUID();
         const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);

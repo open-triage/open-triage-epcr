@@ -1,7 +1,8 @@
+import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES, ANDROID_CLIENT_REQUIRED_CAPABILITIES, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compatibility, validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions } from '../scripts/android/release-contract.mjs';
+import { compatibility, validateReleaseInputs, validateUpgrade, verifyApkMetadata, validatePublicationEvidence, requiredUpgradeAssertions, requiredUpgradeGateAssertions } from '../scripts/android/release-contract.mjs';
 const inputs = { ANDROID_KEYSTORE_PATH: '/protected/key.p12', ANDROID_KEYSTORE_PASSWORD: 'synthetic', ANDROID_KEY_PASSWORD: 'synthetic', ANDROID_KEY_ALIAS: 'synthetic', ANDROID_CERTIFICATE_SHA256: 'ab'.repeat(32), ANDROID_VERSION_CODE: '2', ANDROID_VERSION_NAME: '0.1.0-rc.2' };
 const a = { applicationId: 'org.opentriage.android', versionCode: 1, certificateSha256: 'ab'.repeat(32), apkSha256: 'a'.repeat(64) };
 const b = { ...a, versionCode: 2, apkSha256: 'b'.repeat(64) };
@@ -57,7 +58,23 @@ test('publication requires acceptance evidence for every native extension requir
 });
 
 test('merged enrollment and upgrade policy implementations are advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1']);
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
+});
+
+test('future upgrade-gating APKs cannot mistake policy-only support for authoritative new-work enforcement', () => {
+  assert(ANDROID_CLIENT_REQUIRED_CAPABILITIES.includes('android-upgrade-gate-v1'));
+  const policyOnly = ANDROID_API_CAPABILITIES.filter(capability => capability !== 'android-upgrade-gate-v1');
+  const descriptor = {compatibility};
+  assert(isAndroidReleaseCompatible(descriptor, 1, ANDROID_API_CAPABILITIES));
+  assert(!isAndroidReleaseCompatible(descriptor, 1, policyOnly));
+});
+
+test('publication of an upgrade-gating APK requires actual retirement, interrupted staging and current-replacement acceptance', () => {
+ const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
+ const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES,releaseA:a,releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions,...requiredUpgradeGateAssertions]};
+ const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
+ validatePublicationEvidence(descriptor,evidence,preflight,identity);
+ for(const missing of requiredUpgradeGateAssertions)assert.throws(()=>validatePublicationEvidence(descriptor,{...evidence,assertions:evidence.assertions.filter(value=>value!==missing)},preflight,identity),/Missing upgrade gate acceptance/);
 });

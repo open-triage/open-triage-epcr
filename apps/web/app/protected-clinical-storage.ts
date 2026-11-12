@@ -1,7 +1,22 @@
+import { resolveMessage } from "./localization";
 import { nativeStorageScope, nativeLegacyStorageScope } from "./native-storage-context";
 import type { EpsLookup, CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 import { sameJsonValue } from "./json-values";
+
+/** An upgrade may read older supported envelopes, but must never replace
+ * incompatible retained material with a new key or an empty protected record. */
+export class RetainedFormatError extends Error {
+  constructor() {
+    super(resolveMessage(typeof document !== "undefined" && document.documentElement.lang === "sv" ? "sv" : "en", "android.retainedIncompatible"));
+    this.name = "RetainedFormatError";
+  }
+}
+function incompatibleRetainedRecord(reportId: string): never {
+  const error = new RetainedFormatError();
+  publishStatus(reportId, { mode: "read-only", explanation: error.message });
+  throw error;
+}
 
 export const PROTECTED_CLINICAL_DATABASE = "open-triage-protected-clinical-v1";
 export const PROTECTED_CLINICAL_STORE = "encrypted-reports";
@@ -1104,6 +1119,7 @@ async function prepareProtectedReportWithAuthority(csrfToken: string, reportId: 
   } catch (error) {
     releaseLock();
     if (generation !== protectedAuthorityGeneration || signal.aborted) return false;
+    if (error instanceof RetainedFormatError) throw error;
     publishStatus(reportId, { mode: "online-only", explanation: "Protected offline storage could not be prepared; connected server saves remain available." });
     throw error;
   } finally { raw?.fill(0); if (!activated) releaseLock(); }
@@ -1157,8 +1173,8 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
   }
   const record = await recordForRecoveryHandle(grant.recoveryHandle);
   if (!current()) return null;
-  if (Date.parse(grant.expiresAt) <= Date.now() || (record && (record.schemaVersion !== 1 ||
-      record.algorithm !== "AES-256-GCM" || protectedRecordExpired(record)))) return null;
+  if (record && (record.schemaVersion !== 1 || record.algorithm !== "AES-256-GCM")) incompatibleRetainedRecord(reportId);
+  if (Date.parse(grant.expiresAt) <= Date.now() || record && protectedRecordExpired(record)) return null;
   if (!record && grant.reportStatus === "signed") {
     options.onNoRetainedWork?.();
     return null;
@@ -1188,9 +1204,7 @@ async function recoverProtectedReportWithAuthority(csrfToken: string, reportId: 
     if (raw.byteLength !== 32) throw new Error("Protected report recovery is unavailable.");
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     const payload = record ? await decryptProtectedPayload(key, record) : { schemaVersion: 1 };
-    if (!payload || typeof payload !== "object" || (payload as { schemaVersion?: unknown }).schemaVersion !== 1) {
-      throw new Error("Protected report recovery is unavailable.");
-    }
+    if (!payload || typeof payload !== "object" || (payload as { schemaVersion?: unknown }).schemaVersion !== 1) incompatibleRetainedRecord(reportId);
     const protectedPayload = payload as RecoveredProtectedPayload;
     const recoveredReportId = (protectedPayload.report as { report?: { id?: unknown } } | undefined)?.report?.id;
     if (recoveredReportId !== undefined && recoveredReportId !== reportId) {
