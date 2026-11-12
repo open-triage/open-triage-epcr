@@ -53,6 +53,29 @@ public class AgencyHandoffJourneyTest {
     private ConnectionVault vault(){return new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());}
     private String session(){return "JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null')";}
     private void status(String key,String value){var data=new android.os.Bundle();data.putString(key,value);InstrumentationRegistry.getInstrumentation().sendStatus(0,data);}
+    /** Diagnostic fields are public identifiers/booleans or one-way cookie hashes only. */
+    private void sessionEvidence(String phase) {
+        try {
+            String hash;try {hash=NativeAgencyHandoff.sessionIdentity(vault().read());}catch(Exception missing){hash="absent";}
+            status("agency_session_cookie_sha256",hash);
+            status("agency_expected_cookie_sha256",InstrumentationRegistry.getInstrumentation().getTargetContext().getSharedPreferences("agency-test-evidence",0).getString("cookie","unset"));
+            evaluate("window.__agencyDiagnostic=null;window.__agencyPolicy=null;window.Capacitor.nativePromise('OpenTriageConnection','state',{}).then(s=>window.__agencyPolicy={configured:s.configured,blocked:s.blocked,managed:s.managed,managedStatus:s.managedStatus,managedContext:s.managedContext,connectionContext:s.connectionContext,origin:s.origin}).catch(()=>window.__agencyPolicy={unavailable:true});fetch('/api/sessions/current').then(async r=>{let b={};try{b=await r.json()}catch{}window.__agencyDiagnostic={status:r.status,userId:b.user?.id,organizationId:b.organization?.id,expiresAt:b.expiresAt}}).catch(()=>window.__agencyDiagnostic={unavailable:true})");
+            long deadline=android.os.SystemClock.elapsedRealtime()+3000;
+            while(android.os.SystemClock.elapsedRealtime()<deadline&&!"true".equals(evaluate("Boolean(window.__agencyDiagnostic&&window.__agencyPolicy)")))Thread.sleep(50);
+            status("agency_session_evidence",new org.json.JSONTokener(evaluate("JSON.stringify((()=>{const s=JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null');return{phase:"+JSONObject.quote(phase)+",sessionPresent:!!s,userId:s?.user?.id,organizationId:s?.organization?.id,csrfPresent:!!s?.csrfToken,expiresAt:s?.expiresAt,marker:localStorage.getItem('open-triage.installation-transition.v1'),generation:localStorage.getItem('open-triage.installation-generation.v1'),candidatePresent:!!localStorage.getItem('open-triage.installation-session-candidate.v1'),policy:window.__agencyPolicy,current:window.__agencyDiagnostic}})())")).nextValue().toString());
+        } catch(Exception | AssertionError unavailable) {try{status("agency_session_evidence","unavailable");}catch(Exception ignored){/* Preserve the original failure if the runner already closed. */}}
+    }
+    private void verifySuperuser(String userId,String organizationId) throws Exception {
+        current();assertEquals(JSONObject.quote(userId),evaluate("window.__agencyCurrent.body.user.id"));assertEquals(JSONObject.quote(organizationId),evaluate("window.__agencyCurrent.body.organization.id"));
+        assertEquals(JSONObject.quote(userId),evaluate(session()+".user.id"));assertEquals(JSONObject.quote(organizationId),evaluate(session()+".organization.id"));
+        String csrf=new org.json.JSONTokener(evaluate(session()+".csrfToken")).nextValue().toString();
+        var connection=vault().read();String hash=NativeAgencyHandoff.sessionIdentity(connection);
+        var guarded=connection.request("/api/sessions/agency-handoff/current","POST",new JSONObject().put("content-type","application/json").put("x-csrf-token",csrf),"{}");
+        assertEquals("Current private cookie and public CSRF must identify the logged-in superuser",200,guarded.status());
+        assertEquals(userId,new JSONObject(guarded.body()).getJSONObject("user").getString("id"));assertEquals(hash,NativeAgencyHandoff.sessionIdentity(connection));
+        assertTrue(InstrumentationRegistry.getInstrumentation().getTargetContext().getSharedPreferences("agency-test-evidence",0).edit().putString("cookie",hash).commit());
+        sessionEvidence("valid-before-managed-cold-start");
+    }
     private void select(String id) throws Exception {
         waitFor("document.querySelector('.session-agency-selector select') && !document.querySelector('.session-agency-selector select').disabled");
         evaluate("(()=>{const s=document.querySelector('.session-agency-selector select');s.value="+JSONObject.quote(id)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
@@ -148,8 +171,8 @@ public class AgencyHandoffJourneyTest {
                 String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
                 waitFor("document.querySelector('input[name=username]')");unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("recover-source")){
-                login(args.getString("username"),args.getString("password"));click("Reopen report");waitFor("document.querySelector('.encounter-header')");if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-AGENCY-PENDING'");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");click("Save & close");waitFor("!document.querySelector('.encounter-header')");logout(false);login(args.getString("superuser"),args.getString("superuserPassword"));bundled();
+                login(args.getString("username"),args.getString("password"));click("Reopen report");waitFor("document.querySelector('.encounter-header')");if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-AGENCY-PENDING'");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");click("Save & close");waitFor("!document.querySelector('.encounter-header')");logout(false);login(args.getString("superuser"),args.getString("superuserPassword"));bundled();verifySuperuser(args.getString("superuserId"),args.getString("sourceAgency"));
             }else fail("Unknown agency test phase");
-        }finally{activity.close();}
+        }catch(AssertionError failure){sessionEvidence(phase);throw failure;}finally{activity.close();}
     }
 }

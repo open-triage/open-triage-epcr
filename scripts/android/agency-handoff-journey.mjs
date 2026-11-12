@@ -50,7 +50,7 @@ export async function runAgencyHandoffJourney({root,directory,fixture,adb,serial
   run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',wrongKey,'-out',wrongCert,'-days','2','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1']);
   await startTarget({keyPath:wrongKey,certPath:wrongCert});
   run(adb,['-s',serial,'shell','pm','clear','org.opentriage.development']);
-  const identity={username:fixture.clinician.username,password:fixture.clinicianPassword,superuser:superuser.username,superuserPassword};
+  const identity={username:fixture.clinician.username,password:fixture.clinicianPassword,superuser:superuser.username,superuserPassword,superuserId:superuser.userId};
   const setup=await instrument('setup',{...identity,artifactBase64:await issue(),callNumber});
   reportId=/agency_report_id=([a-f0-9-]{36})/.exec(setup)?.[1];const retainedSha256=/retained_sha256=([a-f0-9]{64})/.exec(setup)?.[1],sourceCookieSha256=/source_cookie_sha256=([a-f0-9]{64})/.exec(setup)?.[1];assert(reportId&&retainedSha256&&sourceCookieSha256);
   const snapshot=async()=>{
