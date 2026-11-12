@@ -27,7 +27,7 @@ export function SignedReportPdfPreview({ reportId, snapshotId, amendmentSequence
     if (!open || disabled) return;
     const controller = new AbortController();
     let objectUrl: string | null = null;
-    dialog.current?.showModal();
+    if (dialog.current && !dialog.current.open) dialog.current.showModal();
     const query = new URLSearchParams({ amendmentSequence: String(amendmentSequence), language: language === "sv" ? "sv" : "en", dataset });
     if (!deliveryId) query.set("timeZone", zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
     const path = draftRevision !== undefined ? `/api/reports/${reportId}/cos/pdf?revision=${typeof draftRevision === 'function' ? draftRevision() : draftRevision}&language=${language}` : deliveryId ? `/api/review/reports/${reportId}/cos-deliveries/${deliveryId}/pdf?${query}` : `/api/review/reports/${reportId}/snapshots/${snapshotId}/pdf?${query}`;

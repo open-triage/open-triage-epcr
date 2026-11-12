@@ -5,7 +5,15 @@ import path from 'node:path';
 
 const report='11111111-1111-4111-8111-111111111111',snapshot='22222222-2222-4222-8222-222222222222',agency='33333333-3333-4333-8333-333333333333';
 type PdfRequest={path:string;headers:Record<string,string>;connectionContext:string;action:'view'|'save';language:string;operationId:string};
-async function mount(page:Page,{native=true,language='en',mode='ready'}={}) {
+async function mount(page:Page,{native=true,language='en',mode='ready',legacyModal=false}={}) {
+  if(legacyModal)await page.addInitScript(()=>{
+    const original=HTMLDialogElement.prototype.showModal;
+    HTMLDialogElement.prototype.showModal=function(){
+      if(this.open)throw new DOMException("The element already has an 'open' attribute, and therefore cannot be opened modally.",'InvalidStateError');
+      (window as any).__modalOpenCalls=((window as any).__modalOpenCalls??0)+1;
+      return original.call(this);
+    };
+  });
   const cwd=process.cwd();
   const script=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{SignedReportPdfPreview}from'./components/signed-report-pdf-preview';import{configureNativeConnection}from'./app/android-runtime';import{bindBrowserOrganization}from'./app/browser-api';
   bindBrowserOrganization('${agency}');configureNativeConnection({configured:true,origin:'https://private.example',storageScope:'A'.repeat(43),connectionContext:'native-context'});
@@ -49,6 +57,22 @@ test('programmatic native PDF Retry keeps the same modal and starts a fresh nati
   await expect(page.locator('[data-native-pdf-controls]')).toBeVisible();
   await expect.poll(()=>page.evaluate('window.__pdfFixture.calls.length')).toBe(2);
   expect(await page.evaluate('window.__pdfFixture.calls[0].operationId!==window.__pdfFixture.calls[1].operationId')).toBe(true);
+});
+for(const native of [true,false])test(`PDF Retry retains the open dialog under Chromium109 showModal semantics (native=${native})`,async({page})=>{
+  // Chromium109 rejects *any* showModal() on an open element, even an
+  // already-modal dialog. New desktop Chromium permits that repeated call.
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.name));
+  let fail=true,reads=0;
+  await page.route('**/api/review/reports/**/pdf?**',route=>{reads++;return fail?route.fulfill({status:503,json:{code:'pdf.unavailable'}}):route.fulfill({contentType:'application/pdf',body:'%PDF-1.4\nsynthetic bounded retry fixture'});});
+  await mount(page,{native,mode:'denied',legacyModal:true});
+  await page.getByRole('button',{name:'Inspect signed PDF',exact:true}).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  fail=false;await page.evaluate('window.__pdfFixture.mode="ready"');
+  await page.getByRole('button',{name:'Retry',exact:true}).click();
+  await expect(page.locator('.signed-report-pdf-dialog')).toBeVisible({timeout:3000});
+  if(native){await expect(page.locator('[data-native-pdf-controls]')).toBeVisible();expect(await page.evaluate('window.__pdfFixture.calls.length')).toBe(2);}
+  else{await expect(page.locator('iframe')).toHaveAttribute('src',/^blob:/);expect(reads).toBe(2);}
+  expect(await page.evaluate('window.__modalOpenCalls')).toBe(1);expect(errors).toEqual([]);
 });
 for(const boundary of ['close','disabled','context'])test(`late native PDF cannot reopen after ${boundary}`,async({page})=>{
   await mount(page,{mode:'held'});await page.getByRole('button',{name:'Inspect signed PDF',exact:true}).click();await expect.poll(()=>page.evaluate('window.__pdfFixture.calls.length')).toBe(1);
