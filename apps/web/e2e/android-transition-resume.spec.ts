@@ -13,8 +13,9 @@ async function fixture(page:Page,extra:Record<string,unknown>={}) {
    export const registerPlugin=name=>name==='OpenTriageConnection'?{
     state:async()=>({...window.fixture.state}),addListener:async(event,callback)=>{window.fixture.emit=value=>{window.fixture.state=value;callback(value)};return{remove:async()=>{}}},
     finishAuthentication:async()=>{window.fixture.polls++;return{outcome:'idle'}},
+    resumePersonalSession:async({connectionContext})=>{const f=window.fixture;f.resumes=(f.resumes||0)+1;if(f.unsupported)throw Object.assign(Error('android.serverUpgradeRequired'),{code:'SERVER_INCOMPATIBLE'});if(f.state.blocked||f.state.replacementPending||f.state.handoffPending||connectionContext!==f.state.connectionContext)throw Error('Native authority unavailable');return f.durable&&f.personal&&!f.pendingOidc?{session:{...f.session,user:{...f.session.user,displayName:'Valid native clinician'}}}:{}},
     reconcileTransition:async({connectionContext,purpose})=>{const f=window.fixture;const captured={...f.state};if(f.holdReconcile){await new Promise(resolve=>{f.releaseReconcile=resolve});return{...captured,connectionContext:'late-old-context'}}if(f.state.blocked||f.state.replacementPending||connectionContext!==f.state.connectionContext)throw Error('Native transition remains locked');f.reconciliations++;f.pendingOidc=false;if(purpose==='logout')f.personal=false;f.state.connectionContext='reconciled-context';return{...f.state}},
-    request:async({path})=>{const f=window.fixture;f.requests.push(path);let value=path==='/api/installation'?window.installation:path==='/api/sessions/authentication-options'?{organization:false}:path==='/api/sessions/current'?{...f.session,csrfToken:undefined}:path==='/api/calls/assigned'?window.calls:path==='/api/reports/open'?{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}:{};return{status:path==='/api/sessions/current'&&!f.personal?401:200,headers:{'content-type':'application/json'},bodyBase64:btoa(JSON.stringify(value))}}
+    request:async({path})=>{const f=window.fixture;f.requests.push(path);let value=path==='/api/installation'?window.installation:path==='/api/sessions/authentication-options'?{organization:false}:(path==='/api/sessions/current'||path==='/api/sessions/current/continuation')?{...f.session,csrfToken:undefined}:path==='/api/calls/assigned'?window.calls:path==='/api/reports/open'?{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}:{};return{status:(path==='/api/sessions/current'||path==='/api/sessions/current/continuation')&&!f.personal?401:200,headers:{'content-type':'application/json'},bodyBase64:btoa(JSON.stringify(value))}}
    }:{state:async()=>({active:true}),addListener:async()=>({remove:async()=>{}})};
   `}));
  }}],stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:"import React from 'react';import{createRoot}from'react-dom/client';import Home from './app/page';import{transitionInstallation,resumeNativeInstallationTransition}from'./app/installation-transition';window.transition=transitionInstallation;window.resumeTransition=resumeNativeInstallationTransition;import{AndroidRuntimeGate}from'./components/android-runtime-gate';(async()=>{await window.seed();createRoot(document.getElementById('root')).render(<AndroidRuntimeGate><Home/></AndroidRuntimeGate>)})();"}});
@@ -96,4 +97,29 @@ test('a queued stale owner cannot clear a newer marker or its cached public meta
  await page.evaluate(()=>{const w=window as unknown as{held:boolean;release:()=>void};void navigator.locks.request('open-triage.installation-clinical-context',{mode:'exclusive'},async()=>{w.held=true;await new Promise<void>(resolve=>w.release=resolve);});});await expect.poll(()=>page.evaluate(()=>(window as unknown as{held:boolean}).held)).toBe(true);
  await page.evaluate(()=>{const w=window as unknown as{transition:(op:()=>Promise<void>,purpose:string)=>Promise<void>;old:Promise<void>;obsolete?:boolean;rejected?:boolean};w.old=w.transition(async()=>{w.obsolete=true;},'handoff').catch(()=>{w.rejected=true;});localStorage.setItem('open-triage.installation-transition.v1','logout:newer');localStorage.setItem('open-triage.installation-generation.v1','logout:newer');localStorage.setItem('open-triage.clinician-session.v1','newer-public-metadata');});
  await page.evaluate(async()=>{const w=window as unknown as{release:()=>void;old:Promise<void>};w.release();await w.old;});expect(await marker(page)).toBe('logout:newer');expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('newer-public-metadata');expect(await page.evaluate(()=>(window as unknown as{obsolete?:boolean}).obsolete)).not.toBe(true);
+});
+
+for(const managed of [false,true])test(`durable native login survives complete public metadata loss and cold startup (${managed?'matching managed adoption':'unmanaged'})`,async({page})=>{
+ await fixture(page,{personal:true,durable:true,pendingOidc:false,noMarker:true,state:managed?{managed:true,managedStatus:'valid',managedContext:'new-management-context',managedOrigin:'https://original.example'}:{}});
+ await expect(page.locator('.session-identity')).toContainText('Valid native clinician');
+ const retained=await page.evaluate(()=>(window as unknown as{retained:()=>Promise<unknown>}).retained());
+ await page.evaluate(()=>{localStorage.removeItem('open-triage.clinician-session.v1');localStorage.removeItem('open-triage.installation-session-candidate.v1');});
+ await page.reload();await expect(page.locator('.session-identity')).toContainText('Valid native clinician');await expect(page.locator('input[name=username],input[name=password]')).toHaveCount(0);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')!).user.displayName)).toBe('Valid native clinician');
+ expect(await page.evaluate(()=>(window as unknown as{retained:()=>Promise<unknown>}).retained())).toEqual(retained);
+});
+
+test('a temporary managed block cannot use continuation and matching policy restoration restores the valid login',async({page})=>{
+ await fixture(page,{personal:true,durable:true,pendingOidc:false,noMarker:true});await expect(page.locator('.session-identity')).toContainText('Valid native clinician');
+ await page.evaluate(()=>{const f=(window as unknown as{fixture:{state:Record<string,unknown>;emit:(state:unknown)=>void}}).fixture;f.emit({...f.state,configured:false,blocked:true,managed:true,managedStatus:'missing'});});
+ await expect(page.locator('.session-identity')).toHaveCount(0);
+ await page.evaluate(()=>{const f=(window as unknown as{fixture:{state:Record<string,unknown>;emit:(state:unknown)=>void}}).fixture;f.emit({...f.state,configured:true,blocked:false,managed:true,managedStatus:'valid',managedContext:'restored-matching-policy',managedOrigin:'https://original.example'});});
+ await expect(page.locator('.session-identity')).toContainText('Valid native clinician');await expect(page.locator('input[name=password]')).toHaveCount(0);
+});
+
+for(const language of ['en','sv'])test(`an unsupported continuation server blocks startup with actionable ${language} guidance`,async({page})=>{
+ await page.addInitScript(value=>localStorage.setItem('open-triage:ui-language',value),language);
+ await fixture(page,{personal:true,durable:true,pendingOidc:false,noMarker:true,unsupported:true});
+ await expect(page.locator('body')).toContainText(language==='en'?'The server needs an update before this app can connect.':'Servern behöver uppdateras innan appen kan ansluta.');
+ await expect(page.locator('.session-identity,input[name=username],input[name=password]')).toHaveCount(0);
 });

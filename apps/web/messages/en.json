@@ -3044,6 +3044,7 @@
   "android.pendingTrustConfirm": "Use the trusted server certificates from this file for the pending pairing.",
   "android.pendingTrustApply": "Confirm server trust",
   "android.tlsFailed": "Secure connection failed. Check the device time or ask IT to verify the server certificate and CA trust. Local work is retained.",
+  "android.serverUpgradeRequired": "The server needs an update before this app can connect. Contact your installation administrator.",
   "android.pairingFailed": "Pairing failed. Check the file, server connection and certificate, or request a new code.",
   "android.cancel": "Cancel",
   "android.publicCa": "Public CA certificates (PEM, optional)",

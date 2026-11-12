@@ -1,5 +1,5 @@
 import type {AuthenticatedSession} from '@open-triage/contracts';
-import {storeClinicianSession} from './clinician-session';
+import {storeClinicianSession} from './clinician-session-storage';
 import {clearFeedbackTelemetry} from './feedback-telemetry';
 import {INSTALLATION_CONFIGURATION_STORAGE_KEY} from './installation-settings';
 

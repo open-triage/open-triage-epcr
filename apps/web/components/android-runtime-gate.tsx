@@ -42,6 +42,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
     if (code === "MANAGED_CONFLICT") return "android.managed.conflict";
     if (code === "MANAGED_BLOCKED") return "android.managed.unavailable";
     if (code === "TLS_FAILED") return "android.tlsFailed";
+    if (code === "SERVER_INCOMPATIBLE") return "android.serverUpgradeRequired";
     if (code === "ENROLLMENT_NOT_COMMITTED") return "android.pendingNotCommitted";
     if (code === "ENROLLMENT_UNAVAILABLE") return "android.pendingUnavailable";
     return source === "scan" ? scannerFailureMessage(failure) : "android.pairingFailed";

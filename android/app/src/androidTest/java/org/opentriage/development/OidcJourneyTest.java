@@ -202,12 +202,18 @@ public class OidcJourneyTest extends PairingJourneyTest {
                     // Simulate abrupt stop between durable issued-cookie storage
                     // and deletion of its now-consumed pending return slot.
                     assertNotNull(interruptedReturn);new ConnectionVault(targetContext).pendingAuthentication(interruptedReturn);
+                    assertTrue(NativePersonalContinuation.matches(new ConnectionVault(targetContext).personalContinuation(),new ConnectionVault(targetContext).read()));
+                    evaluate("localStorage.removeItem('open-triage.clinician-session.v1');localStorage.removeItem('open-triage.installation-session-candidate.v1')");
                     activity.recreate();waitFor("document.querySelector('.session-identity')");
                     long cleanupDeadline=System.currentTimeMillis()+15000;
                     while(new ConnectionVault(targetContext).pendingAuthentication()!=null&&System.currentTimeMillis()<cleanupDeadline)Thread.sleep(100);
                     assertNull("An already issued current OIDC session survives interrupted pending-slot cleanup",new ConnectionVault(targetContext).pendingAuthentication());
                     waitFor("document.querySelector('.session-identity')");
                     assertEquals("Pending-slot recovery does not extend session expiry",issuedExpiry,evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')).expiresAt"));
+                    evaluate("localStorage.removeItem('open-triage.clinician-session.v1');localStorage.removeItem('open-triage.installation-session-candidate.v1')");
+                    activity.recreate();waitFor("document.querySelector('.session-identity')");
+                    assertEquals("Native OIDC continuation uses the same fixed expiry after total public metadata loss",issuedExpiry,evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')).expiresAt"));
+                    assertEquals(JSONObject.quote(args.getString("userId")),evaluate("JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')).user.id"));
 
                 } else if(protectedPhase.equals("isolate")) {
                     assertFalse(evaluate("document.body.innerText").contains("ANDROID-OIDC-PENDING"));

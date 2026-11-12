@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportMediaPolicy, ReportNote } from "@open-triage/contracts";
-import { sessionRequestToken } from "./clinician-session";
+import { sessionRequestToken } from "./clinician-session-storage";
 import { sameJsonValue } from "./json-values";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
