@@ -16,3 +16,15 @@ export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
     assertNoRemoteFontInitializer(readFileSync(join(root,'android/app/build/intermediates/packaged_manifests',`${variant}AndroidTest`,testTask,'AndroidManifest.xml'),'utf8'));
   }
 }
+
+/** Keep the selected installed startup cases and their completion proof together. */
+export const nativeStartupClasses=Object.freeze([
+ 'org.opentriage.development.NativeStartupTest',
+ 'org.opentriage.development.NativeReplyLifecycleTest',
+ 'org.opentriage.development.NativeTransitionResumeTest',
+]);
+export function assertNativeStartupInstrumentation(output){
+ const message='All installed startup, reply lifecycle and transition recovery cases must pass';
+ assert.doesNotMatch(output,/FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed\./,message);
+ assert.match(output,new RegExp(`(?:^|\\n)OK \\(${nativeStartupClasses.length} tests\\)(?:\\r?\\n|$)`),message);
+}

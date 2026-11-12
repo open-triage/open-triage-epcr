@@ -133,6 +133,16 @@ and [protected-work recovery](android-development.md).
 
 ## An interrupted confirmation is already pending
 
+If Android stops after a confirmed operation settles natively but before its UI
+finishes, reopening the app reconciles the abandoned transition under the same
+exclusive clinical-storage barrier. It preserves ciphertext and its original
+deadlines. A pending native enrollment or blocked managed policy remains locked.
+An interrupted logout cannot restore the previous personal session. An enrollment
+that never crossed native confirmation can retain a valid login only after fresh
+server verification of the same user and agency; cached public metadata supplies
+no authentication authority. Ambiguous older transition markers require ordinary
+primary login. Do not clear app storage to bypass these checks.
+
 Do not replace an ambiguous, confirmed enrollment with another installation
 intent. The app retains its encrypted native journal: the original server origin,
 body, code, attempt secret, installation cookie and creation time stay unchanged.

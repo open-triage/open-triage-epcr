@@ -3,7 +3,7 @@ import test from 'node:test';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
-import {assertNoRemoteFontInitializer,verifyNativeStartup} from '../scripts/android/native-startup.mjs';
+import {assertNoRemoteFontInitializer,verifyNativeStartup,nativeStartupClasses,assertNativeStartupInstrumentation} from '../scripts/android/native-startup.mjs';
 
 test('generic startup permits local lifecycle initialization and rejects automatic remote emoji fonts',()=>{
   const local='<manifest><application><provider android:name="androidx.startup.InitializationProvider"><meta-data android:name="androidx.lifecycle.ProcessLifecycleInitializer" /></provider></application></manifest>';
@@ -26,3 +26,5 @@ for(const variant of ['debug','release']) test(`${variant} checks the separate i
     assert.doesNotThrow(()=>verifyNativeStartup(root,variant));
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
+
+test('all three installed startup classes must pass, with no partial or failed completion',()=>{assert.equal(nativeStartupClasses.length,3);assert.doesNotThrow(()=>assertNativeStartupInstrumentation('Time: 3.3\n\nOK (3 tests)\n'));for(const output of ['OK (1 test)\n','OK (2 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 3, Failures: 1\n','FAILURES!!!\nOK (3 tests)\n'])assert.throws(()=>assertNativeStartupInstrumentation(output),/must pass/);});

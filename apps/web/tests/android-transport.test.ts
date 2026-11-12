@@ -125,3 +125,15 @@ test('connection replacement during binary body preparation prevents native disp
 
   configureNativeConnection({configured:false});
 });
+
+test('an installation transition prevents native OIDC redemption and ignores a return already in flight',async()=>{
+ const original=globalThis.window;let marker:string|null='logout:interrupted';
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{localStorage:{getItem:()=>marker}}});
+ try {
+  let calls=0;const paths:string[]=[];
+  await pollAndroidAuthenticationReturn(async()=>{calls++;return{outcome:'succeeded'}},path=>paths.push(path));assert.equal(calls,0);
+  marker=null;let release!:(value:{outcome:'succeeded'})=>void;
+  const pending=pollAndroidAuthenticationReturn(()=>new Promise(resolve=>{release=resolve;}),path=>paths.push(path));
+  marker='enrollment:new';release({outcome:'succeeded'});await pending;assert.deepEqual(paths,[]);
+ } finally {if(original===undefined)Reflect.deleteProperty(globalThis,'window');else Object.defineProperty(globalThis,'window',{configurable:true,value:original});}
+});

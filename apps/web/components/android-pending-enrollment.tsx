@@ -25,8 +25,8 @@ export function AndroidPendingEnrollment({ state, language, onState }: { state: 
   return <section className="android-pending-enrollment" data-pending-enrollment>
     {state.pendingOutcome === "not-committed" ? <p role="status">{t("android.pendingNotCommitted")}</p> : state.pendingOutcome && state.pendingOutcome !== "pending" ? <p role="status">{t("android.pendingUnavailable")}</p> : null}
     {error && <p role="alert" className="admin-error">{t(error)}</p>}
-    <div className="admin-role-editor-actions"><button type="button" disabled={busy || state.blocked} onClick={() => void act(() => transitionInstallation(() => AndroidConnection.resumeEnrollment()))}>{t("android.retryPairing")}</button>
-    {state.pendingOutcome === "not-committed" && <button type="button" disabled={busy || state.blocked} onClick={() => void act(() => transitionInstallation(() => AndroidConnection.abandonUncommittedEnrollment({ confirmAbandon: true })))}>{t("android.pendingNewCode")}</button>}</div>
+    <div className="admin-role-editor-actions"><button type="button" disabled={busy || state.blocked} onClick={() => void act(() => transitionInstallation(() => AndroidConnection.resumeEnrollment(),"enrollment"))}>{t("android.retryPairing")}</button>
+    {state.pendingOutcome === "not-committed" && <button type="button" disabled={busy || state.blocked} onClick={() => void act(() => transitionInstallation(() => AndroidConnection.abandonUncommittedEnrollment({ confirmAbandon: true }),"enrollment"))}>{t("android.pendingNewCode")}</button>}</div>
     {!preview ? <label>{t("android.pendingTrustFile")}<input type="file" accept="application/json,.json" disabled={busy || state.blocked} onChange={async event => {
       const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
       setBusy(true); setError(null);
