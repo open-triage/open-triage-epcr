@@ -55,7 +55,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   let preparation;
   try {
     run(adb, ['-s', serial, 'shell', 'pm', 'clear', applicationId]);
-    preparation = prepareUntilKilled(); await preparation.ready;
+    preparation = prepareUntilKilled('prepare', hooks.prepareArguments ?? {}); await preparation.ready;
     const { rows: [opened] } = await db.query(`select r.id,r.revision,r.form_version_id,r.catalog_release_id,r.validation_version_id,
       envelope.recovery_deadline,envelope.wrapping_key_version,envelope.ciphertext_revision from clinical.call_assignment assignment
       join clinical.report r on r.id=assignment.report_id
@@ -85,6 +85,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     if(hooks.afterOfflineStartup)await hooks.afterOfflineStartup(offlineResult);
     const retainedSha256 = /retained_sha256=([a-f0-9]{64})/.exec(offlineResult)?.[1];
     assert(retainedSha256, 'Offline relaunch must publish only an opaque digest of its retained encrypted record');
+    await hooks.beforeSessionWithdrawal?.({ root, fixture, report, opened, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, retainedSha256 });
     // Retained native credentials correctly restore their authorized clinician.
     // Withdraw that session through the ordinary administrator API while the
     // device is still offline, so reconnect cannot recover under the old user

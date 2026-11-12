@@ -97,17 +97,42 @@ export class InstallationEnrollmentService {
  return {unitName:unit.name,callSign:unit.callSign,organizationName:unit.organizationName};
  });
  }
+ private async lockCredentialIdentity(manager: Pick<EntityManager,"query">, credential: string) {
+ await manager.query(`select pg_advisory_xact_lock(hashtextextended($1,0))`,[digest(credential)]);
+ const [known]=await manager.query(`select installation_identity_id from app_identity.installation_registration where credential_sha256=$1`,[digest(credential)]);
+ if(known) await manager.query(`select pg_advisory_xact_lock(hashtextextended($1,1))`,[known.installation_identity_id]);
+ }
+ /** No issuance or receipt mutation. Only a locked, expired, never-consumed code proves non-commit. */
+ async outcome(input: unknown, originalCredential?: string) {
+ const origin=await this.requireOrigin(),body=enrollmentInput(input,true);
+ if(!body.attempt || !originalCredential || !/^[A-Za-z0-9_-]{43}$/.test(originalCredential))throw new UnauthorizedException("Enrollment attempt is unavailable");
+ const attempt=body.attempt;
+ return this.database.transaction(async manager=>{
+ // Same prefix/order as consume; another original cookie may contend for this code.
+ await this.lockCredentialIdentity(manager,originalCredential);
+ const [locked]=await manager.query(`select id from app_identity.unit_enrollment where token_sha256=$1 and origin=$2 for update`,[digest(body.token),origin]);
+ if(!locked)return {status:"unavailable" as const};
+ // Evaluate the clock after any lock wait, not in the row-locking scan's projection.
+ const [receipt]=await manager.query(`select consumed_at,expires_at<=clock_timestamp() as expired,native_attempt_sha256,native_binding_sha256
+ from app_identity.unit_enrollment where id=$1`,[locked.id]);
+ if(!receipt)return {status:"unavailable" as const};
+ if(!receipt.consumed_at)return {status:receipt.expired?"not-committed" as const:"pending" as const};
+ const binding=enrollmentAttemptBinding(origin,body.token,body.name!,!!body.reassign,originalCredential);
+ if(!sameEnrollmentDigest(receipt.native_attempt_sha256,enrollmentDigest(attempt)) || !sameEnrollmentDigest(receipt.native_binding_sha256,enrollmentDigest(binding)))throw new UnauthorizedException("Enrollment attempt is unavailable");
+ // A live derived result is proved through the existing credential-authenticated GET.
+ // Revoked/deleted/pruned results remain explicit recovery material, never a reset signal.
+ return {status:"result-unavailable" as const};
+ });
+ }
  async consume(input: unknown, existingCredential?: string, existingSession?: string) {
  await this.requireOrigin();
  const body=enrollmentInput(input,true);
  const origin=agencyRequest.getStore()!.origin!;
  return this.database.transaction(async manager=>{
  if(!existingCredential || !/^[A-Za-z0-9_-]{43}$/.test(existingCredential)) throw new UnauthorizedException("Open enrollment in the intended browser first");
- await manager.query(`select pg_advisory_xact_lock(hashtextextended($1,0))`,[digest(existingCredential)]);
+ await this.lockCredentialIdentity(manager,existingCredential);
  // Serialize every binding transition for the stable identity, including
  // revoked-cookie retries. Registration row locks also serialize session issuers.
- const [known]=await manager.query(`select installation_identity_id from app_identity.installation_registration where credential_sha256=$1`,[digest(existingCredential)]);
- if(known) await manager.query(`select pg_advisory_xact_lock(hashtextextended($1,1))`,[known.installation_identity_id]);
  // Every retry acquires the same stable-identity guard as its original commit.
  const binding=body.attempt?enrollmentAttemptBinding(origin,body.token,body.name!,!!body.reassign,existingCredential):null;
  if(body.attempt) {

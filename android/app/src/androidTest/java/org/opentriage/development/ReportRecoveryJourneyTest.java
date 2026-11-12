@@ -499,6 +499,7 @@ public class ReportRecoveryJourneyTest {
         assertEquals("true", evaluate("Boolean(document.querySelector('.encounter-header'))"));
         }
         snapshotUpgrade();
+        if ("1".equals(args.getString("tlsChecks"))) TlsRotationJourneyTest.snapshotIdentity();
         var ready = new android.os.Bundle(); ready.putString("opentriage_phase", "ready-for-process-kill");
         InstrumentationRegistry.getInstrumentation().sendStatus(2, ready);
         Thread.sleep(600000);
@@ -554,8 +555,13 @@ public class ReportRecoveryJourneyTest {
         setInput("document.querySelector('input[maxlength=\"100\"]')", "Expired preview");
         evaluate("document.querySelector('input[type=checkbox]').click()");waitFor("!document.querySelector('button[type=submit]').disabled");
         evaluate("document.querySelector('form').requestSubmit()");
-        waitFor("document.querySelector('input[type=file]') && document.querySelector('[role=alert]')");
-        assertNull("Definitively rejected first request must allow a fresh code", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        waitFor("document.querySelector('[data-pending-enrollment]') && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Use a new pairing code')");
+        assertNotNull("Even a proved unconsumed expired intent stays durable until explicit abandonment", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        click("Use a new pairing code");
+        waitFor("!document.querySelector('[data-pending-enrollment]') && document.querySelector('input[type=file]') && !document.querySelector('input[type=file]').disabled");
+        assertNull("Fresh read-only not-committed proof and explicit abandonment permit a fresh code", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pending());
+        records();
+        assertEquals("Abandoning an unconsumed intent preserves the original encrypted work", args.getString("retainedSha256"), retainedDigest());
         var armed = fault.request("/api/__android-enrollment-drop-arm", "POST", new JSONObject().put("content-type", "application/json"), "{}");
         assertTrue(new JSONObject(armed.body()).getBoolean("armed"));
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
@@ -604,8 +610,8 @@ public class ReportRecoveryJourneyTest {
             // Prove the actual TLS endpoint is unreachable before any WebView startup can recover a key.
             AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
                 InstrumentationRegistry.getArguments().getString("apiOrigin"), null, false);
-        }
-        if (phase.equals("reassign") || phase.equals("resume-reassignment")) {
+        } else if (phase.equals("reassign") || phase.equals("resume-reassignment")) {
+            // Host radio enable is asynchronous. Never retry a pairing request to compensate.
             AndroidFixtureNetwork.await(InstrumentationRegistry.getInstrumentation().getTargetContext(),
                 InstrumentationRegistry.getArguments().getString("apiOrigin"), null, true);
         }

@@ -1,4 +1,5 @@
 import "../packages/contracts/runtime-node-check.cjs";
+import { verifyAudioToolchain } from "./audio-toolchain.mjs";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
@@ -13,6 +14,7 @@ const docker = process.env.DOCKER_COMMAND || "docker";
 const container = `open-triage-check-${randomUUID()}`;
 let started = false;
 try {
+  verifyAudioToolchain();
   // Match clean CI jobs; developer database/private settings must not affect units.
   const env = { ...process.env };
   delete env.DATABASE_URL;

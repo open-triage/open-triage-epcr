@@ -17,12 +17,14 @@ export function verifyNativeStartup(root,variant,{instrumentation=false}={}) {
   }
 }
 
-/** Each startup class owns one acceptance case; require the complete installed suite. */
-export const nativeStartupClasses = Object.freeze([
-  'org.opentriage.development.NativeStartupTest',
-  'org.opentriage.development.NativeReplyLifecycleTest',
+/** Keep the selected installed startup cases and their completion proof together. */
+export const nativeStartupClasses=Object.freeze([
+ 'org.opentriage.development.NativeStartupTest',
+ 'org.opentriage.development.NativeReplyLifecycleTest',
+ 'org.opentriage.development.NativeTransitionResumeTest',
 ]);
-export function assertNativeStartupInstrumentation(output) {
-  assert.match(output, /(?:^|\n)OK \(2 tests\)(?:\r?\n|$)/,
-    'Actual installed startup and WebView reply lifecycle cases must both pass');
+export function assertNativeStartupInstrumentation(output){
+ const message='All installed startup, reply lifecycle and transition recovery cases must pass';
+ assert.doesNotMatch(output,/FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed\./,message);
+ assert.match(output,new RegExp(`(?:^|\\n)OK \\(${nativeStartupClasses.length} tests\\)(?:\\r?\\n|$)`),message);
 }

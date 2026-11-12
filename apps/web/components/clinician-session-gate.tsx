@@ -2,6 +2,7 @@
 import { useAndroidBack } from "./use-android-back";
 
 import { AndroidInstallationAction } from "./android-installation-action";
+import { isAndroidRuntime } from "../app/android-runtime";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
@@ -17,6 +18,7 @@ import {
   createClinicianSession,
   endClinicianSession,
   authenticateRestartedClinicianSession,
+  resumeInterruptedNativeClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
   sessionRequestToken
@@ -256,7 +258,7 @@ export function ClinicianSessionGate({ children }: {
         const personalResult=new URLSearchParams(window.location.search).get("authentication");
         const [loaded, assessed,organizationAuthentication] = await Promise.all([
           loadInstallationConfiguration(),
-          handoff&&'session' in handoff?handoff.session:personalResult==='completed'?completePersonalClinicianSession():serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
+          handoff&&'session' in handoff?handoff.session:personalResult==='completed'?completePersonalClinicianSession():serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : isAndroidRuntime()?resumeInterruptedNativeClinicianSession():loadedSession,
           organizationLoginAvailable().catch(()=>false),
         ]);
         if (!current) return;
@@ -445,7 +447,7 @@ export function ClinicianSessionGate({ children }: {
     // person's cookie after their authentication has completed.
     await transitionInstallation(async()=>{
       if (csrfToken) await endClinicianSession(csrfToken).catch(() => undefined);
-    });
+    },"logout");
     await lockAndEndLocalSession(t("login.loggedOut"));
   }
 
@@ -497,9 +499,10 @@ export function ClinicianSessionGate({ children }: {
     {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
       <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
       {online && startupFailure && <p>{startupFailure}</p>}
+      <AndroidInstallationAction language={language} />
     </div>}
   </main>;
-  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p></main>;
+  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p><AndroidInstallationAction language={language} /></main>;
   if (!authenticatedSession) {
     return (
       <main className="login-shell">
