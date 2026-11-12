@@ -449,7 +449,9 @@ Run `npm run android:build` with the documented SDK/JDK prerequisites, then
 `npm run android:test:pdf -- --skip-build` on an exclusively reserved emulator.
 The focused check uses the actual platform renderer and a host force-stop of a
 live preview, then verifies cold cleanup, session/expiry/background boundaries
-and rejection of its old handle. It also uses the real system document picker to
+and rejection of its old handle. It closes a real renderer handle to exercise
+the visible failure and explicit Retry path, verifies a fresh authorized load
+and a new renderer, and checks the page count after recovery. It also uses the real system document picker to
 save fresh authorized synthetic bytes, checks that an explicit download survives
 private preview cleanup, deletes only that test export, and cancels the picker
 without fetching a document. It never clears the application's clinical or

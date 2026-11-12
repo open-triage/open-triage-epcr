@@ -80,7 +80,7 @@ public final class NativePdfActivity extends Activity {
         LinearLayout actions = new LinearLayout(this); actions.setGravity(Gravity.CENTER_VERTICAL);
         Button close = button(R.string.pdf_close, view -> finish()); actions.addView(close,new LinearLayout.LayoutParams(0,-2,1));
         save = button(R.string.pdf_save, view -> chooseDestination()); actions.addView(save,new LinearLayout.LayoutParams(0,-2,1));
-        retry = button(R.string.pdf_retry, view -> { retry.setVisibility(View.GONE);save.setVisibility(View.VISIBLE);session.clearPreview();if(saveOnly)chooseDestination();else render(); });
+        retry = button(R.string.pdf_retry, view -> { retry.setVisibility(View.GONE);save.setVisibility(View.VISIBLE);clearVisible();if(saveOnly)chooseDestination();else render(); });
         retry.setVisibility(View.GONE); actions.addView(retry,new LinearLayout.LayoutParams(0,-2,1)); root.addView(actions);
         status = new TextView(this); status.setText(R.string.pdf_loading); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE); root.addView(status);
         pageLabel = new TextView(this); pageLabel.setGravity(Gravity.CENTER); pageLabel.setTextSize(16); root.addView(pageLabel);
@@ -145,8 +145,9 @@ public final class NativePdfActivity extends Activity {
             try {
                 session.requireCurrent(); if (stopped || expected != generation) return;
                 if (renderer == null) renderer = new PdfRenderer(ParcelFileDescriptor.open(session.preview(), ParcelFileDescriptor.MODE_READ_ONLY));
-                pages = renderer.getPageCount(); if (pages < 1 || pages > 500) throw new IllegalStateException("PDF page bound");
-                try (PdfRenderer.Page page = renderer.openPage(Math.min(requestedPage, pages - 1))) {
+                int count = renderer.getPageCount(); if (count < 1 || count > 500) throw new IllegalStateException("PDF page bound");
+                int shownPage = Math.min(requestedPage,count-1);
+                try (PdfRenderer.Page page = renderer.openPage(shownPage)) {
                     int base = Math.max(1, Math.min(2048, getResources().getDisplayMetrics().widthPixels-root.getPaddingLeft()-root.getPaddingRight()));
                     double scale = Math.min((double) base * requestedZoom / page.getWidth(), Math.sqrt(4_000_000d / ((double) page.getWidth() * page.getHeight())));
                     int width = Math.max(1, (int) (page.getWidth() * scale)), height = Math.max(1, (int) (page.getHeight() * scale));
@@ -158,8 +159,9 @@ public final class NativePdfActivity extends Activity {
                     if (ended || stopped || expected != generation || !session.current()) { ready.recycle(); return; }
                     image.setImageDrawable(null); if (bitmap != null) bitmap.recycle(); bitmap = ready; image.setImageBitmap(ready);
                     image.getLayoutParams().width = ready.getWidth(); image.getLayoutParams().height = ready.getHeight(); image.requestLayout();
-                    String label = getString(R.string.pdf_page, requestedPage + 1, pages); pageLabel.setText(label); image.setContentDescription(label);
-                    previous.setEnabled(requestedPage > 0); next.setEnabled(requestedPage + 1 < pages);zoomIn.setEnabled(zoom<4);zoomOut.setEnabled(zoom>1);save.setEnabled(true);status.setVisibility(View.GONE);
+                    pages=count;pageIndex=shownPage;
+                    String label = getString(R.string.pdf_page, shownPage + 1, count); pageLabel.setText(label); image.setContentDescription(label);
+                    previous.setEnabled(shownPage > 0); next.setEnabled(shownPage + 1 < count);zoomIn.setEnabled(zoom<4);zoomOut.setEnabled(zoom>1);save.setEnabled(true);status.setVisibility(View.GONE);
                 });
             } catch (Exception error) { showFailure(expected); }
             finally { if (rendered != null) rendered.recycle(); }
@@ -215,7 +217,12 @@ public final class NativePdfActivity extends Activity {
     private void clearVisible() {
         generation++; image.setImageDrawable(null); if (bitmap != null) { bitmap.recycle(); bitmap = null; }
         // Renderer work and its close share one worker; the UI never waits on native PDF parsing or TLS.
-        worker.execute(() -> { if (renderer != null) { renderer.close(); renderer = null; } if (session != null) session.clearPreview(); });
+        worker.execute(() -> { try { closeRenderer(); } finally { if (session != null) session.clearPreview(); } });
+    }
+    private void closeRenderer() {
+        // A failed/closed native handle cannot poison Retry or prevent cleanup.
+        PdfRenderer previous=renderer;renderer=null;
+        if(previous!=null)try {previous.close();}catch(RuntimeException alreadyInvalid){ /* The handle is discarded; private bytes are still cleared by the caller. */ }
     }
     @Override protected void onStop() {
         stopped = true;
@@ -231,7 +238,7 @@ public final class NativePdfActivity extends Activity {
         ended = true; stopped = true; generation++; ui.removeCallbacksAndMessages(null);
         if (image != null) image.setImageDrawable(null); if (bitmap != null) { bitmap.recycle(); bitmap = null; }
         if (session != null) session.close();
-        worker.execute(() -> { if (renderer != null) { renderer.close(); renderer = null; } }); worker.shutdown();
+        worker.execute(this::closeRenderer); worker.shutdown();
         super.onDestroy();
     }
 }

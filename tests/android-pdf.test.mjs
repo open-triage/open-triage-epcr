@@ -7,8 +7,8 @@ import test from 'node:test';
 import {assertNativePdfInstrumentation,assertNativePdfSafInstrumentation} from '../scripts/android/pdf-journey.mjs';
 
 test('native PDF acceptance requires all rendering/lifetime cases, not a partial or failed instrumentation run',()=>{
-  assertNativePdfInstrumentation('Time: 1\n\nOK (5 tests)\nINSTRUMENTATION_CODE: -1\n');
-  for(const value of ['OK (1 test)\n','OK (2 tests)\n','OK (3 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 5, Failures: 1\n','OK (5 tests)\nINSTRUMENTATION_CODE: 0\n','OK (5 tests)\nINSTRUMENTATION_CODE: -1\nshortMsg=Process crashed.\n'])assert.throws(()=>assertNativePdfInstrumentation(value));
+  assertNativePdfInstrumentation('Time: 1\n\nOK (6 tests)\nINSTRUMENTATION_CODE: -1\n');
+  for(const value of ['OK (1 test)\n','OK (2 tests)\n','OK (3 tests)\n','OK (5 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 6, Failures: 1\n','OK (6 tests)\nINSTRUMENTATION_CODE: 0\n','OK (6 tests)\nINSTRUMENTATION_CODE: -1\nshortMsg=Process crashed.\n'])assert.throws(()=>assertNativePdfInstrumentation(value));
 });
 test('native PDF save acceptance requires both real picker cases and successful completion',()=>{
  assertNativePdfSafInstrumentation('OK (2 tests)\nINSTRUMENTATION_CODE: -1\n');

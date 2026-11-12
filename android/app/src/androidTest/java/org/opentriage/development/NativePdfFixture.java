@@ -11,9 +11,12 @@ final class NativePdfFixture {
         return bytes("SYNTHETIC ANDROID PDF");
     }
     static byte[] bytes(String label) throws Exception {
+        return bytes(label,2);
+    }
+    static byte[] bytes(String label,int pages) throws Exception {
         PdfDocument document = new PdfDocument();
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < pages; i++) {
                 var page = document.startPage(new PdfDocument.PageInfo.Builder(320, 440, i + 1).create());
                 var paint = new android.graphics.Paint(); paint.setTextSize(16);
                 page.getCanvas().drawText(label + " " + (i + 1), 20, 60, paint); document.finishPage(page);
