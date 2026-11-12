@@ -51,6 +51,37 @@ public class TrustedConnectionTest {
         }
         assertThrows(Exception.class, () -> new TrustedConnection("https://localhost", "-----BEGIN PRIVATE KEY-----"));
     }
+    @Test public void expiredSavedTrustRemainsReplaceableButNeverAuthorizesARequest() throws Exception {
+        var root = (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+            .generateCertificate(new java.io.ByteArrayInputStream(ca().getBytes(StandardCharsets.US_ASCII)));
+        var clock = new java.util.concurrent.atomic.AtomicLong(root.getNotBefore().getTime() + 1000);
+        var valid = new TrustedConnection("https://localhost", ca(), clock::get);
+        JSONObject saved = valid.saved();
+        var loadedWhileValid = TrustedConnection.restore(saved, clock::get);
+        clock.set(root.getNotAfter().getTime() + 1);
+        // A process kept alive across expiry and one restarted afterwards both fail before IO.
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> valid.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedWhileValid.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> valid.requestBytes("/api/media", "POST", new JSONObject(), new byte[]{0, (byte) 255}));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedWhileValid.requestBytes("/api/current", "GET", new JSONObject(), null));
+        var loadedAfterExpiry = TrustedConnection.restore(saved, clock::get);
+        assertEquals(saved.toString(), loadedAfterExpiry.saved().toString());
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedAfterExpiry.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> loadedAfterExpiry.requestBytes("/api/current", "GET", new JSONObject(), null));
+        var retained = loadedAfterExpiry.installationOnly();
+        assertEquals(saved.getString("caPem"), retained.caPem);
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.request("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.requestBytes("/api/current", "GET", new JSONObject(), null));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> retained.requestBytes("/api/current", "GET", new JSONObject(), null, 1L));
+        assertThrows(java.security.cert.CertificateExpiredException.class, () -> new TrustedConnection("https://localhost", ca(), clock::get));
+        assertThrows(Exception.class, () -> TrustedConnection.restore(saved.put("caPem", "broken public trust"), clock::get));
+    }
+    @Test public void tlsFailureCategoriesNeverExposeCertificateOrCredentialDetails() {
+        assertEquals("TLS_FAILED", ConnectionFailure.code(new javax.net.ssl.SSLHandshakeException("private handshake details")));
+        assertEquals("TLS_FAILED", ConnectionFailure.code(new RuntimeException(new java.security.cert.CertificateExpiredException("private CA details"))));
+        assertEquals("TLS_FAILED", ConnectionFailure.code(new javax.net.ssl.SSLPeerUnverifiedException("private hostname")));
+        assertEquals("CONNECTION_FAILED", ConnectionFailure.code(new java.io.IOException("private connection details")));
+    }
     @Test public void trustedTlsCookiesIsolationLogoutAndRedirectBoundaries() throws Exception {
         KeyStore store = KeyStore.getInstance("PKCS12");
         try (var file = getClass().getResourceAsStream("/tls/server.p12")) { store.load(file, "synthetic-only".toCharArray()); }

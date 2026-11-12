@@ -64,8 +64,8 @@ test('publication requires acceptance evidence for every native extension requir
 });
 
 test('merged enrollment and upgrade policy implementations are advertised and required by future APK descriptors', () => {
-  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
-  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
+  assert.deepEqual(ANDROID_API_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-enrollment-outcome-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
+  assert.deepEqual(ANDROID_CLIENT_REQUIRED_CAPABILITIES, ['native-enrollment-attempt-v1', 'native-enrollment-outcome-v1', 'native-oidc-return-v1', 'audio-webm-live-v1', 'android-upgrade-policy-v1', 'android-upgrade-gate-v1']);
   assert.deepEqual(compatibility.requiredCapabilities, ANDROID_CLIENT_REQUIRED_CAPABILITIES);
 });
 
@@ -92,4 +92,12 @@ test('a future OIDC APK cannot publish against an enrollment-only server', () =>
   const identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
   assert.throws(()=>validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:['native-enrollment-attempt-v1']},preflight,identity),/protocol and capabilities/);
   validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);
+});
+
+for (const missing of ['native-enrollment-outcome-v1','native-oidc-return-v1','audio-webm-live-v1']) test(`future clients cannot publish when the server lacks ${missing}`,()=>{
+ const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
+ const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES.filter(value=>value!==missing),releaseA:{...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions,...requiredUpgradeGateAssertions]};
+ const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
+ assert.throws(()=>validatePublicationEvidence(descriptor,evidence,preflight,identity),/protocol and capabilities/);
+ validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);
 });

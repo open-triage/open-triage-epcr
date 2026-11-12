@@ -500,9 +500,10 @@ export function ClinicianSessionGate({ children }: {
     {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
       <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
       {online && startupFailure && <p>{startupFailure}</p>}
+      <AndroidInstallationAction language={language} />
     </div>}
   </main>;
-  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p></main>;
+  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p><AndroidInstallationAction language={language} /></main>;
   if (!authenticatedSession) {
     return (
       <main className="login-shell">

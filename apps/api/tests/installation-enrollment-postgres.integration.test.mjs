@@ -5,6 +5,7 @@ import pg from 'pg';
 import { DataSource } from 'typeorm';
 import { SYNTHETIC_DEMO_FIXTURE } from '@open-triage/contracts';
 import { InstallationEnrollmentService } from '../dist/admin/installation-enrollment.service.js';
+import { enrollmentAttemptBinding,enrollmentAttemptCredential } from '../dist/admin/enrollment-attempt.js';
 import { agencyRequest } from '../dist/sessions/agency-context.js';
 const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');
@@ -104,4 +105,54 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  // Immutable audit remains; fixtures use fresh UUIDs and do not mutate ordinary accounts/history.
  await client.end();await db.destroy();
  }
+});
+
+integration('native outcome never confuses expired uncommitted intent with committed, revoked or competing results',async()=>{
+ const db=new DataSource({type:'postgres',url:process.env.DATABASE_URL});await db.initialize();
+ const client=new pg.Client({connectionString:process.env.DATABASE_URL});await client.connect();
+ const organizationId=SYNTHETIC_DEMO_FIXTURE.organizationId,userId=randomUUID(),unitId=randomUUID(),origin='https://outcome.example';
+ const sessions={requireCapability:async()=>({organization:{id:organizationId},user:{id:userId}})};
+ const service=new InstallationEnrollmentService(db,sessions,{allowsOrigin:async value=>value===origin});
+ const run=work=>agencyRequest.run({origin},work),hash=value=>createHash('sha256').update(value).digest('hex');
+ const input=(token,attempt=secret(),reassign=false)=>({token,attempt,name:'Native outcome fixture',confirmInstallation:true,...(reassign?{reassign:true}:{})});
+ let transaction=false;
+ try {
+  await client.query(`insert into app_identity.app_user(id,organization_id,display_name,synthetic) values($1,$2,'Synthetic outcome administrator',true)`,[userId,organizationId]);
+  await client.query(`insert into app_identity.operational_unit(id,organization_id,name,call_sign,active,synthetic) values($1,$2,'Outcome fixture',$3,true,true)`,[unitId,organizationId,`OUT-${unitId}`]);
+  const fresh=await run(()=>service.issue('session',unitId)),freshBody=input(fresh.token),original=secret();
+  assert.deepEqual(await run(()=>service.outcome(freshBody,original)),{status:'pending'});
+  const count=async()=>Number((await client.query('select count(*) n from app_identity.installation_registration where unit_id=$1',[unitId])).rows[0].n);
+  await client.query('begin');transaction=true;
+  await client.query(`update app_identity.unit_enrollment set expires_at=clock_timestamp()+interval '100 milliseconds' where token_sha256=$1`,[hash(fresh.token)]);
+  const waiting=run(()=>service.outcome(freshBody,original));
+  await new Promise(resolve=>setTimeout(resolve,200));await client.query('commit');transaction=false;
+  assert.deepEqual(await waiting,{status:'not-committed'});assert.equal(await count(),0);
+  await assert.rejects(run(()=>service.consume(freshBody,original)),/expired/);assert.equal(await count(),0);
+
+  const initial=await run(()=>service.issue('session',unitId)),old=secret();
+  await run(()=>service.consume({token:initial.token,name:'Before outcome',confirmInstallation:true},old));
+  const replacement=await run(()=>service.issue('session',unitId)),body=input(replacement.token,secret(),true);
+  const committed=await run(()=>service.consume(body,old));assert.equal(await count(),2);
+  await client.query(`update app_identity.unit_enrollment set issued_at=clock_timestamp()-interval '30 minutes',expires_at=clock_timestamp()-interval '25 minutes',consumed_at=clock_timestamp()-interval '27 minutes' where token_sha256=$1`,[hash(replacement.token)]);
+  await assert.rejects(run(()=>service.consume(body,old)),/unavailable/);
+  const derived=enrollmentAttemptCredential(body.attempt,enrollmentAttemptBinding(origin,body.token,body.name,true,old));
+  assert.equal(derived,committed.credential);
+  assert.equal((await run(()=>service.current(derived))).id,committed.installation.id);
+  await assert.rejects(run(()=>service.current(secret())),/Enrollment required/);
+  assert.deepEqual(await run(()=>service.outcome(body,old)),{status:'result-unavailable'});
+  for(const [candidate,cookie] of [[{...body,name:'Wrong'},old],[{...body,attempt:secret()},old],[body,secret()]])await assert.rejects(run(()=>service.outcome(candidate,cookie)),/unavailable/);
+  await assert.rejects(agencyRequest.run({origin:'https://wrong.example'},()=>service.outcome(body,old)),/origin required/);
+  await run(()=>service.revoke('session',unitId,committed.installation.id));
+  await assert.rejects(run(()=>service.current(derived)),/Enrollment required/);
+  assert.deepEqual(await run(()=>service.outcome(body,old)),{status:'result-unavailable'});assert.equal(await count(),2);
+  assert.deepEqual(await run(()=>service.outcome(input(secret()),secret())),{status:'unavailable'});
+
+  // Another cookie can consume the same code while this original authority waits.
+  // No stale unconsumed read may turn that competing commit into a reset signal.
+  const raceCode=await run(()=>service.issue('session',unitId)),cookieA=secret(),cookieB=secret(),intentA=input(raceCode.token),intentB=input(raceCode.token);
+  await client.query('begin');transaction=true;await client.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[hash(cookieA)]);
+  const race=run(()=>service.outcome(intentA,cookieA));const rejected=assert.rejects(race,/unavailable/);
+  await run(()=>service.consume(intentB,cookieB));await client.query('commit');transaction=false;await rejected;
+  assert.equal(await count(),3);
+ } finally {if(transaction)await client.query('rollback');await client.end();await db.destroy();}
 });

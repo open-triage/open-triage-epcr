@@ -29,6 +29,8 @@ final class TrustedConnection {
     final String origin;
     final String caPem;
     private final javax.net.ssl.SSLSocketFactory socketFactory;
+    private final List<X509Certificate> caCertificates = new ArrayList<>();
+    private final java.util.function.LongSupplier clock;
     private final Map<String, SavedCookie> cookies = new HashMap<>();
     private static final Set<String> COOKIE_NAMES = Set.of("open_triage_session", "open_triage_installation");
     private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "x-job-confirmation", "if-match", "if-none-match");
@@ -39,6 +41,13 @@ final class TrustedConnection {
     }
 
     TrustedConnection(String origin, String caPem) throws Exception {
+        this(origin, caPem, System::currentTimeMillis, false);
+    }
+    TrustedConnection(String origin, String caPem, java.util.function.LongSupplier clock) throws Exception {
+        this(origin, caPem, clock, false);
+    }
+    private TrustedConnection(String origin, String caPem, java.util.function.LongSupplier clock, boolean restoring) throws Exception {
+        this.clock = clock;
         URI uri = URI.create(origin);
         if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getRawUserInfo() != null ||
                 uri.getRawQuery() != null || uri.getRawFragment() != null || !uri.getRawPath().isEmpty() ||
@@ -60,15 +69,22 @@ final class TrustedConnection {
             int i = 0;
             for (var cert : certificates) {
                 X509Certificate x509 = (X509Certificate) cert;
-                x509.checkValidity();
                 if (x509.getBasicConstraints() < 0) throw new IllegalArgumentException("CA certificate required");
+                caCertificates.add(x509);
                 store.setCertificateEntry("root-" + i++, cert);
             }
             trust.init(store);
         }
+        // An expired saved CA must remain available for explicit replacement, but
+        // it must never authorize a request or be accepted as a new pairing input.
+        if (!restoring) checkTrustValidity();
         SSLContext tls = SSLContext.getInstance("TLS");
         tls.init(null, trust.getTrustManagers(), null);
         socketFactory = tls.getSocketFactory();
+    }
+    private void checkTrustValidity() throws Exception {
+        var now = new java.util.Date(clock.getAsLong());
+        for (var certificate : caCertificates) certificate.checkValidity(now);
     }
 
     /** Reject IP representations that the shared URL-based pairing parser normalizes. */
@@ -173,6 +189,7 @@ final class TrustedConnection {
         return requestBytes(path, method, headers, body, null);
     }
     Reply requestBytes(String path, String method, JSONObject headers, byte[] body, Long androidVersion) throws Exception {
+        checkTrustValidity();
         requestPath(path);
         if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD").contains(method) ||
                 body != null && body.length > MAX_BODY) throw new IllegalArgumentException("Invalid request");
@@ -208,6 +225,7 @@ final class TrustedConnection {
                 try (var output = connection.getOutputStream()) { output.write(body); }
             }
             int status = connection.getResponseCode();
+            checkTrustValidity();
             if (status >= 300 && status < 400 && status != 304) throw new IllegalStateException("Redirect requires explicit platform flow");
             for (var header : connection.getHeaderFields().entrySet()) {
                 if (header.getKey() != null && header.getKey().equalsIgnoreCase("Set-Cookie")) {
@@ -229,6 +247,7 @@ final class TrustedConnection {
             InputStream stream = Set.of(204, 205, 304).contains(status) || method.equals("HEAD") ? null
                 : status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             byte[] bytes = stream == null ? new byte[0] : readBounded(stream);
+            checkTrustValidity();
             return new Reply(status, responseHeaders, bytes);
         } finally { connection.disconnect(); }
     }
@@ -265,9 +284,11 @@ final class TrustedConnection {
         this.origin = source.origin;
         this.caPem = source.caPem;
         this.socketFactory = source.socketFactory;
+        this.clock = source.clock;
+        this.caCertificates.addAll(source.caCertificates);
     }
     TrustedConnection installationOnly() {
-        return installationOnly(System.currentTimeMillis());
+        return installationOnly(clock.getAsLong());
     }
     TrustedConnection installationOnly(long now) {
         TrustedConnection next = new TrustedConnection(this);
@@ -282,7 +303,10 @@ final class TrustedConnection {
         return new JSONObject().put("origin", origin).put("caPem", caPem).put("cookies", savedCookies);
     }
     static TrustedConnection restore(JSONObject saved) throws Exception {
-        TrustedConnection connection = new TrustedConnection(saved.getString("origin"), saved.getString("caPem"));
+        return restore(saved, System::currentTimeMillis);
+    }
+    static TrustedConnection restore(JSONObject saved, java.util.function.LongSupplier clock) throws Exception {
+        TrustedConnection connection = new TrustedConnection(saved.getString("origin"), saved.getString("caPem"), clock, true);
         JSONArray cookies = saved.getJSONArray("cookies");
         for (int i = 0; i < cookies.length(); i++) {
             JSONObject cookie = cookies.getJSONObject(i);

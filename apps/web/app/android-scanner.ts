@@ -19,5 +19,6 @@ export function scannerFailureMessage(error: unknown): string {
   if (code === "QR_TOO_LARGE") return "android.qrTooLarge";
   if (code === "INVALID_QR") return "android.invalidQr";
   if (code === "CONNECTION_FAILED") return "android.pairingFailed";
+  if (code === "TLS_FAILED") return "android.tlsFailed";
   return "android.scannerFailed";
 }
