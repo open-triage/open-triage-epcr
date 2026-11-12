@@ -52,6 +52,10 @@ test('target validation catches wrong devices, remove actions, skipped versions,
     const altered = clone(configuration); mutation(altered); assert.throws(() => headwindDeploymentTarget(altered, device, descriptor, mdmUrl));
   }
   assert.throws(() => headwindDeploymentTarget(configuration, {...device, configurationId: 9}, descriptor, mdmUrl));
+  for (const action of [1, 2, '1', '2']) {
+    const altered = clone(configuration); altered.applications.push({pkg: 'com.hmdm.launcher', action, version: '6.37'});
+    assert.throws(() => headwindDeploymentTarget(altered, device, descriptor, mdmUrl), /removable test agent/);
+  }
 });
 
 test('version-name-only or stale management inventory cannot establish the actual installed Android identity', () => {

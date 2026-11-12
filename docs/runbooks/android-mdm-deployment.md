@@ -56,6 +56,9 @@ required. Preparation and unit tests do not mark either acceptance issue complet
    select the clinical application's exact version with **Install** (`action: 1`),
    no remove action and no skip-version option. Confirm the device's actual
    `configurationId`; an application in the catalog is not a deployment assignment.
+   Leave `com.hmdm.launcher` untargeted: selecting the bundled production 6.37 agent
+   could replace the independently installed removable 6.40 test build. The
+   acceptance validator rejects agent install/remove actions in this configuration.
 5. Deliver all three standard keys through the real agent. Use integer
    `configurationVersion: 1`, the approved HTTPS `serverOrigin`, and string
    `publicCaPem` containing only the public CA bundle (or explicit empty string

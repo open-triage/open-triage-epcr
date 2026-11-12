@@ -49,6 +49,8 @@ export async function verifyMdmDownload(url, allowedOrigin, descriptor, fetcher 
 export function headwindDeploymentTarget(configuration, device, descriptor, mdmUrl) {
   assert(Number.isSafeInteger(configuration.id) && configuration.id > 0, 'Configuration identity required');
   assert.equal(device.configurationId, configuration.id, 'Device targets another configuration');
+  assert(!configuration.applications.some(value => value.pkg === 'com.hmdm.launcher' && String(value.action ?? 0) !== '0'),
+    'Acceptance configuration must preserve the independently installed removable test agent');
   const applications = configuration.applications.filter(value => value.pkg === descriptor.applicationId && String(value.action) !== '0');
   assert.equal(applications.length, 1, 'Exactly one selected clinical APK is required');
   const application = applications[0];
