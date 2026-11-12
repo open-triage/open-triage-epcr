@@ -19,8 +19,6 @@ export async function runNativePdfJourney({root,adb,serial,applicationId='org.op
   const instrument=(name,extra=[])=>adbShellArguments(['-s',serial,'shell','am','instrument','-w','-r','-e','class',name,...extra,`${applicationId}.test/androidx.test.runner.AndroidJUnitRunner`]);
   const live=execFileSync(adb,instrument('org.opentriage.development.NativePdfLifecycleTest,org.opentriage.development.NativePdfRemoteLifetimeTest'),{cwd:root,encoding:'utf8',timeout:120000});
   console.log(live);assertNativePdfInstrumentation(live);
-  const saf=execFileSync(adb,instrument('org.opentriage.development.NativePdfSafTest'),{cwd:root,encoding:'utf8',timeout:120000});
-  console.log(saf);assertNativePdfSafInstrumentation(saf);
   let preparation;
   try {
     preparation=startLiveInstrumentation(adb,instrument('org.opentriage.development.NativePdfColdProcessTest',['-e','phase','prepare']),{cwd:root,checkpoint:'opentriage_pdf_phase=ready-for-process-kill',timeoutMs:45000});
@@ -38,4 +36,7 @@ export async function runNativePdfJourney({root,adb,serial,applicationId='org.op
   } finally {
     if(preparation&&preparation.child.exitCode===null&&preparation.child.signalCode===null){preparation.child.kill('SIGTERM');await preparation.closed;}
   }
+  const saf=execFileSync(adb,instrument('org.opentriage.development.NativePdfSafTest'),{cwd:root,encoding:'utf8',timeout:120000});
+  console.log(saf);assertNativePdfSafInstrumentation(saf);
+  console.log('PASS genuine system PDF save: fresh authorized bytes, explicit export retained and test-owned export cleanup; cancellation without document fetch');
 }

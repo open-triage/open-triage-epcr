@@ -14,6 +14,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Exercises the real system document picker and provider, without intent stubs. */
 @RunWith(AndroidJUnit4.class)
 public class NativePdfSafTest {
+    private androidx.test.uiautomator.UiObject2 systemSave(UiDevice device,String pickerPackage) throws Exception {
+        // AOSP DocumentsUI fragment_save uses the framework ID, also on
+        // vendor-packaged DocumentsUI. Scope it to the picker, not any dialog.
+        var save=device.wait(Until.findObject(By.pkg(pickerPackage).res("android:id/button1")),5000);
+        String resourceIds="";
+        if(save==null) {
+            try(var output=new java.io.ByteArrayOutputStream()) {
+                device.dumpWindowHierarchy(output);
+                var matcher=java.util.regex.Pattern.compile("resource-id=\"([a-zA-Z0-9_.:/]+)\"").matcher(new String(output.toByteArray(),java.nio.charset.StandardCharsets.UTF_8));
+                var ids=new java.util.TreeSet<String>();while(matcher.find()&&ids.size()<32)ids.add(matcher.group(1));resourceIds=ids.toString();
+            } catch(Exception unavailable) {resourceIds="diagnostic unavailable";}
+        }
+        assertNotNull("The actual system Save control is available; resource IDs="+resourceIds,save);assertTrue("The chosen filename/destination enables the actual system Save action",save.isEnabled());return save;
+    }
     @Test public void actualPickerExportsOnlyFreshlyAuthorizedBytesAndPreservesTheExplicitDownload() throws Exception {
         var instrumentation=InstrumentationRegistry.getInstrumentation();var context=instrumentation.getTargetContext();
         Object owner=new Object();String id=java.util.UUID.randomUUID().toString();
@@ -26,10 +40,11 @@ public class NativePdfSafTest {
             UiDevice device=UiDevice.getInstance(instrumentation);
             var name=device.wait(Until.findObject(By.clazz("android.widget.EditText")),5000);
             assertNotNull("The real ACTION_CREATE_DOCUMENT picker opens",name);
+            String pickerPackage=name.getApplicationPackage();
+            assertNotEquals("The actual picker belongs to another application",context.getPackageName(),pickerPackage);
             assertEquals("The picker does not authorize a download before the user chooses",0,loads.get());
             name.setText("opentriage-synthetic-"+id+".pdf");
-            var save=device.wait(Until.findObject(By.res(java.util.regex.Pattern.compile(".*:id/button_save"))),5000);
-            assertNotNull("The system Save control is available",save);save.click();
+            systemSave(device,pickerPackage).click();
             var result=scenario.getResult();assertEquals(android.app.Activity.RESULT_OK,result.getResultCode());
             destination=result.getResultData().getData();assertNotNull(destination);assertEquals("content",destination.getScheme());
             assertEquals("Authorization/refetch happens after the real picker returns",1,loads.get());
@@ -51,9 +66,10 @@ public class NativePdfSafTest {
         var privateFile=session.cache(NativePdfFixture.bytes());
         try(var scenario=ActivityScenario.<NativePdfActivity>launchActivityForResult(NativePdfFixture.intent(context,session,"en").putExtra("save",true))) {
             UiDevice device=UiDevice.getInstance(instrumentation);
-            assertNotNull(device.wait(Until.findObject(By.clazz("android.widget.EditText")),5000));
+            var name=device.wait(Until.findObject(By.clazz("android.widget.EditText")),5000);assertNotNull(name);
+            String pickerPackage=name.getApplicationPackage();
             device.pressBack(); // Dismiss the keyboard, if the picker showed it.
-            if(device.hasObject(By.res(java.util.regex.Pattern.compile(".*:id/button_save"))))device.pressBack();
+            if(device.hasObject(By.pkg(pickerPackage).res("android:id/button1")))device.pressBack();
             assertEquals(android.app.Activity.RESULT_CANCELED,scenario.getResult().getResultCode());
             assertEquals(0,loads.get());assertFalse(session.current());assertFalse(privateFile.exists());
         } finally {NativePdfSessions.closeOwner(owner);}
