@@ -1,5 +1,6 @@
 export const INSTALLATION_TRANSITION_KEY = "open-triage.installation-transition.v1";
 export const INSTALLATION_GENERATION_KEY = "open-triage.installation-generation.v1";
+export const INSTALLATION_SESSION_HINT_KEY = "open-triage.installation-session-candidate.v1";
 export class InstallationContextChangedError extends Error {}
 
 /** Capture before personal authentication; a response from an old context is unusable. */
