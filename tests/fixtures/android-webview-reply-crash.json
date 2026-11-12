@@ -1,0 +1,9 @@
+{
+  "webViewVersion": "109.0.5414.123",
+  "nativeBuildId": "f1d4dbfe493e11c190bf218ac9032baaa9bd1370",
+  "symbol": "Java_J_N_MayS5i9E",
+  "className": "org/chromium/android_webview/JsReplyProxy",
+  "methodName": "postMessage",
+  "source": "https://github.com/chromium/chromium/blob/109.0.5414.74/android_webview/java/src/org/chromium/android_webview/JsReplyProxy.java",
+  "generator": "https://github.com/chromium/chromium/blob/109.0.5414.74/base/android/jni_generator/jni_generator.py"
+}

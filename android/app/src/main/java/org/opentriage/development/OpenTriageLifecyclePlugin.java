@@ -2,15 +2,15 @@ package org.opentriage.development;
 
 import androidx.lifecycle.Lifecycle;
 import com.getcapacitor.JSObject;
-import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 /** OS lifecycle only; never persists or emits clinical content or credentials. */
 @CapacitorPlugin(name = "OpenTriageLifecycle")
-public class OpenTriageLifecyclePlugin extends Plugin {
-    @Override public void load() {
+public class OpenTriageLifecyclePlugin extends LifecycleBoundPlugin {
+    @Override protected void onReplyRealmReady() {
+        super.onReplyRealmReady();
         getActivity().runOnUiThread(() -> getActivity().getOnBackPressedDispatcher().addCallback(
             getActivity(), new androidx.activity.OnBackPressedCallback(true) {
                 @Override public void handleOnBackPressed() {
@@ -27,17 +27,17 @@ public class OpenTriageLifecyclePlugin extends Plugin {
             }));
     }
     @PluginMethod public void background(PluginCall call) {
-        getActivity().runOnUiThread(() -> { getActivity().moveTaskToBack(true); call.resolve(); });
+        withReplyRealm(call, () -> { getActivity().moveTaskToBack(true); resolveCall(call); });
     }
     private void changed(boolean active) {
         JSObject event = new JSObject(); event.put("active", active);
         notifyListeners("foreground", event, true);
     }
     @PluginMethod public void state(PluginCall call) {
-        getActivity().runOnUiThread(() -> {
+        withReplyRealm(call, () -> {
             JSObject state = new JSObject();
             state.put("active", getActivity().getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.RESUMED));
-            call.resolve(state);
+            resolveCall(call, state);
         });
     }
     @Override protected void handleOnPause() { changed(false); }

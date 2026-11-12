@@ -40,7 +40,7 @@ try {
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
   const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(1 test\)/, 'Actual Keystore legacy provenance migration');
-  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest', '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.NativeStartupTest,org.opentriage.development.NativeReplyLifecycleTest', '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(startup); assert.match(startup, /OK \(1 test\)/, 'Actual installed app initializer and scoped WebView font profile');
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
   for (const fixture of fixtures) {
