@@ -38,6 +38,13 @@ and recovery deadline remain under their original boundaries. Run the early
 journey to cover this persistence boundary; a successful warm WebView login alone
 does not prove restart continuity.
 
+Before the full preflight, exercise the generic continuation/controller unit
+contract with `node --test apps/api/tests/personal-continuation.test.mjs` after
+building the API. With a disposable migrated runtime database, also run
+`REQUIRE_DATABASE_INTEGRATION=1 node --test apps/api/tests/oidc-personal-postgres.integration.test.mjs`.
+That real HTTP/provider/cookie path checks first native delivery and exact-cookie
+retry against a fresh current-session payload, including CSRF and fixed expiry.
+
 The generic read is `POST /api/sessions/current/continuation`, with the ordinary
 CSRF guard and the same limited-account metadata eligibility as `GET current`.
 The agency-handoff current endpoint retains its existing eligibility. Servers

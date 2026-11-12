@@ -83,13 +83,14 @@ try{
  assert.equal((await agencyRequest.run({origin},()=>personal.callback(new URL(httpProvider.headers.get('location')),httpStart.correlation))).created,undefined);
  assert.equal((await nativeHttp('finish',{secret:httpBegin.nativeSecret},`${installationCookie}; open_triage_session=`,null)).status,401);
  const firstHttpDelivery=await nativeHttp('finish',{secret:httpBegin.nativeSecret},`${installationCookie}; open_triage_session=`);
- assert.equal(firstHttpDelivery.status,200);assert.deepEqual(await firstHttpDelivery.json(),{outcome:'succeeded'});
+ assert.equal(firstHttpDelivery.status,200);const firstHttpBody=await firstHttpDelivery.json();
  const issuedCookie=firstHttpDelivery.headers.getSetCookie().find(value=>value.startsWith('open_triage_session='));assert(issuedCookie);assert.match(issuedCookie,/HttpOnly/);assert.match(issuedCookie,/Secure/);
  const currentCookie=`${installationCookie}; ${issuedCookie.split(';')[0]}`;
  const currentHttp=()=>fetch(`${api}/api/sessions/current`,{headers:{origin,cookie:currentCookie}});
  const originalHttpSession=await (await currentHttp()).json();assert.equal(originalHttpSession.user.id,process.env.OIDC_ALPHA);
+ assert.deepEqual(firstHttpBody,{outcome:'succeeded',session:originalHttpSession},'Cookie delivery includes exactly the current public session/CSRF, never a token or cached authority');
  const retryHttpDelivery=await nativeHttp('finish',{secret:httpBegin.nativeSecret},currentCookie);
- assert.equal(retryHttpDelivery.status,200);assert.deepEqual(await retryHttpDelivery.json(),{outcome:'succeeded'});assert.equal(retryHttpDelivery.headers.get('set-cookie'),null,'Idempotent native completion issues no credentials');
+ assert.equal(retryHttpDelivery.status,200);assert.deepEqual(await retryHttpDelivery.json(),{outcome:'succeeded',session:await (await currentHttp()).json()});assert.equal(retryHttpDelivery.headers.get('set-cookie'),null,'Idempotent native completion issues no credentials');
  assert.equal((await (await currentHttp()).json()).expiresAt,originalHttpSession.expiresAt);
  assert.equal((await nativeHttp('finish',{secret:httpBegin.nativeSecret},installationCookie)).status,401,'Consumed secret without its cookie grants nothing');
  assert.equal((await nativeHttp('finish',{secret:'x'.repeat(43)},currentCookie)).status,401);

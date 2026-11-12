@@ -14,14 +14,15 @@ public class NativePersonalContinuationTest {
     private JSONObject session() {
         return new JSONObject().put("csrfToken","c".repeat(43)).put("user",new JSONObject().put("id","principal"))
             .put("organization",new JSONObject().put("id","agency")).put("capabilities",new JSONArray().put("old:role"))
-            .put("expiresAt","2099-01-01T00:00:00Z").put("personallyAuthenticatedAt","2026-01-01T00:00:00Z");
+            .put("expiresAt",java.time.Instant.now().plusSeconds(7200).toString()).put("personallyAuthenticatedAt","2026-01-01T00:00:00Z");
     }
     @Test public void absentPublicMetadataRecoversOnlyFreshServerFieldsAndOriginalCsrf() throws Exception {
         var connection=connection();var saved=NativePersonalContinuation.capture(connection,session());
         assertEquals(6,saved.length());assertFalse(saved.has("capabilities"));assertFalse(saved.has("expiresAt"));assertFalse(saved.toString().contains("private-personal"));
-        var current=session().put("capabilities",new JSONArray().put("current:role")).put("expiresAt","2026-12-01T00:00:00Z");current.remove("csrfToken");
+        String currentExpiry=java.time.Instant.now().plusSeconds(3600).toString();
+        var current=session().put("capabilities",new JSONArray().put("current:role")).put("expiresAt",currentExpiry);current.remove("csrfToken");
         var recovered=NativePersonalContinuation.restore(saved,connection,current);
-        assertEquals("current:role",recovered.getJSONArray("capabilities").getString(0));assertEquals("2026-12-01T00:00:00Z",recovered.getString("expiresAt"));
+        assertEquals("current:role",recovered.getJSONArray("capabilities").getString(0));assertEquals(currentExpiry,recovered.getString("expiresAt"));
         assertEquals("2026-01-01T00:00:00Z",recovered.getString("personallyAuthenticatedAt"));assertEquals("c".repeat(43),recovered.getString("csrfToken"));
     }
     @Test public void currentPrincipalOrOrganizationMismatchCannotRecover() throws Exception {

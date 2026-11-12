@@ -45,3 +45,10 @@ test('native OIDC finish supplies fresh public continuation with cookie delivery
   assert.deepEqual(result,{outcome:'succeeded',session});assert.equal(cookies.length,delivered?0:1);assert(!JSON.stringify(result).includes('private-cookie-token'));assert(!JSON.stringify(result).includes('private-return-secret'));
  }
 });
+
+test('waiting and unsuccessful native OIDC outcomes never expose a session or issue credentials',async()=>{
+ for(const outcome of ['waiting','pending','denied','failed']){
+  const controller=new OidcPersonalController({nativeFinish:async()=>({outcome})},{});
+  assert.deepEqual(await controller.nativeFinish({secret:'private-return-secret'},{headers:{}},'1',{cookie:()=>{throw Error('No issued credentials before successful authentication')}}),{outcome});
+ }
+});
