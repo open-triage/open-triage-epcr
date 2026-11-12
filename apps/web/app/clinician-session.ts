@@ -1,3 +1,4 @@
+import { AndroidConnection, isAndroidRuntime } from "./android-runtime";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration,INSTALLATION_GENERATION_KEY } from "./installation-transition-generation";
 import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type AuthenticatedSession, type CreateClinicianSessionCommand,
@@ -157,11 +158,16 @@ export async function beginPersonalClinicianSession(purpose:"login"|"switch",csr
   // response still owns the outgoing cookie.
   const result=await transitionInstallation(async()=>{
     generation=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
+    if(isAndroidRuntime()){
+      await AndroidConnection.beginAuthentication({purpose,...(csrfToken?{csrfToken}:{})});
+      return null;
+    }
     const response=await fetch(url,browserRequestInit({method:"POST",headers:{"content-type":"application/json","x-personal-authentication":"1",...(csrfToken?{"x-csrf-token":csrfToken}:{})},body:JSON.stringify({purpose})}));
     if(!response.ok)throw await platformRequestError(response);
     return await response.json() as {authorizationUrl:string};
   });
   assertAuthenticationInstallationGeneration(generation);
+  if(!result)throw new PersonalAuthenticationRedirect("Personal authentication started");
   return navigateToPersonalAuthentication(result.authorizationUrl,false);
 }
 export async function completePersonalClinicianSession():Promise<AuthenticatedSession|null>{

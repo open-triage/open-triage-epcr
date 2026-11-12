@@ -35,7 +35,7 @@ test('missing selection, malformed approval, wrong identity, unsupported protoco
  for(const change of [c=>c.releases[0].descriptor.certificateSha256='f'.repeat(64),c=>c.releases[0].downloadUrl='https://attacker.invalid/file.apk',c=>c.releases[0].descriptor.apkBytes=129*1024*1024]){
   const c=fixture();change(c);assert.equal((await new AndroidReleaseService(sessions,fetcher,c).read('admin')).reason,'unverified');
  }
- for(const change of [c=>c.releases[0].descriptor.compatibility.api={minimum:2,maximum:2},c=>c.releases[0].descriptor.compatibility.requiredCapabilities=['native-oidc-return-v1']]){
+ for(const change of [c=>c.releases[0].descriptor.compatibility.api={minimum:2,maximum:2},c=>c.releases[0].descriptor.compatibility.requiredCapabilities=['synthetic-unimplemented-feature-v1']]){
   const c=fixture();change(c);assert.equal((await new AndroidReleaseService(sessions,fetcher,c).read('admin')).reason,'incompatible');
  }
  assert.equal(fetches,0);
@@ -81,4 +81,10 @@ test('actual HTTP Admin endpoint uses cookie/session authorization, private no-s
   const b=await(await fetch(url,{headers:{authorization:'Bearer reader-b'}})).json();assert.deepEqual(a,b);assert.equal(a.descriptor.apkSha256,digest);
   assert.equal((await fetch(url,{method:'PUT',headers:{cookie:'open_triage_session=reader-a'}})).status,404);
  }finally{await app.close();}
+}));
+
+test('implemented OIDC and enrollment capabilities permit verified future descriptors',()=>selection(async()=>{
+ const catalog=fixture();catalog.releases[0].descriptor.compatibility.requiredCapabilities=['native-enrollment-attempt-v1','native-oidc-return-v1'];
+ const service=new AndroidReleaseService({requireCapability:async()=>{}},async()=>new Response(payload),catalog);
+ assert.equal((await service.read('authorized-reader')).status,'available');
 }));

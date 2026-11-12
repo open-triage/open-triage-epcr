@@ -84,3 +84,10 @@ test('native runners capture before fixture teardown and CI preserves their repo
   const workflow = await readFile(new URL('../.github/workflows/android.yml', import.meta.url), 'utf8');
   assert.match(workflow, /if: always\(\)/); assert.match(workflow, /android\/app\/build\/reports\//);
 });
+
+test('OIDC records bounded asynchronous crash evidence before its own CA/provider cleanup', async () => {
+  const source = await readFile(new URL('../scripts/android/oidc-journey.mjs', import.meta.url), 'utf8');
+  assert(source.indexOf('await captureAndroidFailure(') < source.lastIndexOf('} finally {'));
+  assert.match(source, /error.androidFailureCaptured=true/);
+  assert.match(source, /await runInstrumentation\(/);
+});

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { androidFetch, configureNativeConnection } from '../app/android-runtime';
+import { androidFetch, configureNativeConnection, pollAndroidAuthenticationReturn } from '../app/android-runtime';
 test('shared API requests preserve CSRF/agency/body through the native connection and surface HTTP failures', async () => {
   let received: unknown;
   const transport = androidFetch(async () => { throw new Error('API escaped the native boundary'); }, async options => {
@@ -74,6 +74,21 @@ test('a delayed native reply cannot revive the previous installation context', a
   configureNativeConnection({configured:false});
 });
 
+test('stale authentication success and failure cannot navigate a replacement or newly paired installation', async () => {
+  for (const outcome of ['succeeded','pending','denied','failed'] as const) {
+    configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
+    let release!: (result:{outcome:typeof outcome})=>void;
+    const redirects:string[]=[];
+    const pending=pollAndroidAuthenticationReturn(()=>new Promise(resolve=>{release=resolve;}),path=>{redirects.push(path);});
+    configureNativeConnection({configured:false,replacementPending:true,connectionContext:'replacement'});
+    release({outcome});await pending;assert.deepEqual(redirects,[]);
+  }
+  configureNativeConnection({configured:true,origin:'https://current.example',storageScope:'B'.repeat(43),connectionContext:'current'});
+  const redirects:string[]=[];
+  await pollAndroidAuthenticationReturn(async()=>({outcome:'succeeded'}),path=>{redirects.push(path);});
+  assert.deepEqual(redirects,['/?authentication=completed']);
+  configureNativeConnection({configured:false});
+});
 
 test('connection replacement during binary body preparation prevents native dispatch', async () => {
   configureNativeConnection({configured:true,origin:'https://old.example',storageScope:'A'.repeat(43),connectionContext:'old'});
@@ -87,5 +102,6 @@ test('connection replacement during binary body preparation prevents native disp
   release();
   await assert.rejects(pending,/Installation changed/);
   assert.equal(calls,0);
+
   configureNativeConnection({configured:false});
 });
