@@ -428,6 +428,13 @@ The original request's elapsed-realtime deadline includes device sleep and
 cannot be renewed by rendering or export. A trusted server Date bounds remaining
 session time despite client clock skew; a subsequent wall-clock rollback or
 forward expiry closes the preview permanently.
+While visible, the native surface also serializes `/api/sessions/current`
+reassessment on resume and every 30 seconds, matching the shared session gate.
+A 401/403 or changed principal, cookie, agency membership, capabilities or
+workspace closes the document. Connection failures retain only the original
+deadline. A pending request can delay detection by its bounded network/queue
+time; this is not an immediate remote object-revocation notification. Reload and
+Save still authorize the exact PDF resource again.
 Cold MainActivity startup deletes only owned stale preview files before mounting
 the credentialed WebView; old memory-only document handles cannot reopen them.
 

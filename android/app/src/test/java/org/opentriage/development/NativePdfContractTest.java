@@ -56,4 +56,13 @@ public class NativePdfContractTest {
         assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(server+10_000),ID,server,new JSONObject().put("Date","invalid")));
         assertThrows(Exception.class,()->NativePdfContract.authority(current(),saved(server+10_000),ID,server,date.put("Date","Mon, 1 Jan 2029 00:00:00 GMT")));
     }
+    @Test public void effectiveWorkspaceCapabilitiesAndMembershipsAreAuthorityNotDisplayMetadata() throws Exception {
+        JSONObject original=current().put("capabilities",new org.json.JSONArray().put("review:self").put("clinical:document"));
+        String expected=NativePdfContract.scope(original);
+        assertEquals(expected,NativePdfContract.scope(current().put("capabilities",new org.json.JSONArray().put("clinical:document").put("review:self"))));
+        assertNotEquals(expected,NativePdfContract.scope(current().put("capabilities",new org.json.JSONArray().put("clinical:document"))));
+        assertNotEquals(expected,NativePdfContract.scope(original.put("installationOwner",true)));
+        assertThrows(Exception.class,()->NativePdfContract.scope(current().put("workspaceAvailable",false)));
+        assertThrows(Exception.class,()->NativePdfContract.scope(current().put("passwordChangeRequired",true)));
+    }
 }

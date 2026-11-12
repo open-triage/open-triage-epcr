@@ -33,4 +33,20 @@ public class NativePdfSessionsTest {
         assertTrue(NativePdfSessions.pending(current,id));NativePdfSessions.closeOwner(current);assertFalse(NativePdfSessions.alive(current,id));
         assertThrows(Exception.class,()->NativePdfSessions.begin(this,"../../arbitrary"));
     }
+    @Test public void aHeldLateRefreshCannotReviveClosedAuthorityOrItsDeletedFileAndCannotOverlap() throws Exception {
+        var directory=Files.createTempDirectory("native-pdf").toFile();var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var lease=new NativePdfSessions.Session(this,java.util.UUID.randomUUID().toString(),directory,Long.MAX_VALUE,()->true,()->new byte[]{1,2,3},System::currentTimeMillis);
+        var file=lease.preview();lease.refresher=()->{calls.incrementAndGet();entered.countDown();release.await();};
+        Thread poll=new Thread(lease::reassess);poll.start();assertTrue(entered.await(2,TimeUnit.SECONDS));
+        lease.reassess();assertEquals("A second timer cannot overlap the held server check",1,calls.get());
+        lease.close();assertFalse(file.exists());assertFalse(lease.current());release.countDown();poll.join(2000);assertFalse(poll.isAlive());
+        assertFalse(lease.current());assertThrows(Exception.class,lease::preview);assertEquals(0,directory.list().length);directory.delete();
+    }
+    @Test public void remoteRevocationIsTerminalWhileTransientConnectionFailureKeepsOnlyTheOriginalDeadline() throws Exception {
+        var directory=Files.createTempDirectory("native-pdf").toFile();var clock=new AtomicLong(10);
+        var lease=new NativePdfSessions.Session(this,java.util.UUID.randomUUID().toString(),directory,20,()->true,()->new byte[]{1},clock::get);
+        var file=lease.preview();lease.refresher=()->{throw new java.io.IOException("network unavailable");};lease.reassess();assertTrue(lease.current());
+        lease.refresher=()->{throw new NativePdfSessions.Revoked();};lease.reassess();assertFalse(lease.current());assertFalse(file.exists());
+        clock.set(11);lease.refresher=()->{};lease.reassess();assertFalse(lease.current());directory.delete();
+    }
 }

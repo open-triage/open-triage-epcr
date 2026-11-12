@@ -215,7 +215,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                         if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
                         long freshRequestElapsed = android.os.SystemClock.elapsedRealtime();
                         var fresh = pdfAuthority(connection, headers);
-                        if (!fresh.user().equals(original.user()) || !fresh.organization().equals(original.organization()) || !fresh.cookie().equals(original.cookie())) throw new IllegalStateException("PDF identity changed");
+                        if (!NativePdfContract.sameAuthority(original,fresh)) throw new IllegalStateException("PDF identity changed");
                         lifetime.shorten(freshRequestElapsed,fresh.remainingMillis());
                         if (!current.getAsBoolean()) throw new IllegalStateException("PDF context ended");
                         var reply = managedRequest(connection, path, "GET", headers, null); vault.write(connection);
@@ -228,6 +228,28 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
                     catch (Exception failure) { task.cancel(true); throw failure; }
                 };
                 var session = NativePdfSessions.create(getContext(), this, id, lifetime, current, loader);
+                session.refresher = () -> {
+                    var task = new java.util.concurrent.FutureTask<Void>(() -> {
+                        if (!current.getAsBoolean()) throw new NativePdfSessions.Revoked();
+                        long refreshStarted=android.os.SystemClock.elapsedRealtime();
+                        NativePdfContract.Authority fresh;
+                        try { fresh=pdfAuthority(connection,headers); }
+                        catch(PdfFailure denied) {
+                            if(denied.status==401||denied.status==403)throw new NativePdfSessions.Revoked();
+                            throw denied;
+                        } catch(IllegalArgumentException|org.json.JSONException|IllegalStateException|java.time.DateTimeException invalid) {throw new NativePdfSessions.Revoked();}
+                        if(!current.getAsBoolean() || !NativePdfContract.sameAuthority(original,fresh))throw new NativePdfSessions.Revoked();
+                        lifetime.shorten(refreshStarted,fresh.remainingMillis());
+                        if(!current.getAsBoolean())throw new NativePdfSessions.Revoked();
+                        return null;
+                    });
+                    executor.execute(task);
+                    try { task.get(90,java.util.concurrent.TimeUnit.SECONDS); }
+                    catch(java.util.concurrent.ExecutionException failure) {
+                        if(failure.getCause() instanceof NativePdfSessions.Revoked)throw new NativePdfSessions.Revoked();
+                        throw failure;
+                    } catch(Exception unavailable) {task.cancel(true);throw unavailable;}
+                };
                 session.cache(initial.bytes());
                 try (var parsed = new android.graphics.pdf.PdfRenderer(android.os.ParcelFileDescriptor.open(session.preview(), android.os.ParcelFileDescriptor.MODE_READ_ONLY))) {
                     if (parsed.getPageCount() < 1 || parsed.getPageCount() > 500) throw new IllegalStateException("PDF page bound");

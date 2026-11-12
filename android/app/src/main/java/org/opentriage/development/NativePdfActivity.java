@@ -37,12 +37,23 @@ public final class NativePdfActivity extends Activity {
     private Button previous, next, save, retry, zoomIn, zoomOut;
     private volatile boolean stopped = true, ended;
     private volatile int generation;
-    private boolean picking;
+    private volatile boolean picking;
     private boolean saveOnly;
     private Uri pendingDestination;
     private int pageIndex, pages;
     private float zoom = 1;
     private android.content.res.Resources localizedResources;
+    private final java.util.concurrent.atomic.AtomicBoolean pollQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private final Runnable serverWatch = new Runnable() {
+        @Override public void run() {
+            if (ended || stopped || picking || session == null) return;
+            if (pollQueued.compareAndSet(false,true)) worker.execute(() -> {
+                try { if (!ended && !stopped && !picking) session.reassess(); }
+                finally { pollQueued.set(false); }
+            });
+            ui.postDelayed(this,30_000);
+        }
+    };
     @Override public android.content.res.Resources getResources() { return localizedResources == null ? super.getResources() : localizedResources; }
     private final Runnable authorityWatch = new Runnable() {
         @Override public void run() {
@@ -123,6 +134,7 @@ public final class NativePdfActivity extends Activity {
             if (saveOnly && getIntent().getBooleanExtra("save", false)) { getIntent().removeExtra("save"); chooseDestination(); }
             else render();
         }
+        ui.removeCallbacks(serverWatch);ui.post(serverWatch);
     }
     private void render() {
         if (ended || stopped || session == null || !session.current()) return;
@@ -207,6 +219,7 @@ public final class NativePdfActivity extends Activity {
     }
     @Override protected void onStop() {
         stopped = true;
+        ui.removeCallbacks(serverWatch);
         // Revoke before deleting bytes: Activity destruction may be deferred
         // after Home, and a stale handle must never recreate the private file.
         if (!picking && session != null) session.close();

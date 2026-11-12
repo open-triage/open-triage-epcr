@@ -53,7 +53,19 @@ final class NativePdfContract {
         }
         return found == null ? "" : found;
     }
-    record Authority(String user, String organization, String cookie, long expiresAt, long remainingMillis) {}
+    record Authority(String user, String organization, String cookie, long expiresAt, long remainingMillis, String scope) {}
+    static boolean sameAuthority(Authority original, Authority fresh) {
+        return fresh.user().equals(original.user()) && fresh.organization().equals(original.organization()) && fresh.cookie().equals(original.cookie()) && fresh.scope().equals(original.scope());
+    }
+    static String scope(JSONObject current) throws Exception {
+        if (!current.optBoolean("workspaceAvailable",true) || current.optBoolean("passwordChangeRequired",false)) throw new IllegalStateException("PDF workspace unavailable");
+        var capabilities=new java.util.TreeSet<String>();var values=current.optJSONArray("capabilities");
+        if(values!=null)for(int i=0;i<values.length();i++)capabilities.add(values.getString(i));
+        var agencies=new java.util.TreeSet<String>();var memberships=current.optJSONArray("agencies");
+        if(memberships!=null)for(int i=0;i<memberships.length();i++)agencies.add(memberships.getJSONObject(i).getString("id"));
+        return new org.json.JSONArray().put(new org.json.JSONArray(capabilities)).put(new org.json.JSONArray(agencies))
+            .put(current.optBoolean("installationOwner",false)).put(current.optBoolean("installationSuperadmin",false)).toString();
+    }
     static Authority authority(JSONObject current, JSONObject saved, String organization, long now) throws Exception {
         return authority(current,saved,organization,now,new JSONObject());
     }
@@ -74,7 +86,7 @@ final class NativePdfContract {
         }
         if (!personal || cookieExpiry <= now) throw new IllegalStateException("PDF authority unavailable");
         long boundedExpiry = Math.min(expiry, cookieExpiry);
-        return new Authority(user, agency, cookie(saved), boundedExpiry, boundedExpiry - now);
+        return new Authority(user, agency, cookie(saved), boundedExpiry, boundedExpiry - now,scope(current));
     }
     static String cookie(JSONObject saved) throws Exception {
         String personal = "";

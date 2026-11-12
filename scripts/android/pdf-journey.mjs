@@ -4,7 +4,7 @@ import {adbShellArguments} from './instrumentation.mjs';
 import {startLiveInstrumentation} from './live-instrumentation.mjs';
 
 export function assertNativePdfInstrumentation(output) {
-  assert.match(output,/(?:^|\n)OK \(3 tests\)(?:\r?\n|$)/,'All native PDF rendering, lifetime and background cleanup cases must pass');
+  assert.match(output,/(?:^|\n)OK \(5 tests\)(?:\r?\n|$)/,'All native PDF rendering, remote-authority lifetime and background cleanup cases must pass');
   assert.match(output,/INSTRUMENTATION_CODE: -1(?:\r?\n|$)/,'The installed instrumentation must finish successfully');
   assert.doesNotMatch(output,/FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=/,'A late crash or runner failure cannot be hidden by an earlier test count');
 }
@@ -17,7 +17,7 @@ export function assertNativePdfSafInstrumentation(output) {
 /** Real platform renderer plus abrupt death with a genuinely live private document. */
 export async function runNativePdfJourney({root,adb,serial,applicationId='org.opentriage.development',verifyFontPid=async()=>{}}) {
   const instrument=(name,extra=[])=>adbShellArguments(['-s',serial,'shell','am','instrument','-w','-r','-e','class',name,...extra,`${applicationId}.test/androidx.test.runner.AndroidJUnitRunner`]);
-  const live=execFileSync(adb,instrument('org.opentriage.development.NativePdfLifecycleTest'),{cwd:root,encoding:'utf8',timeout:120000});
+  const live=execFileSync(adb,instrument('org.opentriage.development.NativePdfLifecycleTest,org.opentriage.development.NativePdfRemoteLifetimeTest'),{cwd:root,encoding:'utf8',timeout:120000});
   console.log(live);assertNativePdfInstrumentation(live);
   const saf=execFileSync(adb,instrument('org.opentriage.development.NativePdfSafTest'),{cwd:root,encoding:'utf8',timeout:120000});
   console.log(saf);assertNativePdfSafInstrumentation(saf);

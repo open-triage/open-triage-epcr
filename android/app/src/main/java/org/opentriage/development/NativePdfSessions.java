@@ -10,6 +10,8 @@ import java.util.function.BooleanSupplier;
 /** Memory-only authority; opaque private files cannot be recovered or shared after process death. */
 final class NativePdfSessions {
     interface Loader { byte[] load() throws Exception; }
+    interface Refresher { void check() throws Exception; }
+    static final class Revoked extends Exception {}
     static final class Session implements AutoCloseable {
         final String id;
         final Object owner;
@@ -19,6 +21,8 @@ final class NativePdfSessions {
         private final NativePdfLifetime lifetime;
         private File preview;
         private volatile boolean closed;
+        private final java.util.concurrent.atomic.AtomicBoolean refreshing = new java.util.concurrent.atomic.AtomicBoolean();
+        volatile Refresher refresher = () -> {};
         volatile Runnable onClosed = () -> {};
         Session(Object owner, String id, File directory, long expiry, BooleanSupplier authority, Loader loader) {
             this(owner,id,directory,expiry,authority,loader,System::currentTimeMillis,android.os.SystemClock::elapsedRealtime);
@@ -35,6 +39,14 @@ final class NativePdfSessions {
         }
         boolean current() { return !closed && lifetime.current() && authority.getAsBoolean() && !closed; }
         void requireCurrent() { if (!current()) throw new IllegalStateException("PDF context ended"); }
+        void reassess() {
+            if (!current()) { close(); return; }
+            if (!refreshing.compareAndSet(false,true)) return;
+            try { requireCurrent(); refresher.check(); if (!current()) close(); }
+            catch (Revoked denied) { close(); }
+            catch (Exception unavailable) { if (!current()) close(); /* Connectivity cannot extend the original deadline. */ }
+            finally { refreshing.set(false); }
+        }
         byte[] fresh() throws Exception {
             requireCurrent();byte[] bytes=loader.load();
             try {requireCurrent();return bytes;}

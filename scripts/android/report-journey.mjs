@@ -5,6 +5,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
+import { startLiveInstrumentation } from './live-instrumentation.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
 export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, hooks = {}, audio = false, unsavedAudio = false, signReview = false }) {
@@ -141,6 +142,38 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       instrument('sign-review',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id});
       const signed=(await db.query('select id as signed_snapshot_id from clinical.signed_snapshot where report_id=$1',[opened.id])).rows[0];
       assert(signed?.signed_snapshot_id,'The shared Android signing workflow creates the actual immutable signed snapshot');
+      const livePdfChange=async(authorityChange,change)=>{
+        const live=startLiveInstrumentation(adb,adbShellArguments(argumentsFor('remote-pdf',fixture.clinician.username,fixture.clinicianPassword,{reportId:opened.id,authorityChange})),{cwd:root,checkpoint:'opentriage_pdf_authority_phase=visible-awaiting-server-change',timeoutMs:60000});
+        let timedOut=false,timer;
+        try {
+          console.log(await live.ready);await change();
+          timer=setTimeout(()=>{timedOut=true;live.child.kill('SIGTERM');},60000);
+          const result=await live.closed;console.log(result.output);assert.equal(timedOut,false);
+          assert.match(result.output,/(?:^|\n)OK \(1 test\)(?:\r?\n|$)/);assert.match(result.output,/INSTRUMENTATION_CODE: -1(?:\r?\n|$)/);assert.doesNotMatch(result.output,/FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=/);
+          assert.match(result.output,/opentriage_pdf_authority_detection_ms=\d+/);
+        } finally {
+          clearTimeout(timer);
+          if(live.child.exitCode===null&&live.child.signalCode===null){
+            // Killing the host adb client alone does not stop its remote runner.
+            try{run(adb,['-s',serial,'shell','am','force-stop',applicationId]);}
+            finally{live.child.kill('SIGTERM');await live.closed;}
+          }
+        }
+      };
+      const users=await api(fixture,ca,'admin/users','GET',undefined,adminHeaders);assert.equal(users.status,200);
+      const target=users.body.items.find(user=>user.id===fixture.clinician.userId);assert(target&&target.roles.length,'Synthetic clinician must retain an ordinary role before workspace withdrawal');
+      let changed;
+      try {
+        await livePdfChange('workspace-withdrawal',async()=>{
+          changed=await api(fixture,ca,`admin/users/${target.id}/roles`,'PUT',{expectedRevision:target.revision,roleIds:[],note:'Synthetic Android visible PDF authority acceptance'},adminHeaders);assert.equal(changed.status,200);
+        });
+      } finally {
+        if(changed?.status===200){const restored=await api(fixture,ca,`admin/users/${target.id}/roles`,'PUT',{expectedRevision:changed.body.revision,roleIds:target.roles.map(role=>role.id),note:'Restore synthetic Android acceptance roles'},adminHeaders);assert.equal(restored.status,200);}
+      }
+      await livePdfChange('session-revocation',async()=>{
+        const liveSessions=await api(fixture,ca,`admin/users/${target.id}/sessions`,'GET',undefined,adminHeaders);assert.equal(liveSessions.status,200);assert(liveSessions.body.items.length);
+        for(const session of liveSessions.body.items){const revoked=await api(fixture,ca,`admin/users/${target.id}/sessions/${session.id}`,'DELETE',{},adminHeaders);assert.equal(revoked.status,200);assert.equal(revoked.body.revoked,true);}
+      });
       instrument('denied-pdf',report.secondClinician.username,report.secondClinicianPassword,{reportId:opened.id,snapshotId:signed.signed_snapshot_id,organizationId:fixture.organizationId});
       console.log('PASS Android Stationary/Review: unresolved media blocks signing; actual retry and signing; native authorized signed PDF; second-clinician scope denies PDF');
     }

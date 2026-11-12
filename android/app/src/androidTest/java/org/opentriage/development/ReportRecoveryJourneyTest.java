@@ -586,8 +586,9 @@ public class ReportRecoveryJourneyTest {
     }
     private void deniedPdf() throws Exception {
         var args=InstrumentationRegistry.getArguments();
-        waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
-        click("Log out");signIn(args.getString("username"),args.getString("password"));
+        waitFor("document.querySelector('.session-identity') || document.querySelector('input[name=username]')");
+        if("true".equals(evaluate("!!document.querySelector('.session-identity')")))click("Log out");
+        signIn(args.getString("username"),args.getString("password"));
         assertFalse("A wrapper does not expose an unauthorized clinician's signed call",evaluate("document.body.innerText").contains(args.getString("callNumber")));
         String path="/api/review/reports/"+args.getString("reportId")+"/snapshots/"+args.getString("snapshotId")+"/pdf?amendmentSequence=0&language=en&dataset=synthetic";
         evaluate("window.__pdfDenied=null;(async()=>{const bridge=window.Capacitor.Plugins.OpenTriageConnection;const state=await bridge.state();window.__pdfDenied=await bridge.openPdf({operationId:crypto.randomUUID(),connectionContext:state.connectionContext,path:"+JSONObject.quote(path)+",headers:{'x-organization-id':"+JSONObject.quote(args.getString("organizationId"))+"},action:'view',language:'en'})})().catch(()=>window.__pdfDenied={failed:true})");
@@ -597,6 +598,22 @@ public class ReportRecoveryJourneyTest {
         activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+args.getString("reportId")+"&dataset=synthetic&language=en"));
         waitFor("document.body.innerText.includes('This signed report is unavailable in your Review scope.')");
         assertEquals("Denied Review has no PDF action","false",evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')"));
+    }
+    private void remotePdf() throws Exception {
+        var args=InstrumentationRegistry.getArguments();String reportId=args.getString("reportId");
+        waitFor("document.querySelector('.session-identity')");
+        activity.onActivity(screen->screen.getBridge().getWebView().loadUrl("https://localhost/review-call/?report="+reportId+"&dataset=synthetic&language=en"));
+        waitFor("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Inspect signed PDF')");click("Inspect signed PDF");
+        var device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        var page=androidx.test.uiautomator.By.desc(java.util.regex.Pattern.compile("Page 1 of [1-9][0-9]*"));
+        assertNotNull(device.wait(androidx.test.uiautomator.Until.findObject(page),15000));
+        var files=NativePdfSessions.directory(InstrumentationRegistry.getInstrumentation().getTargetContext()).listFiles((directory,name)->name.matches("[a-f0-9-]{36}\\.pdf"));
+        assertNotNull(files);assertEquals("A real private signed PDF is visible when the host changes server authority",1,files.length);
+        long started=android.os.SystemClock.elapsedRealtime();
+        var ready=new android.os.Bundle();ready.putString("opentriage_pdf_authority_phase","visible-awaiting-server-change");InstrumentationRegistry.getInstrumentation().sendStatus(0,ready);
+        assertTrue("The static native page detects real server revocation/workspace withdrawal within its 30-second cadence plus request latency",device.wait(androidx.test.uiautomator.Until.gone(page),45000));
+        assertFalse("Remote authority loss deletes the actual private signed PDF",files[0].exists());
+        var evidence=new android.os.Bundle();evidence.putLong("opentriage_pdf_authority_detection_ms",android.os.SystemClock.elapsedRealtime()-started);evidence.putString("opentriage_pdf_authority_change",args.getString("authorityChange"));InstrumentationRegistry.getInstrumentation().addResults(evidence);
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
@@ -684,6 +701,7 @@ public class ReportRecoveryJourneyTest {
             case "recover": recover(); activity.close(); break;
             case "sign-review": signReview(); activity.close(); break;
             case "denied-pdf": deniedPdf(); activity.close(); break;
+            case "remote-pdf": remotePdf(); activity.close(); break;
             default: fail("Host must supply a recovery phase");
         }
     }
