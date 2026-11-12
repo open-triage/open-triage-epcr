@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {build} from 'esbuild';
 import vm from 'node:vm';
-const source=(await build({bundle:true,write:false,format:'iife',platform:'browser',stdin:{resolveDir:process.cwd(),contents:"import{participateInInstallationTransition,transitionInstallation}from './apps/web/app/installation-transition';globalThis.transitionFixture={participateInInstallationTransition,transitionInstallation};"}})).outputFiles[0].text;
+import {fileURLToPath} from 'node:url';
+// These checks run before workspace compilation in Android CI. Resolve the real
+// contracts source rather than depending on a developer's generated dist tree.
+const compiled=await build({bundle:true,write:false,metafile:true,format:'iife',platform:'browser',plugins:[{name:'unbuilt-contracts',setup(builder){builder.onResolve({filter:/^@open-triage\/contracts$/},()=>({path:fileURLToPath(new URL('../packages/contracts/src/index.ts',import.meta.url))}));}}],stdin:{resolveDir:process.cwd(),contents:"import{participateInInstallationTransition,transitionInstallation}from './apps/web/app/installation-transition';globalThis.transitionFixture={participateInInstallationTransition,transitionInstallation};"}});
+const source=compiled.outputFiles[0].text;
+test('early transition regressions bundle actual workspace sources without generated build outputs',()=>{
+ assert(Object.keys(compiled.metafile.inputs).some(path=>path.endsWith('packages/contracts/src/index.ts')));
+ assert.deepEqual(Object.keys(compiled.metafile.inputs).filter(path=>/(?:packages|apps)\/[^/]+\/(?:dist|\.next|out)\//.test(path)),[]);
+});
 const flush=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));};
 function environment(marker){
  const values=new Map(marker?[['open-triage.installation-transition.v1',marker]]:[]),window=new EventTarget();window.localStorage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,String(v)),removeItem:k=>values.delete(k)};

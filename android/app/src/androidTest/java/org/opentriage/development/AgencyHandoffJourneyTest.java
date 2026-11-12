@@ -99,7 +99,7 @@ public class AgencyHandoffJourneyTest {
                 waitFor("document.querySelector('input[type=file]')");AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Agency handoff source");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
                 login(args.getString("username"),args.getString("password"));
                 String row="Array.from(document.querySelectorAll('.assigned-call-card')).find(row=>row.textContent.includes("+JSONObject.quote(args.getString("callNumber"))+"))";
-                waitFor(row+"?.querySelector('button')");evaluate("("+row+").querySelector('button').click()");waitFor("document.querySelector('.encounter-header')");
+                AndroidUiInput.clickEnabled(this::evaluate,this::waitFor,"("+row+")?.querySelector('button')");waitFor("document.querySelector('.encounter-header')");
                 if(!"true".equals(evaluate("Boolean("+FIELD+")")))click("Stationary");
                 set(FIELD,"ANDROID-AGENCY-ORIGINAL");waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
                 String reportId=new org.json.JSONTokener(evaluate("document.querySelector('.active-report-notice').dataset.reportId")).nextValue().toString();
