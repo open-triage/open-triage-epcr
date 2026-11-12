@@ -2,7 +2,7 @@ import { clearClinicianSession,loadClinicianSession } from "./clinician-session"
 import { lockProtectedClinicalStorage } from "./protected-clinical-storage";
 import { clearProtectedRuntimeReports } from "./offline-reports";
 
-import { INSTALLATION_TRANSITION_KEY, INSTALLATION_GENERATION_KEY, INSTALLATION_SESSION_HINT_KEY } from "./installation-transition-generation";
+import { INSTALLATION_TRANSITION_KEY, INSTALLATION_GENERATION_KEY, INSTALLATION_SESSION_HINT_KEY, InstallationContextChangedError } from "./installation-transition-generation";
 export { INSTALLATION_TRANSITION_KEY } from "./installation-transition-generation";
 export const INSTALLATION_TRANSITION_EVENT = "open-triage:installation-transition";
 export const INSTALLATION_TRANSITION_COMPLETE_EVENT = "open-triage:installation-transition-complete";
@@ -70,10 +70,13 @@ export async function transitionInstallation<T>(replaceBinding: () => Promise<T>
  window.localStorage.setItem(INSTALLATION_GENERATION_KEY,generation);
  window.localStorage.setItem(INSTALLATION_TRANSITION_KEY,generation);
  window.dispatchEvent(new Event(eventName));
+ const requireOwnership=()=>{if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)!==generation||window.localStorage.getItem(INSTALLATION_GENERATION_KEY)!==generation)throw new InstallationContextChangedError();};
  try {
   return await navigator.locks.request(lockName,{mode:"exclusive"},async()=>{
+   requireOwnership();
    // The enrollment page may have no mounted clinician gate of its own.
    await lockProtectedClinicalStorage();
+   requireOwnership();
    clearProtectedRuntimeReports();
    clearClinicianSession(window.localStorage);
    const result=await replaceBinding();
