@@ -76,7 +76,12 @@ export async function transitionInstallation<T>(replaceBinding: () => Promise<T>
    await lockProtectedClinicalStorage();
    clearProtectedRuntimeReports();
    clearClinicianSession(window.localStorage);
-   return replaceBinding();
+   const result=await replaceBinding();
+   const encoded=window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY);
+   if(purpose==="enrollment"&&encoded&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation){
+    try {if(JSON.parse(encoded).generation===generation&&window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY)===encoded)window.localStorage.removeItem(INSTALLATION_SESSION_HINT_KEY);}catch{/* Malformed public candidates supply no authority. */}
+   }
+   return result;
   });
  } finally {
   if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===generation&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation){
