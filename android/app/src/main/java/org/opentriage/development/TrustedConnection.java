@@ -186,6 +186,9 @@ final class TrustedConnection {
     }
 
     Reply requestBytes(String path, String method, JSONObject headers, byte[] body) throws Exception {
+        return requestBytes(path, method, headers, body, null);
+    }
+    Reply requestBytes(String path, String method, JSONObject headers, byte[] body, Long androidVersion) throws Exception {
         checkTrustValidity();
         requestPath(path);
         if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD").contains(method) ||
@@ -204,6 +207,12 @@ final class TrustedConnection {
             String lower = key.toLowerCase(Locale.ROOT), value = headers.getString(key);
             if (!HEADERS.contains(lower) || value.contains("\r") || value.contains("\n") || value.length() > 8192) throw new IllegalArgumentException("Unapproved header");
             connection.setRequestProperty(key, value);
+        }
+        // Set only from the installed package, after validating all caller headers.
+        // The JS header allowlist deliberately excludes this field.
+        if (androidVersion != null) {
+            if (androidVersion < 1 || androidVersion > 2100000000L) throw new IllegalArgumentException("Invalid installed version");
+            connection.setRequestProperty("X-OpenTriage-Android-Version", Long.toString(androidVersion));
         }
         List<String> cookieValues = new ArrayList<>();
         cookies.entrySet().removeIf(entry -> entry.getValue().expires <= System.currentTimeMillis());
@@ -269,13 +278,23 @@ final class TrustedConnection {
         if (origin.equals(nextOrigin) && cookies.containsKey("open_triage_installation")) next.cookies.put("open_triage_installation", cookies.get("open_triage_installation"));
         return next;
     }
-    TrustedConnection installationOnly() throws Exception {
-        JSONObject retained = saved(); JSONArray safe = new JSONArray();
-        for (int index = 0; index < retained.getJSONArray("cookies").length(); index++) {
-            JSONObject cookie = retained.getJSONArray("cookies").getJSONObject(index);
-            if (cookie.getString("name").equals("open_triage_installation")) safe.put(cookie);
-        }
-        return restore(retained.put("cookies", safe), clock);
+
+    /** Copy only already-approved immutable trust; credential removal does not revalidate or replace it. */
+    private TrustedConnection(TrustedConnection source) {
+        this.origin = source.origin;
+        this.caPem = source.caPem;
+        this.socketFactory = source.socketFactory;
+        this.clock = source.clock;
+        this.caCertificates.addAll(source.caCertificates);
+    }
+    TrustedConnection installationOnly() {
+        return installationOnly(clock.getAsLong());
+    }
+    TrustedConnection installationOnly(long now) {
+        TrustedConnection next = new TrustedConnection(this);
+        SavedCookie installation = cookies.get("open_triage_installation");
+        if (installation != null && installation.expires > now) next.cookies.put("open_triage_installation", installation);
+        return next;
     }
 
     JSONObject saved() throws Exception {

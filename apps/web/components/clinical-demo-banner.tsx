@@ -22,8 +22,10 @@ export function ClinicalDemoBanner({
   refreshRequest,
   onGenerated,
   onDeleted,
+  newWorkBlocked = false,
 }: {
   readonly session: ClinicianSession;
+  readonly newWorkBlocked?: boolean;
   readonly activeReport: ActiveDraftReport | null;
   readonly refreshRequest: number;
   readonly onGenerated: (assignmentId: string, reused: boolean) => void;
@@ -77,12 +79,12 @@ export function ClinicalDemoBanner({
   }, [authorized]);
 
   if (!authorized || !context) return null;
-  const canGenerate = canGenerateSyntheticCall(activeReport !== null);
+  const canGenerate = !newWorkBlocked && canGenerateSyntheticCall(activeReport !== null);
   const multipleUnits = context.eligibleUnits.length > 1;
   const targetUnitId = multipleUnits ? selectedUnitId : context.eligibleUnits[0]?.id ?? "";
 
   async function generate() {
-    if (!targetUnitId || generating) return;
+    if (newWorkBlocked || !targetUnitId || generating) return;
     setGenerating(true);
     setMessage(null);
     try {

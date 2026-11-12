@@ -26,4 +26,4 @@ export type AndroidReleaseAvailability =
 
 export declare function parseAndroidReleaseDescriptor(input: unknown): AndroidReleaseDescriptor;
 export declare function isAndroidReleaseCompatible(descriptor: AndroidReleaseDescriptor, serverProtocol: number, serverCapabilities?: readonly string[]): boolean;
-export declare function approvedAndroidReleaseUrl(tag: string, descriptor: AndroidReleaseDescriptor): string;
+export declare function approvedAndroidReleaseUrl(tag: string, descriptor: Pick<AndroidReleaseDescriptor, "versionCode" | "versionName" | "artifact">): string;

@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {parseAndroidReleaseDescriptor,approvedAndroidReleaseUrl} from '@open-triage/contracts/android-release';
+
+/** Exact local APK bytes exercise the production verifier through its existing DI boundary.
+ * No synthetic retirement, local fetcher or catalog enters the production entry point. */
+export async function upgradePolicyFixture(input) {
+ const a=parseAndroidReleaseDescriptor(input.releaseA),b=parseAndroidReleaseDescriptor(input.releaseB);
+ const approved=structuredClone(catalog);
+ assert.equal(a.applicationId,approved.signingIdentity.applicationId);
+ assert.equal(a.certificateSha256,approved.signingIdentity.certificateSha256);
+ assert.equal(b.applicationId,a.applicationId);assert.equal(b.certificateSha256,a.certificateSha256);
+ assert(b.versionCode>a.versionCode);
+ assert(b.compatibility.requiredCapabilities?.includes('android-upgrade-gate-v1'),'Current upgrade consumer must require server enforcement');
+ const original=approved.releases.find(entry=>entry.descriptor.versionCode===a.versionCode);
+ assert.deepEqual(original?.descriptor,a,'Oldest production APK descriptor must remain immutable');
+ const tag=`android-candidate-${b.versionCode}-${b.versionName}`,url=approvedAndroidReleaseUrl(tag,b);
+ const existing=approved.releases.find(entry=>entry.descriptor.versionCode===b.versionCode);
+ if(existing)assert.deepEqual(existing.descriptor,b,'Do not replace a published version descriptor');
+ else approved.releases.push({tag,descriptor:b,downloadUrl:url});
+ const bytes=await readFile(input.apkBPath);
+ assert.equal(bytes.length,b.apkBytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),b.apkSha256);
+ const lifecycle={schemaVersion:1,retirements:[]};
+ return {approved,lifecycle,tag,retire:()=>{
+   if(!lifecycle.retirements.length)lifecycle.retirements.push({versionCode:a.versionCode,supersededAt:'2000-01-01T00:00:00.000Z',replacementTag:tag});
+ },fetcher:async target=>{assert.equal(String(target),url,'Fixture verifies only exact approved replacement bytes');return new Response(bytes,{headers:{'content-length':String(bytes.length)}});}};
+}
+
+/** Only the immutable published A1 predates byte transport and native photo handling. */
+export function upgradePreparationProfile(descriptor) {
+ if(descriptor.versionCode!==1)return 'current';
+ const original=catalog.releases.find(entry=>entry.tag==='android-candidate-1-0.1.0-rc.1');
+ assert.deepEqual(descriptor,original?.descriptor,'Historical preparation requires the exact immutable published A1 descriptor');
+ return 'historical-a1-text-v1';
+}
+
+export function decodeUpgradePreparationReceipt(value) {
+ assert.equal(typeof value,'string');assert.match(value,/^[A-Za-z0-9_-]+$/,'Receipt must be one shell-safe base64url argument');
+ const decoded=Buffer.from(value,'base64url');assert.equal(decoded.toString('base64url'),value,'Receipt encoding must be canonical');
+ const fields=JSON.parse(decoded.toString('utf8'));
+ const a=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ assert(Array.isArray(fields)&&fields.length===8&&fields.every(field=>typeof field==='string'));
+ assert.deepEqual(fields.slice(0,5),['historical-a1-text-v1',createHash('sha256').update(JSON.stringify(a)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256]);
+ assert.match(fields[5],/^[1-9][0-9]{0,9}$/);assert(Number(fields[5])>1&&Number(fields[5])<=2100000000);
+ assert.match(fields[6],/^[a-f0-9]{40}$/);assert.match(fields[7],/^[a-f0-9]{64}$/);
+ assert.equal(JSON.stringify(fields),decoded.toString('utf8'),'Receipt JSON must be canonical');
+ return fields;
+}
+export function upgradePreparationReceipt(a,b) {
+ const profile=upgradePreparationProfile(a);
+ if(profile==='current')return '';
+ assert.equal(b.applicationId,a.applicationId);assert.equal(b.certificateSha256,a.certificateSha256);
+ assert(Number.isSafeInteger(b.versionCode)&&b.versionCode>a.versionCode);
+ assert.match(b.sourceCommit,/^[a-f0-9]{40}$/);assert.match(b.apkSha256,/^[a-f0-9]{64}$/);
+ const approved=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ const fields=[profile,createHash('sha256').update(JSON.stringify(approved)).digest('hex'),a.sourceCommit,a.apkSha256,a.certificateSha256,String(b.versionCode),b.sourceCommit,b.apkSha256];
+ const receipt=Buffer.from(JSON.stringify(fields),'utf8').toString('base64url');decodeUpgradePreparationReceipt(receipt);return receipt;
+}
+
+/** Public probe work must never embed identifiers from retained private work. */
+export function upgradeProbeCallNumber(assignmentId,retainedCallNumber) {
+ assert.match(assignmentId,/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+ assert.equal(typeof retainedCallNumber,'string');assert(retainedCallNumber.length>0);
+ const value=`UPGRADE-PROBE-${assignmentId}`;
+ assert(!value.includes(retainedCallNumber),'Independent probe must not expose the retained call identifier');
+ return value;
+}

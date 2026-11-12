@@ -1,3 +1,6 @@
+import releaseCatalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {approvedAndroidReleaseUrl,parseAndroidReleaseDescriptor} from '@open-triage/contracts/android-release';
+import {adbShellArguments} from './android/instrumentation.mjs';
 import {nativeStartupClasses,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
 import { withWebViewFontProfile } from './android/webview-font-profile.mjs';
 import { stopFixtureChild, stopFixtureChildren } from './android/fixture-processes.mjs';
@@ -46,9 +49,11 @@ try {
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/debug/app-debug.apk')]);
   run(adb, ['-s', serial, 'install', '-r', join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]);
   run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
-  const legacyVault = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  const legacyVault = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.LegacyConnectionVaultTest', '-e','expiredCaBase64',Buffer.from(tlsMaterial.expiredTrustCa).toString('base64'), 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(legacyVault); assert.match(legacyVault, /OK \(2 tests\)/, 'Actual Keystore legacy provenance and expired-trust migration');
-  const startup = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], {cwd: root, encoding: 'utf8', timeout: 600000});
+  const startupRelease=releaseCatalog.releases[0];
+  assert.equal(startupRelease.downloadUrl,approvedAndroidReleaseUrl(startupRelease.tag,parseAndroidReleaseDescriptor(startupRelease.descriptor)));
+  const startup = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', nativeStartupClasses.join(','), '-e', 'fixtureFontProfile', '1', '-e','officialApkUrl',startupRelease.downloadUrl, 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), {cwd: root, encoding: 'utf8', timeout: 600000});
   console.log(startup); assertNativeStartupInstrumentation(startup);
   await fontProfile.verifyForPid(/opentriage_startup_pid=(\d+)/.exec(startup)?.[1]);
   for (const fixture of fixtures) {
@@ -71,7 +76,7 @@ try {
     run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
     if (entry === 'scan') run(adb, ['-s', serial, 'shell', 'pm', 'revoke', 'org.opentriage.development', 'android.permission.CAMERA']);
     const journey = entry === 'scan' ? 'ScanPairingJourneyTest' : 'PairingJourneyTest';
-    const result = execFileSync(adb, ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', `org.opentriage.development.${journey}`, '-e', 'artifactBase64', Buffer.from(JSON.stringify(artifact)).toString('base64'), '-e', 'wrongOrigin', fixtures.find(other => other.index !== fixture.index).origin, '-e', 'username', fixture.clinician.username, '-e', 'password', fixture.clinicianPassword, 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner'], { cwd: root, encoding: 'utf8', timeout: 600000 });
+    const result = execFileSync(adb, adbShellArguments(['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', `org.opentriage.development.${journey}`, '-e', 'artifactBase64', Buffer.from(JSON.stringify(artifact)).toString('base64'), '-e', 'wrongOrigin', fixtures.find(other => other.index !== fixture.index).origin, '-e', 'username', fixture.clinician.username, '-e', 'password', fixture.clinicianPassword, 'org.opentriage.development.test/androidx.test.runner.AndroidJUnitRunner']), { cwd: root, encoding: 'utf8', timeout: 600000 });
     console.log(result); assert.match(result, /OK \(1 test\)/, `Fixture ${fixture.index}: Android journey must pass`);
     const inventory = await api(fixture, ca, `admin/units/${fixture.unitId}/installations`, 'GET', undefined, { Cookie: cookie, 'x-organization-id': fixture.organizationId });
     assert.equal(inventory.status, 200); assert(inventory.body.items.some(item => item.name === 'Synthetic emulator ambulance'));

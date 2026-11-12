@@ -40,7 +40,7 @@ for(const language of ['en','sv'])test(`${language} read-only Admin downloads im
  await page.goto(`/__android-release?language=${language}&readonly=1`);
  const section=page.getByRole('region',{name:t('Android application','Android-applikation')});
  const link=section.getByRole('link',{name:t('Download APK','Hämta APK')});
- await expect(link).toHaveAttribute('href',url);await expect(section).toContainText('0.1.0-rc.2 (2)');await expect(section).toContainText(sha);
+ await expect(link).toHaveAttribute('href',url);await expect(link).toHaveAttribute('target','_blank');await expect(section).toContainText('0.1.0-rc.2 (2)');await expect(section).toContainText(sha);
  await expect(page.getByRole('button',{name:t('Save','Spara'),exact:true})).toHaveCount(0);
  await expect(page.getByLabel(t('Brand text','Varumärkestext'),{exact:true})).toBeDisabled();
  for(const width of [390,1200]){

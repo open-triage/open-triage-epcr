@@ -1,3 +1,5 @@
+import {adbShellArguments} from './instrumentation.mjs';
+import {decodeUpgradePreparationReceipt} from './upgrade-policy-fixture.mjs';
 import { captureAndroidFailure } from './diagnostics.mjs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
@@ -6,7 +8,8 @@ import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
-export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, hooks = {}, audio = false, unsavedAudio = false }) {
+export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, preparationProfile = 'current', upgradeReceipt = '', hooks = {}, audio = false, unsavedAudio = false }) {
+  if(upgradeReceipt)decodeUpgradePreparationReceipt(upgradeReceipt);else assert.equal(preparationProfile,'current','Historical profile requires its validated receipt before ADB');
   const report = await seedReportFixture(root, fixture, run); let ca = await readFile(fixture.caPath);
   const administrator = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
   assert.equal(administrator.status, 201);
@@ -18,20 +21,20 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const artifact = { version: 1, ...issued.body, caPem: ca.toString('utf8') };
   const argumentsFor = (phase, username, password, extra = {}) => {
     const args = ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', 'org.opentriage.development.ReportRecoveryJourneyTest'];
-    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', audio: audio ? '1' : '0', unsavedAudio: unsavedAudio ? '1' : '0', ...extra })) args.push('-e', key, String(value));
+    for (const [key, value] of Object.entries({ phase, username, password, apiOrigin: fixture.origin, callNumber: report.callNumber, upgrade: upgrade ? '1' : '0', audio: audio ? '1' : '0', unsavedAudio: unsavedAudio ? '1' : '0', preparationProfile: phase==='prepare'?preparationProfile:'current', originPreparationProfile: preparationProfile, upgradeReceipt, ...extra })) args.push('-e', key, String(value));
     args.push(`${applicationId}.test/androidx.test.runner.AndroidJUnitRunner`);
     return args;
   };
   const instrument = (phase, username, password, extra = {}) => {
     const args = argumentsFor(phase, username, password, extra);
-    const result = execFileSync(adb, args, { cwd: root, encoding: 'utf8', timeout: 600000 });
+    const result = execFileSync(adb, adbShellArguments(args), { cwd: root, encoding: 'utf8', timeout: 600000 });
     console.log(result); assert.match(result, /OK \(1 test\)/, `Android protected-work phase ${phase}`);
     return result;
   };
   const prepareUntilKilled = (phase = 'prepare', extra = {}) => {
     const args = argumentsFor(phase, fixture.clinician.username, fixture.clinicianPassword,
       { artifactBase64: Buffer.from(JSON.stringify(artifact)).toString('base64'), ...extra });
-    const child = spawn(adb, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(adb, adbShellArguments(args), { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '', announced = false, readyResolve, readyReject, closedResolve;
     const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
     const closed = new Promise(resolve => { closedResolve = resolve; });
@@ -136,6 +139,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     assert.equal(after.validation_version_id, opened.validation_version_id);
     assert.equal(after.recovery_deadline.toISOString(), after.expected_deadline.toISOString(), 'Only the synchronized retained edit receipt advances the deadline under the established policy and report expiry');
     console.log('PASS protected work: actual Android primitives/fallbacks, offline edits, foreground reconnect, retained ciphertext after process kill, different-user denial, online recovery, pinned versions and policy-bound deadline');
+    await hooks.afterRecovery?.({instrument});
   } catch (error) {
     try { await captureAndroidFailure({ root, adb, serial, applicationId, secrets: [fixture.administratorPassword, fixture.clinicianPassword, report.secondClinicianPassword, issued.body.token] }); } catch { console.error('Android recovery diagnostics unavailable'); }
     const diagnostics = (await db.query(`select r.id,r.revision,envelope.ciphertext_revision,envelope.recovery_deadline,

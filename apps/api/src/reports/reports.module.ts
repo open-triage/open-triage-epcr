@@ -1,3 +1,4 @@
+import { AdminModule } from "../admin/admin.module.js";
 import { EpsWorkerService } from '../hospital/eps-worker.service.js';
 import { EpsSubmissionController } from '../hospital/eps-submission.controller.js';
 import { EpsSubmissionService } from '../hospital/eps-submission.service.js';
@@ -20,7 +21,7 @@ import { ReportAudioService } from "./report-audio.service.js";
 import { ReportAudioNormalizer } from "./report-audio-normalizer.service.js";
 
 @Module({
-  imports: [SessionsModule, SchedulesModule],
+  imports: [SessionsModule, SchedulesModule, AdminModule],
   controllers: [EpsSubmissionController, DraftReportController, EpsController],
   providers: [EpsWorkerService, EpsSubmissionService, CosWorkerService, EpsImportService, EpsService, DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
     ReviewValidationService, ReportNoteService, ReportPhotoService, ReportAudioService, ReportAudioNormalizer]

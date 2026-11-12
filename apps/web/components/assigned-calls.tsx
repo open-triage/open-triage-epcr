@@ -30,8 +30,10 @@ export function AssignedCalls({
   suppressedCallNumbers = [],
   focusAssignmentId = null,
   paused = false,
+  newWorkBlocked = false,
 }: {
   readonly paused?: boolean;
+  readonly newWorkBlocked?: boolean;
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly onOpeningChange?: (call: AssignedCall | null) => void;
@@ -80,7 +82,7 @@ export function AssignedCalls({
   }, [paused, suppressedCallNumbers, t]);
 
   const open = useCallback(async (call: AssignedCall) => {
-    if (openingRef.current || !foregroundNetworkAllowed()) return;
+    if (newWorkBlocked || openingRef.current || !foregroundNetworkAllowed()) return;
     openingRef.current = true;
     setReturningFocus(false);
     refreshEpoch.current += 1;
@@ -113,7 +115,7 @@ export function AssignedCalls({
       onOpeningChange?.(null);
       setOpeningId(null);
     }
-  }, [csrfToken, onOpened, onOpeningChange, t]);
+  }, [csrfToken, onOpened, onOpeningChange, t, newWorkBlocked]);
 
   useVisiblePolling(refresh, ASSIGNED_CALL_POLL_INTERVAL_MS, !paused,
     `${session.organization.id}:${session.user.id}:${refreshRequest}`);
@@ -157,7 +159,7 @@ export function AssignedCalls({
                 <div><dt>{t("calls.priority")}</dt><dd>{call.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
                 <div><dt>{t("calls.unitNotified")}</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region, zone)}</time></dd></div>
               </dl>
-              <button type="button" onClick={event => { openingTrigger.current=event.currentTarget;void open(call); }} disabled={openingId !== null}>
+              <button type="button" onClick={event => { openingTrigger.current=event.currentTarget;void open(call); }} disabled={newWorkBlocked || openingId !== null}>
                 {openingId === call.id ? t("calls.opening") : t("calls.open")}
               </button>
             </li>
