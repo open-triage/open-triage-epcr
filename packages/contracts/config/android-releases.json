@@ -6,6 +6,43 @@
   },
   "releases": [
     {
+      "tag": "android-candidate-5-0.1.0-rc.5",
+      "descriptor": {
+        "schemaVersion": 1,
+        "applicationId": "org.opentriage.android",
+        "versionCode": 5,
+        "versionName": "0.1.0-rc.5",
+        "certificateSha256": "2103f9a5fd4b17b113666165b86d52fad495d4e07b1507b18ee66a487a552a3a",
+        "apkSha256": "e1eeffd1438d4b64be598a0928de0742e89d9c12993a2eab1d81539d134ad552",
+        "apkBytes": 9364142,
+        "uiSha256": "b1dec0196fcdc5059a736ea54f67f5350cd990ad98ade2b2a10632715eb9feaa",
+        "sourceCommit": "97470c484cdf3de24ef450829a044d4b689a79e3",
+        "compatibility": {
+          "pairingArtifact": 1,
+          "protectedReportSchema": 1,
+          "recoveryEnvelope": 1,
+          "api": {
+            "minimum": 1,
+            "maximum": 1
+          },
+          "requiredCapabilities": [
+            "native-enrollment-attempt-v1",
+            "native-enrollment-outcome-v1",
+            "native-oidc-return-v1",
+            "audio-webm-live-v1",
+            "android-upgrade-policy-v1",
+            "native-agency-handoff-v1",
+            "android-upgrade-gate-v1",
+            "personal-session-continuation-v1"
+          ]
+        },
+        "minAndroidApi": 33,
+        "targetAndroidApi": 36,
+        "artifact": "opentriage-0.1.0-rc.5-5-e1eeffd1438d4b64be598a0928de0742e89d9c12993a2eab1d81539d134ad552.apk"
+      },
+      "downloadUrl": "https://github.com/open-triage/open-triage-epcr/releases/download/android-candidate-5-0.1.0-rc.5/opentriage-0.1.0-rc.5-5-e1eeffd1438d4b64be598a0928de0742e89d9c12993a2eab1d81539d134ad552.apk"
+    },
+    {
       "tag": "android-candidate-4-0.1.0-rc.4",
       "descriptor": {
         "schemaVersion": 1,
