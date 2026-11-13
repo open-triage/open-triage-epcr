@@ -14,6 +14,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Exercises the real system document picker and provider, without intent stubs. */
 @RunWith(AndroidJUnit4.class)
 public class NativePdfSafTest {
+    private void awaitDestroyed(ActivityScenario<?> scenario) throws Exception {
+        long deadline = android.os.SystemClock.elapsedRealtime() + 5000;
+        while (scenario.getState() != androidx.lifecycle.Lifecycle.State.DESTROYED && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50);
+        assertEquals("Terminal result delivery must finish the granting Activity before scenario cleanup", androidx.lifecycle.Lifecycle.State.DESTROYED, scenario.getState());
+    }
     private androidx.test.uiautomator.UiObject2 systemSave(UiDevice device,String pickerPackage) throws Exception {
         // AOSP DocumentsUI fragment_save uses the framework ID, also on
         // vendor-packaged DocumentsUI. Scope it to the picker, not any dialog.
@@ -112,7 +117,7 @@ public class NativePdfSafTest {
             assertEquals("The picker does not authorize a download before the user chooses",0,loads.get());
             name.setText(nameValue);
             systemSave(device,pickerPackage).click();
-            var result=scenario.getResult();assertEquals(android.app.Activity.RESULT_OK,result.getResultCode());
+            var result=scenario.getResult();awaitDestroyed(scenario);assertEquals(android.app.Activity.RESULT_OK,result.getResultCode());
             destination=result.getResultData().getData();assertNotNull(destination);assertEquals("content",destination.getScheme());
             assertEquals("Authorization/refetch happens after the real picker returns",1,loads.get());
             assertFalse("The completed viewer has revoked its authority",session.current());
@@ -134,8 +139,10 @@ public class NativePdfSafTest {
             var name=device.wait(Until.findObject(By.clazz("android.widget.EditText")),5000);assertNotNull(name);
             String pickerPackage=name.getApplicationPackage();
             device.pressBack(); // Dismiss the keyboard, if the picker showed it.
-            if(device.hasObject(By.pkg(pickerPackage).res("android:id/button1")))device.pressBack();
-            assertEquals(android.app.Activity.RESULT_CANCELED,scenario.getResult().getResultCode());
+            // Wait for the first Back to settle before deciding whether another
+            // is needed; a stale picker node must not send Back to the test launcher.
+            if(!device.wait(Until.gone(By.pkg(pickerPackage)),2000))device.pressBack();
+            assertEquals(android.app.Activity.RESULT_CANCELED,scenario.getResult().getResultCode());awaitDestroyed(scenario);
             assertEquals(0,loads.get());assertFalse(session.current());assertFalse(privateFile.exists());
         } finally {NativePdfSessions.closeOwner(owner);}
     }
@@ -167,7 +174,7 @@ public class NativePdfSafTest {
             var failure=assertThrows(java.util.concurrent.ExecutionException.class,()->pending.get().get(10,java.util.concurrent.TimeUnit.SECONDS));
             assertTrue("The cancelled authority prevents copying fresh bytes",failure.getCause() instanceof IllegalStateException);
             assertEquals("Real DocumentsContract deletion must succeed under the retained user grant before terminal result delivery",0,failure.getCause().getSuppressed().length);
-            assertEquals(android.app.Activity.RESULT_CANCELED,scenario.getResult().getResultCode());
+            assertEquals(android.app.Activity.RESULT_CANCELED,scenario.getResult().getResultCode());awaitDestroyed(scenario);
             assertFalse(session.current());assertFalse(file.exists());
           } finally {release.countDown();}
         } finally {NativePdfSessions.closeOwner(owner);java.util.Arrays.fill(fresh,(byte)0);}
