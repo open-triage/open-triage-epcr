@@ -1,3 +1,4 @@
+import { issueNamedFixtureEnrollment } from './pairing-fixture.mjs';
 import {adbShellArguments} from './instrumentation.mjs';
 import {execFileSync, spawnSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
@@ -17,7 +18,7 @@ export async function runManagedJourneys({root, fixtures, run, api, adb, serial}
       const login = await api(fixture, ca, 'sessions', 'POST', { username: fixture.administrator.username, password: fixture.administratorPassword });
       assert.equal(login.status, 201);
       const cookie = login.headers['set-cookie'].map(value => value.split(';')[0]).join('; ');
-      const issued = await api(fixture, ca, `admin/units/${fixture.unitId}/enrollment`, 'POST', {}, { Cookie: cookie, 'x-csrf-token': login.body.csrfToken, 'x-organization-id': fixture.organizationId });
+      const issued = await issueNamedFixtureEnrollment(api, fixture, ca, { Cookie: cookie, 'x-csrf-token': login.body.csrfToken, 'x-organization-id': fixture.organizationId }, 'Managed emulator ambulance');
       assert.equal(issued.status, 201);
       const artifact = { version: 1, ...issued.body, caPem: ca.toString('utf8') };
       run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);

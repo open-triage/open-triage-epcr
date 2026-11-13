@@ -1,3 +1,4 @@
+import { issueNamedFixtureEnrollment } from './android/pairing-fixture.mjs';
 import { buildHostedUi } from './android/hosted-ui.mjs';
 import {scopedAgencyAdbdRoot} from './android/scoped-adbd-root.mjs';
 import {adbShellArguments} from './android/instrumentation.mjs';
@@ -79,7 +80,7 @@ try {
     const cookie = login.headers['set-cookie'].map(value => value.split(';')[0]).join('; ');
     const beforeInventory = await api(fixture, ca, `admin/units/${fixture.unitId}/installations`, 'GET', undefined, { Cookie: cookie, 'x-organization-id': fixture.organizationId });
     assert.equal(beforeInventory.status, 200);
-    const issued = await api(fixture, ca, `admin/units/${fixture.unitId}/enrollment`, 'POST', {}, { Cookie: cookie, 'x-csrf-token': login.body.csrfToken, 'x-organization-id': fixture.organizationId });
+    const issued = await issueNamedFixtureEnrollment(api, fixture, ca, { Cookie: cookie, 'x-csrf-token': login.body.csrfToken, 'x-organization-id': fixture.organizationId }, 'Synthetic emulator ambulance');
     assert.equal(issued.status, 201, 'Synthetic pairing issuance');
     const artifact = { version: 1, ...issued.body, caPem: ca.toString('utf8') };
     run(adb, ['-s', serial, 'shell', 'pm', 'clear', 'org.opentriage.development']);
