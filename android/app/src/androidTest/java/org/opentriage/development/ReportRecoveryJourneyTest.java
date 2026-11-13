@@ -418,7 +418,7 @@ public class ReportRecoveryJourneyTest {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals("Production identity must be installed", "org.opentriage.android", context.getPackageName());
         assertEquals("Stationary preference was set by the real UI", JSONObject.quote("stationary"), evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
-        assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
+        assertEquals("true", evaluate("location.origin==='https://localhost'"));
         var editor = context.getSharedPreferences("release-upgrade-acceptance", android.content.Context.MODE_PRIVATE).edit();
         editor.putString("connection", connectionIdentity()).putString("ciphertext", retainedDigest()).putInt("uid", context.getApplicationInfo().uid)
             .putString("presentation", evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
@@ -583,7 +583,7 @@ public class ReportRecoveryJourneyTest {
     }
     private void differentClinician() throws Exception {
         if ("1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) {
-            // The historical A candidate has no updater; current B adopts the shared server worker.
+            // Cached-UI candidates use the server worker; older bundled-UI APKs retain their shell.
             try {
                 InstrumentationRegistry.getInstrumentation().getTargetContext().getClassLoader().loadClass("org.opentriage.development.NativeUiServer");
                 waitFor("Boolean(navigator.serviceWorker?.controller) && document.documentElement.dataset.syntheticWebDeployment==='2'");
