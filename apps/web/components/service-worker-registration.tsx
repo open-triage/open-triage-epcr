@@ -35,6 +35,15 @@ export function ServiceWorkerRegistration() {
       try {
         const registration = await navigator.serviceWorker.register(`${basePath}/sw.js`, { updateViaCache: "none" });
         if (active) await registration.update();
+        // A restored connection can leave the APK loader under an unchanged active worker.
+        // Confirm that the server shell is available before replacing that loader.
+        if (active && native && registration.active && document.querySelector(".native-ui-loading")) {
+          const response = await fetch(`${basePath}/`, { cache: "no-store" });
+          const html = response.ok ? await response.text() : "";
+          if (active && html && !new DOMParser().parseFromString(html, "text/html").getElementById("native-bootstrap")) {
+            pending = true; applyUpdatedShell();
+          }
+        }
       } catch { if (active) window.dispatchEvent(new Event(UI_UPDATE_FAILED_EVENT)); }
       finally { checking = false; }
     };

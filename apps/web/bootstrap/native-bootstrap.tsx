@@ -12,6 +12,6 @@ export { parseAndroidPairingQr } from "../app/android-scanner";
 
 
 export function mount() {
-  createRoot(document.getElementById("native-bootstrap")!).render(<><AndroidRuntimeGate><NativeUiLoading /></AndroidRuntimeGate><ServiceWorkerRegistration /></>);
+  createRoot(document.getElementById("native-bootstrap")!).render(<AndroidRuntimeGate><NativeUiLoading /><ServiceWorkerRegistration /></AndroidRuntimeGate>);
 }
 if (typeof document !== "undefined") mount();

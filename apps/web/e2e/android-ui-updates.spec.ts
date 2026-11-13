@@ -28,16 +28,22 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
     (window as unknown as { controllerChanges: number }).controllerChanges = 0;
     navigator.serviceWorker.addEventListener("controllerchange", () => { (window as unknown as { controllerChanges: number }).controllerChanges++; });
   });
-  let version = 1, available = true, failShell = false, failedShellRequests = 0;
+  let version = 1, available = true, failShell = false, failedShellRequests = 0, failWorker = false, bootstrapServed = false;
   const server = createServer((request, response) => {
     response.setHeader("Cache-Control", "no-store");
     if (!available) { response.writeHead(503).end("Offline fixture"); return; }
-    const pathname = new URL(request.url!, "http://localhost").pathname;
+    const url = new URL(request.url!, "http://localhost"), pathname = url.pathname;
+    if (failWorker && pathname === "/sw.js") { response.writeHead(503).end("Worker unavailable"); return; }
     if (failShell && pathname === "/") { failedShellRequests++; response.writeHead(503).end("Shell unavailable"); return; }
     if (pathname === "/sw.js") { response.setHeader("Content-Type", "text/javascript"); response.end(workers.get(version)); }
     else if (pathname === "/_next/static/app.js") { response.setHeader("Content-Type", "text/javascript"); response.end(bundled.outputFiles[0]!.text); }
     else if (pathname === "/manifest.webmanifest") { response.setHeader("Content-Type", "application/manifest+json"); response.end('{"name":"UI fixture"}'); }
-    else if (pathname === "/") { response.setHeader("Content-Type", "text/html"); response.end(`<html><head><script defer src="/_next/static/app.js"></script></head><body><h1>Server UI ${version}</h1><div id="root"></div></body></html>`); }
+    else if (pathname === "/") {
+      const bootstrap = url.searchParams.has("bootstrap") && !bootstrapServed;
+      if (bootstrap) bootstrapServed = true;
+      response.setHeader("Content-Type", "text/html");
+      response.end(`<html><head><script defer src="/_next/static/app.js"></script></head><body>${bootstrap ? '<section id="native-bootstrap" class="native-ui-loading">Bundled loader</section>' : `<h1>Server UI ${version}</h1>`}<div id="root"></div></body></html>`);
+    }
     else response.writeHead(404).end();
   }).listen(0, "127.0.0.1");
   await once(server, "listening"); const address = server.address();
@@ -72,6 +78,24 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
     await expect.poll(() => failedShellRequests).toBeGreaterThan(0);
     await expect.poll(() => page.evaluate(() => caches.keys())).not.toContain("open-triage-shell-v5-ui-test-4");
     available = false; await page.reload(); await expect(page.getByRole("heading", { name: "Server UI 3" })).toBeVisible();
+    if (native) {
+      // Restoring trust must adopt the UI even when its active worker bytes are unchanged.
+      available = true; version = 3; failShell = false; failWorker = true;
+      await page.addInitScript(() => {
+        localStorage.setItem("bootstrap-navigation-count", String(Number(localStorage.getItem("bootstrap-navigation-count") ?? 0) + 1));
+        window.addEventListener("open-triage:ui-update-failed", () => document.documentElement.dataset.updateFailed = "true");
+      });
+      await page.goto(origin + "/?bootstrap=1");
+      await expect(page.locator(".native-ui-loading")).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-update-failed", "true");
+      expect(await page.evaluate(() => localStorage.getItem("bootstrap-navigation-count"))).toBe("1");
+      await page.evaluate(() => localStorage.setItem("bootstrap-proof", "preserved"));
+      failWorker = false;
+      await page.evaluate(() => window.dispatchEvent(new Event("open-triage:ui-update-check")));
+      await expect(page.getByRole("heading", { name: "Server UI 3" })).toBeVisible();
+      expect(await page.evaluate(() => localStorage.getItem("bootstrap-navigation-count"))).toBe("2");
+      expect(await page.evaluate(() => localStorage.getItem("bootstrap-proof"))).toBe("preserved");
+    }
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 

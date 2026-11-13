@@ -52,3 +52,7 @@ in both browser and Android modes. Native tests cover the HTTPS, credential,
 redirect, path and MIME boundaries. The Android upgrade journey serves the real
 web export and checks that adopting it retains the local storage origin.
 Run `npm run check:ci` and the ordinary Android acceptance before publication.
+
+After pairing or trust restoration, the loading screen verifies the server shell
+and opens it even when the installed worker has not changed. Failed checks keep
+the loading screen available for retry.
