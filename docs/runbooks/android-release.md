@@ -210,3 +210,11 @@ node scripts/android-release-publish.mjs /path/to/candidate \
 The publisher verifies the exact APK, signing identity, preflight and upgrade
 evidence, checks live immutability settings and verifies the immutable result.
 Never rebuild the APK between acceptance and publication.
+
+For a test-only upgrade correction after the application source has passed both
+gates, the recovery workflow accepts an optional `upgrade_harness` full commit
+SHA. Build from the original release tag first; the trusted original harness
+guard rejects any non-allowlisted source delta before checking out later tests.
+Only release instrumentation is rebuilt, and upgrade evidence records its
+separate test-source commit. The signed APK and its preflight/native acceptance
+remain tied to the original verified source.

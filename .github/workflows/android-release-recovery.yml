@@ -9,6 +9,10 @@ on:
       preflight_run:
         type: string
         required: true
+      upgrade_harness:
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
     inputs:
       tag:
@@ -17,6 +21,10 @@ on:
       preflight_run:
         description: Release workflow run with a successful preflight for this exact tag
         required: true
+      upgrade_harness:
+        description: Optional full commit SHA with only allowlisted upgrade-test changes
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -92,6 +100,7 @@ jobs:
           import assert from 'node:assert/strict';
           import {execFileSync,spawnSync} from 'node:child_process';
           import {mkdirSync,readFileSync,copyFileSync} from 'node:fs';
+          import {pathToFileURL} from 'node:url';
           const match=/^android-v([1-9]\d*)-(.+)$/.exec(process.env.RELEASE_TAG);
           const env={...process.env,ANDROID_VERSION_CODE:match[1],ANDROID_VERSION_NAME:match[2],ANDROID_RELEASE_INSTRUMENTATION:'1'};
           const gh=args=>execFileSync('gh',args,{encoding:'utf8'});
@@ -102,6 +111,17 @@ jobs:
           assert(Number(match[1])>JSON.parse(readFileSync(`${prior}/release.json`)).versionCode);
           const run=args=>{const result=spawnSync('npm',args,{env,stdio:'inherit'});if(result.error)throw result.error;assert.equal(result.status,0);};
           run(['run','android:release','--','--native-only']);
+          if(env.UPGRADE_HARNESS){
+            assert(/^[a-f0-9]{40}$/.test(env.UPGRADE_HARNESS),'Upgrade harness requires a full commit SHA');
+            // Load the guard from the verified artifact source before selecting later tests.
+            const {assertUpgradeHarnessSource}=await import(pathToFileURL(`${process.cwd()}/scripts/android/upgrade-harness-source.mjs`).href);
+            const artifactSource=JSON.parse(readFileSync(`${env.ANDROID_RELEASE_OUTPUT}/release.json`)).sourceCommit;
+            execFileSync('git',['fetch','--no-tags','origin',env.UPGRADE_HARNESS],{stdio:'inherit'});
+            const changedPaths=execFileSync('git',['diff','--name-only',`${artifactSource}..${env.UPGRADE_HARNESS}`],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
+            assertUpgradeHarnessSource({artifactSource,testSource:env.UPGRADE_HARNESS,changedPaths});
+            execFileSync('git',['checkout','--detach',env.UPGRADE_HARNESS],{stdio:'inherit'});
+            execFileSync('./gradlew',['--no-daemon',':app:assembleReleaseAndroidTest'],{cwd:'android',env,stdio:'inherit'});
+          }
           run(['run','android:test:upgrade','--',prior,env.ANDROID_RELEASE_OUTPUT]);
           copyFileSync(`${env.RUNNER_TEMP}/preflight-evidence.json`,`${env.ANDROID_RELEASE_OUTPUT}/preflight-evidence.json`);
           NODE
@@ -109,6 +129,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
+          UPGRADE_HARNESS: ${{ inputs.upgrade_harness }}
           ANDROID_RELEASE_OUTPUT: ${{ runner.temp }}/candidate
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/android-production.p12
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

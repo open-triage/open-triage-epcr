@@ -51,3 +51,33 @@ test('release recovery keeps existing credentials scoped and preserves only acce
   assert(upload.with.path.split('\n').filter(Boolean).every(path=>path.startsWith('${{ runner.temp }}/candidate/')));
   assert.equal(workflow.jobs.stage.steps.at(-1).if,'always()');
 });
+
+test('actual staging controller allows only test-only harness deltas before checkout and rebuilds only instrumentation', async () => {
+ const controller=workflow.jobs.stage.steps.find(step=>step.name==='Prepare isolated acceptance controller').run.split("<<'NODE'\n")[1].split('\nNODE')[0];
+ const guard=await readFile('scripts/android/upgrade-harness-source.mjs','utf8');
+ for(const [harness,changedPaths,allowed]of [['',[],true],['b'.repeat(40),['android/app/src/androidTest/java/org/opentriage/development/ReportRecoveryJourneyTest.java'],true],['b'.repeat(40),['android/app/src/main/java/org/opentriage/development/TrustedConnection.java'],false],['invalid',[],false]]){
+  const directory=await mkdtemp(join(tmpdir(),'android-harness-stage-'));
+  try{
+   for(const name of ['bin','android','scripts/android','runner'])await mkdir(join(directory,name),{recursive:true});
+   await writeFile(join(directory,'controller.mjs'),controller);
+   await writeFile(join(directory,'scripts/android/upgrade-harness-source.mjs'),guard);
+   await writeFile(join(directory,'runner/preflight-evidence.json'),'{}');
+   const shim=`#!${process.execPath}\nconst fs=require('node:fs'),path=require('node:path');const tool=path.basename(process.argv[1]),args=process.argv.slice(2);fs.appendFileSync(process.env.PROBE_LOG,JSON.stringify({tool,args})+'\\n');
+   if(tool==='gh'){
+    if(args[0]==='api')console.log(JSON.stringify([{tag_name:'android-v8-0.1.0-rc.8',draft:false}]));
+    else fs.writeFileSync(path.join(args[args.indexOf('--dir')+1],'release.json'),JSON.stringify({versionCode:8}));
+   }else if(tool==='npm'&&args.includes('android:release')){
+    fs.mkdirSync(process.env.ANDROID_RELEASE_OUTPUT,{recursive:true});fs.writeFileSync(path.join(process.env.ANDROID_RELEASE_OUTPUT,'release.json'),JSON.stringify({sourceCommit:'a'.repeat(40)}));
+   }else if(tool==='git'&&args[0]==='diff')console.log(process.env.PROBE_DIFF);`;
+   for(const executable of ['bin/gh','bin/npm','bin/git','android/gradlew'])await writeFile(join(directory,executable),shim,{mode:0o700});
+   const result=spawnSync(process.execPath,[join(directory,'controller.mjs')],{cwd:directory,encoding:'utf8',env:{...process.env,PATH:join(directory,'bin')+':'+process.env.PATH,PROBE_LOG:join(directory,'commands.jsonl'),PROBE_DIFF:changedPaths.join('\n'),UPGRADE_HARNESS:harness,RELEASE_TAG:'android-v9-0.1.0-rc.9',RUNNER_TEMP:join(directory,'runner'),ANDROID_RELEASE_OUTPUT:join(directory,'candidate'),GITHUB_REPOSITORY:'synthetic/test'}});
+   const commands=(await readFile(join(directory,'commands.jsonl'),'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+   assert.equal(result.status===0,allowed,result.stdout+result.stderr);
+   assert.equal(commands.filter(c=>c.tool==='git'&&c.args[0]==='checkout').length,allowed&&!!harness?1:0,'Disallowed changes never reach checkout');
+   assert.equal(commands.filter(c=>c.tool==='gradlew').length,allowed&&!!harness?1:0);
+   assert.equal(commands.filter(c=>c.tool==='npm'&&c.args.includes('android:release')).length,1,'Artifact is built once from the verified source');
+   assert.equal(commands.filter(c=>c.tool==='npm'&&c.args.includes('android:test:upgrade')).length,allowed?1:0);
+   if(allowed&&harness)assert.deepEqual(commands.find(c=>c.tool==='gradlew').args,['--no-daemon',':app:assembleReleaseAndroidTest']);
+  }finally{await rm(directory,{recursive:true,force:true});}
+ }
+});
