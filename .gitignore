@@ -23,3 +23,5 @@ supabase/.temp/
 /deploy/installations/
 
 /.local/
+
+/apps/web/native-out/

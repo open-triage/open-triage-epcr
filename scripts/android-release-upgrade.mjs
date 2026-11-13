@@ -1,3 +1,4 @@
+import { buildHostedUi } from './android/hosted-ui.mjs';
 import {adbShellArguments} from './android/instrumentation.mjs';
 import {upgradePreparationProfile,upgradePreparationReceipt,upgradeProbeCallNumber} from './android/upgrade-policy-fixture.mjs';
 import {assertUpgradeHarnessSource,assertFreshUpgradeTarget} from './android/upgrade-harness-source.mjs';
@@ -45,6 +46,7 @@ for (const [directory, descriptor] of [[aDirectory, a], [bDirectory, b]]) {
 }
 // Refuse before creating fixtures or changing the emulator's font profile.
 assertFreshUpgradeTarget(spawnSync(adb,['-s',serial,'shell','pm','path',a.applicationId],{encoding:'utf8'}));
+buildHostedUi(root);
 const directory = await mkdtemp(join(tmpdir(), 'open-triage-upgrade-')), container = `open-triage-upgrade-${randomUUID()}`;
 const children = []; let ownsController = false, restoreDisplay;
 await withWebViewFontProfile({adb,serial,root,applicationId:a.applicationId},async fontProfile=>{

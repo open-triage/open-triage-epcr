@@ -64,47 +64,50 @@ PRs to the feature branch and main.
 
 1. Install the development APK with `adb install -r <apk>` or Android's installer.
 2. In ordinary browser Admin, open the intended unit's Devices dialog and issue
-   its five-minute pairing code.
-3. Supply the installation's public CA certificates in PEM format when its HTTPS
-   endpoint uses a private CA. Leave this field empty for platform-trusted HTTPS.
-   Obtain the public certificates from the administrator's trusted IT channel;
-   never copy private keys or accept an unverified first server connection.
+   its pairing code (30-minute default, configurable by the administrator).
+3. The server automatically includes its configured public CA bundle for private
+   HTTPS. Platform-trusted HTTPS needs no bundled CA. Operators configure
+   `PAIRING_CA_FILE` once; no certificate input is required in Admin.
 4. Download the Android pairing file and transfer it through an approved channel.
-   Import it inside the unconfigured APK before its five-minute expiry.
-5. Review the server, organization and unit, enter an installation name and
+   Import it inside the unconfigured APK before its selected expiry.
+5. Review the server, organization, unit and administrator-selected installation name and
    explicitly confirm. Sign in using an ordinary existing local account.
 
 The JSON contract is version 1 with exactly `origin`, `token`, `expiresAt`,
 `caPem` and `version`. Maximum encoded size is 64 KiB and CA text is at most
 48,000 characters. Only HTTPS origins and public CA certificates are accepted.
-The server remains authoritative for the existing five-minute, single-use code;
+The server remains authoritative for the selected expiry and single-use code;
 preview and download do not consume it. A failed preview does not change an
 active connection. The first slice permits importing only into an unconfigured
 APK; device reassignment is implemented in ticket 005.
 
 ## Camera pairing
 
-After supplying public CA material in the unit's existing Devices dialog, choose
-**Show Android pairing QR**. In a fresh APK, choose **Scan vehicle pairing QR**
+In the unit's existing Devices dialog, choose
+**Pair Android**. In a fresh APK, choose **Scan vehicle pairing QR**
 and allow camera access. The decoded file enters the same destination preview and
 explicit confirmation as import. The browser/PWA enrollment QR and link remain
 available for their existing workflow; Android does not navigate to arbitrary
 URLs found by its scanner.
 
-Admin displays only the selected QR image. **Show Android pairing QR** replaces
-the browser image; **Show browser/PWA QR** switches back, while the browser link
-remains available. This prevents a camera from preferring an unrelated browser QR
-in the same frame. A changed trust value or target invalidates pending image renders.
+Admin displays only the selected QR image. **Pair Android** and **Pair browser**
+each issue a new code for their target. The browser link appears only for browser
+pairing; Android offers a file download using the same code as its QR. This prevents a camera from preferring an unrelated browser QR
+in the same frame. A newly issued code or changed target invalidates pending image renders.
 
-The QR contains the complete version-1 pairing JSON, including the public CA.
-There is no unauthenticated bootstrap download. QR data is limited to 2,048 UTF-8
-bytes, encoded at error correction M with a four-module quiet zone and a 512-pixel
-source image. A representative RSA public-CA fixture is 1,340 bytes (QR version
-30); the 2 KiB limit remains below QR 40-M byte capacity. Large chains remain
-available through the 64 KiB import path. Admin rejects oversized QR generation
-and clears any displayed QR when its CA text changes, so old trust material is
-not silently reused. Keep the screen large enough and free from glare when
-scanning; validate real print/screen/device conditions in the checklist below.
+The QR carries the same version-1 pairing fields, including the public CA,
+in a compact `OTQ1:` transport envelope. It removes repeated JSON field names,
+compresses the four-value tuple with zlib, and uses Base45 for QR alphanumeric
+mode. The app expands and validates the original fields before preview; no
+unauthenticated bootstrap download or weaker trust check is introduced. Legacy
+JSON QR codes and JSON pairing files remain supported. Compact QR codes require
+RC8 or later; RC7 and earlier can use the unchanged pairing file.
+
+Both the original artifact and compact QR stay within the existing 2,048-byte
+QR bound. The representative private-CA fixture drops from QR version 30 to 26,
+with larger modules at the same 512px display size. Larger chains remain
+available through the 64 KiB import path. Native expansion rejects malformed,
+truncated, trailing and oversized compressed data before validating the tuple.
 
 Camera frames are decoded in memory by pinned ZXing Android Embedded 4.3.0 with
 ZXing core 3.5.4. Dense trust payloads can defeat finder search in one orientation;
@@ -145,10 +148,13 @@ Automated image/permission/plugin tests do not establish physical-camera accepta
 
 ## Connection and protection boundaries
 
-The bundled UI stays at `https://localhost`; Capacitor serves packaged assets.
-The Android startup gate mounts the shared application only after provisioned
-connection state is ready. Service-worker installation and shell replacement are
-disabled for this runtime. Browser routing and updates retain their existing path.
+The WebView stays at `https://localhost`, preserving protected storage and native
+credentials. The startup gate mounts the application after its connection is
+ready. Android and browsers share the [server UI update mechanism](android-ui-updates.md):
+the worker caches public UI assets from the paired HTTPS server and defers reloads
+while a report or unsaved editor is open. The APK includes only pairing/loading
+code; first use requires a connection, and later offline use relies on the
+cached server UI.
 
 Same-origin `/api/` fetches cross a native plugin. The plugin owns a cookie jar
 bound to the approved HTTPS origin and supplies that origin to the existing
@@ -278,8 +284,14 @@ distribution. Existing immutable release candidates are unchanged by this slice.
 
 ### Installation reassignment and interrupted confirmation
 
-Use **Change installation** from the APK login or session controls to scan or
-import another administrator-issued pairing artifact. Preview blocks old-context
+Current builds have no **Change installation** control on login, session or
+connection-error screens. To change installations, synchronize pending work,
+uninstall and reinstall the APK, then pair it with the intended vehicle. Uninstalling
+clears the app's local data. An ordinary APK update retains the existing pairing.
+
+The native transition protocol remains available for compatibility with earlier
+APKs and recovery of already confirmed pairing attempts. In that protocol,
+preview blocks old-context
 requests and locks readable work. Cancel returns to the exact original connection
 and its still-valid login; it cannot override changed or missing managed policy.
 Confirm settles the shared encrypted-write boundary and signs out locally before
@@ -395,7 +407,7 @@ versions and evidence for each result:
 | Back during recording, preview, deletion and a slow save | Recording stops into explicit choice; cancellation/deletion/save use their ordinary guards and settle once. |
 | Back from a report and reopen | Exact saved/pending value returns; persistence failure leaves the editor open. |
 | Largest supported text size, display cutout and gesture/three-button navigation | Text remains readable and all required controls reachable in portrait/landscape and English/Swedish. |
-| Background/foreground and a server web deployment | Assignments and eligible sync refresh; the APK keeps its bundled UI and current navigation. |
+| Background/foreground and a server web deployment | Assignments and eligible sync refresh; shared UI updates wait for the report/editor to close, and the cached UI remains usable offline. |
 | User/agency switch, expired or revoked session | Old identity/history cannot reappear; ordinary current authorization remains enforced. |
 
 Emulator and browser results do not establish physical keyboard, cutout, OEM

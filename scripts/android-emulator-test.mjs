@@ -1,3 +1,4 @@
+import { buildHostedUi } from './android/hosted-ui.mjs';
 import {scopedAgencyAdbdRoot} from './android/scoped-adbd-root.mjs';
 import {adbShellArguments} from './android/instrumentation.mjs';
 import {nativeStartupArguments,assertNativeStartupInstrumentation} from './android/native-startup.mjs';
@@ -45,6 +46,7 @@ try {
   assert.equal(execFileSync(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], { encoding: 'utf8' }).trim(), '1', 'Start an Android 13+ emulator and wait for boot before running android:test.');
   restoreDisplay = captureAndroidDisplay({ adb, serial });
   if (!process.argv.includes('--skip-build')) { run('npm', ['run', 'android:build']); run('npm', ['run', 'build', '-w', '@open-triage/api']); }
+  if (!process.argv.includes('--external-apis')) buildHostedUi(root);
   const fixturesArgument = process.argv.indexOf('--fixtures');
   if (fixturesArgument !== -1) fixtures = JSON.parse(await readFile(process.argv[fixturesArgument + 1], 'utf8'));
   else { ownsContainer = true; fixtures = await prepareFixtures(root, directory, run, docker, container); }

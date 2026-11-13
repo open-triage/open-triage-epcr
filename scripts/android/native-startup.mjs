@@ -41,6 +41,7 @@ export function verifyNativeStartup(root,variant,{instrumentation=false,instrume
 
 /** Keep the selected installed startup cases and their completion proof together. */
 export const nativeStartupClasses=Object.freeze([
+ 'org.opentriage.development.NativeUiUpdatesTest',
  'org.opentriage.development.NativeStartupTest',
  'org.opentriage.development.NativeReplyLifecycleTest',
  'org.opentriage.development.NativeTransitionResumeTest',

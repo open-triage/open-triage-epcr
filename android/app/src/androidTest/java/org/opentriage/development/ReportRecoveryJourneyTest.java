@@ -199,8 +199,10 @@ public class ReportRecoveryJourneyTest {
         String originalSize = override.find() ? override.group(1) : "reset";
         evaluate("window.__navigationRealm=true;window.__navigationTimeOrigin=performance.timeOrigin");
         try {
+            quickActionsRemainPinned();
             device.setOrientationLeft();
             waitFor("innerWidth>innerHeight");
+            quickActionsRemainPinned();
             closeControlReachable();
             assertEquals(JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
             device.setOrientationNatural(); waitFor("innerHeight>innerWidth");
@@ -211,6 +213,7 @@ public class ReportRecoveryJourneyTest {
                 if (zoom.get() == 150) break; Thread.sleep(150);
             } while (System.currentTimeMillis() < end);
             assertEquals("System accessibility text size reaches the actual WebView", 150, zoom.get());
+            quickActionsRemainPinned();
             waitFor("document.documentElement.scrollWidth<=innerWidth+1");
             tapElement(FIELD);
             var keyboard = new java.util.concurrent.atomic.AtomicBoolean();
@@ -248,6 +251,14 @@ public class ReportRecoveryJourneyTest {
             device.executeShellCommand("settings put system font_scale " + originalFont);
             device.setOrientationNatural(); device.unfreezeRotation();
         }
+    }
+    private void quickActionsRemainPinned() throws Exception {
+        click("Mobile");waitFor("document.querySelector('.quick-actions button')");
+        evaluate("window.scrollTo({top:0,behavior:'instant'});window.__quickActionsStart=scrollY;var bar=document.querySelector('.quick-actions');window.scrollTo({top:bar.getBoundingClientRect().top+scrollY+300,behavior:'instant'})");
+        waitFor("scrollY>window.__quickActionsStart+50");
+        waitFor("(()=>{const bar=document.querySelector('.quick-actions'),r=bar.getBoundingClientRect();return getComputedStyle(bar).position==='sticky'&&r.top>=-1&&r.bottom<=innerHeight+1&&[...bar.querySelectorAll('button')].every(button=>{const b=button.getBoundingClientRect();return b.width>=44&&b.height>=44&&button.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))})})()");
+        assertEquals("Native quick capture stays visible and tappable through real scrolling", "6", evaluate("document.querySelectorAll('.quick-actions button').length"));
+        click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-CONNECTED-SYNTHETIC'");
     }
     private void closeControlReachable() throws Exception {
         String control = "Array.from(document.querySelectorAll('.draft-actions button')).find(button=>button.textContent==='Save & close')";
@@ -437,7 +448,7 @@ public class ReportRecoveryJourneyTest {
         assertEquals("Connection, CA and exact enrollment remain decryptable with the original Keystore key", previous.getString("connection", "missing"), connectionIdentity());
         assertEquals("Pending ciphertext bytes and all its metadata survive exactly", previous.getString("ciphertext", "missing"), retainedDigest());
         assertEquals("Presentation preference survives", previous.getString("presentation", "missing"), evaluate("localStorage.getItem('open-triage.presentation-mode.v1')"));
-        assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
+        assertEquals("true", evaluate("location.origin==='https://localhost'"));
         var restrictions = context.getSystemService(android.content.RestrictionsManager.class).getApplicationRestrictions();
         assertEquals(1, restrictions.getInt("configurationVersion"));
         var connection = new ConnectionVault(context).read().saved();
@@ -460,22 +471,28 @@ public class ReportRecoveryJourneyTest {
         assertEquals("A single real registered native preview must succeed after transport readiness: "+previewReceipt,"true",evaluate("window.__nativePreviewObservation.total===1 && !window.__nativePreviewObservation.calls[0].errorCode"));
         waitFor("document.querySelector('input[type=checkbox]')");
         evaluate("window.__nativePreviewObservation.restore()");
-        setInput("document.querySelector('input[maxlength=\"100\"]')", "Synthetic recovery ambulance");
+        AndroidUiInput.installationName(this::evaluate,this::waitFor,"Synthetic recovery ambulance");
         evaluate("document.querySelector('input[type=checkbox]').click()");
         waitFor("!document.querySelector('button[type=submit]').disabled"); evaluate("document.querySelector('form').requestSubmit()");
         signIn(args.getString("username"), args.getString("password"));
         if ("1".equals(args.getString("upgrade"))) {
             evaluate("window.__deployment=null;fetch('/api/__android-web-deployment',{method:'POST'}).then(response=>response.json()).then(value=>window.__deployment=value)");
             waitFor("window.__deployment?.revision===2");
-            String previousTimeOrigin = evaluate("performance.timeOrigin");
-            evaluate("window.__beforeUpgradeReload=true");
-            activity.onActivity(screen -> screen.getBridge().getWebView().reload());
-            // Old and new pages render identical selectors; require a new JS realm
-            // before attaching observations that would otherwise be discarded.
-            waitFor("window.__beforeUpgradeReload===undefined && performance.timeOrigin!==" + previousTimeOrigin);
+            boolean sharedUi;
+            try { InstrumentationRegistry.getInstrumentation().getTargetContext().getClassLoader().loadClass("org.opentriage.development.NativeUiServer"); sharedUi = true; }
+            catch (ClassNotFoundException historicalApk) { sharedUi = false; }
+            if (sharedUi) {
+                evaluate("navigator.serviceWorker.getRegistration().then(registration=>registration?.update())");
+                waitFor("document.documentElement.dataset.syntheticWebDeployment==='2' && Boolean(navigator.serviceWorker.controller)");
+            } else {
+                String previousTimeOrigin = evaluate("performance.timeOrigin");
+                evaluate("window.__beforeUpgradeReload=true");
+                activity.onActivity(screen -> screen.getBridge().getWebView().reload());
+                waitFor("window.__beforeUpgradeReload===undefined && performance.timeOrigin!==" + previousTimeOrigin);
+                assertFalse("Historical APK retains its original UI", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
+            }
             waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
-            assertFalse("Remote web deployment cannot replace APK UI after reload", evaluate("document.body.innerText").contains("SYNTHETIC-REMOTE-WEB-DEPLOYMENT"));
-            assertEquals("true", evaluate("location.origin==='https://localhost' && !navigator.serviceWorker?.controller"));
+            assertEquals("true", evaluate("location.origin==='https://localhost'"));
         }
         observeNativeLifecycle();
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
@@ -549,7 +566,7 @@ public class ReportRecoveryJourneyTest {
         fail("The host must force-stop the prepared live process");
     }
     private void offlineRestart() throws Exception {
-        waitFor("document.body.innerText.includes('Reconnect to continue') || document.body.innerText.includes('Unable to')");
+        waitFor("document.querySelector('.native-ui-loading') || document.body.innerText.includes('Reconnect to continue') || document.body.innerText.includes('Unable to')");
         String body = evaluate("document.body.innerText"); assertFalse(body.contains(RETAINED)); assertFalse(body.contains(InstrumentationRegistry.getArguments().getString("callNumber")));
         assertEquals("null", evaluate("document.querySelector('.encounter-header')"));
         records(); assertEquals("1", evaluate("window.__retained.length"));
@@ -567,6 +584,14 @@ public class ReportRecoveryJourneyTest {
         evaluate("localStorage.removeItem('open-triage.clinician-session.v1')");
     }
     private void differentClinician() throws Exception {
+        if ("1".equals(InstrumentationRegistry.getArguments().getString("upgrade"))) {
+            // The historical A candidate has no updater; current B adopts the shared server worker.
+            try {
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getClassLoader().loadClass("org.opentriage.development.NativeUiServer");
+                waitFor("Boolean(navigator.serviceWorker?.controller) && document.documentElement.dataset.syntheticWebDeployment==='2'");
+                assertEquals("UI updates preserve the installed origin and protected storage", "true", evaluate("location.origin==='https://localhost'"));
+            } catch (ClassNotFoundException historicalApk) { /* Older immutable candidates retain their bundled shell. */ }
+        }
         var args = InstrumentationRegistry.getArguments(); signIn(args.getString("username"), args.getString("password"));
         assertFalse(evaluate("document.body.innerText").contains(args.getString("callNumber")));
         String reportId = args.getString("reportId");
@@ -728,15 +753,17 @@ public class ReportRecoveryJourneyTest {
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
-        waitFor("document.querySelector('[data-change-installation]')");
-        evaluate("document.querySelector('[data-change-installation]').click()");
+        // The host deliberately withdrew the retained login before reconnecting.
+        // Legacy transition recovery is also available at the sign-in boundary.
+        waitFor("document.querySelector('.session-identity') || document.querySelector('input[name=username]')");
+        evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
         JSONObject expiring = new JSONObject(new String(android.util.Base64.decode(args.getString("expiredArtifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8));
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, expiring.toString());
         waitFor("document.querySelector('input[type=checkbox]')");
         var fault = new TrustedConnection(expiring.getString("origin"), expiring.getString("caPem"));
         var expired = fault.request("/api/__android-enrollment-expire", "POST", new JSONObject().put("content-type", "application/json"), new JSONObject().put("token", expiring.getString("token")).toString());
         assertTrue(new JSONObject(expired.body()).getBoolean("expired"));
-        setInput("document.querySelector('input[maxlength=\"100\"]')", "Expired preview");
+        AndroidUiInput.installationName(this::evaluate,this::waitFor,"Expired preview");
         evaluate("document.querySelector('input[type=checkbox]').click()");waitFor("!document.querySelector('button[type=submit]').disabled");
         evaluate("document.querySelector('form').requestSubmit()");
         waitFor("document.querySelector('[data-pending-enrollment]') && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Use a new pairing code')");
@@ -751,7 +778,7 @@ public class ReportRecoveryJourneyTest {
         String artifact = new String(android.util.Base64.decode(args.getString("artifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8);
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, artifact);
         waitFor("document.querySelector('input[type=checkbox]')");
-        setInput("document.querySelector('input[maxlength=\"100\"]')", "Reassigned Android installation");
+        AndroidUiInput.installationName(this::evaluate,this::waitFor,"Reassigned Android installation");
         evaluate("document.querySelector('input[type=checkbox]').click()");
         waitFor("!document.querySelector('button[type=submit]').disabled");
         evaluate("document.querySelector('form').requestSubmit()");

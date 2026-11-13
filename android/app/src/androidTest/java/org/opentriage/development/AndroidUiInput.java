@@ -15,6 +15,18 @@ final class AndroidUiInput {
             "(()=>{const button=(" + expression + ");if(!button || !button.isConnected || button.offsetParent===null || button.matches(':disabled') || button.getAttribute('aria-disabled')==='true')return false;button.click();return true;})()"));
     }
 
+    /** Current APKs review the admin name; historical APKs still require client input. */
+    static void installationName(Evaluate evaluate, WaitFor waitFor, String legacyName) throws Exception {
+        String input = "document.querySelector(\"input[maxlength='100']\")";
+        waitFor.until(input + " && !(" + input + ").matches(':disabled')");
+        boolean assigned = "true".equals(evaluate.run("(" + input + ").readOnly"));
+        if (assigned) {
+            assertEquals("The administrator name must be present", "true", evaluate.run("Boolean((" + input + ").value.trim())"));
+        } else {
+            assertEquals("Historical APK name entry remains supported", "true", evaluate.run(WebViewTestInput.change(input, legacyName)));
+        }
+    }
+
     static void importPairing(Evaluate evaluate, WaitFor waitFor, String artifact) throws Exception {
         String input = "document.querySelector('input[type=file]')";
         waitFor.until(input + " && !(" + input + ").matches(':disabled')");

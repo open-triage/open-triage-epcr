@@ -12,6 +12,10 @@ import java.util.Set;import java.util.concurrent.atomic.AtomicInteger;
 public class StaticRoutes {
  static void check(boolean value){if(!value)throw new AssertionError("Static document crossed its packaged route boundary");}
  public static void main(String[]args){
+  for(String path:new String[]{"/","/sw.js","/manifest.webmanifest","/_next/static/chunks/app.js","/review-call/?report=synthetic"})check(NativeUiRequest.path("https://localhost"+path,"GET").equals(path));
+  for(String url:new String[]{"http://localhost/sw.js","https://foreign.test/sw.js","https://localhost/api/reports","https://localhost/demo-open-assignment.json","https://localhost/_next/static/../secret.js","https://localhost/_next/static/%2e%2e/secret.js","https://user@localhost/sw.js","https://localhost:443/sw.js"})check(NativeUiRequest.path(url,"GET")==null);
+  check(NativeUiRequest.path("https://localhost/enroll?language=sv","GET").equals("/enroll/?language=sv"));
+  check(NativeUiRequest.path("https://localhost/sw.js","POST")==null);check(!NativeUiRequest.accepts("/_next/static/app.js","text/html"));check(NativeUiRequest.accepts("/sw.js","text/javascript; charset=utf-8"));
   var assets=Set.of("public/review-call/index.html","public/enroll/index.html","public/404/index.html");
   for(String path:new String[]{"/review-call/","/enroll"}){var route=NativeStaticRoutes.resolve("https://localhost"+path+"?report=a%2Fb&language=sv","GET",true,assets::contains);check(route.path().equals(path+(path.endsWith("/")?"":"/")+"index.html"));check(!route.notFound());check(!route.path().equals("/index.html"));}
   var reads=new AtomicInteger();for(String url:new String[]{"https://foreign.test/review-call/","http://localhost/enroll/","https://user@localhost/enroll/","https://localhost:443/enroll/","https://localhost/a/../enroll/","https://localhost/%2e%2e/enroll/","https://localhost/enroll%2findex.html","https://localhost//enroll/","https://localhost/enroll/."}){var route=NativeStaticRoutes.resolve(url,"GET",true,path->{reads.incrementAndGet();return true;});check(route!=null&&route.path()==null&&route.notFound());}check(reads.get()==0);
@@ -20,6 +24,6 @@ public class StaticRoutes {
   var missing=NativeStaticRoutes.resolve("https://localhost/unknown/","GET",true,assets::contains);check(missing.notFound()&&missing.path().equals("/404/index.html"));check(NativeStaticRoutes.resolve("https://localhost/unknown/","GET",true,path->false).path()==null);
  }
 }`);
-  for(const[command,args]of[[binary('javac'),['-d',directory,resolve('android/app/src/main/java/org/opentriage/development/NativeStaticRoutes.java'),source]],[binary('java'),['-cp',directory,'org.opentriage.development.StaticRoutes']]]){const result=spawnSync(command,args,{encoding:'utf8',timeout:30000});assert.equal(result.error,undefined);assert.equal(result.status,0,result.stdout+result.stderr);}
+  for(const[command,args]of[[binary('javac'),['-d',directory,resolve('android/app/src/main/java/org/opentriage/development/NativeStaticRoutes.java'),resolve('android/app/src/main/java/org/opentriage/development/NativeUiRequest.java'),source]],[binary('java'),['-cp',directory,'org.opentriage.development.StaticRoutes']]]){const result=spawnSync(command,args,{encoding:'utf8',timeout:30000});assert.equal(result.error,undefined);assert.equal(result.status,0,result.stdout+result.stderr);}
  }finally{rmSync(directory,{recursive:true,force:true});}
 });

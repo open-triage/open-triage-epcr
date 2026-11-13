@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import { installTlsFixtureControl } from './tls-fixture-control.mjs';
 import { pdfServerCompatibilityFixture } from './pdf-server-compatibility-fixture.mjs';
 import { pdfDownloadFixture, pdfMediaHoldFixture } from './pdf-download-fixture.mjs';
@@ -93,7 +94,17 @@ app.use((request, response, next) => {
     if (request.method === 'POST') webDeployment++;
     return response.json({ revision: webDeployment, marker: `SYNTHETIC-REMOTE-WEB-DEPLOYMENT-${webDeployment}` });
   }
-  if (request.url === '/') return response.type('html').send(`<html><body>SYNTHETIC-REMOTE-WEB-DEPLOYMENT-${webDeployment}</body></html>`);
+  const path = new URL(request.url, fixture.origin).pathname;
+  if (request.method === 'GET' && (['/', '/sw.js', '/manifest.webmanifest', '/enroll/', '/review-call/', '/admin-preview/'].includes(path) || path.startsWith('/_next/static/')) && !path.includes('..') && !path.includes('%')) {
+    const asset = path.endsWith('/') ? path + 'index.html' : path;
+    void readFile(new URL('../../apps/web/out' + asset, import.meta.url)).then(bytes => {
+      response.set('Cache-Control', 'no-store');
+      if (asset.endsWith('.html')) return response.type('html').send(bytes.toString().replace('<html', `<html data-synthetic-web-deployment="${webDeployment}"`));
+      if (asset === '/sw.js') return response.type('application/javascript').send(bytes.toString().replace('open-triage-shell-v5-', `open-triage-shell-v5-fixture${webDeployment}-`));
+      response.type(extname(asset)).send(bytes);
+    }).catch(() => response.status(404).end());
+    return;
+  }
   next();
 });
 

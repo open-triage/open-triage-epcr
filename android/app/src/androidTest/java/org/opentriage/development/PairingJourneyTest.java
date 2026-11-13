@@ -61,7 +61,7 @@ public class PairingJourneyTest {
             importFile(artifact);
             waitFor("document.querySelector('input[type=checkbox]')");
             assertFalse("Preview must not enroll or mount clinician UI", "true".equals(evaluate("Boolean(document.querySelector('input[name=username]'))")));
-            setInput("input[maxlength='100']", "Synthetic emulator ambulance");
+            AndroidUiInput.installationName(this::evaluate,this::waitFor,"Synthetic emulator ambulance");
             evaluate("document.querySelector('input[type=checkbox]').click()");
             waitFor("!document.querySelector('button[type=submit]').disabled");
             evaluate("document.querySelector('form').requestSubmit()");

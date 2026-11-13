@@ -137,7 +137,8 @@ final class TrustedConnection {
                 !(value.get("expiresAt") instanceof String) || !(value.get("caPem") instanceof String) ||
                 !value.getString("token").matches("[A-Za-z0-9_-]{43}")) throw new IllegalArgumentException("Invalid artifact");
         long expires = Instant.parse(value.getString("expiresAt")).toEpochMilli();
-        if (expires <= now || expires > now + 330000) throw new IllegalArgumentException("Expired artifact");
+        // Matches MAX_PAIRING_EXPIRY_MINUTES; allow 30 seconds for clock skew.
+        if (expires <= now || expires > now + 24L * 60 * 60 * 1000 + 30000) throw new IllegalArgumentException("Expired artifact");
         return value;
     }
 
@@ -179,6 +180,28 @@ final class TrustedConnection {
             return 0; // Malformed credential expiry must not become an unlimited session cookie.
         }
         return Long.MAX_VALUE;
+    }
+
+    /** Public UI transport shares TLS verification, never authentication or Set-Cookie processing. */
+    Reply publicUi(String path) throws Exception {
+        if (NativeUiRequest.path("https://localhost" + path, "GET") == null) throw new IllegalArgumentException("Invalid UI request");
+        checkTrustValidity();
+        HttpsURLConnection connection = (HttpsURLConnection) URI.create(origin + path).toURL().openConnection();
+        connection.setSSLSocketFactory(socketFactory); connection.setInstanceFollowRedirects(false);
+        connection.setConnectTimeout(5000); connection.setReadTimeout(10000); connection.setUseCaches(false);
+        connection.setRequestProperty("Accept-Encoding", "identity");
+        connection.setRequestProperty("Cache-Control", "no-cache");
+        try {
+            int status = connection.getResponseCode(); checkTrustValidity();
+            if (status != 200 || connection.getContentLengthLong() > MAX_BODY || !NativeUiRequest.accepts(path, connection.getContentType())) throw new java.io.IOException("UI unavailable");
+            String encoding = connection.getContentEncoding();
+            if (encoding != null && !encoding.equalsIgnoreCase("identity") && !encoding.equalsIgnoreCase("gzip")) throw new java.io.IOException("Unsupported UI encoding");
+            try (var stream = "gzip".equalsIgnoreCase(encoding) ? new java.util.zip.GZIPInputStream(connection.getInputStream()) : connection.getInputStream()) {
+                byte[] bytes = stream.readNBytes(MAX_BODY + 1);
+                if (bytes.length > MAX_BODY) throw new java.io.IOException("Oversized UI resource");
+                return new Reply(status, new JSONObject().put("content-type", connection.getContentType()), bytes);
+            }
+        } finally { connection.disconnect(); }
     }
 
     Reply request(String path, String method, JSONObject headers, String body) throws Exception {

@@ -30,6 +30,7 @@ android {
         }
     }
     sourceSets {
+        androidTest.assets.srcDir "src/test/resources"
         test.java.srcDir "src/testSupport/java"
         androidTest.java.srcDir "src/testSupport/java"
         test.java.srcDir "src/sharedTest/java"
@@ -86,6 +87,7 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'com.google.zxing:core:3.5.4'
     testImplementation "junit:junit:$junitVersion"

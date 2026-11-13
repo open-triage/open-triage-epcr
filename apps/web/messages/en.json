@@ -3166,4 +3166,6 @@
   "enrollment.expires": "Expires",
   "enrollment.link": "Enrollment link — open in the intended installation",
   "enrollment.close": "Close",
+  "android.uiLoading": "Loading application",
+  "android.uiUnavailable": "Connect to the server to load the application."
 }

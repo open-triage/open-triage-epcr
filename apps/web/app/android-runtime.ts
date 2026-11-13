@@ -58,7 +58,12 @@ export async function openAndroidPdf(options: {operationId:string;path:string;he
 let installed = false;
 let connectionContext: string | undefined;
 export const nativeConnectionContext = () => connectionContext;
+export const NATIVE_UI_SOURCE_EVENT = "open-triage:native-ui-source";
+let uiOrigin: string | undefined;
+export const nativeUiOrigin = () => uiOrigin;
 export function configureNativeConnection(state: AndroidConnectionState): void {
+  const nextUiOrigin = state.configured && !state.blocked ? state.origin : undefined;
+  if (nextUiOrigin !== uiOrigin) { uiOrigin = nextUiOrigin; if (typeof window !== "undefined") window.dispatchEvent(new Event(NATIVE_UI_SOURCE_EVENT)); }
   connectionContext = state.connectionContext;
   if (state.origin) { if(!state.storageScope) throw new Error("Native storage context unavailable"); setNativeStorageScope(state.storageScope, state.legacyStorageScope); }
 }

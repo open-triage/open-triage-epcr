@@ -1,5 +1,13 @@
 # Signed Android releases
 
+New APK filenames use only the version name, for example
+`opentriage-0.1.0-rc.6.apk`. The Android version code and SHA-256 stay in
+`release.json`, with the digest also in `SHA256SUMS`. Existing published artifact
+names and URLs remain immutable and supported by download validation.
+Candidates 1–5 only recognize their original filename format in the installed
+upgrade UI. Update those builds through browser Admin, the public release page,
+MDM or ADB; the new build recognizes both filename formats.
+
 The release owner delegated identity, custody and hosting selection on 2026-11-11
 and authorized provisioning and candidate publication. The selected permanent
 application is `org.opentriage.android`; the organization release maintainers for
@@ -73,8 +81,9 @@ progression. `ANDROID_RELEASE_OUTPUT` selects a new output directory; existing
 output is rejected. Default output is ignored `.local/android-releases/<code>`.
 
 The builder rejects missing signing inputs, unexpected permanent certificates,
-invalid version codes/names, debuggable APKs, external shell URLs, cleartext and
-service workers. It verifies the actual package metadata and signature using
+invalid version codes/names, debuggable APKs, external shell URLs and cleartext.
+The shared browser service worker and pairing/loading bootstrap are bundled;
+clinical UI chunks are rejected. It verifies the actual package metadata and signature using
 SDK tools. Each output contains a content-addressed APK, `SHA256SUMS` and
 `release.json` recording identity, certificate, code/name, source commit, APK and
 packaged-UI SHA-256, Android API range and client protocol versions. Customer
@@ -115,7 +124,9 @@ pending ciphertext; offline startup exposes no report content. A different
 clinician cannot recover it; the original clinician recovers and syncs it online.
 Report pins and recovery deadline rules are checked. A real remote HTML deployment
 changes while A is running; reloading continues to show the packaged clinical UI
-at `https://localhost` with no service worker. B retains this packaged shell.
+at `https://localhost` with no service worker in historical A. Current B uses
+the shared browser service worker to adopt the paired server UI while retaining
+that local origin and protected storage.
 The historical A1 preparation profile is limited to its exact published descriptor,
 APK digest, certificate, source, production package/version and preparation phase.
 It creates the retained clinical text supported by that original source; A1
@@ -154,9 +165,10 @@ and signing identity and a higher version code. Uninstalling, clearing app data,
 changing application ID or factory-resetting removes enrollment and retained
 protected work; encrypted data cannot be recovered by reinstalling a fresh app
 without its original device data/Keystore state. Downgrades are unsupported.
-The APK bundles its own UI bytes; a web deployment does not update them. Upgrade
-APK and compatible API deliberately, and retain the old immutable descriptor for
-incident diagnosis. Candidate acceptance does not establish physical phone/tablet,
+The APK includes only a connection/pairing/loading bootstrap. Android and browsers use the same
+[server UI update mechanism](android-ui-updates.md); a web deployment can update
+the clinical UI without another APK. Native changes still require an APK upgrade.
+Retain immutable APK descriptors for incident diagnosis. Candidate acceptance does not establish physical phone/tablet,
 actual Intune/Headwind/MDMesh deployment or production rollout acceptance.
 
 ## Installation-approved downloads

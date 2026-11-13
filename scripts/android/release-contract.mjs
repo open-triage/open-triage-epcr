@@ -25,7 +25,7 @@ export function verifyApkMetadata(metadata, signature, expected) {
   assert.equal(/Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)/.exec(signature)?.[1]?.toLowerCase(), expected.certificateSha256, 'Unexpected production signing certificate');
   assert(!/Signer #2 certificate/.test(signature), 'Unexpected extra APK signer');
 }
-export const requiredUpgradeAssertions = Object.freeze(['in-place-install-r', 'downgrade-rejected', 'same-uid', 'keystore-connection-ca-enrollment', 'managed-policy', 'presentation-preference', 'exact-pending-ciphertext', 'offline-no-plaintext', 'other-clinician-denied', 'original-clinician-recovery-sync', 'pinned-versions-and-deadline', 'packaged-ui-no-service-worker', 'remote-web-deployment-keeps-installed-ui']);
+export const requiredUpgradeAssertions = Object.freeze(['in-place-install-r', 'downgrade-rejected', 'same-uid', 'keystore-connection-ca-enrollment', 'managed-policy', 'presentation-preference', 'exact-pending-ciphertext', 'offline-no-plaintext', 'other-clinician-denied', 'original-clinician-recovery-sync', 'pinned-versions-and-deadline', 'offline-ui-bootstrap', 'server-web-deployment-preserves-local-origin', 'server-ui-service-worker-cache']);
 export const requiredUpgradeGateAssertions = Object.freeze(['retired-old-apk-new-work-refused', 'interrupted-staging-preserves-old-apk', 'replacement-new-work-authorized']);
 export function validatePublicationEvidence(descriptor, evidence, preflight, identity) {
   assert.equal(descriptor.applicationId, identity.applicationId); assert.equal(descriptor.certificateSha256, identity.certificateSha256);

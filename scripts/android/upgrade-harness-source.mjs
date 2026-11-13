@@ -3,6 +3,8 @@ const testOnlyPaths=new Set([
  'scripts/android/upgrade-harness-source.mjs',
  'scripts/android/upgrade-policy-fixture.mjs',
  'scripts/android/report-journey.mjs',
+ 'scripts/android/journey-cleanup.mjs',
+ 'tests/android-journey-cleanup.test.mjs',
  'scripts/android-release-upgrade.mjs',
  'android/app/src/androidTest/java/org/opentriage/development/ReportRecoveryJourneyTest.java',
  'android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java',

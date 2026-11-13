@@ -1,5 +1,6 @@
 "use client";
 
+import { blockUiUpdates } from "../app/ui-update-boundary";
 import { createContext, useContext, useEffect, useId } from "react";
 import { resolveMessage } from "../app/localization";
 
@@ -15,10 +16,11 @@ export function useUnsavedChanges(dirty: boolean) {
   const id = useId();
   useEffect(() => {
     if (!dirty) return;
+    const releaseUpdate = blockUiUpdates();
     registry?.add(id);
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
-    return () => { registry?.delete(id); window.removeEventListener("beforeunload", warn); };
+    return () => { registry?.delete(id); window.removeEventListener("beforeunload", warn); releaseUpdate(); };
   }, [dirty, id, registry]);
   return () => confirmDiscardChanges(dirty);
 }

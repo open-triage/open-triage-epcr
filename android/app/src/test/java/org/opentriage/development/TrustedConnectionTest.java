@@ -42,6 +42,17 @@ public class TrustedConnectionTest {
         }
         assertThrows(Exception.class, () -> TrustedConnection.artifact(" ".repeat(65537), System.currentTimeMillis()));
     }
+    @Test public void acceptsSelectedPairingLifetimeWithBoundedClockSkew() throws Exception {
+        long now=System.currentTimeMillis();
+        for (int minutes : new int[]{1,30,90,1440}) {
+            String encoded=artifact().put("expiresAt",Instant.ofEpochMilli(now+minutes*60000L).toString()).toString();
+            assertEquals(encoded,TrustedConnection.artifact(encoded,now).toString());
+        }
+        for (long offset : new long[]{0,-1,24L*60*60*1000+30001}) {
+            String encoded=artifact().put("expiresAt",Instant.ofEpochMilli(now+offset).toString()).toString();
+            assertThrows(Exception.class,()->TrustedConnection.artifact(encoded,now));
+        }
+    }
     @Test public void rejectsCredentialForwardingAndOriginConfusion() throws Exception {
         for (String path : new String[]{"https://attacker.test/api/x", "//attacker.test/api/x", "/api/../outside", "/api/%2e%2e/outside", "/api/x#secret", "/api/\\attacker", "/not-api"}) {
             assertThrows(Exception.class, () -> TrustedConnection.requestPath(path));
@@ -122,7 +133,14 @@ public class TrustedConnectionTest {
                         extra = "ETag: \"revision-1\"\r\n";
                         if (conditionalHeader.equals("\"revision-1\"")) status = "304 Not Modified";
                     }
+                    if (path.startsWith("/sw.js")) extra = "Set-Cookie: open_triage_session=ui-must-not-change-login; Path=/api; Secure; HttpOnly; Max-Age=3600\r\nContent-Type: text/javascript\r\n";
+                    if (path.equals("/_next/static/redirect.js")) { status = "302 Found"; extra = "Location: https://attacker.test/sw.js\r\nContent-Type: text/javascript\r\n"; }
                     byte[] body = (path.endsWith("native-version") ? versionHeader : path.endsWith("confirmed-job") ? jobHeader : originHeader + "|" + cookieHeader).getBytes(StandardCharsets.UTF_8);
+                    if (path.equals("/sw.js?gzip")) {
+                        var compressed = new java.io.ByteArrayOutputStream();
+                        try (var gzip = new java.util.zip.GZIPOutputStream(compressed)) { gzip.write(body); }
+                        body = compressed.toByteArray(); extra += "Content-Encoding: gzip\r\n";
+                    }
                     if (status.startsWith("304")) body = new byte[0];
                     String head = "HTTP/1.1 " + status + "\r\n" + extra + "Content-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
                     socket.getOutputStream().write(head.getBytes(StandardCharsets.US_ASCII)); socket.getOutputStream().write(body); socket.getOutputStream().flush();
@@ -151,6 +169,13 @@ public class TrustedConnectionTest {
             assertEquals(304, unchanged.status()); assertEquals("", unchanged.body());
             first.request("/api/login", "POST", new JSONObject(), "{}");
             assertTrue(first.request("/api/current", "GET", new JSONObject(), null).body().contains("clinician-secret"));
+            var beforeUi = first.saved().toString();
+            assertEquals("Public UI requests carry neither Origin nor credentials", "null|null", first.publicUi("/sw.js").body());
+            assertEquals("null|null", first.publicUi("/sw.js?gzip").body());
+            assertEquals("UI Set-Cookie cannot mutate the native login", beforeUi, first.saved().toString());
+            assertThrows(Exception.class, () -> first.publicUi("/api/current"));
+            assertThrows(Exception.class, () -> first.publicUi("/_next/static/redirect.js"));
+            assertThrows(Exception.class, () -> new TrustedConnection(origin, "").publicUi("/sw.js"));
             assertEquals(origin + "|null", new TrustedConnection(origin, ca()).request("/api/current", "GET", new JSONObject(), null).body());
             var restored = TrustedConnection.restore(first.saved());
             restored.request("/api/logout", "DELETE", new JSONObject(), null);

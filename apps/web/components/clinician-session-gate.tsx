@@ -1,4 +1,5 @@
 "use client";
+import { blockUiUpdates } from "../app/ui-update-boundary";
 import { isAndroidRuntime } from "../app/android-runtime";
 import { AndroidApkLink } from "./android-apk-link";
 import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
@@ -111,6 +112,8 @@ export function ClinicianSessionGate({ children }: {
   const openingHeading = useRef<HTMLHeadingElement>(null);
   const [openingCall, setOpeningCall] = useState<AssignedCall | null>(null);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
+  const activeReportId = activeReport?.id;
+  useEffect(() => { if (activeReportId) return blockUiUpdates(); }, [activeReportId]);
   useEffect(() => { if (openingCall) openingHeading.current?.focus(); }, [openingCall]);
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);

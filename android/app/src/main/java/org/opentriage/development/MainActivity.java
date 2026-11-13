@@ -20,8 +20,17 @@ public class MainActivity extends BridgeActivity {
         // It would copy native credentials into the WebView cookie store. Own them solely in the vault.
         java.net.CookieHandler.setDefault(null);
         // Remote pages never inherit the native bridge. OIDC uses the external system browser.
+        var uiServer = new NativeUiServer(this);
+        android.webkit.ServiceWorkerController.getInstance().setServiceWorkerClient(new android.webkit.ServiceWorkerClient() {
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
+                var response = uiServer.intercept(request, true);
+                return response != null ? response : bridge.getLocalServer().shouldInterceptRequest(request);
+            }
+        });
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                var hostedUi = uiServer.intercept(request, false);
+                if (hostedUi != null) return hostedUi;
                 var target = NativeStaticRoutes.resolve(request.getUrl().toString(), request.getMethod(), request.isForMainFrame(), path -> {
                     try (var ignored = getAssets().open(path)) { return true; }
                     catch (java.io.IOException missing) { return false; }

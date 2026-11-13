@@ -1,7 +1,8 @@
 import { build } from "esbuild";
 
 async function buildServiceWorker() {
-  const buildSha = process.env.OPEN_TRIAGE_BUILD_SHA?.trim() || "local";
+  const configuredSha = process.env.OPEN_TRIAGE_BUILD_SHA?.trim();
+  const buildSha = configuredSha && configuredSha !== "local" ? configuredSha : `local-${Date.now()}`;
   await build({
     entryPoints: ["service-worker/service-worker.ts"],
     bundle: true,

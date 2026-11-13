@@ -8,6 +8,7 @@
     "dev": "node scripts/serve-development.mjs",
     "prebuild": "npm run build -w @open-triage/contracts && tsx scripts/generate-demo-fixtures.ts --check && tsx scripts/build-service-worker.ts",
     "build": "next build",
+    "build:native": "node scripts/build-native-bootstrap.mjs",
     "serve:static": "node scripts/serve-static.mjs",
     "start": "npm run serve:static",
     "lint": "eslint .",

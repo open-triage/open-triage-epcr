@@ -57,4 +57,4 @@ for(const variant of ['debug','release']) test(`${variant} checks the separate i
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
-test('all three installed startup classes must pass, with no partial or failed completion',()=>{assert.equal(nativeStartupClasses.length,3);assert.doesNotThrow(()=>assertNativeStartupInstrumentation('Time: 3.3\n\nOK (3 tests)\n'));for(const output of ['OK (1 test)\n','OK (2 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 3, Failures: 1\n','FAILURES!!!\nOK (3 tests)\n'])assert.throws(()=>assertNativeStartupInstrumentation(output),/must pass/);});
+test('all installed startup classes must pass, with no partial or failed completion',()=>{assert.equal(nativeStartupClasses.length,4);assert.doesNotThrow(()=>assertNativeStartupInstrumentation('Time: 3.3\n\nOK (4 tests)\n'));for(const output of ['OK (1 test)\n','OK (2 tests)\n','OK (3 tests)\n','OK (0 tests)\n','FAILURES!!!\nTests run: 3, Failures: 1\n','FAILURES!!!\nOK (4 tests)\n'])assert.throws(()=>assertNativeStartupInstrumentation(output),/must pass/);});

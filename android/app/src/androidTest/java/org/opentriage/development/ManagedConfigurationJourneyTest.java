@@ -103,7 +103,8 @@ public class ManagedConfigurationJourneyTest {
             waitFor("document.querySelector('.android-managed-connection').dataset.managedContext === window.__originalManagedContext");
             importFile(artifact.toString());
             waitFor("document.querySelector('input[type=checkbox]')");
-            evaluate("(()=>{const input=document.querySelector('input[maxlength=\"100\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Managed emulator ambulance');input.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('input[type=checkbox]').click();})()");
+            AndroidUiInput.installationName(this::evaluate,this::waitFor,"Managed emulator ambulance");
+            evaluate("document.querySelector('input[type=checkbox]').click()");
             waitFor("!document.querySelector('button[type=submit]').disabled");
             evaluate("document.querySelector('form').requestSubmit()");
             waitFor("document.querySelector('input[name=username]')");

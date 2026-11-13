@@ -3164,4 +3164,6 @@
   "enrollment.expires": "Giltig till",
   "enrollment.link": "Kopplingslänk — öppna i avsedd installation",
   "enrollment.close": "Stäng",
+  "android.uiLoading": "Laddar applikationen",
+  "android.uiUnavailable": "Anslut till servern för att ladda applikationen."
 }

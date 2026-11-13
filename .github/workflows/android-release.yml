@@ -47,6 +47,7 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
       - run: npm ci
+      - run: npm run build -w @open-triage/contracts
       - run: node --test tests/android-*.test.mjs
       - run: npm run android:build
       - run: npm run build -w @open-triage/api

@@ -102,7 +102,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
         waitFor("document.querySelector('input[type=file]')");
         importFile(new String(android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP), java.nio.charset.StandardCharsets.UTF_8));
         waitFor("document.querySelector('input[type=checkbox]')");
-        input("input[maxlength='100']", "OIDC emulator ambulance");
+        AndroidUiInput.installationName(this::evaluate,this::waitFor,"OIDC emulator ambulance");
         evaluate("document.querySelector('input[type=checkbox]').click()");
         waitFor("!document.querySelector('button[type=submit]').disabled");
         evaluate("document.querySelector('form').requestSubmit()");

@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   android-13:
-    name: Android 13 / bundled UI and private CA
+    name: Android 13 / hosted UI and private CA
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -30,9 +30,10 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
       - run: npm ci
+      - run: npm run build -w @open-triage/contracts
       - name: Verify Android fixture and workflow contracts
         run: node --test tests/android-*.test.mjs
-      - name: Build and validate bundled development APK
+      - name: Build and validate connection bootstrap APK
         run: npm run android:build
       - name: Validate production build/signature configuration with a disposable key
         run: npm run android:validate:release

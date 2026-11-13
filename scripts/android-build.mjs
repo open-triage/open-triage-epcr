@@ -1,6 +1,7 @@
 import { verifyNativeStartup } from './android/native-startup.mjs';
+import { verifyPackagedPairing } from './android/packaged-pairing.mjs';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -16,13 +17,15 @@ if (!existsSync(resolve(env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT ?? '', 'platfor
 if (process.argv.includes('--native-only')) {
   if (!existsSync(resolve(root, 'android/app/src/main/assets/public/index.html'))) throw new Error('Run npm run android:build before native-only validation.');
 } else {
-  run('npm', ['run', 'build', '-w', '@open-triage/web']);
-  // The APK never installs a service worker, and does not carry an updateable shell.
-  rmSync(resolve(root, 'apps/web/out/sw.js'), { force: true });
+  run('npm', ['run', 'build', '-w', '@open-triage/contracts']);
+  // Only pairing/loading code enters the APK; the hosted web UI is built separately.
+  run('npm', ['run', 'build:native', '-w', '@open-triage/web']);
   run(resolve(root, 'node_modules/.bin/cap'), ['sync', 'android']);
 }
+if (!existsSync(resolve(root, 'android/app/src/main/assets/public/native-bootstrap.js'))) throw new Error('Rebuild the connection bootstrap; clinical UI assets must not enter the APK.');
+verifyPackagedPairing(resolve(root, 'android/app/src/main/assets/public'));
 const config = JSON.parse(readFileSync(resolve(root, 'android/app/src/main/assets/capacitor.config.json'), 'utf8'));
-if (config.server?.url || config.server?.cleartext || config.webDir !== 'apps/web/out' || config.appId !== 'org.opentriage.development') throw new Error('Android development build must use the generic bundled UI and development identity.');
+if (config.server?.url || config.server?.cleartext || config.webDir !== 'apps/web/native-out' || config.appId !== 'org.opentriage.development') throw new Error('Android development build must use the local bootstrap and development identity.');
 run('./gradlew', ['--no-daemon', ':app:testDebugUnitTest', ':app:lintDebug', ':app:assembleDebug', ':app:assembleDebugAndroidTest', ':management-test-controller:lintDebug', ':management-test-controller:assembleDebug'], resolve(root, 'android'));
 verifyNativeStartup(root, 'debug', {instrumentation:true});
 console.log('Development APK: android/app/build/outputs/apk/debug/app-debug.apk');

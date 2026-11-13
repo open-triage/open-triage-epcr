@@ -1,4 +1,6 @@
+import { androidApkArtifactName } from '@open-triage/contracts/android-release';
 import { verifyNativeStartup } from './android/native-startup.mjs';
+import { verifyPackagedPairing } from './android/packaged-pairing.mjs';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -29,7 +31,8 @@ if (!process.argv.includes('--native-only')) {
 }
 const config = JSON.parse(readFileSync(join(root, 'android/app/src/main/assets/capacitor.config.json'), 'utf8'));
 assert(!config.server?.url && !config.server?.cleartext && config.server?.hostname === 'localhost', 'APK must serve its installed assets');
-assert(!existsSync(join(root, 'android/app/src/main/assets/public/sw.js')), 'APK must not contain an updateable service worker');
+assert(existsSync(join(root, 'android/app/src/main/assets/public/sw.js')), 'APK must include the shared browser service worker');
+assert(existsSync(join(root, 'android/app/src/main/assets/public/native-bootstrap.js')), 'APK must contain only the connection bootstrap, not the clinical UI');
 // Capacitor metadata matches the APK while the Java namespace remains stable.
 config.appId = identity.applicationId; config.appName = 'OpenTriage';
 writeFileSync(join(root, 'android/app/src/main/assets/capacitor.config.json'), JSON.stringify(config));
@@ -49,9 +52,10 @@ assert(packaged.length > 0 && packaged.every(name => !name.split('/').includes('
 const uiHash = createHash('sha256'), extracted = mkdtempSync(join(tmpdir(), 'android-packaged-ui-'));
 try {
   execFileSync(jar, ['xf', source, 'assets/public'], { cwd: extracted });
+  verifyPackagedPairing(join(extracted, 'assets/public'));
   for (const name of packaged) { uiHash.update(name); uiHash.update('\0'); uiHash.update(readFileSync(join(extracted, name))); }
 } finally { rmSync(extracted, { recursive: true, force: true }); }
-const descriptor = { schemaVersion: 1, ...identity, apkSha256, apkBytes: bytes.length, uiSha256: uiHash.digest('hex'), sourceCommit, compatibility, minAndroidApi: 33, targetAndroidApi: 36, artifact: `opentriage-${identity.versionName}-${identity.versionCode}-${apkSha256}.apk` };
+const descriptor = { schemaVersion: 1, ...identity, apkSha256, apkBytes: bytes.length, uiSha256: uiHash.digest('hex'), sourceCommit, compatibility, minAndroidApi: 33, targetAndroidApi: 36, artifact: androidApkArtifactName(identity.versionName) };
 if (env.ANDROID_PREVIOUS_DESCRIPTOR) validateUpgrade(JSON.parse(readFileSync(env.ANDROID_PREVIOUS_DESCRIPTOR, 'utf8')), descriptor);
 mkdirSync(output, { recursive: true, mode: 0o700 });
 writeFileSync(join(output, descriptor.artifact), bytes, { flag: 'wx', mode: 0o644 });
