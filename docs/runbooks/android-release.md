@@ -176,3 +176,31 @@ actual Intune/Headwind/MDMesh deployment or production rollout acceptance.
 See [Admin APK downloads](android-downloads.md) for explicit installation selection,
 public hosting/MDM prerequisites, actual download verification and additive native
 capability compatibility. Published candidate descriptors remain immutable.
+
+## Recover publication with owner credentials
+
+The immutable-release settings endpoint requires repository Administration read
+permission, which `GITHUB_TOKEN` cannot grant. The normal publication job checks
+this before building. Do not copy a broad owner token into the runner.
+
+If publication credentials cannot read that setting, dispatch
+`android-release.yml` from an `android-v*-recovery` controller tag with the unpublished tag
+and the release run whose **preflight** passed. Controller tags use the reviewed
+workflow on the feature branch; their push does not start a new release, and
+they satisfy the protected environment’s existing tag rule. The workflow checks the exact
+tag, source SHA, workflow and successful preflight, rebuilds from that clean
+tag, repeats signed A/B acceptance, and retains only the production APK and
+verification evidence as `android-verified-candidate`. It does not publish.
+
+Download that artifact into a new directory, then use the existing owner CLI
+credentials locally:
+
+```sh
+node scripts/android-release-publish.mjs /path/to/candidate \
+  /path/to/candidate/upgrade-evidence.json \
+  /path/to/candidate/preflight-evidence.json android-v8-0.1.0-rc.8
+```
+
+The publisher verifies the exact APK, signing identity, preflight and upgrade
+evidence, checks live immutability settings and verifies the immutable result.
+Never rebuild the APK between acceptance and publication.

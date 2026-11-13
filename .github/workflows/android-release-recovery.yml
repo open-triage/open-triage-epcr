@@ -1,0 +1,136 @@
+name: Recover verified signed Android candidate
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      preflight_run:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Unpublished Android release tag
+        required: true
+      preflight_run:
+        description: Release workflow run with a successful preflight for this exact tag
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: android-recovery-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    environment: android-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify exact-source preflight evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PREFLIGHT_RUN: ${{ inputs.preflight_run }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {writeFileSync} from 'node:fs';
+          const tag=process.env.RELEASE_TAG,id=process.env.PREFLIGHT_RUN;
+          assert(/^android-v[1-9]\d*-\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(tag));
+          assert(/^[1-9]\d*$/.test(id));
+          const gh=path=>JSON.parse(execFileSync('gh',['api',`repos/${process.env.GITHUB_REPOSITORY}/${path}`],{encoding:'utf8'}));
+          const run=gh(`actions/runs/${id}`),source=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          assert.equal(run.path,'.github/workflows/android-release.yml');
+          assert.equal(run.event,'push');assert.equal(run.head_branch,tag);assert.equal(run.head_sha,source);
+          assert(gh(`actions/runs/${id}/jobs`).jobs.some(job=>job.name==='preflight'&&job.conclusion==='success'));
+          assert(!gh('releases?per_page=100').some(release=>release.tag_name===tag),'Published releases must never be replaced');
+          writeFileSync(`${process.env.RUNNER_TEMP}/preflight-evidence.json`,JSON.stringify({status:'passed',command:'npm run check:ci',sourceCommit:source,workflowRun:id},null,2));
+          NODE
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
+          log-accepted-android-sdk-licenses: false
+      - run: npm ci
+      - run: npm run build -w @open-triage/contracts
+      - run: npm run android:build
+      - run: npm run build -w @open-triage/api
+      - name: Restore protected release credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-production.p12"
+      - name: Enable isolated emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prepare isolated acceptance controller
+        run: |
+          cat > "$RUNNER_TEMP/recover-candidate.mjs" <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync,spawnSync} from 'node:child_process';
+          import {mkdirSync,readFileSync,copyFileSync} from 'node:fs';
+          const match=/^android-v([1-9]\d*)-(.+)$/.exec(process.env.RELEASE_TAG);
+          const env={...process.env,ANDROID_VERSION_CODE:match[1],ANDROID_VERSION_NAME:match[2],ANDROID_RELEASE_INSTRUMENTATION:'1'};
+          const gh=args=>execFileSync('gh',args,{encoding:'utf8'});
+          const releases=JSON.parse(gh(['api','--paginate','--slurp',`repos/${env.GITHUB_REPOSITORY}/releases?per_page=100`])).flat();
+          const previous=releases.filter(r=>!r.draft&&/^android-(?:v|candidate-)\d+-/.test(r.tag_name)).sort((a,b)=>Number(/^android-(?:v|candidate-)(\d+)/.exec(b.tag_name)[1])-Number(/^android-(?:v|candidate-)(\d+)/.exec(a.tag_name)[1]))[0];
+          assert(previous);const prior=`${env.RUNNER_TEMP}/previous`;mkdirSync(prior);
+          gh(['release','download',previous.tag_name,'--repo',env.GITHUB_REPOSITORY,'--dir',prior,'--pattern','release.json','--pattern','*.apk']);
+          assert(Number(match[1])>JSON.parse(readFileSync(`${prior}/release.json`)).versionCode);
+          const run=args=>{const result=spawnSync('npm',args,{env,stdio:'inherit'});if(result.error)throw result.error;assert.equal(result.status,0);};
+          run(['run','android:release','--','--native-only']);
+          run(['run','android:test:upgrade','--',prior,env.ANDROID_RELEASE_OUTPUT]);
+          copyFileSync(`${env.RUNNER_TEMP}/preflight-evidence.json`,`${env.ANDROID_RELEASE_OUTPUT}/preflight-evidence.json`);
+          NODE
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          ANDROID_RELEASE_OUTPUT: ${{ runner.temp }}/candidate
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/android-production.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_CERTIFICATE_SHA256: ${{ secrets.ANDROID_CERTIFICATE_SHA256 }}
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim
+          disable-animations: true
+          script: node "$RUNNER_TEMP/recover-candidate.mjs"
+      - name: Preserve validated production bytes and evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-verified-candidate
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/candidate/*.apk
+            ${{ runner.temp }}/candidate/release.json
+            ${{ runner.temp }}/candidate/SHA256SUMS
+            ${{ runner.temp }}/candidate/upgrade-evidence.json
+            ${{ runner.temp }}/candidate/preflight-evidence.json
+      - name: Remove runner signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/android-production.p12"

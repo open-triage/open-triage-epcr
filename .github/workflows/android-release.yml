@@ -1,11 +1,20 @@
 name: Verify and publish signed Android candidate
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Unpublished tag to recover
+        required: true
+      preflight_run:
+        description: Successful exact-source preflight run
+        required: true
   push:
-    tags: ['android-v*']
+    tags: ['android-v*', '!android-v*-recovery']
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: android-production-release
@@ -13,6 +22,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -26,6 +36,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - run: npm run check:ci
   release:
+    if: github.event_name != 'workflow_dispatch'
     needs: preflight
     environment: android-release
     runs-on: ubuntu-latest
@@ -46,6 +57,10 @@ jobs:
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
+      - name: Verify publication permissions before building
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq 'select(.enabled == true) | .enabled' | grep -qx true
       - run: npm ci
       - run: npm run build -w @open-triage/contracts
       - run: node --test tests/android-*.test.mjs
@@ -78,6 +93,26 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim
           disable-animations: true
           script: node scripts/android-release-candidate.mjs
+      - name: Preserve candidate evidence after publication failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-release-publication-recovery
+          retention-days: 7
+          path: |
+            .local/android-releases/*/*.apk
+            .local/android-releases/*/release.json
+            .local/android-releases/*/SHA256SUMS
+            .local/android-releases/*/upgrade-evidence.json
+            .local/android-release-workflow/preflight-evidence.json
       - name: Remove runner signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/android-production.p12"
+
+  recover:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/android-release-recovery.yml
+    with:
+      tag: ${{ inputs.tag }}
+      preflight_run: ${{ inputs.preflight_run }}
+    secrets: inherit
