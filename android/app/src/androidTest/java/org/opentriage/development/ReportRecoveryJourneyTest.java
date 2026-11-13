@@ -728,8 +728,8 @@ public class ReportRecoveryJourneyTest {
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
-        waitFor("document.querySelector('[data-change-installation]')");
-        evaluate("document.querySelector('[data-change-installation]').click()");
+        waitFor("document.querySelector('.session-identity')");
+        evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
         JSONObject expiring = new JSONObject(new String(android.util.Base64.decode(args.getString("expiredArtifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8));
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, expiring.toString());
         waitFor("document.querySelector('input[type=checkbox]')");

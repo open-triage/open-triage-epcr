@@ -9,7 +9,7 @@ import { lockProtectedClinicalStorage } from "../app/protected-clinical-storage"
 import { resolveMessage } from "../app/localization";
 import {INSTALLATION_GENERATION_KEY} from "../app/installation-transition-generation";
 import { transitionInstallation, resumeNativeInstallationTransition, INSTALLATION_TRANSITION_KEY, INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
-import { AndroidInstallationAction, ANDROID_REPLACE_INSTALLATION } from "./android-installation-action";
+import { ANDROID_REPLACE_INSTALLATION } from "../app/android-installation-events";
 import { installAndroidLifecycle } from "../app/android-lifecycle";
 import { AndroidTlsNotice } from "./android-tls-notice";
 import { AndroidPendingEnrollment } from "./android-pending-enrollment";
@@ -125,7 +125,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   if (!native || !connection) return null;
   return <main className="admin-directory installation-enrollment"><h1>{t("android.pairingTitle")}</h1>
     {managedNotice}
-    {connection?.blocked ? <><p role="alert" className="admin-error">{t(`android.managed.${["missing", "pending", "invalid", "changed"].includes(connection.managedStatus ?? "") ? connection.managedStatus : "unavailable"}`)}</p>{connection.managedStatus === "changed" && <AndroidInstallationAction language={language} />}</> : <>
+    {connection?.blocked ? <p role="alert" className="admin-error">{t(`android.managed.${["missing", "pending", "invalid", "changed"].includes(connection.managedStatus ?? "") ? connection.managedStatus : "unavailable"}`)}</p> : <>
     {error && <p role="alert" className="admin-error">{t(error)}</p>}
     {connection.handoffPending ? <><p role="alert">{t(connection.handoffComplete?"android.handoffComplete":"android.handoffInterrupted")}</p><button type="button" disabled={busy} onClick={async()=>{
       setBusy(true);setError(null);const started=revision.current,context=currentState.current?.connectionContext;

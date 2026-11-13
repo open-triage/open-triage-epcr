@@ -31,19 +31,14 @@ for (const language of ['en', 'sv']) test(`TLS failure keeps the mounted clinica
   expect(await page.evaluate(() => (window as unknown as { mounts: number }).mounts)).toBe(1);
 });
 
-test('native startup connection failure keeps explicit installation recovery reachable',async({page})=>{
-  const bundle=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin',NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION:'false'})},plugins:[{name:'native-installation-control',setup(builder){
-    builder.onResolve({filter:/android-runtime$/},args=>args.importer.endsWith('android-installation-action.tsx')?{path:'native-action',namespace:'native-action'}:undefined);
-    builder.onLoad({filter:/.*/,namespace:'native-action'},()=>({loader:'js',contents:'export const isAndroidRuntime=()=>true;'}));
-  }}],stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:"import React from 'react';import{createRoot}from'react-dom/client';import Home from './app/page';window.replacements=0;window.addEventListener('open-triage.android-replace-installation',()=>window.replacements++);createRoot(document.getElementById('root')).render(<Home/>);"}});
+test('startup connection failure stays locked without an installation-change action',async({page})=>{
+  const bundle=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin',NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION:'false'})},stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:"import React from 'react';import{createRoot}from'react-dom/client';import Home from './app/page';createRoot(document.getElementById('root')).render(<Home/>);"}});
   const css=await readFile(path.resolve(__dirname,'../app/styles.css'),'utf8');
   await page.route('**/__native-startup-failure',route=>route.fulfill({contentType:'text/html',body:`<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${bundle.outputFiles[0]!.text}</script></body></html>`}));
   await page.route('**/api/**',route=>route.abort('failed'));
   await page.goto('/__native-startup-failure');
   await expect(page.locator('.session-loading')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('.session-loading [role=alert]')).toBeVisible();
-  const change=page.getByRole('button',{name:'Change installation',exact:true});
-  await expect(change).toBeVisible();await change.click();
-  expect(await page.evaluate(()=>(window as unknown as{replacements:number}).replacements)).toBe(1);
+  await expect(page.getByRole('button',{name:'Change installation',exact:true})).toHaveCount(0);
   await expect(page.locator('.encounter-header')).toHaveCount(0);
 });

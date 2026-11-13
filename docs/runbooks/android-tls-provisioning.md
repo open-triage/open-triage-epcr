@@ -89,6 +89,13 @@ valid one under a still-valid CA restores connectivity.
 
 ## Deliberate CA replacement
 
+Current builds change installations and their saved trust by uninstalling,
+reinstalling and pairing again. Synchronize pending work first: uninstalling clears
+local data. The in-app replacement protocol below describes earlier APKs and
+recovery of transitions already started there; current builds expose no
+installation-change control. Pending confirmed pairing can still use its existing
+trust-update and retry actions.
+
 An API response, redirect, TLS error or failed connection can never introduce a
 new CA. Obtain replacement trust through the approved operator/MDM channel, not
 by accepting a certificate from the failing connection. Do not clear app data,

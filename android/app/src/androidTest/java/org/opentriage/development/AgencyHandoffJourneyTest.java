@@ -175,7 +175,7 @@ public class AgencyHandoffJourneyTest {
                 status("retained_sha256",records());status("agency_handoff_live","1");
                 long end=android.os.SystemClock.elapsedRealtime()+120000;while(android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(100);fail("Host must kill the actual ambiguous consume after its target cookie is journaled");
             } else if(phase.equals("return-source-superuser")){
-                waitFor("document.querySelector('.session-identity')");click("Change installation");waitFor("document.querySelector('input[type=file]')");
+                waitFor("document.querySelector('.session-identity')");evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");waitFor("document.querySelector('input[type=file]')");
                 String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
                 login(args.getString("superuser"),args.getString("superuserPassword"));unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("prepare-completed")){
@@ -208,7 +208,7 @@ public class AgencyHandoffJourneyTest {
             } else if(phase.equals("restart-target")){
                 waitFor("document.querySelector('.session-identity')");assertEquals("https://127.0.0.1",vault().read().origin);assertEquals(JSONObject.quote(args.getString("targetAgency")),evaluate(session()+".organization.id"));unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("return-source")){
-                waitFor("document.querySelector('.session-identity')");click("Change installation");waitFor("document.querySelector('input[type=file]')");
+                waitFor("document.querySelector('.session-identity')");evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");waitFor("document.querySelector('input[type=file]')");
                 String artifact=new String(android.util.Base64.decode(args.getString("artifactBase64"),android.util.Base64.NO_WRAP),StandardCharsets.UTF_8);AndroidUiInput.importPairing(this::evaluate,this::waitFor,artifact);waitFor("document.querySelector('input[type=checkbox]')");set("document.querySelector('input[maxlength=\"100\"]')","Explicit original installation");evaluate("document.querySelector('input[type=checkbox]').click();document.querySelector('form').requestSubmit()");
                 waitFor("document.querySelector('input[name=username]')");unchanged(args.getString("retainedSha256"));bundled();
             } else if(phase.equals("recover-source")){

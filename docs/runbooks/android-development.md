@@ -278,8 +278,14 @@ distribution. Existing immutable release candidates are unchanged by this slice.
 
 ### Installation reassignment and interrupted confirmation
 
-Use **Change installation** from the APK login or session controls to scan or
-import another administrator-issued pairing artifact. Preview blocks old-context
+Current builds have no **Change installation** control on login, session or
+connection-error screens. To change installations, synchronize pending work,
+uninstall and reinstall the APK, then pair it with the intended vehicle. Uninstalling
+clears the app's local data. An ordinary APK update retains the existing pairing.
+
+The native transition protocol remains available for compatibility with earlier
+APKs and recovery of already confirmed pairing attempts. In that protocol,
+preview blocks old-context
 requests and locks readable work. Cancel returns to the exact original connection
 and its still-valid login; it cannot override changed or missing managed policy.
 Confirm settles the shared encrypted-write boundary and signs out locally before

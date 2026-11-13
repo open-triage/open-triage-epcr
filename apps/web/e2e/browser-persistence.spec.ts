@@ -1095,10 +1095,6 @@ for (const navigation of ["button", "android-back"] as const) test(`${navigation
     const css = await readFile(path.resolve(__dirname, "../app/styles.css"), "utf8") + await readFile(path.resolve(__dirname, "../app/session-layout.css"), "utf8");
     const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
       define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: "same-origin", NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "false" }) },
-      plugins: [{ name: "native-installation-control", setup(builder) {
-        builder.onResolve({filter: /android-runtime$/}, args => args.importer.endsWith("android-installation-action.tsx") ? {path: "native-action", namespace: "native-action"} : undefined);
-        builder.onLoad({filter: /.*/, namespace: "native-action"}, () => ({loader: "js", contents: "export const isAndroidRuntime=()=>true;"}));
-      }}],
       stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `import React from 'react';import {createRoot} from 'react-dom/client';import Home from './app/page';import {handleAndroidBack} from './app/android-navigation';window.androidBack=()=>handleAndroidBack(async()=>{window.didBackground=true});createRoot(document.getElementById('root')).render(<Home/>);` } });
     await page.route("**/__android-back", route => route.fulfill({ contentType: "text/html", body: `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
   }
@@ -1154,8 +1150,8 @@ for (const navigation of ["button", "android-back"] as const) test(`${navigation
   if (navigation === "android-back") {
     await page.setViewportSize({ width: 320, height: 616 });
     await page.addStyleTag({ content: ":root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}" });
-    await expect(page.locator(".session-bar [data-change-installation]")).toBeVisible();
-    // The real native-only action must not squeeze identity into a tall pinned column.
+    await expect(page.locator(".session-bar [data-change-installation]")).toHaveCount(0);
+    // Identity stays readable without an installation-change action taking header space.
     expect(await page.locator(".session-account").evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(100);
     expect(await page.locator(".session-bar").evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(616 * .6);
     await page.keyboard.press("Tab");
