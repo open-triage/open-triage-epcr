@@ -12,7 +12,8 @@ test('native JSON helpers and their actual regression sources compile against An
  const jar=join(sdk,'platforms/android-36/android.jar');assert(existsSync(jar),'Install Android SDK platform36 before native validation; desktop org.json has incompatible unchecked exceptions');
  const directory=mkdtempSync(join(tmpdir(),'android-json-signatures-'));
  const javac=process.env.JAVA_HOME?join(process.env.JAVA_HOME,'bin/javac'):'javac';
- const compile=files=>spawnSync(javac,['-classpath',jar,'-d',directory,...files],{encoding:'utf8',timeout:30000});
+ // Resolve production helper dependencies as javac does in the actual Android build.
+ const compile=files=>spawnSync(javac,['-classpath',jar,'-sourcepath',resolve('android/app/src/main/java'),'-d',directory,...files],{encoding:'utf8',timeout:30000});
  try{
   // Compile-only JUnit symbols: actual assertions execute later with real JUnit
   // in Gradle. Every JSON symbol here comes from the actual Android platform jar.
