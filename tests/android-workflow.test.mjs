@@ -78,7 +78,7 @@ test('Android acceptance loads its harness before any API compilation is availab
 
 test('production publication is serialized, gated by preflight and protected environment, and uploads no instrumentation', async () => {
   const workflow = yaml.load(await readFile(new URL('android-release.yml', workflows), 'utf8'));
-  assert.deepEqual(workflow.on.push.tags, ['android-v*']);
+  assert.deepEqual(workflow.on.push.tags, ['android-v*', '!android-v*-recovery']);
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
   assert.equal(workflow.jobs.release.environment, 'android-release');
   assert.equal(workflow.jobs.release.needs, 'preflight');
@@ -86,7 +86,11 @@ test('production publication is serialized, gated by preflight and protected env
   const emulator = workflow.jobs.release.steps.find(step => step.uses?.startsWith('reactivecircus/android-emulator-runner@'));
   assert.equal(emulator.with.script, 'node scripts/android-release-candidate.mjs');
   assert.equal(String(emulator.with['api-level']), '33');
-  assert(!workflow.jobs.release.steps.some(step => step.uses?.startsWith('actions/upload-artifact@')));
+  for (const upload of workflow.jobs.release.steps.filter(step => step.uses?.startsWith('actions/upload-artifact@'))) {
+    assert.equal(upload.if, 'failure()');
+    assert(upload.with.path.split('\n').filter(Boolean).every(path => path.startsWith('.local/android-releases/') || path === '.local/android-release-workflow/preflight-evidence.json'));
+    assert(!/androidTest|build\/outputs/.test(upload.with.path));
+  }
   const publication = await readFile(new URL('../scripts/android-release-publish.mjs', import.meta.url), 'utf8');
   assert(!publication.includes('androidTest.apk'));
   assert.match(publication, /published\.immutable, true/);
@@ -117,7 +121,7 @@ function assertCompletePreflightBrowser(workflow, label) {
   for (const [name, job] of Object.entries(workflow.jobs ?? {})) {
     const steps = job.steps ?? [];
     for (const [index, step] of steps.entries()) {
-      if (typeof step.run !== 'string' || !/\bnpm\s+run\s+check:ci\b/.test(step.run)) continue;
+      if (typeof step.run !== 'string' || !/(?:^|[;&|\n])\s*npm\s+run\s+check:ci\b/m.test(step.run)) continue;
       checks++;
       const controlled = steps.slice(0, index).some(prerequisite => typeof prerequisite.run === 'string' &&
         /\bnpx\s+playwright\s+install\b/.test(prerequisite.run) && /\bchromium\b/.test(prerequisite.run) &&
@@ -143,6 +147,7 @@ test('every complete-preflight job installs its controlled browser first, while 
     }
   }
   assert(checked > 0);
+  assert.equal(assertCompletePreflightBrowser({jobs:{receipt:{steps:[{run:"const evidence = {command:'npm run check:ci'};"}]}}}, 'receipt-only'),0);
   const install = { run: 'npx playwright install --with-deps chromium' }, complete = { run: 'npm run check:ci' };
   assertCompletePreflightBrowser({ jobs: { complete: { steps: [{ run: 'npm ci' }, install, complete] }, units: { steps: [{ run: 'npm test' }] } } }, 'supported');
   for (const steps of [[complete, install], [{ ...install, if: 'false' }, complete], [{ run: 'npx playwright install firefox' }, complete]]) {
