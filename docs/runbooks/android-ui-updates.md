@@ -15,7 +15,7 @@ transport and are never handled by the UI cache.
 The local WebView origin remains `https://localhost`, preserving enrollment,
 Keystore custody and protected browser storage. Capacitor injects its bridge at
 document start, including cached documents. A WebView without document-start
-injection retains its bundled fallback rather than loading an unusable hosted UI.
+injection stays on the local pairing/loading screen.
 
 A normal web deployment publishes the UI and `/sw.js` together. The existing
 `OPEN_TRIAGE_BUILD_SHA` changes the worker's version per deployment. Both browser

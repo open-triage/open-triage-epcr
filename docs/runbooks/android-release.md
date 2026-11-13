@@ -84,7 +84,7 @@ The builder rejects missing signing inputs, unexpected permanent certificates,
 invalid version codes/names, debuggable APKs, external shell URLs and cleartext.
 The shared browser service worker and pairing/loading bootstrap are bundled;
 clinical UI chunks are rejected. It verifies the actual package metadata and signature using
-SDK tools. Each output contains a content-addressed APK, `SHA256SUMS` and
+SDK tools. Each output contains a versioned APK, `SHA256SUMS` and
 `release.json` recording identity, certificate, code/name, source commit, APK and
 packaged-UI SHA-256, Android API range and client protocol versions. Customer
 origins, public CAs and enrollment arrive after installation; customer server
