@@ -122,11 +122,11 @@ downgrade rejection. B verifies the original UID, Keystore-decryptable connectio
 exact CA/enrollment, managed restrictions, presentation preference and exact
 pending ciphertext; offline startup exposes no report content. A different
 clinician cannot recover it; the original clinician recovers and syncs it online.
-Report pins and recovery deadline rules are checked. A real remote HTML deployment
-changes while A is running; reloading continues to show the packaged clinical UI
-at `https://localhost` with no service worker in historical A. Current B uses
-the shared browser service worker to adopt the paired server UI while retaining
-that local origin and protected storage.
+Report pins and recovery deadline rules are checked. A real server UI deployment
+changes while A is running. Historical bundled-UI APKs retain their packaged
+clinical UI without a service worker. Cached-UI candidates, including RC8 and
+later, adopt the paired server UI through the shared browser worker. Both UI
+generations keep `https://localhost` and the same protected storage during upgrade.
 The historical A1 preparation profile is limited to its exact published descriptor,
 APK digest, certificate, source, production package/version and preparation phase.
 It creates the retained clinical text supported by that original source; A1
