@@ -257,6 +257,9 @@ final class TrustedConnection {
                     for (String raw : header.getValue()) for (HttpCookie cookie : HttpCookie.parse(raw)) {
                         if (!COOKIE_NAMES.contains(cookie.getName()) || !cookie.getSecure() || !cookie.isHttpOnly() ||
                                 cookie.getDomain() != null || !cookiePath(cookie.getName()).equals(cookie.getPath())) throw new IllegalStateException("Invalid credential cookie");
+                        // Status reads may seed an anonymous pairing cookie. Personal
+                        // handoff connections never acquire installation credentials.
+                        if (!installationRequired && cookie.getName().equals("open_triage_installation")) continue;
                         long expiry = credentialExpiry(cookie, raw, System.currentTimeMillis());
                         if (expiry == 0) cookies.remove(cookie.getName());
                         else cookies.put(cookie.getName(), new SavedCookie(cookie.getValue(), expiry, cookie.getPath()));
@@ -310,6 +313,12 @@ final class TrustedConnection {
         return target;
     }
     boolean requiresInstallation() { return installationRequired; }
+    TrustedConnection personalOnly() {
+        TrustedConnection next = new TrustedConnection(this);
+        next.installationRequired = false;
+        for (var entry : cookies.entrySet()) if (!entry.getKey().equals("open_triage_installation")) next.cookies.put(entry.getKey(), entry.getValue());
+        return next;
+    }
 
     private static String cookiePath(String name) { return name.equals("open_triage_agency_handoff") ? "/api/sessions/agency-handoff" : "/api"; }
     void clearPersonalSession() { cookies.remove("open_triage_session"); cookies.remove("open_triage_agency_handoff"); }
@@ -348,6 +357,7 @@ final class TrustedConnection {
             JSONObject cookie = cookies.getJSONObject(i);
             if (!COOKIE_NAMES.contains(cookie.getString("name"))) throw new IllegalArgumentException("Invalid stored cookie");
             if (!cookiePath(cookie.getString("name")).equals(cookie.optString("path", "/api"))) throw new IllegalArgumentException("Invalid stored cookie path");
+            if (!connection.installationRequired && cookie.getString("name").equals("open_triage_installation")) continue;
             String value = cookie.getString("value"); long expiry = cookie.getLong("expires");
             if (!value.isEmpty() && expiry > System.currentTimeMillis())
                 connection.cookies.put(cookie.getString("name"), new SavedCookie(value, expiry, cookiePath(cookie.getString("name"))));

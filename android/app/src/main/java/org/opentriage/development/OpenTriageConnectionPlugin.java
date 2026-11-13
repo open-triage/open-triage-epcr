@@ -526,6 +526,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         return result;
     }); }
     private JSObject completedHandoff(TrustedConnection connection, JSONObject session) throws Exception {
+        connection = connection.personalOnly();
         JSONObject completed = NativeAgencyHandoff.completed(connection, session);
         vault.stageHandoffSession(connection, completed, session); active = connection; pendingHandoff = completed;
         connectionContext = java.util.UUID.randomUUID().toString();
