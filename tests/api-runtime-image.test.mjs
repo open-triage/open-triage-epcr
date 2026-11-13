@@ -67,6 +67,7 @@ test("the pruned runtime explicitly retains approved database operations and the
     "packages/database/generated",
     "database-operations-policy.json",
     "retention-policy.json",
+    "packages/database/config/hospital-migration-baseline.json",
     "COPY defines defines",
     "seed-initial-validation-versions.mjs",
     "seed-install-definitions.mjs",

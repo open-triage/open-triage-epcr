@@ -1,0 +1,146 @@
+{
+  "version": "20261019104900",
+  "checksum": "6e810f914d7afe0f8b27f7eb54505765928230ccfd47ed3368487c0f0fc085e5",
+  "predecessors": [
+    {
+      "version": "20261019104900",
+      "name": "hospital_eps_configuration",
+      "checksum": "9b4bb77252e7b4c841e1e7d17deebdc21c37df4c11d60a11340ca22ead3d7608"
+    },
+    {
+      "version": "20261019114153",
+      "name": "hospital_cos_configuration",
+      "checksum": "840c34d1a428bb71a242cfa2546020336deb35a6207ed6fb2540ed0e4d3ed0ea"
+    },
+    {
+      "version": "20261019114345",
+      "name": "hospital_eps_read_audit",
+      "checksum": "e173b28a4bb443033505980a73aeb805d1099d27ab8bf2d4df17ce41c098d6ec"
+    },
+    {
+      "version": "20261019123119",
+      "name": "hospital_eps_selective_import",
+      "checksum": "585336909744564f7301cce41cd3706cfb0f9acc10ea7be8472d4153489d44cc"
+    },
+    {
+      "version": "20261019130253",
+      "name": "hospital_cos_delivery",
+      "checksum": "c28a4c88f5ae3515f5cc77708e62a3df26c4a234474503bd47c414125bfff1bd"
+    },
+    {
+      "version": "20261019134148",
+      "name": "hospital_eps_append_history",
+      "checksum": "2c1ee1124a1d0c2074d14ed502d8275f0b4b217f2ef77d6e7975d96c5a7e936d"
+    },
+    {
+      "version": "20261019135752",
+      "name": "hospital_cos_amendments",
+      "checksum": "6c0fdffb3178402b8030e98c1670954ab6c268b3c3611cbe9b08e71c5b7f47fc"
+    },
+    {
+      "version": "20261019140757",
+      "name": "hospital_missing_identifiers_review",
+      "checksum": "d0c4166214e93d2e5140d458c0845909f63247ba2748a3cc5d7c759d5aaf6d99"
+    },
+    {
+      "version": "20261019142219",
+      "name": "hospital_cos_review_recovery",
+      "checksum": "48e70ad9401185541ba2a681f948c8119b33bb5443afad2864c7c4f1cc3992d4"
+    },
+    {
+      "version": "20261019142801",
+      "name": "hospital_eps_submission",
+      "checksum": "c74a85459545c8b989d1eb50610324a2b93549d41e7dac7812bf01832e8246cb"
+    },
+    {
+      "version": "20261019152619",
+      "name": "hospital_cos_automatic_retries",
+      "checksum": "4ce7e45710af1a71c531bd89ca23397f3439bead5dd23851737c3b403300fc78"
+    },
+    {
+      "version": "20261019162648",
+      "name": "hospital_cos_reconciliation",
+      "checksum": "2e167959616d45127cc5e06f778786ec025b13f1badc87949677093460aa0ed8"
+    },
+    {
+      "version": "20261019163807",
+      "name": "hospital_integration_credential_lifecycle",
+      "checksum": "4b935a5fbe10249cee1e5f6d4d30016635a5f98e6527dab19ff0d0b7e2d26164"
+    },
+    {
+      "version": "20261019164802",
+      "name": "hospital_protected_operational_history",
+      "checksum": "63e072349cd96005cb3bd57a0030aeff8c5e6bcf76aa8d14f4db9624e8464349"
+    },
+    {
+      "version": "20261019193903",
+      "name": "eps_export_review_queue",
+      "checksum": "4ee66af52e93275e7ed80f9c9bec380363e17fdd2e6246f7bac04751a9f20d6d"
+    },
+    {
+      "version": "20261019200223",
+      "name": "reopen_reports_without_reauthentication",
+      "checksum": "df6e6b755ef13c02a7b45f784cdd505b517195d4f7484c5cccb07e714298e5c1"
+    },
+    {
+      "version": "20261019205938",
+      "name": "complete_audit_event_sources",
+      "checksum": "d58dd0cf902757377cb360301bae5d2243f2d44bbb90dd0ce5a3efc330393923"
+    },
+    {
+      "version": "20261027121911",
+      "name": "cos_identity_destination_directory",
+      "checksum": "8f86f81c72c562c9400cca3bb835a001547dd99db110384287b16470f6db40ab"
+    },
+    {
+      "version": "20261027122013",
+      "name": "cos_live_artifacts",
+      "checksum": "bf8f11af5f7edeef7de0857c91c2016e38afde3a55a56ad16653aa02eab32076"
+    },
+    {
+      "version": "20261029102905",
+      "name": "hospital_submission_retention_lineage",
+      "checksum": "6126fc6f3950c3b94f173812948a37ad0617f904684db0ec311bb6cc2e23cc9b"
+    },
+    {
+      "version": "20261029160000",
+      "name": "cos_review_completion",
+      "checksum": "213af6e5f5f5555effc582ed7abf9de98e54a9426b5c9a1e9707c6ed1d1ffbb6"
+    },
+    {
+      "version": "20261029203058",
+      "name": "cos_patient_registration",
+      "checksum": "e6681b5682c7dd65d5843b260fd1a63c0fc97b826e3073893b4987ac0ff7b7d4"
+    },
+    {
+      "version": "20261030083849",
+      "name": "cos_signing_submission",
+      "checksum": "94f84104fdc6b82b4a1af665150e40e6c790f0111f7ed9f29fd05bd1ba807811"
+    },
+    {
+      "version": "20261030084932",
+      "name": "cos_pending_signing_audit",
+      "checksum": "cf6adbcafd28ac9a4a6146ce344271e067fafd75ddf8c1b249ea4d62724b759f"
+    },
+    {
+      "version": "20261101093948",
+      "name": "cos_readback_verification_policy",
+      "checksum": "cb81d24377af935e46acbabdeddb46e332f8a72ebde1a95345fdb4eed2ddfb97"
+    },
+    {
+      "version": "20261101094227",
+      "name": "cos_verification_read_failure_metadata",
+      "checksum": "8990bc95e34778a988839bf83f51a0d7be6c486105caccb9ccec14757f6182d1"
+    },
+    {
+      "version": "20261101112930",
+      "name": "eps_signing_gate",
+      "checksum": "e3b742946448441d9a7ee8cb92bf84fa7259603fa158139b47fa759e66d3bbaf"
+    },
+    {
+      "version": "20261101113847",
+      "name": "eps_signing_verification_audit",
+      "checksum": "cb3c77327ccf61f8896b4634a2bb67b551619ff599267b6bf882369cf1ec8bc5"
+    }
+  ]
+}

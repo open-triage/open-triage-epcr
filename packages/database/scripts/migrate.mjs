@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import hospitalBaseline from "../config/hospital-migration-baseline.json" with { type: "json" };
 
 const migrationName = /^(\d+)_([a-z0-9][a-z0-9_-]*)\.sql$/;
 const lockName = "open-triage-forward-only-migrations-v1";
@@ -122,6 +123,14 @@ export async function readMigrations(migrationsDirectory) {
   return migrations;
 }
 
+/** The consolidated baseline is equivalent only to the complete, checksum-pinned cohort.
+ * Keep the original history intact: do not replay DDL or rewrite recorded checksums.
+ */
+function hasConsolidatedHospitalHistory(migration, applied) {
+  if (migration.version !== hospitalBaseline.version || migration.checksum !== hospitalBaseline.checksum) return false;
+  return hospitalBaseline.predecessors.every(({ version, checksum }) => applied.get(version) === checksum);
+}
+
 export async function applyMigrations(client, migrations, log = console) {
   log.info("Waiting for the deployment migration lock");
   await client.query("select pg_advisory_lock(hashtext($1))", [lockName]);
@@ -155,6 +164,13 @@ export async function applyMigrations(client, migrations, log = console) {
        order by history.version`,
     );
     const applied = new Map(result.rows.map((row) => [row.version, row.checksum]));
+    const baseline = migrations.find(row => row.version === hospitalBaseline.version);
+    const originalHospitalHistory = hospitalBaseline.predecessors.some(({ version }) =>
+      applied.has(version) && (version !== hospitalBaseline.version || !!applied.get(version)));
+    if (baseline && applied.get(baseline.version) !== hospitalBaseline.checksum && originalHospitalHistory &&
+        !hasConsolidatedHospitalHistory(baseline, applied)) {
+      throw new Error("Cannot reconcile hospital migration baseline: original history is incomplete or modified");
+    }
 
     for (const { oldVersion, version, checksum } of renamedAnalyticsMigrations) {
       if (!applied.has(oldVersion)) continue;
@@ -196,7 +212,8 @@ export async function applyMigrations(client, migrations, log = console) {
       const recordedChecksum = applied.get(migration.version);
       if (applied.has(migration.version)) {
         const compatibleChecksum = recordedChecksum && recordedChecksum !== migration.checksum &&
-          isCompatibleMigrationChecksum(migration.version, recordedChecksum, migration.checksum);
+          (isCompatibleMigrationChecksum(migration.version, recordedChecksum, migration.checksum) ||
+            hasConsolidatedHospitalHistory(migration, applied));
         if (recordedChecksum && recordedChecksum !== migration.checksum && !compatibleChecksum) {
           throw new Error(`Applied migration ${migration.version} has been modified`);
         }

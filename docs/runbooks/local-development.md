@@ -47,6 +47,12 @@ migration lock, preserves their recorded SQL and checksums, and does not execute
 their SQL again. Fresh databases apply the renamed files in timestamp order.
 The Supabase CLI alone does not perform this repository-specific history conversion.
 
+The hospital integration baseline also accepts the complete, checksum-verified
+set of original hospital migrations from development installations. The repository
+runner preserves those records and skips the equivalent baseline SQL. Incomplete
+or changed histories remain blocked; do not reset checksums to bypass the check.
+
+
 For a local demonstration installation, create its ordinary organization using
 the local Supabase Studio SQL editor at http://localhost:54323. This statement
 preserves an existing organization:

@@ -63,7 +63,7 @@ COPY packages/database/scripts/retention.mjs packages/database/scripts/
 COPY packages/database/scripts/rotate-patient-keys.mjs packages/database/scripts/
 COPY packages/database/scripts/verify-recovery.mjs packages/database/scripts/
 COPY packages/database/scripts/verify-reporting-replica.mjs packages/database/scripts/
-COPY packages/database/config/database-operations-policy.json packages/database/config/retention-policy.json packages/database/config/
+COPY packages/database/config/database-operations-policy.json packages/database/config/retention-policy.json packages/database/config/hospital-migration-baseline.json packages/database/config/
 COPY packages/database/generated packages/database/generated
 COPY defines defines
 RUN mkdir -p defines/catalog/local defines/forms/local defines/validation/local \

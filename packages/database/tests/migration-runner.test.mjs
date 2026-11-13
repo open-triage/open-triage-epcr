@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import hospitalBaseline from "../config/hospital-migration-baseline.json" with { type: "json" };
+import hospitalHistory from "./fixtures/hospital-legacy-migrations.json" with { type: "json" };
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
@@ -366,4 +369,33 @@ test("portable OIDC key and agency handoff revokes preserve applied history and 
     assert.ok(!client.queries.some(({ sql }) => sql === migration.sql));
     await assert.rejects(applyMigrations(client, [{...migration, checksum:"0".repeat(64)}], silentLog), /has been modified/);
   }
+});
+
+test("complete original hospital history satisfies its exact consolidated baseline without replay or history rewrites", async () => {
+  const migration = (await readMigrations(repositoryMigrations)).find(row => row.version === hospitalBaseline.version);
+  assert.equal(migration.checksum, hospitalBaseline.checksum);
+  assert.deepEqual(hospitalHistory.map(({version,name,checksum}) => ({version,name,checksum})), hospitalBaseline.predecessors);
+  for (const row of hospitalHistory) assert.equal(createHash("sha256").update(row.statements.join("\n")).digest("hex"),row.checksum);
+  const original = hospitalBaseline.predecessors.map(({version,checksum}) => [version,checksum]);
+  const client = new FakeClient(original);
+  assert.equal(await applyMigrations(client,[migration],silentLog),0);
+  assert.equal(await applyMigrations(client,[migration],silentLog),0);
+  assert.deepEqual([...client.applied],original);
+  assert.ok(!client.queries.some(({sql}) => sql === "begin" || sql === migration.sql));
+});
+
+test("consolidated hospital compatibility rejects every missing, unverified or modified predecessor and modified baseline", async () => {
+  const migration = (await readMigrations(repositoryMigrations)).find(row => row.version === hospitalBaseline.version);
+  const original = hospitalBaseline.predecessors.map(({version,checksum}) => [version,checksum]);
+  for (const {version} of hospitalBaseline.predecessors) for (const checksum of [undefined,null,"0".repeat(64)]) {
+    const history = new Map(original);
+    if (checksum === undefined) history.delete(version); else history.set(version,checksum);
+    // Without the first predecessor, this looks like a fresh baseline over leftover tables:
+    // fail closed before trying baseline DDL, just like other partial cohorts.
+    const client = new FakeClient([...history]);
+    await assert.rejects(applyMigrations(client,[migration],silentLog),/hospital|modified/);
+    assert.ok(!client.queries.some(({sql}) => sql === migration.sql));
+    assert.deepEqual([...client.applied],[...history]);
+  }
+  await assert.rejects(applyMigrations(new FakeClient(original),[{...migration,checksum:"0".repeat(64)}],silentLog),/modified/);
 });
