@@ -19,6 +19,7 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class ReportRecoveryJourneyTest {
     private ActivityScenario<MainActivity> activity;
+    private static final String LOGIN_READY = "document.querySelector('input[name=username]') && document.querySelector('.login-sign-in button[type=submit]') && !document.querySelector('.login-sign-in button[type=submit]').disabled";
     private static final String RETAINED = "ANDROID-RETAINED-SYNTHETIC";
     private static final String FIELD = "document.querySelector('[data-element-id=\"ePatient.03\"] input[type=\"text\"]')";
     private String evaluate(String script) throws Exception {
@@ -75,7 +76,7 @@ public class ReportRecoveryJourneyTest {
         return AndroidEncryptedSnapshot.digest(encryptedSnapshot);
     }
     private void signIn(String username, String password) throws Exception {
-        waitFor("document.querySelector('input[name=username]')");
+        waitFor(LOGIN_READY);
         setInput("document.querySelector('input[name=username]')", username); setInput("document.querySelector('input[name=password]')", password);
         evaluate("document.querySelector('.login-sign-in').requestSubmit()");
         waitFor("document.querySelector('.session-identity') && document.querySelector('.call-directory')");
@@ -597,7 +598,12 @@ public class ReportRecoveryJourneyTest {
         waitFor("window.__denial!==null"); assertEquals("404", evaluate("window.__denial"));
         records(); assertEquals("1", evaluate("window.__retained.length"));
         assertEquals("Another clinician must preserve the exact retained ciphertext", args.getString("retainedSha256"), retainedDigest());
-        click("Log out"); waitFor("document.querySelector('input[name=username]')");
+        click("Log out"); waitFor(LOGIN_READY);
+        var vault = new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        assertNull("Ready sign-in follows durable native continuation removal", vault.personalContinuation());
+        var loggedOut = vault.read(); assertNotNull(loggedOut);
+        var loggedOutCookies = loggedOut.saved().getJSONArray("cookies");
+        for (int i = 0; i < loggedOutCookies.length(); i++) assertNotEquals("Ready sign-in follows durable personal cookie removal", "open_triage_session", loggedOutCookies.getJSONObject(i).getString("name"));
     }
     private void recover() throws Exception {
         var args = InstrumentationRegistry.getArguments(); signIn(args.getString("username"), args.getString("password"));
