@@ -65,7 +65,9 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(fetch(event.request).then((response) => {
     if (!response.ok && (isApprovedStaticRequest(event.request) || event.request.mode === "navigate")) throw new Error("Application shell unavailable");
     if (response.ok && isApprovedStaticRequest(event.request)) {
-      event.waitUntil(caches.open(cacheName).then((cache) => cache.put(event.request, response.clone())));
+      // Clone before returning: the browser can consume the body while CacheStorage opens.
+      const cachedResponse = response.clone();
+      event.waitUntil(caches.open(cacheName).then((cache) => cache.put(event.request, cachedResponse)));
     }
     return response;
   }).catch(async () => {
