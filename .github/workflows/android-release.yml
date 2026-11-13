@@ -9,6 +9,10 @@ on:
       preflight_run:
         description: Successful exact-source preflight run
         required: true
+      upgrade_harness:
+        description: Optional full commit SHA with only allowlisted upgrade-test changes
+        required: false
+        default: ""
   push:
     tags: ['android-v*', '!android-v*-recovery']
 
@@ -54,4 +58,5 @@ jobs:
     with:
       tag: ${{ inputs.tag }}
       preflight_run: ${{ inputs.preflight_run }}
+      upgrade_harness: ${{ inputs.upgrade_harness }}
     secrets: inherit

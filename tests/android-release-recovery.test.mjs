@@ -37,6 +37,9 @@ test('recovery controller tags cannot start an unintended production release',as
   const entry=yaml.load(await readFile(resolve('.github/workflows/android-release.yml'),'utf8'));
   assert(entry.on.push.tags.includes('!android-v*-recovery'));
   assert.equal(entry.jobs.recover.if,"github.event_name == 'workflow_dispatch'");
+  assert.equal(entry.on.workflow_dispatch.inputs.upgrade_harness.required,false);
+  assert.equal(entry.jobs.recover.with.upgrade_harness,'${{ inputs.upgrade_harness }}');
+  assert.equal(entry.jobs.release.with.upgrade_harness,undefined);
 });
 
 test('release recovery keeps existing credentials scoped and preserves only accepted production artifacts',()=>{
