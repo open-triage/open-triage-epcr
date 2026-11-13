@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import {runInNewContext} from 'node:vm';
 import test from 'node:test';
-import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -105,4 +106,17 @@ test('actual Java profile selector rejects every non-A1/current/production/prepa
    const result=spawnSync(command,args,{encoding:'utf8',timeout:30000});assert.equal(result.error,undefined);assert.equal(result.status,0,result.stdout+result.stderr);
   }
  }finally{rmSync(folder,{recursive:true,force:true});}
+});
+
+test('upgrade snapshot accepts cached and bundled local UI while rejecting remote origins',()=>{
+ const java=readFileSync('android/app/src/androidTest/java/org/opentriage/development/ReportRecoveryJourneyTest.java','utf8');
+ const snapshot=java.split('private void snapshotUpgrade()')[1].split('private void ')[0];
+ const expression=/assertEquals\("true", evaluate\("(location\.origin[^"\n]+)"\)\);/.exec(snapshot)?.[1];
+ assert(expression,'Execute the actual native upgrade-origin assertion');
+ for(const controller of [null,{scriptURL:'https://localhost/sw.js'}]){
+  for(const origin of ['https://localhost','https://remote.example.test','http://localhost']){
+   const actual=runInNewContext(expression,{location:{origin},navigator:{serviceWorker:{controller}}});
+   assert.equal(actual,origin==='https://localhost',`Origin ${origin}, worker ${Boolean(controller)}`);
+  }
+ }
 });
